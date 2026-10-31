@@ -13,8 +13,10 @@ import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js'
 import { rescheduleMeeting } from '../../../application/use-cases/reschedule-meeting.js';
 import { continueMeeting } from '../../../application/use-cases/continue-meeting.js';
 import { listMeetingEvents } from '../../../application/use-cases/meeting-events-query.js';
+import { getMeetingSummary } from '../../../application/use-cases/get-meeting-summary.js';
 import { resolveDisplayName } from '../../socket/handlers/resolve-display-name.js';
 import { requirePermission } from '../plugins/require-permission.js';
+import { RecordingScope } from '../../../domain/recording/recording-session-state.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const CreateMeetingBody = z.object({
@@ -39,6 +41,8 @@ const RescheduleMeetingBody = z.object({ newScheduledForUtc: z.string().datetime
 const EventsQuery = z.object({
   after: z.coerce.number().int().min(0).optional(),
   take: z.coerce.number().int().min(1).max(500).default(200),
+  // Ficha: solo la actividad legible (sin voz, calidad ni media).
+  activity: z.enum(['true', 'false']).optional(),
 });
 const HistoryQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -148,6 +152,13 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
               container.meetings.listUpcomingForUser(pageInput),
               container.meetings.countUpcomingForUser(listInput),
             ]);
+      // F7: estado de la grabacion por item; el portal solo lo ve si la oficina hace visibles las grabaciones.
+      const portalHidesRecordings =
+        principal.actorType === 'CustomerPortal' &&
+        !(await container.effectiveSettings.resolve(principal.tenantId)).recording.visibleInPortal;
+      const recordingStates = portalHidesRecordings
+        ? new Map<string, string>()
+        : await container.recordingSessions.listStatesByScopeIds(principal.tenantId, RecordingScope.Meeting, items.map((m) => m.id));
       return reply.send({
         items: items.map((snapshot) => ({
           id: snapshot.id,
@@ -166,11 +177,15 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
           endReason: snapshot.endReason,
           durationSeconds: snapshot.durationSeconds,
           continuationOfMeetingId: snapshot.continuationOfMeetingId,
-          joinedParticipantsCount: snapshot.participants.filter((p) => p.status === 'Joined').length,
+          // En vivo: quienes están ahora; terminada: quienes llegaron a entrar (todos quedan en Left).
+          joinedParticipantsCount: snapshot.participants.filter((p) =>
+            snapshot.status === 'Live' ? p.status === 'Joined' : p.joinedAtUtc !== null,
+          ).length,
           // Fase Frontend 9 — el historial necesita saber si hay transcript
           // disponible sin abrir cada meeting; el campo ya vivia en el
           // aggregate/Prisma (Fase Transcript 5/6), solo faltaba exponerlo aca.
           transcriptFileId: snapshot.transcriptFileId,
+          recordingState: recordingStates.get(snapshot.id) ?? null,
         })),
         page: query.page,
         size: query.size,
@@ -249,8 +264,34 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
           meetingId: params.id,
           userId: principal.userId,
           ...(query.after !== undefined ? { afterSeq: query.after } : {}),
+          activityOnly: query.activity === 'true',
           take: query.take,
         },
+        container,
+      );
+      if (!result.isSuccess) {
+        const status = result.error.code === 'Meeting.NotFound' ? 404 : 403;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
+
+  // Ficha del meeting: resumen, asistencia por persona (desde el log), invitados que no entraron y totales.
+  app.get(
+    '/communication/meetings/:id/summary',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingJoin)],
+    },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+      const params = IdParams.parse(request.params);
+      const isPortal = principal.actorType === 'CustomerPortal';
+      const recordingVisible =
+        !isPortal || (await container.effectiveSettings.resolve(principal.tenantId)).recording.visibleInPortal;
+      const result = await getMeetingSummary(
+        { tenantId: principal.tenantId, meetingId: params.id, userId: principal.userId, isPortal, recordingVisible },
         container,
       );
       if (!result.isSuccess) {

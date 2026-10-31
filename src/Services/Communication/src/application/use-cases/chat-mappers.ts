@@ -46,5 +46,7 @@ export function messageSnapshotToDto(m: MessageSnapshot): MessageDto {
     readAtUtc: null,
     audioDurationMs: m.audioDurationMs,
     audioWaveform: parseWaveform(m.audioWaveform),
+    transcriptText: m.transcriptText ?? null,
+    transcriptState: m.transcriptState ?? null,
   };
 }

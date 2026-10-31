@@ -13,7 +13,7 @@ import { MeetingParticipant, type MeetingParticipantSnapshot } from './meeting-p
 import { generateShortCode } from './short-code.js';
 import type { ConnectionQuality, MediaStatus } from '../calls/media-status.js';
 import { RecordingSession } from '../recording/recording-session.js';
-import { RecordingScope } from '../recording/recording-session-state.js';
+import { RecordingScope, type RecordingCaptureMode, type RecordingStopReason } from '../recording/recording-session-state.js';
 import { RecordingConsentEntry } from '../recording/recording-consent-entry.js';
 import type { RecordingConsentEntryStatus } from '../recording/recording-consent.js';
 import { TECHNICAL_LIMITS } from '../settings/technical-limits.js';
@@ -724,6 +724,32 @@ export class Meeting {
    * warn-and-drop en el consumer, sin retry) aunque el archivo ya existiera
    * en CloudStorage.
    */
+  /**
+   * F7: archivo de la grabacion server-side (compuesto). A diferencia de `attachRecording` (cliente,
+   * una sola vez), un recompuesto reemplaza al anterior: la fuente de verdad es la RecordingSession.
+   */
+  setRecordingFile(fileId: string): Result<void> {
+    if (this.state.status !== MeetingStatus.Ended && this.state.status !== MeetingStatus.Live) {
+      return Result.fail(makeError('Meeting.Recording.InvalidState', `Cannot set the recording in status ${this.state.status}.`));
+    }
+    this.state = { ...this.state, recordingFileId: fileId, updatedAtUtc: new Date() };
+    return Result.okVoid();
+  }
+
+  /** F7: transcript v2 (o reproceso) reemplaza al anterior; el estado vive en TranscriptArtifact. */
+  setTranscriptFile(fileId: string): Result<void> {
+    if (this.state.status !== MeetingStatus.Ended && this.state.status !== MeetingStatus.Live) {
+      return Result.fail(makeError('Meeting.Transcript.InvalidState', `Cannot set the transcript in status ${this.state.status}.`));
+    }
+    this.state = { ...this.state, transcriptFileId: fileId, updatedAtUtc: new Date() };
+    return Result.okVoid();
+  }
+
+  /** F7 (T-37): la retencion borro los archivos; la ficha ya no los ofrece. */
+  clearRecordingFiles(): void {
+    this.state = { ...this.state, recordingFileId: null, transcriptFileId: null, updatedAtUtc: new Date() };
+  }
+
   attachTranscript(fileId: string): Result<void> {
     if (this.state.status !== MeetingStatus.Ended && this.state.status !== MeetingStatus.Live) {
       return Result.fail(
@@ -815,12 +841,19 @@ export class Meeting {
     session: RecordingSession;
     policyAllows: boolean;
     now?: Date;
+    captureMode?: RecordingCaptureMode;
+    maxDurationSeconds?: number | null;
   }): Result<RecordingSession> {
     const guard = this.ensureCanHostAct(input.actorUserId);
     if (!guard.isSuccess) return guard;
     const belongs = this.ensureSessionBelongsHere(input.session);
     if (!belongs.isSuccess) return belongs;
-    const result = input.session.start({ policyAllows: input.policyAllows, now: input.now ?? new Date() });
+    const result = input.session.start({
+      policyAllows: input.policyAllows,
+      now: input.now ?? new Date(),
+      ...(input.captureMode ? { captureMode: input.captureMode } : {}),
+      maxDurationSeconds: input.maxDurationSeconds ?? null,
+    });
     if (!result.isSuccess) return result;
     return Result.ok(input.session);
   }
@@ -829,12 +862,13 @@ export class Meeting {
     actorUserId: string;
     session: RecordingSession;
     now?: Date;
+    reason?: RecordingStopReason;
   }): Result<RecordingSession> {
     const guard = this.ensureCanHostAct(input.actorUserId);
     if (!guard.isSuccess) return guard;
     const belongs = this.ensureSessionBelongsHere(input.session);
     if (!belongs.isSuccess) return belongs;
-    const result = input.session.stop(input.now);
+    const result = input.session.stop(input.now, input.reason);
     if (!result.isSuccess) return result;
     return Result.ok(input.session);
   }
@@ -844,10 +878,10 @@ export class Meeting {
    * recibir el fileId. Sin chequeo de actor propio — el caller (Fase Backend 3)
    * ya valida Host/Cohost antes de llegar aca, igual que failRecording/completeRecording.
    */
-  beginProcessingRecording(input: { session: RecordingSession }): Result<RecordingSession> {
+  beginProcessingRecording(input: { session: RecordingSession; recordingFileId?: string }): Result<RecordingSession> {
     const belongs = this.ensureSessionBelongsHere(input.session);
     if (!belongs.isSuccess) return belongs;
-    const result = input.session.beginProcessing();
+    const result = input.session.beginProcessing(input.recordingFileId);
     if (!result.isSuccess) return result;
     return Result.ok(input.session);
   }
@@ -862,19 +896,11 @@ export class Meeting {
   }
 
   /** System-triggered (transcript worker confirma Ready) — sin chequeo de actor. */
-  completeRecording(input: {
-    session: RecordingSession;
-    recordingFileId: string;
-    durationSeconds: number;
-    now?: Date;
-  }): Result<RecordingSession> {
+  /** F7 (T-34): el archivo de la grabacion ya esta Available en CloudStorage — sin chequeo de actor (sistema). */
+  markRecordingReady(input: { session: RecordingSession; now?: Date }): Result<RecordingSession> {
     const belongs = this.ensureSessionBelongsHere(input.session);
     if (!belongs.isSuccess) return belongs;
-    const result = input.session.complete({
-      recordingFileId: input.recordingFileId,
-      durationSeconds: input.durationSeconds,
-      now: input.now ?? new Date(),
-    });
+    const result = input.session.markReady({ now: input.now ?? new Date() });
     if (!result.isSuccess) return result;
     return Result.ok(input.session);
   }

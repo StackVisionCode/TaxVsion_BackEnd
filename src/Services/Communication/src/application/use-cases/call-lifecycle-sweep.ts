@@ -1,3 +1,5 @@
+import { stopRecordingOnEnd, type RecordingLifecycleOptionalDeps } from './recording-lifecycle.js';
+import type { RecordingSessionRepository } from '../ports/recording-repository.js';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../infrastructure/logger/logger.js';
 import type { Call } from '../../domain/calls/call.js';
@@ -11,7 +13,9 @@ import { CallEventTypes, type CallDurationWarningEvent, type CallEndedEvent } fr
 import { CallSocketEvents, type CallDurationWarningDto, type CallStateDto } from '../../contracts/socket/call-socket-events.js';
 import { DURATION_WARNING_THRESHOLDS_SECONDS } from './meeting-lifecycle-sweep.js';
 
-export interface CallLifecycleSweepDeps {
+export interface CallLifecycleSweepDeps extends RecordingLifecycleOptionalDeps {
+  /** F7: la grabacion se corta junto con la llamada vencida. */
+  readonly recordingSessions?: RecordingSessionRepository | undefined;
   readonly calls: CallRepository;
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
@@ -63,6 +67,7 @@ async function sweepOne(call: Call, now: Date, correlationId: string, deps: Call
     if (!ended.isSuccess) return 'none';
     await deps.calls.save(call);
     const after = call.toSnapshot();
+    await stopRecordingOnEnd(deps, { tenantId: after.tenantId, scope: 'Call', scopeId: after.id, reason: 'CallEnded', correlationId });
     const endedEvent: CallEndedEvent = {
       eventId: randomUUID(),
       eventType: CallEventTypes.Ended,

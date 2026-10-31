@@ -80,10 +80,12 @@ foreach ($s in $fleet[1..($fleet.Count-1)]) {
   Start-Sleep -Seconds $gap
 }
 
-# 3) Node (Communication + worker), same as start-fleet.ps1.
+# 3) Node (Communication + transcript worker + recorder), same as start-fleet.ps1.
 $nodeFleet = @(
   @{ n = "Communication";                  d = "src\Services\Communication";                  p = 5350 },
-  @{ n = "CommunicationTranscriptWorker";  d = "src\Services\CommunicationTranscriptWorker";  p = $null }
+  @{ n = "CommunicationTranscriptWorker";  d = "src\Services\CommunicationTranscriptWorker";  p = $null },
+  # Grabacion server-side (F7). En local 5365: el 5360 del contenedor lo usa Subscription aqui.
+  @{ n = "CommunicationRecorder";          d = "src\Services\CommunicationRecorder";          p = 5365 }
 )
 $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)
 if (-not $npm) { Write-Host "SKIP Node: npm.cmd not in PATH." }

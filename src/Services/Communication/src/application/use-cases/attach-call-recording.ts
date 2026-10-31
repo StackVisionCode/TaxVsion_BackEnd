@@ -14,6 +14,7 @@ import {
   type CallRecordingProcessingStartedEvent,
 } from '../../contracts/events/call-events.js';
 import { CallSocketEvents, type CallRecordingStateChangedDto } from '../../contracts/socket/call-socket-events.js';
+import { emitRecordingState, lifecycleFrom, markRecordingFileAvailable, requestTranscript, type RecordingLifecycleOptionalDeps } from './recording-lifecycle.js';
 
 /**
  * Comando: adjuntar una grabacion ya subida a CloudStorage a una llamada. El
@@ -46,7 +47,7 @@ export interface AttachCallRecordingResult {
   readonly recordingFileId: string;
 }
 
-export interface AttachCallRecordingDeps {
+export interface AttachCallRecordingDeps extends RecordingLifecycleOptionalDeps {
   readonly calls: CallRepository;
   readonly recordingSessions: RecordingSessionRepository;
   readonly idempotency: IdempotencyStore;
@@ -144,6 +145,12 @@ export async function attachCallRecording(
     return Result.fail(makeError('Call.RecordingRequesterOnly', 'Only who requested the recording can attach it.'));
   }
 
+  // F7: en captura server-side el navegador no sube nada; un adjunto tardio del cliente se rechaza.
+  if (session.captureMode === 'Server') {
+    await release();
+    return Result.fail(makeError('RecordingSession.ServerCapture', 'This recording is captured by the server.'));
+  }
+
   const attachResult = call.attachRecording(command.fileId);
   if (!attachResult.isSuccess) {
     await release();
@@ -151,38 +158,48 @@ export async function attachCallRecording(
   }
   await deps.calls.save(call);
 
-  const processingResult = call.beginProcessingRecording({ session });
+  const processingResult = call.beginProcessingRecording({ session, recordingFileId: command.fileId });
   if (!processingResult.isSuccess) {
     await release();
     return Result.fail(processingResult.error);
   }
   await deps.recordingSessions.save(processingResult.value);
 
-  const startedAtUtc = new Date().toISOString();
-  const processingEvent: CallRecordingProcessingStartedEvent = {
-    eventId: randomUUID(),
-    eventType: CallEventTypes.RecordingProcessingStarted,
-    tenantId: command.tenantId,
-    correlationId: command.correlationId,
-    occurredOnUtc: startedAtUtc,
-    callId: command.callId,
-    recordingFileId: command.fileId,
-    startedAtUtc,
-  };
-  await deps.publisher.enqueue(processingEvent);
-
-  const dto: CallRecordingStateChangedDto = { callId: command.callId, state: 'Processing', updatedAtUtc: startedAtUtc };
-  deps.emitter.emitToCall({
-    tenantId: command.tenantId,
-    callId: command.callId,
-    event: CallSocketEvents.RecordingStateChanged,
-    envelope: {
+  const lifecycle = lifecycleFrom(deps);
+  if (lifecycle) {
+    // F7: el transcript se pide con idioma, vocabulario y limite de la oficina; Ready lo decide CloudStorage.
+    await requestTranscript(processingResult.value, lifecycle, command.correlationId);
+    emitRecordingState(deps, processingResult.value, command.correlationId);
+    if (metadata.status === 'Available') {
+      await markRecordingFileAvailable({ tenantId: command.tenantId, fileId: command.fileId, correlationId: command.correlationId }, lifecycle);
+    }
+  } else {
+    const startedAtUtc = new Date().toISOString();
+    const processingEvent: CallRecordingProcessingStartedEvent = {
       eventId: randomUUID(),
+      eventType: CallEventTypes.RecordingProcessingStarted,
+      tenantId: command.tenantId,
       correlationId: command.correlationId,
-      emittedAtUtc: new Date().toISOString(),
-      payload: dto,
-    },
-  });
+      occurredOnUtc: startedAtUtc,
+      callId: command.callId,
+      recordingFileId: command.fileId,
+      startedAtUtc,
+    };
+    await deps.publisher.enqueue(processingEvent);
+
+    const dto: CallRecordingStateChangedDto = { callId: command.callId, state: 'Processing', updatedAtUtc: startedAtUtc };
+    deps.emitter.emitToCall({
+      tenantId: command.tenantId,
+      callId: command.callId,
+      event: CallSocketEvents.RecordingStateChanged,
+      envelope: {
+        eventId: randomUUID(),
+        correlationId: command.correlationId,
+        emittedAtUtc: new Date().toISOString(),
+        payload: dto,
+      },
+    });
+  }
 
   const result: AttachCallRecordingResult = { callId: command.callId, recordingFileId: command.fileId };
   await deps.idempotency.commit({

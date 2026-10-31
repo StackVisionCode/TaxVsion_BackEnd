@@ -64,6 +64,59 @@ public sealed class InitiateUploadHandlerTests
         Assert.Single(fixture.Files.All(), f => f.FolderType == FolderType.Avatars);
     }
 
+    private static InitiateUploadRequest TrackRequest(Guid meetingId) =>
+        new(
+            "Track_user_track.webm",
+            "audio/webm",
+            4096,
+            OwnerType.Communication,
+            meetingId,
+            FolderType.RecordingTracks,
+            null
+        );
+
+    [Fact]
+    public async Task Staff_cannot_upload_into_RecordingTracks()
+    {
+        var fixture = new Fixture();
+
+        // Solo el recorder sube pistas: una subida humana podría hacerse pasar por la voz de otro participante.
+        var result = await fixture.InitiateAsync(new StorageActorScope(false, null), TrackRequest(Guid.NewGuid()));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.FolderReserved, result.Error);
+        fixture.AssertNothingRegistered();
+    }
+
+    [Fact]
+    public async Task Portal_cannot_upload_into_RecordingTracks()
+    {
+        var fixture = new Fixture();
+
+        var result = await fixture.InitiateAsync(
+            new StorageActorScope(true, Guid.NewGuid()),
+            TrackRequest(Guid.NewGuid())
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.FolderReserved, result.Error);
+        fixture.AssertNothingRegistered();
+    }
+
+    [Fact]
+    public async Task A_service_token_can_initiate_a_RecordingTracks_upload()
+    {
+        var fixture = new Fixture();
+
+        var result = await fixture.InitiateAsync(
+            new StorageActorScope(false, null) { IsService = true },
+            TrackRequest(Guid.NewGuid())
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(fixture.Files.All(), f => f.FolderType == FolderType.RecordingTracks);
+    }
+
     [Fact]
     public async Task Other_folders_are_not_reserved()
     {

@@ -42,7 +42,21 @@ export interface MessageSnapshot {
   readonly audioDurationMs: number | null;
   /** Nota de voz: waveform como JSON string (array de picos 0-100). Null salvo un adjunto de audio. */
   readonly audioWaveform: string | null;
+  /** F7 (D-27): transcript de la nota de voz. Ausente = mensaje sin transcript (anteriores a F7 incluidos). */
+  readonly transcriptText?: string | null;
+  readonly transcriptState?: MessageTranscriptState | null;
+  readonly transcriptLanguage?: string | null;
 }
+
+/** F7 (D-27): estado del transcript de una nota de voz. `Skipped` = fuera de politica (duracion, plan). */
+/**
+ * NotRequested = la politica permite transcribirla y nadie lo pidio (se transcribe a demanda, no al enviar).
+ * Skipped = la politica no lo permite (sin boton).
+ */
+export type MessageTranscriptState = 'NotRequested' | 'Processing' | 'Ready' | 'Failed' | 'Skipped';
+
+/** Tope del texto en linea (columna NVARCHAR(4000)); el worker ya recorta, aqui se protege igual. */
+export const MESSAGE_TRANSCRIPT_MAX_LENGTH = 4000;
 
 export class Message {
   private constructor(private state: MessageSnapshot) {}
@@ -141,6 +155,8 @@ export class Message {
     conversationId: string;
     tenantId: string;
     body: string;
+    /** F7: adjunto del sistema (p. ej. el transcript de una llamada) que el hilo muestra como enlace. */
+    attachmentFileId?: string | null;
     now?: Date;
   }): Result<Message> {
     return Result.ok(
@@ -152,7 +168,7 @@ export class Message {
         senderDisplayName: 'System',
         kind: MessageKind.System,
         body: input.body.trim().slice(0, 4000),
-        attachmentFileId: null,
+        attachmentFileId: input.attachmentFileId ?? null,
         replyToMessageId: null,
         forwardedFromMessageId: null,
         isEdited: false,
@@ -217,6 +233,42 @@ export class Message {
         audioWaveform: input.origin.audioWaveform,
       }),
     );
+  }
+
+  /** F7 (D-27): solo las notas de voz llevan transcript; el texto se recorta al tope de la columna. */
+  isVoiceNote(): boolean {
+    return this.state.kind === MessageKind.Attachment && this.state.audioDurationMs !== null;
+  }
+
+  setTranscript(input: { state: MessageTranscriptState; text?: string | null; language?: string | null }): Result<void> {
+    if (!this.isVoiceNote()) {
+      return Result.fail(makeError('Chat.Message.NotVoiceNote', 'Only voice notes have a transcript.'));
+    }
+    const text = input.text?.trim() ? input.text.trim().slice(0, MESSAGE_TRANSCRIPT_MAX_LENGTH) : null;
+    this.state = {
+      ...this.state,
+      transcriptState: input.state,
+      transcriptText: input.state === 'Ready' ? text : null,
+      transcriptLanguage: input.language ?? this.state.transcriptLanguage ?? null,
+    };
+    return Result.okVoid();
+  }
+
+  /**
+   * Alguien pidio el transcript: NotRequested o Failed (reintento) pasan a Processing. Processing/Ready no
+   * cambian (ya en curso o hecho: un solo transcript por nota, compartido por ambos lados).
+   */
+  requestTranscript(): Result<{ requested: boolean }> {
+    if (!this.isVoiceNote() || this.state.isDeleted) {
+      return Result.fail(makeError('Chat.Message.NotVoiceNote', 'Only voice notes have a transcript.'));
+    }
+    const state = this.state.transcriptState ?? null;
+    if (state === 'Processing' || state === 'Ready') return Result.ok({ requested: false });
+    if (state !== 'NotRequested' && state !== 'Failed') {
+      return Result.fail(makeError('Chat.Message.TranscriptNotAvailable', "This voice note can't be transcribed."));
+    }
+    this.state = { ...this.state, transcriptState: 'Processing', transcriptText: null };
+    return Result.ok({ requested: true });
   }
 
   editText(newBody: string, editorUserId: string, now: Date = new Date()): Result<MessageBody> {

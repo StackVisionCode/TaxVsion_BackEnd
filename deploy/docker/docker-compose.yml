@@ -82,6 +82,27 @@ services:
   clamav:
     image: clamav/clamav:1.4.3
     container_name: taxvision-clamav
+    # Límites de clamd subidos por las grabaciones server-side (F7): con los 100M por defecto, un MP4
+    # de más de ~100 MB cortaba el INSTREAM y CloudStorage marcaba el archivo como scan_error. Se
+    # reescriben en cada arranque (borrar + agregar, idempotente) y luego se cede a /init, el
+    # ENTRYPOINT original de la imagen. 2100M cubre el tope de 2 GB de Recordings/RecordingTracks.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        conf=/etc/clamav/clamd.conf
+        sed -i -E '/^[[:space:]]*(StreamMaxLength|MaxFileSize|MaxScanSize)[[:space:]]/d' "$$conf"
+        {
+          echo "StreamMaxLength $${CLAMD_STREAM_MAX_LENGTH:-2100M}"
+          echo "MaxFileSize $${CLAMD_MAX_FILE_SIZE:-2100M}"
+          echo "MaxScanSize $${CLAMD_MAX_SCAN_SIZE:-2100M}"
+        } >> "$$conf"
+        exec /init
+    environment:
+      CLAMD_STREAM_MAX_LENGTH: ${CLAMD_STREAM_MAX_LENGTH:-2100M}
+      CLAMD_MAX_FILE_SIZE: ${CLAMD_MAX_FILE_SIZE:-2100M}
+      CLAMD_MAX_SCAN_SIZE: ${CLAMD_MAX_SCAN_SIZE:-2100M}
     expose:
       - "3310"
     volumes:
@@ -1806,6 +1827,9 @@ services:
       Minio__PublicUseTls: ${MINIO_USE_TLS:-true}
       ClamAv__Host: clamav
       ClamAv__Port: "3310"
+      # Tope del clamp de ClamAvVirusScanner (5..600): una grabación de 2 GB no termina en los 120 s por
+      # defecto y el escaneo caía en scan_error (F7).
+      ClamAv__TimeoutSeconds: "600"
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # Auditoria RateLimit hallazgo #2 — primer acquirer M2M saliente de CloudStorage (antes
       # solo RECIBIA llamadas M2M), solo para leer el catalogo de PlanRateLimits de Subscription.
@@ -2374,6 +2398,11 @@ services:
       COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED: ${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED:-true}
       COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE: ${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}
       COMMUNICATION_MEDIASOUP_ENABLE_TCP: ${COMMUNICATION_MEDIASOUP_ENABLE_TCP:-true}
+      # F7 — recorder server-side (red interna). TAP_LISTEN_IP: IP de escucha de los PlainTransport que
+      # envían el RTP de cada productor al recorder; TIMEOUT_MS acota cada llamada HTTP al recorder.
+      COMMUNICATION_RECORDER_BASE_URL: http://communication-recorder:5360
+      COMMUNICATION_RECORDER_TAP_LISTEN_IP: 0.0.0.0
+      COMMUNICATION_RECORDER_TIMEOUT_MS: "5000"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: communication-service
@@ -2451,6 +2480,90 @@ services:
     networks:
       - taxvision-network
 
+  # F7 — grabación server-side. Recibe RTP de los PlainTransport de mediasoup (communication-api) por
+  # la red interna, compone con ffmpeg y sube compuesto + pistas de audio por MinIO temp +
+  # SaveFileRequested. SIN ports: el RTP va de contenedor a contenedor y la API HTTP solo la llama
+  # communication-api con su JWT de servicio (no necesita cliente propio en Auth: solo valida).
+  communication-recorder:
+    image: taxvision/communication-recorder:dev
+    container_name: taxvision-communication-recorder
+    build:
+      context: ../../src/Services/CommunicationRecorder
+      dockerfile: Dockerfile
+    expose:
+      - "5360"
+    # ffmpeg componiendo 1080p consume RAM por hilo; el tope evita que una composición tumbe el host.
+    mem_limit: 1536m
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      SERVICE_NAME: communication-recorder
+      RECORDER_PORT: "5360"
+      RECORDER_RABBITMQ_URI: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      RECORDER_RABBITMQ_EXCHANGE: taxvision-events
+      RECORDER_CLOUDSTORAGE_EXTERNAL_QUEUE: cloudstorage-external-uploads
+      # DB 2 de Redis: jobs de composición hasta confirmar la publicación (0 = Communication, 1 = transcript worker).
+      RECORDER_REDIS_URI: redis://redis:6379/2
+      # Cuenta MinIO propia, IAM scoped a taxvision-temp/recording/* (policies/recording-source.json).
+      # NUNCA MINIO_ROOT_USER/PASSWORD.
+      RECORDER_MINIO_ENDPOINT: minio
+      RECORDER_MINIO_PORT: "9000"
+      RECORDER_MINIO_USE_SSL: "false"
+      RECORDER_MINIO_ACCESS_KEY: communication-recorder
+      RECORDER_MINIO_SECRET_KEY: ${RECORDER_MINIO_SECRET:?Set RECORDER_MINIO_SECRET in .env}
+      RECORDER_MINIO_TEMP_BUCKET: taxvision-temp
+      RECORDER_MINIO_SOURCE_PREFIX: recording
+      # Solo acepta el JWT de servicio de Communication (client_id en la lista).
+      RECORDER_AUTH_JWKS_URI: http://auth-api:8080/auth/.well-known/jwks.json
+      RECORDER_AUTH_ISSUER: TaxVision.Auth
+      RECORDER_AUTH_AUDIENCE: TaxVision.Services
+      RECORDER_ALLOWED_CLIENT_IDS: ${COMMUNICATION_SERVICE_AUTH_CLIENT_ID:-communication-worker}
+      # Rango RTP interno (no publicado). ANNOUNCED_IP vacío: Communication resuelve el host del recorder.
+      RECORDER_RTP_LISTEN_IP: 0.0.0.0
+      RECORDER_RTP_ANNOUNCED_IP: ""
+      RECORDER_RTP_PORT_MIN: "44000"
+      RECORDER_RTP_PORT_MAX: "44999"
+      RECORDER_SPOOL_DIR: /var/spool/communication-recorder
+      RECORDER_FFMPEG_BIN_PATH: ffmpeg
+      RECORDER_FFPROBE_BIN_PATH: ffprobe
+      RECORDER_FONT_FILE: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+      # Foto de perfil en el slate de cámara apagada (endpoint anónimo de avatares); sin ella, iniciales.
+      RECORDER_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      RECORDER_MAX_ACTIVE_SESSIONS: "4"
+      RECORDER_COMPOSE_THREADS: "2"
+      RECORDER_COMPOSE_NICE: "10"
+      RECORDER_ORPHAN_TIMEOUT_MINUTES: "30"
+    volumes:
+      # Pistas crudas y composiciones en curso: sobreviven a un reinicio del contenedor y las pistas
+      # de video se conservan aquí hasta tracksRetentionDays (no suben a CloudStorage).
+      # Misma ruta que la imagen crea para el usuario taxvision: si no existe en la imagen, Docker la
+      # monta como root y el recorder no puede escribir.
+      - recorder-spool:/var/spool/communication-recorder
+    # La imagen es Node: el chequeo usa fetch de Node, no un cliente HTTP externo.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:5360/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      auth-api:
+        condition: service_healthy
+    networks:
+      - taxvision-network
+
   # Fase D0 (cerrado en la revision post-D4) — crea/actualiza las cuentas de
   # servicio scoped de MinIO para Signature/CommunicationTranscriptWorker/Customer/
   # Correspondence (ver deploy/docker/minio/provision-service-accounts.sh + policies/*.json).
@@ -2480,6 +2593,7 @@ services:
       TENANT_MINIO_SECRET: ${TENANT_MINIO_SECRET:?Set TENANT_MINIO_SECRET in .env}
       DOCUMENTS_MINIO_SECRET: ${DOCUMENTS_MINIO_SECRET:?Set DOCUMENTS_MINIO_SECRET in .env}
       AUTH_MINIO_SECRET: ${AUTH_MINIO_SECRET:?Set AUTH_MINIO_SECRET in .env}
+      RECORDER_MINIO_SECRET: ${RECORDER_MINIO_SECRET:?Set RECORDER_MINIO_SECRET in .env}
     volumes:
       - ./minio:/provision:ro
     depends_on:
@@ -2687,6 +2801,7 @@ volumes:
   taxvision-logs:
   caddy-data:
   caddy-config:
+  recorder-spool:
 
 networks:
   taxvision-network:

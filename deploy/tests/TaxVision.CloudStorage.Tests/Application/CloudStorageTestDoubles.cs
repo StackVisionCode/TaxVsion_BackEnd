@@ -54,7 +54,11 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                 .Values.Where(file =>
                     file.TenantId == tenantId
                     && file.Status != FileStatus.SoftDeleted
-                    && (folderType == null ? file.FolderType != FolderType.Avatars : file.FolderType == folderType)
+                    && (
+                        folderType == null
+                            ? file.FolderType != FolderType.Avatars && file.FolderType != FolderType.RecordingTracks
+                            : file.FolderType == folderType
+                    )
                     && (
                         restrictedCustomerId == null
                         || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
@@ -162,6 +166,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                     && file.Status == FileStatus.SoftDeleted
                     && file.DeletedBatchId == null
                     && file.FolderType != FolderType.Avatars
+                    && file.FolderType != FolderType.RecordingTracks
                 )
                 .ToList()
         );

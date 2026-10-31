@@ -180,6 +180,9 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'cloudstorage.file.pending_review.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileRestoredIntegrationEvent':
     'cloudstorage.file.restored.v1',
+  // F7: un compuesto que no pasa el escaneo deja la grabacion en Failed (antes se ignoraba).
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileScanFailedIntegrationEvent':
+    'cloudstorage.file.scan_failed.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkFolderItemAddedIntegrationEvent':
     'cloudstorage.sharelink.folder_item_added.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkAccessedIntegrationEvent':
@@ -228,7 +231,6 @@ const INTENTIONALLY_IGNORED_EVENT_TYPES = new Set([
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormActionFailedIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormCompletedIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormRejectedIntegrationEvent',
-  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileScanFailedIntegrationEvent',
 ]);
 const UNKNOWN_EVENT_LOG_INTERVAL_MS = 60_000;
 
@@ -322,6 +324,13 @@ export class ConsumerRuntime {
 
     const handler = this.handlers.get(envelope.eventType);
     if (!handler) {
+      // Eco propio del fanout compartido (p. ej. el pedido de transcripción para el worker): no es un
+      // handler que falte, se descarta sin aviso. Lo de otros servicios sin handler sigue avisando.
+      if (config.serviceName && msg.properties.appId === config.serviceName) {
+        logger.debug({ eventType: envelope.eventType }, 'consumer: own event echoed by the fanout; ack to skip');
+        rabbit.channel.ack(msg);
+        return;
+      }
       this.logUnknownEvent(envelope, amqpTypeHeader);
       rabbit.channel.ack(msg);
       return;

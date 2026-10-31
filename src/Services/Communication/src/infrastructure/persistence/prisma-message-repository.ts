@@ -57,6 +57,9 @@ export class PrismaMessageRepository implements MessageRepository {
         IsPinned: snapshot.isPinned,
         PinnedAtUtc: snapshot.pinnedAtUtc,
         PinnedByUserId: snapshot.pinnedByUserId,
+        TranscriptText: snapshot.transcriptText ?? null,
+        TranscriptState: snapshot.transcriptState ?? null,
+        TranscriptLanguage: snapshot.transcriptLanguage ?? null,
         TenantId: tenantId,
       },
     });
@@ -86,6 +89,9 @@ export class PrismaMessageRepository implements MessageRepository {
         EditedAtUtc: m.editedAtUtc,
         AudioDurationMs: m.audioDurationMs,
         AudioWaveform: m.audioWaveform,
+        TranscriptText: m.transcriptText ?? null,
+        TranscriptState: m.transcriptState ?? null,
+        TranscriptLanguage: m.transcriptLanguage ?? null,
       },
     });
     await this.prisma.conversation.update({
@@ -159,7 +165,8 @@ export class PrismaMessageRepository implements MessageRepository {
         TenantId: input.tenantId,
         ConversationId: input.conversationId,
         IsDeleted: false,
-        Body: { contains: input.query },
+        // F7 (INV-14 H-7): las notas de voz se encuentran por su transcript.
+        OR: [{ Body: { contains: input.query } }, { TranscriptText: { contains: input.query } }],
       },
       orderBy: { CreatedAtUtc: 'desc' },
       take: input.limit,

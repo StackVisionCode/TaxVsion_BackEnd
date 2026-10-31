@@ -48,6 +48,8 @@ export const MeetingEventTypes = {
   ParticipantRoleChanged:  'communication.meeting.participant_role_changed.v1',
   RecordingValidationFailed: 'communication.meeting.recording_validation_failed.v1',
   RecordingFailed:         'communication.meeting.recording_failed.v1',
+  // F7 (T-35): corte por limite (metricas ADD-08 y auditoria).
+  RecordingLimitReached:   'communication.meeting.recording_limit_reached.v1',
   // F1 — un participante Joined volvio a entrar con media nueva (recarga, otra pestaña).
   ParticipantRejoined:     'communication.meeting.participant_rejoined.v1',
   // F1 — un transport del SFU llego a ICE/DTLS failed: base del MeetingEventLog (F3) y analytics (F10).
@@ -305,6 +307,30 @@ export interface MeetingRecordingProcessingStartedEvent extends IntegrationEvent
   readonly meetingId: string;
   readonly recordingFileId: string;
   readonly startedAtUtc: string;
+  /** F7 (T-28): pistas de audio por participante (captura server-side); sin ellas el worker usa el archivo unico. */
+  readonly audioTracks?: readonly RecordingAudioTrackRef[];
+  /** F7: idioma de la oficina ('auto' o codigo) y vocabulario (T-30). */
+  readonly language?: string;
+  readonly prompt?: string | null;
+  /** F7 (INV-12 H-1): limite efectivo para que el worker derive su timeout y rechace archivos mas largos. */
+  readonly maxDurationSeconds?: number;
+  readonly timeoutFactorPct?: number;
+}
+
+/** F7: pista de audio de un participante tal como la necesita el worker de transcript. */
+export interface RecordingAudioTrackRef {
+  readonly fileId: string;
+  readonly userId: string;
+  readonly displayName: string;
+  readonly startOffsetMs: number;
+}
+
+/** F7 (T-35): la grabacion se detuvo al llegar al limite (la reunion sigue). */
+export interface MeetingRecordingLimitReachedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.recording_limit_reached.v1';
+  readonly meetingId: string;
+  readonly maxDurationSeconds: number;
+  readonly stoppedAtUtc: string;
 }
 
 /** Ver docblock de CallTranscriptReadyEvent — mismo flujo, para meetings. */
@@ -319,6 +345,14 @@ export interface MeetingTranscriptReadyEvent extends IntegrationEvent {
   /** @since Fase Transcript 5 — conteo de palabras del transcript ya limpio (sin timestamps). */
   readonly wordCount: number;
   readonly readyAtUtc: string;
+  /** F7 (T-28): transcript v2. */
+  readonly transcriptJsonFileId?: string | null;
+  readonly segmentCount?: number;
+  readonly speakerCount?: number;
+  readonly model?: string;
+  readonly vad?: boolean;
+  readonly realtimeFactor?: number | null;
+  readonly wordsPerSecond?: number | null;
 }
 
 /**

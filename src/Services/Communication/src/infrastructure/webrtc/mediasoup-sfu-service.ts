@@ -14,6 +14,7 @@ import {
 import type {
   ConsumerInfo,
   CreateTransportResult,
+  RecordingTapInfo,
   RemoteProducerInfo,
   SfuMediaSource,
   SfuObserver,
@@ -42,10 +43,17 @@ interface WorkerSlot {
   port: number;
 }
 
+/** F7: tap de grabacion = PlainTransport hacia el recorder + consumer del producer. */
+interface RecordingTap {
+  transport: MediasoupTypes.PlainTransport;
+  consumer: MediasoupTypes.Consumer;
+}
+
 interface MeetingRoom {
   router: MediasoupTypes.Router;
   slot: WorkerSlot;
   participants: Map<string, ParticipantMedia>;
+  taps: Map<string, RecordingTap>;
   tenantId: string | null;
   /** F4: muestreador de `getStats()` de la reunion (null = apagado por politica). */
   statsTimer: NodeJS.Timeout | null;
@@ -254,6 +262,17 @@ export class MediasoupSfuService implements SfuService {
     });
     participant.producers.set(producer.id, producer);
     producer.on('transportclose', () => participant.producers.delete(producer.id));
+    // F7: cualquier cierre (transport, leave, stop de pantalla, router) avisa una sola vez a la captura.
+    const lifecycle = {
+      tenantId: room?.tenantId ?? '',
+      meetingId: input.meetingId,
+      userId: input.userId,
+      producerId: producer.id,
+      kind: producer.kind,
+      source: producerSource(producer),
+    };
+    producer.observer.once('close', () => this.observer?.onProducerClosed?.(lifecycle));
+    this.observer?.onProducerOpened?.(lifecycle);
     // F4: score por capa (0-10) → observador (agregado y MeetingEventLog al cruzar el umbral).
     producer.on('score', (scores) => {
       this.observer?.onProducerScore?.({
@@ -368,6 +387,93 @@ export class MediasoupSfuService implements SfuService {
     return result;
   }
 
+  listAllProducers(meetingId: string): readonly RemoteProducerInfo[] {
+    const room = this.rooms.get(meetingId);
+    if (!room) return [];
+    const result: RemoteProducerInfo[] = [];
+    for (const [userId, participant] of room.participants) {
+      for (const producer of participant.producers.values()) {
+        result.push({ userId, producerId: producer.id, kind: producer.kind, source: producerSource(producer) });
+      }
+    }
+    return result;
+  }
+
+  async prepareRecordingTap(input: {
+    meetingId: string;
+    producerId: string;
+    listenIp: string;
+    preferredSpatialLayer?: number;
+  }): Promise<RecordingTapInfo | null> {
+    const room = this.rooms.get(input.meetingId);
+    if (!room) return null;
+    const producer = this.findProducer(room, input.producerId);
+    if (!producer || producer.closed) return null;
+    // Sin RTX: ffmpeg no lo entiende y en la red interna no hace falta retransmitir.
+    const rtpCapabilities: MediasoupTypes.RtpCapabilities = {
+      ...room.router.rtpCapabilities,
+      codecs: (room.router.rtpCapabilities.codecs ?? []).filter((c) => c.mimeType.toLowerCase() !== 'video/rtx'),
+    };
+    const transport = await room.router.createPlainTransport({ listenInfo: { protocol: 'udp', ip: input.listenIp }, rtcpMux: false, comedia: false });
+    try {
+      const consumer = await transport.consume({ producerId: producer.id, rtpCapabilities, paused: true });
+      if (consumer.kind === 'video' && producerSource(producer) === 'camera' && input.preferredSpatialLayer !== undefined) {
+        await consumer.setPreferredLayers({ spatialLayer: input.preferredSpatialLayer }).catch(() => undefined);
+      }
+      const codec = consumer.rtpParameters.codecs[0];
+      const ssrc = consumer.rtpParameters.encodings?.[0]?.ssrc;
+      if (!codec || ssrc === undefined) {
+        transport.close();
+        return null;
+      }
+      const tapId = transport.id;
+      room.taps.set(tapId, { transport, consumer });
+      consumer.on('producerclose', () => this.dropTap(room, tapId));
+      transport.observer.once('close', () => room.taps.delete(tapId));
+      return {
+        tapId,
+        producerId: producer.id,
+        kind: consumer.kind,
+        codec: {
+          mimeType: codec.mimeType,
+          payloadType: codec.payloadType,
+          clockRate: codec.clockRate,
+          ...(codec.channels !== undefined ? { channels: codec.channels } : {}),
+        },
+        ssrc,
+      };
+    } catch (err) {
+      transport.close();
+      throw err;
+    }
+  }
+
+  async connectRecordingTap(input: { meetingId: string; tapId: string; ip: string; port: number; rtcpPort: number }): Promise<boolean> {
+    const tap = this.rooms.get(input.meetingId)?.taps.get(input.tapId);
+    if (!tap) return false;
+    await tap.transport.connect({ ip: input.ip, port: input.port, rtcpPort: input.rtcpPort });
+    await tap.consumer.resume();
+    if (tap.consumer.kind === 'video') await tap.consumer.requestKeyFrame().catch(() => undefined);
+    return true;
+  }
+
+  async requestRecordingTapKeyFrame(input: { meetingId: string; tapId: string }): Promise<void> {
+    const tap = this.rooms.get(input.meetingId)?.taps.get(input.tapId);
+    if (tap && tap.consumer.kind === 'video' && !tap.consumer.closed) await tap.consumer.requestKeyFrame().catch(() => undefined);
+  }
+
+  async closeRecordingTap(input: { meetingId: string; tapId: string }): Promise<void> {
+    const room = this.rooms.get(input.meetingId);
+    if (room) this.dropTap(room, input.tapId);
+  }
+
+  private dropTap(room: MeetingRoom, tapId: string): void {
+    const tap = room.taps.get(tapId);
+    if (!tap) return;
+    room.taps.delete(tapId);
+    if (!tap.transport.closed) tap.transport.close();
+  }
+
   listProducersForUser(meetingId: string, userId: string): readonly RemoteProducerInfo[] {
     const participant = this.rooms.get(meetingId)?.participants.get(userId);
     if (!participant) return [];
@@ -404,7 +510,7 @@ export class MediasoupSfuService implements SfuService {
     if (existing) return existing;
     const slot = this.nextSlot();
     const router = await slot.worker.createRouter({ mediaCodecs: MEDIA_CODECS });
-    const room: MeetingRoom = { router, slot, participants: new Map(), tenantId: null, statsTimer: null };
+    const room: MeetingRoom = { router, slot, participants: new Map(), taps: new Map(), tenantId: null, statsTimer: null };
     this.rooms.set(meetingId, room);
     return room;
   }

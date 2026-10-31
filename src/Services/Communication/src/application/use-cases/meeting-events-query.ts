@@ -1,5 +1,5 @@
 import { Result, makeError } from '../../domain/shared/result.js';
-import { MeetingEventScope } from '../../domain/meetings/meeting-event-log.js';
+import { MEETING_ACTIVITY_TYPES, MeetingEventScope } from '../../domain/meetings/meeting-event-log.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { MeetingEventLogRepository } from '../ports/meeting-event-log-repository.js';
 
@@ -17,6 +17,8 @@ export interface ListMeetingEventsQuery {
   readonly meetingId: string;
   readonly userId: string;
   readonly afterSeq?: number;
+  /** Solo la actividad legible (sin voz, calidad ni media). */
+  readonly activityOnly?: boolean;
   readonly take: number;
 }
 
@@ -35,6 +37,7 @@ export async function listMeetingEvents(
     scope: MeetingEventScope.Meeting,
     scopeId: query.meetingId,
     ...(query.afterSeq !== undefined ? { afterSeq: query.afterSeq } : {}),
+    ...(query.activityOnly ? { types: MEETING_ACTIVITY_TYPES } : {}),
     take: query.take,
   });
   const items = entries.map((e) => ({

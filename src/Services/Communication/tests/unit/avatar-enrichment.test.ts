@@ -174,6 +174,34 @@ describe('getMessages — senderAvatarFileId en el historial', () => {
   });
 });
 
+describe('getMessages — transcript de notas de voz (F7)', () => {
+  it('el historial trae estado y texto del transcript (boton Transcribe y texto tras recargar)', async () => {
+    const voice = (id: string, state: 'NotRequested' | 'Ready', text: string | null): MessageSnapshot => ({
+      ...message(id, PREPARER),
+      kind: 'Attachment',
+      body: null,
+      attachmentFileId: `f-${id}`,
+      audioDurationMs: 6000,
+      transcriptState: state,
+      transcriptText: text,
+    });
+    const conversations = {
+      findById: async () => ({ isParticipant: () => true }),
+      listMessages: async () => [voice('v-1', 'NotRequested', null), voice('v-2', 'Ready', 'Hola')],
+    } as unknown as ConversationRepository;
+    const messages = { receiptsForOwnMessages: async () => new Map() } as unknown as MessageRepository;
+
+    const result = await getMessages({ tenantId: TENANT, conversationId: 'conv-1', requesterUserId: ME, take: 50 }, { conversations, messages });
+
+    expect(result.isSuccess).toBe(true);
+    if (!result.isSuccess) return;
+    expect(result.value.items.map((m) => [m.transcriptState, m.transcriptText])).toEqual([
+      ['NotRequested', null],
+      ['Ready', 'Hola'],
+    ]);
+  });
+});
+
 describe('meetings — avatarFileId en el snapshot', () => {
   it('rejoin devuelve la foto de cada participante', async () => {
     const host = { userId: randomUUID(), displayName: 'Host' };

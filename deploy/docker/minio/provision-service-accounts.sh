@@ -20,6 +20,13 @@
 # Auth ("auth-worker") se sumo con la Auditoria del gap MinIO/legal-docs: PlatformAdmin sube
 # documentos legales (ToS/Privacy Policy) directo a taxvision-temp/auth/*, mismo patron D0/D1.
 #
+# CommunicationRecorder ("communication-recorder", F7) sube compuesto y pistas de audio a
+# taxvision-temp/recording/* (RECORDER_MINIO_ACCESS_KEY en compose). Unica policy con algo mas que
+# PutObject: minio-js 8 sube por multipart todo lo que supera la parte minima (compuestos de cientos
+# de MB) y antes de iniciar busca uploads incompletos (ListBucketMultipartUploads sobre el bucket,
+# MinIO no admite acotarlo por prefijo) y sus partes; AbortMultipartUpload limpia un intento fallido.
+# Sigue sin poder leer ni borrar objetos.
+#
 # Se ejecuta automaticamente como parte del deploy (ver el servicio "minio-provision"
 # en docker-compose.yml, profile "tools", y el workflow deploy.yml) DESPUES de que
 # minio este healthy. Tambien se puede correr a mano contra cualquier entorno.
@@ -30,7 +37,7 @@
 #   MINIO_ROOT_USER=... MINIO_ROOT_PASSWORD=... \
 #   SIGNATURE_MINIO_SECRET=... TRANSCRIPT_WORKER_MINIO_SECRET=... \
 #   CUSTOMER_MINIO_SECRET=... CORRESPONDENCE_MINIO_SECRET=... SCRIBE_MINIO_SECRET=... \
-#   TENANT_MINIO_SECRET=... AUTH_MINIO_SECRET=... \
+#   TENANT_MINIO_SECRET=... AUTH_MINIO_SECRET=... RECORDER_MINIO_SECRET=... \
 #   ./provision-service-accounts.sh
 #
 # Los *_MINIO_SECRET son las contrasenas que despues van en cada servicio como
@@ -73,5 +80,7 @@ provision "documents" "documents-worker" "${DOCUMENTS_MINIO_SECRET:?Set DOCUMENT
   "$(dirname "$0")/policies/documents-source.json"
 provision "auth" "auth-worker" "${AUTH_MINIO_SECRET:?Set AUTH_MINIO_SECRET}" \
   "$(dirname "$0")/policies/auth-source.json"
+provision "recording" "communication-recorder" "${RECORDER_MINIO_SECRET:?Set RECORDER_MINIO_SECRET}" \
+  "$(dirname "$0")/policies/recording-source.json"
 
 echo "Done. Set Minio__AccessKey/Minio__SecretKey in each service to the access-key/secret used above."

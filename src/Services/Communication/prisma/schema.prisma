@@ -86,6 +86,9 @@ model TenantCommunicationSettings {
   // F6 (null = hereda): recordatorio T-N y sala de espera para guests.
   MeetingReminderMinutesBefore           Int?
   GuestsWaitingRoom                      Boolean?
+  // F7 (null = hereda): vocabulario del transcript (T-30) y notas de voz transcritas (D-27).
+  TranscriptPrompt                       String?  @db.NVarChar(500)
+  VoiceNoteTranscriptEnabled             Boolean?
   // Auditoría.
   CreatedAtUtc                           DateTime @default(now()) @db.DateTime2
   UpdatedAtUtc                           DateTime @default(now()) @updatedAt @db.DateTime2
@@ -211,6 +214,22 @@ model PlatformCommunicationSettings {
   // F6 (T-64, D-47): recordatorio T-N (0 = apagado) y sala de espera por defecto para guests.
   MeetingReminderMinutesBefore          Int      @default(15)
   GuestsWaitingRoomDefault              Boolean  @default(true)
+  // F7: grabación server-side (0 = mezcla en el cliente, C-03), límites, composición, retención y notas de voz.
+  ServerSideRecordingEnabled            Boolean  @default(true)
+  RecordingLimitWarningMinutes          Int      @default(5)
+  RecordingLimitToleranceSeconds        Int      @default(120)
+  RecordingCompositionWidth             Int      @default(1280)
+  RecordingCompositionHeight            Int      @default(720)
+  RecordingCompositionFps               Int      @default(25)
+  RecordingCompositionVideoKbps         Int      @default(1500)
+  RecordingCompositionAudioKbps         Int      @default(128)
+  RecordingCompositionFormat            String   @default("mp4") @db.NVarChar(8)
+  RecordingCaptureSpatialLayer          Int      @default(2)
+  RecordingTracksRetentionDays          Int      @default(7)
+  VoiceNoteTranscriptEnabled            Boolean  @default(true)
+  VoiceNoteTranscriptMaxSeconds         Int      @default(600)
+  TranscriptWorkerTimeoutFactorPct      Int      @default(150)
+  RecordingAvailabilityTimeoutMinutes   Int      @default(60)
   UpdatedByUserId                       String?  @db.UniqueIdentifier
   UpdatedAtUtc                          DateTime @default(now()) @updatedAt @db.DateTime2
 }
@@ -596,6 +615,10 @@ model Message {
   // picos 0-100) calculados por el cliente al grabar. Null para cualquier otro mensaje.
   AudioDurationMs        Int?
   AudioWaveform          String?   @db.NVarChar(Max)
+  // F7 (D-27): transcript de la nota de voz (texto corto en línea) y su estado.
+  TranscriptText         String?   @db.NVarChar(4000)
+  TranscriptState        String?   @db.NVarChar(16)
+  TranscriptLanguage     String?   @db.NVarChar(16)
 
   Conversation Conversation      @relation(fields: [ConversationId], references: [Id], onDelete: Cascade)
   Receipts     MessageReceipt[]
@@ -1050,6 +1073,49 @@ model RecordingSession {
   RecordingFileId   String?   @db.UniqueIdentifier
   DurationSeconds   Int?
   FailureReason     String?   @db.NVarChar(500)
+  // F7: captura en el servidor o mezcla en el cliente (fallback C-03), límite y motivo de corte.
+  CaptureMode        String    @default("Client") @db.NVarChar(16)
+  MaxDurationSeconds Int?
+  LimitWarnedAtUtc   DateTime? @db.DateTime2
+  StopReason         String?   @db.NVarChar(32)
+  // F7 (T-33): compuesto del recorder y manifest de pistas (JSON) para transcript/recomponer.
+  ComposedFileId     String?   @db.UniqueIdentifier
+  ComposedSizeBytes  BigInt?
+  ComposedFormat     String?   @db.NVarChar(8)
+  TracksManifestJson String?   @db.NVarChar(Max)
+  ComposedAtUtc      DateTime? @db.DateTime2
+  ReadyAtUtc         DateTime? @db.DateTime2
+  // F7 (T-37): retención de pistas de audio y del compuesto.
+  TracksPurgedAtUtc  DateTime? @db.DateTime2
+  PurgedAtUtc        DateTime? @db.DateTime2
+
+  @@unique([Scope, ScopeId])
+  @@index([TenantId, Scope, ScopeId])
+  @@index([State, CaptureMode])
+  @@index([ComposedFileId])
+}
+
+/// F7 (T-34): estado del transcript separado del de la grabación (meeting, call o nota de voz).
+model TranscriptArtifact {
+  Id                 String    @id @default(uuid()) @db.UniqueIdentifier
+  TenantId           String    @db.UniqueIdentifier
+  Scope              String    @db.NVarChar(16) // "Meeting" | "Call" | "VoiceNote"
+  ScopeId            String    @db.UniqueIdentifier
+  RecordingSessionId String?   @db.UniqueIdentifier
+  State              String    @db.NVarChar(16) // "Processing" | "Ready" | "Failed"
+  TxtFileId          String?   @db.UniqueIdentifier
+  JsonFileId         String?   @db.UniqueIdentifier
+  Language           String?   @db.NVarChar(16)
+  Model              String?   @db.NVarChar(64)
+  Vad                Boolean   @default(false)
+  DurationSeconds    Int?
+  WordCount          Int?
+  SegmentCount       Int?
+  SpeakerCount       Int?
+  RealtimeFactor     Float?
+  FailureReason      String?   @db.NVarChar(64)
+  CreatedAtUtc       DateTime  @default(now()) @db.DateTime2
+  CompletedAtUtc     DateTime? @db.DateTime2
 
   @@unique([Scope, ScopeId])
   @@index([TenantId, Scope, ScopeId])

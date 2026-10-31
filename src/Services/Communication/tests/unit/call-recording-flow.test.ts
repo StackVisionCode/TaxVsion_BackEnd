@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { InMemoryRecordingSessionRepository } from '../helpers/fake-recording-session-repository.js';
 import { randomUUID } from 'node:crypto';
 import { Call } from '../../src/domain/calls/call.js';
 import type { CallRepository } from '../../src/application/ports/call-repository.js';
 import type { CallSnapshot } from '../../src/domain/calls/call.js';
-import { RecordingSession } from '../../src/domain/recording/recording-session.js';
 import { RecordingScope } from '../../src/domain/recording/recording-session-state.js';
-import { RecordingConsentEntry } from '../../src/domain/recording/recording-consent-entry.js';
-import type { RecordingSessionRepository, RecordingConsentRepository } from '../../src/application/ports/recording-repository.js';
+import type { RecordingConsentEntry } from '../../src/domain/recording/recording-consent-entry.js';
+import type { RecordingConsentRepository } from '../../src/application/ports/recording-repository.js';
 import type { IntegrationEventPublisher } from '../../src/application/ports/integration-event-publisher.js';
 import type { IntegrationEvent } from '../../src/contracts/events/integration-event.js';
 import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitter.js';
@@ -45,30 +45,7 @@ class FakeCallRepository implements CallRepository {
   }
 }
 
-class FakeRecordingSessionRepository implements RecordingSessionRepository {
-  private readonly store = new Map<string, RecordingSession>();
-  private key(scope: string, scopeId: string): string {
-    return `${scope}:${scopeId}`;
-  }
-  async save(session: RecordingSession): Promise<void> {
-    const s = session.toSnapshot();
-    this.store.set(this.key(s.scope, s.scopeId), session);
-  }
-  async findByScope(tenantId: string, scope: RecordingScope, scopeId: string): Promise<RecordingSession | null> {
-    const session = this.store.get(this.key(scope, scopeId));
-    if (!session) return null;
-    return session.toSnapshot().tenantId === tenantId ? session : null;
-  }
-  async listStaleRequesting(olderThanUtc: Date, scope?: RecordingScope): Promise<RecordingSession[]> {
-    return [...this.store.values()].filter((session) => {
-      const snap = session.toSnapshot();
-      if (snap.state !== 'Requesting') return false;
-      if (snap.requestedAtUtc.getTime() > olderThanUtc.getTime()) return false;
-      if (scope && snap.scope !== scope) return false;
-      return true;
-    });
-  }
-}
+class FakeRecordingSessionRepository extends InMemoryRecordingSessionRepository {}
 
 class FakeRecordingConsentRepository implements RecordingConsentRepository {
   private readonly rows: RecordingConsentEntry[] = [];

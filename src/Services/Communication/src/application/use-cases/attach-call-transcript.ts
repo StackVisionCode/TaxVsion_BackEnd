@@ -28,7 +28,8 @@ export async function attachCallTranscript(
   const call = await deps.calls.findById(cmd.tenantId, cmd.callId);
   if (!call) return Result.fail(makeError('Call.NotFound', 'Call not found.'));
 
-  const result = call.attachTranscript(cmd.transcriptFileId);
+  // F7: un transcript v2 o un reproceso reemplaza al anterior (el estado vive en TranscriptArtifact).
+  const result = call.setTranscriptFile(cmd.transcriptFileId);
   if (!result.isSuccess) return Result.fail(result.error);
 
   await deps.calls.save(call);

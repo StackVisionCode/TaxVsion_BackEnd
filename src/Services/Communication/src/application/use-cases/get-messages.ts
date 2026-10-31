@@ -100,6 +100,9 @@ export async function getMessages(
       // Nota de voz: la metadata de audio no se redacta al borrar (el player ya no la usa si isDeleted).
       audioDurationMs: m.audioDurationMs,
       audioWaveform: parseWaveform(m.audioWaveform),
+      // F7 (D-27): estado y texto del transcript de la nota de voz (sin esto el hilo pierde el boton y el texto al recargar).
+      ...(m.transcriptState !== undefined ? { transcriptState: m.isDeleted ? null : (m.transcriptState ?? null) } : {}),
+      ...(m.transcriptText !== undefined ? { transcriptText: m.isDeleted ? null : (m.transcriptText ?? null) } : {}),
     };
   });
 

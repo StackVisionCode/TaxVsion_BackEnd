@@ -6,6 +6,7 @@ import { markMessagesRead } from '../../../application/use-cases/mark-messages-r
 import { searchMessages } from '../../../application/use-cases/search-messages.js';
 import { getAttachmentMetadata } from '../../../application/use-cases/get-attachment-metadata.js';
 import { getAttachmentDownloadUrl } from '../../../application/use-cases/get-attachment-download-url.js';
+import { requestVoiceNoteTranscript } from '../../../application/use-cases/request-voice-note-transcript.js';
 import { createAttachmentUpload } from '../../../application/use-cases/create-attachment-upload.js';
 import { completeAttachmentUpload } from '../../../application/use-cases/complete-attachment-upload.js';
 import { CloudStorageUploadError } from '../../../infrastructure/cloudstorage/http-cloudstorage-upload-client.js';
@@ -14,6 +15,7 @@ import { requirePermission } from '../plugins/require-permission.js';
 import { OptionalBooleanQuery } from '../schemas/strict-boolean-query.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
+const MessageTranscriptParams = z.object({ id: z.string().uuid(), messageId: z.string().uuid() });
 const AttachmentParams = z.object({ id: z.string().uuid(), fileId: z.string().uuid() });
 const ConversationParam = z.object({ id: z.string().uuid() });
 const CreateUploadBody = z.object({
@@ -248,6 +250,36 @@ export async function registerConversationRoutes(
           .send({ code: result.error.code, message: result.error.message });
       }
       return reply.code(201).send(result.value);
+    },
+  );
+
+  // POST /communication/conversations/:id/messages/:messageId/transcript — F7: transcribe una nota de voz
+  // a demanda (boton "Transcribe"); 202 con el estado. El texto llega por `chat.message.transcript_updated`.
+  app.post(
+    '/communication/conversations/:id/messages/:messageId/transcript',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)],
+    },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+      const params = MessageTranscriptParams.parse(request.params);
+      const result = await requestVoiceNoteTranscript(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          conversationId: params.id,
+          messageId: params.messageId,
+          correlationId: request.id,
+        },
+        { ...container, emitter: container.emitter },
+      );
+      if (!result.isSuccess) {
+        const status =
+          result.error.code === 'Chat.Message.NotFound' ? 404 : result.error.code === 'Chat.Conversation.NotParticipant' ? 403 : 409;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(202).send(result.value);
     },
   );
 

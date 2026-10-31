@@ -179,6 +179,63 @@ public sealed class CloudStorageOptionsTests
     }
 
     [Fact]
+    public void ResolveUploadPolicy_allows_a_json_transcript_on_the_Transcripts_FolderType()
+    {
+        var options = Options();
+
+        // El transcript worker sube también el JSON v2 (segmentos con hablante) en Transcripts.
+        var policy = options.ResolveUploadPolicy("unconfigured-plan", FolderType.Transcripts);
+
+        Assert.Contains(".json", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("application/json", policy.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("text/plain", policy.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveUploadPolicy_RecordingTracks_accepts_audio_webm_without_intersecting_the_plan()
+    {
+        var options = Options();
+        // Plan sin audio ni webm: si se intersectara, la pista del recorder quedaría rechazada.
+        options.PlanPolicies["starter"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 10L * 1024 * 1024,
+            AllowedExtensions = [".pdf"],
+            AllowedContentTypes = ["application/pdf"],
+        };
+
+        var policy = options.ResolveUploadPolicy("starter", FolderType.RecordingTracks);
+
+        Assert.Equal([".webm"], policy.AllowedExtensions);
+        // El inspector sniffea EBML como video/webm aunque sea solo audio: ambos deben pasar.
+        Assert.Equal(
+            ["audio/webm", "video/webm"],
+            policy.AllowedContentTypes.Order(StringComparer.OrdinalIgnoreCase).ToArray()
+        );
+        Assert.False(FolderType.RecordingTracks.RequiresYear());
+        Assert.Equal("recording-tracks", FolderType.RecordingTracks.ToSegment());
+    }
+
+    [Fact]
+    public void ResolveUploadPolicy_RecordingTracks_inherits_the_plan_Recordings_override_when_it_has_none()
+    {
+        var options = Options();
+        options.PlanPolicies["starter"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 10L * 1024 * 1024,
+            AllowedExtensions = [".pdf"],
+            AllowedContentTypes = ["application/pdf"],
+            FolderOverridesBytes = new(StringComparer.OrdinalIgnoreCase) { ["Recordings"] = 150L * 1024 * 1024 },
+        };
+
+        var inherited = options.ResolveUploadPolicy("starter", FolderType.RecordingTracks);
+        options.PlanPolicies["starter"].FolderOverridesBytes["RecordingTracks"] = 80L * 1024 * 1024;
+        var own = options.ResolveUploadPolicy("starter", FolderType.RecordingTracks);
+
+        Assert.Equal(150L * 1024 * 1024, inherited.MaxFileSizeBytes);
+        Assert.Equal(80L * 1024 * 1024, own.MaxFileSizeBytes);
+    }
+
+    [Fact]
     public void ResolveUploadPolicy_allows_audio_voice_notes_even_when_the_plan_does_not_list_audio()
     {
         var options = Options();

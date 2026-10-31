@@ -157,6 +157,15 @@ const rawEnv = z
     COMMUNICATION_AUTH_BASE_URL: z.string().url().default('http://localhost:5124'),
     COMMUNICATION_CLOUDSTORAGE_BASE_URL: z.string().url().default('http://localhost:5330'),
 
+    // F7 (D-28): recorder server-side (captura por pista + composicion). Vacio = no hay recorder y
+    // la grabacion server-side falla con un error explicito (el flag de plataforma decide el modo).
+    COMMUNICATION_RECORDER_BASE_URL: z.string().default(''),
+    // IP local del PlainTransport hacia el recorder (en Docker 0.0.0.0; en local 127.0.0.1).
+    COMMUNICATION_RECORDER_TAP_LISTEN_IP: z.string().default('127.0.0.1'),
+    COMMUNICATION_RECORDER_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(5000),
+    // Cada cuanto se repite el pedido de keyframe a las pistas de video ya grabandose (0 = solo al inicio).
+    COMMUNICATION_RECORDER_KEYFRAME_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(300).default(5),
+
     // RateLimit tier-aware — catalogo de multiplicadores por plan (mismo M2M que usa CloudStorage
     // metadata). Activo por default, igual que la flota .NET (RateLimit:EnforceTierQuotas=true en
     // sus appsettings): los sockets tambien escalan por plan. Se puede apagar por env var.
@@ -449,6 +458,12 @@ export const config = {
   },
   cloudStorage: {
     baseUrl: rawEnv.COMMUNICATION_CLOUDSTORAGE_BASE_URL,
+  },
+  recorder: {
+    baseUrl: rawEnv.COMMUNICATION_RECORDER_BASE_URL.replace(/\/+$/, ''),
+    tapListenIp: rawEnv.COMMUNICATION_RECORDER_TAP_LISTEN_IP,
+    timeoutMs: rawEnv.COMMUNICATION_RECORDER_TIMEOUT_MS,
+    keyframeIntervalSeconds: rawEnv.COMMUNICATION_RECORDER_KEYFRAME_INTERVAL_SECONDS,
   },
   subscription: {
     baseUrl: rawEnv.COMMUNICATION_SUBSCRIPTION_BASE_URL,

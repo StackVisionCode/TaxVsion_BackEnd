@@ -83,6 +83,46 @@ public sealed class FileSecurityTests
     }
 
     [Fact]
+    public async Task Inspector_classifies_a_json_v2_transcript_as_application_json()
+    {
+        // Transcript JSON v2 del worker (F7): UTF-8 sin BOM, con acentos que cruzan el corte de 512 bytes
+        // de la cabecera. Si cayera en text/plain, el scan lo rechazaría por FileTypeCompatibility (.json).
+        var segments = string.Join(
+            ',',
+            Enumerable
+                .Range(0, 40)
+                .Select(i =>
+                    $"{{\"startMs\":{i * 1000},\"endMs\":{i * 1000 + 900},\"speakerUserId\":null,\"speakerName\":\"Begoña Ibáñez\",\"text\":\"Línea {i}: corrección señalada\"}}"
+                )
+        );
+        var json =
+            $"{{\"version\":2,\"language\":\"es\",\"model\":\"ggml-small-q5_1\",\"vad\":true,\"durationSeconds\":40,\"speakers\":[],\"segments\":[{segments}]}}";
+        await using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
+
+        var result = await new FileContentInspector().InspectAsync(
+            stream,
+            "Meeting_Transcript_2026-10-30.json",
+            CancellationToken.None
+        );
+
+        Assert.Equal("application/json", result.ContentType);
+        Assert.True(result.IsSafe);
+    }
+
+    [Fact]
+    public async Task Inspector_detects_an_audio_only_webm_track_as_video_webm()
+    {
+        // EBML no distingue audio de video: la política de RecordingTracks acepta video/webm por esto.
+        byte[] header = [0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01];
+        await using var stream = new MemoryStream(header);
+
+        var result = await new FileContentInspector().InspectAsync(stream, "Track_u_t.webm", CancellationToken.None);
+
+        Assert.Equal("video/webm", result.ContentType);
+        Assert.True(result.IsSafe);
+    }
+
+    [Fact]
     public async Task Inspector_rejects_archive_with_zip_bomb_compression_ratio()
     {
         await using var archiveStream = new MemoryStream();

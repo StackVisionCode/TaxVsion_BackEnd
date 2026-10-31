@@ -75,6 +75,9 @@ export interface TenantCommunicationSettingsSnapshot {
   // F6 (null = hereda): recordatorio T-N y sala de espera para guests.
   readonly meetingReminderMinutesBefore: number | null;
   readonly guestsWaitingRoom: boolean | null;
+  // F7: vocabulario de la oficina para el transcript (T-30) y notas de voz transcritas (null = hereda).
+  readonly transcriptPrompt: string | null;
+  readonly voiceNoteTranscriptEnabled: boolean | null;
   readonly createdAtUtc: Date;
   readonly updatedAtUtc: Date;
 }
@@ -126,6 +129,9 @@ const CEILING_OF: Record<CeilingedKey, NumericCeilingKey> = {
   meetingChatAttachmentsPerMeeting: 'meetingChatAttachmentsPerMeeting',
 };
 
+/** whisper.cpp toma el prompt como contexto inicial: corto, solo nombres y vocabulario. */
+export const TRANSCRIPT_PROMPT_MAX_LENGTH = 500;
+
 export class TenantCommunicationSettings {
   private constructor(private state: TenantCommunicationSettingsSnapshot) {}
 
@@ -174,6 +180,8 @@ export class TenantCommunicationSettings {
       meetingReactionCatalog: null,
       meetingReminderMinutesBefore: null,
       guestsWaitingRoom: null,
+      transcriptPrompt: null,
+      voiceNoteTranscriptEnabled: null,
       createdAtUtc: now,
       updatedAtUtc: now,
     });
@@ -211,9 +219,14 @@ export class TenantCommunicationSettings {
     if (patch.meetingReactionCatalog !== undefined && patch.meetingReactionCatalog !== null && !isReactionCatalog(patch.meetingReactionCatalog)) {
       return Result.fail(makeError('Settings.InvalidReactionCatalog', 'meetingReactionCatalog must be null or 1..30 distinct short emojis.'));
     }
-    const changes = diffPatch(this.state, patch);
+    if (patch.transcriptPrompt !== undefined && patch.transcriptPrompt !== null && patch.transcriptPrompt.trim().length > TRANSCRIPT_PROMPT_MAX_LENGTH) {
+      return Result.fail(makeError('Settings.InvalidTranscriptPrompt', `transcriptPrompt must be at most ${TRANSCRIPT_PROMPT_MAX_LENGTH} characters.`));
+    }
+    const normalized: TenantCommunicationSettingsPatch =
+      patch.transcriptPrompt === undefined ? patch : { ...patch, transcriptPrompt: patch.transcriptPrompt?.trim() || null };
+    const changes = diffPatch(this.state, normalized);
     if (changes.length === 0) return Result.ok([]);
-    this.state = { ...this.state, ...patch, updatedAtUtc: now };
+    this.state = { ...this.state, ...normalized, updatedAtUtc: now };
     return Result.ok(changes);
   }
 

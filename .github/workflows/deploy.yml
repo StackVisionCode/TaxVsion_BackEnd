@@ -87,6 +87,14 @@ jobs:
           npm run typecheck
           npm test
 
+      # F7 — el recorder (grabación server-side) tampoco está en TaxVision.slnx: mismo gate que el worker.
+      - name: Test CommunicationRecorder (Node)
+        working-directory: src/Services/CommunicationRecorder
+        run: |
+          npm ci --no-audit --no-fund --prefer-offline
+          npm run typecheck
+          npm test
+
       # ---------------------------------------------------------------------
       # .env de produccion — se escribe en cada run a partir de los Secrets del
       # repo, nunca se versiona. Los nombres de variable son EXACTAMENTE los
@@ -673,6 +681,9 @@ jobs:
           # Ambas vacias mantienen IntakeLinksEnabled cerrado. La site key es publica.
           TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY }}
           TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY }}
+          # CommunicationRecorder (F7): password de su cuenta MinIO scoped (communication-recorder).
+          # Requerida con :? por communication-recorder y minio-provision: vacía, compose no arranca.
+          RECORDER_MINIO_SECRET=${{ secrets.RECORDER_MINIO_SECRET }}
           EOF
 
       # SIN --profile tools acá, "migrations" (profiles: [tools]) queda excluido de este

@@ -39,7 +39,7 @@ describe('MeetingInvitation (F6, D-48)', () => {
     expect(invitation.toSnapshot()).toMatchObject({ usedAtUtc: NOW, useCount: 1 });
     expect(invitation.consumeForGuestJoin(LATER)).toMatchObject({ isSuccess: false, error: { code: 'Meeting.Invitation.AlreadyUsed' } });
     expect(invitation.validateForUse({ plainToken, now: LATER })).toMatchObject({ isSuccess: false, error: { code: 'Meeting.Invitation.AlreadyUsed' } });
-    expect(invitation.guestUserId).toBe(`guest:${invitation.id}`);
+    expect(invitation.guestUserId).toBe(invitation.id);
   });
 
   it('close() solo cierra las abiertas y validateForUse responde Closed', () => {

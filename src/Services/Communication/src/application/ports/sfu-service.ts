@@ -99,9 +99,30 @@ export interface SfuTransportStatsSample {
   readonly selectedProtocol: MediasoupTypes.TransportProtocol | null;
 }
 
+/** F7: un producer nacio o murio (cualquier causa); la captura server-side engancha o suelta su pista. */
+export interface SfuProducerLifecycle {
+  readonly tenantId: string;
+  readonly meetingId: string;
+  readonly userId: string;
+  readonly producerId: string;
+  readonly kind: MediasoupTypes.MediaKind;
+  readonly source: SfuMediaSource;
+}
+
+/** F7: lo que el recorder necesita para escribir el SDP de una pista (consumer del tap, aun pausado). */
+export interface RecordingTapInfo {
+  readonly tapId: string;
+  readonly producerId: string;
+  readonly kind: MediasoupTypes.MediaKind;
+  readonly codec: { readonly mimeType: string; readonly payloadType: number; readonly clockRate: number; readonly channels?: number };
+  readonly ssrc: number;
+}
+
 /** Observador que la aplicacion registra para loguear/publicar lo que pasa dentro del SFU. */
 export interface SfuObserver {
   onTransportStateChanged(change: SfuTransportStateChange): void;
+  onProducerOpened?(event: SfuProducerLifecycle): void;
+  onProducerClosed?(event: SfuProducerLifecycle): void;
   onProducerScore?(score: SfuProducerScore): void;
   onConsumerScore?(score: SfuConsumerScore): void;
   onConsumerLayersChanged?(change: SfuConsumerLayersChange): void;
@@ -187,6 +208,28 @@ export interface SfuService {
 
   /** Producers de otros participantes ya activos en el meeting — para que un recien llegado sepa a que consumir. */
   listRemoteProducers(meetingId: string, excludeUserId: string): readonly RemoteProducerInfo[];
+
+  /** F7: todos los producers vivos del router (captura server-side al empezar a grabar). */
+  listAllProducers(meetingId: string): readonly RemoteProducerInfo[];
+
+  /**
+   * F7 (D-28): PlainTransport + consumer PAUSADO del producer, sin conectar todavia: devuelve codec y
+   * ssrc para que el recorder prepare su SDP. null si el router o el producer ya no existen.
+   */
+  prepareRecordingTap(input: {
+    meetingId: string;
+    producerId: string;
+    listenIp: string;
+    /** Capa simulcast que se graba (camaras); se ignora en audio y pantalla. */
+    preferredSpatialLayer?: number;
+  }): Promise<RecordingTapInfo | null>;
+
+  /** F7: conecta el tap al puerto del recorder, reanuda el consumer y pide keyframe. */
+  connectRecordingTap(input: { meetingId: string; tapId: string; ip: string; port: number; rtcpPort: number }): Promise<boolean>;
+
+  requestRecordingTapKeyFrame(input: { meetingId: string; tapId: string }): Promise<void>;
+
+  closeRecordingTap(input: { meetingId: string; tapId: string }): Promise<void>;
 
   /** Producers propios de un participante — usado para avisar al resto antes de cerrarlos (leave/disconnect). */
   listProducersForUser(meetingId: string, userId: string): readonly RemoteProducerInfo[];

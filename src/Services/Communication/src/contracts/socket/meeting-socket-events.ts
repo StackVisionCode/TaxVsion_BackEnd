@@ -194,6 +194,11 @@ export interface MeetingTranscriptReadyDto {
   /** Fase Transcript 5 — conteo de palabras del transcript, para previsualizacion sin descargar el archivo completo. */
   wordCount: number;
   readyAtUtc: string;
+  /** F7 (T-28): transcript v2 con hablantes (JSON) y su resumen. */
+  transcriptJsonFileId?: string | null;
+  speakerCount?: number;
+  segmentCount?: number;
+  language?: string | null;
 }
 
 // ---------- SFU (mediasoup) — meetings con strategy 'Sfu', >4 participantes ----------
@@ -447,6 +452,7 @@ export type MeetingRecordingState =
   | 'Requesting'
   | 'Recording'
   | 'Stopping'
+  | 'Composing'
   | 'Processing'
   | 'Ready'
   | 'Failed';
@@ -461,6 +467,20 @@ export interface MeetingRecordingStateChangedDto {
   meetingId: string;
   state: MeetingRecordingState;
   updatedAtUtc: string;
+  /** F7: quien captura (`Server` = recorder; `Client` = mezcla en el navegador, fallback C-03). */
+  captureMode?: 'Server' | 'Client';
+  /** F7: inicio real y limite efectivo; el front calcula la cuenta regresiva con el reloj del servidor. */
+  startedAtUtc?: string | null;
+  maxDurationSeconds?: number | null;
+  /** F7: en Stopping = User|LimitReached|MeetingEnded|CallEnded; en Failed = codigo del fallo. */
+  reason?: string | null;
+}
+
+/** F7 (T-35): la grabacion se corta pronto por el limite (una sola vez por sesion). */
+export interface MeetingRecordingLimitWarningDto {
+  meetingId: string;
+  remainingSeconds: number;
+  stopsAtUtc: string;
 }
 
 /**
@@ -590,6 +610,7 @@ export const MeetingSocketEvents = {
   RecordingConsentRequested: 'meeting.recording.consent_requested',
   RecordingConsentRecorded: 'meeting.recording.consent_recorded',
   RecordingStateChanged: 'meeting.recording.state_changed',
+  RecordingLimitWarning: 'meeting.recording.limit_warning',
   ParticipantDenied: 'meeting.participant.denied',
   Cancelled: 'meeting.cancelled',
   Rescheduled: 'meeting.rescheduled',

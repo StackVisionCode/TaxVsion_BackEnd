@@ -3,7 +3,21 @@ import { getRabbitContext } from './rabbit-connection.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import type { TranscriptInbox } from '../redis/transcript-inbox.js';
-import { buildRecordingKindLookups, type RecordingKindMapping } from '../contracts/recording-kinds.js';
+import {
+  buildRecordingKindLookups,
+  type RecordingKindMapping,
+  type TranscriptOutputMode,
+} from '../contracts/recording-kinds.js';
+
+/** Pista de audio por participante (contrato 9.3, T-28). */
+export interface AudioTrackRef {
+  readonly fileId: string;
+  readonly userId: string;
+  readonly displayName: string | null;
+  readonly startOffsetMs: number;
+}
+
+export type PassthroughValue = string | number | boolean | null;
 
 export interface RecordingReadyEvent {
   readonly kind: string;
@@ -12,6 +26,15 @@ export interface RecordingReadyEvent {
   readonly correlationId: string | undefined;
   readonly targetId: string;
   readonly recordingFileId: string;
+  readonly output: TranscriptOutputMode;
+  /** Campos del trigger que se devuelven tal cual (RecordingKindMapping.passthroughFields). */
+  readonly passthrough: Readonly<Record<string, PassthroughValue>>;
+  readonly audioTracks?: readonly AudioTrackRef[] | undefined;
+  /** 'auto' o codigo ISO; manda sobre TRANSCRIPT_WORKER_WHISPER_LANGUAGE. */
+  readonly language?: string | undefined;
+  readonly prompt?: string | null | undefined;
+  readonly maxDurationSeconds?: number | undefined;
+  readonly timeoutFactorPct?: number | undefined;
 }
 
 /**
@@ -180,15 +203,26 @@ async function dispatchInner(
   }
 }
 
-function toRecordingReadyEvent(
+export function toRecordingReadyEvent(
   mapping: RecordingKindMapping,
   raw: Record<string, unknown>,
 ): RecordingReadyEvent | undefined {
   const eventId = str(raw['eventId']);
   const tenantId = str(raw['tenantId']);
-  const recordingFileId = str(raw['recordingFileId']);
+  const recordingFileId = str(raw[mapping.recordingFileIdField]);
   const targetId = str(raw[mapping.targetIdField]);
   if (!eventId || !tenantId || !recordingFileId || !targetId) return undefined;
+
+  const passthrough: Record<string, PassthroughValue> = {};
+  for (const field of mapping.passthroughFields) {
+    const value = raw[field];
+    if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) {
+      passthrough[field] = value as PassthroughValue;
+    }
+  }
+
+  const audioTracks = parseAudioTracks(raw['audioTracks']);
+  const prompt = raw['prompt'];
   return {
     kind: mapping.kind,
     eventId,
@@ -196,9 +230,42 @@ function toRecordingReadyEvent(
     correlationId: str(raw['correlationId']),
     targetId,
     recordingFileId,
+    output: mapping.output,
+    passthrough,
+    audioTracks: audioTracks.length > 0 ? audioTracks : undefined,
+    language: str(raw['language'])?.trim() || undefined,
+    prompt: typeof prompt === 'string' ? prompt : prompt === null ? null : undefined,
+    maxDurationSeconds: positiveNumber(raw['maxDurationSeconds']),
+    timeoutFactorPct: positiveNumber(raw['timeoutFactorPct']),
   };
+}
+
+/** Pistas invalidas (sin fileId/userId) se descartan; el resto sigue. */
+export function parseAudioTracks(value: unknown): AudioTrackRef[] {
+  if (!Array.isArray(value)) return [];
+  const tracks: AudioTrackRef[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const track = item as Record<string, unknown>;
+    const fileId = str(track['fileId']);
+    const userId = str(track['userId']);
+    if (!fileId || !userId) continue;
+    const offset = Number(track['startOffsetMs']);
+    tracks.push({
+      fileId,
+      userId,
+      displayName: str(track['displayName'])?.trim() || null,
+      startOffsetMs: Number.isFinite(offset) && offset > 0 ? Math.round(offset) : 0,
+    });
+  }
+  return tracks;
 }
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }

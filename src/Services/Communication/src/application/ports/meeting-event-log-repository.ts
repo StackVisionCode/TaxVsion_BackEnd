@@ -9,6 +9,8 @@ export interface MeetingEventLogRepository {
     scopeId: string;
     /** Solo filas con seq > afterSeq (paginación incremental de la ficha). */
     afterSeq?: number;
+    /** Solo estos tipos (la actividad de la ficha); ausente = todos. */
+    types?: readonly string[];
     take: number;
   }): Promise<readonly MeetingEventLogEntry[]>;
 }

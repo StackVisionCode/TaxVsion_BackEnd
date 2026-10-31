@@ -325,12 +325,13 @@ export class Conversation {
    * materializa como mensaje normal (persiste + emite) para que quede en el
    * historial de la conversación en ambos lados.
    */
-  appendSystemMessage(input: { body: string; now?: Date }): Result<Message> {
+  appendSystemMessage(input: { body: string; attachmentFileId?: string | null; now?: Date }): Result<Message> {
     const now = input.now ?? new Date();
     const messageResult = Message.createSystem({
       conversationId: this.state.id,
       tenantId: this.state.tenantId,
       body: input.body,
+      attachmentFileId: input.attachmentFileId ?? null,
       now,
     });
     if (!messageResult.isSuccess) return messageResult;

@@ -102,6 +102,10 @@ public enum FolderType
 
     // Adjuntos exclusivos del producto Client Forms.
     ClientForms = 17,
+
+    // Pistas de audio crudas de la grabación server-side (CommunicationRecorder, F7). Solo las sube el
+    // recorder y las lee el transcript worker: oculta de listados y papelera, reservada a servicios.
+    RecordingTracks = 18,
 }
 
 public static class FolderTypeRules
@@ -122,6 +126,7 @@ public static class FolderTypeRules
             FolderType.EmailIncoming => "email-incoming",
             FolderType.EmailOutgoing => "email-outgoing",
             FolderType.ClientForms => "client-forms",
+            FolderType.RecordingTracks => "recording-tracks",
             _ => type.ToString().ToLowerInvariant(),
         };
 

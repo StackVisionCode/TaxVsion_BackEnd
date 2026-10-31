@@ -141,5 +141,7 @@ internal static class UploadRegistration
     }
 
     /// <summary>Carpetas que solo aceptan archivos guardados por un servicio, nunca por un usuario.</summary>
-    public static bool IsReservedForServices(FolderType folderType) => folderType is FolderType.Avatars;
+    /// <remarks>RecordingTracks: solo el recorder sube pistas; un humano podría suplantar la voz de otro.</remarks>
+    public static bool IsReservedForServices(FolderType folderType) =>
+        folderType is FolderType.Avatars or FolderType.RecordingTracks;
 }

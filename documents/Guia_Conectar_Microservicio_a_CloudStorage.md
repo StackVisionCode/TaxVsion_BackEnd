@@ -17,7 +17,7 @@ Pero un archivo tiene que *llegar* a MinIO de alguna manera, y ahí hay
 
 | | ¿Quién tiene los bytes primero? | Patrón | Ejemplos reales en este repo |
 |---|---|---|---|
-| **Caso A — Interno** | Tu propio backend (los genera él mismo, o los recibe en un endpoint propio) | Tu servicio sube **directo a MinIO** con credenciales propias + avisa por evento | Signature (PDF sellado), Notification (adjuntos IMAP), CommunicationTranscriptWorker (transcript), Customer (Excel/CSV de import) |
+| **Caso A — Interno** | Tu propio backend (los genera él mismo, o los recibe en un endpoint propio) | Tu servicio sube **directo a MinIO** con credenciales propias + avisa por evento | Signature (PDF sellado), Notification (adjuntos IMAP), CommunicationTranscriptWorker (transcript), CommunicationRecorder (grabación + pistas), Customer (Excel/CSV de import) |
 | **Caso B — Directo externo** | El navegador del usuario | El **frontend** le habla directo a CloudStorage (con el JWT del usuario), tu servicio ni toca los bytes | Communication (adjuntos de chat) |
 
 Regla rápida para decidir cuál te toca:
@@ -133,6 +133,15 @@ subir (`s3:PutObject`) dentro de su propia carpeta en `taxvision-temp/`.
      `environment`): `TU_SERVICIO_MINIO_SECRET: ${TU_SERVICIO_MINIO_SECRET:?...}`
    - Y creá el **GitHub Secret** con ese mismo nombre en el repo (Settings →
      Secrets), si vas a desplegar.
+
+   > **Excepción — subidas grandes (multipart).** Si tu servicio es Node y sube
+   > archivos de más de 64 MB con `minio-js` 8 (`putObject`/`fPutObject`), el
+   > cliente va por multipart y antes de iniciar lista los uploads incompletos.
+   > `PutObject` solo no alcanza: mirá `policies/recording-source.json`
+   > (CommunicationRecorder) — suma `s3:AbortMultipartUpload` y
+   > `s3:ListMultipartUploadParts` sobre tu prefijo y `s3:ListBucketMultipartUploads`
+   > sobre el bucket `taxvision-temp` (MinIO no lo acota por prefijo). Sigue sin
+   > poder leer ni borrar objetos.
 
 4. Provisioná la cuenta contra MinIO (local, con Docker corriendo):
 
@@ -584,16 +593,35 @@ backend, el usuario sube más rápido (un salto menos).
 ### Enums que tenés que usar (definidos en `CloudStorage.Domain`)
 
 ```csharp
-public enum OwnerType { Tenant, Customer, User, Signature, Invoice, Communication }
+public enum OwnerType
+{
+    Tenant, Customer, User, Signature, Invoice, Communication,
+    Onboarding, SaaSPayment, FormParticipant
+}
 
 public enum FolderType
 {
     Documents, Receipts, Invoices, EmailIncoming, EmailOutgoing, Tasks,
-    Signatures, Avatars, Imports, Recordings, Backups, Other
+    Signatures, Avatars, Imports, Recordings, Transcripts, Backups,
+    Templates, Branding, Other, VoiceNotes, SaaSReceipts, ClientForms,
+    RecordingTracks
 }
 ```
 
-`Avatars` no admite subida directa de usuarios (ver "Fotos de perfil" abajo).
+`Avatars` y `RecordingTracks` no admiten subida directa de usuarios (ver "Carpetas
+reservadas a servicios" abajo).
+
+Carpetas de grabaciones (Communication, F7):
+
+| FolderType | Quién sube | Tipos | Tope | Notas |
+|---|---|---|---|---|
+| `Recordings` | Communication / CommunicationRecorder | `.webm`, `.mp4` (`video/*`, `audio/*`) | fila Global de `UploadSizePolicies` = 2 GB | Compuesto final de una reunión/llamada |
+| `RecordingTracks` | Solo CommunicationRecorder (`SaveFileRequested`) | `.webm` (`audio/webm`, `video/webm`) | fila Global = 2 GB | Pistas de audio crudas por participante; las lee el transcript worker y se purgan por retención |
+| `Transcripts` | CommunicationTranscriptWorker | `.txt` (`text/plain`), `.json` (`application/json`) | 5 MB | El `.json` es el transcript v2 con segmentos y hablantes |
+
+Las tres son media de **sistema**: sus tipos no se intersectan con los del plan del
+tenant (el plan no lista audio). Un WebM solo-audio se detecta como `video/webm`
+(magic bytes EBML), por eso las políticas aceptan ambos.
 
 Cada `FolderType` tiene su propia whitelist de extensiones/tamaño máximo en
 `CloudStorageOptions.FolderTypePolicies` — revisala antes de asumir que tu
@@ -609,7 +637,13 @@ tipo de archivo va a pasar el escaneo.
 | `POST storage/files/{id}/download-url` | Tu backend (Caso A, M2M) | `cloudstorage.file.download` |
 | `DELETE storage/files/{id}` | Staff (TenantEmployee/TenantAdmin/PlatformAdmin) — **no** admite tokens de servicio; un backend borra por `FilesDeletionRequestedIntegrationEvent` | `cloudstorage.file.delete` |
 | `GET storage/avatars/{fileId}` | Navegador (`<img src>`), anónimo | Ninguno — solo sirve `FolderType=Avatars` disponibles; cualquier otro id → 404. Rate limit 600/min por IP |
-| `GET storage/files?folderType=...` | Frontend | `cloudstorage.file.view` — sin `folderType`, los `Avatars` nunca salen en el listado |
+| `GET storage/files?folderType=...` | Frontend | `cloudstorage.file.view` — sin `folderType`, los `Avatars` y las `RecordingTracks` nunca salen en el listado (tampoco en la papelera) |
+
+**Carpetas reservadas a servicios (`Avatars`, `RecordingTracks`):** una subida humana (staff o portal)
+devuelve **403 `File.FolderReserved`**; tampoco se restauran desde la papelera ni se espejan al
+Drive/OneDrive/Dropbox de la oficina (allá el borrado nunca llegaría). `RecordingTracks` la llena solo
+CommunicationRecorder por `SaveFileRequestedIntegrationEvent` (`OwnerType=Communication`) y se borra por
+`FilesDeletionRequestedIntegrationEvent` con `ExpectedFolderType=RecordingTracks`.
 
 **Fotos de perfil (`Avatars`):** carpeta reservada a servicios. `POST storage/files/uploads` (y multipart/copias)
 con `folderType=Avatars` desde un usuario devuelve **403 `File.FolderReserved`**. Auth y Customer guardan la foto
@@ -652,6 +686,7 @@ recibe **todo**, filtrás por si te corresponde mirando el `FileId`/`TenantId`.
 - `src/Services/Customer/TaxVision.Customer.Infrastructure/Imports/CustomerImportCloudStorageClient.cs` — A2 (sube y después lee de vuelta para parsear filas).
 - `src/Services/Customer/TaxVision.Customer.Application/Imports/Consumers/ImportFileScanResultConsumer.cs` — el consumer del Paso 8.
 - `src/Services/CommunicationTranscriptWorker/src/cloudstorage/minio-uploader.ts` — mismo patrón A1 pero en Node/TS.
+- `src/Services/CommunicationRecorder` — A1 en Node/TS con archivos grandes (multipart, policy `recording-source.json`).
 
 > **Nota (18 de julio de 2026)**: el ejemplo que citaba acá
 > `InboundAttachmentStorageWriter.cs` de Notification se eliminó — era parte
@@ -674,4 +709,4 @@ recibe **todo**, filtrás por si te corresponde mirando el `FileId`/`TenantId`.
 
 ---
 
-*Última actualización: 14 de julio de 2026, tras migrar el import de Customer a este patrón.*
+*Última actualización: 30 de octubre de 2026, tras sumar CommunicationRecorder y la carpeta `RecordingTracks` (F7).*

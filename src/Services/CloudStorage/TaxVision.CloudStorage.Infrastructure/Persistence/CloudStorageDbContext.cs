@@ -97,19 +97,62 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
         }
     }
 
+    /// <summary>Reintentos al fusionar contadores de cuota que chocaron con otra escritura.</summary>
+    internal const int MaxQuotaMergeAttempts = 5;
+
+    private static readonly string[] QuotaCounters = [nameof(TenantStorageLimit.UsedBytes), nameof(TenantStorageLimit.ReservedBytes)];
+
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            return await base.SaveChangesAsync(cancellationToken);
+            try
+            {
+                return await base.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
+            {
+                throw new ConflictException(
+                    "Persistence.UniqueConstraint",
+                    "A record with the same unique values already exists.",
+                    ex
+                );
+            }
+            // Dos escaneos/subidas en paralelo mueven la cuota del mismo tenant: solo chocan los contadores.
+            // Se relee la fila y se aplican encima los mismos incrementos; EF deshace el intento fallido.
+            catch (DbUpdateConcurrencyException ex)
+                when (attempt < MaxQuotaMergeAttempts && ex.Entries.All(e => e.Entity is TenantStorageLimit))
+            {
+                foreach (var entry in ex.Entries)
+                    await MergeQuotaCountersAsync(entry, cancellationToken);
+            }
         }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
+    }
+
+    private static async Task MergeQuotaCountersAsync(
+        Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry,
+        CancellationToken cancellationToken
+    )
+    {
+        var deltas = QuotaCounters.ToDictionary(
+            name => name,
+            name => (long)entry.Property(name).CurrentValue! - (long)entry.Property(name).OriginalValue!
+        );
+        var database =
+            await entry.GetDatabaseValuesAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Tenant quota row was deleted while it was being updated.");
+        // Lo que no son contadores se toma de la base salvo que este contexto lo haya cambiado.
+        foreach (var property in entry.Properties.Where(p => !QuotaCounters.Contains(p.Metadata.Name)))
         {
-            throw new ConflictException(
-                "Persistence.UniqueConstraint",
-                "A record with the same unique values already exists.",
-                ex
-            );
+            if (!property.IsModified)
+                property.CurrentValue = database[property.Metadata.Name];
+        }
+        entry.OriginalValues.SetValues(database);
+        foreach (var (name, delta) in deltas)
+        {
+            var property = entry.Property(name);
+            property.CurrentValue = Math.Max(0, (long)database[name]! + delta);
+            property.IsModified = true;
         }
     }
 }

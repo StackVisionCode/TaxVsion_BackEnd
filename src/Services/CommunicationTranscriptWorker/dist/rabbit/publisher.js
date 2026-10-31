@@ -25,18 +25,31 @@ export function publishTranscriptReady(event) {
     const eventType = mapping.transcriptReadyEventType;
     const readyAtUtc = new Date().toISOString();
     const eventId = randomUUID();
+    const outputFields = event.output.type === 'file'
+        ? {
+            transcriptFileId: event.output.transcriptFileId,
+            transcriptJsonFileId: event.output.transcriptJsonFileId,
+            segmentCount: event.output.segmentCount,
+            speakerCount: event.output.speakerCount,
+        }
+        : { transcriptText: event.output.transcriptText };
     const body = {
+        ...event.passthrough,
         eventId,
         eventType,
         tenantId: event.tenantId,
         correlationId: event.correlationId,
         occurredOnUtc: readyAtUtc,
         [mapping.targetIdField]: event.targetId,
-        recordingFileId: event.recordingFileId,
-        transcriptFileId: event.transcriptFileId,
+        [mapping.recordingFileIdField]: event.recordingFileId,
+        ...outputFields,
         detectedLanguage: event.detectedLanguage,
         durationSeconds: event.durationSeconds,
         wordCount: event.wordCount,
+        model: event.model,
+        vad: event.vad,
+        realtimeFactor: event.realtimeFactor,
+        wordsPerSecond: event.wordsPerSecond,
         readyAtUtc,
     };
     const ok = rabbit.channel.publish(config.rabbitmq.exchange, '', Buffer.from(JSON.stringify(body), 'utf-8'), {
@@ -62,13 +75,14 @@ export function publishTranscriptFailed(event) {
     const occurredAtUtc = new Date().toISOString();
     const eventId = randomUUID();
     const body = {
+        ...event.passthrough,
         eventId,
         eventType,
         tenantId: event.tenantId,
         correlationId: event.correlationId,
         occurredOnUtc: occurredAtUtc,
         [mapping.targetIdField]: event.targetId,
-        recordingFileId: event.recordingFileId,
+        [mapping.recordingFileIdField]: event.recordingFileId,
         failureReason: event.failureReason,
         errorMessage: event.errorMessage,
         occurredAtUtc,

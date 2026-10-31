@@ -109,6 +109,11 @@ export interface CallTranscriptReadyDto {
   /** Fase Transcript 5 — conteo de palabras del transcript, para previsualizacion sin descargar el archivo completo. */
   wordCount: number;
   readyAtUtc: string;
+  /** F7 (T-28): transcript v2 con hablantes (JSON) y su resumen. */
+  transcriptJsonFileId?: string | null;
+  speakerCount?: number;
+  segmentCount?: number;
+  language?: string | null;
 }
 
 // ---------- DTOs server -> client ----------
@@ -165,6 +170,7 @@ export type CallRecordingState =
   | 'Requesting'
   | 'Recording'
   | 'Stopping'
+  | 'Composing'
   | 'Processing'
   | 'Ready'
   | 'Failed';
@@ -179,7 +185,54 @@ export interface CallRecordingStateChangedDto {
   callId: string;
   state: CallRecordingState;
   updatedAtUtc: string;
+  /** F7: quien captura (`Server` = recorder; `Client` = mezcla en el navegador, fallback C-03). */
+  captureMode?: 'Server' | 'Client';
+  /** F7: inicio real y limite efectivo; el front calcula la cuenta regresiva con el reloj del servidor. */
+  startedAtUtc?: string | null;
+  maxDurationSeconds?: number | null;
+  /** F7: en Stopping = User|LimitReached|MeetingEnded|CallEnded; en Failed = codigo del fallo. */
+  reason?: string | null;
 }
+
+/** F7 (T-35): la grabacion de la llamada se corta pronto por el limite. */
+export interface CallRecordingLimitWarningDto {
+  callId: string;
+  remainingSeconds: number;
+  stopsAtUtc: string;
+}
+
+/**
+ * F7 (D-56): la llamada grabada en el servidor publica, ademas del mesh, a un router propio (solo envio).
+ * El servidor pide la captura al pasar a Recording y la suelta al parar.
+ */
+export interface CallRecordingCaptureRequestedDto {
+  callId: string;
+  routerRtpCapabilities: unknown;
+  captureVideo: boolean;
+}
+
+export interface CallRecordingCaptureStoppedDto {
+  callId: string;
+}
+
+export const CallSfuCreateTransportPayloadSchema = z.object({ callId: z.string().uuid() });
+export type CallSfuCreateTransportPayload = z.infer<typeof CallSfuCreateTransportPayloadSchema>;
+
+export const CallSfuConnectTransportPayloadSchema = z.object({
+  callId: z.string().uuid(),
+  transportId: z.string().min(1).max(100),
+  dtlsParameters: z.record(z.string(), z.unknown()),
+});
+export type CallSfuConnectTransportPayload = z.infer<typeof CallSfuConnectTransportPayloadSchema>;
+
+export const CallSfuProducePayloadSchema = z.object({
+  callId: z.string().uuid(),
+  transportId: z.string().min(1).max(100),
+  kind: z.enum(['audio', 'video']),
+  rtpParameters: z.record(z.string(), z.unknown()),
+  source: z.enum(['camera', 'screen']).default('camera'),
+});
+export type CallSfuProducePayload = z.infer<typeof CallSfuProducePayloadSchema>;
 
 /** @since Fase Frontend 4 — ver docblock de MeetingRecordingConsentRecordedDto, mismo criterio para calls. */
 export interface CallRecordingConsentRecordedDto {
@@ -248,6 +301,10 @@ export const CallSocketEvents = {
   UpgradeToVideo: 'call.upgrade_to_video',
   ScreenShareStart: 'call.screen_share.start',
   ScreenShareStop: 'call.screen_share.stop',
+  // F7 (D-56): publicacion de solo envio al router de la llamada grabada.
+  SfuCreateTransport: 'call.sfu.create_transport',
+  SfuConnectTransport: 'call.sfu.connect_transport',
+  SfuProduce: 'call.sfu.produce',
   // s -> c
   Incoming: 'call.incoming',
   StateChanged: 'call.state_changed',
@@ -258,6 +315,9 @@ export const CallSocketEvents = {
   RecordingConsentRequested: 'call.recording.consent_requested',
   RecordingConsentRecorded: 'call.recording.consent_recorded',
   RecordingStateChanged: 'call.recording.state_changed',
+  RecordingLimitWarning: 'call.recording.limit_warning',
+  RecordingCaptureRequested: 'call.recording.capture_requested',
+  RecordingCaptureStopped: 'call.recording.capture_stopped',
   UpgradedToVideo: 'call.upgraded_to_video',
   ScreenShareStarted: 'call.screen_share.started',
   ScreenShareStopped: 'call.screen_share.stopped',

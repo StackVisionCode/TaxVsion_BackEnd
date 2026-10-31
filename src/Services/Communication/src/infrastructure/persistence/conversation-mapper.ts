@@ -11,6 +11,7 @@ import type { ConversationParticipantSnapshot } from '../../domain/conversations
 import type { MessageSnapshot } from '../../domain/conversations/message.js';
 import { isConversationKind } from '../../domain/conversations/conversation-kind.js';
 import { isMessageKind } from '../../domain/conversations/message-kind.js';
+import type { MessageTranscriptState } from '../../domain/conversations/message.js';
 
 /**
  * Mappers Prisma <-> dominio. Concentrados en un solo archivo para que
@@ -61,6 +62,9 @@ export function toDomainMessage(row: PrismaMessage): MessageSnapshot {
     editedAtUtc: row.EditedAtUtc,
     audioDurationMs: row.AudioDurationMs,
     audioWaveform: row.AudioWaveform,
+    transcriptText: row.TranscriptText,
+    transcriptState: isMessageTranscriptState(row.TranscriptState) ? row.TranscriptState : null,
+    transcriptLanguage: row.TranscriptLanguage,
   };
 }
 
@@ -87,4 +91,8 @@ export function toDomainConversation(
     recentMessages: recentMessages.map(toDomainMessage),
   };
   return Conversation.rehydrate(snapshot);
+}
+
+function isMessageTranscriptState(value: string | null): value is MessageTranscriptState {
+  return value === 'NotRequested' || value === 'Processing' || value === 'Ready' || value === 'Failed' || value === 'Skipped';
 }

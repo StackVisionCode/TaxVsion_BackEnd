@@ -25,8 +25,16 @@ import { upgradeCallToVideo } from '../../../application/use-cases/upgrade-call-
 import { startCallScreenShare } from '../../../application/use-cases/start-call-screen-share.js';
 import { stopCallScreenShare } from '../../../application/use-cases/stop-call-screen-share.js';
 import {
+  connectCallCaptureTransport,
+  createCallCaptureTransport,
+  produceCallCapture,
+} from '../../../application/use-cases/call-capture-sfu.js';
+import {
   AttachCallRecordingPayloadSchema,
   CallActionPayloadSchema,
+  CallSfuConnectTransportPayloadSchema,
+  CallSfuCreateTransportPayloadSchema,
+  CallSfuProducePayloadSchema,
   CallSignalPayloadSchema,
   CallSocketEvents,
   ConnectionQualityPayloadSchema,
@@ -558,6 +566,64 @@ function wireCallSocket(
       return;
     }
     ack?.({ ok: true, value: result.value });
+  });
+
+  // ---------------------------------------------------------------------
+  // F7 (D-56): captura server-side de una llamada grabada. Cada parte publica send-only al router
+  // propio de la llamada; el mesh entre las partes no cambia. El guard vive en el use case.
+  // ---------------------------------------------------------------------
+
+  socket.on(CallSocketEvents.SfuCreateTransport, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = CallSfuCreateTransportPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await createCallCaptureTransport({ tenantId, callId: parsed.data.callId, userId }, container);
+    ack?.(result.isSuccess ? { ok: true, value: result.value } : { ok: false, code: result.error.code, message: result.error.message });
+  });
+
+  socket.on(CallSocketEvents.SfuConnectTransport, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = CallSfuConnectTransportPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await connectCallCaptureTransport(
+      {
+        tenantId,
+        callId: parsed.data.callId,
+        userId,
+        transportId: parsed.data.transportId,
+        dtlsParameters: parsed.data.dtlsParameters as never,
+      },
+      container,
+    );
+    ack?.(result.isSuccess ? { ok: true, value: null } : { ok: false, code: result.error.code, message: result.error.message });
+  });
+
+  socket.on(CallSocketEvents.SfuProduce, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = CallSfuProducePayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await produceCallCapture(
+      {
+        tenantId,
+        callId: parsed.data.callId,
+        userId,
+        transportId: parsed.data.transportId,
+        kind: parsed.data.kind,
+        rtpParameters: parsed.data.rtpParameters as never,
+        source: parsed.data.source,
+      },
+      container,
+    );
+    ack?.(result.isSuccess ? { ok: true, value: result.value } : { ok: false, code: result.error.code, message: result.error.message });
   });
 
   socket.on(CallSocketEvents.UpgradeToVideo, async (...args: unknown[]) => {

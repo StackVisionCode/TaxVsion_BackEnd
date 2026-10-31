@@ -1,7 +1,7 @@
 import { getRabbitContext } from './rabbit-connection.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import { buildRecordingKindLookups } from '../contracts/recording-kinds.js';
+import { buildRecordingKindLookups, } from '../contracts/recording-kinds.js';
 /**
  * Dos triggers distintos segun el path de grabacion (ver docblock de
  * `dispatch`/dispatch.ts arriba y pipeline.ts):
@@ -130,13 +130,22 @@ async function dispatchInner(msg, handler, deps) {
         rabbit.channel.nack(msg, false, false);
     }
 }
-function toRecordingReadyEvent(mapping, raw) {
+export function toRecordingReadyEvent(mapping, raw) {
     const eventId = str(raw['eventId']);
     const tenantId = str(raw['tenantId']);
-    const recordingFileId = str(raw['recordingFileId']);
+    const recordingFileId = str(raw[mapping.recordingFileIdField]);
     const targetId = str(raw[mapping.targetIdField]);
     if (!eventId || !tenantId || !recordingFileId || !targetId)
         return undefined;
+    const passthrough = {};
+    for (const field of mapping.passthroughFields) {
+        const value = raw[field];
+        if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) {
+            passthrough[field] = value;
+        }
+    }
+    const audioTracks = parseAudioTracks(raw['audioTracks']);
+    const prompt = raw['prompt'];
     return {
         kind: mapping.kind,
         eventId,
@@ -144,9 +153,43 @@ function toRecordingReadyEvent(mapping, raw) {
         correlationId: str(raw['correlationId']),
         targetId,
         recordingFileId,
+        output: mapping.output,
+        passthrough,
+        audioTracks: audioTracks.length > 0 ? audioTracks : undefined,
+        language: str(raw['language'])?.trim() || undefined,
+        prompt: typeof prompt === 'string' ? prompt : prompt === null ? null : undefined,
+        maxDurationSeconds: positiveNumber(raw['maxDurationSeconds']),
+        timeoutFactorPct: positiveNumber(raw['timeoutFactorPct']),
     };
+}
+/** Pistas invalidas (sin fileId/userId) se descartan; el resto sigue. */
+export function parseAudioTracks(value) {
+    if (!Array.isArray(value))
+        return [];
+    const tracks = [];
+    for (const item of value) {
+        if (!item || typeof item !== 'object')
+            continue;
+        const track = item;
+        const fileId = str(track['fileId']);
+        const userId = str(track['userId']);
+        if (!fileId || !userId)
+            continue;
+        const offset = Number(track['startOffsetMs']);
+        tracks.push({
+            fileId,
+            userId,
+            displayName: str(track['displayName'])?.trim() || null,
+            startOffsetMs: Number.isFinite(offset) && offset > 0 ? Math.round(offset) : 0,
+        });
+    }
+    return tracks;
 }
 function str(value) {
     return typeof value === 'string' ? value : undefined;
+}
+function positiveNumber(value) {
+    const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 //# sourceMappingURL=consumer.js.map

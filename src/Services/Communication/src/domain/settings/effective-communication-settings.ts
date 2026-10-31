@@ -3,7 +3,14 @@ import type { TenantCommunicationLimitsSnapshot } from './tenant-communication-l
 import type { TenantCommunicationConstraintsSnapshot } from './tenant-communication-constraints.js';
 import type { TenantCommunicationSettingsSnapshot } from './tenant-communication-settings.js';
 import type { UserCommunicationPreferencesSnapshot } from './user-communication-preferences.js';
-import { DEFAULT_MEETING_REACTION_CATALOG, type MeetingSoundsPolicy, type TechnicalLimitKey, clampToTechnical } from './technical-limits.js';
+import {
+  DEFAULT_MEETING_REACTION_CATALOG,
+  type MeetingSoundsPolicy,
+  type RecordingCompositionFormat,
+  type TechnicalLimitKey,
+  clampToTechnical,
+  isRecordingCompositionFormat,
+} from './technical-limits.js';
 
 /**
  * Techos efectivos para una oficina: lo máximo que su Tenant Admin puede fijar.
@@ -69,6 +76,19 @@ export interface EffectiveCommunicationSettings {
     readonly consentTimeoutCallSeconds: number;
     readonly visibleInPortal: boolean;
     readonly transcriptLanguage: string;
+    /** F7: captura en el servidor (false = mezcla en el cliente, C-03 transitorio). */
+    readonly serverSide: boolean;
+    readonly limitWarningMinutes: number;
+    readonly limitToleranceSeconds: number;
+    readonly composition: RecordingCompositionPolicy;
+    readonly tracksRetentionDays: number;
+    readonly retentionDays: number;
+    readonly purgeEnabled: boolean;
+    /** Vocabulario de la oficina para el transcript (T-30); null = sin prompt. */
+    readonly transcriptPrompt: string | null;
+    readonly voiceNote: { readonly enabled: boolean; readonly maxSeconds: number };
+    readonly workerTimeoutFactorPct: number;
+    readonly availabilityTimeoutMinutes: number;
   };
   readonly chat: {
     readonly enabled: boolean;
@@ -97,6 +117,17 @@ export interface EffectiveCommunicationSettings {
       readonly autoGainControl: boolean | null;
     };
   } | null;
+}
+
+/** F7 (T-33, D-29): cómo compone el recorder (720p@25, MP4 por defecto) y qué capa de cámara graba. */
+export interface RecordingCompositionPolicy {
+  readonly width: number;
+  readonly height: number;
+  readonly fps: number;
+  readonly videoKbps: number;
+  readonly audioKbps: number;
+  readonly format: RecordingCompositionFormat;
+  readonly captureSpatialLayer: number;
 }
 
 export interface QualityThreshold {
@@ -394,6 +425,29 @@ export function resolveEffectiveSettings(input: ResolveEffectiveInput): Effectiv
       consentTimeoutCallSeconds: clampToTechnical('recordingConsentTimeoutSeconds', platform.recordingConsentTimeoutCallSeconds),
       visibleInPortal: tenant.recordingVisibleInPortal,
       transcriptLanguage: tenantLanguage,
+      // `??` por la cache de plataforma anterior al despliegue de F7.
+      serverSide: platform.serverSideRecordingEnabled ?? true,
+      limitWarningMinutes: clampToTechnical('recordingLimitWarningMinutes', platform.recordingLimitWarningMinutes),
+      limitToleranceSeconds: clampToTechnical('recordingLimitToleranceSeconds', platform.recordingLimitToleranceSeconds),
+      composition: {
+        width: clampToTechnical('recordingCompositionWidth', platform.recordingCompositionWidth),
+        height: clampToTechnical('recordingCompositionHeight', platform.recordingCompositionHeight),
+        fps: clampToTechnical('recordingCompositionFps', platform.recordingCompositionFps),
+        videoKbps: clampToTechnical('recordingCompositionVideoKbps', platform.recordingCompositionVideoKbps),
+        audioKbps: clampToTechnical('recordingCompositionAudioKbps', platform.recordingCompositionAudioKbps),
+        format: isRecordingCompositionFormat(platform.recordingCompositionFormat) ? platform.recordingCompositionFormat : 'mp4',
+        captureSpatialLayer: clampToTechnical('recordingCaptureSpatialLayer', platform.recordingCaptureSpatialLayer),
+      },
+      tracksRetentionDays: clampToTechnical('recordingTracksRetentionDays', platform.recordingTracksRetentionDays),
+      retentionDays: tenant.recordingRetentionDays,
+      purgeEnabled: tenant.purgeEnabled,
+      transcriptPrompt: tenant.transcriptPrompt ?? null,
+      voiceNote: {
+        enabled: ceilings.transcriptAllowed && (platform.voiceNoteTranscriptEnabled ?? true) && (tenant.voiceNoteTranscriptEnabled ?? true),
+        maxSeconds: clampToTechnical('voiceNoteTranscriptMaxSeconds', platform.voiceNoteTranscriptMaxSeconds),
+      },
+      workerTimeoutFactorPct: clampToTechnical('transcriptWorkerTimeoutFactorPct', platform.transcriptWorkerTimeoutFactorPct),
+      availabilityTimeoutMinutes: clampToTechnical('recordingAvailabilityTimeoutMinutes', platform.recordingAvailabilityTimeoutMinutes),
     },
     chat: {
       enabled: tenant.chatEnabled,

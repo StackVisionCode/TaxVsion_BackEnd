@@ -1,6 +1,14 @@
 import 'dotenv/config';
 import { z } from 'zod';
-import { COMMUNICATION_RECORDING_KINDS, recordingKindsSchema } from './contracts/recording-kinds.js';
+import { parseRecordingKinds } from './contracts/recording-kinds.js';
+const boolFromString = (fallback) => z
+    .string()
+    .default(fallback)
+    .transform((value) => value.trim().toLowerCase() === 'true');
+const csvNumbers = (raw) => raw
+    .split(',')
+    .map((s) => Number.parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n) && n >= 0);
 /**
  * Config loader con validacion Zod — mismo patron que Communication
  * (src/infrastructure/config.ts): falla al arrancar si falta algo requerido.
@@ -61,7 +69,19 @@ const rawEnv = z
     // generan en el Dockerfile (build de whisper.cpp + descarga del modelo),
     // no vienen del npm install.
     TRANSCRIPT_WORKER_WHISPER_BIN_PATH: z.string().default('/opt/whisper.cpp/build/bin/whisper-cli'),
-    TRANSCRIPT_WORKER_WHISPER_MODEL_PATH: z.string().default('/opt/whisper.cpp/models/ggml-base.bin'),
+    // Default = el del Dockerfile hasta que el benchmark T-29 elija modelo.
+    TRANSCRIPT_WORKER_WHISPER_MODEL_PATH: z.string().default('/opt/whisper.cpp/models/ggml-small-q5_1.bin'),
+    // Silero VAD (ggml-silero-v6.2.0.bin). Vacio = VAD apagado.
+    TRANSCRIPT_WORKER_WHISPER_VAD_MODEL_PATH: z.string().default(''),
+    // Anti-repeticion/alucinacion (INV-14 §13.2): contexto acotado y umbral de entropia.
+    TRANSCRIPT_WORKER_WHISPER_MAX_CONTEXT: z.coerce.number().int().min(-1).default(64),
+    TRANSCRIPT_WORKER_WHISPER_ENTROPY_THOLD: z.coerce.number().min(0).default(2.6),
+    TRANSCRIPT_WORKER_WHISPER_BEAM_SIZE: z.coerce.number().int().min(1).default(5),
+    TRANSCRIPT_WORKER_WHISPER_SUPPRESS_NST: boolFromString('true'),
+    // 0 = nucleos − 1.
+    TRANSCRIPT_WORKER_WHISPER_THREADS: z.coerce.number().int().min(0).default(0),
+    // Respaldo si el evento no trae prompt (el de la oficina manda).
+    TRANSCRIPT_WORKER_WHISPER_PROMPT: z.string().default(''),
     // Vacio = auto-detect por whisper.cpp. Fijalo (ej. "es", "en") si sabes
     // el idioma predominante de tu tenant base — evita el paso de deteccion.
     TRANSCRIPT_WORKER_WHISPER_LANGUAGE: z.string().default(''),
@@ -73,9 +93,24 @@ const rawEnv = z
     // Fase Backend 8 — usado ANTES del transcode para detectar si el file
     // tiene track de audio (bug #245). Se instala junto con ffmpeg apt.
     TRANSCRIPT_WORKER_FFPROBE_BIN_PATH: z.string().default('ffprobe'),
-    // Cuantos mensajes RecordingReady procesa en paralelo este proceso — bajo
-    // a proposito, whisper es CPU-bound y no queremos saturar el pod.
-    TRANSCRIPT_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
+    TRANSCRIPT_WORKER_FFPROBE_TIMEOUT_SECONDS: z.coerce.number().int().min(1).default(30),
+    // Preprocesado antes de whisper (vacio = sin filtro). soxr requiere ffmpeg con libsoxr.
+    TRANSCRIPT_WORKER_AUDIO_FILTER: z
+        .string()
+        .default('highpass=f=80,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=resampler=soxr'),
+    // Limites (INV-12 H-1): timeout por corrida = max(minimo, maxDuration × factor);
+    // duracion real > maxDuration + tolerancia => TranscriptFailed TooLong.
+    TRANSCRIPT_WORKER_MIN_TIMEOUT_SECONDS: z.coerce.number().int().min(1).default(600),
+    TRANSCRIPT_WORKER_DURATION_TOLERANCE_SECONDS: z.coerce.number().int().min(0).default(120),
+    // Alerta de calidad: palabras/segundo fuera de rango (vacio o alucinacion).
+    TRANSCRIPT_WORKER_WPS_MIN: z.coerce.number().min(0).default(0.3),
+    TRANSCRIPT_WORKER_WPS_MAX: z.coerce.number().min(0).default(5),
+    TRANSCRIPT_WORKER_WPS_MIN_DURATION_SECONDS: z.coerce.number().min(0).default(30),
+    // Salida inline (notas de voz): tope del texto en el evento.
+    TRANSCRIPT_WORKER_INLINE_TEXT_MAX_CHARS: z.coerce.number().int().min(1).default(4000),
+    // Cuantos mensajes RecordingReady procesa en paralelo este proceso. 1: whisper
+    // ya usa todos los hilos (-t); dos corridas a la vez solo se pisan (INV-14).
+    TRANSCRIPT_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(1),
     // Fase Transcript 4 — retry con backoff SOLO para download/upload (fallas
     // transientes reales: HTTP 5xx, blips de red a MinIO). Configurable por
     // env para poder acortarlo en tests (backoff en ms reales seria
@@ -83,6 +118,10 @@ const rawEnv = z
     // "maxAttempts=4" = intento original + 3 reintentos.
     TRANSCRIPT_WORKER_RETRY_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(4),
     TRANSCRIPT_WORKER_RETRY_BACKOFF_MS: z.string().default('1000,5000,30000'),
+    // File.NotAvailable: CloudStorage escanea un archivo a la vez (ClamAV), con
+    // varias pistas la espera es de minutos. El ultimo backoff se repite.
+    TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(15),
+    TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_BACKOFF_MS: z.string().default('5000,10000,20000,30000,60000'),
     // Fase Transcript 8 — servidor HTTP minimo (sin framework: este proceso no
     // tiene ninguna otra ruta) solo para exponer /metrics a Prometheus. Puerto
     // por defecto = el convencional del ecosistema prom-client para Node.
@@ -100,11 +139,6 @@ const rawEnv = z
     TRANSCRIPT_WORKER_RECORDING_KINDS: z.string().default(''),
 })
     .parse(process.env);
-function parseRecordingKinds(raw) {
-    if (!raw.trim())
-        return COMMUNICATION_RECORDING_KINDS;
-    return recordingKindsSchema.parse(JSON.parse(raw));
-}
 export const config = {
     env: rawEnv.NODE_ENV,
     isProduction: rawEnv.NODE_ENV === 'production',
@@ -141,18 +175,41 @@ export const config = {
         binPath: rawEnv.TRANSCRIPT_WORKER_WHISPER_BIN_PATH,
         modelPath: rawEnv.TRANSCRIPT_WORKER_WHISPER_MODEL_PATH,
         language: rawEnv.TRANSCRIPT_WORKER_WHISPER_LANGUAGE || null,
+        prompt: rawEnv.TRANSCRIPT_WORKER_WHISPER_PROMPT || null,
+        vadModelPath: rawEnv.TRANSCRIPT_WORKER_WHISPER_VAD_MODEL_PATH.trim() || null,
+        maxContext: rawEnv.TRANSCRIPT_WORKER_WHISPER_MAX_CONTEXT,
+        entropyThold: rawEnv.TRANSCRIPT_WORKER_WHISPER_ENTROPY_THOLD,
+        beamSize: rawEnv.TRANSCRIPT_WORKER_WHISPER_BEAM_SIZE,
+        suppressNst: rawEnv.TRANSCRIPT_WORKER_WHISPER_SUPPRESS_NST,
+        threads: rawEnv.TRANSCRIPT_WORKER_WHISPER_THREADS,
         tempDir: rawEnv.TRANSCRIPT_WORKER_TEMP_DIR,
     },
     ffmpeg: {
         binPath: rawEnv.TRANSCRIPT_WORKER_FFMPEG_BIN_PATH,
         ffprobeBinPath: rawEnv.TRANSCRIPT_WORKER_FFPROBE_BIN_PATH,
+        ffprobeTimeoutMs: rawEnv.TRANSCRIPT_WORKER_FFPROBE_TIMEOUT_SECONDS * 1000,
+        audioFilter: rawEnv.TRANSCRIPT_WORKER_AUDIO_FILTER.trim(),
+    },
+    limits: {
+        minTimeoutSeconds: rawEnv.TRANSCRIPT_WORKER_MIN_TIMEOUT_SECONDS,
+        durationToleranceSeconds: rawEnv.TRANSCRIPT_WORKER_DURATION_TOLERANCE_SECONDS,
+    },
+    quality: {
+        wpsMin: rawEnv.TRANSCRIPT_WORKER_WPS_MIN,
+        wpsMax: rawEnv.TRANSCRIPT_WORKER_WPS_MAX,
+        wpsMinDurationSeconds: rawEnv.TRANSCRIPT_WORKER_WPS_MIN_DURATION_SECONDS,
+    },
+    inline: {
+        maxChars: rawEnv.TRANSCRIPT_WORKER_INLINE_TEXT_MAX_CHARS,
     },
     concurrency: rawEnv.TRANSCRIPT_WORKER_CONCURRENCY,
     retry: {
         maxAttempts: rawEnv.TRANSCRIPT_WORKER_RETRY_MAX_ATTEMPTS,
-        backoffMs: rawEnv.TRANSCRIPT_WORKER_RETRY_BACKOFF_MS.split(',')
-            .map((s) => Number.parseInt(s.trim(), 10))
-            .filter((n) => Number.isFinite(n) && n >= 0),
+        backoffMs: csvNumbers(rawEnv.TRANSCRIPT_WORKER_RETRY_BACKOFF_MS),
+        notAvailable: {
+            maxAttempts: rawEnv.TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_MAX_ATTEMPTS,
+            backoffMs: csvNumbers(rawEnv.TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_BACKOFF_MS),
+        },
     },
     metrics: {
         port: rawEnv.TRANSCRIPT_WORKER_METRICS_PORT,

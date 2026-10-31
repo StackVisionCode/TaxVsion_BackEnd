@@ -1,4 +1,4 @@
-# Relanza SOLO los servicios cuyo puerto no esta escuchando.
+# Relanza SOLO los servicios cuyo puerto no esta escuchando (.NET y los Node de Communication).
 # El arranque en frio de la flota pierde varios por timeout de SQL (Error Number:-2) al migrar
 # Wolverine: no es un fallo de codigo. Con SQL ya caliente, relanzarlos escalonados los levanta.
 # La raiz del repo es la carpeta padre de scripts/: sirve en cualquier maquina sin editar la ruta.
@@ -68,7 +68,45 @@ foreach ($s in $fleet) {
   Start-Sleep -Seconds $gap
 }
 
+# Node (Communication + transcript worker + recorder), mismos que start-fleet.ps1. El worker no expone
+# puerto: se lo da por arriba si hay un proceso corriendo bajo su carpeta.
+$nodeFleet = @(
+  @{ n = "Communication";                  d = "src\Services\Communication";                  p = 5350 },
+  @{ n = "CommunicationTranscriptWorker";  d = "src\Services\CommunicationTranscriptWorker";  p = $null },
+  # Grabacion server-side (F7). En local 5365: el 5360 del contenedor lo usa Subscription aqui.
+  @{ n = "CommunicationRecorder";          d = "src\Services\CommunicationRecorder";          p = 5365 }
+)
+
+function Test-NodeUp($s) {
+  if ($s.p) { return Test-Up $s.p }
+  $folder = "*\$($s.d)\*"
+  return [bool](Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like $folder })
+}
+
+$npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)
+if (-not $npm) { Write-Host "SKIP Node: npm.cmd no esta en el PATH." }
+else {
+  foreach ($s in $nodeFleet) {
+    if (Test-NodeUp $s) { continue }
+    $wd = Join-Path $root $s.d
+    if (-not (Test-Path (Join-Path $wd "package.json"))) { Write-Host "SKIP $($s.n): sin package.json"; continue }
+    if (-not (Test-Path (Join-Path $wd "node_modules"))) {
+      $installArgs = if (Test-Path (Join-Path $wd "package-lock.json")) { "ci" } else { "install" }
+      & $npm.Source $installArgs --prefix $wd | Out-Null
+    }
+    if (Test-Path (Join-Path $wd "prisma\schema.prisma")) { & $npm.Source "run" "prisma:generate" --prefix $wd 2>$null | Out-Null }
+    Start-Process -FilePath $npm.Source -ArgumentList "run", "dev" -WorkingDirectory $wd `
+      -RedirectStandardOutput (Join-Path $logs "$($s.n).log") `
+      -RedirectStandardError  (Join-Path $logs "$($s.n).err.log") `
+      -WindowStyle Hidden
+    Write-Host "relanzado $($s.n)$(if ($s.p) { " :$($s.p)" })"
+    Start-Sleep -Seconds $gap
+  }
+}
+
 Write-Host "--- estado ---"
 $down = @()
 foreach ($s in $fleet) { if (-not (Test-Up $s.p)) { $down += "$($s.n):$($s.p)" } }
+foreach ($s in $nodeFleet) { if (-not (Test-NodeUp $s)) { $down += "$($s.n)$(if ($s.p) { ":$($s.p)" })" } }
 if ($down.Count -eq 0) { Write-Host "flota completa" } else { Write-Host "abajo: $($down -join ', ')" }

@@ -7,11 +7,13 @@ import { logger } from '../logger/logger.js';
 import { CORRELATION_HEADER, normalizeCorrelationId } from '../../domain/shared/correlation.js';
 import { metricsRegistry, httpRequestsTotal, httpRequestDurationSeconds } from '../telemetry/metrics.js';
 import { sendRateLimited } from './rate-limit-rejection.js';
+import { registerHttpErrorHandler } from './http-error-handler.js';
 import { registerHealthRoutes } from '../../api/http/routes/health.route.js';
 import { registerAuthPlugin } from '../../api/http/plugins/auth.plugin.js';
 import { registerConversationRoutes } from '../../api/http/routes/conversations.route.js';
 import { registerCallRoutes } from '../../api/http/routes/calls.route.js';
 import { registerMeetingRoutes } from '../../api/http/routes/meetings.route.js';
+import { registerRecordingRoutes } from '../../api/http/routes/recordings.route.js';
 import { registerMeetingInvitationRoutes } from '../../api/http/routes/meeting-invitations.route.js';
 import { registerDirectoryRoutes } from '../../api/http/routes/directory.route.js';
 import { registerNotificationRoutes } from '../../api/http/routes/notifications.route.js';
@@ -46,6 +48,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   }) as unknown as FastifyInstance;
 
   await app.register(sensible);
+  registerHttpErrorHandler(app);
   await app.register(helmet, { global: true });
   await app.register(cors, {
     // Orígenes de la plataforma (PlatformSettings) + los extra de config. El allow-all sin ninguno de
@@ -112,6 +115,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   await registerConversationRoutes(app, container);
   await registerCallRoutes(app, container);
   await registerMeetingRoutes(app, container);
+  await registerRecordingRoutes(app, container);
   await registerMeetingInvitationRoutes(app, container);
   await registerDirectoryRoutes(app, container);
   await registerNotificationRoutes(app, container);

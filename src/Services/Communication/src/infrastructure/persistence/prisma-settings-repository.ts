@@ -60,6 +60,8 @@ export class PrismaSettingsRepository implements SettingsRepository {
       MeetingReactionCatalog: s.meetingReactionCatalog === null ? null : JSON.stringify(s.meetingReactionCatalog),
       MeetingReminderMinutesBefore: s.meetingReminderMinutesBefore,
       GuestsWaitingRoom: s.guestsWaitingRoom,
+      TranscriptPrompt: s.transcriptPrompt,
+      VoiceNoteTranscriptEnabled: s.voiceNoteTranscriptEnabled,
     };
     await this.prisma.tenantCommunicationSettings.upsert({
       where: { TenantId: s.tenantId },
@@ -116,6 +118,8 @@ export class PrismaSettingsRepository implements SettingsRepository {
     MeetingReactionCatalog: string | null;
     MeetingReminderMinutesBefore: number | null;
     GuestsWaitingRoom: boolean | null;
+    TranscriptPrompt: string | null;
+    VoiceNoteTranscriptEnabled: boolean | null;
     CreatedAtUtc: Date;
     UpdatedAtUtc: Date;
   }): TenantCommunicationSettingsSnapshot {
@@ -161,6 +165,8 @@ export class PrismaSettingsRepository implements SettingsRepository {
       meetingReactionCatalog: parseReactionCatalogColumn(row.MeetingReactionCatalog),
       meetingReminderMinutesBefore: row.MeetingReminderMinutesBefore,
       guestsWaitingRoom: row.GuestsWaitingRoom,
+      transcriptPrompt: row.TranscriptPrompt,
+      voiceNoteTranscriptEnabled: row.VoiceNoteTranscriptEnabled,
       createdAtUtc: row.CreatedAtUtc,
       updatedAtUtc: row.UpdatedAtUtc,
     };

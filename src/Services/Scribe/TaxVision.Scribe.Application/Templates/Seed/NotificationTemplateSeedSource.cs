@@ -36,7 +36,7 @@ public sealed record NotificationTemplateSeed(
     //      automático fallido, con intento, próximo reintento, tarjeta real y lo suspendido al final.
     // v21 (por plantilla): communication.meeting.invitation con título, fecha local, host, código,
     //      rama "in progress" y adjunto .ics (F6).
-    int ContentVersion = 20,
+    int ContentVersion = 21,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.

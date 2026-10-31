@@ -36,6 +36,7 @@ public sealed class ProductionExtraSecretsDeployTests
     [InlineData("CONNECTORS_LISTENER_ENABLED")]
     [InlineData("TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY")]
     [InlineData("TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY")]
+    [InlineData("RECORDER_MINIO_SECRET")]
     public void Secret_kept_in_production_extra_is_written_by_the_deploy_job(string variable)
     {
         var workflow = ReadRepoFile(".github/workflows/deploy.yml");

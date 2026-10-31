@@ -70,9 +70,10 @@ export class InMemoryMeetingEventLog implements MeetingEventLogRepository {
     this.entries.push(full);
     return full;
   }
-  async list(input: { scopeId: string; scope: MeetingEventScope; afterSeq?: number; take: number }): Promise<MeetingEventLogEntry[]> {
+  async list(input: { scopeId: string; scope: MeetingEventScope; afterSeq?: number; types?: readonly string[]; take: number }): Promise<MeetingEventLogEntry[]> {
     return this.entries
       .filter((e) => e.scopeId === input.scopeId && e.scope === input.scope && (input.afterSeq === undefined || e.seq > input.afterSeq))
+      .filter((e) => !input.types || input.types.includes(e.type))
       .slice(0, input.take);
   }
   types(meetingId: string): string[] {

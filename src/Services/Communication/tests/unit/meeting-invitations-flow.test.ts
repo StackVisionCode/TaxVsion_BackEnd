@@ -465,7 +465,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     expect(invitations.isSuccess).toBe(true);
     if (invitations.isSuccess) expect(invitations.value.invitations[0]?.usedAt).toBeNull();
 
-    const guestUserId = `guest:${resolved.value.invitationId}`;
+    const guestUserId = resolved.value.invitationId;
     const joinResult = await joinMeeting(
       {
         tenantId: meeting.tenantId,
@@ -499,7 +499,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     const resolved = await resolveInvitationToken({ token }, harness);
     if (!resolved.isSuccess) throw new Error();
 
-    const guestUserId = `guest:${resolved.value.invitationId}`;
+    const guestUserId = resolved.value.invitationId;
     const first = await joinMeeting(
       {
         tenantId: meeting.tenantId,
@@ -729,7 +729,7 @@ describe('joinMeeting — la invitacion solo sirve para su meeting y su invitado
         tenantId,
         correlationId: u(),
         meetingId: second.meeting.id,
-        user: { userId: `guest:${resolved.value.invitationId}`, displayName: 'Invitado', actorType: 'Guest' },
+        user: { userId: resolved.value.invitationId, displayName: 'Invitado', actorType: 'Guest' },
         guestInvitationId: resolved.value.invitationId,
       },
       harness,

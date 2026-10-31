@@ -54,7 +54,7 @@ public sealed class NodeInteropContractTests(ITestOutputHelper output)
     private static IEnumerable<FileInfo> NodeSources()
     {
         var root = RepositoryRoot();
-        foreach (var svc in new[] { "Communication", "CommunicationTranscriptWorker" })
+        foreach (var svc in new[] { "Communication", "CommunicationTranscriptWorker", "CommunicationRecorder" })
         {
             var src = new DirectoryInfo(Path.Combine(root.FullName, "src", "Services", svc, "src"));
             if (!src.Exists)

@@ -48,8 +48,46 @@ export const MeetingEventType = {
   InvitationExpired: 'invitation.expired',
   ReminderSent: 'meeting.reminder_sent',
   MediaSettings: 'media.settings',
+  // F7: ciclo de la grabacion (auditoria de cortes por limite, INV-12; metricas ADD-08).
+  RecordingStarted: 'recording.started',
+  RecordingStopped: 'recording.stopped',
+  RecordingLimitWarning: 'recording.limit_warning',
+  RecordingLimitReached: 'recording.limit_reached',
+  RecordingReady: 'recording.ready',
+  RecordingFailed: 'recording.failed',
 } as const;
 export type MeetingEventType = (typeof MeetingEventType)[keyof typeof MeetingEventType];
+
+/**
+ * Eventos que la ficha muestra como actividad (quién entró, salió, compartió, cambió de rol...). El resto
+ * (voz, calidad, media, reacciones por minuto, invitaciones) es telemetría y se filtra en la consulta.
+ */
+export const MEETING_ACTIVITY_TYPES: readonly MeetingEventType[] = [
+  MeetingEventType.Started,
+  MeetingEventType.Ended,
+  MeetingEventType.Locked,
+  MeetingEventType.Unlocked,
+  MeetingEventType.MutedAll,
+  MeetingEventType.DurationWarning,
+  MeetingEventType.ParticipantWaiting,
+  MeetingEventType.ParticipantJoined,
+  MeetingEventType.ParticipantRejoined,
+  MeetingEventType.ParticipantAdmitted,
+  MeetingEventType.ParticipantDenied,
+  MeetingEventType.ParticipantLeft,
+  MeetingEventType.ParticipantForcedLeave,
+  MeetingEventType.ParticipantRemoved,
+  MeetingEventType.HandRaised,
+  MeetingEventType.ScreenStarted,
+  MeetingEventType.ScreenStopped,
+  MeetingEventType.HostTransferred,
+  MeetingEventType.HostSucceeded,
+  MeetingEventType.CohostPromoted,
+  MeetingEventType.CohostDemoted,
+  MeetingEventType.RecordingStarted,
+  MeetingEventType.RecordingStopped,
+  MeetingEventType.RecordingLimitReached,
+];
 
 export const MeetingEventScope = { Meeting: 'Meeting', Call: 'Call' } as const;
 export type MeetingEventScope = (typeof MeetingEventScope)[keyof typeof MeetingEventScope];

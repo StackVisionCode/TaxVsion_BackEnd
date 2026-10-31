@@ -43,6 +43,8 @@ export function startOutboxDrainer(
             persistent: true,
             messageId: msg.EventId,
             type: msg.EventType,
+            // Quién lo publica: el fanout se lo devuelve a Communication y así reconoce su propio eco.
+            appId: config.serviceName,
             headers: msg.CorrelationId ? { 'x-correlation-id': msg.CorrelationId } : {},
             timestamp: Math.floor(msg.OccurredAtUtc.getTime() / 1000),
           },

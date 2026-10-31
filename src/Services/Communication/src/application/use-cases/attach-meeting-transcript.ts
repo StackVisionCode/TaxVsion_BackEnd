@@ -20,7 +20,8 @@ export async function attachMeetingTranscript(
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
 
-  const result = meeting.attachTranscript(cmd.transcriptFileId);
+  // F7: un transcript v2 o un reproceso reemplaza al anterior (el estado vive en TranscriptArtifact).
+  const result = meeting.setTranscriptFile(cmd.transcriptFileId);
   if (!result.isSuccess) return Result.fail(result.error);
 
   await deps.meetings.save(meeting);

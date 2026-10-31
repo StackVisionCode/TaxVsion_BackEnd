@@ -15,6 +15,7 @@ import { MeetingEventTypes, type MeetingRecordingFailedEvent } from '../../contr
 import { CallEventTypes, type CallRecordingFailedEvent } from '../../contracts/events/call-events.js';
 import type { RedisDistributedLock } from '../redis/redis-distributed-lock.js';
 import type { EffectiveSettingsResolver } from '../../application/ports/effective-settings-resolver.js';
+import type { RecordingLifecycleOptionalDeps } from '../../application/use-cases/recording-lifecycle.js';
 
 /**
  * Cada `intervalSeconds` busca RecordingSession en 'Requesting' con mas de
@@ -45,8 +46,8 @@ interface ConsentTimeouts {
   readonly callTimeoutSeconds: number;
 }
 
-export interface RecordingConsentTimeoutSchedulerDeps {
-  readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'platform'>;
+export interface RecordingConsentTimeoutSchedulerDeps extends Omit<RecordingLifecycleOptionalDeps, 'effectiveSettings'> {
+  readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'platform' | 'resolve'>;
   readonly meetings: MeetingRepository;
   readonly calls: CallRepository;
   readonly recordingSessions: RecordingSessionRepository;

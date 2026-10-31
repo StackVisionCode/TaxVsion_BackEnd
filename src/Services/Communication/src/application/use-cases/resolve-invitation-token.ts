@@ -50,17 +50,30 @@ export async function resolveInvitationToken(
 
   const now = new Date();
   const validation = invitation.validateForUse({ plainToken: command.token, now });
-  if (!validation.isSuccess) return Result.fail(GENERIC_NOT_FOUND);
+  const consumed = !validation.isSuccess && validation.error.code === 'Meeting.Invitation.AlreadyUsed';
+  if (!validation.isSuccess && !consumed) return Result.fail(GENERIC_NOT_FOUND);
 
   const snap = invitation.toSnapshot();
   const meeting = await deps.meetings.findById(snap.tenantId, snap.meetingId);
   if (!meeting) return Result.fail(GENERIC_NOT_FOUND);
+  // F6 (D-48): token ya consumido solo vale como re-join mientras su guest siga dentro o esperando.
+  if (consumed) {
+    const status = meeting.toSnapshot().participants.find((p) => p.userId === invitation.guestUserId)?.status ?? null;
+    if (!invitation.allowsGuestRejoin(status) || MeetingInvitation.hash(command.token) !== snap.tokenHash) {
+      return Result.fail(GENERIC_NOT_FOUND);
+    }
+  }
 
+  // F6: el ticket es la sesion del guest, asi que dura lo que puede durar la reunion desde ahora (tope
+  // de duracion + gracia de desconexion), nunca mas alla de la invitacion. El TTL de config es el minimo.
+  let ttlSeconds = 0;
   if (deps.effectiveSettings) {
     const effective = await deps.effectiveSettings.resolve(snap.tenantId);
     if (!effective.meeting.guestsAllowed) {
       return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This office does not allow external guests.'));
     }
+    const untilInvitationExpires = Math.floor((snap.expiresAtUtc.getTime() - now.getTime()) / 1000);
+    ttlSeconds = Math.max(0, Math.min(effective.meeting.maxDurationMinutes * 60 + effective.meeting.disconnectGraceSeconds, untilInvitationExpires));
   }
 
   const displayName = (
@@ -77,6 +90,7 @@ export async function resolveInvitationToken(
     meetingId: snap.meetingId,
     tenantId: snap.tenantId,
     displayName,
+    ttlSeconds,
   });
 
   return Result.ok({

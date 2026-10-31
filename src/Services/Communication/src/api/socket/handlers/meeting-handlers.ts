@@ -1005,7 +1005,9 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
-    if (!socket.rooms.has(`t:${tenantId}:m:${parsed.data.meetingId}`)) {
+    // Pre-filtro barato por el registro de sockets del meeting (en vivo `socket.rooms` no es fiable con
+    // el adapter de Redis); el caso de uso vuelve a comprobar que sea participante Joined en BD.
+    if (registry.find(tenantId, parsed.data.meetingId, userId) === undefined) {
       ack?.({ ok: false, code: 'Meeting.NotParticipant', message: 'Not a joined participant.' });
       return;
     }
@@ -1026,7 +1028,7 @@ function wireMeetingSocket(
   socket.on(MeetingSocketEvents.Speaking, async (...args: unknown[]) => {
     const parsed = MeetingSpeakingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
-    if (!socket.rooms.has(`t:${tenantId}:m:${parsed.data.meetingId}`)) return;
+    if (registry.find(tenantId, parsed.data.meetingId, userId) === undefined) return;
     if (parsed.data.speaking === lastSpeaking) return;
     const effective = await container.effectiveSettings.resolve(tenantId).catch(() => null);
     const allowed = await container.speakingThrottle.allow(

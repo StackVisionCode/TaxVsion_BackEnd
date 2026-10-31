@@ -97,6 +97,8 @@ export async function joinMeeting(
   const meetingId = meeting.toSnapshot().id;
 
   let invitationValid = false;
+  // F6: consumo del uso unico del guest, diferido hasta que el join quede guardado.
+  let afterJoinSaved: (() => Promise<void>) | null = null;
   if (command.invitationToken) {
     const hash = MeetingInvitation.hash(command.invitationToken);
     const invitation = await deps.meetings.findInvitationByHash(hash);
@@ -137,8 +139,11 @@ export async function joinMeeting(
       const usedAt = new Date();
       const consumeResult = invitation.consumeForGuestJoin(usedAt);
       if (!consumeResult.isSuccess) return Result.fail(consumeResult.error);
-      await deps.meetings.saveInvitation(invitation);
-      await noteInvitationUse(invitation, command, meetingId, usedAt, deps);
+      // El unico uso se persiste DESPUES de guardar el join: si el join falla, el enlace sigue valiendo.
+      afterJoinSaved = async () => {
+        await deps.meetings.saveInvitation(invitation);
+        await noteInvitationUse(invitation, command, meetingId, usedAt, deps);
+      };
     }
     invitationValid = true;
   }
@@ -173,6 +178,7 @@ export async function joinMeeting(
   if (!joinResult.isSuccess) return Result.fail(joinResult.error);
 
   await deps.meetings.save(meeting);
+  if (afterJoinSaved) await afterJoinSaved();
   const snapshot = meeting.toSnapshot();
   const yourRole = joinResult.value.role;
   const requiresAdmission = joinResult.value.requiresAdmission;

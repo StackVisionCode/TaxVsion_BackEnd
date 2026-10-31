@@ -26,4 +26,6 @@ export type TranscriptFailureReason =
   | 'WhisperError'
   | 'DownloadFailed'
   | 'UploadFailed'
-  | 'Timeout';
+  | 'Timeout'
+  // INV-12 H-1: duracion real > maxDurationSeconds + tolerancia.
+  | 'TooLong';

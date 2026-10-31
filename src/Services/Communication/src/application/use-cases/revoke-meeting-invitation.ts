@@ -5,6 +5,7 @@ import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { SocketSessionTerminator } from '../ports/socket-session-terminator.js';
 import { MeetingEventTypes, type MeetingInvitationRevokedEvent } from '../../contracts/events/meeting-events.js';
+import { MeetingSocketEvents, type MeetingYouRemovedDto } from '../../contracts/socket/meeting-socket-events.js';
 import { forceLeaveMeeting, type ForceLeaveMeetingDeps } from './force-leave-meeting.js';
 import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
 
@@ -68,6 +69,16 @@ export async function revokeMeetingInvitation(
         deps.ejection,
       );
       ejected = left.isSuccess;
+      // El guest se entera del motivo antes del corte: `you.removed` a su room de usuario (F6: la tiene).
+      if (ejected && deps.ejection.emitter) {
+        const removed: MeetingYouRemovedDto = { meetingId: command.meetingId, reason: 'Revoked' };
+        deps.ejection.emitter.emitToUser({
+          tenantId: command.tenantId,
+          userId: guestUserId,
+          event: MeetingSocketEvents.YouRemoved,
+          envelope: { eventId: randomUUID(), correlationId, emittedAtUtc: now.toISOString(), payload: removed },
+        });
+      }
       await deps.ejection.sessionTerminator?.disconnectUser(command.tenantId, guestUserId);
     }
   }

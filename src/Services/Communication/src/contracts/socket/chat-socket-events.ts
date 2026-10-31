@@ -208,6 +208,19 @@ export interface MessageDto {
   /** Nota de voz (attachment de audio): duración en ms y waveform (picos 0-100). Null en cualquier otro mensaje. */
   audioDurationMs: number | null;
   audioWaveform: number[] | null;
+  /** F7 (D-27): transcript de la nota de voz y su estado (null en cualquier otro mensaje). */
+  transcriptText?: string | null;
+  transcriptState?: MessageTranscriptState | null;
+}
+
+export type MessageTranscriptState = 'NotRequested' | 'Processing' | 'Ready' | 'Failed' | 'Skipped';
+
+/** F7 (D-27): el transcript de una nota de voz cambio de estado (a la sala de la conversacion). */
+export interface MessageTranscriptUpdatedDto {
+  conversationId: string;
+  messageId: string;
+  transcriptState: MessageTranscriptState;
+  transcriptText: string | null;
 }
 
 export interface MessageEditedDto {
@@ -373,5 +386,6 @@ export const ChatSocketEvents = {
   MessageReactionRemoved: 'chat.message.reaction.removed',
   MessagePinned: 'chat.message.pinned',
   MessageUnpinned: 'chat.message.unpinned',
+  MessageTranscriptUpdated: 'chat.message.transcript_updated',
   // Forward reusa MessageNew para el target conversation (es un mensaje nuevo).
 } as const;

@@ -4,6 +4,22 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import type { TranscriptFailureReason } from '../contracts/events.js';
 import { buildRecordingKindLookups, type RecordingKindMapping } from '../contracts/recording-kinds.js';
+import type { PassthroughValue } from './consumer.js';
+
+/** Salida `file`: TXT + JSON v2 ya subidos a CloudStorage (contrato 9.4). */
+export interface FileTranscriptOutput {
+  readonly type: 'file';
+  readonly transcriptFileId: string;
+  readonly transcriptJsonFileId: string | null;
+  readonly segmentCount: number;
+  readonly speakerCount: number;
+}
+
+/** Salida `inline`: el texto viaja en el evento (notas de voz, D-27). */
+export interface InlineTranscriptOutput {
+  readonly type: 'inline';
+  readonly transcriptText: string;
+}
 
 export interface TranscriptReadyEvent {
   readonly kind: string;
@@ -11,12 +27,16 @@ export interface TranscriptReadyEvent {
   readonly correlationId: string | undefined;
   readonly targetId: string;
   readonly recordingFileId: string;
-  readonly transcriptFileId: string;
+  readonly passthrough?: Readonly<Record<string, PassthroughValue>> | undefined;
   readonly detectedLanguage: string | null;
-  /** Fase Transcript 5 — duracion del audio en segundos, derivada del ultimo timestamp de whisper.cpp. */
+  /** Duracion del audio en segundos (ffprobe; con pistas, fin de la ultima). */
   readonly durationSeconds: number;
-  /** Fase Transcript 5 — conteo de palabras del transcript ya limpio (sin timestamps). */
   readonly wordCount: number;
+  readonly model: string;
+  readonly vad: boolean;
+  readonly realtimeFactor: number | null;
+  readonly wordsPerSecond: number | null;
+  readonly output: FileTranscriptOutput | InlineTranscriptOutput;
 }
 
 const { byKind } = buildRecordingKindLookups(config.recordingKinds);
@@ -42,18 +62,32 @@ export function publishTranscriptReady(event: TranscriptReadyEvent): void {
   const eventType = mapping.transcriptReadyEventType;
   const readyAtUtc = new Date().toISOString();
   const eventId = randomUUID();
+  const outputFields =
+    event.output.type === 'file'
+      ? {
+          transcriptFileId: event.output.transcriptFileId,
+          transcriptJsonFileId: event.output.transcriptJsonFileId,
+          segmentCount: event.output.segmentCount,
+          speakerCount: event.output.speakerCount,
+        }
+      : { transcriptText: event.output.transcriptText };
   const body = {
+    ...event.passthrough,
     eventId,
     eventType,
     tenantId: event.tenantId,
     correlationId: event.correlationId,
     occurredOnUtc: readyAtUtc,
     [mapping.targetIdField]: event.targetId,
-    recordingFileId: event.recordingFileId,
-    transcriptFileId: event.transcriptFileId,
+    [mapping.recordingFileIdField]: event.recordingFileId,
+    ...outputFields,
     detectedLanguage: event.detectedLanguage,
     durationSeconds: event.durationSeconds,
     wordCount: event.wordCount,
+    model: event.model,
+    vad: event.vad,
+    realtimeFactor: event.realtimeFactor,
+    wordsPerSecond: event.wordsPerSecond,
     readyAtUtc,
   };
 
@@ -75,6 +109,7 @@ export interface TranscriptFailedEvent {
   readonly correlationId: string | undefined;
   readonly targetId: string;
   readonly recordingFileId: string;
+  readonly passthrough?: Readonly<Record<string, PassthroughValue>> | undefined;
   readonly failureReason: TranscriptFailureReason;
   readonly errorMessage: string;
 }
@@ -91,13 +126,14 @@ export function publishTranscriptFailed(event: TranscriptFailedEvent): void {
   const occurredAtUtc = new Date().toISOString();
   const eventId = randomUUID();
   const body = {
+    ...event.passthrough,
     eventId,
     eventType,
     tenantId: event.tenantId,
     correlationId: event.correlationId,
     occurredOnUtc: occurredAtUtc,
     [mapping.targetIdField]: event.targetId,
-    recordingFileId: event.recordingFileId,
+    [mapping.recordingFileIdField]: event.recordingFileId,
     failureReason: event.failureReason,
     errorMessage: event.errorMessage,
     occurredAtUtc,

@@ -472,6 +472,57 @@
 							]
 						}
 					}
+				},
+				{
+					"name": "Grabación de la llamada (F7) — GET calls/:id/recording",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/calls/{{callId}}/recording",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"calls",
+								"{{callId}}",
+								"recording"
+							]
+						},
+						"description": "F7 (contrato 9.6). Responde {state, captureMode, startedAtUtc, stoppedAtUtc, durationSeconds, maxDurationSeconds, stopReason, format, sizeBytes, failureReason, playback:{url, expiresAtUtc}|null, transcript:{state, language, speakerCount, wordCount, txt, json, failureReason}|null}. Las URLs presignadas solo con state=Ready. Participantes siempre; staff que no participó con el permiso de grabar; portal solo si la oficina hace visibles las grabaciones. 404 Call.Recording.NotFound, 403 Call.Recording.Forbidden."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — recording details\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "[Socket] Captura server-side de la llamada — call.sfu.* (F7, D-56)",
+					"request": {
+						"method": "GET",
+						"description": "Socket.IO (F7, D-56). El mesh entre las partes no cambia; cada parte publica send-only al router propio de la llamada.\n\nS→C 'call.recording.capture_requested': { callId, routerRtpCapabilities, captureVideo }\n\nC→S con ack:\nsocket.emit('call.sfu.create_transport', { callId }) → { ok: true, value: { id, iceParameters, iceCandidates, dtlsParameters, iceServers } }\nsocket.emit('call.sfu.connect_transport', { callId, transportId, dtlsParameters }) → { ok: true, value: null }\nsocket.emit('call.sfu.produce', { callId, transportId, kind: 'audio'|'video', rtpParameters, source: 'camera' }) → { ok: true, value: { producerId } }\n\nErrores: Call.NotParticipant, Call.Recording.NotCapturing (la sesión no está Recording con captura Server), Call.Sfu.TransportFailed|ConnectFailed|ProduceFailed|TransportNotFound.\n\nS→C 'call.recording.capture_stopped': { callId } → cerrar el publicador.",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
 				}
 			]
 		},
@@ -672,6 +723,44 @@
 								"exec": [
 									"pm.test(\"200 — meeting events\", () => {",
 									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GET meeting summary (ficha)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/summary",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"{{meetingId}}",
+								"summary"
+							]
+						},
+						"description": "Ficha del meeting: resumen, asistencia por persona calculada desde el log (sesiones, tiempo, voz, pantalla, manos), invitados que no entraron (solo host/cohost, nunca portal) y totales. Mismo permiso que /events (host, cohost o quien participó). 404 si no existe; 403 si no participó."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — meeting summary\", () => {",
+									"  pm.response.to.have.status(200);",
+									"  const body = pm.response.json();",
+									"  pm.expect(body).to.have.property('meeting');",
+									"  pm.expect(body.participants).to.be.an('array');",
+									"  pm.expect(body.totals).to.have.property('peakConcurrent');",
 									"});"
 								]
 							}
@@ -1285,6 +1374,80 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "Grabación del meeting (F7) — GET meetings/:id/recording",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/recording",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"{{meetingId}}",
+								"recording"
+							]
+						},
+						"description": "F7 (contrato 9.6). Responde {state, captureMode, startedAtUtc, stoppedAtUtc, durationSeconds, maxDurationSeconds, stopReason, format, sizeBytes, failureReason, playback:{url, expiresAtUtc}|null, transcript:{state, language, speakerCount, wordCount, txt, json, failureReason}|null}. Las URLs presignadas solo con state=Ready. Participantes siempre; staff que no participó con el permiso de grabar; portal solo si la oficina hace visibles las grabaciones. 404 Meeting.Recording.NotFound, 403 Meeting.Recording.Forbidden."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — recording details\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Recomponer grabación (F7, PlatformOnly) — POST admin/recordings/:scope/:id/recompose",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/recordings/Meeting/{{meetingId}}/recompose",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"recordings",
+								"Meeting",
+								"{{meetingId}}",
+								"recompose"
+							]
+						},
+						"description": "F7. PlatformAdmin + communication.platform.manage. scope = Meeting|Call. 202 sin cuerpo; 404 Recording.NotFound; 409 si no está Ready o ya se purgó (Recording.TracksPurged); 503 Recording.RecorderUnavailable. La sesión pasa a Composing y vuelve a Processing → Ready con el nuevo compuesto."
+					},
+					"response": []
+				},
+				{
+					"name": "[Socket] Grabación — límite y estados (F7)",
+					"request": {
+						"method": "GET",
+						"description": "S→C (F7, T-35)\n\n'meeting.recording.state_changed' / 'call.recording.state_changed': { state: 'Requesting'|'Recording'|'Stopping'|'Composing'|'Processing'|'Ready'|'Failed'|'Idle', captureMode: 'Server'|'Client', startedAtUtc, maxDurationSeconds, reason }\n\n'meeting.recording.limit_warning' / 'call.recording.limit_warning': { remainingSeconds, stopsAtUtc } — una sola vez, recordingLimitWarningMinutes antes del tope.\n\nAl llegar al tope el servidor para la grabación con reason 'LimitReached'. Errores de start_request: Plan.RecordingDisabled, Meeting.RecordingRequiresSfu (reunión mesh con captura server).",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
 				}
 			]
 		},

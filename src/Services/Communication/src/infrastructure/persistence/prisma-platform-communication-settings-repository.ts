@@ -103,6 +103,21 @@ export class PrismaPlatformCommunicationSettingsRepository implements PlatformCo
       MeetingReactionCatalog: JSON.stringify(s.meetingReactionCatalog),
       MeetingReminderMinutesBefore: s.meetingReminderMinutesBefore,
       GuestsWaitingRoomDefault: s.guestsWaitingRoomDefault,
+      ServerSideRecordingEnabled: s.serverSideRecordingEnabled,
+      RecordingLimitWarningMinutes: s.recordingLimitWarningMinutes,
+      RecordingLimitToleranceSeconds: s.recordingLimitToleranceSeconds,
+      RecordingCompositionWidth: s.recordingCompositionWidth,
+      RecordingCompositionHeight: s.recordingCompositionHeight,
+      RecordingCompositionFps: s.recordingCompositionFps,
+      RecordingCompositionVideoKbps: s.recordingCompositionVideoKbps,
+      RecordingCompositionAudioKbps: s.recordingCompositionAudioKbps,
+      RecordingCompositionFormat: s.recordingCompositionFormat,
+      RecordingCaptureSpatialLayer: s.recordingCaptureSpatialLayer,
+      RecordingTracksRetentionDays: s.recordingTracksRetentionDays,
+      VoiceNoteTranscriptEnabled: s.voiceNoteTranscriptEnabled,
+      VoiceNoteTranscriptMaxSeconds: s.voiceNoteTranscriptMaxSeconds,
+      TranscriptWorkerTimeoutFactorPct: s.transcriptWorkerTimeoutFactorPct,
+      RecordingAvailabilityTimeoutMinutes: s.recordingAvailabilityTimeoutMinutes,
       UpdatedByUserId: s.updatedByUserId,
     };
     await this.prisma.platformCommunicationSettings.upsert({
@@ -190,6 +205,21 @@ function toSnapshot(row: {
   MeetingReactionCatalog: string;
   MeetingReminderMinutesBefore: number;
   GuestsWaitingRoomDefault: boolean;
+  ServerSideRecordingEnabled: boolean;
+  RecordingLimitWarningMinutes: number;
+  RecordingLimitToleranceSeconds: number;
+  RecordingCompositionWidth: number;
+  RecordingCompositionHeight: number;
+  RecordingCompositionFps: number;
+  RecordingCompositionVideoKbps: number;
+  RecordingCompositionAudioKbps: number;
+  RecordingCompositionFormat: string;
+  RecordingCaptureSpatialLayer: number;
+  RecordingTracksRetentionDays: number;
+  VoiceNoteTranscriptEnabled: boolean;
+  VoiceNoteTranscriptMaxSeconds: number;
+  TranscriptWorkerTimeoutFactorPct: number;
+  RecordingAvailabilityTimeoutMinutes: number;
   UpdatedByUserId: string | null;
   UpdatedAtUtc: Date;
 }): PlatformCommunicationSettingsSnapshot {
@@ -272,6 +302,22 @@ function toSnapshot(row: {
     meetingReactionCatalog: parseReactionCatalogColumn(row.MeetingReactionCatalog) ?? [],
     meetingReminderMinutesBefore: row.MeetingReminderMinutesBefore,
     guestsWaitingRoomDefault: row.GuestsWaitingRoomDefault,
+    serverSideRecordingEnabled: row.ServerSideRecordingEnabled,
+    recordingLimitWarningMinutes: row.RecordingLimitWarningMinutes,
+    recordingLimitToleranceSeconds: row.RecordingLimitToleranceSeconds,
+    recordingCompositionWidth: row.RecordingCompositionWidth,
+    recordingCompositionHeight: row.RecordingCompositionHeight,
+    recordingCompositionFps: row.RecordingCompositionFps,
+    recordingCompositionVideoKbps: row.RecordingCompositionVideoKbps,
+    recordingCompositionAudioKbps: row.RecordingCompositionAudioKbps,
+    // Texto libre en BD: rehydrate() lo repone a 'mp4' si no es válido.
+    recordingCompositionFormat: row.RecordingCompositionFormat as 'mp4' | 'webm',
+    recordingCaptureSpatialLayer: row.RecordingCaptureSpatialLayer,
+    recordingTracksRetentionDays: row.RecordingTracksRetentionDays,
+    voiceNoteTranscriptEnabled: row.VoiceNoteTranscriptEnabled,
+    voiceNoteTranscriptMaxSeconds: row.VoiceNoteTranscriptMaxSeconds,
+    transcriptWorkerTimeoutFactorPct: row.TranscriptWorkerTimeoutFactorPct,
+    recordingAvailabilityTimeoutMinutes: row.RecordingAvailabilityTimeoutMinutes,
     updatedByUserId: row.UpdatedByUserId,
     updatedAtUtc: row.UpdatedAtUtc,
   };

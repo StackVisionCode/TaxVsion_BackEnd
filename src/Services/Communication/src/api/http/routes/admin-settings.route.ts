@@ -1,3 +1,5 @@
+import { RecordingScope } from '../../../domain/recording/recording-session-state.js';
+import { lifecycleFrom, recomposeRecording } from '../../../application/use-cases/recording-lifecycle.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
@@ -97,6 +99,22 @@ const PlatformPatchBody = z.object({
   // F6: recordatorio (0 = apagado) y sala de espera para guests.
   meetingReminderMinutesBefore: z.number().int().min(0).optional(),
   guestsWaitingRoomDefault: z.boolean().optional(),
+  // F7: grabación server-side, límites, composición, retención de pistas y notas de voz (rangos en el dominio).
+  serverSideRecordingEnabled: z.boolean().optional(),
+  recordingLimitWarningMinutes: z.number().int().min(0).optional(),
+  recordingLimitToleranceSeconds: z.number().int().min(0).optional(),
+  recordingCompositionWidth: z.number().int().min(0).optional(),
+  recordingCompositionHeight: z.number().int().min(0).optional(),
+  recordingCompositionFps: z.number().int().min(0).optional(),
+  recordingCompositionVideoKbps: z.number().int().min(0).optional(),
+  recordingCompositionAudioKbps: z.number().int().min(0).optional(),
+  recordingCompositionFormat: z.enum(['mp4', 'webm']).optional(),
+  recordingCaptureSpatialLayer: z.number().int().min(0).optional(),
+  recordingTracksRetentionDays: z.number().int().min(0).optional(),
+  voiceNoteTranscriptEnabled: z.boolean().optional(),
+  voiceNoteTranscriptMaxSeconds: z.number().int().min(0).optional(),
+  transcriptWorkerTimeoutFactorPct: z.number().int().min(0).optional(),
+  recordingAvailabilityTimeoutMinutes: z.number().int().min(0).optional(),
 });
 
 const ConstraintsPatchBody = z.object({
@@ -152,7 +170,31 @@ async function requirePlatformPermission(
   return null;
 }
 
+const RecomposeParams = z.object({ scope: z.enum(['Meeting', 'Call']), id: z.string().uuid() });
+
 export async function registerAdminSettingsRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
+  // F7 (contrato 9.6): recomponer una grabacion server-side desde las pistas del recorder (soporte).
+  app.post('/communication/admin/recordings/:scope/:id/recompose', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal;
+    if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+    const denied = await requirePlatformPermission(principal, CommunicationPermissions.PlatformManage, container, reply);
+    if (denied) return denied;
+    const params = RecomposeParams.parse(request.params);
+    const scope = params.scope === 'Call' ? RecordingScope.Call : RecordingScope.Meeting;
+    const session = await container.recordingSessions.findByScopeAnyTenant(scope, params.id);
+    const lifecycle = lifecycleFrom({ ...container, emitter: container.emitter });
+    if (!session || !lifecycle) return reply.code(404).send({ code: 'Recording.NotFound', message: 'Recording not found.' });
+    const result = await recomposeRecording(
+      { tenantId: session.toSnapshot().tenantId, scope, scopeId: params.id, correlationId: request.id },
+      lifecycle,
+    );
+    if (!result.isSuccess) {
+      const status = result.error.code === 'Recording.NotFound' ? 404 : result.error.code === 'Recording.RecorderUnavailable' ? 503 : 409;
+      return reply.code(status).send({ code: result.error.code, message: result.error.message });
+    }
+    return reply.code(202).send();
+  });
+
   app.get('/communication/admin/platform-settings', { preHandler: [app.authenticate] }, async (request, reply) => {
     const denied = await requirePlatformPermission(request.principal!, CommunicationPermissions.PlatformManage, container, reply);
     if (denied) return denied;

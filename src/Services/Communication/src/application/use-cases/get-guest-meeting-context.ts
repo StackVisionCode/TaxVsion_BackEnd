@@ -42,11 +42,19 @@ export async function getGuestMeetingContext(input: { token: string }, deps: Get
   const validation = invitation.validateForUse({ plainToken: input.token, now });
   // Cerrada por la reunion: el token es autentico, se informa que termino en vez de un 404 ciego.
   const closedByMeeting = !validation.isSuccess && validation.error.code === 'Meeting.Invitation.Closed';
-  if (!validation.isSuccess && !closedByMeeting) return Result.fail(GENERIC_NOT_FOUND);
+  // Consumida pero con el guest aun dentro/esperando: es su recarga (D-48), no un segundo uso.
+  const consumed = !validation.isSuccess && validation.error.code === 'Meeting.Invitation.AlreadyUsed';
+  if (!validation.isSuccess && !closedByMeeting && !consumed) return Result.fail(GENERIC_NOT_FOUND);
 
   const meeting = await deps.meetings.findById(snap.tenantId, snap.meetingId);
   if (!meeting) return Result.fail(GENERIC_NOT_FOUND);
   const m = meeting.toSnapshot();
+  if (consumed) {
+    const status = m.participants.find((p) => p.userId === invitation.guestUserId)?.status ?? null;
+    if (!invitation.allowsGuestRejoin(status) || MeetingInvitation.hash(input.token) !== snap.tokenHash) {
+      return Result.fail(GENERIC_NOT_FOUND);
+    }
+  }
   const effective = await deps.effectiveSettings.resolve(snap.tenantId);
   const status: GuestMeetingContextDto['status'] = m.status === 'Scheduled' ? 'Scheduled' : m.status === 'Live' ? 'Live' : 'Ended';
 

@@ -1,3 +1,4 @@
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
@@ -44,6 +45,8 @@ export interface SendMessageResult {
 }
 
 export interface SendMessageDeps {
+  /** F7 (D-27): politica de transcript de notas de voz; sin resolver (tests viejos) no se pide transcript. */
+  readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
   readonly conversations: ConversationRepository;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
@@ -120,6 +123,13 @@ export async function sendMessage(
     return Result.fail(messageResult.error);
   }
 
+  // F7 (D-27): una nota de voz nace transcribible a demanda (o Skipped si la politica no lo cubre).
+  const voiceNotePolicy =
+    deps.effectiveSettings && messageResult.value.isVoiceNote()
+      ? await resolveVoiceNotePolicy(deps.effectiveSettings, command.tenantId, messageResult.value.toSnapshot().audioDurationMs ?? 0)
+      : null;
+  if (voiceNotePolicy) messageResult.value.setTranscript({ state: voiceNotePolicy.transcribe ? 'NotRequested' : 'Skipped' });
+
   await deps.conversations.save(conversation);
 
   const messageSnapshot = messageResult.value.toSnapshot();
@@ -165,4 +175,19 @@ export async function sendMessage(
     token: reservation.token,
   });
   return Result.ok(result);
+}
+
+/** D-27: transcribir solo si el plan y la oficina lo permiten y la nota no supera la duracion maxima. */
+export async function resolveVoiceNotePolicy(
+  resolver: Pick<EffectiveSettingsResolver, 'resolve'>,
+  tenantId: string,
+  durationMs: number,
+): Promise<{ transcribe: boolean; language: string; prompt: string | null }> {
+  const effective = await resolver.resolve(tenantId);
+  const policy = effective.recording.voiceNote;
+  return {
+    transcribe: policy.enabled && durationMs > 0 && durationMs <= policy.maxSeconds * 1000,
+    language: effective.recording.transcriptLanguage,
+    prompt: effective.recording.transcriptPrompt,
+  };
 }

@@ -97,6 +97,9 @@ export class PrismaConversationRepository implements ConversationRepository {
             EditedAtUtc: m.editedAtUtc,
             AudioDurationMs: m.audioDurationMs,
             AudioWaveform: m.audioWaveform,
+            TranscriptText: m.transcriptText ?? null,
+            TranscriptState: m.transcriptState ?? null,
+            TranscriptLanguage: m.transcriptLanguage ?? null,
           })),
         });
       }

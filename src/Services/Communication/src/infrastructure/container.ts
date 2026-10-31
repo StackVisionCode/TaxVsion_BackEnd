@@ -115,6 +115,14 @@ import type { TenantHostCache } from '../application/ports/tenant-host-cache.js'
 import type { CloudStorageMetadataClient } from '../application/ports/cloudstorage-metadata-client.js';
 import type { CloudStorageDownloadClient } from '../application/ports/cloudstorage-download-client.js';
 import type { CloudStorageUploadClient } from '../application/ports/cloudstorage-upload-client.js';
+import type { TranscriptArtifactRepository } from '../application/ports/transcript-artifact-repository.js';
+import type { FileDeletionRequester } from '../application/ports/file-deletion-requester.js';
+import { RecordingCaptureService, type RecordingCaptureContext } from '../application/services/recording-capture.service.js';
+import { RecordingScope } from '../domain/recording/recording-session-state.js';
+import type { RecordingSession } from '../domain/recording/recording-session.js';
+import { PrismaTranscriptArtifactRepository } from './persistence/prisma-transcript-artifact-repository.js';
+import { HttpRecorderClient } from './recorder/http-recorder-client.js';
+import { RabbitFileDeletionRequester } from './rabbit/rabbit-file-deletion-requester.js';
 
 /**
  * Contenedor de dependencias — sin frameworks DI. Cada campo es una interfaz
@@ -186,6 +194,12 @@ export interface AppContainer {
   readonly settingsCache: TenantSettingsCacheInvalidator;
   readonly recordingSessions: RecordingSessionRepository;
   readonly recordingConsents: RecordingConsentRepository;
+  /** F7: estado del transcript de cada grabacion (separado del archivo, T-34). */
+  readonly transcripts: TranscriptArtifactRepository;
+  /** F7 (D-28): captura server-side por pista hacia `communication-recorder`. */
+  readonly capture: RecordingCaptureService;
+  /** F7 (T-37): borrado de archivos vencidos via el contrato de CloudStorage. */
+  readonly fileDeletion: FileDeletionRequester;
   readonly cloudStorageMetadata: CloudStorageMetadataClient;
   readonly cloudStorageDownload: CloudStorageDownloadClient;
   readonly cloudStorageUpload: CloudStorageUploadClient;
@@ -232,14 +246,32 @@ export function buildContainer(): AppContainer {
     tenantSettings: tenantSettingsRepository,
     preferences: userPreferences,
   });
+  const sfu = new MediasoupSfuService();
+  const avatars = new DirectoryAvatarResolver(new PrismaAvatarLookupRepository(prisma));
+  const calls = new PrismaCallRepository(prisma);
+  const meetings = new PrismaMeetingRepository(prisma);
+  const meetingEvents = new PrismaMeetingEventLogRepository(prisma);
+  const recordingSessions = new PrismaRecordingSessionRepository(prisma);
+  const capture = new RecordingCaptureService({
+    recorder: new HttpRecorderClient(serviceTokens, { baseUrl: config.recorder.baseUrl, timeoutMs: config.recorder.timeoutMs }),
+    sfu,
+    recordingSessions,
+    meetings,
+    calls,
+    meetingEvents,
+    resolveContext: (session) => resolveCaptureContext(session, effectiveSettings, calls),
+    avatars,
+    tapListenIp: config.recorder.tapListenIp,
+    keyframeIntervalSeconds: config.recorder.keyframeIntervalSeconds,
+  });
   return {
     conversations: new PrismaConversationRepository(prisma),
     messages: new PrismaMessageRepository(prisma),
-    calls: new PrismaCallRepository(prisma),
+    calls,
     callUsage: new PrismaCallUsageRepository(prisma),
     qualityAggregator: new MeetingQualityAggregator(),
-    meetings: new PrismaMeetingRepository(prisma),
-    meetingEvents: new PrismaMeetingEventLogRepository(prisma),
+    meetings,
+    meetingEvents,
     publisher: new PrismaOutboxPublisher(prisma),
     idempotency: new PrismaIdempotencyStore(prisma, redis),
     settings: settingsProvider,
@@ -274,7 +306,7 @@ export function buildContainer(): AppContainer {
     customerPortalAccountsReconcile: customerPortalAccounts,
     userDirectory: new PrismaUserDirectoryRepository(prisma),
     customerDirectory: new PrismaCustomerDirectoryRepository(prisma),
-    avatars: new DirectoryAvatarResolver(new PrismaAvatarLookupRepository(prisma)),
+    avatars,
     customerPreparerAssignments: new PrismaCustomerPreparerAssignmentRepository(prisma),
     presenceAudiences: new PrismaPresenceAudienceRepository(prisma),
     customerAssignments: new PrismaCustomerAssignmentProjectionRepository(prisma),
@@ -285,10 +317,13 @@ export function buildContainer(): AppContainer {
     tenantSettings: tenantSettingsRepository,
     limits: limitsRepository,
     analytics: new PrismaAnalyticsRepository(prisma),
-    sfu: new MediasoupSfuService(),
+    sfu,
     meetingMediaPolicy: new ResolverMeetingMediaPolicyProvider(effectiveSettings),
-    recordingSessions: new PrismaRecordingSessionRepository(prisma),
+    recordingSessions,
     recordingConsents: new PrismaRecordingConsentRepository(prisma),
+    transcripts: new PrismaTranscriptArtifactRepository(prisma),
+    capture,
+    fileDeletion: new RabbitFileDeletionRequester(),
     cloudStorageMetadata: new HttpCloudStorageMetadataClient(serviceTokens),
     cloudStorageDownload: new HttpCloudStorageDownloadClient(serviceTokens),
     cloudStorageUpload: new HttpCloudStorageUploadClient(serviceTokens),
@@ -298,5 +333,28 @@ export function buildContainer(): AppContainer {
     customerAssignmentsReconciliation: new HttpCustomerAssignmentsReconciliationClient(serviceTokens),
     tenantHostResolver: tenantHost,
     tenantHostCache: tenantHost,
+  };
+}
+
+/**
+ * F7: lo que el recorder necesita de la sesion sale de los efectivos de la oficina. El video se graba
+ * en reuniones y videollamadas solo si el plan lo permite; el limite ya quedo fijado al empezar.
+ */
+async function resolveCaptureContext(
+  session: RecordingSession,
+  effectiveSettings: EffectiveSettingsResolver,
+  calls: CallRepository,
+): Promise<RecordingCaptureContext> {
+  const s = session.toSnapshot();
+  const effective = await effectiveSettings.resolve(s.tenantId);
+  const isVideoScope =
+    s.scope === RecordingScope.Meeting || (await calls.findById(s.tenantId, s.scopeId))?.toSnapshot().kind === 'Video';
+  const fallbackMinutes = s.scope === RecordingScope.Meeting ? effective.recording.maxMinutesMeeting : effective.recording.maxMinutesVideoCall;
+  return {
+    captureVideo: effective.recording.videoEnabled && isVideoScope,
+    maxDurationSeconds: s.maxDurationSeconds ?? fallbackMinutes * 60,
+    toleranceSeconds: effective.recording.limitToleranceSeconds,
+    tracksRetentionDays: effective.recording.tracksRetentionDays,
+    composition: effective.recording.composition,
   };
 }

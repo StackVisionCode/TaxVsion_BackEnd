@@ -10,6 +10,8 @@ export interface MeetingEventLogDeps {
 export interface RecordMeetingEventInput {
   readonly tenantId: string;
   readonly meetingId: string;
+  /** F7: las llamadas usan el mismo log con scope Call (meetingId = id de la llamada). */
+  readonly scope?: MeetingEventScope;
   readonly type: MeetingEventType;
   readonly actorUserId?: string | null;
   readonly targetUserId?: string | null;
@@ -28,7 +30,7 @@ export async function recordMeetingEvent(deps: MeetingEventLogDeps, input: Recor
     await deps.meetingEvents.append({
       id: randomUUID(),
       tenantId: input.tenantId,
-      scope: MeetingEventScope.Meeting,
+      scope: input.scope ?? MeetingEventScope.Meeting,
       scopeId: input.meetingId,
       at: input.at ?? new Date(),
       type: input.type,

@@ -19,6 +19,7 @@
     "format": "prettier --write \"src/**/*.{ts,json}\" \"tests/**/*.ts\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --coverage",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",

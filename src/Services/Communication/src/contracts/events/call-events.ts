@@ -3,6 +3,7 @@ import type {
   RecordingConsentResponse,
   RecordingConsentSnapshotEntry,
 } from './integration-event.js';
+import type { RecordingAudioTrackRef } from './meeting-events.js';
 
 /**
  * Integration events del ciclo de vida de una llamada REALMENTE publicados
@@ -30,6 +31,8 @@ export const CallEventTypes = {
   DurationWarning: 'communication.call.duration_warning.v1',
   RecordingValidationFailed: 'communication.call.recording_validation_failed.v1',
   RecordingFailed:    'communication.call.recording_failed.v1',
+  // F7 (T-35): corte por limite.
+  RecordingLimitReached: 'communication.call.recording_limit_reached.v1',
 } as const;
 
 export interface CallStartedEvent extends IntegrationEvent {
@@ -149,6 +152,22 @@ export interface CallRecordingProcessingStartedEvent extends IntegrationEvent {
   readonly callId: string;
   readonly recordingFileId: string;
   readonly startedAtUtc: string;
+  /** F7 (T-28): pistas de audio por participante (captura server-side); sin ellas el worker usa el archivo unico. */
+  readonly audioTracks?: readonly RecordingAudioTrackRef[];
+  /** F7: idioma de la oficina ('auto' o codigo) y vocabulario (T-30). */
+  readonly language?: string;
+  readonly prompt?: string | null;
+  /** F7 (INV-12 H-1): limite efectivo para que el worker derive su timeout y rechace archivos mas largos. */
+  readonly maxDurationSeconds?: number;
+  readonly timeoutFactorPct?: number;
+}
+
+/** F7 (T-35): la grabacion de la llamada se detuvo al llegar al limite. */
+export interface CallRecordingLimitReachedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.call.recording_limit_reached.v1';
+  readonly callId: string;
+  readonly maxDurationSeconds: number;
+  readonly stoppedAtUtc: string;
 }
 
 /**
@@ -168,6 +187,14 @@ export interface CallTranscriptReadyEvent extends IntegrationEvent {
   /** @since Fase Transcript 5 — conteo de palabras del transcript ya limpio (sin timestamps). */
   readonly wordCount: number;
   readonly readyAtUtc: string;
+  /** F7 (T-28): transcript v2. */
+  readonly transcriptJsonFileId?: string | null;
+  readonly segmentCount?: number;
+  readonly speakerCount?: number;
+  readonly model?: string;
+  readonly vad?: boolean;
+  readonly realtimeFactor?: number | null;
+  readonly wordsPerSecond?: number | null;
 }
 
 /**

@@ -9,6 +9,8 @@ import {
   describeTechnicalRange,
   isMeetingSoundsPolicy,
   isReactionCatalog,
+  isRecordingCompositionFormat,
+  type RecordingCompositionFormat,
   isTranscriptLanguage,
   isWithinTechnical,
 } from './technical-limits.js';
@@ -97,6 +99,22 @@ export interface PlatformCommunicationSettingsSnapshot {
   // F6 (D-47/D-48): recordatorio T-N (0 = apagado) y sala de espera por defecto para guests.
   readonly meetingReminderMinutesBefore: number;
   readonly guestsWaitingRoomDefault: boolean;
+  // F7: grabación server-side (false = mezcla en el cliente, C-03 transitorio), límites, composición y retención.
+  readonly serverSideRecordingEnabled: boolean;
+  readonly recordingLimitWarningMinutes: number;
+  readonly recordingLimitToleranceSeconds: number;
+  readonly recordingCompositionWidth: number;
+  readonly recordingCompositionHeight: number;
+  readonly recordingCompositionFps: number;
+  readonly recordingCompositionVideoKbps: number;
+  readonly recordingCompositionAudioKbps: number;
+  readonly recordingCompositionFormat: RecordingCompositionFormat;
+  readonly recordingCaptureSpatialLayer: number;
+  readonly recordingTracksRetentionDays: number;
+  readonly voiceNoteTranscriptEnabled: boolean;
+  readonly voiceNoteTranscriptMaxSeconds: number;
+  readonly transcriptWorkerTimeoutFactorPct: number;
+  readonly recordingAvailabilityTimeoutMinutes: number;
   readonly updatedByUserId: string | null;
   readonly updatedAtUtc: Date;
 }
@@ -170,6 +188,18 @@ export const PLATFORM_NUMERIC_RANGES: Record<Exclude<NumericKey, 'version'>, Tec
   reactionsPerUserPer10s: 'reactionsPerUserPer10s',
   reactionsPerMeetingPerMinute: 'reactionsPerMeetingPerMinute',
   meetingReminderMinutesBefore: 'meetingReminderMinutesBefore',
+  recordingLimitWarningMinutes: 'recordingLimitWarningMinutes',
+  recordingLimitToleranceSeconds: 'recordingLimitToleranceSeconds',
+  recordingCompositionWidth: 'recordingCompositionWidth',
+  recordingCompositionHeight: 'recordingCompositionHeight',
+  recordingCompositionFps: 'recordingCompositionFps',
+  recordingCompositionVideoKbps: 'recordingCompositionVideoKbps',
+  recordingCompositionAudioKbps: 'recordingCompositionAudioKbps',
+  recordingCaptureSpatialLayer: 'recordingCaptureSpatialLayer',
+  recordingTracksRetentionDays: 'recordingTracksRetentionDays',
+  voiceNoteTranscriptMaxSeconds: 'voiceNoteTranscriptMaxSeconds',
+  transcriptWorkerTimeoutFactorPct: 'transcriptWorkerTimeoutFactorPct',
+  recordingAvailabilityTimeoutMinutes: 'recordingAvailabilityTimeoutMinutes',
 };
 
 export class PlatformCommunicationSettings {
@@ -254,6 +284,21 @@ export class PlatformCommunicationSettings {
       meetingReactionCatalog: [...DEFAULT_MEETING_REACTION_CATALOG],
       meetingReminderMinutesBefore: TECHNICAL_LIMITS.meetingReminderMinutesBefore.fallback,
       guestsWaitingRoomDefault: true,
+      serverSideRecordingEnabled: true,
+      recordingLimitWarningMinutes: TECHNICAL_LIMITS.recordingLimitWarningMinutes.fallback,
+      recordingLimitToleranceSeconds: TECHNICAL_LIMITS.recordingLimitToleranceSeconds.fallback,
+      recordingCompositionWidth: TECHNICAL_LIMITS.recordingCompositionWidth.fallback,
+      recordingCompositionHeight: TECHNICAL_LIMITS.recordingCompositionHeight.fallback,
+      recordingCompositionFps: TECHNICAL_LIMITS.recordingCompositionFps.fallback,
+      recordingCompositionVideoKbps: TECHNICAL_LIMITS.recordingCompositionVideoKbps.fallback,
+      recordingCompositionAudioKbps: TECHNICAL_LIMITS.recordingCompositionAudioKbps.fallback,
+      recordingCompositionFormat: 'mp4',
+      recordingCaptureSpatialLayer: TECHNICAL_LIMITS.recordingCaptureSpatialLayer.fallback,
+      recordingTracksRetentionDays: TECHNICAL_LIMITS.recordingTracksRetentionDays.fallback,
+      voiceNoteTranscriptEnabled: true,
+      voiceNoteTranscriptMaxSeconds: TECHNICAL_LIMITS.voiceNoteTranscriptMaxSeconds.fallback,
+      transcriptWorkerTimeoutFactorPct: TECHNICAL_LIMITS.transcriptWorkerTimeoutFactorPct.fallback,
+      recordingAvailabilityTimeoutMinutes: TECHNICAL_LIMITS.recordingAvailabilityTimeoutMinutes.fallback,
       updatedByUserId: null,
       updatedAtUtc: now,
     });
@@ -296,6 +341,16 @@ export class PlatformCommunicationSettings {
     if (typeof snapshot.guestsWaitingRoomDefault !== 'boolean') {
       next['guestsWaitingRoomDefault'] = true;
       corrected.push('guestsWaitingRoomDefault');
+    }
+    for (const key of ['serverSideRecordingEnabled', 'voiceNoteTranscriptEnabled'] as const) {
+      if (typeof snapshot[key] !== 'boolean') {
+        next[key] = true;
+        corrected.push(key);
+      }
+    }
+    if (!isRecordingCompositionFormat(snapshot.recordingCompositionFormat)) {
+      next['recordingCompositionFormat'] = 'mp4';
+      corrected.push('recordingCompositionFormat');
     }
     return {
       settings: new PlatformCommunicationSettings(next as unknown as PlatformCommunicationSettingsSnapshot),
@@ -356,6 +411,9 @@ export class PlatformCommunicationSettings {
     }
     if (patch.transcriptDefaultLanguage !== undefined && !isTranscriptLanguage(patch.transcriptDefaultLanguage)) {
       return Result.fail(makeError('Settings.InvalidLanguage', 'transcriptDefaultLanguage must be "auto" or a language code.'));
+    }
+    if (patch.recordingCompositionFormat !== undefined && !isRecordingCompositionFormat(patch.recordingCompositionFormat)) {
+      return Result.fail(makeError('Settings.InvalidCompositionFormat', 'recordingCompositionFormat must be mp4 or webm.'));
     }
     return Result.okVoid();
   }

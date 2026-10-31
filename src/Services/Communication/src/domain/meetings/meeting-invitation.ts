@@ -129,6 +129,21 @@ export class MeetingInvitation {
     return Result.okVoid();
   }
 
+  /**
+   * F6 (D-48): un guest que ya consumio su unico uso puede volver a entrar mientras su participante siga
+   * dentro (gracia) o en la sala de espera: recarga de pagina, no un segundo uso. `participantStatus` =
+   * estado actual de `guestUserId` en la reunion (null si no esta).
+   */
+  allowsGuestRejoin(participantStatus: string | null): boolean {
+    return (
+      this.state.inviteeKind === 'External' &&
+      this.state.usedAtUtc !== null &&
+      this.state.revokedAtUtc === null &&
+      this.state.closedAtUtc === null &&
+      (participantStatus === 'Joined' || participantStatus === 'Waiting')
+    );
+  }
+
   /** Abierta ahora mismo (sin verificar el token): lo que una lista de host llama "active". */
   isOpen(now: Date): boolean {
     return this.checkOpen(now).isSuccess;
@@ -188,8 +203,8 @@ export class MeetingInvitation {
   get inviteeKind(): MeetingInviteeKind {
     return this.state.inviteeKind;
   }
-  /** userId con el que el guest de esta invitacion entra al meeting (ver join-ticket.ts). */
+  /** userId con el que el guest de esta invitacion entra al meeting: el propio id (UUID; ver join-ticket.ts). */
   get guestUserId(): string {
-    return `guest:${this.state.id}`;
+    return this.state.id;
   }
 }

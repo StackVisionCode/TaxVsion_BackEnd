@@ -60,7 +60,15 @@ import { platformSettings } from './infrastructure/platform/platform-settings-so
 import { buildSfuObserver } from './infrastructure/webrtc/sfu-transport-telemetry.js';
 import { createSfuTransportStateReporter } from './application/use-cases/report-sfu-transport-state.js';
 import { sfuWebRtcServerFallbackWorkers } from './infrastructure/telemetry/metrics.js';
-import type { SfuRuntimeInfo } from './application/ports/sfu-service.js';
+import type { SfuObserver, SfuRuntimeInfo } from './application/ports/sfu-service.js';
+import { bindRecordingConsumers } from './application/event-handlers/recording-consumers.js';
+import { startRecordingScheduler } from './infrastructure/schedulers/recording-scheduler.js';
+import {
+  lifecycleFrom,
+  markRecordingFileAvailable,
+  markRecordingFileRejected,
+} from './application/use-cases/recording-lifecycle.js';
+import type { RecordingCaptureService } from './application/services/recording-capture.service.js';
 
 /**
  * Red de seguridad del proceso: un error async no capturado en un handler de socket (p.ej. un deadlock
@@ -107,6 +115,21 @@ function logSfuStartupGuard(info: SfuRuntimeInfo): void {
   );
 }
 
+/** F7: el observador del SFU tambien avisa a la captura server-side cuando nace o muere un producer. */
+function withRecordingCapture(observer: SfuObserver, capture: RecordingCaptureService): SfuObserver {
+  return {
+    ...observer,
+    onProducerOpened(event) {
+      observer.onProducerOpened?.(event);
+      void capture.onProducerOpened(event).catch((err: unknown) => logger.warn({ err, producerId: event.producerId }, 'recording capture attach failed'));
+    },
+    onProducerClosed(event) {
+      observer.onProducerClosed?.(event);
+      void capture.onProducerClosed(event).catch((err: unknown) => logger.warn({ err, producerId: event.producerId }, 'recording capture detach failed'));
+    },
+  };
+}
+
 async function main(): Promise<void> {
   installProcessSafetyNet();
   await connectRedis();
@@ -116,12 +139,15 @@ async function main(): Promise<void> {
   const container = buildContainer();
   // F1: cada transition ICE/DTLS del SFU se loguea, se cuenta y, si es un fallo, se publica como evento.
   container.sfu.setObserver(
-    buildSfuObserver(
-      createSfuTransportStateReporter({
-        publisher: container.publisher,
-        meetingEvents: container.meetingEvents,
-        qualityAggregator: container.qualityAggregator,
-      }),
+    withRecordingCapture(
+      buildSfuObserver(
+        createSfuTransportStateReporter({
+          publisher: container.publisher,
+          meetingEvents: container.meetingEvents,
+          qualityAggregator: container.qualityAggregator,
+        }),
+      ),
+      container.capture,
     ),
   );
   await container.sfu.start();
@@ -232,6 +258,9 @@ async function main(): Promise<void> {
 
   // Consumer runtime + registro de handlers Signature/Customer/Auth.
   const consumers = new ConsumerRuntime(container.processedEvents);
+  // F7: ciclo de vida de grabaciones del sistema (recorder, CloudStorage, transcript, limite, retencion).
+  const recordingLifecycle = lifecycleFrom({ ...container, emitter });
+  if (!recordingLifecycle) throw new Error('Recording lifecycle dependencies are incomplete.');
   bindInAppNotificationConsumers(consumers.register.bind(consumers), {
     notifications: container.inAppNotifications,
     emitter,
@@ -330,6 +359,12 @@ async function main(): Promise<void> {
     notifications: container.notifications,
     emitter,
     inAppSourcePolicy: config.inAppSource.cloudStoragePolicy,
+    recordingFiles: {
+      onAvailable: (tenantId, fileId, correlationId) =>
+        markRecordingFileAvailable({ tenantId, fileId, correlationId }, recordingLifecycle),
+      onRejected: (tenantId, fileId, reason, correlationId) =>
+        markRecordingFileRejected({ tenantId, fileId, reason, correlationId }, recordingLifecycle),
+    },
   });
   bindCloudStorageNotificationConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
@@ -372,7 +407,26 @@ async function main(): Promise<void> {
     recordingSessions: container.recordingSessions,
     publisher: container.publisher,
     emitter,
+    transcripts: container.transcripts,
+    conversations: container.conversations,
+    messages: container.messages,
+    attachmentTracking: container.attachmentTracking,
+    cloudStorageMetadata: container.cloudStorageMetadata,
+    lifecycle: recordingLifecycle,
   });
+  bindRecordingConsumers(consumers.register.bind(consumers), recordingLifecycle);
+  // F7: limite (T-35), respaldo de disponibilidad, composiciones colgadas y retencion (T-37).
+  const recordingScheduler = startRecordingScheduler(
+    { intervalSeconds: 15, retentionIntervalMinutes: 60 },
+    {
+      ...recordingLifecycle,
+      effectiveSettings: container.effectiveSettings,
+      cloudStorageMetadata: container.cloudStorageMetadata,
+      settings: container.tenantSettings,
+      fileDeletion: container.fileDeletion,
+      lock: container.distributedLock,
+    },
+  );
   // Orígenes del CORS: dominio vigente de la plataforma (Tenant), refrescado cada 5 min.
   platformSettings.start();
   await consumers.start();
@@ -414,6 +468,7 @@ async function main(): Promise<void> {
         sessionWatcher,
         presenceWatcher,
         consumers,
+        recordingScheduler,
       );
     });
   }
@@ -439,6 +494,7 @@ async function shutdown(
   sessionWatcher: ReturnType<typeof startSessionDenylistWatcher>,
   presenceWatcher: ReturnType<typeof startPresenceChangedWatcher>,
   consumers: ConsumerRuntime,
+  recordingScheduler: ReturnType<typeof startRecordingScheduler>,
 ): Promise<void> {
   logger.info({ signal }, 'Shutting down (graceful drain up to 30s)');
   try {
@@ -452,6 +508,7 @@ async function shutdown(
     customerAssignmentReconciliation.stop();
     userDirectoryReconciliation.stop();
     portalAccountReconciliation.stop();
+    recordingScheduler.stop();
     await container.sfu.stop();
     await sessionWatcher.stop();
     await presenceWatcher.stop();

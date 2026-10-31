@@ -7,8 +7,8 @@ import type { RecordingSessionRepository, RecordingConsentRepository } from '../
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import { CallEventTypes, type CallRecordingStartedEvent } from '../../contracts/events/call-events.js';
-import { CallSocketEvents, type CallRecordingStateChangedDto } from '../../contracts/socket/call-socket-events.js';
 import type { RecordingConsentSnapshotEntry } from '../../contracts/events/integration-event.js';
+import { beginServerCapture, emitRecordingState, lifecycleFrom, resolveRecordingStart, type RecordingLifecycleOptionalDeps } from './recording-lifecycle.js';
 
 /**
  * Mismo criterio que start-meeting-recording.ts — NO se dispara directamente
@@ -25,7 +25,7 @@ export interface StartCallRecordingCommand {
   readonly actorUserId: string;
 }
 
-export interface StartCallRecordingDeps {
+export interface StartCallRecordingDeps extends RecordingLifecycleOptionalDeps {
   readonly calls: CallRepository;
   readonly recordingSessions: RecordingSessionRepository;
   readonly recordingConsents: RecordingConsentRepository;
@@ -70,7 +70,19 @@ export async function startCallRecording(
     return Result.fail(makeError('RecordingSession.ConsentPolicyNotSatisfied', 'Consent policy does not allow starting yet.'));
   }
 
-  const startResult = call.startRecording({ actorUserId: command.actorUserId, session, policyAllows: true });
+  // F7: modo de captura (C-03) y limite efectivo por tipo de llamada (T-35).
+  const start = deps.effectiveSettings
+    ? await resolveRecordingStart(
+        { effectiveSettings: deps.effectiveSettings },
+        { tenantId: command.tenantId, scope: RecordingScope.Call, callKind: call.toSnapshot().kind === 'Video' ? 'Video' : 'Audio' },
+      )
+    : null;
+  const startResult = call.startRecording({
+    actorUserId: command.actorUserId,
+    session,
+    policyAllows: true,
+    ...(start ? { captureMode: start.captureMode, maxDurationSeconds: start.maxDurationSeconds } : {}),
+  });
   if (!startResult.isSuccess) return Result.fail(startResult.error);
   await deps.recordingSessions.save(startResult.value);
 
@@ -90,18 +102,9 @@ export async function startCallRecording(
   };
   await deps.publisher.enqueue(event);
 
-  const dto: CallRecordingStateChangedDto = { callId: command.callId, state: 'Recording', updatedAtUtc: startedAtUtc };
-  deps.emitter.emitToCall({
-    tenantId: command.tenantId,
-    callId: command.callId,
-    event: CallSocketEvents.RecordingStateChanged,
-    envelope: {
-      eventId: randomUUID(),
-      correlationId: command.correlationId,
-      emittedAtUtc: new Date().toISOString(),
-      payload: dto,
-    },
-  });
+  emitRecordingState(deps, startResult.value, command.correlationId);
+  const lifecycle = lifecycleFrom(deps);
+  if (lifecycle) await beginServerCapture(startResult.value, lifecycle, command.correlationId);
 
   return Result.ok({ startedAtUtc });
 }

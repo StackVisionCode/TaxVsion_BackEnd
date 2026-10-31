@@ -1,3 +1,4 @@
+import { lifecycleFrom, stopRecordingBySystem, type RecordingLifecycleOptionalDeps } from './recording-lifecycle.js';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../infrastructure/logger/logger.js';
 import type { MeetingSnapshot } from '../../domain/meetings/meeting.js';
@@ -22,7 +23,7 @@ import { stopMeetingRecording } from './stop-meeting-recording.js';
 import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
 import { closeMeetingInvitations } from './close-meeting-invitations.js';
 
-export interface FinalizeEndedMeetingDeps extends MeetingEventLogDeps {
+export interface FinalizeEndedMeetingDeps extends MeetingEventLogDeps, Omit<RecordingLifecycleOptionalDeps, 'meetings'> {
   readonly meetings: MeetingRepository;
   readonly publisher: IntegrationEventPublisher;
   readonly sfu: SfuService;
@@ -56,6 +57,16 @@ export async function finalizeEndedMeeting(input: FinalizeEndedMeetingInput, dep
   const reason = snapshot.endReason ?? 'Host';
   const endedAt = snapshot.endedAtUtc ?? new Date();
 
+  // El ultimo minuto de reacciones entra al timeline antes de componer (F7).
+  for (const bucket of deps.reactionAggregator?.flush(snapshot.id) ?? []) {
+    await recordMeetingEvent(deps, {
+      tenantId: input.tenantId,
+      meetingId: snapshot.id,
+      type: MeetingEventType.ReactionSummary,
+      payload: { minuteUtc: bucket.minuteUtc, counts: bucket.counts },
+      correlationId: input.correlationId,
+    });
+  }
   await stopRecordingIfActive(input, deps);
 
   await deps.sfu
@@ -97,15 +108,6 @@ export async function finalizeEndedMeeting(input: FinalizeEndedMeetingInput, dep
       endedAtUtc: endedAt.toISOString(),
     };
     await deps.publisher.enqueue(summary).catch(() => undefined);
-  }
-  for (const bucket of deps.reactionAggregator?.flush(snapshot.id) ?? []) {
-    await recordMeetingEvent(deps, {
-      tenantId: input.tenantId,
-      meetingId: snapshot.id,
-      type: MeetingEventType.ReactionSummary,
-      payload: { minuteUtc: bucket.minuteUtc, counts: bucket.counts },
-      correlationId: input.correlationId,
-    });
   }
   // F6 (D-48): las invitaciones que seguian abiertas se cierran con la reunion.
   await closeMeetingInvitations(
@@ -152,6 +154,15 @@ export async function finalizeEndedMeeting(input: FinalizeEndedMeetingInput, dep
 
 /** Una grabación en curso no sobrevive al fin de la reunión: se detiene como lo haría el host. */
 async function stopRecordingIfActive(input: FinalizeEndedMeetingInput, deps: FinalizeEndedMeetingDeps): Promise<void> {
+  const lifecycle = lifecycleFrom(deps);
+  if (lifecycle) {
+    // F7: corte de sistema (sin actor): el host pudo haberse ido y la reunion ya esta Ended.
+    await stopRecordingBySystem(
+      { tenantId: input.tenantId, scope: RecordingScope.Meeting, scopeId: input.snapshot.id, reason: 'MeetingEnded', correlationId: input.correlationId },
+      lifecycle,
+    ).catch((err: unknown) => logger.warn({ err, meetingId: input.snapshot.id }, 'stop recording on meeting end failed'));
+    return;
+  }
   const session = await deps.recordingSessions
     .findByScope(input.tenantId, RecordingScope.Meeting, input.snapshot.id)
     .catch(() => null);

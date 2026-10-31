@@ -87,6 +87,25 @@ export const TECHNICAL_LIMITS = {
   reactionsPerMeetingPerMinute: { min: 10, max: 2000, fallback: 300 },
   // F6 (T-64): recordatorio de reunion agendada; 0 = apagado.
   meetingReminderMinutesBefore: { min: 0, max: 1440, fallback: 15 },
+  // F7 (T-35): aviso antes del corte por límite (0 = sin aviso) y tolerancia del corte duro del recorder/worker.
+  recordingLimitWarningMinutes: { min: 0, max: 30, fallback: 5 },
+  recordingLimitToleranceSeconds: { min: 0, max: 900, fallback: 120 },
+  // F7 (T-33): composición del compuesto (D-29: 720p@25 por defecto).
+  recordingCompositionWidth: { min: 320, max: 1920, fallback: 1280 },
+  recordingCompositionHeight: { min: 180, max: 1080, fallback: 720 },
+  recordingCompositionFps: { min: 10, max: 30, fallback: 25 },
+  recordingCompositionVideoKbps: { min: 300, max: 6000, fallback: 1500 },
+  recordingCompositionAudioKbps: { min: 64, max: 256, fallback: 128 },
+  // F7: capa simulcast que se graba de cada cámara (0 = baja, 2 = alta).
+  recordingCaptureSpatialLayer: { min: 0, max: 2, fallback: 2 },
+  // F7 (T-37): pistas crudas (solo sirven para recomponer).
+  recordingTracksRetentionDays: { min: 1, max: 90, fallback: 7 },
+  // F7 (D-27): notas de voz transcritas hasta esta duración.
+  voiceNoteTranscriptMaxSeconds: { min: 10, max: 1800, fallback: 600 },
+  // F7 (INV-12 H-1): timeout del worker = duración máxima × factor (en %).
+  transcriptWorkerTimeoutFactorPct: { min: 100, max: 1000, fallback: 150 },
+  // F7: compuesto subido sin rastro en CloudStorage tras este plazo (cuota o política lo descartan) → Failed.
+  recordingAvailabilityTimeoutMinutes: { min: 5, max: 240, fallback: 60 },
 } as const satisfies Record<string, TechnicalRange>;
 
 export type TechnicalLimitKey = keyof typeof TECHNICAL_LIMITS;
@@ -106,6 +125,14 @@ export function isReactionCatalog(value: unknown): value is readonly string[] {
     seen.add(item);
   }
   return true;
+}
+
+/** F7 (D-29): contenedor del compuesto; MP4 H.264/AAC por defecto, WebM VP8/Opus configurable. */
+export const RECORDING_COMPOSITION_FORMATS = ['mp4', 'webm'] as const;
+export type RecordingCompositionFormat = (typeof RECORDING_COMPOSITION_FORMATS)[number];
+
+export function isRecordingCompositionFormat(value: unknown): value is RecordingCompositionFormat {
+  return typeof value === 'string' && (RECORDING_COMPOSITION_FORMATS as readonly string[]).includes(value);
 }
 
 export const MEETING_SOUNDS_POLICIES = ['all', 'hostOnly', 'off'] as const;

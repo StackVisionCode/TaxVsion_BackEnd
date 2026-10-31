@@ -36,6 +36,8 @@ export function bindCloudStorageConsumers(
     // C16-b: gate T3.7 por grupo `CloudStoragePolicy`. El attachment-tracking NO se
     // gatea (es responsabilidad propia de Communication); solo la fila de la campana.
     inAppSourcePolicy: 'Communication' | 'Notification';
+    /** F7 (T-34): el archivo de una grabacion disponible o rechazado mueve su sesion a Ready/Failed. */
+    recordingFiles?: RecordingFileStatusHandler | undefined;
   },
 ): void {
   register('cloudstorage.file.available.v1', async (env) => {
@@ -51,16 +53,42 @@ export function bindCloudStorageConsumers(
     if (tracked) {
       await deps.attachmentTracking.markStatus({ fileId, status: 'Available' });
     }
+    if (isRecordingFolder(env)) await deps.recordingFiles?.onAvailable(env.tenantId, fileId, env.correlationId ?? null);
   });
 
-  register('cloudstorage.file.infected.v1', (env) => flagAttachment(env, 'Infected', deps));
+  register('cloudstorage.file.infected.v1', async (env) => {
+    await flagAttachment(env, 'Infected', deps);
+    await rejectRecording(env, 'Infected', deps.recordingFiles);
+  });
   register('cloudstorage.file.deleted.v1', (env) => flagAttachment(env, 'Deleted', deps));
   register('cloudstorage.file.blocked_by_policy.v1', async (env) => {
     await flagAttachment(env, 'BlockedByPolicy', deps);
+    await rejectRecording(env, 'BlockedByPolicy', deps.recordingFiles);
     if (deps.inAppSourcePolicy === 'Communication') {
       await notifyFileBlockedByPolicy(env, deps);
     }
   });
+  // Solo grabaciones: un adjunto de chat con escaneo fallido sigue su camino de siempre (sin cambio).
+  register('cloudstorage.file.scan_failed.v1', (env) => rejectRecording(env, 'ScanFailed', deps.recordingFiles));
+}
+
+/** F7: lo que Communication hace cuando cambia el estado del archivo de una grabacion. */
+export interface RecordingFileStatusHandler {
+  onAvailable(tenantId: string, fileId: string, correlationId: string | null): Promise<void>;
+  onRejected(tenantId: string, fileId: string, reason: string, correlationId: string | null): Promise<void>;
+}
+
+/** Solo compuestos (Recordings); las pistas (RecordingTracks) y los transcripts no deciden el estado. */
+function isRecordingFolder(env: IncomingEnvelope): boolean {
+  const folder = getString(env.payload, 'folderType') ?? getString(env.payload, 'FolderType');
+  return folder === undefined || folder === 'Recordings';
+}
+
+async function rejectRecording(env: IncomingEnvelope, reason: string, handler: RecordingFileStatusHandler | undefined): Promise<void> {
+  if (!handler || !isRecordingFolder(env)) return;
+  const fileId = getString(env.payload, 'fileId') ?? getString(env.payload, 'FileId');
+  if (!fileId) return;
+  await handler.onRejected(env.tenantId, fileId, reason, env.correlationId ?? null);
 }
 
 async function notifyFileBlockedByPolicy(

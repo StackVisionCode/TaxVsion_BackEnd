@@ -1,3 +1,5 @@
+import { stopRecordingOnEnd, type RecordingLifecycleOptionalDeps } from './recording-lifecycle.js';
+import type { RecordingSessionRepository } from '../ports/recording-repository.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { CallRepository } from '../ports/call-repository.js';
@@ -29,7 +31,9 @@ export interface EndCallResult {
   readonly state: CallStateDto;
 }
 
-export interface EndCallDeps {
+export interface EndCallDeps extends RecordingLifecycleOptionalDeps {
+  /** F7: grabacion activa se corta al terminar la llamada (CallEnded). */
+  readonly recordingSessions?: RecordingSessionRepository | undefined;
   readonly calls: CallRepository;
   readonly conversations: ConversationRepository;
   readonly idempotency: IdempotencyStore;
@@ -81,6 +85,13 @@ export async function endCall(
 
   await deps.calls.save(call);
   const snapshot = call.toSnapshot();
+  await stopRecordingOnEnd(deps, {
+    tenantId: command.tenantId,
+    scope: 'Call',
+    scopeId: command.callId,
+    reason: 'CallEnded',
+    correlationId: command.correlationId,
+  });
 
   const endedEvent: CallEndedEvent = {
     eventId: randomUUID(),

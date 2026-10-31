@@ -183,6 +183,54 @@ public sealed class SaveFileFromSourceHandlerTests
         Assert.Contains("application/pdf", policy.AllowedContentTypes);
     }
 
+    /// <summary>F7: el recorder guarda cada pista de audio en RecordingTracks; queda en raíz, fuera del explorador.</summary>
+    [Fact]
+    public async Task A_recorder_audio_track_is_registered_in_RecordingTracks_at_root()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
+        var evt = Evt(
+            tenantId,
+            fileId,
+            builder =>
+            {
+                builder.OwnerType = "Communication";
+                builder.FolderType = "RecordingTracks";
+                builder.OriginalName = "Track_user_track.webm";
+                builder.ContentType = "audio/webm";
+                builder.TaxYear = null;
+            }
+        );
+
+        await SaveFileFromSourceHandler.Handle(
+            evt,
+            files,
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new FakeObjectStorage(),
+            new SystemFolderProvisioner(new FakeFolderRepository()),
+            DefaultOptions(),
+            new FakeUploadPolicyResolver(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var stored = await files.GetAsync(tenantId, fileId, CancellationToken.None);
+        Assert.NotNull(stored);
+        Assert.Equal(FolderType.RecordingTracks, stored!.FolderType);
+        Assert.Equal(FileStatus.PendingScan, stored.Status);
+        Assert.Null(stored.FolderId);
+        Assert.Contains("/recording-tracks/", stored.ObjectKey, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Redelivery_of_an_already_registered_file_is_a_no_op()
     {

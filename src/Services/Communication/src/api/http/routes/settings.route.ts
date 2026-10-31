@@ -50,6 +50,9 @@ const PatchBody = z.object({
   // F6 (null = hereda).
   meetingReminderMinutesBefore: z.number().int().min(0).nullable().optional(),
   guestsWaitingRoom: z.boolean().nullable().optional(),
+  // F7 (null = hereda): vocabulario del transcript y notas de voz transcritas.
+  transcriptPrompt: z.string().max(1000).nullable().optional(),
+  voiceNoteTranscriptEnabled: z.boolean().nullable().optional(),
 });
 
 export async function registerSettingsRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
