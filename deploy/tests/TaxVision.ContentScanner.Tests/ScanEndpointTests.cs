@@ -48,6 +48,28 @@ public sealed class ScanEndpointTests : IClassFixture<ScanEndpointTests.Factory>
     }
 
     [Fact]
+    public async Task An_audio_only_webm_has_nothing_visual_and_is_not_sent_to_review()
+    {
+        _factory.Extractor.HasVideo = false;
+        var callsBefore = _factory.Extractor.ExtractCalls;
+        try
+        {
+            var response = await Client().PostAsync("/v1/scan", Body("video/webm"));
+
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<ScanResult>();
+            Assert.Equal("audio", result!.Kind);
+            Assert.Equal(0, result.Frames);
+            Assert.Equal(0f, result.Nsfw);
+            Assert.Equal(callsBefore, _factory.Extractor.ExtractCalls);
+        }
+        finally
+        {
+            _factory.Extractor.HasVideo = true;
+        }
+    }
+
+    [Fact]
     public async Task Undecodable_content_returns_422()
     {
         _factory.Extractor.Fail = true;
@@ -102,6 +124,8 @@ public sealed class ScanEndpointTests : IClassFixture<ScanEndpointTests.Factory>
     {
         public int Frames { get; set; } = 1;
         public bool Fail { get; set; }
+        public bool HasVideo { get; set; } = true;
+        public int ExtractCalls { get; private set; }
         public FrameSampling? LastSampling { get; private set; }
 
         public Task<IReadOnlyList<byte[]>> ExtractAsync(
@@ -112,11 +136,14 @@ public sealed class ScanEndpointTests : IClassFixture<ScanEndpointTests.Factory>
         )
         {
             LastSampling = sampling;
+            ExtractCalls++;
             if (Fail)
                 throw new UndecodableMediaException("broken");
             IReadOnlyList<byte[]> frames = Enumerable.Range(0, Frames).Select(_ => new byte[3]).ToList();
             return Task.FromResult(frames);
         }
+
+        public Task<bool> HasVideoStreamAsync(string path, CancellationToken ct) => Task.FromResult(HasVideo);
     }
 
     public sealed class FakeClassifier : INsfwClassifier

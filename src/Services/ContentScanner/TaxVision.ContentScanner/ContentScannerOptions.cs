@@ -35,6 +35,10 @@ public sealed class ContentScannerOptions
     [Required]
     public string FfmpegPath { get; set; } = string.Empty;
 
+    /// <summary>ffprobe: dice si un video trae pista de imagen (una nota de voz `.webm` no la trae).</summary>
+    [Required]
+    public string FfprobePath { get; set; } = string.Empty;
+
     [Range(5, 600)]
     public int FfmpegTimeoutSeconds { get; set; }
 
