@@ -48,10 +48,13 @@ public sealed class HttpContentClassifierTests
     {
         var calls = 0;
         var handler = new StubHandler(_ =>
-            ++calls < 3 ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) : Json("""{"frames":1,"nsfw":0.1}""")
+            ++calls < 3
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : Json("""{"frames":1,"nsfw":0.1}""")
         );
 
-        var result = await Create(handler).ClassifyAsync(new MemoryStream([7, 8]), "image/png", Sampling, CancellationToken.None);
+        var result = await Create(handler)
+            .ClassifyAsync(new MemoryStream([7, 8]), "image/png", Sampling, CancellationToken.None);
 
         Assert.Equal(0.1, result.SexualScore, 3);
         Assert.Equal(3, handler.Requests.Count);

@@ -284,6 +284,21 @@ export const MeetingChatSendPayloadSchema = z.object({
 });
 export type MeetingChatSendPayload = z.infer<typeof MeetingChatSendPayloadSchema>;
 
+/** F11: adjunto del chat de la sala (metadata o URL); la autorización es la misma que en el HTTP del chat. */
+export const MeetingChatAttachmentPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  fileId: z.string().uuid(),
+});
+export type MeetingChatAttachmentPayload = z.infer<typeof MeetingChatAttachmentPayloadSchema>;
+
+/** F11: página del historial del chat de la sala (misma regla que la ficha del meeting, D-01). */
+export const MeetingChatHistoryPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  take: z.number().int().min(1).max(100).default(50),
+  before: z.string().datetime().optional(),
+});
+export type MeetingChatHistoryPayload = z.infer<typeof MeetingChatHistoryPayloadSchema>;
+
 export const MeetingChatEditPayloadSchema = z.object({
   clientKey: z.string().min(1).max(128),
   meetingId: z.string().uuid(),
@@ -590,6 +605,11 @@ export const MeetingSocketEvents = {
   ChatEdit: 'meeting.chat.edit',
   ChatDelete: 'meeting.chat.delete',
   ChatMarkRead: 'meeting.chat.mark_read',
+  // F11: metadata y URL de un adjunto del chat de la sala por el socket (el invitado no tiene JWT para el HTTP).
+  ChatAttachmentMeta: 'meeting.chat.attachment.meta',
+  ChatAttachmentDownloadUrl: 'meeting.chat.attachment.download_url',
+  // F11: historial del chat de la sala por el socket (el invitado no tiene JWT para el HTTP).
+  ChatHistory: 'meeting.chat.history',
   // s -> c
   Snapshot: 'meeting.snapshot',
   ParticipantChanged: 'meeting.participant.changed',

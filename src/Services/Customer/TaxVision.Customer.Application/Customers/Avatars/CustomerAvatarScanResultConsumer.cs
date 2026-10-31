@@ -154,7 +154,14 @@ public static class CustomerAvatarScanResultConsumer
         CancellationToken ct
     ) =>
         ModerateAsync(
-            new ScanFailure(msg.TenantId, msg.FileId, msg.OwnerType, msg.OwnerId, msg.FolderType, "is under content review"),
+            new ScanFailure(
+                msg.TenantId,
+                msg.FileId,
+                msg.OwnerType,
+                msg.OwnerId,
+                msg.FolderType,
+                "is under content review"
+            ),
             msg.CorrelationId,
             msg.EventId,
             (customer, fileId) => customer.HoldPendingProfilePictureForReview(fileId),

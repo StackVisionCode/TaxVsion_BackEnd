@@ -123,8 +123,11 @@ public sealed class SubmitClientDocumentHandlerTests
         public Task<RemoteFileScanStatus> GetStatusAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             Task.FromResult(status);
 
-        public Task<RemoteFileMetadata> GetFileMetadataAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
-            Task.FromResult(RemoteFileMetadata.Unknown);
+        public Task<RemoteFileMetadata> GetFileMetadataAsync(
+            Guid tenantId,
+            Guid fileId,
+            CancellationToken ct = default
+        ) => Task.FromResult(RemoteFileMetadata.Unknown);
     }
 
     private static ClientRequest NewRequest(Guid customerId) =>

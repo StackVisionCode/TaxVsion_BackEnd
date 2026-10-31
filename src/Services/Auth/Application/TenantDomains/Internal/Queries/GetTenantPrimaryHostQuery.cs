@@ -52,6 +52,8 @@ public static class GetTenantPrimaryHostHandler
             ? Result.Failure<TenantPrimaryHostResponse>(
                 new Error("TenantDomain.NoPrimaryHost", "The tenant has no active platform subdomain.")
             )
-            : Result.Success(new TenantPrimaryHostResponse(platform.Current.TenantHost(primary.SubdomainSlug), timeZoneId));
+            : Result.Success(
+                new TenantPrimaryHostResponse(platform.Current.TenantHost(primary.SubdomainSlug), timeZoneId)
+            );
     }
 }

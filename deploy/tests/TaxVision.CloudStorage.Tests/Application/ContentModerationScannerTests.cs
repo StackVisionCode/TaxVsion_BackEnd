@@ -85,7 +85,11 @@ public sealed class ContentModerationScannerTests
         private readonly ContentModerationScanner _scanner;
 
         public Fixture(ContentModerationSettings? settings = null)
-            : this(ContentModerationPolicy.Create(settings ?? ContentModerationPolicyTests.Strict(), Guid.NewGuid(), DateTime.UtcNow).Value) { }
+            : this(
+                ContentModerationPolicy
+                    .Create(settings ?? ContentModerationPolicyTests.Strict(), Guid.NewGuid(), DateTime.UtcNow)
+                    .Value
+            ) { }
 
         private Fixture(ContentModerationPolicy? policy)
         {

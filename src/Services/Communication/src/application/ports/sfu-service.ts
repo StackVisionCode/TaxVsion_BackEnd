@@ -141,9 +141,29 @@ export interface SfuRuntimeInfo {
   readonly tcpEnabled: boolean;
 }
 
+/** F10 (ADD-08 T-74): consumo de un worker de mediasoup (`getResourceUsage`, getrusage del proceso). */
+export interface SfuWorkerUsage {
+  readonly pid: number;
+  /** Puerto del WebRtcServer; null en modo de respaldo. */
+  readonly port: number | null;
+  readonly rooms: number;
+  readonly userCpuMs: number;
+  readonly systemCpuMs: number;
+  readonly maxRssKb: number;
+}
+
+export interface SfuUsage {
+  readonly rooms: number;
+  readonly participants: number;
+  readonly workers: readonly SfuWorkerUsage[];
+}
+
 export interface SfuService {
   start(): Promise<void>;
   stop(): Promise<void>;
+
+  /** F10: salas, participantes y consumo por worker de este proceso (sin ids de reunión ni usuarios). */
+  usage(): Promise<SfuUsage>;
 
   /** Registra (o reemplaza) el observador de transports. Debe llamarse antes de crear rooms. */
   setObserver(observer: SfuObserver | null): void;

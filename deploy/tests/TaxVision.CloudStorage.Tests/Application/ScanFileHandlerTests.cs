@@ -92,7 +92,15 @@ public sealed class ScanFileHandlerTests
         Assert.Equal(FileStatus.PendingReview, fixture.File.Status);
         Assert.Equal(Sha256, fixture.File.ChecksumSha256);
         Assert.False(fixture.File.IsLegalHeld);
-        Assert.Contains((fixture.Options.TempBucket, fixture.File.ObjectKey, fixture.Options.QuarantineBucket, fixture.File.ObjectKey), fixture.Storage.Copied);
+        Assert.Contains(
+            (
+                fixture.Options.TempBucket,
+                fixture.File.ObjectKey,
+                fixture.Options.QuarantineBucket,
+                fixture.File.ObjectKey
+            ),
+            fixture.Storage.Copied
+        );
         var pending = Assert.Single(fixture.Bus.Published.OfType<FilePendingReviewIntegrationEvent>());
         Assert.Equal(fixture.File.CreatedBy, pending.CreatedBy);
         Assert.Equal("Customer", pending.OwnerType);

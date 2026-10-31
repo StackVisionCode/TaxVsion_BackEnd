@@ -54,7 +54,12 @@ public sealed class OnnxNsfwClassifier : INsfwClassifier, IDisposable
     }
 
     /// <summary>RGB intercalado (HWC, bytes) → tensor planar (CHW) normalizado: (x/255 − mean) / std.</summary>
-    internal static float[] Preprocess(ReadOnlySpan<byte> rgb, int size, IReadOnlyList<float> mean, IReadOnlyList<float> std)
+    internal static float[] Preprocess(
+        ReadOnlySpan<byte> rgb,
+        int size,
+        IReadOnlyList<float> mean,
+        IReadOnlyList<float> std
+    )
     {
         var plane = size * size;
         if (rgb.Length != plane * 3)

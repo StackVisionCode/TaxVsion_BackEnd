@@ -35,7 +35,23 @@ describe('Meeting duration (D-34/D-35)', () => {
     expect(!r.isSuccess && r.error.code).toBe('Meeting.InvalidDuration');
   });
 
-  it('start fixes the max duration and endsAtUtc from the effective value, not from the scheduled one', () => {
+  it('start cuts at the chosen duration when it is shorter than the office max (D-35 revised)', () => {
+    const { meeting, host } = scheduled({ scheduledDurationMinutes: 15 });
+    const now = new Date('2026-10-31T20:00:00Z');
+    expect(meeting.start({ hostUserId: host.userId, maxDurationMinutes: 60, now }).isSuccess).toBe(true);
+    const snap = meeting.toSnapshot();
+    expect(snap.maxDurationMinutes).toBe(15);
+    expect(snap.endsAtUtc?.getTime()).toBe(now.getTime() + 15 * MIN);
+  });
+
+  it('if the office max was lowered after scheduling, the max wins at start', () => {
+    const { meeting, host } = scheduled({ scheduledDurationMinutes: 45 });
+    const now = new Date('2026-10-31T20:00:00Z');
+    meeting.start({ hostUserId: host.userId, maxDurationMinutes: 30, now });
+    expect(meeting.toSnapshot().endsAtUtc?.getTime()).toBe(now.getTime() + 30 * MIN);
+  });
+
+  it('start never goes past the effective max (scheduled default above a lowered max)', () => {
     const { meeting, now } = live({ maxDurationMinutes: 30 });
     const snap = meeting.toSnapshot();
     expect(snap.maxDurationMinutes).toBe(30);
@@ -146,5 +162,22 @@ describe('Host succession (D-08, T-06) and eligibility (D-09)', () => {
     const userId = u();
     meeting.requestJoin({ userId, displayName: 'c', actorType: 'CustomerPortal', customerId, hasValidInvitation: false, passcodeMatch: null, now });
     expect(meeting.toSnapshot().participants.find((p) => p.userId === userId)?.customerId).toBe(customerId);
+  });
+});
+
+describe('Removed participants (F11, E-259)', () => {
+  it('someone the host removed goes to the waiting room when joining again, even without a waiting room', () => {
+    const { meeting, host, now } = live();
+    const kicked = join(meeting, 'TenantEmployee', now);
+    expect(meeting.removeParticipant({ hostUserId: host.userId, targetUserId: kicked, now }).isSuccess).toBe(true);
+    const again = meeting.requestJoin({ userId: kicked, displayName: 'TenantEmployee', actorType: 'TenantEmployee', hasValidInvitation: false, passcodeMatch: null, now });
+    expect(again.isSuccess && again.value.requiresAdmission).toBe(true);
+  });
+
+  it('someone new still joins directly when the meeting has no waiting room', () => {
+    const { meeting, now } = live();
+    const userId = randomUUID();
+    const r = meeting.requestJoin({ userId, displayName: 'New', actorType: 'TenantEmployee', hasValidInvitation: false, passcodeMatch: null, now });
+    expect(r.isSuccess && r.value.requiresAdmission).toBe(false);
   });
 });

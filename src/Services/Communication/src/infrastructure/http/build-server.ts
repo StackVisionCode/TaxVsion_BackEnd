@@ -5,7 +5,7 @@ import sensible from '@fastify/sensible';
 import { config } from '../config.js';
 import { logger } from '../logger/logger.js';
 import { CORRELATION_HEADER, normalizeCorrelationId } from '../../domain/shared/correlation.js';
-import { metricsRegistry, httpRequestsTotal, httpRequestDurationSeconds } from '../telemetry/metrics.js';
+import { metricsRegistry, httpRequestsTotal, httpRequestDurationSeconds, routeLabelOf } from '../telemetry/metrics.js';
 import { sendRateLimited } from './rate-limit-rejection.js';
 import { registerHttpErrorHandler } from './http-error-handler.js';
 import { registerHealthRoutes } from '../../api/http/routes/health.route.js';
@@ -23,6 +23,7 @@ import { registerAdminSettingsRoutes } from '../../api/http/routes/admin-setting
 import { registerPreferencesRoutes } from '../../api/http/routes/preferences.route.js';
 import { registerMediaPolicyRoutes } from '../../api/http/routes/media-policy.route.js';
 import { registerAnalyticsRoutes } from '../../api/http/routes/analytics.route.js';
+import { registerAdminAnalyticsRoutes } from '../../api/http/routes/admin-analytics.route.js';
 import type { AppContainer } from '../container.js';
 import { isAllowedOrigin } from './cors-origins.js';
 
@@ -85,7 +86,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
     (req as unknown as { metricsStartHrTime: bigint }).metricsStartHrTime = process.hrtime.bigint();
   });
   app.addHook('onResponse', async (req, reply) => {
-    const route = req.routeOptions?.url ?? req.url;
+    const route = routeLabelOf(req.routeOptions?.url);
     const status = String(reply.statusCode);
     const method = req.method;
     httpRequestsTotal.labels(method, route, status).inc();
@@ -125,6 +126,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   await registerPreferencesRoutes(app, container);
   await registerMediaPolicyRoutes(app, container);
   await registerAnalyticsRoutes(app, container);
+  await registerAdminAnalyticsRoutes(app, container, config.platformAnalytics);
 
   return app;
 }

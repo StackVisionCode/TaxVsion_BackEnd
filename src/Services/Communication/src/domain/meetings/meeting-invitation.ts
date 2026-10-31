@@ -130,8 +130,8 @@ export class MeetingInvitation {
   }
 
   /**
-   * F6 (D-48): un guest que ya consumio su unico uso puede volver a entrar mientras su participante siga
-   * dentro (gracia) o en la sala de espera: recarga de pagina, no un segundo uso. `participantStatus` =
+   * F6 (D-48) + F11: un guest que ya consumio su unico uso puede volver a entrar mientras su participante siga
+   * dentro (gracia), en la sala de espera o haya salido con Leave: es la misma persona, no un segundo uso. `participantStatus` =
    * estado actual de `guestUserId` en la reunion (null si no esta).
    */
   allowsGuestRejoin(participantStatus: string | null): boolean {
@@ -140,7 +140,9 @@ export class MeetingInvitation {
       this.state.usedAtUtc !== null &&
       this.state.revokedAtUtc === null &&
       this.state.closedAtUtc === null &&
-      (participantStatus === 'Joined' || participantStatus === 'Waiting')
+      // F11: también quien salió con Leave vuelve con su enlace mientras la reunión siga abierta; quien
+      // el host sacó (Removed) no: necesita una invitación nueva.
+      (participantStatus === 'Joined' || participantStatus === 'Waiting' || participantStatus === 'Left')
     );
   }
 

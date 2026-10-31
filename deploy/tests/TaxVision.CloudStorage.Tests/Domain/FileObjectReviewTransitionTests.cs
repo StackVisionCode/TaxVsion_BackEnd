@@ -13,11 +13,32 @@ public sealed class FileObjectReviewTransitionTests
         var now = DateTime.UtcNow;
         var key = ObjectKey.Create($"tenants/{tenant:N}/tenant/{folder.ToSegment()}/{Guid.NewGuid():N}.jpg").Value;
         var file = FileObject
-            .Register(Guid.NewGuid(), tenant, OwnerType.Tenant, null, folder, null, key, "photo.jpg", "image/jpeg", 10, Guid.NewGuid(), now, now.AddHours(1))
+            .Register(
+                Guid.NewGuid(),
+                tenant,
+                OwnerType.Tenant,
+                null,
+                folder,
+                null,
+                key,
+                "photo.jpg",
+                "image/jpeg",
+                10,
+                Guid.NewGuid(),
+                now,
+                now.AddHours(1)
+            )
             .Value;
         Assert.True(file.MarkPendingScan().IsSuccess);
         Assert.True(file.MarkScanning().IsSuccess);
-        Assert.True(file.MarkPendingReview("Possible sexual content (score 0.700).", "image/jpeg", ChecksumSha256.Create(Sha256).Value, now).IsSuccess);
+        Assert.True(
+            file.MarkPendingReview(
+                "Possible sexual content (score 0.700).",
+                "image/jpeg",
+                ChecksumSha256.Create(Sha256).Value,
+                now
+            ).IsSuccess
+        );
         return file;
     }
 

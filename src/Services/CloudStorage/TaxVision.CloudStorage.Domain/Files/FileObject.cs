@@ -197,12 +197,7 @@ public sealed class FileObject : TenantEntity
     }
 
     /// <summary>Guarda el checksum ya calculado: si el revisor aprueba, el archivo pasa a Available sin volver a leerlo.</summary>
-    public Result MarkPendingReview(
-        string report,
-        string detectedContentType,
-        ChecksumSha256 checksum,
-        DateTime nowUtc
-    )
+    public Result MarkPendingReview(string report, string detectedContentType, ChecksumSha256 checksum, DateTime nowUtc)
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);

@@ -57,6 +57,7 @@ export async function startMeeting(
     meetingId: cmd.meetingId,
     hostUserId: cmd.hostUserId,
     startedAtUtc: now.toISOString(),
+    strategy: snapshot.strategy,
   };
   await deps.publisher.enqueue(event);
   await recordMeetingEvent(deps, {

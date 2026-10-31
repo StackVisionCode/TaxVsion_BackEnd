@@ -90,6 +90,7 @@ function makeDeps(input: {
       },
     } as unknown as SendSupportAgentMessageDeps['settings'],
     attachmentTracking: { async register() {} } as unknown as SendSupportAgentMessageDeps['attachmentTracking'],
+    attachmentReservations: { reserve: async () => {}, consume: async () => true, purgeOlderThan: async () => 0 },
     supportTickets: {
       async findById() {
         return input.ticket;

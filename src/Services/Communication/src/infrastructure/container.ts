@@ -25,6 +25,13 @@ import {
   PrismaSettingsRepository,
 } from './persistence/prisma-settings-repository.js';
 import { PrismaAnalyticsRepository } from './persistence/prisma-analytics-repository.js';
+import { PrismaLiveConcurrencyReader } from './persistence/prisma-live-concurrency-reader.js';
+import { PrismaAttachmentUploadReservationRepository } from './persistence/prisma-attachment-upload-reservation-repository.js';
+import type { AttachmentUploadReservationRepository } from '../application/ports/attachment-upload-reservation-repository.js';
+import { RedisInstanceTelemetryStore } from './redis/redis-instance-telemetry-store.js';
+import type { InstanceTelemetryStore } from '../application/ports/instance-telemetry-store.js';
+import { AnalyticsRecorder } from '../application/services/analytics-recorder.js';
+import type { LiveConcurrencyReader } from '../application/ports/live-concurrency-reader.js';
 import {
   PrismaRecordingSessionRepository,
   PrismaRecordingConsentRepository,
@@ -195,6 +202,14 @@ export interface AppContainer {
   readonly tenantSettings: SettingsRepository;
   readonly limits: LimitsRepository;
   readonly analytics: AnalyticsRepository;
+  /** F11 (E-259): reservas de subidas de adjuntos (las exige send-message). */
+  readonly attachmentReservations: AttachmentUploadReservationRepository;
+  /** F10 (ADD-08): registra en el snapshot con la zona de la plataforma y el plan de la oficina. */
+  readonly analyticsRecorder: AnalyticsRecorder;
+  /** F10: reuniones en vivo y participantes conectados en este instante (picos y `live`). */
+  readonly liveConcurrency: LiveConcurrencyReader;
+  /** F10: latido de cada proceso (sockets y SFU) en Redis para `admin/analytics/live|infra`. */
+  readonly instanceTelemetry: InstanceTelemetryStore;
   readonly sfu: SfuService;
   /** Umbral mesh/SFU y cupo por oficina, resueltos desde la capa de configuración. */
   readonly meetingMediaPolicy: MeetingMediaPolicyProvider;
@@ -245,6 +260,8 @@ export function buildContainer(): AppContainer {
   const serviceTokens = new ServiceTokenClient();
   const limitsRepository = new PrismaLimitsRepository(prisma);
   const planCodeCache = new CachedPlanCodeReader(limitsRepository);
+  const analyticsRepository = new PrismaAnalyticsRepository(prisma);
+  const liveConcurrency = new PrismaLiveConcurrencyReader(prisma);
   const tenantModulesCache = new CachedTenantModulesReader(limitsRepository);
   const planRateLimitReader = new HttpPlanRateLimitReader(serviceTokens);
   const tenantHost = new HttpTenantHostResolver(serviceTokens);
@@ -339,7 +356,16 @@ export function buildContainer(): AppContainer {
     platform: new ConfigPlatformTenantProvider(),
     tenantSettings: tenantSettingsRepository,
     limits: limitsRepository,
-    analytics: new PrismaAnalyticsRepository(prisma),
+    analytics: analyticsRepository,
+    attachmentReservations: new PrismaAttachmentUploadReservationRepository(prisma),
+    analyticsRecorder: new AnalyticsRecorder({
+      analytics: analyticsRepository,
+      timeZone: async () => (await effectiveSettings.platform()).analyticsTimeZone,
+      planCodeOf: (tenantId) => planCodeCache.getPlanCode(tenantId),
+      live: liveConcurrency,
+    }),
+    liveConcurrency,
+    instanceTelemetry: new RedisInstanceTelemetryStore(redis),
     sfu,
     meetingMediaPolicy: new ResolverMeetingMediaPolicyProvider(effectiveSettings),
     recordingSessions,

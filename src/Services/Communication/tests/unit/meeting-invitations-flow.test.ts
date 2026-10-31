@@ -232,6 +232,7 @@ function buildHarness() {
     presence,
     recordingSessions,
     idempotency,
+    maxInvitationsPerMeeting: 3,
   };
 }
 
@@ -268,6 +269,33 @@ describe('createMeetingInvitations', () => {
     expect(result.value.invitations[0]?.joinUrl).toContain('https://manfer.taxproffice.com/meet/');
     expect(harness.publisher.events).toHaveLength(1);
     expect(harness.publisher.events[0]?.eventType).toBe('communication.meeting.invitation_created.v1');
+  });
+
+  it('F11 (E-259): no pasa del tope de invitaciones por reunión', async () => {
+    const harness = buildHarness(); // tope 3 en el arnés
+    const { meeting, host } = liveMeeting();
+    await harness.meetings.save(meeting);
+    const invite = (emails: string[]) =>
+      createMeetingInvitations(
+        { tenantId: meeting.tenantId, correlationId: u(), meetingId: meeting.id, actorUserId: host.userId, invitees: emails.map((email) => ({ kind: 'External' as const, email })) },
+        harness,
+      );
+    expect((await invite(['a@x.com', 'b@x.com'])).isSuccess).toBe(true);
+    const over = await invite(['c@x.com', 'd@x.com']);
+    expect(over.isSuccess ? 'ok' : over.error.code).toBe('Meeting.Invitation.LimitReached');
+    expect((await harness.meetings.listInvitationsByMeeting(meeting.tenantId, meeting.id)).length).toBe(2);
+  });
+
+  it('F11 (E-259): sin invitados externos permitidos no se crea su enlace', async () => {
+    const harness = { ...buildHarness(), effectiveSettings: new FakeEffectiveSettingsResolver({ guestsAllowed: false }) };
+    const { meeting, host } = liveMeeting();
+    await harness.meetings.save(meeting);
+    const result = await createMeetingInvitations(
+      { tenantId: meeting.tenantId, correlationId: u(), meetingId: meeting.id, actorUserId: host.userId, invitees: [{ kind: 'External', email: 'x@x.com' }] },
+      harness,
+    );
+    expect(result.isSuccess ? 'ok' : result.error.code).toBe('Meeting.GuestsNotAllowed');
+    expect(harness.publisher.events).toHaveLength(0);
   });
 
   it('rejects when actor is not host/cohost', async () => {
@@ -494,7 +522,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     if (afterJoin.isSuccess) expect(afterJoin.value.invitations[0]?.usedAt).not.toBeNull();
   });
 
-  it('a second join attempt with the same invitationId re-joins while the guest is still inside and fails once it left (D-48)', async () => {
+  it('the same guest re-joins with its link while inside or after Leave (D-48 + F11), but not once the host removed it', async () => {
     const harness = buildHarness();
     const { meeting, host } = liveMeeting();
     await harness.meetings.save(meeting);
@@ -542,8 +570,27 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
       },
       harness,
     );
-    expect(third.isSuccess).toBe(false);
-    if (!third.isSuccess) expect(third.error.code).toBe('Meeting.Invitation.AlreadyUsed');
+    // F11: salió con Leave y vuelve con su mismo enlace (botón "Rejoin" o recarga).
+    expect(third.isSuccess).toBe(true);
+
+    const again = await harness.meetings.findById(meeting.tenantId, meeting.id);
+    again!.admit({ hostUserId: host.userId, targetUserId: guestUserId });
+    again!.removeParticipant({ hostUserId: host.userId, targetUserId: guestUserId });
+    await harness.meetings.save(again!);
+    const fourth = await joinMeeting(
+      {
+        tenantId: meeting.tenantId,
+        correlationId: u(),
+        meetingId: meeting.id,
+        user: { userId: guestUserId, displayName: 'Invitado', actorType: 'Guest' },
+        guestInvitationId: resolved.value.invitationId,
+      },
+      harness,
+    );
+    expect(fourth.isSuccess).toBe(false);
+    if (!fourth.isSuccess) expect(fourth.error.code).toBe('Meeting.Invitation.AlreadyUsed');
+    const relink = await resolveInvitationToken({ token }, harness);
+    expect(relink.isSuccess).toBe(false);
   });
 
   it('a revoked invitation is rejected with the same generic error as not-found (anti-enumeration)', async () => {

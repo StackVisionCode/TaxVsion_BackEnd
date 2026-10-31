@@ -13,24 +13,30 @@ processors:
   batch:
     timeout: 5s
 
+# F10 (D-59): el collector no depende de ningun backend encendido.
+# - Metricas: exporter Prometheus en modo pull (:9464). Si Prometheus esta apagado nadie lo lee y
+#   no hay reintentos ni ruido; al encender el perfil `observability` lo raspa directamente.
+# - Trazas y logs: `nop` (descarte explicito, sin errores de conexion). Para enviarlos a Tempo/Loki,
+#   descomentar esos servicios en docker-compose.yml y cambiar los pipelines a los exporters de abajo.
 exporters:
   prometheus:
     endpoint: 0.0.0.0:9464
-  otlp_grpc/tempo:
-    endpoint: tempo:4317
-    tls:
-      insecure: true
-  otlp_http/loki:
-    endpoint: http://loki:3100/otlp
-    tls:
-      insecure: true
+  nop:
+  # otlp_grpc/tempo:
+  #   endpoint: tempo:4317
+  #   tls:
+  #     insecure: true
+  # otlp_http/loki:
+  #   endpoint: http://loki:3100/otlp
+  #   tls:
+  #     insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp_grpc/tempo]
+      exporters: [nop]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
@@ -38,4 +44,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp_http/loki]
+      exporters: [nop]

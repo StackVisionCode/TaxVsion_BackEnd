@@ -21,6 +21,7 @@ export class PrismaUserCommunicationPreferencesRepository implements UserCommuni
       autoGainControl: row.AutoGainControl,
       joinMuted: row.JoinMuted,
       joinCameraOff: row.JoinCameraOff,
+      autoPictureInPicture: row.AutoPictureInPicture,
       updatedAtUtc: row.UpdatedAtUtc,
     });
   }
@@ -36,6 +37,7 @@ export class PrismaUserCommunicationPreferencesRepository implements UserCommuni
       AutoGainControl: s.autoGainControl,
       JoinMuted: s.joinMuted,
       JoinCameraOff: s.joinCameraOff,
+      AutoPictureInPicture: s.autoPictureInPicture,
     };
     await this.prisma.userCommunicationPreferences.upsert({
       where: { TenantId_UserId: { TenantId: s.tenantId, UserId: s.userId } },

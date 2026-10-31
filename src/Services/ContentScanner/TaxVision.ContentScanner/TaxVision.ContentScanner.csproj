@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -16,5 +15,4 @@
   <ItemGroup>
     <InternalsVisibleTo Include="TaxVision.ContentScanner.Tests" />
   </ItemGroup>
-
 </Project>

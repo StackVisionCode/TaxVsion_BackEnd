@@ -49,7 +49,12 @@ public sealed class ScanService(
                 frames.Count,
                 watch.ElapsedMilliseconds
             );
-            return new ScanResult(kind == MediaKind.Video ? "video" : "image", frames.Count, worst, watch.ElapsedMilliseconds);
+            return new ScanResult(
+                kind == MediaKind.Video ? "video" : "image",
+                frames.Count,
+                worst,
+                watch.ElapsedMilliseconds
+            );
         }
         finally
         {

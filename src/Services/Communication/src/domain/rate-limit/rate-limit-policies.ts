@@ -35,6 +35,8 @@ export const CommunicationRateLimitPolicyNames = {
   MeetingChatSend: 'communication.o.meeting_chat_send',
   // F8a (D-15): adjuntos del chat de la sala por minuto (el tope sale de la configuración).
   MeetingChatAttachment: 'communication.o.meeting_chat_attachment',
+  // F11 (E-259): invitaciones por persona (cada una puede ser un email a cualquier dirección).
+  MeetingInvitationsCreate: 'communication.o.meeting_invitations_create',
   MeetingJoinByToken: 'communication.d.meeting_join_by_token',
   MeetingJoinByCode: 'communication.d.meeting_join_by_code',
 } as const;

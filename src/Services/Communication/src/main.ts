@@ -1,4 +1,5 @@
 import { startTelemetry, shutdownTelemetry } from './infrastructure/telemetry/telemetry.js';
+import { startInstanceHeartbeat } from './infrastructure/telemetry/instance-heartbeat.js';
 // Telemetria PRIMERO — auto-instrumentaciones deben cargarse antes de importar Fastify/Prisma.
 startTelemetry();
 
@@ -191,7 +192,14 @@ async function main(): Promise<void> {
       settings: container.tenantSettings,
       lock: container.distributedLock,
       effectiveSettings: container.effectiveSettings,
+      analytics: container.analytics,
     },
+  );
+  // F10 (ADD-08 T-74): latido del proceso en Redis (sockets y SFU) para admin/analytics/live|infra.
+  // El intervalo no retiene el proceso al apagar; la clave caduca sola (TTL = 3 latidos).
+  startInstanceHeartbeat(
+    { intervalSeconds: config.platformAnalytics.heartbeatSeconds },
+    { store: container.instanceTelemetry, sfu: container.sfu },
   );
   const recordingConsentTimeout = startRecordingConsentTimeoutScheduler(
     { intervalSeconds: 10 },
@@ -401,13 +409,18 @@ async function main(): Promise<void> {
   bindSupportConsumers(consumers.register.bind(consumers), {
     supportTickets: container.supportTickets,
     analytics: container.analytics,
+    analyticsDay: (iso) => container.analyticsRecorder.day(iso),
     notifications: container.notifications,
     userPermissions: container.userPermissions,
     emitter,
     inAppSource: config.inAppSource.support,
     conversations: container.conversations,
   });
-  bindAnalyticsConsumers(consumers.register.bind(consumers), { analytics: container.analytics });
+  // F10: proyecciones — conviven con el handler principal del mismo evento (grabaciones, transcripts…).
+  bindAnalyticsConsumers(consumers.registerProjection.bind(consumers), {
+    analytics: container.analytics,
+    recorder: container.analyticsRecorder,
+  });
   bindTranscriptConsumers(consumers.register.bind(consumers), {
     calls: container.calls,
     meetings: container.meetings,

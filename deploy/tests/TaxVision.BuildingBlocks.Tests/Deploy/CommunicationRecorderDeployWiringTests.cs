@@ -100,7 +100,11 @@ public sealed class CommunicationRecorderDeployWiringTests
         );
         Assert.Contains("RECORDER_PORT: \"5360\"", recorder, StringComparison.Ordinal);
         // Fotos del slate: el recorder arma la URL con su config; la petición solo trae el fileId.
-        Assert.Contains("RECORDER_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080", recorder, StringComparison.Ordinal);
+        Assert.Contains(
+            "RECORDER_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080",
+            recorder,
+            StringComparison.Ordinal
+        );
         // El recorder solo acepta el JWT de servicio que Communication ya usa.
         Assert.Contains(
             "RECORDER_ALLOWED_CLIENT_IDS: ${COMMUNICATION_SERVICE_AUTH_CLIENT_ID:-communication-worker}",

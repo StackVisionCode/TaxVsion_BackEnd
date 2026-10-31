@@ -13,8 +13,37 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "GatedModule", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "IsReserved", "MinPlanTier", "Module", "PlatformOnly" },
-                values: new object[] { new Guid("a1000000-0000-0000-0000-000000000217"), "PlatformAdmin", "cloudstorage.moderation.manage", "Review flagged uploads and manage the content moderation policy", "documents", false, false, false, false, 0, "cloudstorage", true });
+                columns: new[]
+                {
+                    "Id",
+                    "AllowedActorTypes",
+                    "Code",
+                    "Description",
+                    "GatedModule",
+                    "IsAssignableByTenant",
+                    "IsCustomerPortal",
+                    "IsDangerous",
+                    "IsReserved",
+                    "MinPlanTier",
+                    "Module",
+                    "PlatformOnly",
+                },
+                values: new object[]
+                {
+                    new Guid("a1000000-0000-0000-0000-000000000217"),
+                    "PlatformAdmin",
+                    "cloudstorage.moderation.manage",
+                    "Review flagged uploads and manage the content moderation policy",
+                    "documents",
+                    false,
+                    false,
+                    false,
+                    false,
+                    0,
+                    "cloudstorage",
+                    true,
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -23,7 +52,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000217"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000217")
+            );
         }
     }
 }

@@ -232,7 +232,10 @@ export class Meeting {
       return Result.fail(makeError('Meeting.Full', 'Meeting is full.'));
     }
 
-    const requiresAdmission = !isHost && (this.state.requireWaitingRoom || input.forceWaitingRoom === true);
+    // F11 (E-259): a quien el host sacó o rechazó no le basta con volver a pedir entrar: espera a que el
+    // host lo admita de nuevo (antes volvía directo si la reunión no estaba bloqueada ni con sala de espera).
+    const removedByHost = existing?.status === ParticipantStatus.Removed;
+    const requiresAdmission = !isHost && (this.state.requireWaitingRoom || input.forceWaitingRoom === true || removedByHost);
     const role: MeetingRole = isHost ? MeetingRole.Host : MeetingRole.Attendee;
     const joinOrder = this.nextJoinOrder();
 
@@ -286,7 +289,7 @@ export class Meeting {
 
   start(input: {
     hostUserId: string;
-    /** Máximo efectivo de la oficina al arrancar (resolver). Las reuniones ya Live conservan el suyo. */
+    /** Máximo efectivo de la oficina al arrancar (resolver); el corte es la duración elegida si es menor. */
     maxDurationMinutes?: number;
     audioDefault?: boolean;
     videoDefault?: boolean;
@@ -299,7 +302,10 @@ export class Meeting {
       return Result.fail(makeError('Meeting.HostOnly', 'Only the host can start the meeting.'));
     }
     const now = input.now ?? new Date();
-    const maxDurationMinutes = input.maxDurationMinutes ?? DEFAULT_MEETING_DURATION_POLICY.maxDurationMinutes;
+    // D-35 (revisada 2026-10-31): la duración elegida al crear es la que corta, dentro del máximo de la oficina.
+    const ceiling = input.maxDurationMinutes ?? DEFAULT_MEETING_DURATION_POLICY.maxDurationMinutes;
+    const scheduled = this.state.scheduledDurationMinutes;
+    const maxDurationMinutes = scheduled !== null && scheduled > 0 ? Math.min(scheduled, ceiling) : ceiling;
     // El host se re-crea como Joined — el placeholder Scheduled deja al host en
     // Left para no contarlo en `activeJoined`. Al iniciar, el host cuenta como
     // primer joined y ocupa un slot del maxParticipants.
@@ -323,7 +329,6 @@ export class Meeting {
       status: MeetingStatus.Live,
       startedAtUtc: now,
       maxDurationMinutes,
-      // D-35: el corte es siempre el máximo; la duración programada solo informa.
       endsAtUtc: new Date(now.getTime() + maxDurationMinutes * 60_000),
       lastDurationWarningSeconds: null,
       reminderSentAtUtc: null,

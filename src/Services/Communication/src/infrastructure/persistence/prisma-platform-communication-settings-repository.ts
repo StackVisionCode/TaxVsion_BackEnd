@@ -123,6 +123,11 @@ export class PrismaPlatformCommunicationSettingsRepository implements PlatformCo
       VoiceNoteTranscriptMaxSeconds: s.voiceNoteTranscriptMaxSeconds,
       TranscriptWorkerTimeoutFactorPct: s.transcriptWorkerTimeoutFactorPct,
       RecordingAvailabilityTimeoutMinutes: s.recordingAvailabilityTimeoutMinutes,
+      AnalyticsTimeZone: s.analyticsTimeZone,
+      AnalyticsRetentionDays: s.analyticsRetentionDays,
+      CallsRetentionDays: s.callsRetentionDays,
+      MeetingsRetentionDays: s.meetingsRetentionDays,
+      InvitationsRetentionDays: s.invitationsRetentionDays,
       UpdatedByUserId: s.updatedByUserId,
     };
     await this.prisma.platformCommunicationSettings.upsert({
@@ -230,6 +235,11 @@ function toSnapshot(row: {
   VoiceNoteTranscriptMaxSeconds: number;
   TranscriptWorkerTimeoutFactorPct: number;
   RecordingAvailabilityTimeoutMinutes: number;
+  AnalyticsTimeZone: string;
+  AnalyticsRetentionDays: number;
+  CallsRetentionDays: number | null;
+  MeetingsRetentionDays: number | null;
+  InvitationsRetentionDays: number | null;
   UpdatedByUserId: string | null;
   UpdatedAtUtc: Date;
 }): PlatformCommunicationSettingsSnapshot {
@@ -333,6 +343,11 @@ function toSnapshot(row: {
     voiceNoteTranscriptMaxSeconds: row.VoiceNoteTranscriptMaxSeconds,
     transcriptWorkerTimeoutFactorPct: row.TranscriptWorkerTimeoutFactorPct,
     recordingAvailabilityTimeoutMinutes: row.RecordingAvailabilityTimeoutMinutes,
+    analyticsTimeZone: row.AnalyticsTimeZone,
+    analyticsRetentionDays: row.AnalyticsRetentionDays,
+    callsRetentionDays: row.CallsRetentionDays,
+    meetingsRetentionDays: row.MeetingsRetentionDays,
+    invitationsRetentionDays: row.InvitationsRetentionDays,
     updatedByUserId: row.UpdatedByUserId,
     updatedAtUtc: row.UpdatedAtUtc,
   };

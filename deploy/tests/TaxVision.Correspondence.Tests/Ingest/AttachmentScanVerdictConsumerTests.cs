@@ -48,7 +48,13 @@ public sealed class AttachmentScanVerdictConsumerTests
         var attachment = email.Attachments.First();
 
         await AttachmentScanVerdictConsumer.Handle(
-            new FilePendingReviewIntegrationEvent { TenantId = Tenant, FileId = fileId, ObjectKey = "k", Reason = "x" },
+            new FilePendingReviewIntegrationEvent
+            {
+                TenantId = Tenant,
+                FileId = fileId,
+                ObjectKey = "k",
+                Reason = "x",
+            },
             incoming,
             new FakeUnitOfWork(),
             NullLogger<IncomingEmailAttachment>.Instance,
@@ -68,11 +74,20 @@ public sealed class AttachmentScanVerdictConsumerTests
             CreatedBy = Guid.NewGuid(),
             FolderType = "Documents",
         };
-        await AttachmentScanVerdictConsumer.Handle(available, incoming, new FakeUnitOfWork(), NullLogger<IncomingEmailAttachment>.Instance, CancellationToken.None);
+        await AttachmentScanVerdictConsumer.Handle(
+            available,
+            incoming,
+            new FakeUnitOfWork(),
+            NullLogger<IncomingEmailAttachment>.Instance,
+            CancellationToken.None
+        );
         Assert.Equal(AttachmentDownloadStatus.UnderReview, attachment.DownloadStatus);
 
         await AttachmentScanVerdictConsumer.Handle(
-            available with { FolderType = "EmailIncoming" },
+            available with
+            {
+                FolderType = "EmailIncoming",
+            },
             incoming,
             new FakeUnitOfWork(),
             NullLogger<IncomingEmailAttachment>.Instance,

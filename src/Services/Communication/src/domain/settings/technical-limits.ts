@@ -112,6 +112,9 @@ export const TECHNICAL_LIMITS = {
   transcriptWorkerTimeoutFactorPct: { min: 100, max: 1000, fallback: 150 },
   // F7: compuesto subido sin rastro en CloudStorage tras este plazo (cuota o política lo descartan) → Failed.
   recordingAvailabilityTimeoutMinutes: { min: 5, max: 240, fallback: 60 },
+  // F10 (ADD-08 T-73): snapshot de analítica; y el histórico de calls/meetings/invitaciones (null = no se purga).
+  analyticsRetentionDays: { min: 30, max: 3650, fallback: 730 },
+  historyRetentionDays: { min: 30, max: 3650, fallback: 365 },
 } as const satisfies Record<string, TechnicalRange>;
 
 export type TechnicalLimitKey = keyof typeof TECHNICAL_LIMITS;
@@ -172,4 +175,15 @@ export function clampToTechnical(key: TechnicalLimitKey, value: number | null | 
 export function describeTechnicalRange(key: TechnicalLimitKey): string {
   const range = TECHNICAL_LIMITS[key];
   return `${range.min}..${range.max}`;
+}
+
+/** F10: zona horaria IANA válida para este runtime (la de analítica agrupa los días). */
+export function isIanaTimeZone(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
 }

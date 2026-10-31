@@ -64,21 +64,25 @@ internal static class FormRequestApplicationSupport
                 continue;
             var path = $"/values/{attachment.ComponentId}";
             if (attachment.Status == FormAttachmentStatus.Pending)
-                issues.Add(new(
-                    "answer.attachment_pending",
-                    path,
-                    attachment.ComponentId,
-                    attachment.RowId,
-                    "The attachment is still being processed."
-                ));
+                issues.Add(
+                    new(
+                        "answer.attachment_pending",
+                        path,
+                        attachment.ComponentId,
+                        attachment.RowId,
+                        "The attachment is still being processed."
+                    )
+                );
             else if (attachment.Status == FormAttachmentStatus.UnderReview)
-                issues.Add(new(
-                    "answer.attachment_under_review",
-                    path,
-                    attachment.ComponentId,
-                    attachment.RowId,
-                    "The attachment is under review against our content policy."
-                ));
+                issues.Add(
+                    new(
+                        "answer.attachment_under_review",
+                        path,
+                        attachment.ComponentId,
+                        attachment.RowId,
+                        "The attachment is under review against our content policy."
+                    )
+                );
         }
     }
 

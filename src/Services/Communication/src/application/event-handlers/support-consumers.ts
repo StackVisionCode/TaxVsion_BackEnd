@@ -21,6 +21,8 @@ export function bindSupportConsumers(
     emitter: RealtimeEmitter;
     supportTickets: SupportTicketRepository;
     analytics: AnalyticsRepository;
+    /** F10: día del snapshot en la zona de la plataforma (sin él, UTC). */
+    analyticsDay?: (occurredOnUtc: string) => Promise<string>;
     notifications: NotificationRepository;
     userPermissions: UserPermissionsProjectionRepository;
     inAppSource: 'Communication' | 'Notification';
@@ -39,7 +41,7 @@ export function bindSupportConsumers(
     // Analytics projection from the same lifecycle event.
     await deps.analytics.incrementCounters({
       tenantId: env.tenantId,
-      day: dayOf(env.occurredOnUtc),
+      day: deps.analyticsDay ? await deps.analyticsDay(env.occurredOnUtc) : dayOf(env.occurredOnUtc),
       increments: {
         supportTicketsOpened: 1,
       },
@@ -87,7 +89,7 @@ export function bindSupportConsumers(
 
     await deps.analytics.incrementCounters({
       tenantId: env.tenantId,
-      day: dayOf(env.occurredOnUtc),
+      day: deps.analyticsDay ? await deps.analyticsDay(env.occurredOnUtc) : dayOf(env.occurredOnUtc),
       increments: {
         supportTicketsResolved: 1,
       },

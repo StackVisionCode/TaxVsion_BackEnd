@@ -51,7 +51,10 @@ public sealed class HttpContentClassifier(HttpClient http, IOptions<ContentScann
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
             if (attempt > 1)
-                await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(0, settings.RetryDelayMilliseconds) * (attempt - 1)), ct);
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(Math.Max(0, settings.RetryDelayMilliseconds) * (attempt - 1)),
+                    ct
+                );
             content.Position = start;
             try
             {

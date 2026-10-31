@@ -15,26 +15,24 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 name: "AvatarModerationFileId",
                 table: "Users",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "AvatarModerationState",
                 table: "Users",
                 type: "nvarchar(16)",
                 maxLength: 16,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "AvatarModerationFileId",
-                table: "Users");
+            migrationBuilder.DropColumn(name: "AvatarModerationFileId", table: "Users");
 
-            migrationBuilder.DropColumn(
-                name: "AvatarModerationState",
-                table: "Users");
+            migrationBuilder.DropColumn(name: "AvatarModerationState", table: "Users");
         }
     }
 }

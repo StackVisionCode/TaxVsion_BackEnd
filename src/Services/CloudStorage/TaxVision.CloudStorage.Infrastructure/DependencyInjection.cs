@@ -195,8 +195,12 @@ public static class DependencyInjection
         services.AddScoped<IContentModerationPolicyRepository, ContentModerationPolicyRepository>();
         services.AddScoped<IContentModerationPolicyAuditRepository, ContentModerationPolicyAuditRepository>();
         services.AddScoped<IContentReviewQueue, ContentReviewQueue>();
-        services.AddHttpClient<IContentClassifier, HttpContentClassifier>("content-scanner", (sp, client) =>
-            client.Timeout = TimeSpan.FromSeconds(Math.Max(1, sp.GetRequiredService<IOptions<ContentScannerOptions>>().Value.TimeoutSeconds))
+        services.AddHttpClient<IContentClassifier, HttpContentClassifier>(
+            "content-scanner",
+            (sp, client) =>
+                client.Timeout = TimeSpan.FromSeconds(
+                    Math.Max(1, sp.GetRequiredService<IOptions<ContentScannerOptions>>().Value.TimeoutSeconds)
+                )
         );
         services.AddSingleton<IFileContentInspector, FileContentInspector>();
         services.AddSingleton<IShareLinkPasswordHasher, Pbkdf2ShareLinkPasswordHasher>();

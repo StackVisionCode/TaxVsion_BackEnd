@@ -17,7 +17,7 @@ import type { MeetingInviteeKind } from '../../../domain/meetings/meeting-invita
 const IdParams = z.object({ id: z.string().uuid() });
 const InvitationIdParams = z.object({ id: z.string().uuid(), invitationId: z.string().uuid() });
 const ShortCodeParams = z.object({ shortCode: z.string().min(1).max(16) });
-const GuestTokenParams = z.object({ token: z.string().length(64) });
+const GuestTokenBody = z.object({ token: z.string().length(64) });
 
 const MeetingInviteeInputSchema = z.object({
   kind: z.enum(['employee', 'customer', 'external']),
@@ -67,6 +67,15 @@ export async function registerMeetingInvitationRoutes(
       const principal = request.principal!;
       const params = IdParams.parse(request.params);
       const body = CreateInvitationsBody.parse(request.body);
+      // F11 (E-259): cuota de solicitudes por persona (hasta 50 invitados cada una; el tope por reunión acota el resto).
+      const policy = CommunicationRateLimitPolicyNames.MeetingInvitationsCreate;
+      const decision = await container.httpRateLimiter.allow({
+        key: `comm:rl:${policy}:${principal.tenantId}:${principal.userId}`,
+        policy,
+        maxPerWindow: config.rateLimit.meetingInvitationsCreate.maxPerWindow,
+        windowSeconds: config.rateLimit.meetingInvitationsCreate.windowSeconds,
+      });
+      if (!decision.allowed) return sendRateLimited(reply, decision.retryAfterSeconds, policy);
 
       const result = await createMeetingInvitations(
         {
@@ -82,7 +91,7 @@ export async function registerMeetingInvitationRoutes(
             ...(invitee.name !== undefined ? { name: invitee.name } : {}),
           })),
         },
-        container,
+        { ...container, maxInvitationsPerMeeting: config.meetingInvitations.maxPerMeeting },
       );
       if (!result.isSuccess) {
         return reply.code(400).send({ code: result.error.code, message: result.error.message });
@@ -179,11 +188,13 @@ export async function registerMeetingInvitationRoutes(
   );
 
   // F6 (T-63, D-47): contexto de la pagina publica de guest del CRM. Mismo gate por token que join-by-token.
-  app.get(
-    '/communication/meetings/guest/:token/context',
+  // F11 (E-259): el token va en el cuerpo (antes en la ruta, y los logs de Communication y del Gateway
+  // guardaban la URL: quien los leyera podía entrar como el invitado).
+  app.post(
+    '/communication/meetings/guest/context',
     {
       preHandler: async (request, reply) => {
-        const params = GuestTokenParams.parse(request.params);
+        const params = GuestTokenBody.parse(request.body);
         const decision = await container.httpRateLimiter.allow({
           key: `comm:rl:${CommunicationRateLimitPolicyNames.MeetingJoinByToken}:ctx:${params.token}`,
           policy: CommunicationRateLimitPolicyNames.MeetingJoinByToken,
@@ -196,7 +207,7 @@ export async function registerMeetingInvitationRoutes(
       },
     },
     async (request, reply) => {
-      const params = GuestTokenParams.parse(request.params);
+      const params = GuestTokenBody.parse(request.body);
       const result = await getGuestMeetingContext({ token: params.token }, container);
       if (!result.isSuccess) {
         return reply

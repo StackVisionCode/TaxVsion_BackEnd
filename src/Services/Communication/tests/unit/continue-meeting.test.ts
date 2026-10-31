@@ -64,6 +64,7 @@ describe('continueMeeting (D-34)', () => {
 
     const deps = {
       ...rt.deps,
+      maxInvitationsPerMeeting: 200,
       meetings: repo as unknown as MeetingRepository,
       passcodes: { hash: async () => 'h', verify: async () => true } as unknown as PasscodeHasher,
       settings: { get: async () => ({ chatEnabled: true }) } as unknown as TenantSettingsProvider,

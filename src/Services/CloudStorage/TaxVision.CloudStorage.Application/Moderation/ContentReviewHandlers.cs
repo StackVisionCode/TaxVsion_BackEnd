@@ -182,7 +182,15 @@ public static class ApproveContentReviewHandler
 
         limit.Commit(file.SizeBytes);
         audit.Add(
-            PreviewContentReviewFileHandler.Log(file, command.ActorId, "moderation.review", "approved", command.Audit, null, now)
+            PreviewContentReviewFileHandler.Log(
+                file,
+                command.ActorId,
+                "moderation.review",
+                "approved",
+                command.Audit,
+                null,
+                now
+            )
         );
         await bus.PublishAsync(
             new FileAvailableIntegrationEvent

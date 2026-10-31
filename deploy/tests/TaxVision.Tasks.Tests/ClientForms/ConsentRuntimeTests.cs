@@ -292,8 +292,22 @@ public sealed class ConsentRuntimeTests
         );
         fixture.Records.Add(Accepted(fixture));
         var fileId = Guid.NewGuid();
-        fixture.Request.RegisterAttachment(new FormAnswerAddress("fd_upload001", null), fileId, "id.png", "image/png", 2048, 5, 20, null, Now);
-        fixture.Request.ApplyFileVerdict(fileId, new FormFileVerdict(FormFileVerdictStatus.PendingReview, null, null, null, Now), Now);
+        fixture.Request.RegisterAttachment(
+            new FormAnswerAddress("fd_upload001", null),
+            fileId,
+            "id.png",
+            "image/png",
+            2048,
+            5,
+            20,
+            null,
+            Now
+        );
+        fixture.Request.ApplyFileVerdict(
+            fileId,
+            new FormFileVerdict(FormFileVerdictStatus.PendingReview, null, null, null, Now),
+            Now
+        );
 
         var result = await SubmitPortalFormRequestHandler.Handle(
             new SubmitPortalFormRequestCommand(fixture.Context, fixture.Request.Id, [], Now),
@@ -316,7 +330,10 @@ public sealed class ConsentRuntimeTests
         );
 
         Assert.False(result.Value.Submitted);
-        Assert.Contains(result.Value.Issues, issue => issue.Code == "answer.attachment_under_review" && issue.ComponentId == "fd_upload001");
+        Assert.Contains(
+            result.Value.Issues,
+            issue => issue.Code == "answer.attachment_under_review" && issue.ComponentId == "fd_upload001"
+        );
     }
 
     [Fact]

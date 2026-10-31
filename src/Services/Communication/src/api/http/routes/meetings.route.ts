@@ -1,3 +1,4 @@
+import { config } from '../../../infrastructure/config.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
@@ -467,7 +468,11 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
           actorUserId: principal.userId,
           actorDisplayName,
         },
-        { ...container, ...(container.emitter ? { emitter: container.emitter } : {}) },
+        {
+          ...container,
+          ...(container.emitter ? { emitter: container.emitter } : {}),
+          maxInvitationsPerMeeting: config.meetingInvitations.maxPerMeeting,
+        },
       );
       if (!result.isSuccess) {
         const status = result.error.code === 'Meeting.NotFound' ? 404 : 400;

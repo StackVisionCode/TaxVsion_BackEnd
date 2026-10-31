@@ -84,7 +84,10 @@ public sealed class ScanEndpointTests : IClassFixture<ScanEndpointTests.Factory>
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("ContentScanner:ApiKey", Key);
-            builder.UseSetting("ContentScanner:TempDirectory", Path.Combine(Path.GetTempPath(), "content-scanner-tests"));
+            builder.UseSetting(
+                "ContentScanner:TempDirectory",
+                Path.Combine(Path.GetTempPath(), "content-scanner-tests")
+            );
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IFrameExtractor>();
@@ -101,7 +104,12 @@ public sealed class ScanEndpointTests : IClassFixture<ScanEndpointTests.Factory>
         public bool Fail { get; set; }
         public FrameSampling? LastSampling { get; private set; }
 
-        public Task<IReadOnlyList<byte[]>> ExtractAsync(string path, MediaKind kind, FrameSampling sampling, CancellationToken ct)
+        public Task<IReadOnlyList<byte[]>> ExtractAsync(
+            string path,
+            MediaKind kind,
+            FrameSampling sampling,
+            CancellationToken ct
+        )
         {
             LastSampling = sampling;
             if (Fail)

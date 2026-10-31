@@ -54,7 +54,10 @@ public sealed class ContentReviewHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(FileStatus.Available, file.Status);
-        Assert.Contains((_options.QuarantineBucket, file.ObjectKey, _options.MainBucket, file.ObjectKey), _storage.Copied);
+        Assert.Contains(
+            (_options.QuarantineBucket, file.ObjectKey, _options.MainBucket, file.ObjectKey),
+            _storage.Copied
+        );
         Assert.Contains((_options.QuarantineBucket, file.ObjectKey), _storage.Deleted);
         Assert.Single(_storage.Tagged); // avatar: regla de lifecycle de versiones
         Assert.Equal(file.SizeBytes, (await _limits.GetAsync(file.TenantId, default))!.UsedBytes);
@@ -112,10 +115,30 @@ public sealed class ContentReviewHandlerTests
     public async Task Reporting_holds_once_and_audits_every_time()
     {
         var file = Seed();
-        var command = new ReportContentReviewFileCommand(file.TenantId, file.Id, Guid.NewGuid(), "CyberTipline #1", Audit);
+        var command = new ReportContentReviewFileCommand(
+            file.TenantId,
+            file.Id,
+            Guid.NewGuid(),
+            "CyberTipline #1",
+            Audit
+        );
 
-        var first = await ReportContentReviewFileHandler.Handle(command, _files, _audit, _clock, new FakeUnitOfWork(), CancellationToken.None);
-        var second = await ReportContentReviewFileHandler.Handle(command, _files, _audit, _clock, new FakeUnitOfWork(), CancellationToken.None);
+        var first = await ReportContentReviewFileHandler.Handle(
+            command,
+            _files,
+            _audit,
+            _clock,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+        var second = await ReportContentReviewFileHandler.Handle(
+            command,
+            _files,
+            _audit,
+            _clock,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
 
         Assert.True(first.Value.LegalHoldPlaced);
         Assert.False(second.Value.LegalHoldPlaced);

@@ -63,4 +63,34 @@ describe('PlatformCommunicationSettings', () => {
     expect(settings.toSnapshot().disconnectGraceSeconds).toBe(TECHNICAL_LIMITS.disconnectGraceSeconds.fallback);
     expect(settings.toSnapshot().meetingSoundsPolicy).toBe('all');
   });
+  it('F10: analytics time zone and retention — UTC/730 by default, history purge off (null)', () => {
+    const s = PlatformCommunicationSettings.defaults().toSnapshot();
+    expect([s.analyticsTimeZone, s.analyticsRetentionDays, s.callsRetentionDays, s.meetingsRetentionDays, s.invitationsRetentionDays]).toEqual([
+      'UTC',
+      730,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it('F10: rejects a non-IANA time zone and out-of-range history retention, accepts null to turn purge off', () => {
+    const s = PlatformCommunicationSettings.defaults();
+    const zone = s.update({ analyticsTimeZone: 'Mars/Olympus' }, { userId: randomUUID() });
+    expect(zone.isSuccess ? 'ok' : zone.error.code).toBe('Settings.InvalidTimeZone');
+    const tooShort = s.update({ meetingsRetentionDays: 5 }, { userId: randomUUID() });
+    expect(tooShort.isSuccess ? 'ok' : tooShort.error.code).toBe('Settings.OutOfTechnicalRange');
+    const on = s.update({ meetingsRetentionDays: 365, analyticsTimeZone: 'America/New_York' }, { userId: randomUUID() });
+    expect(on.isSuccess).toBe(true);
+    const off = s.update({ meetingsRetentionDays: null }, { userId: randomUUID() });
+    expect(off.isSuccess && off.value).toEqual([{ key: 'meetingsRetentionDays', oldValue: '365', newValue: null }]);
+  });
+
+  it('F10: rehydrate turns a corrupt history retention off instead of purging with it', () => {
+    const corrupt = { ...PlatformCommunicationSettings.defaults().toSnapshot(), callsRetentionDays: 2, analyticsTimeZone: 'nope' };
+    const { settings, corrected } = PlatformCommunicationSettings.rehydrate(corrupt);
+    expect(settings.toSnapshot().callsRetentionDays).toBeNull();
+    expect(settings.toSnapshot().analyticsTimeZone).toBe('UTC');
+    expect(corrected).toEqual(expect.arrayContaining(['callsRetentionDays', 'analyticsTimeZone']));
+  });
 });

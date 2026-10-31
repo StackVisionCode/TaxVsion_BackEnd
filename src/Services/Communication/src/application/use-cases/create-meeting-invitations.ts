@@ -80,6 +80,8 @@ export interface CreateMeetingInvitationsDeps extends MeetingEventLogDeps {
   readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'resolve'>;
   /** Opcional (best-effort): si esta cableado, empuja `meeting.invited` al room del invitado. */
   readonly emitter?: RealtimeEmitter;
+  /** F11 (E-259): tope de invitaciones por reunión (configuración). */
+  readonly maxInvitationsPerMeeting: number;
 }
 
 /**
@@ -111,6 +113,17 @@ export async function createMeetingInvitations(
 
   const now = new Date();
   const effective = await deps.effectiveSettings.resolve(command.tenantId);
+  // F11 (E-259): sin invitados externos permitidos no se crea su enlace (antes solo fallaba al usarlo).
+  if (!effective.meeting.guestsAllowed && command.invitees.some((i) => i.kind === 'External')) {
+    return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This office does not allow external guests.'));
+  }
+  // F11 (E-259): tope por reunión: cada invitación puede ser un email a cualquier dirección.
+  const existing = await deps.meetings.listInvitationsByMeeting(command.tenantId, command.meetingId);
+  if (existing.length + command.invitees.length > deps.maxInvitationsPerMeeting) {
+    return Result.fail(
+      makeError('Meeting.Invitation.LimitReached', `A meeting can have at most ${deps.maxInvitationsPerMeeting} invitations.`),
+    );
+  }
   const ttlSeconds = invitationTtlSeconds({
     now,
     scheduledForUtc: meeting.toSnapshot().scheduledForUtc,

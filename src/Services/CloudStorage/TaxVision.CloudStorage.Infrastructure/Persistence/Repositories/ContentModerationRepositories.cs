@@ -17,7 +17,11 @@ public sealed class ContentModerationPolicyAuditRepository(CloudStorageDbContext
 {
     public void Add(ContentModerationPolicyAudit entry) => db.ContentModerationPolicyAudits.Add(entry);
 
-    public async Task<IReadOnlyList<ContentModerationPolicyAudit>> ListAsync(int skip, int take, CancellationToken ct) =>
+    public async Task<IReadOnlyList<ContentModerationPolicyAudit>> ListAsync(
+        int skip,
+        int take,
+        CancellationToken ct
+    ) =>
         await db
             .ContentModerationPolicyAudits.AsNoTracking()
             .OrderByDescending(e => e.OccurredAtUtc)
@@ -30,7 +34,12 @@ public sealed class ContentModerationPolicyAuditRepository(CloudStorageDbContext
 /// <summary>Cola de revisión de plataforma: cross-tenant a propósito, IgnoreQueryFilters() intencional.</summary>
 public sealed class ContentReviewQueue(CloudStorageDbContext db) : IContentReviewQueue
 {
-    public async Task<IReadOnlyList<FileObject>> ListAsync(FileStatus status, int skip, int take, CancellationToken ct) =>
+    public async Task<IReadOnlyList<FileObject>> ListAsync(
+        FileStatus status,
+        int skip,
+        int take,
+        CancellationToken ct
+    ) =>
         await db
             .Files.IgnoreQueryFilters()
             .AsNoTracking()

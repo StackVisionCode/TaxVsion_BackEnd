@@ -22,6 +22,7 @@ export interface MediaPolicyDto {
     readonly joinMuted: boolean;
     readonly joinCameraOff: boolean;
     readonly preferAudioOnly: boolean;
+    readonly autoPictureInPicture: boolean;
     readonly audioProcessing: NonNullable<EffectiveCommunicationSettings['user']>['audioProcessing'];
   };
 }
@@ -56,6 +57,7 @@ export function toMediaPolicyDto(effective: EffectiveCommunicationSettings): Med
       joinMuted: user?.joinMuted ?? false,
       joinCameraOff: user?.joinCameraOff ?? false,
       preferAudioOnly: user?.preferAudioOnly ?? false,
+      autoPictureInPicture: user?.autoPictureInPicture ?? false,
       audioProcessing: user?.audioProcessing ?? { echoCancellation: null, noiseSuppression: null, autoGainControl: null },
     },
   };

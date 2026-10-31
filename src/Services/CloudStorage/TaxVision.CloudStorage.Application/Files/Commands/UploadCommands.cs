@@ -133,7 +133,9 @@ public static class InitiateUploadHandler
                 command.Audit.IpAddress,
                 command.Audit.UserAgent,
                 command.Audit.CorrelationId,
-                uploaderId == command.ActorId ? $"size={request.SizeBytes}" : $"size={request.SizeBytes};on-behalf-of={uploaderId}",
+                uploaderId == command.ActorId
+                    ? $"size={request.SizeBytes}"
+                    : $"size={request.SizeBytes};on-behalf-of={uploaderId}",
                 clock.UtcNow
             )
         );

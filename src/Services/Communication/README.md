@@ -142,8 +142,43 @@ Salida: HTTP en `http://localhost:5350`, Socket.IO en `ws://localhost:5350/commu
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/communication/analytics/snapshot` | Snapshot diario del tenant (mensajes, llamadas, meetings, support) |
-| `GET` | `/communication/analytics/snapshot/range` | Rango de fechas `?from=&to=` |
+Todo sale del snapshot diario `CommunicationAnalyticsSnapshot` (una fila por oficina y día), alimentado
+solo por eventos de integración; ningún reporte escanea tablas operacionales. Los días se cortan en la
+zona de la plataforma (`analyticsTimeZone`) y cada fila guarda el plan de la oficina ese día.
+
+**Oficina** (`communication.analytics.read`, el tenant del token):
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/communication/analytics/summary` | Totales del rango `?from=&to=` (YYYY-MM-DD, por defecto 30 días) |
+| `GET` | `/communication/analytics/timeline` | Filas por día del rango |
+
+**Plataforma** (F10, ADD-08; solo PlatformAdmin con `communication.platform.analytics.read`; sin UI, D-36;
+cada consulta queda en `ConfigurationAudit` con scope `AdminQuery`):
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/communication/admin/analytics/summary` | Totales de todas las oficinas y periodos `?from=&to=&groupBy=day\|week\|month&tenantId=&planCode=`; semana ISO y mes agregados en el servidor; picos = máximo de una oficina en un día; derivados (duración media, tasas de fallo, invitados) |
+| `GET` | `/communication/admin/analytics/tenants` | Una fila por oficina con su plan, totales, picos y derivados `?from=&to=&planCode=&limit=` |
+| `GET` | `/communication/admin/analytics/live` | Reuniones en vivo, participantes y sockets ahora mismo, por oficina y por proceso (latido en Redis) |
+| `GET` | `/communication/admin/analytics/infra` | Uso del SFU por proceso y worker (`getResourceUsage`: CPU, RSS), salas, workers en respaldo y enlace a Grafana si está configurado |
+
+Contadores del snapshot: mensajes y conversaciones; llamadas por tipo (audio/video/upgrade) y resultado
+(completadas, fallidas por ICE, rechazadas, canceladas, perdidas, cortadas por límite) con segundos exactos;
+reuniones agendadas/iniciadas/terminadas/canceladas/vencidas, fin por sistema, mesh vs SFU, segundos de
+reunión y de participante; participantes, invitados, reconexiones, caídas por gracia, fallos de transporte y
+reportes de calidad por nivel; grabaciones (pedidas, listas, fallidas, segundos, bytes del compuesto) y
+transcripts (listos, fallidos, segundos de audio y de proceso); invitaciones (creadas, usadas, vencidas,
+revocadas); picos de reuniones y participantes simultáneos.
+
+Retención (configuración de plataforma, `PUT /communication/admin/platform-settings`): `analyticsRetentionDays`
+(snapshot, 730 por defecto) y `callsRetentionDays` / `meetingsRetentionDays` / `invitationsRetentionDays`
+(histórico; `null` = no se purga, por defecto). La purga nunca borra una llamada o reunión que aún tenga
+grabación o transcript con archivos.
+
+Observabilidad: `/metrics` (prom-client) expone sockets, salas y participantes del SFU, fallos de transporte
+y proyecciones de analítica fallidas. Prometheus + Grafana están definidos y apagados en el perfil de compose
+`observability` (`docker compose --profile observability up -d`); la plataforma no depende de ellos.
 
 ## Socket.IO — Events
 
@@ -226,6 +261,19 @@ Namespace: `/communication/socket.io`. Autenticación vía `handshake.auth.token
 | `meeting.recording.started` | S→C | `{ meetingId, startedAtUtc }` |
 | `meeting.recording.stopped` | S→C | `{ meetingId, stoppedAtUtc }` |
 | `meeting.recording.ready` | S→C | `{ meetingId, fileUrl, durationSeconds }` |
+
+#### Chat de la sala
+
+Solo para participantes `Joined` (la sala de espera, los rechazados y los expulsados no entran a la room del chat). El invitado no tiene JWT, por eso el historial y los adjuntos también van por el socket.
+
+| Evento | Dirección | Payload |
+|---|---|---|
+| `meeting.chat.send` | C→S (ack) | `{ clientKey, meetingId, body? , attachmentFileId? }` — el adjunto se sube antes por la ruta mediada de `/attachments` y la reserva se consume aquí; invitados solo texto (D-14); topes D-15 `Meeting.Chat.AttachmentRateLimited` / `Meeting.Chat.AttachmentLimit` |
+| `meeting.chat.edit` / `meeting.chat.delete` / `meeting.chat.mark_read` | C→S (ack) | `{ meetingId, messageId, … }` |
+| `meeting.chat.history` | C→S (ack) | `{ meetingId, take?, before? }` → `{ items }` (DESC) |
+| `meeting.chat.attachment.meta` | C→S (ack) | `{ meetingId, fileId }` → metadata y estado del escaneo |
+| `meeting.chat.attachment.download_url` | C→S (ack) | `{ meetingId, fileId }` → `{ downloadUrl }` (solo archivos listos) |
+| `meeting.chat.message.new` / `.edited` / `.deleted` / `.read` | S→C | mensaje o cambio |
 
 ### Notificaciones
 
@@ -342,9 +390,9 @@ Todo lo que un cliente necesita para capturar, medir y adaptar media sale de la 
 
 ## Invitaciones, guests y ciclo de notificaciones (F6)
 
-- **Token (D-48):** un invitado **con cuenta** (Employee/Customer) reutiliza su token hasta `ExpiresAtUtc` (fin previsto + gracia, mínimo global), revocación o cierre de la reunión; cada uso deja `FirstUsedAtUtc/LastUsedAtUtc/UseCount` y `invitation.used` + `communication.meeting.invitation_used.v1`. Un **guest** (External) es de un solo uso (`UsedAtUtc`), salvo el re-join mientras su participante sigue dentro (gracia) o en la sala de espera. Al terminar/cancelar/expirar la reunión las invitaciones abiertas pasan a `ClosedAtUtc` (`invitation.expired` + `invitation_expired.v1`). Invitar a una reunión terminada → 400 `Meeting.NotJoinable`.
+- **Token (D-48):** un invitado **con cuenta** (Employee/Customer) reutiliza su token hasta `ExpiresAtUtc` (fin previsto + gracia, mínimo global), revocación o cierre de la reunión; cada uso deja `FirstUsedAtUtc/LastUsedAtUtc/UseCount` y `invitation.used` + `communication.meeting.invitation_used.v1`. Un **guest** (External) es de un solo uso (`UsedAtUtc`), salvo el re-join mientras su participante sigue dentro (gracia), en la sala de espera o tras salir con Leave (F11); quien fue expulsado por el host no vuelve con el mismo enlace. Al terminar/cancelar/expirar la reunión las invitaciones abiertas pasan a `ClosedAtUtc` (`invitation.expired` + `invitation_expired.v1`). Invitar a una reunión terminada → 400 `Meeting.NotJoinable`.
 - **Enlaces:** External → página pública de guest del **CRM** `https://{host}/meet/{token}` (D-47); Employee → `https://{host}/meetings`; Customer → portal `accept/:id?token=`.
-- **Guest (T-63):** `GET /communication/meetings/guest/:token/context` (público, rate limit por token, 404 uniforme) → título, host, hora, estado (`Scheduled|Live|Ended`), código, nombre sugerido, `guestsAllowed`, `waitingRoom` y la `mediaPolicy` de la oficina (el guest no tiene JWT). `POST join-by-token` responde 403 `Meeting.GuestsNotAllowed` cuando la oficina no admite externos. Política de oficina `guestsWaitingRoom` (null = `guestsWaitingRoomDefault` global): el guest pasa por la sala de espera aunque la reunión no la exija. Revocar con el guest dentro → salida forzada `Revoked` + cierre de sus sockets (`SocketSessionTerminator`) + `invitation_revoked.v1 { ejected }`.
+- **Guest (T-63):** `POST /communication/meetings/guest/context` con `{ token }` en el cuerpo (público, rate limit por token, 404 uniforme; F11: el token ya no va en la URL para que no quede en los logs) → título, host, hora, estado (`Scheduled|Live|Ended`), código, nombre sugerido, `guestsAllowed`, `waitingRoom` y la `mediaPolicy` de la oficina (el guest no tiene JWT). `POST join-by-token` responde 403 `Meeting.GuestsNotAllowed` cuando la oficina no admite externos. Política de oficina `guestsWaitingRoom` (null = `guestsWaitingRoomDefault` global): el guest pasa por la sala de espera aunque la reunión no la exija. Revocar con el guest dentro → salida forzada `Revoked` + cierre de sus sockets (`SocketSessionTerminator`) + `invitation_revoked.v1 { ejected }`.
 - **Eventos para Notification (T-64):** `invitation_created.v1` ampliado (`meetingTitle`, `meetingStatus`, `shortCode`, `scheduledForUtc`, `durationMinutes`, `hostUserId`, `hostDisplayName`, `timeZone`, `invitedByUserId`, `invitedByDisplayName`); `cancelled.v1` / `rescheduled.v1` ampliados (mismos datos + `inviteeUserIds`; `invitedEmails` = solo externos sin cuenta); `communication.meeting.reminder.v1` T−N minutos antes (`meetingReminderMinutesBefore` global, override de oficina, 0 = apagado; barrido en `meeting-lifecycle-scheduler`, una sola vez por reunión, `Meeting.ReminderSentAtUtc`) + socket `meeting.reminder`. `timeZone` sale de Auth (`internal/tenants/{id}/primary-host` → `timeZoneId`).
 - **Socket:** `meeting.invited` ahora trae `{ meetingId, title, status, invitedByUserId, invitedByDisplayName }` (toast "X invited you to a meeting in progress").
 - Migración `20261030040000_add_invitation_reuse_reminder_and_guest_policy`.

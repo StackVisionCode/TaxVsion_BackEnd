@@ -159,6 +159,70 @@ function seedDirectConversation(conversations: FakeConversationRepository, tenan
   return { conversationId: result.value.id, initiatorId, recipientId };
 }
 
+/** Reservas en memoria con la misma semántica que la tabla: consumir exige coincidencia total y es de un solo uso. */
+function memoryReservations() {
+  const rows = new Map<string, { tenantId: string; conversationId: string; uploadedByUserId: string }>();
+  return {
+    rows,
+    async reserve(r: { fileId: string; tenantId: string; conversationId: string; uploadedByUserId: string }) {
+      rows.set(r.fileId, { tenantId: r.tenantId, conversationId: r.conversationId, uploadedByUserId: r.uploadedByUserId });
+    },
+    async consume(r: { fileId: string; tenantId: string; conversationId: string; uploadedByUserId: string }) {
+      const row = rows.get(r.fileId);
+      const ok = !!row && row.tenantId === r.tenantId && row.conversationId === r.conversationId && row.uploadedByUserId === r.uploadedByUserId;
+      if (ok) rows.delete(r.fileId);
+      return ok;
+    },
+    async purgeOlderThan() {
+      return 0;
+    },
+  };
+}
+
+describe('Adjuntos — solo los subidos por el emisor para ese chat, una vez (F11, E-259)', () => {
+  function setup() {
+    const tenantId = u();
+    const conversations = new FakeConversationRepository();
+    const { conversationId, initiatorId, recipientId } = seedDirectConversation(conversations, tenantId);
+    const attachmentReservations = memoryReservations();
+    const deps = {
+      conversations,
+      idempotency: new FakeIdempotencyStore(),
+      publisher: new FakeIntegrationEventPublisher(),
+      settings: new FakeTenantSettingsProvider(),
+      attachmentTracking: new FakeAttachmentTrackingRepository(),
+      attachmentReservations,
+    };
+    const send = (senderUserId: string, fileId: string, conversation = conversationId) =>
+      sendMessage({ tenantId, correlationId: u(), clientKey: u(), conversationId: conversation, senderUserId, attachmentFileId: fileId }, deps);
+    return { tenantId, conversationId, initiatorId, recipientId, attachmentReservations, send };
+  }
+
+  it('sin reserva (fileId ajeno o inventado) responde NotFound', async () => {
+    const { initiatorId, send } = setup();
+    const result = await send(initiatorId, u());
+    expect(result.isSuccess ? 'ok' : result.error.code).toBe('Chat.Attachment.NotFound');
+  });
+
+  it('con la reserva del emisor se envía y la reserva se consume: el mismo archivo no se usa dos veces', async () => {
+    const { tenantId, conversationId, initiatorId, attachmentReservations, send } = setup();
+    const fileId = u();
+    await attachmentReservations.reserve({ fileId, tenantId, conversationId, uploadedByUserId: initiatorId });
+    expect((await send(initiatorId, fileId)).isSuccess).toBe(true);
+    const again = await send(initiatorId, fileId);
+    expect(again.isSuccess ? 'ok' : again.error.code).toBe('Chat.Attachment.NotFound');
+  });
+
+  it('otro participante no puede enviar un archivo que subió alguien más', async () => {
+    const { tenantId, conversationId, initiatorId, recipientId, attachmentReservations, send } = setup();
+    const fileId = u();
+    await attachmentReservations.reserve({ fileId, tenantId, conversationId, uploadedByUserId: initiatorId });
+    const result = await send(recipientId, fileId);
+    expect(result.isSuccess ? 'ok' : result.error.code).toBe('Chat.Attachment.NotFound');
+    expect(attachmentReservations.rows.has(fileId)).toBe(true);
+  });
+});
+
 describe('Tenant isolation — sendMessage', () => {
   it('rejects sending to a conversation owned by a different tenant', async () => {
     const ownerTenantId = u();
@@ -171,6 +235,7 @@ describe('Tenant isolation — sendMessage', () => {
       publisher: new FakeIntegrationEventPublisher(),
       settings: new FakeTenantSettingsProvider(),
       attachmentTracking: new FakeAttachmentTrackingRepository(),
+      attachmentReservations: { reserve: async () => {}, consume: async () => false, purgeOlderThan: async () => 0 },
     };
 
     const own = await sendMessage(

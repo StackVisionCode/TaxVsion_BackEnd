@@ -21,6 +21,7 @@ import type {
   SfuRuntimeInfo,
   SfuService,
   SfuTransportDirection,
+  SfuUsage,
 } from '../../application/ports/sfu-service.js';
 
 /** Lee el `source` guardado en el appData del producer (default 'camera' para producers viejos/audio). */
@@ -131,6 +132,29 @@ export class MediasoupSfuService implements SfuService {
 
   setObserver(observer: SfuObserver | null): void {
     this.observer = observer;
+  }
+
+  async usage(): Promise<SfuUsage> {
+    const rooms = [...this.rooms.values()];
+    const workers = await Promise.all(
+      this.slots.map(async (slot) => {
+        // Un worker muerto rechaza la llamada: cuenta con ceros en vez de tumbar el latido.
+        const ru = await slot.worker.getResourceUsage().catch(() => null);
+        return {
+          pid: slot.worker.pid,
+          port: slot.webRtcServer ? slot.port : null,
+          rooms: rooms.filter((room) => room.slot === slot).length,
+          userCpuMs: ru?.ru_utime ?? 0,
+          systemCpuMs: ru?.ru_stime ?? 0,
+          maxRssKb: ru?.ru_maxrss ?? 0,
+        };
+      }),
+    );
+    return {
+      rooms: rooms.length,
+      participants: rooms.reduce((sum, room) => sum + room.participants.size, 0),
+      workers,
+    };
   }
 
   describe(): SfuRuntimeInfo {

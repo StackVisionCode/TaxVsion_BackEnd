@@ -27,12 +27,13 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     FailClosed = table.Column<bool>(type: "bit", nullable: false),
                     UpdatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
+                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ContentModerationPolicies", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "ContentModerationPolicyAudits",
@@ -42,17 +43,19 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     OldSettingsJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     NewSettingsJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     ActorUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    OccurredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    OccurredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ContentModerationPolicyAudits", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ContentModerationPolicyAudits_OccurredAt",
                 table: "ContentModerationPolicyAudits",
-                column: "OccurredAtUtc");
+                column: "OccurredAtUtc"
+            );
 
             // T-20: fila única de la política, estricta por defecto (no hay uso legítimo de imágenes sexuales
             // en una oficina de impuestos). Se omiten carpetas que solo escriben servicios con contenido propio.
@@ -95,11 +98,9 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "ContentModerationPolicies");
+            migrationBuilder.DropTable(name: "ContentModerationPolicies");
 
-            migrationBuilder.DropTable(
-                name: "ContentModerationPolicyAudits");
+            migrationBuilder.DropTable(name: "ContentModerationPolicyAudits");
         }
     }
 }

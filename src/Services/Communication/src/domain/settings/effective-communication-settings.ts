@@ -119,6 +119,7 @@ export interface EffectiveCommunicationSettings {
     readonly preferAudioOnly: boolean;
     readonly joinMuted: boolean;
     readonly joinCameraOff: boolean;
+    readonly autoPictureInPicture: boolean;
     /** null = default de la oficina (ya aplicado en `media.audio.processing`). */
     readonly audioProcessing: {
       readonly echoCancellation: boolean | null;
@@ -213,6 +214,7 @@ export function resolveUserSection(
     preferAudioOnly: preferences?.preferAudioOnly ?? false,
     joinMuted: preferences?.joinMuted ?? false,
     joinCameraOff: preferences?.joinCameraOff ?? false,
+    autoPictureInPicture: preferences?.autoPictureInPicture ?? false,
     audioProcessing: {
       echoCancellation: preferences?.echoCancellation ?? null,
       noiseSuppression: preferences?.noiseSuppression ?? null,

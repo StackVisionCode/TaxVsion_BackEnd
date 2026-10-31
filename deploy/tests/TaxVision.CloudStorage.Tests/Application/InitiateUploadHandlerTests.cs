@@ -164,7 +164,11 @@ public sealed class InitiateUploadHandlerTests
         var fixture = new Fixture();
         var me = Guid.NewGuid();
 
-        var result = await fixture.InitiateAsync(new StorageActorScope(false, null), ChatAttachment(Guid.NewGuid()), actorId: me);
+        var result = await fixture.InitiateAsync(
+            new StorageActorScope(false, null),
+            ChatAttachment(Guid.NewGuid()),
+            actorId: me
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(me, Assert.Single(fixture.Files.All()).CreatedBy);
@@ -197,7 +201,13 @@ public sealed class InitiateUploadHandlerTests
             Guid? actorId = null
         ) =>
             InitiateUploadHandler.Handle(
-                new InitiateUploadCommand(TenantId, actorId ?? Guid.NewGuid(), scope, request, new(null, null, "corr-1")),
+                new InitiateUploadCommand(
+                    TenantId,
+                    actorId ?? Guid.NewGuid(),
+                    scope,
+                    request,
+                    new(null, null, "corr-1")
+                ),
                 Files,
                 new FakeFolderRepository(),
                 Limits,

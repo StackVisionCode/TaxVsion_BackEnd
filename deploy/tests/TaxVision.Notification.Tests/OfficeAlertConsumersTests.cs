@@ -126,8 +126,23 @@ public sealed class OfficeAlertConsumersTests
             CreatedBy = Guid.NewGuid(),
         };
 
-        await FilePendingReviewConsumer.Handle(evt, harness.Dispatcher, new StubInAppSource(publishes: false), new TestCorrelationContext(), CancellationToken.None);
-        await FilePendingReviewConsumer.Handle(evt with { CreatedBy = null }, harness.Dispatcher, AlwaysOnInAppSource.Instance, new TestCorrelationContext(), CancellationToken.None);
+        await FilePendingReviewConsumer.Handle(
+            evt,
+            harness.Dispatcher,
+            new StubInAppSource(publishes: false),
+            new TestCorrelationContext(),
+            CancellationToken.None
+        );
+        await FilePendingReviewConsumer.Handle(
+            evt with
+            {
+                CreatedBy = null,
+            },
+            harness.Dispatcher,
+            AlwaysOnInAppSource.Instance,
+            new TestCorrelationContext(),
+            CancellationToken.None
+        );
 
         Assert.Empty(harness.Publisher.Published);
     }

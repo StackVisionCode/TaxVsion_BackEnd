@@ -26,6 +26,8 @@ import {
   MeetingChatEditPayloadSchema,
   MeetingChatMarkReadPayloadSchema,
   MeetingChatSendPayloadSchema,
+  MeetingChatAttachmentPayloadSchema,
+  MeetingChatHistoryPayloadSchema,
   MeetingMediaStatusPayloadSchema,
   MeetingRaiseHandPayloadSchema,
   MeetingReactionPayloadSchema,
@@ -99,6 +101,9 @@ import { MeetingSocketRegistry } from './meeting-socket-registry.js';
 import { sendMessage } from '../../../application/use-cases/send-message.js';
 import { editMessage } from '../../../application/use-cases/edit-message.js';
 import { authorizeMeetingChatSend } from '../../../application/use-cases/meeting-chat-send-policy.js';
+import { getAttachmentMetadata } from '../../../application/use-cases/get-attachment-metadata.js';
+import { getMeetingChatHistory } from '../../../application/use-cases/get-meeting-chat-history.js';
+import { getAttachmentDownloadUrl } from '../../../application/use-cases/get-attachment-download-url.js';
 import { ChatSocketEvents } from '../../../contracts/socket/chat-socket-events.js';
 import { deleteMessage } from '../../../application/use-cases/delete-message.js';
 import { markMessagesRead } from '../../../application/use-cases/mark-messages-read.js';
@@ -322,9 +327,13 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
-    await socket.join(`t:${tenantId}:m:${parsed.data.meetingId}`);
-    if (result.value.snapshot.conversationId) {
-      await socket.join(`t:${tenantId}:c:${result.value.snapshot.conversationId}`);
+    // F11 (E-259): en sala de espera NO entra a la room de la reunión (vería nombres, grabación y
+    // producers sin estar admitido); al admitirlo el handler de Admit lo une. El fin le llega por su room.
+    if (!result.value.requiresAdmission) {
+      await socket.join(`t:${tenantId}:m:${parsed.data.meetingId}`);
+      if (result.value.snapshot.conversationId) {
+        await socket.join(`t:${tenantId}:c:${result.value.snapshot.conversationId}`);
+      }
     }
     // Reconectó / volvió a entrar: cancelar cualquier salida agendada por un disconnect anterior.
     cancelPendingLeave(tenantId, parsed.data.meetingId, userId);
@@ -485,9 +494,10 @@ function wireMeetingSocket(
       return;
     }
     ack?.({ ok: true, value: result.value.participant });
+    // El admitido no dispara este handler (lo hace el host) — sus sockets no entraron a las rooms de la
+    // reunión ni de su chat mientras esperaba: se los mete desde acá.
+    io.in(`t:${tenantId}:u:${parsed.data.targetUserId}`).socketsJoin(`t:${tenantId}:m:${parsed.data.meetingId}`);
     if (result.value.conversationId) {
-      // El admitido no dispara este handler (lo hace el host) — sus sockets
-      // no llamaron socket.join, hay que meterlos a la room desde aca.
       io.in(`t:${tenantId}:u:${parsed.data.targetUserId}`).socketsJoin(
         `t:${tenantId}:c:${result.value.conversationId}`,
       );
@@ -555,6 +565,8 @@ function wireMeetingSocket(
       event: MeetingSocketEvents.YouRemoved,
       envelope: envelope(removedDto),
     });
+    // F11 (E-259): fuera de la room de la reunión en todos sus sockets (antes seguía recibiendo sus eventos).
+    io.in(`t:${tenantId}:u:${parsed.data.targetUserId}`).socketsLeave(`t:${tenantId}:m:${parsed.data.meetingId}`);
     if (result.value.conversationId) {
       // El expulsado puede tener otros sockets conectados (otra pestana,
       // otro dispositivo) — sacarlos a todos de la room de chat del meeting,
@@ -731,6 +743,8 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
+    // F11: un rechazado nunca debe quedar en la room de la reunión (p. ej. por una pestaña vieja).
+    io.in(`t:${tenantId}:u:${parsed.data.targetUserId}`).socketsLeave(`t:${tenantId}:m:${parsed.data.meetingId}`);
     ack?.({ ok: true, value: undefined });
   });
 
@@ -1310,6 +1324,81 @@ function wireMeetingSocket(
       envelope: envelope(result.value.message),
     });
   });
+
+  /**
+   * F11: adjuntos del chat de la sala por el socket. El invitado entra con su ticket y no tiene JWT para
+   * `/communication/conversations/:id/attachments/*`; la regla es la misma (participante del chat, piso del
+   * historial, estado del escaneo). Las cuentas además necesitan `communication.chat.reply`, como en el HTTP.
+   */
+  const handleChatAttachment = (kind: 'meta' | 'url') => async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = MeetingChatAttachmentPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (principal.actorType !== 'Guest') {
+      const perm = await checkPermission(principal, CommunicationPermissions.ChatReply, container.userPermissions);
+      if (!perm.allowed) {
+        ack?.({ ok: false, code: perm.code, message: perm.message });
+        return;
+      }
+    }
+    const conversationId = await resolveMeetingConversationId(parsed.data.meetingId);
+    if (!conversationId) {
+      ack?.({ ok: false, code: 'Chat.Attachment.NotFound', message: 'Attachment not found.' });
+      return;
+    }
+    const command = { tenantId, userId, conversationId, fileId: parsed.data.fileId };
+    const result = kind === 'meta' ? await getAttachmentMetadata(command, container) : await getAttachmentDownloadUrl(command, container);
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  };
+  socket.on(MeetingSocketEvents.ChatAttachmentMeta, handleChatAttachment('meta'));
+
+  // F11: historial del chat de la sala para quien participó (invitados incluidos), como la ficha (D-01).
+  socket.on(MeetingSocketEvents.ChatHistory, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = MeetingChatHistoryPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (principal.actorType !== 'Guest') {
+      const perm = await checkPermission(principal, CommunicationPermissions.MeetingJoin, container.userPermissions);
+      if (!perm.allowed) {
+        ack?.({ ok: false, code: perm.code, message: perm.message });
+        return;
+      }
+    }
+    // En vivo solo para quien está dentro: el caso de uso admite a cualquier participante conocido (sirve a
+    // la ficha tras el End) y eso incluye sala de espera y expulsados.
+    const live = await container.meetings.findById(tenantId, parsed.data.meetingId);
+    const me = live?.toSnapshot().participants.find((p) => p.userId === userId);
+    if (!me || me.status !== 'Joined') {
+      ack?.({ ok: false, code: 'Meeting.NotParticipant', message: 'Only participants inside the meeting can read its chat.' });
+      return;
+    }
+    const result = await getMeetingChatHistory(
+      {
+        tenantId,
+        meetingId: parsed.data.meetingId,
+        userId,
+        take: parsed.data.take,
+        ...(parsed.data.before !== undefined ? { beforeUtc: parsed.data.before } : {}),
+      },
+      container,
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+  socket.on(MeetingSocketEvents.ChatAttachmentDownloadUrl, handleChatAttachment('url'));
 
   socket.on(MeetingSocketEvents.ChatEdit, async (...args: unknown[]) => {
     const raw = args[0];

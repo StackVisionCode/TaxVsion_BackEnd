@@ -16,7 +16,10 @@ public sealed class ContentScannerDeployWiringTests
     {
         var block = ServiceBlock(ReadRepoFile("deploy/docker/docker-compose.yml"), "content-scanner");
 
-        Assert.False(Regex.IsMatch(block, @"^    ports:\s*$", RegexOptions.Multiline), "content-scanner no debe publicar puertos.");
+        Assert.False(
+            Regex.IsMatch(block, @"^    ports:\s*$", RegexOptions.Multiline),
+            "content-scanner no debe publicar puertos."
+        );
         Assert.Contains($"ContentScanner__ApiKey: {RequiredKey}", block, StringComparison.Ordinal);
         Assert.Contains("http://localhost:8080/health/ready", block, StringComparison.Ordinal);
         Assert.Matches(new Regex(@"^    mem_limit: \d+m\s*$", RegexOptions.Multiline), block);
@@ -72,6 +75,8 @@ public sealed class ContentScannerDeployWiringTests
             dir = dir.Parent;
         }
 
-        throw new FileNotFoundException($"Could not locate '{relativePath}' walking up from {AppContext.BaseDirectory}.");
+        throw new FileNotFoundException(
+            $"Could not locate '{relativePath}' walking up from {AppContext.BaseDirectory}."
+        );
     }
 }

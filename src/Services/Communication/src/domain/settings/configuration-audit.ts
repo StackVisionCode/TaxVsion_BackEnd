@@ -4,6 +4,8 @@ export const ConfigurationAuditScope = {
   TenantConstraints: 'TenantConstraints',
   TenantSettings: 'TenantSettings',
   UserPreferences: 'UserPreferences',
+  /** F10 (C.3): consultas de PlatformAdmin a la analítica de plataforma (no es un cambio). */
+  AdminQuery: 'AdminQuery',
 } as const;
 export type ConfigurationAuditScope = (typeof ConfigurationAuditScope)[keyof typeof ConfigurationAuditScope];
 
@@ -11,6 +13,7 @@ export type ConfigurationAuditScope = (typeof ConfigurationAuditScope)[keyof typ
 export const ConfigurationAuditReason = {
   Update: 'Update',
   AutoCorrect: 'AutoCorrect',
+  Query: 'Query',
 } as const;
 export type ConfigurationAuditReason = (typeof ConfigurationAuditReason)[keyof typeof ConfigurationAuditReason];
 

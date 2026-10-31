@@ -91,7 +91,11 @@ public sealed class ContentModerationPolicy : BaseEntity
         );
 
     /// <summary>La fila de producción la siembra la migración; esto crea una equivalente (re-siembra, tests).</summary>
-    public static Result<ContentModerationPolicy> Create(ContentModerationSettings settings, Guid actorUserId, DateTime nowUtc)
+    public static Result<ContentModerationPolicy> Create(
+        ContentModerationSettings settings,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         var policy = new ContentModerationPolicy { Id = PlatformPolicyId };
         var updated = policy.Update(settings, actorUserId, nowUtc);
@@ -143,7 +147,9 @@ public sealed class ContentModerationPolicy : BaseEntity
 
     private static HashSet<FolderType> ParseFolders(string raw) =>
         raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(name => Enum.TryParse<FolderType>(name, ignoreCase: false, out var folder) ? folder : (FolderType?)null)
+            .Select(name =>
+                Enum.TryParse<FolderType>(name, ignoreCase: false, out var folder) ? folder : (FolderType?)null
+            )
             .Where(folder => folder is not null)
             .Select(folder => folder!.Value)
             .ToHashSet();

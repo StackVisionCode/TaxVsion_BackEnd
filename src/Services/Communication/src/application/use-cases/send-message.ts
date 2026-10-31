@@ -7,6 +7,7 @@ import type { ConversationRepository } from '../ports/conversation-repository.js
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
+import type { AttachmentUploadReservationRepository } from '../ports/attachment-upload-reservation-repository.js';
 import type { AttachmentTrackingRepository } from '../ports/attachment-tracking-repository.js';
 import { ChatEventTypes, type MessageSentEvent } from '../../contracts/events/chat-events.js';
 import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
@@ -54,6 +55,8 @@ export interface SendMessageDeps {
   readonly publisher: IntegrationEventPublisher;
   readonly settings: TenantSettingsProvider;
   readonly attachmentTracking: AttachmentTrackingRepository;
+  /** F11 (E-259): reserva de la subida; sin ella un adjunto no se acepta. */
+  readonly attachmentReservations: AttachmentUploadReservationRepository;
   /** F8d: para la categoría provisional del adjunto (opcional). */
   readonly cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
 }
@@ -125,6 +128,27 @@ export async function sendMessage(
       token: reservation.token,
     });
     return Result.fail(messageResult.error);
+  }
+
+  // F11 (E-259): el adjunto tiene que haberlo subido este usuario para esta conversación, y se usa una
+  // sola vez. Respuesta uniforme (NotFound) para no revelar si el archivo existe en otro chat.
+  if (command.attachmentFileId !== undefined) {
+    const reserved = await deps.attachmentReservations.consume({
+      fileId: command.attachmentFileId,
+      tenantId: command.tenantId,
+      conversationId: command.conversationId,
+      uploadedByUserId: command.senderUserId,
+    });
+    if (!reserved) {
+      await deps.idempotency.release({
+        tenantId: command.tenantId,
+        userId: command.senderUserId,
+        scope: 'chat.message.send',
+        clientKey: command.clientKey,
+        token: reservation.token,
+      });
+      return Result.fail(makeError('Chat.Attachment.NotFound', 'Attachment not found.'));
+    }
   }
 
   // F7 (D-27): una nota de voz nace transcribible a demanda (o Skipped si la politica no lo cubre).

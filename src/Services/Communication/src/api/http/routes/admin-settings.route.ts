@@ -1,20 +1,14 @@
 import { RecordingScope } from '../../../domain/recording/recording-session-state.js';
 import { lifecycleFrom, recomposeRecording } from '../../../application/use-cases/recording-lifecycle.js';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import {
-  checkPermission,
-  isPlatformAdmin,
-  permissionCheckHttpStatus,
-  CommunicationPermissions,
-  type CommunicationPermission,
-} from '../../../domain/shared/permissions.js';
+import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { requirePlatformPermission } from '../require-platform-permission.js';
 import { MEETING_SOUNDS_POLICIES } from '../../../domain/settings/technical-limits.js';
 import { ConfigurationAuditScope } from '../../../domain/settings/configuration-audit.js';
 import { getPlatformSettings, updatePlatformSettings } from '../../../application/use-cases/platform-settings-use-cases.js';
 import { getTenantConstraints, updateTenantConstraints } from '../../../application/use-cases/tenant-constraints-use-cases.js';
 import { listConfigurationAudit } from '../../../application/use-cases/configuration-audit-queries.js';
-import type { AuthenticatedPrincipal } from '../../../infrastructure/jwks/jwt-verifier.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const PositiveInt = z.number().int().positive();
@@ -121,6 +115,12 @@ const PlatformPatchBody = z.object({
   voiceNoteTranscriptMaxSeconds: z.number().int().min(0).optional(),
   transcriptWorkerTimeoutFactorPct: z.number().int().min(0).optional(),
   recordingAvailabilityTimeoutMinutes: z.number().int().min(0).optional(),
+  // F10 (ADD-08): zona de analítica (IANA) y retenciones; null apaga la purga del histórico.
+  analyticsTimeZone: z.string().min(1).max(64).optional(),
+  analyticsRetentionDays: z.number().int().min(0).optional(),
+  callsRetentionDays: z.number().int().min(0).nullable().optional(),
+  meetingsRetentionDays: z.number().int().min(0).nullable().optional(),
+  invitationsRetentionDays: z.number().int().min(0).nullable().optional(),
 });
 
 const ConstraintsPatchBody = z.object({
@@ -155,27 +155,6 @@ function stripUndefined<T extends object>(body: T): Defined<T> {
   return Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)) as Defined<T>;
 }
 
-/**
- * PlatformOnly (G-17..G-23): se exige el actorType PlatformAdmin Y el permiso `PlatformOnly: true`
- * del catálogo — equivalente a `[AllowActorTypes(PlatformAdmin)]` + `[HasPermission]` en .NET.
- * Devuelve el status a responder o null si pasa.
- */
-async function requirePlatformPermission(
-  principal: AuthenticatedPrincipal,
-  required: CommunicationPermission,
-  container: AppContainer,
-  reply: FastifyReply,
-): Promise<FastifyReply | null> {
-  if (!isPlatformAdmin(principal.actorType)) {
-    return reply.code(403).send({ code: 'Auth.PlatformOnly', message: 'Only platform administrators can do this.' });
-  }
-  const permCheck = await checkPermission(principal, required, container.userPermissions);
-  if (!permCheck.allowed) {
-    return reply.code(permissionCheckHttpStatus(permCheck)).send({ code: permCheck.code, message: permCheck.message });
-  }
-  return null;
-}
-
 const RecomposeParams = z.object({ scope: z.enum(['Meeting', 'Call']), id: z.string().uuid() });
 
 export async function registerAdminSettingsRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
@@ -183,8 +162,8 @@ export async function registerAdminSettingsRoutes(app: FastifyInstance, containe
   app.post('/communication/admin/recordings/:scope/:id/recompose', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal;
     if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
-    const denied = await requirePlatformPermission(principal, CommunicationPermissions.PlatformManage, container, reply);
-    if (denied) return denied;
+    const denied = await requirePlatformPermission(principal, CommunicationPermissions.PlatformManage, container);
+    if (denied) return reply.code(denied.status).send(denied.body);
     const params = RecomposeParams.parse(request.params);
     const scope = params.scope === 'Call' ? RecordingScope.Call : RecordingScope.Meeting;
     const session = await container.recordingSessions.findByScopeAnyTenant(scope, params.id);
@@ -202,15 +181,15 @@ export async function registerAdminSettingsRoutes(app: FastifyInstance, containe
   });
 
   app.get('/communication/admin/platform-settings', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const denied = await requirePlatformPermission(request.principal!, CommunicationPermissions.PlatformManage, container, reply);
-    if (denied) return denied;
+    const denied = await requirePlatformPermission(request.principal!, CommunicationPermissions.PlatformManage, container);
+    if (denied) return reply.code(denied.status).send(denied.body);
     return reply.send(await getPlatformSettings(container));
   });
 
   app.put('/communication/admin/platform-settings', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    const denied = await requirePlatformPermission(principal, CommunicationPermissions.PlatformManage, container, reply);
-    if (denied) return denied;
+    const denied = await requirePlatformPermission(principal, CommunicationPermissions.PlatformManage, container);
+    if (denied) return reply.code(denied.status).send(denied.body);
     const patch = stripUndefined(PlatformPatchBody.parse(request.body));
     const result = await updatePlatformSettings(
       { actorUserId: principal.userId, correlationId: request.id, patch },
@@ -221,16 +200,16 @@ export async function registerAdminSettingsRoutes(app: FastifyInstance, containe
   });
 
   app.get('/communication/admin/tenants/:tenantId/constraints', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const denied = await requirePlatformPermission(request.principal!, CommunicationPermissions.ConstraintsManage, container, reply);
-    if (denied) return denied;
+    const denied = await requirePlatformPermission(request.principal!, CommunicationPermissions.ConstraintsManage, container);
+    if (denied) return reply.code(denied.status).send(denied.body);
     const params = TenantParams.parse(request.params);
     return reply.send(await getTenantConstraints(params.tenantId, container));
   });
 
   app.put('/communication/admin/tenants/:tenantId/constraints', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    const denied = await requirePlatformPermission(principal, CommunicationPermissions.ConstraintsManage, container, reply);
-    if (denied) return denied;
+    const denied = await requirePlatformPermission(principal, CommunicationPermissions.ConstraintsManage, container);
+    if (denied) return reply.code(denied.status).send(denied.body);
     const params = TenantParams.parse(request.params);
     const patch = stripUndefined(ConstraintsPatchBody.parse(request.body));
     const result = await updateTenantConstraints(
@@ -242,8 +221,8 @@ export async function registerAdminSettingsRoutes(app: FastifyInstance, containe
   });
 
   app.get('/communication/admin/audit', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const denied = await requirePlatformPermission(request.principal!, CommunicationPermissions.PlatformManage, container, reply);
-    if (denied) return denied;
+    const denied = await requirePlatformPermission(request.principal!, CommunicationPermissions.PlatformManage, container);
+    if (denied) return reply.code(denied.status).send(denied.body);
     const query = AuditQuery.parse(request.query);
     return reply.send(
       await listConfigurationAudit(

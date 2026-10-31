@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import {
+  TRANSCRIPT_PROMPT_MAX_LENGTH,
   TenantCommunicationSettings,
+  officeNumericRanges,
+  type OfficeRangedKey,
   type TenantCommunicationSettingsPatch,
   type TenantCommunicationSettingsSnapshot,
 } from '../../domain/settings/tenant-communication-settings.js';
@@ -45,6 +48,9 @@ export interface TenantSettingsOverview {
   readonly limits: TenantCommunicationLimitsSnapshot | null;
   readonly constraints: TenantCommunicationConstraintsSnapshot | null;
   readonly effective: EffectiveCommunicationSettings;
+  /** F9: rangos técnicos de cada número editable y largo máximo del vocabulario del transcript. */
+  readonly ranges: Readonly<Record<OfficeRangedKey, { readonly min: number; readonly max: number }>>;
+  readonly transcriptPromptMaxLength: number;
 }
 
 export interface TenantSettingsDeps {
@@ -71,6 +77,8 @@ export async function getSettingsOverview(tenantId: string, deps: TenantSettings
     limits,
     constraints: constraints ? constraints.toSnapshot() : null,
     effective,
+    ranges: officeNumericRanges(),
+    transcriptPromptMaxLength: TRANSCRIPT_PROMPT_MAX_LENGTH,
   };
 }
 

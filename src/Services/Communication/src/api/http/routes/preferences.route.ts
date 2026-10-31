@@ -12,6 +12,7 @@ const PatchBody = z.object({
   autoGainControl: z.boolean().nullable().optional(),
   joinMuted: z.boolean().optional(),
   joinCameraOff: z.boolean().optional(),
+  autoPictureInPicture: z.boolean().optional(),
 });
 
 /** Autoservicio (T-47): cualquier principal autenticado (staff o portal) edita solo las suyas; sin permiso extra. */

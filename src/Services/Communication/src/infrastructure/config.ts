@@ -135,6 +135,10 @@ const rawEnv = z
       .default(60),
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+    // F11 (E-259): invitaciones por persona y ventana, y tope de invitaciones por reunión.
+    COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_MAX: z.coerce.number().int().positive().default(20),
+    COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_WINDOW_SECONDS: z.coerce.number().int().positive().default(3600),
+    COMMUNICATION_MEETING_INVITATIONS_MAX_PER_MEETING: z.coerce.number().int().positive().max(5000).default(200),
 
     COMMUNICATION_PLATFORM_TENANT_ID: z.string().uuid().default('8f58a521-4c25-4d91-9f4e-7ad5df14c001'),
 
@@ -204,6 +208,14 @@ const rawEnv = z
     COMMUNICATION_NOTIFICATION_READ_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
     COMMUNICATION_NOTIFICATION_UNREAD_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
     COMMUNICATION_NOTIFICATION_PURGE_BATCH_SIZE: z.coerce.number().int().positive().max(5000).default(500),
+
+    // F10 (ADD-08): analitica de plataforma. Latido por proceso en Redis (live/infra), ventana por
+    // defecto y tope de rango de las consultas, tope de filas por oficina y enlace opcional a Grafana.
+    COMMUNICATION_INSTANCE_HEARTBEAT_SECONDS: z.coerce.number().int().min(5).max(300).default(15),
+    COMMUNICATION_ANALYTICS_DEFAULT_RANGE_DAYS: z.coerce.number().int().min(1).max(366).default(30),
+    COMMUNICATION_ANALYTICS_MAX_RANGE_DAYS: z.coerce.number().int().min(1).max(3660).default(1100),
+    COMMUNICATION_ANALYTICS_TENANTS_MAX_LIMIT: z.coerce.number().int().min(1).max(5000).default(500),
+    COMMUNICATION_OBSERVABILITY_GRAFANA_URL: z.string().url().optional(),
 
     // Puente de in-app por grupo (T3.7): quién crea la fila de la campana para cada grupo de hechos.
     // `Communication` (default, rollback seguro) = este servicio la crea como hasta ahora; `Notification`
@@ -375,6 +387,15 @@ export const config = {
     baseDomain: rawEnv.COMMUNICATION_PLATFORM_BASE_DOMAIN,
   },
 
+  // F10 (ADD-08): analitica de plataforma.
+  platformAnalytics: {
+    heartbeatSeconds: rawEnv.COMMUNICATION_INSTANCE_HEARTBEAT_SECONDS,
+    defaultRangeDays: rawEnv.COMMUNICATION_ANALYTICS_DEFAULT_RANGE_DAYS,
+    maxRangeDays: rawEnv.COMMUNICATION_ANALYTICS_MAX_RANGE_DAYS,
+    tenantsMaxLimit: rawEnv.COMMUNICATION_ANALYTICS_TENANTS_MAX_LIMIT,
+    grafanaUrl: rawEnv.COMMUNICATION_OBSERVABILITY_GRAFANA_URL ?? null,
+  },
+
   notificationRetention: {
     readDays: rawEnv.COMMUNICATION_NOTIFICATION_READ_RETENTION_DAYS,
     unreadDays: rawEnv.COMMUNICATION_NOTIFICATION_UNREAD_RETENTION_DAYS,
@@ -440,6 +461,10 @@ export const config = {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS,
     },
+    meetingInvitationsCreate: {
+      maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_MAX,
+      windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_WINDOW_SECONDS,
+    },
     enforceTierQuotas: rawEnv.COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS,
   },
 
@@ -455,6 +480,8 @@ export const config = {
     joinTicketSecret: rawEnv.COMMUNICATION_JOIN_TICKET_SECRET,
     joinTicketTtlSeconds: rawEnv.COMMUNICATION_JOIN_TICKET_TTL_SECONDS,
     portalPathPrefix: rawEnv.COMMUNICATION_PORTAL_PATH_PREFIX,
+    // F11 (E-259): tope de invitaciones por reunión.
+    maxPerMeeting: rawEnv.COMMUNICATION_MEETING_INVITATIONS_MAX_PER_MEETING,
   },
 
   serviceAuth: {

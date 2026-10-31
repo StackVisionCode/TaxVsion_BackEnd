@@ -31,7 +31,12 @@ public sealed class FfmpegFrameExtractor(IOptions<ContentScannerOptions> options
 {
     private readonly ContentScannerOptions _options = options.Value;
 
-    public async Task<IReadOnlyList<byte[]>> ExtractAsync(string path, MediaKind kind, FrameSampling sampling, CancellationToken ct)
+    public async Task<IReadOnlyList<byte[]>> ExtractAsync(
+        string path,
+        MediaKind kind,
+        FrameSampling sampling,
+        CancellationToken ct
+    )
     {
         var size = _options.InputSize;
         var frameBytes = size * size * 3;
@@ -82,17 +87,32 @@ public sealed class FfmpegFrameExtractor(IOptions<ContentScannerOptions> options
     internal static IReadOnlyList<string> BuildArguments(string path, MediaKind kind, FrameSampling sampling, int size)
     {
         var scale = $"scale={size}:{size}:flags=bilinear";
-        var filter = kind == MediaKind.Video
-            ? $"fps=1/{sampling.IntervalSeconds.ToString(CultureInfo.InvariantCulture)},{scale}"
-            : scale;
+        var filter =
+            kind == MediaKind.Video
+                ? $"fps=1/{sampling.IntervalSeconds.ToString(CultureInfo.InvariantCulture)},{scale}"
+                : scale;
         var frames = (kind == MediaKind.Video ? sampling.MaxFrames : 1).ToString(CultureInfo.InvariantCulture);
         return
         [
-            "-hide_banner", "-loglevel", "error", "-nostdin",
-            "-protocol_whitelist", "file",
-            "-i", path,
-            "-an", "-sn", "-vf", filter, "-frames:v", frames,
-            "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-protocol_whitelist",
+            "file",
+            "-i",
+            path,
+            "-an",
+            "-sn",
+            "-vf",
+            filter,
+            "-frames:v",
+            frames,
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "pipe:1",
         ];
     }
 

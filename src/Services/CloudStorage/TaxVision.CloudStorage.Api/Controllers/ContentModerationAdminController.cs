@@ -45,7 +45,9 @@ public sealed class ContentModerationAdminController(IMessageBus bus, ICorrelati
     [RateLimit("cloudstorage.f.admin_read")]
     [ProducesResponseType<ContentModerationPolicyView>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPolicy(CancellationToken ct) =>
-        ToActionResult(await bus.InvokeAsync<Result<ContentModerationPolicyView>>(new GetContentModerationPolicyQuery(), ct));
+        ToActionResult(
+            await bus.InvokeAsync<Result<ContentModerationPolicyView>>(new GetContentModerationPolicyQuery(), ct)
+        );
 
     [HttpPut("policy")]
     [RateLimit("cloudstorage.g.settings_manage")]
@@ -144,7 +146,12 @@ public sealed class ContentModerationAdminController(IMessageBus bus, ICorrelati
     [HttpPost("review/{tenantId:guid}/{fileId:guid}/reject")]
     [RateLimit("cloudstorage.g.legal_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Reject(Guid tenantId, Guid fileId, ReviewNotesRequest request, CancellationToken ct)
+    public async Task<IActionResult> Reject(
+        Guid tenantId,
+        Guid fileId,
+        ReviewNotesRequest request,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetUserId(out var actorId))
             return Unauthorized();
@@ -159,7 +166,12 @@ public sealed class ContentModerationAdminController(IMessageBus bus, ICorrelati
     [HttpPost("review/{tenantId:guid}/{fileId:guid}/report")]
     [RateLimit("cloudstorage.g.legal_manage")]
     [ProducesResponseType<ReportContentReviewFileResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Report(Guid tenantId, Guid fileId, ReviewNotesRequest request, CancellationToken ct)
+    public async Task<IActionResult> Report(
+        Guid tenantId,
+        Guid fileId,
+        ReviewNotesRequest request,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetUserId(out var actorId))
             return Unauthorized();

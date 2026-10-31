@@ -1306,12 +1306,17 @@
 					}
 				},
 				{
-					"name": "Contexto público de guest (F6) — GET guest/:token/context",
+					"name": "Contexto público de guest (F6, F11) — POST guest/context",
 					"request": {
-						"method": "GET",
-						"header": [],
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
 						"url": {
-							"raw": "{{UrlBase}}/communication/meetings/guest/{{invitationToken}}/context",
+							"raw": "{{UrlBase}}/communication/meetings/guest/context",
 							"host": [
 								"{{UrlBase}}"
 							],
@@ -1319,11 +1324,19 @@
 								"communication",
 								"meetings",
 								"guest",
-								"{{invitationToken}}",
 								"context"
 							]
 						},
-						"description": "F6 (T-63, D-47). Público, sin JWT, rate limit por token (misma política que join-by-token), 404 uniforme si el token no existe/está revocado/vencido/consumido. Con token válido: { meetingTitle, hostDisplayName, scheduledForUtc, durationMinutes, status: 'Scheduled'|'Live'|'Ended', shortCode, inviteeName, guestsAllowed, waitingRoom, mediaPolicy } (mediaPolicy = mismo DTO que GET /communication/media-policy, sin preferencias de usuario). `status:'Ended'` también con la invitación cerrada por la reunión; `guestsAllowed:false` cuando la oficina no admite externos (join-by-token devolverá 403 Meeting.GuestsNotAllowed)."
+						"description": "F6 (T-63, D-47). Público, sin JWT, rate limit por token (misma política que join-by-token), 404 uniforme si el token no existe/está revocado/vencido/consumido. Con token válido: { meetingTitle, hostDisplayName, scheduledForUtc, durationMinutes, status: 'Scheduled'|'Live'|'Ended', shortCode, inviteeName, guestsAllowed, waitingRoom, mediaPolicy } (mediaPolicy = mismo DTO que GET /communication/media-policy, sin preferencias de usuario). `status:'Ended'` también con la invitación cerrada por la reunión; `guestsAllowed:false` cuando la oficina no admite externos (join-by-token devolverá 403 Meeting.GuestsNotAllowed).\n\nF11 (E-259): el token va en el cuerpo, no en la URL (las URLs quedan en los logs del Gateway y de Communication).",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{invitationToken}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
 					},
 					"response": [],
 					"event": [
@@ -1343,10 +1356,15 @@
 				{
 					"name": "Contexto de guest — token inválido (404 uniforme)",
 					"request": {
-						"method": "GET",
-						"header": [],
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
 						"url": {
-							"raw": "{{UrlBase}}/communication/meetings/guest/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff/context",
+							"raw": "{{UrlBase}}/communication/meetings/guest/context",
 							"host": [
 								"{{UrlBase}}"
 							],
@@ -1354,11 +1372,19 @@
 								"communication",
 								"meetings",
 								"guest",
-								"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 								"context"
 							]
 						},
-						"description": "F6. Anti-enumeración: cualquier motivo colapsa a 404 Meeting.Invitation.NotFound."
+						"description": "F6. Anti-enumeración: cualquier motivo colapsa a 404 Meeting.Invitation.NotFound.\n\nF11 (E-259): el token va en el cuerpo, no en la URL (las URLs quedan en los logs del Gateway y de Communication).",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
 					},
 					"response": [],
 					"event": [
@@ -1822,7 +1848,7 @@
 								"settings"
 							]
 						},
-						"description": "Requiere communication.settings.manage. Devuelve cuatro bloques: settings (ajustes de la oficina; los numéricos nuevos son null = hereda), limits (proyección del plan: null = el plan no define la clave), constraints (techos fijados por PlatformAdmin, null si no hay) y effective (valores vigentes resueltos: global → plan → techo → oficina, con el bloque ceilings = lo máximo que la oficina puede fijar). Tras un cambio llega el socket settings.changed al room de miembros."
+						"description": "Requiere communication.settings.manage. Devuelve cuatro bloques: settings (ajustes de la oficina; los numéricos nuevos son null = hereda), limits (proyección del plan: null = el plan no define la clave), constraints (techos fijados por PlatformAdmin, null si no hay) y effective (valores vigentes resueltos: global → plan → techo → oficina, con el bloque ceilings = lo máximo que la oficina puede fijar). Tras un cambio llega el socket settings.changed al room de miembros.\n\nF9: la respuesta trae además `ranges` (mínimo y máximo técnico de cada número editable, incluidas las retenciones) y `transcriptPromptMaxLength`; el CRM los usa en Settings → Communication para no repetirlos."
 					},
 					"response": [
 						{
@@ -1974,6 +2000,46 @@
 						}
 					},
 					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — preferences updated\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Actualizar mis preferencias (F9: ventana flotante e idioma)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/preferences",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"preferences"
+							]
+						},
+						"description": "F9: `autoPictureInPicture` (abrir la reunión en ventana flotante al ocultar la pestaña; antes vivía en el localStorage del navegador) y `transcriptLanguage` (null = el idioma de la oficina). Autoservicio: solo cambia las preferencias del usuario del token.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"autoPictureInPicture\": true,\n  \"transcriptLanguage\": \"es\"\n}"
+						}
+					},
 					"event": [
 						{
 							"listen": "test",
@@ -2667,6 +2733,179 @@
 							]
 						},
 						"description": "Requiere communication.analytics.read. Serie diaria entre from y to (YYYY-MM-DD)."
+					}
+				},
+				{
+					"name": "Plataforma — resumen por periodo (summary)",
+					"request": {
+						"method": "GET",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/analytics/summary?from=2026-10-01&to=2026-10-31&groupBy=week&tenantId=&planCode=",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"analytics",
+								"summary"
+							],
+							"query": [
+								{
+									"key": "from",
+									"value": "2026-10-01",
+									"description": "YYYY-MM-DD, opcional (por defecto 30 dias hasta hoy)"
+								},
+								{
+									"key": "to",
+									"value": "2026-10-31",
+									"description": "YYYY-MM-DD, opcional"
+								},
+								{
+									"key": "groupBy",
+									"value": "week",
+									"description": "day | week (ISO, desde el lunes) | month"
+								},
+								{
+									"key": "tenantId",
+									"value": "",
+									"description": "opcional: una oficina"
+								},
+								{
+									"key": "planCode",
+									"value": "",
+									"description": "opcional: un plan (el del dia en el snapshot)"
+								}
+							]
+						},
+						"description": "F10 (ADD-08): solo PlatformAdmin con communication.platform.analytics.read (un Tenant Admin recibe 403 Auth.PlatformOnly). Sale del snapshot diario por eventos; los dias van en la zona analyticsTimeZone de la plataforma. Cada consulta se audita (ConfigurationAudit, scope AdminQuery). Devuelve totals, peaks (maximo de una oficina en un dia, no la suma), derived (duracion media, tasas de fallo, invitados) y periods. Errores 400: Analytics.InvalidRange, Analytics.RangeTooLarge."
+					}
+				},
+				{
+					"name": "Plataforma — tabla por oficina (tenants)",
+					"request": {
+						"method": "GET",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/analytics/tenants?from=2026-10-01&to=2026-10-31&planCode=&limit=100",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"analytics",
+								"tenants"
+							],
+							"query": [
+								{
+									"key": "from",
+									"value": "2026-10-01",
+									"description": ""
+								},
+								{
+									"key": "to",
+									"value": "2026-10-31",
+									"description": ""
+								},
+								{
+									"key": "planCode",
+									"value": "",
+									"description": "opcional"
+								},
+								{
+									"key": "limit",
+									"value": "100",
+									"description": "1..COMMUNICATION_ANALYTICS_TENANTS_MAX_LIMIT"
+								}
+							]
+						},
+						"description": "F10 (ADD-08): solo PlatformAdmin con communication.platform.analytics.read (un Tenant Admin recibe 403 Auth.PlatformOnly). Sale del snapshot diario por eventos; los dias van en la zona analyticsTimeZone de la plataforma. Cada consulta se audita (ConfigurationAudit, scope AdminQuery). Una fila por oficina con su plan, dias activos, totales, picos y derivados; ordenada por segundos de llamadas+reuniones."
+					}
+				},
+				{
+					"name": "Plataforma — concurrencia ahora (live)",
+					"request": {
+						"method": "GET",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/analytics/live?limit=100",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"analytics",
+								"live"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "100",
+									"description": "oficinas a listar"
+								}
+							]
+						},
+						"description": "F10 (ADD-08): solo PlatformAdmin con communication.platform.analytics.read (un Tenant Admin recibe 403 Auth.PlatformOnly). Sale del snapshot diario por eventos; los dias van en la zona analyticsTimeZone de la plataforma. Cada consulta se audita (ConfigurationAudit, scope AdminQuery). Reuniones en vivo y participantes conectados (conteo puntual, sin nombres) y sockets/salas del SFU por proceso (latido en Redis cada COMMUNICATION_INSTANCE_HEARTBEAT_SECONDS)."
+					}
+				},
+				{
+					"name": "Plataforma — uso del SFU (infra)",
+					"request": {
+						"method": "GET",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/analytics/infra",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"analytics",
+								"infra"
+							],
+							"query": []
+						},
+						"description": "F10 (ADD-08): solo PlatformAdmin con communication.platform.analytics.read (un Tenant Admin recibe 403 Auth.PlatformOnly). Sale del snapshot diario por eventos; los dias van en la zona analyticsTimeZone de la plataforma. Cada consulta se audita (ConfigurationAudit, scope AdminQuery). Por proceso y worker de mediasoup: getResourceUsage (CPU usuario/sistema en ms, RSS maximo en KB), salas, workers en respaldo y grafanaUrl si COMMUNICATION_OBSERVABILITY_GRAFANA_URL esta configurada."
 					}
 				}
 			]

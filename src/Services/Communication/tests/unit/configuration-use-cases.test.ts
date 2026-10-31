@@ -250,6 +250,10 @@ describe('updateSettings (office)', () => {
     expect(overview.limits).toBeNull();
     expect(overview.constraints).toBeNull();
     expect(overview.effective.meeting.maxParticipants).toBe(10);
+    // F9: la pantalla de la oficina lee los rangos técnicos de aquí (no los repite).
+    expect(overview.ranges.defaultMeetingDurationMinutes).toEqual({ min: 5, max: 480 });
+    expect(overview.ranges.chatEditWindowMinutesDirect.min).toBe(0);
+    expect(overview.transcriptPromptMaxLength).toBeGreaterThan(0);
   });
 });
 

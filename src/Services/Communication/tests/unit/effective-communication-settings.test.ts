@@ -113,7 +113,7 @@ describe('resolveEffectiveSettings', () => {
 
   it('user preferences override only what is theirs', () => {
     const prefs = UserCommunicationPreferences.defaults(tenantId, randomUUID());
-    prefs.update({ meetingSoundsMuted: true, transcriptLanguage: 'es' });
+    prefs.update({ meetingSoundsMuted: true, transcriptLanguage: 'es', autoPictureInPicture: true });
     const e = resolveEffectiveSettings({
       platform,
       limits: null,
@@ -121,7 +121,7 @@ describe('resolveEffectiveSettings', () => {
       tenant: TenantCommunicationSettings.defaults(tenantId).toSnapshot(),
       preferences: prefs.toSnapshot(),
     });
-    expect(e.user).toMatchObject({ soundsMuted: true, transcriptLanguage: 'es', preferAudioOnly: false, joinMuted: false, joinCameraOff: false });
+    expect(e.user).toMatchObject({ soundsMuted: true, transcriptLanguage: 'es', preferAudioOnly: false, joinMuted: false, joinCameraOff: false, autoPictureInPicture: true });
     expect(e.user?.audioProcessing).toEqual({ echoCancellation: null, noiseSuppression: null, autoGainControl: null });
     // F4: la politica de media sale resuelta con los defaults tecnicos.
     expect(e.media.quality.thresholds.good.rttMs).toBe(300);

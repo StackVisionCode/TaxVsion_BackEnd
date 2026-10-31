@@ -19,7 +19,9 @@ public sealed class ScanningUnitTests
 
     [Fact]
     public void Preprocess_rejects_a_frame_of_the_wrong_size() =>
-        Assert.Throws<ArgumentException>(() => OnnxNsfwClassifier.Preprocess(new byte[5], 2, [0.5f, 0.5f, 0.5f], [0.5f, 0.5f, 0.5f]));
+        Assert.Throws<ArgumentException>(() =>
+            OnnxNsfwClassifier.Preprocess(new byte[5], 2, [0.5f, 0.5f, 0.5f], [0.5f, 0.5f, 0.5f])
+        );
 
     [Fact]
     public void Softmax_is_stable_with_large_logits()
@@ -46,11 +48,26 @@ public sealed class ScanningUnitTests
     public async Task With_every_turn_taken_the_scan_reports_busy()
     {
         var gate = new TaskCompletionSource();
-        var options = Options.Create(new ContentScannerOptions { MaxConcurrentScans = 1, QueueTimeoutSeconds = 1, MinFrameIntervalSeconds = 1, MaxFrames = 30 });
-        var service = new ScanService(new BlockingExtractor(gate.Task), new ZeroClassifier(), options, NullLogger<ScanService>.Instance);
+        var options = Options.Create(
+            new ContentScannerOptions
+            {
+                MaxConcurrentScans = 1,
+                QueueTimeoutSeconds = 1,
+                MinFrameIntervalSeconds = 1,
+                MaxFrames = 30,
+            }
+        );
+        var service = new ScanService(
+            new BlockingExtractor(gate.Task),
+            new ZeroClassifier(),
+            options,
+            NullLogger<ScanService>.Instance
+        );
 
         var first = service.ScanAsync("a", MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None);
-        await Assert.ThrowsAsync<ScannerBusyException>(() => service.ScanAsync("b", MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None));
+        await Assert.ThrowsAsync<ScannerBusyException>(() =>
+            service.ScanAsync("b", MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None)
+        );
 
         gate.SetResult();
         Assert.Equal(0f, (await first).Nsfw);
@@ -58,7 +75,12 @@ public sealed class ScanningUnitTests
 
     private sealed class BlockingExtractor(Task gate) : IFrameExtractor
     {
-        public async Task<IReadOnlyList<byte[]>> ExtractAsync(string path, MediaKind kind, FrameSampling sampling, CancellationToken ct)
+        public async Task<IReadOnlyList<byte[]>> ExtractAsync(
+            string path,
+            MediaKind kind,
+            FrameSampling sampling,
+            CancellationToken ct
+        )
         {
             await gate;
             return [new byte[3]];

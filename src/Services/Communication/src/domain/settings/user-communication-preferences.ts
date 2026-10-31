@@ -16,6 +16,8 @@ export interface UserCommunicationPreferencesSnapshot {
   readonly autoGainControl: boolean | null;
   readonly joinMuted: boolean;
   readonly joinCameraOff: boolean;
+  /** F9: abrir la reunión en ventana flotante al ocultar la pestaña (opt-in). */
+  readonly autoPictureInPicture: boolean;
   readonly updatedAtUtc: Date;
 }
 
@@ -42,6 +44,7 @@ export class UserCommunicationPreferences {
       autoGainControl: null,
       joinMuted: false,
       joinCameraOff: false,
+      autoPictureInPicture: false,
       updatedAtUtc: now,
     });
   }

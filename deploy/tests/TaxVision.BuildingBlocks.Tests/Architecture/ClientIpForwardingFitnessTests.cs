@@ -68,7 +68,12 @@ public sealed class ClientIpForwardingFitnessTests
                 )
                     continue;
 
-                if (InternalOnlyHosts.Contains(RelativePath(file).Replace(Path.DirectorySeparatorChar, '/'), StringComparer.Ordinal))
+                if (
+                    InternalOnlyHosts.Contains(
+                        RelativePath(file).Replace(Path.DirectorySeparatorChar, '/'),
+                        StringComparer.Ordinal
+                    )
+                )
                     continue;
 
                 // Solo puntos de entrada web reales (los que arrancan un WebApplication).

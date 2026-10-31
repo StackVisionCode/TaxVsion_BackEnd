@@ -144,6 +144,8 @@ export interface MeetingStartedEvent extends IntegrationEvent {
   readonly meetingId: string;
   readonly hostUserId: string;
   readonly startedAtUtc: string;
+  /** F10 (ADD-08 T-71): topologia de media para contar reuniones mesh vs SFU. Opcional por compatibilidad. */
+  readonly strategy?: 'Mesh' | 'Sfu';
 }
 
 export interface MeetingEndedEvent extends IntegrationEvent {
@@ -187,6 +189,8 @@ export interface MeetingParticipantJoinedEvent extends IntegrationEvent {
   readonly meetingId: string;
   readonly participantUserId: string;
   readonly joinedAtUtc: string;
+  /** F10 (ADD-08 T-71): tipo de actor (Guest, CustomerPortal, TenantEmployee…) para contar invitados. Opcional. */
+  readonly actorType?: string;
 }
 
 export interface MeetingParticipantLeftEvent extends IntegrationEvent {
@@ -204,6 +208,8 @@ export interface MeetingParticipantAdmittedEvent extends IntegrationEvent {
   readonly participantUserId: string;
   readonly admittedByUserId: string;
   readonly admittedAtUtc: string;
+  /** F10: tipo de actor del admitido (la admision es su entrada a la reunion). Opcional. */
+  readonly actorType?: string;
 }
 
 export interface MeetingParticipantRemovedByHostEvent extends IntegrationEvent {

@@ -12,9 +12,9 @@ using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
+using TaxVision.CloudStorage.Domain.Moderation;
 using TaxVision.CloudStorage.Domain.Permissions;
 using TaxVision.CloudStorage.Domain.Providers;
-using TaxVision.CloudStorage.Domain.Moderation;
 using TaxVision.CloudStorage.Domain.Quotas;
 using TaxVision.CloudStorage.Domain.RateLimiting;
 using TaxVision.CloudStorage.Domain.Sharing;
@@ -105,7 +105,11 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     /// <summary>Reintentos al fusionar contadores de cuota que chocaron con otra escritura.</summary>
     internal const int MaxQuotaMergeAttempts = 5;
 
-    private static readonly string[] QuotaCounters = [nameof(TenantStorageLimit.UsedBytes), nameof(TenantStorageLimit.ReservedBytes)];
+    private static readonly string[] QuotaCounters =
+    [
+        nameof(TenantStorageLimit.UsedBytes),
+        nameof(TenantStorageLimit.ReservedBytes),
+    ];
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

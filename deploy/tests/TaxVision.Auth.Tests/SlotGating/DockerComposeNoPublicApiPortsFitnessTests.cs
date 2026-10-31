@@ -40,7 +40,10 @@ public sealed class DockerComposeNoPublicApiPortsFitnessTests
         var compose = ReadRepoFile("deploy/docker/docker-compose.yml");
         var block = ServiceBlocks(compose).Single(b => b.name == SfuMediaService);
 
-        Assert.True(HasActivePortsSection(block.body), "communication-api debe publicar los puertos del WebRtcServer (UDP y TCP).");
+        Assert.True(
+            HasActivePortsSection(block.body),
+            "communication-api debe publicar los puertos del WebRtcServer (UDP y TCP)."
+        );
         Assert.True(
             PublishesOnlySfuMediaPorts(block.body),
             "communication-api solo puede publicar puertos de media del SFU (derivados de "
@@ -56,7 +59,9 @@ public sealed class DockerComposeNoPublicApiPortsFitnessTests
         return entries.Count > 0
             && entries.All(entry =>
                 entry.Contains(SfuPortVariable, StringComparison.Ordinal)
-                && (entry.EndsWith("/udp", StringComparison.Ordinal) || entry.EndsWith("/tcp", StringComparison.Ordinal))
+                && (
+                    entry.EndsWith("/udp", StringComparison.Ordinal) || entry.EndsWith("/tcp", StringComparison.Ordinal)
+                )
                 && !entry.Contains("5350", StringComparison.Ordinal)
             );
     }

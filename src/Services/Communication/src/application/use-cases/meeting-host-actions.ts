@@ -51,6 +51,7 @@ export async function admitParticipant(
   await deps.meetings.save(meeting);
 
   const now = new Date();
+  const admittedActorType = meeting.toSnapshot().participants.find((p) => p.userId === cmd.targetUserId)?.actorType;
   const event: MeetingParticipantAdmittedEvent = {
     eventId: randomUUID(),
     eventType: MeetingEventTypes.ParticipantAdmitted,
@@ -61,6 +62,7 @@ export async function admitParticipant(
     participantUserId: cmd.targetUserId,
     admittedByUserId: cmd.hostUserId,
     admittedAtUtc: now.toISOString(),
+    ...(admittedActorType !== undefined ? { actorType: admittedActorType } : {}),
   };
   await deps.publisher.enqueue(event);
   await recordMeetingEvent(deps, {

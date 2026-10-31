@@ -126,14 +126,15 @@ export async function joinMeeting(
     if (!invitation || invitation.toSnapshot().meetingId !== meetingId) {
       return Result.fail(makeError('Meeting.Invitation.NotFound', 'Invitation not found.'));
     }
-    // F6 (D-48): el guest que sigue dentro (gracia) o en la sala de espera vuelve a entrar sin consumir
-    // otra vez su unico uso; una revocacion en medio si lo deja fuera.
-    const guestInside = meeting
-      .toSnapshot()
-      .participants.some((p) => p.userId === command.user.userId && (p.status === 'Joined' || p.status === 'Waiting'));
-    if (guestInside && invitation.toSnapshot().usedAtUtc !== null) {
+    // F6 (D-48) + F11: el guest que ya entró (sigue dentro, espera admisión o salió con Leave) vuelve a
+    // entrar sin consumir otra vez su único uso; revocación, cierre o expulsión lo dejan fuera.
+    const guestStatus = meeting.toSnapshot().participants.find((p) => p.userId === command.user.userId)?.status ?? null;
+    if (invitation.toSnapshot().usedAtUtc !== null) {
       if (invitation.toSnapshot().revokedAtUtc !== null) {
         return Result.fail(makeError('Meeting.Invitation.Revoked', 'Invitation was revoked.'));
+      }
+      if (!invitation.allowsGuestRejoin(guestStatus)) {
+        return Result.fail(makeError('Meeting.Invitation.AlreadyUsed', 'Invitation was already used.'));
       }
     } else {
       const usedAt = new Date();
@@ -261,6 +262,7 @@ function joinedEvent(command: JoinMeetingCommand, meetingId: string, now: Date):
     meetingId,
     participantUserId: command.user.userId,
     joinedAtUtc: now.toISOString(),
+    actorType: command.user.actorType ?? 'TenantEmployee',
   };
 }
 

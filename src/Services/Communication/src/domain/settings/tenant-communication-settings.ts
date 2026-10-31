@@ -9,6 +9,7 @@ import {
   isReactionCatalog,
   isTranscriptLanguage,
   isWithinTechnical,
+  TECHNICAL_LIMITS,
 } from './technical-limits.js';
 import type { EffectiveCeilings } from './effective-communication-settings.js';
 
@@ -94,7 +95,7 @@ export type TenantCommunicationSettingsPatch = Partial<
   Omit<TenantCommunicationSettingsSnapshot, 'tenantId' | 'createdAtUtc' | 'updatedAtUtc'>
 >;
 
-type OfficeNumericKey =
+export type OfficeNumericKey =
   | 'defaultMeetingDurationMinutes'
   | 'maxMeetingDurationMinutes'
   | 'maxMeetingParticipants'
@@ -154,6 +155,23 @@ const CEILING_OF: Record<CeilingedKey, NumericCeilingKey> = {
 
 /** whisper.cpp toma el prompt como contexto inicial: corto, solo nombres y vocabulario. */
 export const TRANSCRIPT_PROMPT_MAX_LENGTH = 500;
+/** Días que la oficina puede conservar mensajes y grabaciones antes de la purga. */
+export const RETENTION_DAYS_RANGE = { min: 1, max: 3650 } as const;
+
+/** F9: rangos técnicos de los números que edita la oficina, para que la pantalla no los repita. */
+export type OfficeRangedKey = OfficeNumericKey | 'messageRetentionDays' | 'recordingRetentionDays';
+
+export function officeNumericRanges(): Readonly<Record<OfficeRangedKey, { readonly min: number; readonly max: number }>> {
+  const ranges = {
+    messageRetentionDays: { ...RETENTION_DAYS_RANGE },
+    recordingRetentionDays: { ...RETENTION_DAYS_RANGE },
+  } as Record<OfficeRangedKey, { min: number; max: number }>;
+  for (const key of Object.keys(OFFICE_NUMERIC_RANGES) as OfficeNumericKey[]) {
+    const { min, max } = TECHNICAL_LIMITS[OFFICE_NUMERIC_RANGES[key]];
+    ranges[key] = { min, max };
+  }
+  return ranges;
+}
 
 export class TenantCommunicationSettings {
   private constructor(private state: TenantCommunicationSettingsSnapshot) {}
@@ -218,11 +236,12 @@ export class TenantCommunicationSettings {
 
   /** Validacion de forma (rangos tecnicos). La validacion contra el techo es `validateAgainstCeilings`. */
   update(patch: TenantCommunicationSettingsPatch, now: Date = new Date()): Result<ConfigurationChange[]> {
-    if (patch.messageRetentionDays !== undefined && (patch.messageRetentionDays < 1 || patch.messageRetentionDays > 3650)) {
-      return Result.fail(makeError('Settings.InvalidRetention', 'messageRetentionDays must be 1..3650.'));
+    const { min: minDays, max: maxDays } = RETENTION_DAYS_RANGE;
+    if (patch.messageRetentionDays !== undefined && (patch.messageRetentionDays < minDays || patch.messageRetentionDays > maxDays)) {
+      return Result.fail(makeError('Settings.InvalidRetention', `messageRetentionDays must be ${minDays}..${maxDays}.`));
     }
-    if (patch.recordingRetentionDays !== undefined && (patch.recordingRetentionDays < 1 || patch.recordingRetentionDays > 3650)) {
-      return Result.fail(makeError('Settings.InvalidRetention', 'recordingRetentionDays must be 1..3650.'));
+    if (patch.recordingRetentionDays !== undefined && (patch.recordingRetentionDays < minDays || patch.recordingRetentionDays > maxDays)) {
+      return Result.fail(makeError('Settings.InvalidRetention', `recordingRetentionDays must be ${minDays}..${maxDays}.`));
     }
     if (patch.recordingConsentPolicy !== undefined && !isRecordingConsentPolicy(patch.recordingConsentPolicy)) {
       return Result.fail(makeError('Settings.InvalidRecordingConsentPolicy', 'Invalid recordingConsentPolicy.'));

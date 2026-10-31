@@ -131,11 +131,25 @@ public sealed class NotesFileScanResultConsumerTests
             Reason = "Possible sexual content (score 0.700).",
         };
 
-        await NotesFileScanResultConsumer.Handle(review, repo, new NoOpUnitOfWork(), new NoOpCorrelationContext(), NullLogger<Note>.Instance, CancellationToken.None);
+        await NotesFileScanResultConsumer.Handle(
+            review,
+            repo,
+            new NoOpUnitOfWork(),
+            new NoOpCorrelationContext(),
+            NullLogger<Note>.Instance,
+            CancellationToken.None
+        );
         Assert.Equal(NoteAttachmentStatus.UnderReview, note.Attachments.Single().Status);
 
         note.MarkAttachmentAvailable(fileId);
-        await NotesFileScanResultConsumer.Handle(review, repo, new NoOpUnitOfWork(), new NoOpCorrelationContext(), NullLogger<Note>.Instance, CancellationToken.None);
+        await NotesFileScanResultConsumer.Handle(
+            review,
+            repo,
+            new NoOpUnitOfWork(),
+            new NoOpCorrelationContext(),
+            NullLogger<Note>.Instance,
+            CancellationToken.None
+        );
         Assert.Equal(NoteAttachmentStatus.Available, note.Attachments.Single().Status);
     }
 

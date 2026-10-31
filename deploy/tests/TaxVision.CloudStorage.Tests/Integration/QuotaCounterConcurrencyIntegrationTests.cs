@@ -17,8 +17,13 @@ public sealed class QuotaCounterConcurrencyIntegrationTests : IAsyncLifetime
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly string _connectionString =
         Environment.GetEnvironmentVariable("CLOUDSTORAGE_DB_CONNECTION")
-        ?? new ConfigurationBuilder().AddUserSecrets("taxvision-cloudstorage-development").Build().GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set CLOUDSTORAGE_DB_CONNECTION or the CloudStorage user-secrets to run this test.");
+        ?? new ConfigurationBuilder()
+            .AddUserSecrets("taxvision-cloudstorage-development")
+            .Build()
+            .GetConnectionString("Default")
+        ?? throw new InvalidOperationException(
+            "Set CLOUDSTORAGE_DB_CONNECTION or the CloudStorage user-secrets to run this test."
+        );
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -29,7 +34,10 @@ public sealed class QuotaCounterConcurrencyIntegrationTests : IAsyncLifetime
     }
 
     private CloudStorageDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<CloudStorageDbContext>().UseSqlServer(_connectionString).Options, new FixedTenant(_tenantId));
+        new(
+            new DbContextOptionsBuilder<CloudStorageDbContext>().UseSqlServer(_connectionString).Options,
+            new FixedTenant(_tenantId)
+        );
 
     public async Task InitializeAsync()
     {

@@ -25,7 +25,10 @@ var app = builder.Build();
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 app.MapGet(
     "/health/ready",
-    (INsfwClassifier classifier) => classifier.IsReady ? Results.Ok(new { status = "ready" }) : Results.StatusCode(StatusCodes.Status503ServiceUnavailable)
+    (INsfwClassifier classifier) =>
+        classifier.IsReady
+            ? Results.Ok(new { status = "ready" })
+            : Results.StatusCode(StatusCodes.Status503ServiceUnavailable)
 );
 
 app.MapPost("/v1/scan", ScanEndpoint.HandleAsync).AddEndpointFilter(ScanEndpoint.RequireApiKey);
@@ -37,12 +40,20 @@ internal static class ScanEndpoint
 {
     public const string ApiKeyHeader = "X-Scanner-Key";
 
-    public static async ValueTask<object?> RequireApiKey(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    public static async ValueTask<object?> RequireApiKey(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next
+    )
     {
-        var expected = context.HttpContext.RequestServices.GetRequiredService<IOptions<ContentScannerOptions>>().Value.ApiKey;
+        var expected = context
+            .HttpContext.RequestServices.GetRequiredService<IOptions<ContentScannerOptions>>()
+            .Value.ApiKey;
         var provided = context.HttpContext.Request.Headers[ApiKeyHeader].ToString();
         // Comparación en tiempo constante: el tiempo de respuesta no revela cuánto de la clave coincide.
-        var ok = CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(provided), Encoding.UTF8.GetBytes(expected));
+        var ok = CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(provided),
+            Encoding.UTF8.GetBytes(expected)
+        );
         return ok ? await next(context) : Results.Unauthorized();
     }
 
@@ -56,11 +67,15 @@ internal static class ScanEndpoint
     )
     {
         var mediaType = request.ContentType?.Split(';')[0].Trim().ToLowerInvariant() ?? string.Empty;
-        MediaKind? kind = mediaType.StartsWith("image/", StringComparison.Ordinal) ? MediaKind.Image
+        MediaKind? kind =
+            mediaType.StartsWith("image/", StringComparison.Ordinal) ? MediaKind.Image
             : mediaType.StartsWith("video/", StringComparison.Ordinal) ? MediaKind.Video
             : null;
         if (kind is null)
-            return Results.Problem(statusCode: StatusCodes.Status415UnsupportedMediaType, title: "Only images and videos are scanned.");
+            return Results.Problem(
+                statusCode: StatusCodes.Status415UnsupportedMediaType,
+                title: "Only images and videos are scanned."
+            );
 
         Directory.CreateDirectory(options.Value.TempDirectory);
         var path = Path.Combine(options.Value.TempDirectory, $"{Guid.NewGuid():N}.bin");
@@ -74,11 +89,17 @@ internal static class ScanEndpoint
         }
         catch (ScannerBusyException)
         {
-            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Content scanner is busy.");
+            return Results.Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Content scanner is busy."
+            );
         }
         catch (UndecodableMediaException)
         {
-            return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "The file could not be decoded.");
+            return Results.Problem(
+                statusCode: StatusCodes.Status422UnprocessableEntity,
+                title: "The file could not be decoded."
+            );
         }
         finally
         {

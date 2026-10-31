@@ -11,6 +11,7 @@ import {
   isReactionCatalog,
   isRecordingCompositionFormat,
   type RecordingCompositionFormat,
+  isIanaTimeZone,
   isTranscriptLanguage,
   isWithinTechnical,
 } from './technical-limits.js';
@@ -121,6 +122,13 @@ export interface PlatformCommunicationSettingsSnapshot {
   readonly voiceNoteTranscriptMaxSeconds: number;
   readonly transcriptWorkerTimeoutFactorPct: number;
   readonly recordingAvailabilityTimeoutMinutes: number;
+  /** F10 (ADD-08): zona IANA con la que se cortan los días del snapshot y se agrupan semanas/meses. */
+  readonly analyticsTimeZone: string;
+  readonly analyticsRetentionDays: number;
+  /** F10 (T-73): histórico operativo; null = no se purga (por defecto). */
+  readonly callsRetentionDays: number | null;
+  readonly meetingsRetentionDays: number | null;
+  readonly invitationsRetentionDays: number | null;
   readonly updatedByUserId: string | null;
   readonly updatedAtUtc: Date;
 }
@@ -211,7 +219,15 @@ export const PLATFORM_NUMERIC_RANGES: Record<Exclude<NumericKey, 'version'>, Tec
   voiceNoteTranscriptMaxSeconds: 'voiceNoteTranscriptMaxSeconds',
   transcriptWorkerTimeoutFactorPct: 'transcriptWorkerTimeoutFactorPct',
   recordingAvailabilityTimeoutMinutes: 'recordingAvailabilityTimeoutMinutes',
+  analyticsRetentionDays: 'analyticsRetentionDays',
 };
+
+/** F10: claves numéricas opcionales (null = apagado); si traen valor, deben estar en su rango técnico. */
+export const PLATFORM_NULLABLE_RANGES = {
+  callsRetentionDays: 'historyRetentionDays',
+  meetingsRetentionDays: 'historyRetentionDays',
+  invitationsRetentionDays: 'historyRetentionDays',
+} as const satisfies Partial<Record<keyof PlatformCommunicationSettingsSnapshot, TechnicalLimitKey>>;
 
 export class PlatformCommunicationSettings {
   private constructor(private state: PlatformCommunicationSettingsSnapshot) {}
@@ -315,6 +331,11 @@ export class PlatformCommunicationSettings {
       voiceNoteTranscriptMaxSeconds: TECHNICAL_LIMITS.voiceNoteTranscriptMaxSeconds.fallback,
       transcriptWorkerTimeoutFactorPct: TECHNICAL_LIMITS.transcriptWorkerTimeoutFactorPct.fallback,
       recordingAvailabilityTimeoutMinutes: TECHNICAL_LIMITS.recordingAvailabilityTimeoutMinutes.fallback,
+      analyticsTimeZone: 'UTC',
+      analyticsRetentionDays: TECHNICAL_LIMITS.analyticsRetentionDays.fallback,
+      callsRetentionDays: null,
+      meetingsRetentionDays: null,
+      invitationsRetentionDays: null,
       updatedByUserId: null,
       updatedAtUtc: now,
     });
@@ -367,6 +388,18 @@ export class PlatformCommunicationSettings {
     if (!isRecordingCompositionFormat(snapshot.recordingCompositionFormat)) {
       next['recordingCompositionFormat'] = 'mp4';
       corrected.push('recordingCompositionFormat');
+    }
+    if (!isIanaTimeZone(snapshot.analyticsTimeZone)) {
+      next['analyticsTimeZone'] = 'UTC';
+      corrected.push('analyticsTimeZone');
+    }
+    // Un histórico fuera de rango se apaga (null): purgar con un valor corrupto borraría datos.
+    for (const key of Object.keys(PLATFORM_NULLABLE_RANGES) as Array<keyof typeof PLATFORM_NULLABLE_RANGES>) {
+      const value = snapshot[key];
+      if (value !== null && !isWithinTechnical(PLATFORM_NULLABLE_RANGES[key], value)) {
+        next[key] = null;
+        corrected.push(key);
+      }
     }
     return {
       settings: new PlatformCommunicationSettings(next as unknown as PlatformCommunicationSettingsSnapshot),
@@ -430,6 +463,19 @@ export class PlatformCommunicationSettings {
     }
     if (patch.recordingCompositionFormat !== undefined && !isRecordingCompositionFormat(patch.recordingCompositionFormat)) {
       return Result.fail(makeError('Settings.InvalidCompositionFormat', 'recordingCompositionFormat must be mp4 or webm.'));
+    }
+    if (patch.analyticsTimeZone !== undefined && !isIanaTimeZone(patch.analyticsTimeZone)) {
+      return Result.fail(makeError('Settings.InvalidTimeZone', 'analyticsTimeZone must be an IANA time zone such as "UTC" or "America/New_York".'));
+    }
+    for (const key of Object.keys(PLATFORM_NULLABLE_RANGES) as Array<keyof typeof PLATFORM_NULLABLE_RANGES>) {
+      const value = patch[key];
+      if (value === undefined || value === null) continue;
+      const rangeKey = PLATFORM_NULLABLE_RANGES[key];
+      if (!isWithinTechnical(rangeKey, value)) {
+        return Result.fail(
+          makeError('Settings.OutOfTechnicalRange', `${key} must be null or an integer within ${describeTechnicalRange(rangeKey)}.`),
+        );
+      }
     }
     return Result.okVoid();
   }

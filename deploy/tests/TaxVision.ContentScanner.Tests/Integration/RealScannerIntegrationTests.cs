@@ -11,7 +11,10 @@ namespace TaxVision.ContentScanner.Tests.Integration;
 /// </summary>
 public sealed class RealScannerIntegrationTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "content-scanner-it-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(
+        Path.GetTempPath(),
+        "content-scanner-it-" + Guid.NewGuid().ToString("N")
+    );
 
     public RealScannerIntegrationTests() => Directory.CreateDirectory(_dir);
 
@@ -36,8 +39,9 @@ public sealed class RealScannerIntegrationTests : IDisposable
     public async Task Ffmpeg_decodes_an_image_to_one_square_rgb_frame()
     {
         var png = Generate("red.png", "-f", "lavfi", "-i", "color=c=red:s=64x48", "-frames:v", "1");
-        var frames = await new FfmpegFrameExtractor(Microsoft.Extensions.Options.Options.Create(Options()))
-            .ExtractAsync(png, MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None);
+        var frames = await new FfmpegFrameExtractor(
+            Microsoft.Extensions.Options.Options.Create(Options())
+        ).ExtractAsync(png, MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None);
 
         var frame = Assert.Single(frames);
         Assert.Equal(384 * 384 * 3, frame.Length);
@@ -47,11 +51,29 @@ public sealed class RealScannerIntegrationTests : IDisposable
     [Fact]
     public async Task Ffmpeg_samples_one_frame_every_interval_up_to_the_cap()
     {
-        var mp4 = Generate("clip.mp4", "-f", "lavfi", "-i", "testsrc=duration=7:size=160x120:rate=10", "-pix_fmt", "yuv420p");
+        var mp4 = Generate(
+            "clip.mp4",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=7:size=160x120:rate=10",
+            "-pix_fmt",
+            "yuv420p"
+        );
         var extractor = new FfmpegFrameExtractor(Microsoft.Extensions.Options.Options.Create(Options()));
 
-        var everyTwo = await extractor.ExtractAsync(mp4, MediaKind.Video, new FrameSampling(2, 30), CancellationToken.None);
-        var capped = await extractor.ExtractAsync(mp4, MediaKind.Video, new FrameSampling(1, 3), CancellationToken.None);
+        var everyTwo = await extractor.ExtractAsync(
+            mp4,
+            MediaKind.Video,
+            new FrameSampling(2, 30),
+            CancellationToken.None
+        );
+        var capped = await extractor.ExtractAsync(
+            mp4,
+            MediaKind.Video,
+            new FrameSampling(1, 3),
+            CancellationToken.None
+        );
 
         Assert.InRange(everyTwo.Count, 3, 5);
         Assert.Equal(3, capped.Count);
@@ -64,7 +86,8 @@ public sealed class RealScannerIntegrationTests : IDisposable
         await File.WriteAllBytesAsync(path, [0x00, 0x01, 0x02, 0x03, 0x04]);
         var extractor = new FfmpegFrameExtractor(Microsoft.Extensions.Options.Options.Create(Options()));
         await Assert.ThrowsAsync<UndecodableMediaException>(() =>
-            extractor.ExtractAsync(path, MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None));
+            extractor.ExtractAsync(path, MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None)
+        );
     }
 
     [Fact]
@@ -75,7 +98,12 @@ public sealed class RealScannerIntegrationTests : IDisposable
             return; // sin modelo local no hay nada que medir
         var options = Microsoft.Extensions.Options.Options.Create(Options(model));
         using var classifier = new OnnxNsfwClassifier(options, NullLogger<OnnxNsfwClassifier>.Instance);
-        using var scanner = new ScanService(new FfmpegFrameExtractor(options), classifier, options, NullLogger<ScanService>.Instance);
+        using var scanner = new ScanService(
+            new FfmpegFrameExtractor(options),
+            classifier,
+            options,
+            NullLogger<ScanService>.Instance
+        );
         var png = Generate("pattern.png", "-f", "lavfi", "-i", "testsrc2=size=640x480", "-frames:v", "1");
 
         var result = await scanner.ScanAsync(png, MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None);

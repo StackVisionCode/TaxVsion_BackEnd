@@ -59,7 +59,7 @@ export interface JoinMeetingByTokenRequestDto {
   readonly displayName?: string;
 }
 
-/** F6 (T-63): GET /communication/meetings/guest/:token/context — publico, rate-limited por token, 404 uniforme. */
+/** F6 (T-63): POST /communication/meetings/guest/context ({ token }) — publico, rate-limited por token, 404 uniforme. */
 export interface GuestMeetingContextResponseDto {
   readonly meetingTitle: string;
   readonly hostDisplayName: string;
