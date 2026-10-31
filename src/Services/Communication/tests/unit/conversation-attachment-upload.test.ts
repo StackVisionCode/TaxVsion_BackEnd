@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Conversation } from '../../src/domain/conversations/conversation.js';
 import type { ConversationRepository } from '../../src/application/ports/conversation-repository.js';
@@ -50,11 +50,23 @@ const cmd = {
   sizeBytes: 1024,
 };
 
+function reservations() {
+  return { reserve: vi.fn().mockResolvedValue(undefined), consume: vi.fn().mockResolvedValue(true), purgeOlderThan: vi.fn().mockResolvedValue(0) };
+}
+
 describe('conversation attachment upload mediation', () => {
+  it('reserva la subida para ese usuario y esa conversación (F11, E-259)', async () => {
+    const attachmentReservations = reservations();
+    const result = await createAttachmentUpload(cmd, { conversations: conversationRepo([memberId]), cloudStorageUpload: uploadOk, attachmentReservations });
+    expect(result.isSuccess).toBe(true);
+    expect(attachmentReservations.reserve).toHaveBeenCalledWith({ fileId: initiated.fileId, tenantId, conversationId, uploadedByUserId: memberId });
+  });
+
   it('initiates an upload for a participant', async () => {
     const result = await createAttachmentUpload(cmd, {
       conversations: conversationRepo([memberId]),
       cloudStorageUpload: uploadOk,
+      attachmentReservations: reservations(),
     });
     expect(result.isSuccess).toBe(true);
     if (result.isSuccess) {
@@ -67,7 +79,7 @@ describe('conversation attachment upload mediation', () => {
   it('rejects an upload from a non-participant', async () => {
     const result = await createAttachmentUpload(
       { ...cmd, userId: u() },
-      { conversations: conversationRepo([memberId]), cloudStorageUpload: uploadOk },
+      { conversations: conversationRepo([memberId]), cloudStorageUpload: uploadOk, attachmentReservations: reservations() },
     );
     expect(result.isSuccess).toBe(false);
     if (!result.isSuccess) expect(result.error.code).toBe('Chat.Conversation.NotParticipant');
@@ -77,6 +89,7 @@ describe('conversation attachment upload mediation', () => {
     const result = await createAttachmentUpload(cmd, {
       conversations: conversationRepo(null),
       cloudStorageUpload: uploadOk,
+      attachmentReservations: reservations(),
     });
     expect(result.isSuccess).toBe(false);
     if (!result.isSuccess) expect(result.error.code).toBe('Chat.Conversation.NotFound');

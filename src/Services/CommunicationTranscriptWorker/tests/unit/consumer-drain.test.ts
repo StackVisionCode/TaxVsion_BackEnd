@@ -88,7 +88,7 @@ describe('startConsumer / stop() — graceful drain (Fase Transcript 4)', () => 
     // (in-flight) hasta que resolvemos manualmente mas abajo.
     channel.onMessage?.(
       fakeMessage({
-        eventType: 'communication.call.recording_ready.v1',
+        eventType: 'communication.call.recording_processing_started.v1',
         eventId: u(),
         tenantId: u(),
         callId: u(),

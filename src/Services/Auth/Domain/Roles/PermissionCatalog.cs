@@ -67,6 +67,13 @@ public static class PermissionCatalog
     public const string CloudStorageCustomerAccessManageAssigned = CloudStoragePermissions.CustomerAccessManageAssigned;
     public const string CloudStorageCustomerAccessManageAny = CloudStoragePermissions.CustomerAccessManageAny;
 
+    // Topes de tamaño de subida por carpeta/plan/oficina (UploadSizePolicy). PlatformOnly: ningún
+    // tenant los edita — mismo criterio que signature.constraints.manage.
+    public const string CloudStorageUploadPolicyManage = CloudStoragePermissions.UploadPolicyManage;
+
+    // Moderación de contenido (T-20): umbrales y revisión de lo marcado. PlatformOnly, como los topes.
+    public const string CloudStorageModerationManage = CloudStoragePermissions.ModerationManage;
+
     // Signature — firma electrónica (bounded context propio, ver microservicio Signature)
     public const string SignatureRequestCreate = SignaturePermissions.RequestCreate;
     public const string SignatureRequestRead = SignaturePermissions.RequestRead;
@@ -271,6 +278,13 @@ public static class PermissionCatalog
     public const string CommunicationNotificationRead = CommunicationPermissions.NotificationRead;
     public const string CommunicationSettingsManage = CommunicationPermissions.SettingsManage;
     public const string CommunicationAnalyticsRead = CommunicationPermissions.AnalyticsRead;
+
+    // Capa de configuración de plataforma de Communication (valores globales, techos por oficina y
+    // métricas agregadas de toda la plataforma). PlatformOnly: true — sin caso de uso tenant-propio,
+    // nunca entran al rol de sistema "Tenant Admin" (mismo criterio que signature.constraints.manage).
+    public const string CommunicationPlatformManage = CommunicationPermissions.PlatformManage;
+    public const string CommunicationConstraintsManage = CommunicationPermissions.ConstraintsManage;
+    public const string CommunicationPlatformAnalyticsRead = CommunicationPermissions.PlatformAnalyticsRead;
 
     // PaymentApp / PaymentClient — pagos SaaS de plataforma y pagos que un tenant cobra a sus
     // propios clientes (bounded contexts propios, ver microservicios PaymentApp/PaymentClient).
@@ -670,6 +684,27 @@ public static class PermissionCatalog
             CloudStorageReassignFormParticipant,
             "cloudstorage",
             "Reassign Client Forms files from an external participant to a customer",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            // PlatformOnly: los topes de subida son política de plataforma, no de oficina — nunca
+            // entra al rol de sistema "Tenant Admin" (mismo criterio que signature.constraints.manage).
+            new Guid("a1000000-0000-0000-0000-000000000216"),
+            CloudStorageUploadPolicyManage,
+            "cloudstorage",
+            "Manage upload size policies per folder, plan and office",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            // PlatformOnly: revisar contenido marcado y fijar umbrales es tarea de la plataforma.
+            new Guid("a1000000-0000-0000-0000-000000000217"),
+            CloudStorageModerationManage,
+            "cloudstorage",
+            "Review flagged uploads and manage the content moderation policy",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1414,6 +1449,38 @@ public static class PermissionCatalog
             "View the office's communication analytics",
             false,
             MinPlanTier: (int)PlanTier.Starter
+        ),
+        // Capa de plataforma de Communication: PlatformOnly: true — sin caso de uso tenant-propio,
+        // nunca entran al rol de sistema "Tenant Admin" (mismo criterio que signature.constraints.manage).
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000213"),
+            CommunicationPlatformManage,
+            "communication",
+            "Manage platform-wide communication settings",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000214"),
+            CommunicationConstraintsManage,
+            "communication",
+            "Manage per-office communication ceilings",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        // Reservado hasta que exista el endpoint de métricas de plataforma (F10 del MASTER de
+        // Communication): se libera entonces con UpdateData, como ReleaseApplyProfilePermission.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000215"),
+            CommunicationPlatformAnalyticsRead,
+            "communication",
+            "View platform-wide communication analytics",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true,
+            IsReserved: true
         ),
         // Postmaster (ver comentario junto a los const de arriba).
         new(

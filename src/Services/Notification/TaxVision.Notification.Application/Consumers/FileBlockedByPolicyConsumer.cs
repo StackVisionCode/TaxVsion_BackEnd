@@ -44,8 +44,8 @@ public static class FileBlockedByPolicyConsumer
                 ct
             );
 
-            const string title = "Archivo bloqueado por moderacion";
-            const string body = "Un archivo del tenant fue bloqueado tras no superar la revision de contenido.";
+            const string title = "File blocked";
+            const string body = "A file in your office was blocked because it goes against our content policy.";
             foreach (var userId in recipients)
             {
                 await dispatcher.RecordInAppAsync(

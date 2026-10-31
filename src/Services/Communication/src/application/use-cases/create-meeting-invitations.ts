@@ -7,12 +7,33 @@ import type { CustomerPortalAccountRepository } from '../ports/customer-portal-a
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { TenantHostResolver } from '../ports/tenant-host-resolver.js';
 import { MeetingEventTypes, type MeetingInvitationCreatedEvent } from '../../contracts/events/meeting-events.js';
-import { MeetingSocketEvents, type MeetingListChangedDto } from '../../contracts/socket/meeting-socket-events.js';
+import { MeetingSocketEvents, type MeetingInvitedDto } from '../../contracts/socket/meeting-socket-events.js';
+import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
+import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
+import { resolveUserDisplayName } from './resolve-user-display-name.js';
+import type { UserDirectoryRepository } from '../ports/user-directory-repository.js';
 import { buildMeetingJoinUrl } from './build-meeting-join-url.js';
 import { config } from '../../infrastructure/config.js';
+import type { EffectiveCommunicationSettings } from '../../domain/settings/effective-communication-settings.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 
-/** 7 dias — mas largo que el TTL del meeting en si (invitaciones a meetings recurrentes/futuros). */
-const INVITATION_TTL_SECONDS = 60 * 60 * 24 * 7;
+/**
+ * D-48: la invitación vive hasta el fin previsto de la reunión más una gracia, y nunca menos que el
+ * mínimo global (hoy 7 días, lo que antes era una constante). Sin fecha programada cuenta desde ahora.
+ */
+export function invitationTtlSeconds(input: {
+  now: Date;
+  scheduledForUtc: Date | null;
+  effective: Pick<EffectiveCommunicationSettings, 'invitations' | 'meeting'>;
+}): number {
+  const minExpiry = input.now.getTime() + input.effective.invitations.minTtlHours * 3_600_000;
+  const start = input.scheduledForUtc ?? input.now;
+  const meetingEndWithGrace =
+    start.getTime() +
+    input.effective.meeting.maxDurationMinutes * 60_000 +
+    input.effective.invitations.expiryGraceHours * 3_600_000;
+  return Math.ceil((Math.max(minExpiry, meetingEndWithGrace) - input.now.getTime()) / 1000);
+}
 
 export interface CreateMeetingInvitationInput {
   readonly kind: MeetingInviteeKind;
@@ -49,13 +70,18 @@ export interface CreateMeetingInvitationsResult {
   readonly invitations: readonly CreateMeetingInvitationSummary[];
 }
 
-export interface CreateMeetingInvitationsDeps {
+export interface CreateMeetingInvitationsDeps extends MeetingEventLogDeps {
   readonly meetings: MeetingRepository;
+  /** F6: nombres legibles del host y de quien invita para el email y el toast. */
+  readonly userDirectory?: Pick<UserDirectoryRepository, 'findByUserId'> | undefined;
   readonly publisher: IntegrationEventPublisher;
   readonly customerPortalAccounts: CustomerPortalAccountRepository;
   readonly tenantHostResolver: TenantHostResolver;
+  readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'resolve'>;
   /** Opcional (best-effort): si esta cableado, empuja `meeting.invited` al room del invitado. */
   readonly emitter?: RealtimeEmitter;
+  /** F11 (E-259): tope de invitaciones por reunión (configuración). */
+  readonly maxInvitationsPerMeeting: number;
 }
 
 /**
@@ -79,8 +105,30 @@ export async function createMeetingInvitations(
 
   const canAct = command.actorUserId === meeting.hostUserId || meeting.isCohost(command.actorUserId);
   if (!canAct) return Result.fail(makeError('Meeting.HostOnly', 'Only host or cohost can invite.'));
+  const meetingSnapshot = meeting.toSnapshot();
+  // F6 (T-62): a una reunion terminada, cancelada o vencida no se invita a nadie.
+  if (meetingSnapshot.status !== 'Scheduled' && meetingSnapshot.status !== 'Live') {
+    return Result.fail(makeError('Meeting.NotJoinable', `Meeting is ${meetingSnapshot.status}.`));
+  }
 
   const now = new Date();
+  const effective = await deps.effectiveSettings.resolve(command.tenantId);
+  // F11 (E-259): sin invitados externos permitidos no se crea su enlace (antes solo fallaba al usarlo).
+  if (!effective.meeting.guestsAllowed && command.invitees.some((i) => i.kind === 'External')) {
+    return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This office does not allow external guests.'));
+  }
+  // F11 (E-259): tope por reunión: cada invitación puede ser un email a cualquier dirección.
+  const existing = await deps.meetings.listInvitationsByMeeting(command.tenantId, command.meetingId);
+  if (existing.length + command.invitees.length > deps.maxInvitationsPerMeeting) {
+    return Result.fail(
+      makeError('Meeting.Invitation.LimitReached', `A meeting can have at most ${deps.maxInvitationsPerMeeting} invitations.`),
+    );
+  }
+  const ttlSeconds = invitationTtlSeconds({
+    now,
+    scheduledForUtc: meeting.toSnapshot().scheduledForUtc,
+    effective,
+  });
   const issued: Array<{ invitation: MeetingInvitation; plainToken: string }> = [];
   for (const invitee of command.invitees) {
     // Empleado: el userId de Auth ya viene del picker. Cliente: se resuelve su userId de portal
@@ -97,7 +145,7 @@ export async function createMeetingInvitations(
       inviteeEmail: invitee.email ?? null,
       inviteeUserId,
       inviteeName: invitee.name ?? null,
-      ttlSeconds: INVITATION_TTL_SECONDS,
+      ttlSeconds,
       now,
     });
     if (!issueResult.isSuccess) return Result.fail(issueResult.error);
@@ -107,6 +155,15 @@ export async function createMeetingInvitations(
   // El link va al SUBDOMINIO del tenant (bug prod: salía app./client.taxoffix.io). Se resuelve el
   // host UNA vez por batch (cacheado). Si falla, buildMeetingJoinUrl cae al base fijo.
   const tenantHost = await deps.tenantHostResolver.resolveHost(command.tenantId);
+  const timeZone = (await deps.tenantHostResolver.resolveTimeZone?.(command.tenantId)) ?? null;
+  const nameOf = (userId: string) => meetingSnapshot.participants.find((p) => p.userId === userId)?.displayName;
+  const hostDisplayName = await resolveUserDisplayName(deps.userDirectory, meetingSnapshot.hostUserId, nameOf(meetingSnapshot.hostUserId));
+  const invitedByDisplayName =
+    command.actorUserId === meetingSnapshot.hostUserId
+      ? hostDisplayName
+      : await resolveUserDisplayName(deps.userDirectory, command.actorUserId, nameOf(command.actorUserId));
+  const meetingStatus: 'Scheduled' | 'Live' = meetingSnapshot.status === 'Live' ? 'Live' : 'Scheduled';
+  const durationMinutes = meetingSnapshot.scheduledDurationMinutes ?? meetingSnapshot.maxDurationMinutes ?? effective.meeting.defaultDurationMinutes;
 
   const summaries: CreateMeetingInvitationSummary[] = [];
   for (const { invitation, plainToken } of issued) {
@@ -136,13 +193,39 @@ export async function createMeetingInvitations(
       tokenHash: snap.tokenHash,
       expiresAtUtc: snap.expiresAtUtc.toISOString(),
       joinUrl,
+      meetingTitle: meetingSnapshot.title,
+      meetingStatus,
+      shortCode: meetingSnapshot.shortCode,
+      scheduledForUtc: meetingSnapshot.scheduledForUtc ? meetingSnapshot.scheduledForUtc.toISOString() : null,
+      durationMinutes,
+      hostUserId: meetingSnapshot.hostUserId,
+      hostDisplayName,
+      timeZone,
+      invitedByUserId: command.actorUserId,
+      invitedByDisplayName,
     };
     await deps.publisher.enqueue(event);
+    await recordMeetingEvent(deps, {
+      tenantId: command.tenantId,
+      meetingId: snap.meetingId,
+      type: MeetingEventType.InvitationCreated,
+      actorUserId: command.actorUserId,
+      targetUserId: snap.inviteeUserId,
+      payload: { invitationId: snap.id, inviteeKind: snap.inviteeKind, hasEmail: snap.inviteeEmail !== null },
+      correlationId: command.correlationId,
+      at: snap.createdAtUtc,
+    });
 
     // Realtime: el invitado con cuenta (Employee/Customer con portal) ve el meeting aparecer en su
     // lista sin recargar. External (sin userId) solo recibe el email — no tiene UX de meetings.
     if (deps.emitter && snap.inviteeUserId) {
-      const dto: MeetingListChangedDto = { meetingId: snap.meetingId };
+      const dto: MeetingInvitedDto = {
+        meetingId: snap.meetingId,
+        title: meetingSnapshot.title,
+        status: meetingStatus,
+        invitedByUserId: command.actorUserId,
+        invitedByDisplayName,
+      };
       deps.emitter.emitToUser({
         tenantId: command.tenantId,
         userId: snap.inviteeUserId,

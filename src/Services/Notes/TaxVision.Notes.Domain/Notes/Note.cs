@@ -189,6 +189,18 @@ public sealed class Note : TenantEntity, IHasOwner
         return Result.Success();
     }
 
+    /// <summary>T-20: el archivo quedó en revisión de contenido. Idempotente.</summary>
+    public Result MarkAttachmentUnderReview(Guid cloudStorageFileId)
+    {
+        var attachment = FindAttachmentOrNull(cloudStorageFileId);
+        if (attachment is null)
+            return Result.Failure(NoteErrors.AttachmentNotFound);
+
+        attachment.MarkUnderReview();
+        Touch();
+        return Result.Success();
+    }
+
     /// <summary>Idempotente. Invocado por los consumers de infected/blocked-by-policy.</summary>
     public Result MarkAttachmentRejected(Guid cloudStorageFileId, string reason)
     {

@@ -39,6 +39,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('voice-note upload routing (owner=Tenant)', () => {
   const client = new HttpCloudStorageUploadClient(tokens());
   const conversationId = randomUUID();
+  const uploadedByUserId = randomUUID();
 
   it('routes an audio/* upload to the tenant VoiceNotes folder (ownerId null)', async () => {
     const captured = stubFetchOk();
@@ -47,6 +48,7 @@ describe('voice-note upload routing (owner=Tenant)', () => {
       contentType: 'audio/webm',
       sizeBytes: 2048,
       conversationId,
+      uploadedByUserId,
     });
     expect(captured.bodies[0]).toMatchObject({
       ownerType: 'Tenant',
@@ -62,6 +64,7 @@ describe('voice-note upload routing (owner=Tenant)', () => {
       contentType: 'audio/mp4',
       sizeBytes: 2048,
       conversationId,
+      uploadedByUserId,
     });
     expect(captured.bodies[0]).toMatchObject({ ownerType: 'Tenant', folderType: 'VoiceNotes' });
   });
@@ -73,11 +76,14 @@ describe('voice-note upload routing (owner=Tenant)', () => {
       contentType: 'application/pdf',
       sizeBytes: 1024,
       conversationId,
+      uploadedByUserId,
     });
     expect(captured.bodies[0]).toMatchObject({
       ownerType: 'Communication',
       ownerId: conversationId,
       folderType: 'Other',
+      // CloudStorage guarda a la persona como autora (los avisos de revisión le llegan a ella).
+      onBehalfOfUserId: uploadedByUserId,
     });
   });
 });

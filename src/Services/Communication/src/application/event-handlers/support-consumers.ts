@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { setConversationArchived, type SetConversationArchivedDeps } from '../use-cases/set-conversation-archived.js';
+import { computeSupportUniquenessKey } from '../../domain/conversations/uniqueness-key.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { NotificationRepository } from '../ports/notification-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
@@ -19,9 +21,13 @@ export function bindSupportConsumers(
     emitter: RealtimeEmitter;
     supportTickets: SupportTicketRepository;
     analytics: AnalyticsRepository;
+    /** F10: día del snapshot en la zona de la plataforma (sin él, UTC). */
+    analyticsDay?: (occurredOnUtc: string) => Promise<string>;
     notifications: NotificationRepository;
     userPermissions: UserPermissionsProjectionRepository;
     inAppSource: 'Communication' | 'Notification';
+    /** F8a (D-13): cerrar archiva el chat del ticket y reabrir lo reactiva. */
+    conversations?: SetConversationArchivedDeps['conversations'];
   },
 ): void {
   register(SupportEventTypes.Opened, async (env) => {
@@ -35,7 +41,7 @@ export function bindSupportConsumers(
     // Analytics projection from the same lifecycle event.
     await deps.analytics.incrementCounters({
       tenantId: env.tenantId,
-      day: dayOf(env.occurredOnUtc),
+      day: deps.analyticsDay ? await deps.analyticsDay(env.occurredOnUtc) : dayOf(env.occurredOnUtc),
       increments: {
         supportTicketsOpened: 1,
       },
@@ -83,7 +89,7 @@ export function bindSupportConsumers(
 
     await deps.analytics.incrementCounters({
       tenantId: env.tenantId,
-      day: dayOf(env.occurredOnUtc),
+      day: deps.analyticsDay ? await deps.analyticsDay(env.occurredOnUtc) : dayOf(env.occurredOnUtc),
       increments: {
         supportTicketsResolved: 1,
       },
@@ -91,6 +97,7 @@ export function bindSupportConsumers(
   });
 
   register(SupportEventTypes.Closed, async (env) => {
+    await archiveTicketConversation(env, deps, true);
     await emitTicketChanged(
       env,
       deps,
@@ -101,6 +108,7 @@ export function bindSupportConsumers(
   });
 
   register(SupportEventTypes.Reopened, async (env) => {
+    await archiveTicketConversation(env, deps, false);
     await emitTicketChanged(
       env,
       deps,
@@ -177,6 +185,28 @@ function parseIso(value: string | null | undefined): Date {
   if (!value) return new Date();
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) ? parsed : new Date();
+}
+
+/** F8a (D-13): el chat del ticket sigue al estado del ticket (cerrado = solo lectura). */
+async function archiveTicketConversation(
+  env: IncomingEnvelope,
+  deps: { emitter: RealtimeEmitter; supportTickets: SupportTicketRepository; conversations?: SetConversationArchivedDeps['conversations'] },
+  archived: boolean,
+): Promise<void> {
+  if (!deps.conversations) return;
+  const ticketId = getString(env.payload, 'ticketId', 'TicketId');
+  if (!ticketId) return;
+  const ticket = await deps.supportTickets.findById(ticketId);
+  const snap = ticket?.toSnapshot();
+  await setConversationArchived(
+    {
+      tenantId: snap?.tenantId ?? env.tenantId,
+      archived,
+      conversationId: snap?.conversationId ?? null,
+      uniquenessKey: computeSupportUniquenessKey(ticketId),
+    },
+    { conversations: deps.conversations, emitter: deps.emitter },
+  );
 }
 
 async function emitTicketChanged(

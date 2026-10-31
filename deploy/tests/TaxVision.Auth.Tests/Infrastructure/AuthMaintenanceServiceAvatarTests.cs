@@ -56,6 +56,29 @@ public sealed class AuthMaintenanceServiceAvatarTests
         Assert.Equal(freshPending, reloadedFresh.PendingAvatarFileId);
     }
 
+    // T-20: una foto en revisión de contenido espera al revisor, no es un antivirus que no respondió.
+    [Fact]
+    public async Task DiscardStalePendingAvatarsAsync_no_toca_las_que_estan_en_revision()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var now = DateTime.UtcNow;
+        var reviewed = AvatarDoubles.Employee();
+        var pending = Guid.NewGuid();
+        reviewed.BeginAvatarChange(pending, now.AddHours(-3));
+        Assert.True(reviewed.HoldPendingAvatarForReview(pending));
+
+        await using (var seed = CreateContext(databaseName))
+        {
+            await seed.Users.AddAsync(reviewed);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = CreateContext(databaseName);
+        var discarded = await AuthMaintenanceService.DiscardStalePendingAvatarsAsync(db, now, CancellationToken.None);
+
+        Assert.Equal(0, discarded);
+    }
+
     private static AuthDbContext CreateContext(string databaseName) =>
         new(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,

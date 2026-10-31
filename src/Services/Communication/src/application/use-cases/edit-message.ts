@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { MessageRepository } from '../ports/message-repository.js';
+import type { ConversationRepository } from '../ports/conversation-repository.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
+import type { MessageEditPolicy } from '../../domain/conversations/message.js';
+import type { ConversationKind } from '../../domain/conversations/conversation-kind.js';
+import type { ChatEditPolicy } from '../../domain/settings/effective-communication-settings.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import { ChatEventTypes, type MessageEditedEvent } from '../../contracts/events/chat-events.js';
@@ -21,6 +26,8 @@ export interface EditMessageResult {
 
 export interface EditMessageDeps {
   readonly messages: MessageRepository;
+  readonly conversations: Pick<ConversationRepository, 'findById'>;
+  readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'resolve'>;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
 }
@@ -51,7 +58,17 @@ export async function editMessage(
   }
 
   const now = new Date();
-  const editResult = message.editText(command.body, command.senderUserId, now);
+  // F8: la ventana depende del tipo de chat y quien edita tiene que poder escribir hoy (no archivada, sigue dentro).
+  const conversation = await deps.conversations.findById(command.tenantId, message.toSnapshot().conversationId, 0);
+  const canWrite = conversation
+    ? conversation.ensureCanWrite(command.senderUserId)
+    : Result.fail(makeError('Chat.Conversation.NotFound', 'Conversation not found.'));
+  const policy = conversation
+    ? editPolicyFor((await deps.effectiveSettings.resolve(command.tenantId)).chat.edit, conversation.kind)
+    : null;
+  const editResult = !canWrite.isSuccess
+    ? Result.fail(canWrite.error)
+    : message.editText(command.body, command.senderUserId, policy as MessageEditPolicy, now);
   if (!editResult.isSuccess) {
     await deps.idempotency.release({
       tenantId: command.tenantId,
@@ -62,7 +79,12 @@ export async function editMessage(
     });
     return Result.fail(editResult.error);
   }
-  await deps.messages.update(command.tenantId, message);
+  await deps.messages.recordEdit(command.tenantId, message, {
+    revision: editResult.value.revision,
+    previousBody: editResult.value.previousBody,
+    editedByUserId: command.senderUserId,
+    editedAtUtc: now,
+  });
 
   const snapshot = message.toSnapshot();
   const editedAtUtc = (snapshot.editedAtUtc ?? now).toISOString();
@@ -85,6 +107,7 @@ export async function editMessage(
     conversationId: snapshot.conversationId,
     body: snapshot.body ?? '',
     editedAtUtc,
+    editCount: snapshot.editCount ?? 0,
   };
   const result: EditMessageResult = { edited: dto };
   await deps.idempotency.commit({
@@ -96,4 +119,9 @@ export async function editMessage(
     token: reservation.token,
   });
   return Result.ok(result);
+}
+
+/** F8: ventana y tope del tipo de chat de la conversación. */
+export function editPolicyFor(policy: ChatEditPolicy, kind: ConversationKind): MessageEditPolicy {
+  return { windowMinutes: policy.windowMinutes[kind], maxEdits: policy.maxEdits };
 }

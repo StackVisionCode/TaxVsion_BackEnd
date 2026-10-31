@@ -6,6 +6,9 @@ import type { CallRepository } from '../ports/call-repository.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
+import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
+import { type CallUsageRepository, yearMonthUtc } from '../ports/call-usage-repository.js';
 import { CallEventTypes, type CallStartedEvent } from '../../contracts/events/call-events.js';
 
 /**
@@ -44,6 +47,11 @@ export interface InitiateCallDeps {
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
   readonly settings: TenantSettingsProvider;
+  /** F4: `callsEnabled`/`videoCallsEnabled`/`maxConcurrentCalls`/`maxMonthlyMinutes` del resolver (INV-12 H-3). */
+  readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
+  readonly callUsage?: CallUsageRepository | undefined;
+  /** D-58: un cliente del portal llama con su CustomerId persistido en el participante. */
+  readonly customerPortalAccounts?: Pick<CustomerPortalAccountRepository, 'findActiveByUserId'> | undefined;
 }
 
 export async function initiateCall(
@@ -53,6 +61,29 @@ export async function initiateCall(
   const settings = await deps.settings.get(command.tenantId);
   if (!settings.chatEnabled) {
     return Result.fail(makeError('Call.Disabled', 'Communication is disabled for this tenant.'));
+  }
+
+  // F4: limites del plan/oficina aplicados en el servidor (nunca solo en el front).
+  if (deps.effectiveSettings) {
+    const effective = await deps.effectiveSettings.resolve(command.tenantId);
+    if (!effective.calls.enabled) {
+      return Result.fail(makeError('Calls.Disabled', 'Calls are disabled for this office.'));
+    }
+    if (command.kind === 'Video' && !effective.calls.videoEnabled) {
+      return Result.fail(makeError('Calls.VideoDisabled', 'Video calls are disabled for this office.'));
+    }
+    if (effective.calls.maxConcurrentCalls !== null) {
+      const open = await deps.calls.countOpenForTenant(command.tenantId);
+      if (open >= effective.calls.maxConcurrentCalls) {
+        return Result.fail(makeError('Call.LimitReached', 'concurrent'));
+      }
+    }
+    if (effective.calls.maxMonthlyMinutes !== null && deps.callUsage) {
+      const used = await deps.callUsage.getSeconds({ tenantId: command.tenantId, yearMonth: yearMonthUtc(new Date()) });
+      if (used >= effective.calls.maxMonthlyMinutes * 60) {
+        return Result.fail(makeError('Call.LimitReached', 'monthly'));
+      }
+    }
   }
 
   if (command.caller.actorType === 'CustomerPortal' && command.callee.actorType !== 'TenantEmployee'
@@ -71,10 +102,14 @@ export async function initiateCall(
   });
   if (reservation.status === 'replay') return Result.ok(reservation.payload);
 
+  const callerCustomerId =
+    command.caller.actorType === 'CustomerPortal' && deps.customerPortalAccounts
+      ? ((await deps.customerPortalAccounts.findActiveByUserId(command.caller.userId).catch(() => null))?.customerId ?? null)
+      : null;
   const callResult = Call.initiate({
     tenantId: command.tenantId,
     kind: command.kind,
-    caller: { userId: command.caller.userId, displayName: command.caller.displayName },
+    caller: { userId: command.caller.userId, displayName: command.caller.displayName, customerId: callerCustomerId },
     callee: { userId: command.callee.userId, displayName: command.callee.displayName },
     conversationId: command.conversationId ?? null,
     recordingRequested: command.recordingRequested ?? false,

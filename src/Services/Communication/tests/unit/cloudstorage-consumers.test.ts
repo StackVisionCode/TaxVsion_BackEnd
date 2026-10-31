@@ -7,6 +7,7 @@ import type {
 import type { IncomingEnvelope } from '../../src/application/ports/event-consumer.js';
 import type { NotificationRepository } from '../../src/application/ports/notification-repository.js';
 import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitter.js';
+import type { Message } from '../../src/domain/conversations/message.js';
 
 function envelope(fileId: string): IncomingEnvelope {
   return {
@@ -80,7 +81,7 @@ describe('bindCloudStorageConsumers — cloudstorage.file.available.v1', () => {
   });
 
   it('marks the attachment Available when the fileId IS a tracked chat attachment', async () => {
-    const { handlers, attachmentTracking } = setup();
+    const { handlers, attachmentTracking, emitter } = setup();
     const snapshot: AttachmentTrackingSnapshot = {
       fileId: 'attachment-file-id',
       messageId: 'message-1',
@@ -98,6 +99,9 @@ describe('bindCloudStorageConsumers — cloudstorage.file.available.v1', () => {
       fileId: 'attachment-file-id',
       status: 'Available',
     });
+    // E2E F8: el hilo dejaba "Scanning…" hasta reabrirlo; ahora se avisa a la conversación.
+    const call = vi.mocked(emitter.emitToConversation).mock.calls[0]![0];
+    expect((call.envelope.payload as { status: string }).status).toBe('Available');
   });
 
   // Al reemplazar un avatar se borra el anterior y llega file.deleted de un archivo no-adjunto.
@@ -130,18 +134,72 @@ describe('bindCloudStorageConsumers — cloudstorage.file.available.v1', () => {
     expect(attachmentTracking.markStatus).toHaveBeenCalledWith({ fileId: 'attachment-file-id', status: 'Deleted' });
     expect(emitter.emitToConversation).toHaveBeenCalledTimes(1);
   });
+
+  // T-20: la moderación deja el adjunto en revisión y el chat lo muestra como "Under review".
+  it('flags a tracked attachment as PendingReview and tells the conversation', async () => {
+    const { handlers, attachmentTracking, emitter } = setup();
+    const snapshot: AttachmentTrackingSnapshot = {
+      fileId: 'attachment-file-id',
+      messageId: 'message-1',
+      conversationId: 'conversation-1',
+      tenantId: 'tenant-1',
+      status: 'Pending',
+      updatedAtUtc: new Date(),
+    };
+    vi.mocked(attachmentTracking.findByFileId).mockResolvedValue(snapshot);
+    vi.mocked(attachmentTracking.markStatus).mockResolvedValue({ ...snapshot, status: 'PendingReview' });
+
+    await handlers.get('cloudstorage.file.pending_review.v1')!(envelope('attachment-file-id'));
+
+    expect(attachmentTracking.markStatus).toHaveBeenCalledWith({ fileId: 'attachment-file-id', status: 'PendingReview' });
+    const call = vi.mocked(emitter.emitToConversation).mock.calls[0]![0];
+    expect((call.envelope.payload as { status: string }).status).toBe('PendingReview');
+  });
+
+  // Aprobado por el revisor: vuelve a mostrarse en los clientes que ya tenían "Under review".
+  it('emits Available when a reviewed attachment is approved', async () => {
+    const { handlers, attachmentTracking, emitter } = setup();
+    const snapshot: AttachmentTrackingSnapshot = {
+      fileId: 'attachment-file-id',
+      messageId: 'message-1',
+      conversationId: 'conversation-1',
+      tenantId: 'tenant-1',
+      status: 'PendingReview',
+      updatedAtUtc: new Date(),
+    };
+    vi.mocked(attachmentTracking.findByFileId).mockResolvedValue(snapshot);
+    vi.mocked(attachmentTracking.markStatus).mockResolvedValue({ ...snapshot, status: 'Available' });
+
+    await handlers.get('cloudstorage.file.available.v1')!(envelope('attachment-file-id'));
+
+    expect(attachmentTracking.markStatus).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(emitter.emitToConversation).mock.calls[0]![0];
+    expect((call.envelope.payload as { status: string }).status).toBe('Available');
+  });
 });
 
 describe('bindCloudStorageConsumers — notificacion al uploader', () => {
-  function setupWithNotifications(inAppSourcePolicy: 'Communication' | 'Notification' = 'Communication') {
+  function setupWithNotifications(
+    inAppSourcePolicy: 'Communication' | 'Notification' = 'Communication',
+    chat?: { messageId: string; senderId: string },
+  ) {
     const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
     const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => {
       handlers.set(eventType, handler);
     };
     const attachmentTracking: AttachmentTrackingRepository = {
       register: vi.fn(),
-      findByFileId: vi.fn().mockResolvedValue(null),
-      markStatus: vi.fn(),
+      findByFileId: vi.fn().mockResolvedValue(
+        chat
+          ? { fileId: 'f', messageId: chat.messageId, conversationId: 'c', tenantId: 'tenant-1', status: 'Pending', updatedAtUtc: new Date() }
+          : null,
+      ),
+      markStatus: vi.fn().mockResolvedValue(null),
+    };
+    const messages = {
+      findById: vi.fn(async (_tenantId: string, messageId: string) =>
+        chat && messageId === chat.messageId ? ({ senderId: chat.senderId } as Message) : null,
+      ),
     };
     const notifications: NotificationRepository = {
       createIfMissing: vi.fn().mockResolvedValue(true),
@@ -170,6 +228,7 @@ describe('bindCloudStorageConsumers — notificacion al uploader', () => {
       notifications,
       emitter,
       inAppSourcePolicy,
+      messages,
     });
     return { handlers, notifications };
   }
@@ -231,6 +290,50 @@ describe('bindCloudStorageConsumers — notificacion al uploader', () => {
         PolicyReason: 'nudity',
         CreatedBy: 'uploader-2b',
       }),
+    );
+
+    expect(notifications.createIfMissing).not.toHaveBeenCalled();
+  });
+
+  it('file.pending_review.v1 avisa al uploader que su archivo está en revisión', async () => {
+    const { handlers, notifications } = setupWithNotifications();
+
+    await handlers.get('cloudstorage.file.pending_review.v1')!(
+      envelopeWithCreatedBy('cloudstorage.file.pending_review.v1', {
+        FileId: 'file-4',
+        ObjectKey: 'k',
+        Reason: 'Possible sexual content (score 0.700).',
+        CreatedBy: 'uploader-4',
+      }),
+    );
+
+    const row = vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!;
+    expect(row.userId).toBe('uploader-4');
+    expect(JSON.stringify(row)).toContain('cloudstorage.file.pending_review');
+    // El motivo con la puntuación es interno: nunca llega al usuario.
+    expect(JSON.stringify(row)).not.toContain('score');
+  });
+
+  // E2E F8: el adjunto de chat lo crea la cuenta de servicio; el aviso va a quien mandó el mensaje.
+  it('un adjunto de chat avisa al remitente del mensaje, no a la cuenta de servicio', async () => {
+    const { handlers, notifications } = setupWithNotifications('Communication', { messageId: 'msg-1', senderId: 'staff-1' });
+
+    await handlers.get('cloudstorage.file.pending_review.v1')!(
+      envelopeWithCreatedBy('cloudstorage.file.pending_review.v1', { FileId: 'file-6', CreatedBy: 'communication-service' }),
+    );
+    await handlers.get('cloudstorage.file.blocked_by_policy.v1')!(
+      envelopeWithCreatedBy('cloudstorage.file.blocked_by_policy.v1', { FileId: 'file-6', CreatedBy: 'communication-service' }),
+    );
+
+    const recipients = vi.mocked(notifications.createIfMissing).mock.calls.map((call) => call[0]!.userId);
+    expect(recipients).toEqual(['staff-1', 'staff-1']);
+  });
+
+  it('file.pending_review.v1 NO notifica cuando el flag apunta a Notification', async () => {
+    const { handlers, notifications } = setupWithNotifications('Notification');
+
+    await handlers.get('cloudstorage.file.pending_review.v1')!(
+      envelopeWithCreatedBy('cloudstorage.file.pending_review.v1', { FileId: 'file-5', CreatedBy: 'uploader-5' }),
     );
 
     expect(notifications.createIfMissing).not.toHaveBeenCalled();

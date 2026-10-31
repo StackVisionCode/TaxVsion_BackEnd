@@ -145,6 +145,23 @@ export class RedisPresenceService implements PresenceService {
     return `comm:presence:busy:t:${input.tenantId}:u:${input.userId}:src:${input.sourceId}`;
   }
 
+  /** F8c: Online/Busy/Offline de varios usuarios (Busy solo se busca para los que están en línea). */
+  async snapshot(
+    tenantId: string,
+    userIds: readonly string[],
+  ): Promise<ReadonlyArray<{ userId: string; status: PresenceStatus; busyReason: BusyReason | null }>> {
+    const online = new Set(await this.listOnline(tenantId, userIds));
+    return Promise.all(
+      userIds.map(async (userId) => {
+        if (!online.has(userId)) return { userId, status: 'Offline' as const, busyReason: null };
+        const busy = await this.countBusySources(tenantId, userId);
+        return busy.count > 0
+          ? { userId, status: 'Busy' as const, busyReason: busy.firstReason }
+          : { userId, status: 'Online' as const, busyReason: null };
+      }),
+    );
+  }
+
   private async publishCurrentStatus(tenantId: string, userId: string): Promise<void> {
     const online = await this.isOnline(tenantId, userId);
     const busy = online ? await this.countBusySources(tenantId, userId) : { count: 0, firstReason: null };

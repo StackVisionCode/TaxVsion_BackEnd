@@ -20,19 +20,28 @@ const ORIGINAL_MAX_ATTEMPTS = process.env['TRANSCRIPT_WORKER_RETRY_MAX_ATTEMPTS'
 const ORIGINAL_BACKOFF_MS = process.env['TRANSCRIPT_WORKER_RETRY_BACKOFF_MS'];
 process.env['TRANSCRIPT_WORKER_RETRY_MAX_ATTEMPTS'] = '4';
 process.env['TRANSCRIPT_WORKER_RETRY_BACKOFF_MS'] = '5,10,15';
+const ORIGINAL_NA_MAX = process.env['TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_MAX_ATTEMPTS'];
+const ORIGINAL_NA_BACKOFF = process.env['TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_BACKOFF_MS'];
+process.env['TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_MAX_ATTEMPTS'] = '7';
+process.env['TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_BACKOFF_MS'] = '1,2';
 
 afterAll(() => {
   if (ORIGINAL_MAX_ATTEMPTS === undefined) delete process.env['TRANSCRIPT_WORKER_RETRY_MAX_ATTEMPTS'];
   else process.env['TRANSCRIPT_WORKER_RETRY_MAX_ATTEMPTS'] = ORIGINAL_MAX_ATTEMPTS;
   if (ORIGINAL_BACKOFF_MS === undefined) delete process.env['TRANSCRIPT_WORKER_RETRY_BACKOFF_MS'];
   else process.env['TRANSCRIPT_WORKER_RETRY_BACKOFF_MS'] = ORIGINAL_BACKOFF_MS;
+  if (ORIGINAL_NA_MAX === undefined) delete process.env['TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_MAX_ATTEMPTS'];
+  else process.env['TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_MAX_ATTEMPTS'] = ORIGINAL_NA_MAX;
+  if (ORIGINAL_NA_BACKOFF === undefined) delete process.env['TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_BACKOFF_MS'];
+  else process.env['TRANSCRIPT_WORKER_NOT_AVAILABLE_RETRY_BACKOFF_MS'] = ORIGINAL_NA_BACKOFF;
 });
 
 const mocks = vi.hoisted(() => ({
   publishTranscriptReady: vi.fn(),
   publishTranscriptFailed: vi.fn(),
   transcodeToWav16kMono: vi.fn(),
-  probeAudioStreams: vi.fn(),
+  probeMedia: vi.fn(),
+  probeDurationSeconds: vi.fn(),
   transcribeWav: vi.fn(),
 }));
 
@@ -42,7 +51,8 @@ vi.mock('../../src/rabbit/publisher.js', () => ({
 }));
 vi.mock('../../src/media/audio-transcoder.js', () => ({
   transcodeToWav16kMono: mocks.transcodeToWav16kMono,
-  probeAudioStreams: mocks.probeAudioStreams,
+  probeMedia: mocks.probeMedia,
+  probeDurationSeconds: mocks.probeDurationSeconds,
 }));
 vi.mock('../../src/whisper/whisper-transcriber.js', () => ({
   transcribeWav: mocks.transcribeWav,
@@ -75,6 +85,8 @@ function makeEvent(overrides: Partial<RecordingReadyEvent> = {}): RecordingReady
     correlationId: u(),
     targetId: u(),
     recordingFileId: u(),
+    output: 'file',
+    passthrough: {},
     ...overrides,
   };
 }
@@ -91,13 +103,13 @@ function makeCloudStorage(overrides: {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.probeAudioStreams.mockResolvedValue(1);
+  mocks.probeMedia.mockResolvedValue({ audioStreamCount: 1, durationSeconds: 5 });
+  mocks.probeDurationSeconds.mockResolvedValue(5);
   mocks.transcodeToWav16kMono.mockResolvedValue(undefined);
   mocks.transcribeWav.mockResolvedValue({
-    text: 'hola mundo',
+    segments: [{ startMs: 0, endMs: 2_000, text: 'hola mundo' }],
     detectedLanguage: 'es',
-    durationSeconds: 5,
-    wordCount: 2,
+    processingSeconds: 1,
   });
   mocks.publishTranscriptReady.mockReturnValue(undefined);
 });
@@ -136,6 +148,47 @@ describe('processRecordingReady — retry con backoff (Fase Transcript 4)', () =
     expect(downloadFile).toHaveBeenCalledTimes(2);
     expect(mocks.publishTranscriptFailed).not.toHaveBeenCalled();
     expect(mocks.publishTranscriptReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('File.NotAvailable usa su propia politica larga (7 intentos), no la de 5xx (4)', async () => {
+    const event = makeEvent();
+    const downloadFile = vi.fn(() =>
+      Promise.reject(new DownloadStatusError(403, 'scan pending', 'File.NotAvailable')),
+    );
+    const cloudStorage = makeCloudStorage({ downloadFile });
+
+    await expect(processRecordingReady(event, { cloudStorage })).rejects.toThrow('scan pending');
+
+    expect(downloadFile).toHaveBeenCalledTimes(7);
+    expect(mocks.publishTranscriptFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ failureReason: 'DownloadFailed' }),
+    );
+  });
+
+  it('File.NotAvailable que se resuelve tras varios intentos -> pipeline exitoso', async () => {
+    const event = makeEvent();
+    let call = 0;
+    const downloadFile = vi.fn(() => {
+      call += 1;
+      if (call <= 5) return Promise.reject(new DownloadStatusError(403, 'scan pending', 'File.NotAvailable'));
+      return Promise.resolve(undefined);
+    });
+    const cloudStorage = makeCloudStorage({ downloadFile });
+
+    await processRecordingReady(event, { cloudStorage });
+
+    expect(downloadFile).toHaveBeenCalledTimes(6);
+    expect(mocks.publishTranscriptReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('403 File.Forbidden no se reintenta', async () => {
+    const event = makeEvent();
+    const downloadFile = vi.fn(() => Promise.reject(new DownloadStatusError(403, 'forbidden', 'File.Forbidden')));
+    const cloudStorage = makeCloudStorage({ downloadFile });
+
+    await expect(processRecordingReady(event, { cloudStorage })).rejects.toThrow('forbidden');
+
+    expect(downloadFile).toHaveBeenCalledTimes(1);
   });
 
   it('download con status 404 (no retriable) -> un solo intento, falla de inmediato', async () => {

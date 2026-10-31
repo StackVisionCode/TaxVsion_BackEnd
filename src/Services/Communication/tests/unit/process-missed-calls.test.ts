@@ -33,6 +33,15 @@ class FakeCallRepository implements CallRepository {
   async listRecentForUser(): Promise<CallSnapshot[]> {
     return [];
   }
+  async listRecentForCustomer(): Promise<CallSnapshot[]> {
+    return [];
+  }
+  async listEndingBefore(): Promise<Call[]> {
+    return [];
+  }
+  async countOpenForTenant(): Promise<number> {
+    return 0;
+  }
   async countRecentForUser(): Promise<number> {
     return 0;
   }
@@ -60,6 +69,9 @@ class FakeConversationRepository implements ConversationRepository {
   }
   async listForUser(): Promise<ConversationSnapshot[]> {
     return [];
+  }
+  async countUnreadByKind(): Promise<{ Direct: number; Group: number; Support: number; Meeting: number }> {
+    return { Direct: 0, Group: 0, Support: 0, Meeting: 0 };
   }
   async countForUser(): Promise<number> {
     return 0;
@@ -214,5 +226,29 @@ describe('processMissedCalls — notificacion realtime + registro en historial',
 
     expect(harness.emitter.calls.some((e) => e.event === CallSocketEvents.StateChanged)).toBe(true);
     expect(harness.emitter.conversations).toHaveLength(0);
+  });
+
+  it('respects the ringing timeout of each office when one is provided', async () => {
+    const harness = buildHarness();
+    const patientTenant = u();
+    const strictTenant = u();
+    const patient = ringingCall(patientTenant, 'Audio', null);
+    const strict = ringingCall(strictTenant, 'Audio', null);
+    harness.calls.ringing = [patient.snapshot, strict.snapshot];
+    const now = new Date(patient.snapshot.ringingAtUtc.getTime() + 40_000);
+
+    const { processed } = await processMissedCalls(
+      {
+        timeoutSeconds: 15,
+        now,
+        ringingTimeoutFor: async (tenantId) => (tenantId === patientTenant ? 90 : 30),
+      },
+      harness,
+    );
+
+    expect(processed).toBe(1);
+    expect(harness.publisher.events.map((e) => (e as unknown as { calleeUserId: string }).calleeUserId)).toEqual([
+      strict.callee.userId,
+    ]);
   });
 });

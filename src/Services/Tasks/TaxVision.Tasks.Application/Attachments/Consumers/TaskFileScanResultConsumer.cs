@@ -34,6 +34,26 @@ public static class TaskFileScanResultConsumer
         }
     }
 
+    // T-20: en revisión de contenido. Si el revisor aprueba llega FileAvailable; si rechaza, FileBlockedByPolicy.
+    public static async Task Handle(
+        FilePendingReviewIntegrationEvent evt,
+        ITaskRepository tasks,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<TaskItem> logger,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(CorrelationOf(evt.CorrelationId, evt.EventId)))
+        {
+            if (await LoadOwnerAsync(evt.TenantId, evt.FileId, tasks, logger, ct) is not { } task)
+                return;
+
+            if (task.MarkAttachmentUnderReview(evt.FileId))
+                await unitOfWork.SaveChangesAsync(ct);
+        }
+    }
+
     public static async Task Handle(
         FileInfectedDetectedIntegrationEvent evt,
         ITaskRepository tasks,

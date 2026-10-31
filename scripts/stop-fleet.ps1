@@ -5,10 +5,12 @@
 # La raiz del repo es la carpeta padre de scripts/: sirve en cualquier maquina sin editar la ruta.
 $root = Split-Path -Parent $PSScriptRoot
 
-# Mismos puertos que start-fleet.ps1 (25 .NET + listener IMAP 5395 + Gateway 5047 + Communication 5350).
+# Mismos puertos que start-fleet.ps1 (25 .NET + listener IMAP 5395 + Gateway 5047 + Communication 5350 + Recorder 5365).
+# El content-scanner (5540) NO va acá: es un contenedor de la infra Docker (como clamav) y ese puerto lo
+# atiende el proxy de Docker Desktop; matar ese proceso tumbaría Docker. Se apaga con docker compose.
 $ports = @(
   5124, 5217, 5263, 5270, 5320, 5330, 5340, 5360, 5370, 5380, 5390, 5395, 5400, 5410, 5420, 5430,
-  5440, 5450, 5460, 5470, 5480, 5490, 5500, 5510, 5520, 5530, 5047, 5350
+  5440, 5450, 5460, 5470, 5480, 5490, 5500, 5510, 5520, 5530, 5047, 5350, 5365
 )
 
 $pids = [System.Collections.Generic.HashSet[int]]::new()
@@ -21,7 +23,8 @@ foreach ($p in $ports) {
 
 # 2) Procesos por línea de comando. Acotado para NO tocar un `dotnet build/test` en curso:
 #    - .NET: los lanzados como `dotnet ...\bin\{Debug,Release}\net10.0\TaxVision.*.dll`
-#    - Node: cualquier proceso bajo src\Services\Communication (cubre Communication y el TranscriptWorker)
+#    - Node: cualquier proceso bajo src\Services\Communication* (cubre Communication, el TranscriptWorker y el Recorder;
+#      los ffmpeg de captura/composicion del Recorder caen con su arbol via taskkill /T)
 $procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
   Where-Object {
     $_.CommandLine -and (
@@ -56,3 +59,4 @@ if ($still.Count -gt 0) {
 } else {
   Write-Host "=== flota detenida (todos los puertos libres) ==="
 }
+Write-Host "content-scanner (Docker) sigue arriba con el resto de la infra; para apagarlo: docker compose -f deploy\docker\docker-compose.local-infra.yml stop content-scanner"

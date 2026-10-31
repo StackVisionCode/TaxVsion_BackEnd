@@ -48,7 +48,6 @@ function fakeContainer(overrides: {
           employeeToEmployeeChatEnabled: true,
           restrictCustomerChatToAssignedPreparer: false,
           screenshotsEnabled: true,
-          internalGroupsEnabled: true,
           messageRetentionDays: 365,
         };
       },
@@ -82,7 +81,7 @@ function fakeContainer(overrides: {
       },
     },
     calls: {
-      async listRecentForUser() {
+      async listRecentForCustomer() {
         return [];
       },
     },

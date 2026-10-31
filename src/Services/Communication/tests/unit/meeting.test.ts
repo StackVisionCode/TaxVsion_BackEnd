@@ -28,7 +28,11 @@ describe('Meeting.schedule', () => {
     expect(snap.participants).toHaveLength(1);
     expect(snap.participants[0]!.userId).toBe(host.userId);
     expect(snap.participants[0]!.role).toBe('Host');
-    expect(snap.strategy).toBe('Mesh');
+    // Cupo por defecto 10 (D-37) > umbral mesh 4: sin cupo explicito la reunion nace en SFU.
+    expect(snap.maxParticipants).toBe(10);
+    expect(snap.strategy).toBe('Sfu');
+    expect(snap.scheduledDurationMinutes).toBe(60);
+    expect(snap.endsAtUtc).toBeNull();
     expect(snap.shortCode).toHaveLength(9);
   });
 
@@ -45,6 +49,52 @@ describe('Meeting.schedule', () => {
       maxParticipants: 1,
     });
     expect(r.isSuccess).toBe(false);
+  });
+
+  // F1: el umbral mesh/SFU y el cupo por defecto vienen de la politica, no de una constante.
+  it('applies the media policy for the mesh threshold and the default capacity', () => {
+    const policy = { meshMaxParticipants: 6, defaultMaxParticipants: 10 };
+    const host = { userId: u(), displayName: 'H' };
+    const sixIsMesh = Meeting.schedule({ tenantId: u(), title: 'X', host, maxParticipants: 6, mediaPolicy: policy });
+    const defaulted = Meeting.schedule({ tenantId: u(), title: 'X', host, mediaPolicy: policy });
+    if (!sixIsMesh.isSuccess || !defaulted.isSuccess) throw new Error();
+    expect(sixIsMesh.value.toSnapshot().strategy).toBe('Mesh');
+    expect(defaulted.value.toSnapshot().maxParticipants).toBe(10);
+    expect(defaulted.value.toSnapshot().strategy).toBe('Sfu');
+  });
+});
+
+describe('Meeting.requestJoin — re-join of a joined participant', () => {
+  it('renews the joinOrder and reports rejoined so peers rebuild their PeerConnection', () => {
+    const { meeting, host } = scheduled({ waitingRoom: false });
+    meeting.start({ hostUserId: host.userId });
+    const attendee = u();
+    const first = meeting.requestJoin({ userId: attendee, displayName: 'A', hasValidInvitation: false, passcodeMatch: null });
+    if (!first.isSuccess) throw new Error();
+    const before = meeting.toSnapshot().participants.find((p) => p.userId === attendee);
+
+    const again = meeting.requestJoin({ userId: attendee, displayName: 'A', hasValidInvitation: false, passcodeMatch: null });
+    if (!again.isSuccess) throw new Error();
+    const after = meeting.toSnapshot().participants.find((p) => p.userId === attendee);
+
+    expect(first.value.rejoined).toBe(false);
+    expect(again.value.rejoined).toBe(true);
+    expect(again.value.requiresAdmission).toBe(false);
+    expect(after?.joinOrder ?? 0).toBeGreaterThan(before?.joinOrder ?? 0);
+    expect(after?.status).toBe('Joined');
+    expect(meeting.toSnapshot().participants.filter((p) => p.userId === attendee)).toHaveLength(1);
+  });
+
+  it("the host's first socket join after start() is an entry, not a re-join; the next one is", () => {
+    const { meeting, host } = scheduled({ waitingRoom: false });
+    meeting.start({ hostUserId: host.userId }); // placeholder Joined sin media (joinOrder 1)
+    const first = meeting.requestJoin({ userId: host.userId, displayName: 'Host', hasValidInvitation: false, passcodeMatch: null });
+    const second = meeting.requestJoin({ userId: host.userId, displayName: 'Host', hasValidInvitation: false, passcodeMatch: null });
+    if (!first.isSuccess || !second.isSuccess) throw new Error();
+    expect(first.value.rejoined).toBe(false);
+    expect(second.value.rejoined).toBe(true);
+    const hostRow = meeting.toSnapshot().participants.find((p) => p.userId === host.userId);
+    expect(hostRow?.joinOrder ?? 0).toBeGreaterThan(1);
   });
 });
 

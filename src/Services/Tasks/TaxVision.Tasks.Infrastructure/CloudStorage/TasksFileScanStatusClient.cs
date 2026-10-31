@@ -111,6 +111,7 @@ internal sealed class TasksFileScanStatusClient(
             "Available" => RemoteFileScanStatus.Available,
             "Infected" => RemoteFileScanStatus.Infected,
             "BlockedByPolicy" => RemoteFileScanStatus.BlockedByPolicy,
+            "PendingReview" => RemoteFileScanStatus.PendingReview,
             "SoftDeleted" => RemoteFileScanStatus.Deleted,
             _ => RemoteFileScanStatus.Unknown,
         };

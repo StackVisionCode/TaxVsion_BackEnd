@@ -24,6 +24,8 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.Property(c => c.ProfilePictureFileId);
         b.Property(c => c.PendingProfilePictureFileId);
         b.Property(c => c.PendingProfilePictureRequestedAtUtc);
+        b.Property(c => c.ProfilePictureModerationFileId);
+        b.Property(c => c.ProfilePictureModerationState).HasConversion<string>().HasMaxLength(16);
         // El barrido de pendientes vencidas filtra por fecha; filtrado = solo las filas con pendiente.
         b.HasIndex(c => c.PendingProfilePictureRequestedAtUtc)
             .HasDatabaseName("IX_Customers_PendingProfilePictureRequestedAtUtc")

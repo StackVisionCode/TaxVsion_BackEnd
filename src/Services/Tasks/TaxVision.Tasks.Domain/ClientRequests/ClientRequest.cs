@@ -191,6 +191,9 @@ public sealed class ClientRequest : AggregateRoot
     public bool MarkDocumentAvailable(Guid fileId, DateTime nowUtc) =>
         FindActive(fileId)?.MarkAvailable(nowUtc) ?? false;
 
+    /// <summary>T-20: el documento quedó en revisión de contenido; sigue contando como entregado.</summary>
+    public bool MarkDocumentUnderReview(Guid fileId) => FindActive(fileId)?.MarkUnderReview() ?? false;
+
     /// <summary>
     /// El escaneo lo rechazó. El aviso al cliente sale de aquí sin el motivo técnico; el preparador
     /// sí lo recibe.
@@ -217,7 +220,9 @@ public sealed class ClientRequest : AggregateRoot
 
         // Un rechazado sigue en la lista pero ya no sirve. Si no queda ninguno que pueda valer, el
         // pedido vuelve a pendiente: el cliente tiene que subir otra vez y su lista debe decírselo.
-        var stillUseful = _documents.Any(d => d.Status is AttachmentStatus.Pending or AttachmentStatus.Available);
+        var stillUseful = _documents.Any(d =>
+            d.Status is AttachmentStatus.Pending or AttachmentStatus.UnderReview or AttachmentStatus.Available
+        );
 
         if (!stillUseful && Status == ClientRequestStatus.Submitted)
             Status = ClientRequestStatus.Pending;

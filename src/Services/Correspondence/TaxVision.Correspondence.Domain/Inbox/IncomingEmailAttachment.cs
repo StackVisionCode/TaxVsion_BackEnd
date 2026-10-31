@@ -129,6 +129,24 @@ public sealed class IncomingEmailAttachment
         return Result.Success();
     }
 
+    // T-20: CloudStorage lo dejó en revisión de contenido. Solo desde Downloaded; true si cambió.
+    public bool MarkUnderReview()
+    {
+        if (DownloadStatus != AttachmentDownloadStatus.Downloaded)
+            return false;
+        DownloadStatus = AttachmentDownloadStatus.UnderReview;
+        return true;
+    }
+
+    // T-20: el revisor lo aprobó; vuelve a descargable con el mismo archivo. true si cambió.
+    public bool ApproveAfterReview()
+    {
+        if (DownloadStatus != AttachmentDownloadStatus.UnderReview)
+            return false;
+        DownloadStatus = AttachmentDownloadStatus.Downloaded;
+        return true;
+    }
+
     // El escaneo lo marcó peligroso. Terminal e idempotente — desde cualquier estado.
     public void MarkBlocked(string reason)
     {

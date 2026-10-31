@@ -1,7 +1,9 @@
+import { messageLinkRows } from './message-link-rows.js';
 import type { PrismaClient } from '@prisma/client';
 import { Message, type MessageSnapshot } from '../../domain/conversations/message.js';
 import { MessageReaction, type MessageReactionSnapshot } from '../../domain/conversations/message-reaction.js';
-import type { MessageRepository } from '../../application/ports/message-repository.js';
+import { randomUUID } from 'node:crypto';
+import type { MessageEditRecord, MessageRepository } from '../../application/ports/message-repository.js';
 import { toDomainMessage } from './conversation-mapper.js';
 
 /**
@@ -57,9 +59,58 @@ export class PrismaMessageRepository implements MessageRepository {
         IsPinned: snapshot.isPinned,
         PinnedAtUtc: snapshot.pinnedAtUtc,
         PinnedByUserId: snapshot.pinnedByUserId,
+        TranscriptText: snapshot.transcriptText ?? null,
+        TranscriptState: snapshot.transcriptState ?? null,
+        TranscriptLanguage: snapshot.transcriptLanguage ?? null,
+        EditCount: snapshot.editCount ?? 0,
         TenantId: tenantId,
       },
     });
+  }
+
+  async recordEdit(tenantId: string, message: Message, edit: MessageEditRecord): Promise<void> {
+    const snapshot = message.toSnapshot();
+    // Mensaje y versión anterior en la misma transacción: el historial nunca queda a medias.
+    // F8d (T-16): los enlaces se reescriben con el texto nuevo.
+    const links = messageLinkRows(snapshot);
+    await this.prisma.$transaction([
+      this.prisma.messageLink.deleteMany({ where: { MessageId: snapshot.id } }),
+      ...(links.length > 0 ? [this.prisma.messageLink.createMany({ data: links })] : []),
+      this.prisma.message.update({
+        where: { Id: snapshot.id },
+        data: { Body: snapshot.body, IsEdited: snapshot.isEdited, EditedAtUtc: snapshot.editedAtUtc, EditCount: snapshot.editCount ?? 0 },
+      }),
+      this.prisma.messageEdit.create({
+        data: {
+          Id: randomUUID(),
+          MessageId: snapshot.id,
+          TenantId: tenantId,
+          Revision: edit.revision,
+          PreviousBody: edit.previousBody,
+          EditedByUserId: edit.editedByUserId,
+          EditedAtUtc: edit.editedAtUtc,
+        },
+      }),
+    ]);
+  }
+
+  async countAttachmentsBySender(tenantId: string, conversationId: string, senderId: string): Promise<number> {
+    return this.prisma.message.count({
+      where: { TenantId: tenantId, ConversationId: conversationId, SenderId: senderId, Kind: 'Attachment' },
+    });
+  }
+
+  async listEdits(tenantId: string, messageId: string): Promise<MessageEditRecord[]> {
+    const rows = await this.prisma.messageEdit.findMany({
+      where: { TenantId: tenantId, MessageId: messageId },
+      orderBy: { Revision: 'asc' },
+    });
+    return rows.map((r) => ({
+      revision: r.Revision,
+      previousBody: r.PreviousBody,
+      editedByUserId: r.EditedByUserId,
+      editedAtUtc: r.EditedAtUtc,
+    }));
   }
 
   async insertForwarded(_tenantId: string, message: Message): Promise<void> {
@@ -86,8 +137,13 @@ export class PrismaMessageRepository implements MessageRepository {
         EditedAtUtc: m.editedAtUtc,
         AudioDurationMs: m.audioDurationMs,
         AudioWaveform: m.audioWaveform,
+        TranscriptText: m.transcriptText ?? null,
+        TranscriptState: m.transcriptState ?? null,
+        TranscriptLanguage: m.transcriptLanguage ?? null,
       },
     });
+    const links = messageLinkRows(m);
+    if (links.length > 0) await this.prisma.messageLink.createMany({ data: links });
     await this.prisma.conversation.update({
       where: { Id: m.conversationId },
       data: { LastMessageAtUtc: m.createdAtUtc, UpdatedAtUtc: m.createdAtUtc },
@@ -133,6 +189,16 @@ export class PrismaMessageRepository implements MessageRepository {
     return { wasPresent: result.count > 0 };
   }
 
+  /** F8d (T-26): reacciones de una página de mensajes en una sola consulta. */
+  async listReactionsByMessages(tenantId: string, messageIds: readonly string[]): Promise<MessageReactionSnapshot[]> {
+    if (messageIds.length === 0) return [];
+    const rows = await this.prisma.messageReaction.findMany({
+      where: { TenantId: tenantId, MessageId: { in: [...messageIds] } },
+      orderBy: { CreatedAtUtc: 'asc' },
+    });
+    return rows.map((r) => ({ id: r.Id, messageId: r.MessageId, tenantId: r.TenantId, userId: r.UserId, emoji: r.Emoji, createdAtUtc: r.CreatedAtUtc }));
+  }
+
   async listReactionsByMessage(tenantId: string, messageId: string): Promise<MessageReactionSnapshot[]> {
     const rows = await this.prisma.messageReaction.findMany({
       where: { TenantId: tenantId, MessageId: messageId },
@@ -153,13 +219,16 @@ export class PrismaMessageRepository implements MessageRepository {
     conversationId: string;
     query: string;
     limit: number;
+    notBeforeUtc?: Date | null;
   }): Promise<MessageSnapshot[]> {
     const rows = await this.prisma.message.findMany({
       where: {
         TenantId: input.tenantId,
         ConversationId: input.conversationId,
         IsDeleted: false,
-        Body: { contains: input.query },
+        ...(input.notBeforeUtc ? { CreatedAtUtc: { gte: input.notBeforeUtc } } : {}),
+        // F7 (INV-14 H-7): las notas de voz se encuentran por su transcript.
+        OR: [{ Body: { contains: input.query } }, { TranscriptText: { contains: input.query } }],
       },
       orderBy: { CreatedAtUtc: 'desc' },
       take: input.limit,

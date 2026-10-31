@@ -20,6 +20,8 @@ export interface JoinTicketClaims {
   readonly meetingId: string;
   readonly tenantId: string;
   readonly displayName: string;
+  /** F6: vida del ticket = vida de la sesion del guest (al vencer, el socket lo saca con `Expired`). */
+  readonly ttlSeconds?: number;
 }
 
 export async function signJoinTicket(claims: JoinTicketClaims): Promise<string> {
@@ -33,7 +35,7 @@ export async function signJoinTicket(claims: JoinTicketClaims): Promise<string> 
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(`invitation:${claims.invitationId}`)
     .setIssuedAt()
-    .setExpirationTime(`${config.meetingInvitations.joinTicketTtlSeconds}s`)
+    .setExpirationTime(`${Math.max(claims.ttlSeconds ?? 0, config.meetingInvitations.joinTicketTtlSeconds)}s`)
     .sign(secretKey);
 }
 
@@ -64,7 +66,9 @@ export async function verifyGuestJoinTicket(ticket: string): Promise<Authenticat
   }
 
   return {
-    userId: `guest:${invitationId}`,
+    // F6: el userId del guest ES el invitationId (UUID): las columnas UserId/ActorUserId son uniqueidentifier
+    // y un prefijo de texto rompia el upsert del participante y el MeetingEventLog. `actorType: 'Guest'` lo distingue.
+    userId: invitationId,
     tenantId,
     actorType: 'Guest',
     permissions: [],

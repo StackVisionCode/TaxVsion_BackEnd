@@ -14,6 +14,9 @@ public enum AttachmentStatus
     Available = 2,
     Rejected = 3,
     Detached = 4,
+
+    // T-20: la moderación de contenido lo retuvo para revisión humana; luego Available o Rejected.
+    UnderReview = 5,
 }
 
 /// <summary>
@@ -151,13 +154,23 @@ public sealed class TaskAttachment
             nowUtc
         );
 
-    /// <summary>Idempotente: el evento de CloudStorage puede llegar dos veces.</summary>
+    /// <summary>Idempotente: el evento de CloudStorage puede llegar dos veces. También cierra una revisión aprobada.</summary>
     internal bool MarkAvailable()
+    {
+        if (Status is not (AttachmentStatus.Pending or AttachmentStatus.UnderReview))
+            return false;
+
+        Status = AttachmentStatus.Available;
+        return true;
+    }
+
+    /// <summary>T-20: solo desde Pending (un veredicto final no vuelve atrás). Idempotente.</summary>
+    internal bool MarkUnderReview()
     {
         if (Status != AttachmentStatus.Pending)
             return false;
 
-        Status = AttachmentStatus.Available;
+        Status = AttachmentStatus.UnderReview;
         return true;
     }
 

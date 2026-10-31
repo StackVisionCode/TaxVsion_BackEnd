@@ -20,6 +20,13 @@ describe('metricsRegistry', () => {
     expect(names).toContain('transcript_worker_pipeline_duration_seconds');
   });
 
+  it('registra las metricas de F7 (factor de tiempo real, anomalias wps, TooLong)', () => {
+    const names = metricsRegistry.getMetricsAsArray().map((m) => m.name);
+    expect(names).toContain('transcript_worker_realtime_factor');
+    expect(names).toContain('transcript_worker_wps_anomalies_total');
+    expect(names).toContain('transcript_worker_too_long_total');
+  });
+
   it('expone contentType valido para el endpoint /metrics', () => {
     expect(metricsRegistry.contentType).toMatch(/^text\/plain/);
   });

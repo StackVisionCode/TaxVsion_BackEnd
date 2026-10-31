@@ -18,7 +18,8 @@ const mocks = vi.hoisted(() => ({
   publishTranscriptReady: vi.fn(),
   publishTranscriptFailed: vi.fn(),
   transcodeToWav16kMono: vi.fn(),
-  probeAudioStreams: vi.fn(),
+  probeMedia: vi.fn(),
+  probeDurationSeconds: vi.fn(),
   transcribeWav: vi.fn(),
 }));
 
@@ -28,7 +29,8 @@ vi.mock('../../src/rabbit/publisher.js', () => ({
 }));
 vi.mock('../../src/media/audio-transcoder.js', () => ({
   transcodeToWav16kMono: mocks.transcodeToWav16kMono,
-  probeAudioStreams: mocks.probeAudioStreams,
+  probeMedia: mocks.probeMedia,
+  probeDurationSeconds: mocks.probeDurationSeconds,
 }));
 vi.mock('../../src/whisper/whisper-transcriber.js', () => ({
   transcribeWav: mocks.transcribeWav,
@@ -44,6 +46,8 @@ function makeEvent(overrides: Partial<RecordingReadyEvent> = {}): RecordingReady
     correlationId: randomUUID(),
     targetId: randomUUID(),
     recordingFileId: randomUUID(),
+    output: 'file',
+    passthrough: {},
     ...overrides,
   };
 }
@@ -62,13 +66,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default happy-path stubs — cada test overridea solo el stage que quiere
   // hacer fallar; los stages anteriores deben "pasar" para llegar hasta ahi.
-  mocks.probeAudioStreams.mockResolvedValue(1);
+  mocks.probeMedia.mockResolvedValue({ audioStreamCount: 1, durationSeconds: 5 });
+  mocks.probeDurationSeconds.mockResolvedValue(5);
   mocks.transcodeToWav16kMono.mockResolvedValue(undefined);
   mocks.transcribeWav.mockResolvedValue({
-    text: 'hola mundo',
+    segments: [{ startMs: 0, endMs: 2_000, text: 'hola mundo' }],
     detectedLanguage: 'es',
-    durationSeconds: 5,
-    wordCount: 2,
+    processingSeconds: 1,
   });
   mocks.publishTranscriptReady.mockReturnValue(undefined);
 });
@@ -77,7 +81,7 @@ describe('processRecordingReady — TranscriptFailed por stage (Fase Transcript 
   it('no audio stream -> publishTranscriptFailed(NoAudioStream) + rethrow (nack, no llega a whisper)', async () => {
     const event = makeEvent();
     const noAudioErr = new Error('ffprobe reported 0 audio streams for recording.bin');
-    mocks.probeAudioStreams.mockRejectedValueOnce(noAudioErr);
+    mocks.probeMedia.mockRejectedValueOnce(noAudioErr);
     const cloudStorage = makeCloudStorage({});
 
     await expect(processRecordingReady(event, { cloudStorage })).rejects.toThrow(noAudioErr);

@@ -118,6 +118,41 @@ public static class FormFileScanResultConsumer
             ct
         );
 
+    // T-20: retenido por la moderación de contenido; el veredicto final llega como Available o Blocked.
+    public static Task Handle(
+        FilePendingReviewIntegrationEvent evt,
+        IFormRequestRepository requests,
+        IFormFileScanVerdictRepository verdicts,
+        IClientFormsCustomerReader customers,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        ILogger<FormRequest> logger,
+        IClientFormsMetrics metrics,
+        CancellationToken ct
+    ) =>
+        ApplyAsync(
+            OwnedSignal(
+                evt.TenantId,
+                evt.FileId,
+                FormFileVerdictStatus.PendingReview,
+                evt.OwnerType,
+                evt.OwnerId,
+                evt.FolderType,
+                evt.OccurredOn
+            ),
+            CorrelationOf(evt.CorrelationId, evt.EventId),
+            requests,
+            verdicts,
+            customers,
+            unitOfWork,
+            bus,
+            correlation,
+            logger,
+            metrics,
+            ct
+        );
+
     public static Task Handle(
         FileScanFailedIntegrationEvent evt,
         IFormRequestRepository requests,

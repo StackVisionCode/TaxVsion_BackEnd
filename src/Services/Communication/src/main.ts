@@ -1,4 +1,5 @@
 import { startTelemetry, shutdownTelemetry } from './infrastructure/telemetry/telemetry.js';
+import { startInstanceHeartbeat } from './infrastructure/telemetry/instance-heartbeat.js';
 // Telemetria PRIMERO — auto-instrumentaciones deben cargarse antes de importar Fastify/Prisma.
 startTelemetry();
 
@@ -21,6 +22,9 @@ import { registerNotificationHandlers } from './api/socket/handlers/notification
 import { startMissedCallScheduler } from './infrastructure/schedulers/missed-call-scheduler.js';
 import { startPurgeScheduler } from './infrastructure/schedulers/purge-scheduler.js';
 import { startRecordingConsentTimeoutScheduler } from './infrastructure/schedulers/recording-consent-timeout-scheduler.js';
+import { startMeetingLifecycleScheduler } from './infrastructure/schedulers/meeting-lifecycle-scheduler.js';
+import { startCallLifecycleScheduler } from './infrastructure/schedulers/call-lifecycle-scheduler.js';
+import { registerSessionHandlers } from './api/socket/handlers/session-handlers.js';
 import { startCustomerReconciliationScheduler } from './infrastructure/schedulers/customer-reconciliation-scheduler.js';
 import { startUserDirectoryReconciliationScheduler } from './infrastructure/schedulers/user-directory-reconciliation-scheduler.js';
 import { startPortalAccountReconciliationScheduler } from './infrastructure/schedulers/portal-account-reconciliation-scheduler.js';
@@ -49,10 +53,23 @@ import { bindCalendarConsumers } from './application/event-handlers/calendar-con
 import { bindSupportConsumers } from './application/event-handlers/support-consumers.js';
 import { bindInAppNotificationConsumers } from './application/event-handlers/notification-inapp-consumers.js';
 import { SocketRealtimeEmitter } from './infrastructure/socket/socket-realtime-emitter.js';
+import { SocketIoSessionTerminator } from './infrastructure/socket/socket-session-terminator.js';
 import { startSessionDenylistWatcher } from './infrastructure/redis/session-denylist-watcher.js';
 import { startPresenceChangedWatcher } from './infrastructure/redis/presence-changed-watcher.js';
 import { redisSub } from './infrastructure/redis/redis-client.js';
 import { platformSettings } from './infrastructure/platform/platform-settings-source.js';
+import { buildSfuObserver } from './infrastructure/webrtc/sfu-transport-telemetry.js';
+import { createSfuTransportStateReporter } from './application/use-cases/report-sfu-transport-state.js';
+import { sfuWebRtcServerFallbackWorkers } from './infrastructure/telemetry/metrics.js';
+import type { SfuObserver, SfuRuntimeInfo } from './application/ports/sfu-service.js';
+import { bindRecordingConsumers } from './application/event-handlers/recording-consumers.js';
+import { startRecordingScheduler } from './infrastructure/schedulers/recording-scheduler.js';
+import {
+  lifecycleFrom,
+  markRecordingFileAvailable,
+  markRecordingFileRejected,
+} from './application/use-cases/recording-lifecycle.js';
+import type { RecordingCaptureService } from './application/services/recording-capture.service.js';
 
 /**
  * Red de seguridad del proceso: un error async no capturado en un handler de socket (p.ej. un deadlock
@@ -75,40 +92,83 @@ function installProcessSafetyNet(): void {
   });
 }
 
-async function main(): Promise<void> {
-  installProcessSafetyNet();
-  // Fase Backend 11 — sin `announcedIp`, mediasoup (SFU, meetings >4
-  // participantes) anuncia `listenIp` (tipicamente 0.0.0.0 o una IP privada de
-  // contenedor/VM) en los ICE candidates: cualquier peer detras de NAT nunca
-  // conecta el WebRTC transport. No es fatal a nivel de proceso — el resto del
-  // backend (chat, calls 1:1 via mesh, HTTP) sigue funcionando — por eso solo
-  // logueamos `fatal` (maxima severidad de log, altamente visible en
-  // Loki/OTLP) en vez de abortar el boot.
-  if (config.isProduction && !config.mediasoup.announcedIp) {
+/**
+ * Guard de arranque del SFU (D-06: registra, nunca frena). Sin `announcedAddress` detras de NAT los
+ * candidatos ICE llevan una IP privada y ningun navegador externo conecta; sin WebRtcServer los puertos
+ * son aleatorios y Docker no los publica. Ambos casos quedan en el log con la lista exacta de puertos
+ * que el compose y el router deben exponer.
+ */
+function logSfuStartupGuard(info: SfuRuntimeInfo): void {
+  if (config.isProduction && !info.announcedAddress) {
     logger.fatal(
-      'COMMUNICATION_MEDIASOUP_ANNOUNCED_IP is unset in production — SFU meetings (>4 participants) behind NAT will fail to establish WebRTC transports.',
+      'COMMUNICATION_MEDIASOUP_ANNOUNCED_IP is unset in production — SFU meetings behind NAT will fail to establish WebRTC transports.',
     );
   }
+  if (!info.webRtcServerEnabled) {
+    logger.warn('WebRtcServer disabled — each SFU transport takes a random RTC port; unreachable behind Docker unless the whole range is published.');
+  } else if (info.fallbackWorkers > 0) {
+    logger.error({ fallbackWorkers: info.fallbackWorkers, boundPorts: info.webRtcServerPorts }, 'Some SFU workers could not bind their WebRtcServer port.');
+  }
+  sfuWebRtcServerFallbackWorkers.set(info.fallbackWorkers);
+  logger.info(
+    { ports: info.webRtcServerPorts, tcp: info.tcpEnabled, announcedAddress: info.announcedAddress },
+    'SFU ports to publish in docker-compose and forward in the router (UDP, and TCP when enabled)',
+  );
+}
 
+/** F7: el observador del SFU tambien avisa a la captura server-side cuando nace o muere un producer. */
+function withRecordingCapture(observer: SfuObserver, capture: RecordingCaptureService): SfuObserver {
+  return {
+    ...observer,
+    onProducerOpened(event) {
+      observer.onProducerOpened?.(event);
+      void capture.onProducerOpened(event).catch((err: unknown) => logger.warn({ err, producerId: event.producerId }, 'recording capture attach failed'));
+    },
+    onProducerClosed(event) {
+      observer.onProducerClosed?.(event);
+      void capture.onProducerClosed(event).catch((err: unknown) => logger.warn({ err, producerId: event.producerId }, 'recording capture detach failed'));
+    },
+  };
+}
+
+async function main(): Promise<void> {
+  installProcessSafetyNet();
   await connectRedis();
   await connectRabbit();
   await connectPrisma();
 
   const container = buildContainer();
+  // F1: cada transition ICE/DTLS del SFU se loguea, se cuenta y, si es un fallo, se publica como evento.
+  container.sfu.setObserver(
+    withRecordingCapture(
+      buildSfuObserver(
+        createSfuTransportStateReporter({
+          publisher: container.publisher,
+          meetingEvents: container.meetingEvents,
+          qualityAggregator: container.qualityAggregator,
+        }),
+      ),
+      container.capture,
+    ),
+  );
   await container.sfu.start();
+  logSfuStartupGuard(container.sfu.describe());
   const app = await buildHttpServer(container);
   const io = buildSocketServer(app.server);
   registerChatHandlers(io, container);
   registerCallHandlers(io, container);
   registerMeetingHandlers(io, container);
   registerNotificationHandlers(io, container);
+  const sessions = registerSessionHandlers(io, container);
   const emitter = new SocketRealtimeEmitter(io);
   // Wire tarde el emitter para que las rutas HTTP (Fase Backend 6+) que
   // emiten a rooms del socket puedan leerlo desde container.emitter en el
   // handler del request. Ver container.ts para el porque del post-init.
   container.emitter = emitter;
+  container.sessionTerminator = new SocketIoSessionTerminator(io);
+  // Timeouts, gracias y retenciones salen del resolver (PlatformCommunicationSettings), no de constantes.
   const missedCalls = startMissedCallScheduler(
-    { intervalSeconds: 30, ringingTimeoutSeconds: 60 },
+    { intervalSeconds: 30 },
     {
       calls: container.calls,
       conversations: container.conversations,
@@ -116,6 +176,7 @@ async function main(): Promise<void> {
       presence: container.presence,
       emitter,
       lock: container.distributedLock,
+      effectiveSettings: container.effectiveSettings,
     },
   );
   const outbox = startOutboxDrainer({ intervalMs: 2000 }, { lock: container.distributedLock });
@@ -126,11 +187,24 @@ async function main(): Promise<void> {
       notificationUnreadRetentionDays: config.notificationRetention.unreadDays,
       batchSize: config.notificationRetention.batchSize,
     },
-    { prisma, settings: container.tenantSettings, lock: container.distributedLock },
+    {
+      prisma,
+      settings: container.tenantSettings,
+      lock: container.distributedLock,
+      effectiveSettings: container.effectiveSettings,
+      analytics: container.analytics,
+    },
+  );
+  // F10 (ADD-08 T-74): latido del proceso en Redis (sockets y SFU) para admin/analytics/live|infra.
+  // El intervalo no retiene el proceso al apagar; la clave caduca sola (TTL = 3 latidos).
+  startInstanceHeartbeat(
+    { intervalSeconds: config.platformAnalytics.heartbeatSeconds },
+    { store: container.instanceTelemetry, sfu: container.sfu },
   );
   const recordingConsentTimeout = startRecordingConsentTimeoutScheduler(
-    { intervalSeconds: 10, meetingTimeoutSeconds: 30, callTimeoutSeconds: 15 },
+    { intervalSeconds: 10 },
     {
+      effectiveSettings: container.effectiveSettings,
       meetings: container.meetings,
       calls: container.calls,
       recordingSessions: container.recordingSessions,
@@ -140,6 +214,16 @@ async function main(): Promise<void> {
       emitter,
       lock: container.distributedLock,
     },
+  );
+  // F3 (T-39): avisos 10/5/1, corte al tope, salas vacías y agendadas vencidas; plazos del resolver.
+  const lifecycle = startMeetingLifecycleScheduler(
+    { intervalSeconds: 15 },
+    { ...container, emitter, lock: container.distributedLock },
+  );
+  // F4: aviso y corte por `maxCallMinutes` del plan.
+  const callLifecycle = startCallLifecycleScheduler(
+    { intervalSeconds: 15 },
+    { ...container, emitter, lock: container.distributedLock },
   );
   const customerReconciliation = startCustomerReconciliationScheduler(
     { enabled: config.customerReconcile.enabled, intervalHours: config.customerReconcile.intervalHours },
@@ -182,6 +266,9 @@ async function main(): Promise<void> {
 
   // Consumer runtime + registro de handlers Signature/Customer/Auth.
   const consumers = new ConsumerRuntime(container.processedEvents);
+  // F7: ciclo de vida de grabaciones del sistema (recorder, CloudStorage, transcript, limite, retencion).
+  const recordingLifecycle = lifecycleFrom({ ...container, emitter });
+  if (!recordingLifecycle) throw new Error('Recording lifecycle dependencies are incomplete.');
   bindInAppNotificationConsumers(consumers.register.bind(consumers), {
     notifications: container.inAppNotifications,
     emitter,
@@ -207,6 +294,8 @@ async function main(): Promise<void> {
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
     emitter,
+    conversations: container.conversations,
+    conversationAudit: container.conversationAudit,
   });
   bindTenantHostConsumers(consumers.register.bind(consumers), {
     hostCache: container.tenantHostCache,
@@ -220,11 +309,14 @@ async function main(): Promise<void> {
     meetings: container.meetings,
     publisher: container.publisher,
     emitter,
+    conversations: container.conversations,
+    conversationAudit: container.conversationAudit,
   });
   bindSubscriptionConsumers(consumers.register.bind(consumers), {
     limits: container.limits,
     planCodeCache: container.planCodeCache,
     modulesCache: container.tenantModulesCache,
+    effectiveSettings: container.effectiveSettings,
     emitter,
   });
 
@@ -279,6 +371,14 @@ async function main(): Promise<void> {
     notifications: container.notifications,
     emitter,
     inAppSourcePolicy: config.inAppSource.cloudStoragePolicy,
+    cloudStorageMetadata: container.cloudStorageMetadata,
+    messages: container.messages,
+    recordingFiles: {
+      onAvailable: (tenantId, fileId, correlationId) =>
+        markRecordingFileAvailable({ tenantId, fileId, correlationId }, recordingLifecycle),
+      onRejected: (tenantId, fileId, reason, correlationId) =>
+        markRecordingFileRejected({ tenantId, fileId, reason, correlationId }, recordingLifecycle),
+    },
   });
   bindCloudStorageNotificationConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
@@ -302,24 +402,51 @@ async function main(): Promise<void> {
     publisher: container.publisher,
     passcodes: container.passcodes,
     settings: container.settings,
+    meetingMediaPolicy: container.meetingMediaPolicy,
+    effectiveSettings: container.effectiveSettings,
     emitter,
   });
   bindSupportConsumers(consumers.register.bind(consumers), {
     supportTickets: container.supportTickets,
     analytics: container.analytics,
+    analyticsDay: (iso) => container.analyticsRecorder.day(iso),
     notifications: container.notifications,
     userPermissions: container.userPermissions,
     emitter,
     inAppSource: config.inAppSource.support,
+    conversations: container.conversations,
   });
-  bindAnalyticsConsumers(consumers.register.bind(consumers), { analytics: container.analytics });
+  // F10: proyecciones — conviven con el handler principal del mismo evento (grabaciones, transcripts…).
+  bindAnalyticsConsumers(consumers.registerProjection.bind(consumers), {
+    analytics: container.analytics,
+    recorder: container.analyticsRecorder,
+  });
   bindTranscriptConsumers(consumers.register.bind(consumers), {
     calls: container.calls,
     meetings: container.meetings,
     recordingSessions: container.recordingSessions,
     publisher: container.publisher,
     emitter,
+    transcripts: container.transcripts,
+    conversations: container.conversations,
+    messages: container.messages,
+    attachmentTracking: container.attachmentTracking,
+    cloudStorageMetadata: container.cloudStorageMetadata,
+    lifecycle: recordingLifecycle,
   });
+  bindRecordingConsumers(consumers.register.bind(consumers), recordingLifecycle);
+  // F7: limite (T-35), respaldo de disponibilidad, composiciones colgadas y retencion (T-37).
+  const recordingScheduler = startRecordingScheduler(
+    { intervalSeconds: 15, retentionIntervalMinutes: 60 },
+    {
+      ...recordingLifecycle,
+      effectiveSettings: container.effectiveSettings,
+      cloudStorageMetadata: container.cloudStorageMetadata,
+      settings: container.tenantSettings,
+      fileDeletion: container.fileDeletion,
+      lock: container.distributedLock,
+    },
+  );
   // Orígenes del CORS: dominio vigente de la plataforma (Tenant), refrescado cada 5 min.
   platformSettings.start();
   await consumers.start();
@@ -330,7 +457,7 @@ async function main(): Promise<void> {
 
   // Session-revoked (canal Redis Pub/Sub — separado del canal de notifications
   // de negocio). Cierra CRIT legacy que mezclaba force_logout con notifs.
-  const sessionWatcher = startSessionDenylistWatcher(redisSub, emitter);
+  const sessionWatcher = startSessionDenylistWatcher(redisSub, emitter, (message) => sessions.revoke(message));
 
   // Presence transitions online/offline: RedisPresenceService publica en
   // comm:presence:changed:{tenantId}; el watcher se suscribe con PSUBSCRIBE
@@ -352,6 +479,8 @@ async function main(): Promise<void> {
         outbox,
         purge,
         recordingConsentTimeout,
+        lifecycle,
+        callLifecycle,
         customerReconciliation,
         customerAssignmentReconciliation,
         userDirectoryReconciliation,
@@ -359,6 +488,7 @@ async function main(): Promise<void> {
         sessionWatcher,
         presenceWatcher,
         consumers,
+        recordingScheduler,
       );
     });
   }
@@ -375,6 +505,8 @@ async function shutdown(
   outbox: ReturnType<typeof startOutboxDrainer>,
   purge: ReturnType<typeof startPurgeScheduler>,
   recordingConsentTimeout: ReturnType<typeof startRecordingConsentTimeoutScheduler>,
+  lifecycle: ReturnType<typeof startMeetingLifecycleScheduler>,
+  callLifecycle: ReturnType<typeof startCallLifecycleScheduler>,
   customerReconciliation: ReturnType<typeof startCustomerReconciliationScheduler>,
   customerAssignmentReconciliation: ReturnType<typeof startCustomerAssignmentReconciliationScheduler>,
   userDirectoryReconciliation: ReturnType<typeof startUserDirectoryReconciliationScheduler>,
@@ -382,6 +514,7 @@ async function shutdown(
   sessionWatcher: ReturnType<typeof startSessionDenylistWatcher>,
   presenceWatcher: ReturnType<typeof startPresenceChangedWatcher>,
   consumers: ConsumerRuntime,
+  recordingScheduler: ReturnType<typeof startRecordingScheduler>,
 ): Promise<void> {
   logger.info({ signal }, 'Shutting down (graceful drain up to 30s)');
   try {
@@ -389,10 +522,13 @@ async function shutdown(
     outbox.stop();
     purge.stop();
     recordingConsentTimeout.stop();
+    lifecycle.stop();
+    callLifecycle.stop();
     customerReconciliation.stop();
     customerAssignmentReconciliation.stop();
     userDirectoryReconciliation.stop();
     portalAccountReconciliation.stop();
+    recordingScheduler.stop();
     await container.sfu.stop();
     await sessionWatcher.stop();
     await presenceWatcher.stop();

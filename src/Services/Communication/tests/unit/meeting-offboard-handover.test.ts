@@ -77,7 +77,7 @@ describe('Meeting.reassignHostBySystem', () => {
   it('cannot reassign the host of an ended meeting', () => {
     const host = u();
     const meeting = live(host);
-    meeting.endBySystem();
+    meeting.endBySystem({ reason: 'Offboarding' });
 
     const result = meeting.reassignHostBySystem({ newHostUserId: u() });
 
@@ -112,7 +112,7 @@ describe('Meeting.endBySystem', () => {
     const host = u();
     const meeting = live(host);
 
-    const result = meeting.endBySystem();
+    const result = meeting.endBySystem({ reason: 'Offboarding' });
 
     expect(result.isSuccess).toBe(true);
     expect(meeting.status).toBe('Ended');
@@ -124,9 +124,9 @@ describe('Meeting.endBySystem', () => {
   it('refuses to end an already-ended meeting', () => {
     const host = u();
     const meeting = live(host);
-    meeting.endBySystem();
+    meeting.endBySystem({ reason: 'Offboarding' });
 
-    const result = meeting.endBySystem();
+    const result = meeting.endBySystem({ reason: 'Offboarding' });
 
     expect(result.isSuccess).toBe(false);
     if (!result.isSuccess) expect(result.error.code).toBe('Meeting.AlreadyEnded');

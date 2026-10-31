@@ -73,6 +73,12 @@ export async function forwardMessage(
     return Result.fail(makeError('Chat.Message.NotFound', 'Origin message not found.'));
   }
   const originSnapshot = origin.toSnapshot();
+  // F11: solo se reenvía lo que uno puede leer (antes bastaba con conocer el id de cualquier mensaje del tenant).
+  const originConversation = await deps.conversations.findById(cmd.tenantId, originSnapshot.conversationId);
+  if (!originConversation || !originConversation.isParticipant(cmd.forwarderUserId)) {
+    await release();
+    return Result.fail(makeError('Chat.Message.NotFound', 'Origin message not found.'));
+  }
 
   const targetConversation = await deps.conversations.findById(cmd.tenantId, cmd.targetConversationId);
   if (!targetConversation) {

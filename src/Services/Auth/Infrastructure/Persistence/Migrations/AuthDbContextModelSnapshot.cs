@@ -1472,6 +1472,36 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000216"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "cloudstorage.upload_policy.manage",
+                            Description = "Manage upload size policies per folder, plan and office",
+                            GatedModule = "documents",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000217"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "cloudstorage.moderation.manage",
+                            Description = "Review flagged uploads and manage the content moderation policy",
+                            GatedModule = "documents",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000027"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.settings.manage",
@@ -2596,6 +2626,51 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000213"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "communication.platform.manage",
+                            Description = "Manage platform-wide communication settings",
+                            GatedModule = "comms",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "communication",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000214"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "communication.constraints.manage",
+                            Description = "Manage per-office communication ceilings",
+                            GatedModule = "comms",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "communication",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000215"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "communication.platform.analytics.read",
+                            Description = "View platform-wide communication analytics",
+                            GatedModule = "comms",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "communication",
+                            PlatformOnly = true
                         },
                         new
                         {
@@ -4239,6 +4314,13 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("AvatarFileId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AvatarModerationFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AvatarModerationState")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");

@@ -4,7 +4,8 @@ export default defineConfig({
   test: {
     globals: false,
     include: ['tests/**/*.test.ts', 'tests/**/*.spec.ts'],
-    exclude: ['node_modules', 'dist'],
+    // tests/integration usa SQL Server real: se corre aparte con `npm run test:integration`.
+    exclude: ['node_modules', 'dist', 'tests/integration/**'],
     environment: 'node',
     // config.ts valida process.env al importarse (fail-fast en prod). Los unit
     // tests que lo arrastran necesitan estas 6 vars — dummy, nunca infra real.

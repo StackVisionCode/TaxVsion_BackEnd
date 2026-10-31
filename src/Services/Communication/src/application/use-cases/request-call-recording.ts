@@ -1,3 +1,4 @@
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import { RecordingScope } from '../../domain/recording/recording-session-state.js';
@@ -34,6 +35,8 @@ export interface RequestCallRecordingResult {
 }
 
 export interface RequestCallRecordingDeps {
+  /** F7 (INV-12 H-3): plan y oficina deciden si se puede grabar; sin resolver (tests viejos) no se gatea. */
+  readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
   readonly calls: CallRepository;
   readonly recordingSessions: RecordingSessionRepository;
   readonly idempotency: IdempotencyStore;
@@ -67,6 +70,14 @@ export async function requestCallRecording(
   if (!call) {
     await release();
     return Result.fail(makeError('Call.NotFound', 'Call not found.'));
+  }
+
+  if (deps.effectiveSettings) {
+    const effective = await deps.effectiveSettings.resolve(command.tenantId);
+    if (!effective.recording.enabled) {
+      await release();
+      return Result.fail(makeError('Plan.RecordingDisabled', "Recording isn't included in this office's plan."));
+    }
   }
 
   const existingSession = await deps.recordingSessions.findByScope(command.tenantId, RecordingScope.Call, command.callId);

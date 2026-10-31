@@ -34,6 +34,7 @@ export function messageSnapshotToDto(m: MessageSnapshot): MessageDto {
     replyToMessageId: m.replyToMessageId,
     forwardedFromMessageId: m.forwardedFromMessageId,
     isEdited: m.isEdited,
+    editCount: m.editCount ?? 0,
     isDeleted: m.isDeleted,
     isPinned: m.isPinned,
     pinnedAtUtc: m.pinnedAtUtc ? m.pinnedAtUtc.toISOString() : null,
@@ -46,5 +47,7 @@ export function messageSnapshotToDto(m: MessageSnapshot): MessageDto {
     readAtUtc: null,
     audioDurationMs: m.audioDurationMs,
     audioWaveform: parseWaveform(m.audioWaveform),
+    transcriptText: m.transcriptText ?? null,
+    transcriptState: m.transcriptState ?? null,
   };
 }

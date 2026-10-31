@@ -174,6 +174,80 @@ public sealed class EventBasedEmailDispatchGatewayTests
         Assert.Equal(8_192, published.SizeBytes);
     }
 
+    [Fact]
+    public async Task QueueEmailAsync_propagates_InlineAttachments_from_request_to_published_event()
+    {
+        var publisher = new RecordingIntegrationEventPublisher();
+        var gateway = new EventBasedEmailDispatchGateway(
+            publisher,
+            new RecordingNotificationLogRepository(),
+            new NoOpUnitOfWork(),
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+        var ics = new EmailInlineAttachment(
+            "invite.ics",
+            "text/calendar; method=REQUEST; charset=utf-8",
+            Convert.ToBase64String("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"u8.ToArray())
+        );
+
+        var result = await gateway.QueueEmailAsync(
+            Request() with
+            {
+                InlineAttachments = [ics],
+            },
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var evt = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(Assert.Single(publisher.Published));
+        Assert.Equal(ics, Assert.Single(evt.InlineAttachments!));
+    }
+
+    /// <summary>Un adjunto en memoria va dentro del evento (outbox + cola): por encima de 256 KB no se publica.</summary>
+    [Fact]
+    public async Task QueueEmailAsync_rejects_inline_attachments_over_256_KB_without_publishing()
+    {
+        var publisher = new RecordingIntegrationEventPublisher();
+        var logRepo = new RecordingNotificationLogRepository();
+        var gateway = new EventBasedEmailDispatchGateway(
+            publisher,
+            logRepo,
+            new NoOpUnitOfWork(),
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+        var tooBig = new EmailInlineAttachment(
+            "big.bin",
+            "application/octet-stream",
+            Convert.ToBase64String(new byte[256 * 1024 + 1])
+        );
+
+        var result = await gateway.QueueEmailAsync(
+            Request() with
+            {
+                InlineAttachments = [tooBig],
+            },
+            CancellationToken.None
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(NotificationDispatchAttemptStatus.Failed, result.Status);
+        Assert.Contains("256", result.Error);
+        Assert.Empty(publisher.Published);
+        Assert.Empty(logRepo.Logs);
+    }
+
+    private static EmailDispatchRequest Request() =>
+        new(
+            TenantId: Guid.NewGuid(),
+            To: "customer@test.com",
+            Subject: "Invitation",
+            HtmlBody: "<p>Hi</p>",
+            TextBody: "Hi",
+            TemplateKey: "communication.meeting.invitation",
+            RelatedEventId: Guid.NewGuid(),
+            CorrelationId: "corr-3"
+        );
+
     /// <summary>
     /// Regresión (2026-07-19): un reintento de Wolverine sobre el mismo evento de origen (mismo
     /// RelatedEventId, ej. UserRegisteredIntegrationEvent.EventId) tiene que producir la MISMA

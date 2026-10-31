@@ -6,14 +6,21 @@ import { markMessagesRead } from '../../../application/use-cases/mark-messages-r
 import { searchMessages } from '../../../application/use-cases/search-messages.js';
 import { getAttachmentMetadata } from '../../../application/use-cases/get-attachment-metadata.js';
 import { getAttachmentDownloadUrl } from '../../../application/use-cases/get-attachment-download-url.js';
+import { requestVoiceNoteTranscript } from '../../../application/use-cases/request-voice-note-transcript.js';
 import { createAttachmentUpload } from '../../../application/use-cases/create-attachment-upload.js';
 import { completeAttachmentUpload } from '../../../application/use-cases/complete-attachment-upload.js';
 import { CloudStorageUploadError } from '../../../infrastructure/cloudstorage/http-cloudstorage-upload-client.js';
-import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { CommunicationPermissions, checkPermission } from '../../../domain/shared/permissions.js';
+import { CONTENT_PAGE_MAX, listConversationContent } from '../../../application/use-cases/list-conversation-content.js';
+import { listConversationAudit } from '../../../application/use-cases/list-conversation-audit.js';
+import { completeGroupAvatarUpload, createGroupAvatarUpload } from '../../../application/use-cases/group-avatar-upload.js';
+import { isTenantAdminActor } from '../../../application/use-cases/group-membership-policy.js';
 import { requirePermission } from '../plugins/require-permission.js';
+import { listMessageEdits } from '../../../application/use-cases/list-message-edits.js';
 import { OptionalBooleanQuery } from '../schemas/strict-boolean-query.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
+const MessageTranscriptParams = z.object({ id: z.string().uuid(), messageId: z.string().uuid() });
 const AttachmentParams = z.object({ id: z.string().uuid(), fileId: z.string().uuid() });
 const ConversationParam = z.object({ id: z.string().uuid() });
 const CreateUploadBody = z.object({
@@ -41,10 +48,17 @@ function attachmentHttpStatus(code: string): number {
   }
 }
 
+const KindSchema = z.enum(['Direct', 'Group', 'Support', 'Meeting']);
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   size: z.coerce.number().int().min(1).max(100).default(20),
   includeArchived: OptionalBooleanQuery,
+  // F8a: `kinds=Direct,Group` (Chat), `kinds=Support` (módulo Support); sin `kinds` = todo (compatibilidad).
+  kinds: z
+    .string()
+    .optional()
+    .transform((raw) => (raw ? raw.split(',').map((k) => k.trim()).filter(Boolean) : undefined))
+    .pipe(z.array(KindSchema).max(4).optional()),
 });
 
 const GetMessagesQuerySchema = z.object({
@@ -84,6 +98,7 @@ export async function registerConversationRoutes(
           page: query.page,
           size: query.size,
           includeArchived: query.includeArchived ?? false,
+          ...(query.kinds ? { kinds: query.kinds } : {}),
         },
         container,
       );
@@ -143,6 +158,40 @@ export async function registerConversationRoutes(
       );
       if (!result.isSuccess) {
         return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
+
+  // GET /communication/conversations/:id/content?tab=Media|Documents|Audio|Links&before&take — F8d: pestañas de Info.
+  app.get(
+    '/communication/conversations/:id/content',
+    { preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)] },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+      const params = ConversationParam.parse(request.params);
+      const query = z
+        .object({
+          tab: z.enum(['Media', 'Documents', 'Audio', 'Links']),
+          before: z.string().max(128).optional(),
+          take: z.coerce.number().int().min(1).max(CONTENT_PAGE_MAX).optional(),
+        })
+        .parse(request.query);
+      const result = await listConversationContent(
+        {
+          tenantId: principal.tenantId,
+          conversationId: params.id,
+          requesterUserId: principal.userId,
+          tab: query.tab,
+          before: query.before ?? null,
+          ...(query.take !== undefined ? { take: query.take } : {}),
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        const status = result.error.code === 'Chat.Conversation.NotParticipant' ? 403 : 404;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
       }
       return reply.send(result.value);
     },
@@ -251,6 +300,150 @@ export async function registerConversationRoutes(
     },
   );
 
+  /** D-22: superpoder para administrar grupos sin ser miembro (Tenant Admin o `group.manage_members`). */
+  const groupSuperpower = async (principal: Parameters<typeof checkPermission>[0]): Promise<boolean> =>
+    isTenantAdminActor(principal.actorType) ||
+    (await checkPermission(principal, CommunicationPermissions.GroupManageMembers, container.userPermissions)).allowed;
+
+  // GET /communication/conversations/:id/audit — F8b (T-22): bitácora del grupo para quien lo administra.
+  app.get(
+    '/communication/conversations/:id/audit',
+    { preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)] },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const query = z
+        .object({ take: z.coerce.number().int().min(1).max(100).default(50), before: z.string().datetime().optional() })
+        .parse(request.query);
+      const canAdministerAnyGroup = await groupSuperpower(principal);
+      const result = await listConversationAudit(
+        {
+          tenantId: principal.tenantId,
+          conversationId: params.id,
+          requesterUserId: principal.userId,
+          canAdministerAnyGroup,
+          take: query.take,
+          ...(query.before ? { beforeUtc: query.before } : {}),
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        const status = result.error.code === 'Chat.Group.AdminOnly' ? 403 : 404;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
+
+  // GET /communication/conversations/:id/messages/:messageId/edits — F8: versiones anteriores de un mensaje editado.
+  app.get(
+    '/communication/conversations/:id/messages/:messageId/edits',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)],
+    },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+      const params = MessageTranscriptParams.parse(request.params);
+      const result = await listMessageEdits(
+        { tenantId: principal.tenantId, conversationId: params.id, messageId: params.messageId, requesterUserId: principal.userId },
+        container,
+      );
+      if (!result.isSuccess) {
+        const status = result.error.code === 'Chat.Conversation.NotParticipant' ? 403 : 404;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
+
+  // POST /communication/conversations/:id/messages/:messageId/transcript — F7: transcribe una nota de voz
+  // a demanda (boton "Transcribe"); 202 con el estado. El texto llega por `chat.message.transcript_updated`.
+  app.post(
+    '/communication/conversations/:id/messages/:messageId/transcript',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)],
+    },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+      const params = MessageTranscriptParams.parse(request.params);
+      const result = await requestVoiceNoteTranscript(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          conversationId: params.id,
+          messageId: params.messageId,
+          correlationId: request.id,
+        },
+        { ...container, emitter: container.emitter },
+      );
+      if (!result.isSuccess) {
+        const status =
+          result.error.code === 'Chat.Message.NotFound' ? 404 : result.error.code === 'Chat.Conversation.NotParticipant' ? 403 : 409;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(202).send(result.value);
+    },
+  );
+
+  // POST /communication/conversations/:id/avatar/upload — F8b (T-21): foto del grupo, subida mediada a `Avatars`.
+  app.post(
+    '/communication/conversations/:id/avatar/upload',
+    { preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)] },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+      const params = ConversationParam.parse(request.params);
+      const body = CreateUploadBody.parse(request.body);
+      try {
+        const result = await createGroupAvatarUpload(
+          {
+            tenantId: principal.tenantId,
+            userId: principal.userId,
+            conversationId: params.id,
+            canAdministerAnyGroup: await groupSuperpower(principal),
+            originalName: body.originalName,
+            contentType: body.contentType,
+            sizeBytes: body.sizeBytes,
+          },
+          container,
+        );
+        if (!result.isSuccess) return reply.code(groupAvatarHttpStatus(result.error.code)).send({ code: result.error.code, message: result.error.message });
+        return reply.send(result.value);
+      } catch (err) {
+        if (err instanceof CloudStorageUploadError) {
+          const status = err.status >= 400 && err.status < 500 ? err.status : 502;
+          return reply.code(status).send({ code: err.code ?? 'Chat.Group.AvatarUploadFailed', message: "Couldn't upload the photo." });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/communication/conversations/:id/avatar/:fileId/complete',
+    { preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)] },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+      const params = AttachmentParams.parse(request.params);
+      const result = await completeGroupAvatarUpload(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          conversationId: params.id,
+          canAdministerAnyGroup: await groupSuperpower(principal),
+          fileId: params.fileId,
+        },
+        container,
+      );
+      if (!result.isSuccess) return reply.code(groupAvatarHttpStatus(result.error.code)).send({ code: result.error.code, message: result.error.message });
+      return reply.code(202).send(result.value);
+    },
+  );
+
   // POST /communication/conversations/:id/attachments/:fileId/complete — finaliza
   // la subida (verifica tamano + dispara escaneo).
   app.post(
@@ -308,4 +501,12 @@ export async function registerConversationRoutes(
       return reply.send(result.value);
     },
   );
+}
+
+/** F8b: estado HTTP de los errores de la foto del grupo. */
+function groupAvatarHttpStatus(code: string): number {
+  if (code === 'Chat.Conversation.NotFound') return 404;
+  if (code === 'Chat.Group.AdminOnly') return 403;
+  if (code === 'Chat.Group.AvatarType') return 415;
+  return 409;
 }

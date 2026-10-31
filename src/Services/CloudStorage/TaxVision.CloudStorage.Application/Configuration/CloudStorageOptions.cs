@@ -168,6 +168,7 @@ public sealed class CloudStorageOptions
             [FolderType.Avatars] = AvatarsPolicy(),
             [FolderType.Imports] = ImportsExportsPolicy(),
             [FolderType.Recordings] = RecordingsPolicy(),
+            [FolderType.RecordingTracks] = RecordingTracksPolicy(),
             [FolderType.Transcripts] = TranscriptsPolicy(),
             [FolderType.Backups] = BackupsPolicy(),
             [FolderType.Templates] = TemplatesPolicy(),
@@ -246,7 +247,8 @@ public sealed class CloudStorageOptions
         // VoiceNotes) — sin esto la interseccion quitaba audio/* y el InitiateUpload devolvia 400.
         // El TAMANO sí sigue el override por plan (FolderOverridesBytes: enterprise 500MB, starter 150MB),
         // por eso NO usa el early-return de arriba: solo se exceptua el gating de tipos, no el de tamano.
-        var systemMedia = folderType is FolderType.Recordings;
+        // RecordingTracks: pistas del recorder (servicio), mismo criterio que Recordings.
+        var systemMedia = folderType is FolderType.Recordings or FolderType.RecordingTracks;
 
         var allowedExtensions = (
             systemMedia
@@ -267,9 +269,15 @@ public sealed class CloudStorageOptions
                 )
         ).ToArray();
 
-        var planMaxSizeBytes = planPolicy.FolderOverridesBytes.TryGetValue(folderType.ToString(), out var overrideBytes)
-            ? overrideBytes
-            : planPolicy.MaxFileSizeBytes;
+        // Sin override propio, una pista hereda el de Recordings: es un trozo de la misma grabación.
+        var planMaxSizeBytes =
+            planPolicy.FolderOverridesBytes.TryGetValue(folderType.ToString(), out var overrideBytes)
+            || (
+                folderType == FolderType.RecordingTracks
+                && planPolicy.FolderOverridesBytes.TryGetValue(nameof(FolderType.Recordings), out overrideBytes)
+            )
+                ? overrideBytes
+                : planPolicy.MaxFileSizeBytes;
 
         return new EffectiveUploadPolicy(
             Math.Min(folderPolicy.MaxSizeBytes, planMaxSizeBytes),
@@ -384,17 +392,30 @@ public sealed class CloudStorageOptions
         };
 
     /// <summary>
-    /// Transcripts .txt generados por whisper.cpp a partir de una grabacion.
-    /// Texto plano, chico incluso para audio largo (una transcripcion de 2
-    /// horas ronda unos cientos de KB) — 5MB da margen de sobra sin acercarse
-    /// al costo de una grabacion real.
+    /// Pistas de audio crudas (WebM/Opus) que el recorder sube por SaveFileRequested (F7). El sniffing
+    /// de FileContentInspector no distingue audio de video en EBML, así que se aceptan ambos. Mismo tope
+    /// duro que Recordings; el efectivo lo fija la fila Global de UploadSizePolicies (2 GB).
+    /// </summary>
+    private static StorageFolderTypePolicy RecordingTracksPolicy() =>
+        new()
+        {
+            MaxSizeBytes = 500L * 1024 * 1024,
+            AllowedExtensions = [".webm"],
+            AllowedContentTypes = ["audio/webm", "video/webm"],
+        };
+
+    /// <summary>
+    /// Transcripts generados por whisper.cpp a partir de una grabacion: .txt legible y .json v2
+    /// (segmentos con hablante, F7). Texto chico incluso para audio largo (una transcripcion de 2
+    /// horas ronda unos cientos de KB) — 5MB da margen de sobra sin acercarse al costo de una
+    /// grabacion real.
     /// </summary>
     private static StorageFolderTypePolicy TranscriptsPolicy() =>
         new()
         {
             MaxSizeBytes = 5L * 1024 * 1024,
-            AllowedExtensions = [".txt"],
-            AllowedContentTypes = ["text/plain"],
+            AllowedExtensions = [".txt", ".json"],
+            AllowedContentTypes = ["text/plain", "application/json"],
         };
 
     /// <summary>

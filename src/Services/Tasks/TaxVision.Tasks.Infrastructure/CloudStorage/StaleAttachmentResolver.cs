@@ -66,6 +66,7 @@ internal sealed class StaleAttachmentResolver(
                 now
             ),
             RemoteFileScanStatus.Deleted => task.MarkAttachmentDetached(attachment.FileId, now),
+            RemoteFileScanStatus.PendingReview => task.MarkAttachmentUnderReview(attachment.FileId),
 
             // Sigue escaneando, o CloudStorage no respondió: se reintenta en el barrido siguiente.
             _ => false,

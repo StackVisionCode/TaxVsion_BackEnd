@@ -15,6 +15,9 @@ function u(): string {
 }
 
 class FakeMeetingRepository implements MeetingRepository {
+  async listScheduledForReminder(): Promise<Meeting[]> {
+    return [];
+  }
   async listActiveHostedBy(): Promise<Meeting[]> {
     return [];
   }
@@ -50,6 +53,12 @@ class FakeMeetingRepository implements MeetingRepository {
       const s = inv.toSnapshot();
       return s.tenantId === tenantId && s.meetingId === meetingId;
     });
+  }
+  async listLive(): Promise<Meeting[]> {
+    return [];
+  }
+  async listScheduledBefore(): Promise<Meeting[]> {
+    return [];
   }
   async listUpcomingForUser(): Promise<MeetingSnapshot[]> {
     return [];
@@ -139,8 +148,8 @@ describe('cancelMeeting use case', () => {
       harness,
     );
     expect(result.isSuccess).toBe(true);
-    expect(harness.publisher.events).toHaveLength(1);
-    const event = harness.publisher.events[0] as unknown as {
+    // F6: ademas del cancelled.v1, cada invitacion abierta publica invitation_expired.v1 al cerrarse.
+    const event = harness.publisher.events.find((e) => (e as { eventType: string }).eventType === 'communication.meeting.cancelled.v1') as unknown as {
       eventType: string;
       participantUserIds: readonly string[];
       invitedEmails: readonly string[];

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Infrastructure.Persistence;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
@@ -29,6 +30,11 @@ public sealed class CustomerAvatarPendingSweeper(CustomerDbContext db, TimeProvi
                 c.PendingProfilePictureFileId != null
                 && c.PendingProfilePictureRequestedAtUtc != null
                 && c.PendingProfilePictureRequestedAtUtc < cutoff
+                // En revisión de contenido espera al revisor: no es un escaneo que no respondió.
+                && !(
+                    c.ProfilePictureModerationState == ProfilePictureModerationState.UnderReview
+                    && c.ProfilePictureModerationFileId == c.PendingProfilePictureFileId
+                )
             )
             .OrderBy(c => c.PendingProfilePictureRequestedAtUtc)
             .Take(BatchSize)

@@ -2,6 +2,7 @@ using System.Text.Json;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Users.Queries;
 
@@ -34,7 +35,10 @@ public sealed record MeResponse(
     MePlanResponse? Plan,
     // Foto confirmada (se sirve en /storage/avatars/{id}); AvatarPending = hay otra pasando el antivirus.
     Guid? AvatarFileId = null,
-    bool AvatarPending = false
+    bool AvatarPending = false,
+    // T-20: "under_review" | "blocked" para AvatarModerationFileId (la última foto subida), o null.
+    string? AvatarModerationStatus = null,
+    Guid? AvatarModerationFileId = null
 );
 
 public sealed record GetMeQuery(Guid UserId);
@@ -96,8 +100,25 @@ public static class GetMeHandler
                 user.PhoneNumber,
                 plan,
                 user.AvatarFileId,
-                user.HasLivePendingAvatar(DateTime.UtcNow)
+                user.HasLivePendingAvatar(DateTime.UtcNow),
+                AvatarModerationStatusName.Of(user.AvatarModerationState),
+                user.AvatarModerationFileId
             )
         );
     }
+}
+
+/// <summary>Nombre del estado de moderación de la foto tal como lo leen los fronts.</summary>
+public static class AvatarModerationStatusName
+{
+    public const string UnderReview = "under_review";
+    public const string Blocked = "blocked";
+
+    public static string? Of(AvatarModerationState? state) =>
+        state switch
+        {
+            AvatarModerationState.UnderReview => UnderReview,
+            AvatarModerationState.Blocked => Blocked,
+            _ => null,
+        };
 }

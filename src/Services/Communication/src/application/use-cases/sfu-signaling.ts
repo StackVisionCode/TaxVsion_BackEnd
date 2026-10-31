@@ -2,6 +2,7 @@ import { Result, makeError } from '../../domain/shared/result.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { SfuService, TransportInfo, ConsumerInfo, RemoteProducerInfo, SfuMediaSource } from '../ports/sfu-service.js';
 import type { TurnCredentialFactory, IceServer } from '../ports/turn-credential-factory.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import type { types as MediasoupTypes } from 'mediasoup';
 
 /**
@@ -48,19 +49,26 @@ export async function getSfuRouterCapabilities(
 
 export interface CreateSfuTransportResult extends TransportInfo {
   readonly iceServers: readonly IceServer[];
+  /** Producers del transport reemplazado (re-join): el handler avisa `producer_closed` a la room. */
+  readonly replacedProducerIds: readonly string[];
 }
 
 export async function createSfuTransport(
   cmd: { tenantId: string; meetingId: string; userId: string; direction: 'send' | 'recv' },
-  deps: SfuDeps & { turn: TurnCredentialFactory },
+  deps: SfuDeps & { turn: TurnCredentialFactory; effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined },
 ): Promise<Result<CreateSfuTransportResult>> {
   const guard = await ensureJoined(deps, cmd.tenantId, cmd.meetingId, cmd.userId);
   if (!guard.isSuccess) return guard;
   try {
+    // F4: tope de subida y muestreo de stats salen de la politica de media (BD), no de constantes.
+    const media = deps.effectiveSettings ? (await deps.effectiveSettings.resolve(cmd.tenantId)).media.sfu : null;
     const transport = await deps.sfu.createTransport({
+      tenantId: cmd.tenantId,
       meetingId: cmd.meetingId,
       userId: cmd.userId,
       direction: cmd.direction,
+      maxIncomingBitrateKbps: media?.maxIncomingBitrateKbps,
+      statsSampleSeconds: media?.statsSampleSeconds,
     });
     // El transport en si (mediasoup, ICE-lite) siempre tiene IP publica —
     // no necesita TURN para si mismo. El TURN es para el LADO CLIENTE: le
@@ -94,6 +102,23 @@ export async function connectSfuTransport(
     return Result.okVoid();
   } catch (err) {
     return Result.fail(makeError('Meeting.Sfu.ConnectFailed', (err as Error).message));
+  }
+}
+
+// ---------- Restart ICE (F1) ----------
+
+export async function restartSfuTransportIce(
+  cmd: { tenantId: string; meetingId: string; userId: string; transportId: string },
+  deps: SfuDeps,
+): Promise<Result<{ iceParameters: MediasoupTypes.IceParameters }>> {
+  const guard = await ensureJoined(deps, cmd.tenantId, cmd.meetingId, cmd.userId);
+  if (!guard.isSuccess) return guard;
+  try {
+    const iceParameters = await deps.sfu.restartIce(cmd);
+    if (!iceParameters) return Result.fail(makeError('Meeting.Sfu.TransportNotFound', 'Transport not found.'));
+    return Result.ok({ iceParameters });
+  } catch (err) {
+    return Result.fail(makeError('Meeting.Sfu.RestartIceFailed', (err as Error).message));
   }
 }
 

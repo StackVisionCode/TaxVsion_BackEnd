@@ -1,3 +1,4 @@
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import { RecordingScope } from '../../domain/recording/recording-session-state.js';
@@ -37,6 +38,8 @@ export interface RequestMeetingRecordingResult {
 }
 
 export interface RequestMeetingRecordingDeps {
+  /** F7 (INV-12 H-3): plan y oficina deciden si se puede grabar; sin resolver (tests viejos) no se gatea. */
+  readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
   readonly meetings: MeetingRepository;
   readonly recordingSessions: RecordingSessionRepository;
   readonly idempotency: IdempotencyStore;
@@ -70,6 +73,19 @@ export async function requestMeetingRecording(
   if (!meeting) {
     await release();
     return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
+  }
+
+  if (deps.effectiveSettings) {
+    const effective = await deps.effectiveSettings.resolve(command.tenantId);
+    if (!effective.recording.enabled) {
+      await release();
+      return Result.fail(makeError('Plan.RecordingDisabled', "Recording isn't included in this office's plan."));
+    }
+    // D-30: toda reunion grabada usa SFU; una reunion mesh (1:1) no migra en vivo.
+    if (effective.recording.serverSide && meeting.strategy === 'Mesh') {
+      await release();
+      return Result.fail(makeError('Meeting.RecordingRequiresSfu', 'This meeting cannot be recorded. Start a new meeting to record.'));
+    }
   }
 
   const existingSession = await deps.recordingSessions.findByScope(

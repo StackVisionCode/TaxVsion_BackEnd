@@ -58,10 +58,25 @@ const rawEnv = z
     // ya la IP publica (deploy con IP directa, sin NAT).
     COMMUNICATION_MEDIASOUP_LISTEN_IP: z.string().default('0.0.0.0'),
     COMMUNICATION_MEDIASOUP_ANNOUNCED_IP: z.string().optional(),
+    // Rango SOLO para el modo de respaldo (sin WebRtcServer): un puerto por transport.
     COMMUNICATION_MEDIASOUP_RTC_MIN_PORT: z.coerce.number().int().positive().default(40000),
     COMMUNICATION_MEDIASOUP_RTC_MAX_PORT: z.coerce.number().int().positive().default(49999),
     // 0 = auto (un worker por core disponible, tope 4 en dev para no saturar).
     COMMUNICATION_MEDIASOUP_NUM_WORKERS: z.coerce.number().int().min(0).default(0),
+    // WebRtcServer: todos los transports de un worker comparten UN puerto fijo (UDP y TCP con el
+    // mismo numero): worker i escucha en PORT_BASE + i. Son los unicos puertos que el compose publica.
+    // Mismo patron de parseo que COMMUNICATION_SESSION_DENYLIST_FAIL_CLOSED (z.coerce.boolean no sirve).
+    COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED: z
+      .string()
+      .default('true')
+      .transform((value) => value === 'true'),
+    COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE: z.coerce.number().int().min(1024).max(65000).default(40000),
+    // ICE-TCP ademas de UDP (D-57): respaldo para redes que bloquean UDP. Exige reenviar los mismos
+    // puertos en TCP en el router.
+    COMMUNICATION_MEDIASOUP_ENABLE_TCP: z
+      .string()
+      .default('true')
+      .transform((value) => value === 'true'),
 
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
     OTEL_EXPORTER_OTLP_PROTOCOL: z.enum(['grpc', 'http/protobuf']).default('http/protobuf'),
@@ -86,6 +101,8 @@ const rawEnv = z
     COMMUNICATION_RATE_LIMIT_CHAT_SEND_WINDOW_SECONDS: z.coerce.number().int().positive().default(10),
     COMMUNICATION_RATE_LIMIT_CHAT_EDIT_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_CHAT_EDIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(10),
+    COMMUNICATION_RATE_LIMIT_CHAT_REACTION_MAX: z.coerce.number().int().positive().default(30),
+    COMMUNICATION_RATE_LIMIT_CHAT_REACTION_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
     COMMUNICATION_RATE_LIMIT_CHAT_TYPING_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_CHAT_TYPING_WINDOW_SECONDS: z.coerce.number().int().positive().default(10),
     // "grabando nota de voz…": el cliente re-emite start cada ~12-15s mientras graba; un poco mas
@@ -118,6 +135,10 @@ const rawEnv = z
       .default(60),
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+    // F11 (E-259): invitaciones por persona y ventana, y tope de invitaciones por reunión.
+    COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_MAX: z.coerce.number().int().positive().default(20),
+    COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_WINDOW_SECONDS: z.coerce.number().int().positive().default(3600),
+    COMMUNICATION_MEETING_INVITATIONS_MAX_PER_MEETING: z.coerce.number().int().positive().max(5000).default(200),
 
     COMMUNICATION_PLATFORM_TENANT_ID: z.string().uuid().default('8f58a521-4c25-4d91-9f4e-7ad5df14c001'),
 
@@ -141,6 +162,15 @@ const rawEnv = z
     COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: z.string().min(1),
     COMMUNICATION_AUTH_BASE_URL: z.string().url().default('http://localhost:5124'),
     COMMUNICATION_CLOUDSTORAGE_BASE_URL: z.string().url().default('http://localhost:5330'),
+
+    // F7 (D-28): recorder server-side (captura por pista + composicion). Vacio = no hay recorder y
+    // la grabacion server-side falla con un error explicito (el flag de plataforma decide el modo).
+    COMMUNICATION_RECORDER_BASE_URL: z.string().default(''),
+    // IP local del PlainTransport hacia el recorder (en Docker 0.0.0.0; en local 127.0.0.1).
+    COMMUNICATION_RECORDER_TAP_LISTEN_IP: z.string().default('127.0.0.1'),
+    COMMUNICATION_RECORDER_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(5000),
+    // Cada cuanto se repite el pedido de keyframe a las pistas de video ya grabandose (0 = solo al inicio).
+    COMMUNICATION_RECORDER_KEYFRAME_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(300).default(5),
 
     // RateLimit tier-aware — catalogo de multiplicadores por plan (mismo M2M que usa CloudStorage
     // metadata). Activo por default, igual que la flota .NET (RateLimit:EnforceTierQuotas=true en
@@ -178,6 +208,14 @@ const rawEnv = z
     COMMUNICATION_NOTIFICATION_READ_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
     COMMUNICATION_NOTIFICATION_UNREAD_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
     COMMUNICATION_NOTIFICATION_PURGE_BATCH_SIZE: z.coerce.number().int().positive().max(5000).default(500),
+
+    // F10 (ADD-08): analitica de plataforma. Latido por proceso en Redis (live/infra), ventana por
+    // defecto y tope de rango de las consultas, tope de filas por oficina y enlace opcional a Grafana.
+    COMMUNICATION_INSTANCE_HEARTBEAT_SECONDS: z.coerce.number().int().min(5).max(300).default(15),
+    COMMUNICATION_ANALYTICS_DEFAULT_RANGE_DAYS: z.coerce.number().int().min(1).max(366).default(30),
+    COMMUNICATION_ANALYTICS_MAX_RANGE_DAYS: z.coerce.number().int().min(1).max(3660).default(1100),
+    COMMUNICATION_ANALYTICS_TENANTS_MAX_LIMIT: z.coerce.number().int().min(1).max(5000).default(500),
+    COMMUNICATION_OBSERVABILITY_GRAFANA_URL: z.string().url().optional(),
 
     // Puente de in-app por grupo (T3.7): quién crea la fila de la campana para cada grupo de hechos.
     // `Communication` (default, rollback seguro) = este servicio la crea como hasta ahora; `Notification`
@@ -324,10 +362,14 @@ export const config = {
 
   mediasoup: {
     listenIp: rawEnv.COMMUNICATION_MEDIASOUP_LISTEN_IP,
-    announcedIp: rawEnv.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP,
+    // La env conserva el nombre historico (secret de deploy); mediasoup 3.21 lo llama announcedAddress.
+    announcedAddress: rawEnv.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP,
     rtcMinPort: rawEnv.COMMUNICATION_MEDIASOUP_RTC_MIN_PORT,
     rtcMaxPort: rawEnv.COMMUNICATION_MEDIASOUP_RTC_MAX_PORT,
     numWorkers: rawEnv.COMMUNICATION_MEDIASOUP_NUM_WORKERS,
+    webRtcServerEnabled: rawEnv.COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED,
+    webRtcServerPortBase: rawEnv.COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE,
+    enableTcp: rawEnv.COMMUNICATION_MEDIASOUP_ENABLE_TCP,
   },
 
   otel: {
@@ -343,6 +385,15 @@ export const config = {
   platform: {
     tenantBaseUrl: rawEnv.COMMUNICATION_TENANT_BASE_URL,
     baseDomain: rawEnv.COMMUNICATION_PLATFORM_BASE_DOMAIN,
+  },
+
+  // F10 (ADD-08): analitica de plataforma.
+  platformAnalytics: {
+    heartbeatSeconds: rawEnv.COMMUNICATION_INSTANCE_HEARTBEAT_SECONDS,
+    defaultRangeDays: rawEnv.COMMUNICATION_ANALYTICS_DEFAULT_RANGE_DAYS,
+    maxRangeDays: rawEnv.COMMUNICATION_ANALYTICS_MAX_RANGE_DAYS,
+    tenantsMaxLimit: rawEnv.COMMUNICATION_ANALYTICS_TENANTS_MAX_LIMIT,
+    grafanaUrl: rawEnv.COMMUNICATION_OBSERVABILITY_GRAFANA_URL ?? null,
   },
 
   notificationRetention: {
@@ -382,6 +433,10 @@ export const config = {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_EDIT_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_EDIT_WINDOW_SECONDS,
     },
+    chatReaction: {
+      maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_REACTION_MAX,
+      windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_REACTION_WINDOW_SECONDS,
+    },
     chatTyping: {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_TYPING_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_TYPING_WINDOW_SECONDS,
@@ -406,6 +461,10 @@ export const config = {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS,
     },
+    meetingInvitationsCreate: {
+      maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_MAX,
+      windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_WINDOW_SECONDS,
+    },
     enforceTierQuotas: rawEnv.COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS,
   },
 
@@ -421,6 +480,8 @@ export const config = {
     joinTicketSecret: rawEnv.COMMUNICATION_JOIN_TICKET_SECRET,
     joinTicketTtlSeconds: rawEnv.COMMUNICATION_JOIN_TICKET_TTL_SECONDS,
     portalPathPrefix: rawEnv.COMMUNICATION_PORTAL_PATH_PREFIX,
+    // F11 (E-259): tope de invitaciones por reunión.
+    maxPerMeeting: rawEnv.COMMUNICATION_MEETING_INVITATIONS_MAX_PER_MEETING,
   },
 
   serviceAuth: {
@@ -430,6 +491,12 @@ export const config = {
   },
   cloudStorage: {
     baseUrl: rawEnv.COMMUNICATION_CLOUDSTORAGE_BASE_URL,
+  },
+  recorder: {
+    baseUrl: rawEnv.COMMUNICATION_RECORDER_BASE_URL.replace(/\/+$/, ''),
+    tapListenIp: rawEnv.COMMUNICATION_RECORDER_TAP_LISTEN_IP,
+    timeoutMs: rawEnv.COMMUNICATION_RECORDER_TIMEOUT_MS,
+    keyframeIntervalSeconds: rawEnv.COMMUNICATION_RECORDER_KEYFRAME_INTERVAL_SECONDS,
   },
   subscription: {
     baseUrl: rawEnv.COMMUNICATION_SUBSCRIPTION_BASE_URL,

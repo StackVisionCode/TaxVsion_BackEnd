@@ -64,6 +64,59 @@ public sealed class InitiateUploadHandlerTests
         Assert.Single(fixture.Files.All(), f => f.FolderType == FolderType.Avatars);
     }
 
+    private static InitiateUploadRequest TrackRequest(Guid meetingId) =>
+        new(
+            "Track_user_track.webm",
+            "audio/webm",
+            4096,
+            OwnerType.Communication,
+            meetingId,
+            FolderType.RecordingTracks,
+            null
+        );
+
+    [Fact]
+    public async Task Staff_cannot_upload_into_RecordingTracks()
+    {
+        var fixture = new Fixture();
+
+        // Solo el recorder sube pistas: una subida humana podría hacerse pasar por la voz de otro participante.
+        var result = await fixture.InitiateAsync(new StorageActorScope(false, null), TrackRequest(Guid.NewGuid()));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.FolderReserved, result.Error);
+        fixture.AssertNothingRegistered();
+    }
+
+    [Fact]
+    public async Task Portal_cannot_upload_into_RecordingTracks()
+    {
+        var fixture = new Fixture();
+
+        var result = await fixture.InitiateAsync(
+            new StorageActorScope(true, Guid.NewGuid()),
+            TrackRequest(Guid.NewGuid())
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.FolderReserved, result.Error);
+        fixture.AssertNothingRegistered();
+    }
+
+    [Fact]
+    public async Task A_service_token_can_initiate_a_RecordingTracks_upload()
+    {
+        var fixture = new Fixture();
+
+        var result = await fixture.InitiateAsync(
+            new StorageActorScope(false, null) { IsService = true },
+            TrackRequest(Guid.NewGuid())
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(fixture.Files.All(), f => f.FolderType == FolderType.RecordingTracks);
+    }
+
     [Fact]
     public async Task Other_folders_are_not_reserved()
     {
@@ -83,6 +136,42 @@ public sealed class InitiateUploadHandlerTests
         );
 
         Assert.True(result.IsSuccess);
+    }
+
+    private static InitiateUploadRequest ChatAttachment(Guid? onBehalfOf) =>
+        new("w2.png", "image/png", 2048, OwnerType.Communication, Guid.NewGuid(), FolderType.Other, null, onBehalfOf);
+
+    [Fact]
+    public async Task A_service_upload_on_behalf_of_a_person_records_that_person_as_the_author()
+    {
+        var fixture = new Fixture();
+        var person = Guid.NewGuid();
+
+        // E2E F8: con la cuenta de servicio como autora, el aviso "File under review" no le llegaba a nadie.
+        var result = await fixture.InitiateAsync(
+            new StorageActorScope(false, null) { IsService = true },
+            ChatAttachment(person),
+            actorId: Guid.NewGuid()
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(person, Assert.Single(fixture.Files.All()).CreatedBy);
+    }
+
+    [Fact]
+    public async Task A_user_cannot_upload_on_behalf_of_someone_else()
+    {
+        var fixture = new Fixture();
+        var me = Guid.NewGuid();
+
+        var result = await fixture.InitiateAsync(
+            new StorageActorScope(false, null),
+            ChatAttachment(Guid.NewGuid()),
+            actorId: me
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(me, Assert.Single(fixture.Files.All()).CreatedBy);
     }
 
     [Fact]
@@ -108,10 +197,17 @@ public sealed class InitiateUploadHandlerTests
 
         public Task<BuildingBlocks.Results.Result<InitiatedUploadResponse>> InitiateAsync(
             StorageActorScope scope,
-            InitiateUploadRequest request
+            InitiateUploadRequest request,
+            Guid? actorId = null
         ) =>
             InitiateUploadHandler.Handle(
-                new InitiateUploadCommand(TenantId, Guid.NewGuid(), scope, request, new(null, null, "corr-1")),
+                new InitiateUploadCommand(
+                    TenantId,
+                    actorId ?? Guid.NewGuid(),
+                    scope,
+                    request,
+                    new(null, null, "corr-1")
+                ),
                 Files,
                 new FakeFolderRepository(),
                 Limits,
@@ -120,6 +216,7 @@ public sealed class InitiateUploadHandlerTests
                 new SystemFolderProvisioner(new FakeFolderRepository()),
                 new FakeObjectStorage(),
                 Options.Create(new CloudStorageOptions()),
+                new FakeUploadPolicyResolver(),
                 new FakeSystemClock(DateTime.UtcNow),
                 new FakeUnitOfWork(),
                 Bus,

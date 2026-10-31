@@ -152,6 +152,12 @@ builder.Services.AddHttpClient<IUserContactSnapshotClient, UserContactSnapshotCl
     }
 );
 
+// F6: adjunto .ics de las reuniones (invitación, reprogramación, cancelación). Sin estado: singleton.
+builder.Services.AddSingleton<
+    ICalendarInviteBuilder,
+    TaxVision.Notification.Application.Common.CalendarInviteBuilder
+>();
+
 // Portal /portal: host primario del tenant (subdominio de plataforma) para armar los links
 // per-tenant de los correos (staff en {host}, cliente en {host}/portal). Mismo patrón M2M y el
 // mismo IServiceTokenAcquirer que el pull de user-contact de arriba.

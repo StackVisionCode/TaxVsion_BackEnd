@@ -5,6 +5,7 @@ import { Conversation } from '../../domain/conversations/conversation.js';
 import type { SupportCategory, SupportPriority } from '../../domain/support/support-enums.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { SupportTicketRepository } from '../ports/support-ticket-repository.js';
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { PlatformTenantProvider } from '../ports/platform-tenant-provider.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
@@ -39,6 +40,8 @@ export interface OpenSupportTicketDeps {
   readonly platform: PlatformTenantProvider;
   readonly settings: TenantSettingsProvider;
   readonly userPermissions: UserPermissionsProjectionRepository;
+  /** El socket solo se une a sus salas al conectar: sin esto el chat del ticket nuevo no llega en vivo. */
+  readonly emitter?: Pick<RealtimeEmitter, 'addUserToConversation'> | undefined;
 }
 
 export async function openSupportTicket(
@@ -110,6 +113,11 @@ export async function openSupportTicket(
     priority: snapshot.priority,
   };
   await deps.publisher.enqueue(event);
+  deps.emitter?.addUserToConversation?.({
+    tenantId: snapshot.tenantId,
+    userId: snapshot.openedByUserId,
+    conversationId: snapshot.conversationId,
+  });
 
   return Result.ok({ ticketId: snapshot.id, conversationId: snapshot.conversationId });
 }

@@ -31,6 +31,7 @@ public static class SaveFileFromSourceHandler
         IObjectStorage storage,
         Folders.ISystemFolderProvisioner systemFolders,
         IOptions<CloudStorageOptions> options,
+        Quotas.IUploadPolicyResolver uploadPolicies,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -84,7 +85,7 @@ public static class SaveFileFromSourceHandler
                 );
             }
 
-            var policy = options.Value.ResolveUploadPolicy(limit.PlanCode, folderType);
+            var policy = await uploadPolicies.ResolveAsync(evt.TenantId, limit.PlanCode, folderType, ct);
             var extension = Path.GetExtension(evt.OriginalName).ToLowerInvariant();
             if (
                 !policy.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)

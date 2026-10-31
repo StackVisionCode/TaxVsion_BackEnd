@@ -1,0 +1,21 @@
+{
+  "eventId": "6f1c2a3b-1111-4a2b-9c3d-000000000031",
+  "eventType": "communication.meeting.rescheduled.v1",
+  "tenantId": "4c12d117-766d-479c-a7ce-dfb779a1829b",
+  "correlationId": "corr-123",
+  "occurredOnUtc": "2026-10-30T15:04:05.123Z",
+  "meetingId": "5c0a2d6e-9d7b-4c1f-8e2a-3b4c5d6e7f80",
+  "rescheduledByUserId": "2b91f0c4-1111-4222-8333-444455556666",
+  "previousScheduledForUtc": "2026-11-05T18:00:00.000Z",
+  "newScheduledForUtc": "2026-11-05T20:00:00.000Z",
+  "rescheduledAtUtc": "2026-10-30T15:04:05.000Z",
+  "participantUserIds": ["2b91f0c4-1111-4222-8333-444455556666"],
+  "invitedEmails": ["externo@example.com"],
+  "meetingTitle": "Revisión de la 1040",
+  "shortCode": "ABC-123",
+  "durationMinutes": 45,
+  "hostUserId": "2b91f0c4-1111-4222-8333-444455556666",
+  "hostDisplayName": "María Pérez",
+  "timeZone": "America/Santo_Domingo",
+  "inviteeUserIds": ["1a2b3c4d-3333-4c4d-9e5f-000000000003"]
+}

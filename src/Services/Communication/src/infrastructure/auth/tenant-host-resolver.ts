@@ -15,11 +15,14 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 
 interface CachedHost {
   readonly host: string;
+  readonly timeZone: string | null;
   readonly expiresAtMs: number;
 }
 
 interface PrimaryHostResponse {
   readonly host: string;
+  /** F6: Auth la devuelve desde su registro de tenants (`DefaultTimeZoneId`); ausente en versiones previas. */
+  readonly timeZoneId?: string | null;
 }
 
 export class HttpTenantHostResolver implements TenantHostResolver, TenantHostCache {
@@ -28,16 +31,25 @@ export class HttpTenantHostResolver implements TenantHostResolver, TenantHostCac
   constructor(private readonly serviceTokens: ServiceTokenClient) {}
 
   async resolveHost(tenantId: string): Promise<string | null> {
+    return (await this.resolveProfile(tenantId))?.host ?? null;
+  }
+
+  async resolveTimeZone(tenantId: string): Promise<string | null> {
+    return (await this.resolveProfile(tenantId))?.timeZone ?? null;
+  }
+
+  private async resolveProfile(tenantId: string): Promise<CachedHost | null> {
     const cached = this.cache.get(tenantId);
     if (cached && cached.expiresAtMs > Date.now()) {
-      return cached.host;
+      return cached;
     }
-
-    const host = await this.fetchHost(tenantId);
-    if (host) {
-      this.cache.set(tenantId, { host, expiresAtMs: Date.now() + CACHE_TTL_MS });
+    const profile = await this.fetchHost(tenantId);
+    if (profile) {
+      const entry = { ...profile, expiresAtMs: Date.now() + CACHE_TTL_MS };
+      this.cache.set(tenantId, entry);
+      return entry;
     }
-    return host;
+    return null;
   }
 
   forget(tenantId: string): void {
@@ -48,7 +60,7 @@ export class HttpTenantHostResolver implements TenantHostResolver, TenantHostCac
     this.cache.clear();
   }
 
-  private async fetchHost(tenantId: string): Promise<string | null> {
+  private async fetchHost(tenantId: string): Promise<{ host: string; timeZone: string | null } | null> {
     let token: string;
     try {
       token = await this.serviceTokens.getToken(tenantId);
@@ -67,7 +79,9 @@ export class HttpTenantHostResolver implements TenantHostResolver, TenantHostCac
       }
       const dto = (await response.json()) as PrimaryHostResponse;
       const host = dto?.host?.trim();
-      return host ? host : null;
+      if (!host) return null;
+      const timeZone = typeof dto.timeZoneId === 'string' && dto.timeZoneId.trim() ? dto.timeZoneId.trim() : null;
+      return { host, timeZone };
     } catch (err) {
       logger.warn({ err: (err as Error).message, tenantId }, 'primary-host: pull threw');
       return null;

@@ -341,7 +341,7 @@ describe('Message.editText / softDelete', () => {
 
   it('only sender can edit', () => {
     const msg = firstMessage();
-    const other = msg.editText('new', u());
+    const other = msg.editText('new', u(), { windowMinutes: 15, maxEdits: 5 });
     expect(other.isSuccess).toBe(false);
     if (other.isSuccess) return;
     expect(other.error.code).toBe('Chat.Message.EditForbidden');
@@ -349,7 +349,7 @@ describe('Message.editText / softDelete', () => {
 
   it('editing marks IsEdited=true and updates body', () => {
     const msg = firstMessage();
-    const edited = msg.editText('updated', initiator);
+    const edited = msg.editText('updated', initiator, { windowMinutes: 15, maxEdits: 5 });
     expect(edited.isSuccess).toBe(true);
     const snap = msg.toSnapshot();
     expect(snap.body).toBe('updated');

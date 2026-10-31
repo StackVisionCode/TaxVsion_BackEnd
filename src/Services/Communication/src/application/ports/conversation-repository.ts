@@ -1,5 +1,6 @@
 import type { Conversation, ConversationSnapshot } from '../../domain/conversations/conversation.js';
 import type { MessageSnapshot } from '../../domain/conversations/message.js';
+import type { ConversationKind } from '../../domain/conversations/conversation-kind.js';
 
 /**
  * Puerto principal para persistir el aggregate Conversation. Guarda la raiz +
@@ -20,9 +21,14 @@ export interface ConversationRepository {
     take: number;
     skip: number;
     includeArchived?: boolean;
+    /** F8a: solo estos tipos (Chat pide Direct,Group); vacío o ausente = todos. */
+    kinds?: readonly ConversationKind[];
   }): Promise<ConversationSnapshot[]>;
 
-  countForUser(tenantId: string, userId: string, includeArchived?: boolean): Promise<number>;
+  countForUser(tenantId: string, userId: string, includeArchived?: boolean, kinds?: readonly ConversationKind[]): Promise<number>;
+
+  /** F8a: no leídos por tipo en conversaciones activas (badges separados de Chat y Support). */
+  countUnreadByKind(tenantId: string, userId: string): Promise<Record<ConversationKind, number>>;
 
   /**
    * `beforeUtc` pagina hacia atras (scrollback, desc). `afterUtc` pagina hacia
@@ -35,6 +41,8 @@ export interface ConversationRepository {
     conversationId: string;
     beforeUtc?: Date;
     afterUtc?: Date;
+    /** F8b (D-21): el cliente de un grupo no ve lo anterior a su ingreso. */
+    notBeforeUtc?: Date | null;
     take: number;
   }): Promise<MessageSnapshot[]>;
 

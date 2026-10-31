@@ -45,6 +45,10 @@ public sealed class User : AggregateRoot
     public Guid? PendingAvatarFileId { get; private set; }
     public DateTime? PendingAvatarRequestedAtUtc { get; private set; }
 
+    // Moderación de contenido (T-20) de la última foto subida: en revisión o bloqueada.
+    public Guid? AvatarModerationFileId { get; private set; }
+    public AvatarModerationState? AvatarModerationState { get; private set; }
+
     /// <summary>Pasado este tiempo sin resultado del antivirus, la foto pendiente se da por fallida.</summary>
     public static readonly TimeSpan AvatarPendingTimeout = TimeSpan.FromMinutes(10);
 
@@ -260,14 +264,43 @@ public sealed class User : AggregateRoot
 
         PendingAvatarFileId = fileId;
         PendingAvatarRequestedAtUtc = nowUtc;
+        ClearAvatarModeration();
         return Result.Success();
     }
 
-    /// <summary>Hay una foto pendiente y todavía no venció.</summary>
+    /// <summary>Hay una foto pendiente y todavía no venció (en revisión de contenido no vence).</summary>
     public bool HasLivePendingAvatar(DateTime nowUtc) =>
-        PendingAvatarFileId.HasValue
-        && PendingAvatarRequestedAtUtc is { } requestedAt
-        && nowUtc - requestedAt <= AvatarPendingTimeout;
+        IsPendingAvatarUnderReview
+        || (
+            PendingAvatarFileId.HasValue
+            && PendingAvatarRequestedAtUtc is { } requestedAt
+            && nowUtc - requestedAt <= AvatarPendingTimeout
+        );
+
+    public bool IsPendingAvatarUnderReview =>
+        PendingAvatarFileId is { } pending
+        && AvatarModerationFileId == pending
+        && AvatarModerationState == Users.AvatarModerationState.UnderReview;
+
+    /// <summary>La moderación dejó la pendiente en revisión humana; true si era esa foto.</summary>
+    public bool HoldPendingAvatarForReview(Guid fileId)
+    {
+        if (PendingAvatarFileId != fileId)
+            return false;
+        AvatarModerationFileId = fileId;
+        AvatarModerationState = Users.AvatarModerationState.UnderReview;
+        return true;
+    }
+
+    /// <summary>La foto pendiente viola la política de contenido: se descarta y queda constancia.</summary>
+    public bool RejectPendingAvatarForPolicy(Guid fileId)
+    {
+        if (!DiscardPendingAvatar(fileId))
+            return false;
+        AvatarModerationFileId = fileId;
+        AvatarModerationState = Users.AvatarModerationState.Blocked;
+        return true;
+    }
 
     /// <summary>
     /// Confirma la pendiente si es esa foto. Devuelve la foto anterior (para borrarla), o null si no
@@ -282,6 +315,7 @@ public sealed class User : AggregateRoot
         AvatarFileId = fileId;
         PendingAvatarFileId = null;
         PendingAvatarRequestedAtUtc = null;
+        ClearAvatarModeration();
         return previous == fileId ? null : previous;
     }
 
@@ -308,7 +342,14 @@ public sealed class User : AggregateRoot
         AvatarFileId = null;
         PendingAvatarFileId = null;
         PendingAvatarRequestedAtUtc = null;
+        ClearAvatarModeration();
         return removed;
+    }
+
+    private void ClearAvatarModeration()
+    {
+        AvatarModerationFileId = null;
+        AvatarModerationState = null;
     }
 
     public void VerifyEmail() => EmailVerified = true;

@@ -58,6 +58,19 @@ public sealed class FormFileScanVerdictPrecedenceTests
         Assert.Equal(FormFileVerdictStatus.Deleted, verdict.Status);
     }
 
+    // T-20: la revisión humana se cierra con un veredicto final, nunca con otra revisión.
+    [Theory]
+    [InlineData(FormFileVerdictStatus.Available)]
+    [InlineData(FormFileVerdictStatus.Blocked)]
+    public void A_final_verdict_replaces_pending_review(FormFileVerdictStatus incoming)
+    {
+        var verdict = Verdict(FormFileVerdictStatus.PendingReview);
+
+        Assert.False(Apply(verdict, FormFileVerdictStatus.PendingReview, Later));
+        Assert.True(Apply(verdict, incoming, Later));
+        Assert.Equal(incoming, verdict.Status);
+    }
+
     [Fact]
     public void Older_event_is_always_ignored()
     {

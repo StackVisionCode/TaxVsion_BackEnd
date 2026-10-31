@@ -1,13 +1,18 @@
 export async function withRetry(fn, opts) {
+    const attemptsByPolicy = new Map();
     for (let attempt = 1;; attempt += 1) {
         try {
             return await fn();
         }
         catch (err) {
-            if (attempt >= opts.maxAttempts || !opts.isRetriable(err)) {
+            if (!opts.isRetriable(err))
                 throw err;
-            }
-            const delayMs = opts.backoffMs[attempt - 1] ?? opts.backoffMs[opts.backoffMs.length - 1] ?? 0;
+            const policy = opts.policyFor?.(err) ?? opts;
+            const policyAttempt = (attemptsByPolicy.get(policy) ?? 0) + 1;
+            attemptsByPolicy.set(policy, policyAttempt);
+            if (policyAttempt >= policy.maxAttempts)
+                throw err;
+            const delayMs = policy.backoffMs[policyAttempt - 1] ?? policy.backoffMs[policy.backoffMs.length - 1] ?? 0;
             opts.onRetry(attempt, err, delayMs);
             await sleep(delayMs);
         }

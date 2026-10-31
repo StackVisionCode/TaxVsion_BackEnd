@@ -7,4 +7,6 @@
  */
 export interface TenantHostResolver {
   resolveHost(tenantId: string): Promise<string | null>;
+  /** F6 (T-64): zona horaria IANA de la oficina (misma consulta M2M, cacheada); null si Auth no la da. */
+  resolveTimeZone?(tenantId: string): Promise<string | null>;
 }

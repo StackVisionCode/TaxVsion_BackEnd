@@ -28,6 +28,9 @@ export class PrismaCallRepository implements CallRepository {
           RecordingRequested: snapshot.recordingRequested,
           RecordingFileId: snapshot.recordingFileId,
           TranscriptFileId: snapshot.transcriptFileId,
+          MaxDurationMinutes: snapshot.maxDurationMinutes,
+          EndsAtUtc: snapshot.endsAtUtc,
+          LastDurationWarningSeconds: snapshot.lastDurationWarningSeconds,
           CreatedAtUtc: snapshot.createdAtUtc,
           UpdatedAtUtc: snapshot.updatedAtUtc,
         },
@@ -40,6 +43,9 @@ export class PrismaCallRepository implements CallRepository {
           DurationSeconds: snapshot.durationSeconds,
           RecordingFileId: snapshot.recordingFileId,
           TranscriptFileId: snapshot.transcriptFileId,
+          MaxDurationMinutes: snapshot.maxDurationMinutes,
+          EndsAtUtc: snapshot.endsAtUtc,
+          LastDurationWarningSeconds: snapshot.lastDurationWarningSeconds,
           UpdatedAtUtc: snapshot.updatedAtUtc,
         },
       });
@@ -62,6 +68,7 @@ export class PrismaCallRepository implements CallRepository {
             ScreenSharing: p.screenSharing,
             ScreenShareStartedAtUtc: p.screenShareStartedAtUtc,
             ConnectionQuality: p.connectionQuality,
+            CustomerId: p.customerId,
           },
           update: {
             DisplayName: p.displayName,
@@ -108,6 +115,9 @@ export class PrismaCallRepository implements CallRepository {
       recordingRequested: row.RecordingRequested,
       recordingFileId: row.RecordingFileId,
       transcriptFileId: row.TranscriptFileId,
+      maxDurationMinutes: row.MaxDurationMinutes,
+      endsAtUtc: row.EndsAtUtc,
+      lastDurationWarningSeconds: row.LastDurationWarningSeconds,
       createdAtUtc: row.CreatedAtUtc,
       updatedAtUtc: row.UpdatedAtUtc,
       participants: row.Participants.map(toDomainCallParticipant),
@@ -125,6 +135,33 @@ export class PrismaCallRepository implements CallRepository {
         TenantId: input.tenantId,
         OR: [{ CallerUserId: input.userId }, { CalleeUserId: input.userId }],
       },
+      include: { Participants: true },
+      orderBy: { RingingAtUtc: 'desc' },
+      take: input.take,
+      skip: input.skip,
+    });
+    return rows.map((row) => toDomainCall(row, row.Participants).toSnapshot());
+  }
+
+  /** F4: llamadas en curso con tope que vence antes de `cutoffUtc` (cross-tenant: el scheduler barre todas). */
+  async listEndingBefore(cutoffUtc: Date): Promise<Call[]> {
+    const rows = await this.prisma.call.findMany({
+      where: { Status: { in: ['Accepted', 'Active'] }, EndsAtUtc: { not: null, lte: cutoffUtc } },
+      include: { Participants: true },
+      take: 500,
+    });
+    return rows.map((row) => toDomainCall(row, row.Participants));
+  }
+
+  /** F4: llamadas abiertas (sonando o en curso) de una oficina, para `maxConcurrentCalls`. */
+  async countOpenForTenant(tenantId: string): Promise<number> {
+    return this.prisma.call.count({ where: { TenantId: tenantId, Status: { in: ['Ringing', 'Accepted', 'Active'] } } });
+  }
+
+  /** D-58: llamadas en las que participo el cliente (columna CustomerId), sin pasar por su cuenta de portal. */
+  async listRecentForCustomer(input: { tenantId: string; customerId: string; take: number; skip: number }): Promise<CallSnapshot[]> {
+    const rows = await this.prisma.call.findMany({
+      where: { TenantId: input.tenantId, Participants: { some: { CustomerId: input.customerId } } },
       include: { Participants: true },
       orderBy: { RingingAtUtc: 'desc' },
       take: input.take,

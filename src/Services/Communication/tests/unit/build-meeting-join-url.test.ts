@@ -21,9 +21,9 @@ describe('buildMeetingJoinUrl', () => {
     expect(url).toBe('https://manfer.taxproffice.com/meetings');
   });
 
-  it('external → mismo destino de portal con host correcto (gap de guest documentado aparte)', () => {
+  it('external → pagina publica de guest del CRM en la raiz del subdominio (F6, D-47)', () => {
     const url = buildMeetingJoinUrl({ ...base, host: 'manfer.taxproffice.com', inviteeKind: 'External' });
-    expect(url).toContain('https://manfer.taxproffice.com/portal/client/meetings/accept/');
+    expect(url).toBe('https://manfer.taxproffice.com/meet/abc%2Fdef%2Bghi');
   });
 
   it('sin host resuelto cae al fallback base (degradado, pero el link sale)', () => {

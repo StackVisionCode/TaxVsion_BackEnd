@@ -36,9 +36,17 @@ export interface RealtimeEmitter {
     meetingId: string;
     event: string;
     envelope: SocketEnvelope<T>;
+    /** F5: emision volatil (se pierde si el socket esta reconectando); para efimeros como reacciones. */
+    volatile?: boolean;
   }): void;
 
   emitToUser<T>(input: { tenantId: string; userId: string; event: string; envelope: SocketEnvelope<T> }): void;
+
+  /** F8b (T-19): saca todos los sockets de un usuario de la sala de una conversación (baja desde un consumer). */
+  removeUserFromConversation?(input: { tenantId: string; userId: string; conversationId: string }): void;
+
+  /** Une los sockets ya conectados de un usuario a la sala de una conversación creada o reabierta por HTTP. */
+  addUserToConversation?(input: { tenantId: string; userId: string; conversationId: string }): void;
 
   emitToTenant<T>(input: { tenantId: string; event: string; envelope: SocketEnvelope<T> }): void;
 
@@ -64,4 +72,10 @@ export interface RealtimeEmitter {
    * autenticados ya cubren el 100% de usuarios con sesion abierta.
    */
   emitBroadcast<T>(input: { event: string; envelope: SocketEnvelope<T> }): void;
+
+  /**
+   * F3 — a UN socket concreto (señales mesh dirigidas, `meeting.you.removed` al socket que se saca).
+   * Opcional: solo la implementación Socket.IO lo tiene; los dobles de test pueden omitirlo.
+   */
+  emitToSocket?<T>(input: { socketId: string; event: string; envelope: SocketEnvelope<T> }): void;
 }

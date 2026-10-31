@@ -213,6 +213,7 @@ internal sealed class FormAttachmentReconciler(
                 RemoteFileScanStatus.Infected => FormFileVerdictStatus.Infected,
                 RemoteFileScanStatus.BlockedByPolicy => FormFileVerdictStatus.Blocked,
                 RemoteFileScanStatus.Deleted => FormFileVerdictStatus.Deleted,
+                RemoteFileScanStatus.PendingReview => FormFileVerdictStatus.PendingReview,
                 _ => FormFileVerdictStatus.ScanFailed,
             },
             metadata.OwnerType,

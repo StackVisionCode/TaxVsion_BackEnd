@@ -85,7 +85,6 @@ function fakeSettings(restrict: boolean): TenantSettingsProvider {
         employeeToEmployeeChatEnabled: true,
         restrictCustomerChatToAssignedPreparer: restrict,
         screenshotsEnabled: true,
-        internalGroupsEnabled: true,
         messageRetentionDays: 365,
       };
     },

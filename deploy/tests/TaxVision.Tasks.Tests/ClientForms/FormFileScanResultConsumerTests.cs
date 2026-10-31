@@ -51,6 +51,74 @@ public sealed class FormFileScanResultConsumerTests
         Assert.Equal(1, unitOfWork.Saves);
     }
 
+    // T-20: retenido por la moderación queda "en revisión" (no vence ni se rechaza) y se aprueba después.
+    [Fact]
+    public async Task Pending_review_holds_the_attachment_until_the_final_verdict()
+    {
+        var fileId = Guid.NewGuid();
+        var request = CustomerRequest();
+        RegisterFile(request, fileId);
+        var repository = new SingleFormRequestRepository(request);
+        var verdicts = new MemoryFormFileScanVerdictRepository();
+
+        await FormFileScanResultConsumer.Handle(
+            new FilePendingReviewIntegrationEvent
+            {
+                TenantId = TenantId,
+                FileId = fileId,
+                ObjectKey = "objects/photo.jpg",
+                Reason = "Possible sexual content (score 0.700).",
+                CreatedBy = UserId,
+                OwnerType = "Customer",
+                OwnerId = CustomerId,
+                FolderType = "ClientForms",
+                OccurredOn = Now,
+            },
+            repository,
+            verdicts,
+            null!,
+            new RecordingUnitOfWork(),
+            new FakeMessageBus(),
+            new TestCorrelationContext(),
+            NullLogger<FormRequest>.Instance,
+            new RecordingClientFormsMetrics(),
+            default
+        );
+
+        var attachment = Assert.Single(request.Submission!.Attachments);
+        Assert.Equal(FormAttachmentStatus.UnderReview, attachment.Status);
+        Assert.Equal(0, request.ExpireStalePendingAttachments(Now.AddDays(30), Now.AddDays(30)));
+
+        await FormFileScanResultConsumer.Handle(
+            new FileAvailableIntegrationEvent
+            {
+                TenantId = TenantId,
+                FileId = fileId,
+                ObjectKey = "objects/photo.jpg",
+                ContentType = "image/jpeg",
+                SizeBytes = 10,
+                ChecksumSha256 = new string('a', 64),
+                CreatedBy = UserId,
+                OwnerType = "Customer",
+                OwnerId = CustomerId,
+                FolderType = "ClientForms",
+                OriginalName = "photo.jpg",
+                OccurredOn = Now.AddHours(2),
+            },
+            repository,
+            verdicts,
+            null!,
+            new RecordingUnitOfWork(),
+            new FakeMessageBus(),
+            new TestCorrelationContext(),
+            NullLogger<FormRequest>.Instance,
+            new RecordingClientFormsMetrics(),
+            default
+        );
+
+        Assert.Equal(FormAttachmentStatus.Available, attachment.Status);
+    }
+
     private static void RegisterFile(FormRequest request, Guid fileId) =>
         Assert.True(
             request

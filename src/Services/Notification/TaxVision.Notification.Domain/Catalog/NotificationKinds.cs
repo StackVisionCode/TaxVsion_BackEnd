@@ -3,6 +3,7 @@ namespace TaxVision.Notification.Domain.Catalog;
 public static class NotificationKinds
 {
     public const string CloudStorageFileBlockedByPolicy = "cloudstorage.file.blocked_by_policy";
+    public const string CloudStorageFilePendingReview = "cloudstorage.file.pending_review";
     public const string CloudStorageFileInfected = "cloudstorage.file.infected";
     public const string CloudStorageStorageLimitExceeded = "cloudstorage.storage_limit_exceeded";
     public const string CloudStorageFolderItemAdded = "cloudstorage.sharelink.folder_item_added";
@@ -62,6 +63,10 @@ public static class NotificationKinds
     public const string CalendarAppointmentStartingSoon = "calendar.appointment_starting_soon";
 
     public const string CommunicationMeetingInvitationCreated = "communication.meeting.invitation_created";
+    public const string CommunicationMeetingInvitationRevoked = "communication.meeting.invitation_revoked";
+    public const string CommunicationMeetingCancelled = "communication.meeting.cancelled";
+    public const string CommunicationMeetingRescheduled = "communication.meeting.rescheduled";
+    public const string CommunicationMeetingReminder = "communication.meeting.reminder";
     public const string CommunicationCallMissed = "communication.call.missed";
     public const string CommunicationCallRecordingReady = "communication.call.recording_ready";
     public const string CommunicationCallRecordingFailed = "communication.call.recording_failed";

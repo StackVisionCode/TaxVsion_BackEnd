@@ -81,6 +81,9 @@ public sealed class FormFileScanVerdict : TenantEntity
             return false;
         if (Status == default || incoming == FormFileVerdictStatus.Deleted)
             return true;
+        // T-20: la revisión humana se resuelve con un veredicto final posterior (aprobado o bloqueado).
+        if (Status == FormFileVerdictStatus.PendingReview)
+            return incoming is not FormFileVerdictStatus.PendingReview && occurredAtUtc >= LastEventOccurredAtUtc;
         return Status == FormFileVerdictStatus.Available
             && (
                 incoming

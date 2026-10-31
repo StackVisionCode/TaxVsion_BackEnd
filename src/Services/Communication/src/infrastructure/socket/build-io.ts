@@ -118,9 +118,11 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
       try {
         const principal = await verifyGuestJoinTicket(ticket);
         socket.data.principal = principal;
-        // Solo room de tenant — un guest no tiene `t:{tenant}:u:{userId}`
-        // real donde recibir notificaciones dirigidas (no tiene inbox).
+        // Room de tenant + room de usuario (F6: el userId del guest es su invitationId, un UUID): ahi le
+        // llegan el snapshot al admitirlo, `meeting.hand.lowered_by_host` y los avisos dirigidos de la
+        // reunion. Sigue fuera de `members`/`staff`: no tiene inbox ni acceso que refrescar.
         await socket.join(`t:${principal.tenantId}`);
+        await socket.join(`t:${principal.tenantId}:u:${principal.userId}`);
         next();
       } catch (err) {
         if (err instanceof InvalidJoinTicketError) {
@@ -135,6 +137,11 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
 
     try {
       const principal = await verifyAccessToken(token);
+      // INV-09 §13.6: un token de servicio (M2M) no es una persona; no abre sockets.
+      if (principal.actorType === 'Service') {
+        next(new Error('Auth.Forbidden'));
+        return;
+      }
       socket.data.principal = principal;
       // Room de tenant + de usuario para broadcasts dirigidos.
       await socket.join(`t:${principal.tenantId}`);

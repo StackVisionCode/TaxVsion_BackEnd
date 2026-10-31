@@ -369,6 +369,8 @@ public sealed class CustomerReadService(
                 c.ProfilePictureFileId,
                 c.PendingProfilePictureFileId,
                 c.PendingProfilePictureRequestedAtUtc,
+                c.ProfilePictureModerationFileId,
+                c.ProfilePictureModerationState,
             }
         ).FirstOrDefaultAsync(ct);
 
@@ -513,7 +515,9 @@ public sealed class CustomerReadService(
         var avatarUpload = CustomerAvatarStatus.Of(
             data.PendingProfilePictureFileId,
             data.PendingProfilePictureRequestedAtUtc,
-            _time.GetUtcNow().UtcDateTime
+            _time.GetUtcNow().UtcDateTime,
+            data.ProfilePictureModerationFileId,
+            data.ProfilePictureModerationState
         );
 
         return new CustomerDetailResponse(
@@ -545,7 +549,9 @@ public sealed class CustomerReadService(
             data.SmsEnabled,
             data.ProfilePictureFileId,
             avatarUpload.PendingAvatarFileId,
-            avatarUpload.UploadStatus
+            avatarUpload.UploadStatus,
+            avatarUpload.ModerationStatus,
+            avatarUpload.ModerationFileId
         );
     }
 

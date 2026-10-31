@@ -54,6 +54,9 @@ class FakeConversationRepository implements ConversationRepository {
   async listForUser() {
     return [];
   }
+  async countUnreadByKind(): Promise<{ Direct: number; Group: number; Support: number; Meeting: number }> {
+    return { Direct: 0, Group: 0, Support: 0, Meeting: 0 };
+  }
   async countForUser(): Promise<number> {
     return 0;
   }
@@ -89,7 +92,6 @@ function fakeSettings(overrides: Partial<TenantCommunicationSettingsSnapshot> = 
         employeeToEmployeeChatEnabled: true,
         restrictCustomerChatToAssignedPreparer: false,
         screenshotsEnabled: true,
-        internalGroupsEnabled: true,
         messageRetentionDays: 365,
         ...overrides,
       };

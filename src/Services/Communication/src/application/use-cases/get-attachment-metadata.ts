@@ -5,13 +5,14 @@ import {
   type AuthorizeConversationAttachmentDeps,
 } from './authorize-conversation-attachment.js';
 import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
+import { recordAttachmentMetadata } from './record-attachment-metadata.js';
 import type { AttachmentTrackingStatus } from '../ports/attachment-tracking-repository.js';
 
 /**
  * Metadata de un adjunto de chat para el que llama, previa autorizacion de
  * membresia. Devuelve siempre el `status` de escaneo (de AttachmentTracking, sin
  * round-trip) para que el front decida la UI; nombre/tamano se resuelven best-effort
- * contra CloudStorage y quedan `null` si el archivo ya no esta (borrado/bloqueado).
+ * contra CloudStorage y quedan `null` si el archivo esta infectado o ya no esta.
  */
 export type GetAttachmentMetadataCommand = AuthorizeConversationAttachmentCommand;
 
@@ -27,6 +28,8 @@ export interface GetAttachmentMetadataDeps extends AuthorizeConversationAttachme
   readonly cloudStorageMetadata: CloudStorageMetadataClient;
 }
 
+const RESOLVABLE: ReadonlySet<AttachmentTrackingStatus> = new Set(['Available', 'Pending', 'PendingReview', 'BlockedByPolicy']);
+
 export async function getAttachmentMetadata(
   command: GetAttachmentMetadataCommand,
   deps: GetAttachmentMetadataDeps,
@@ -35,10 +38,9 @@ export async function getAttachmentMetadata(
   if (!authorized.isSuccess) return Result.fail(authorized.error);
   const tracking = authorized.value;
 
-  // Solo pedimos metadata cuando el archivo puede existir en Main (Pending/Available).
-  // Para infectado/bloqueado/borrado devolvemos solo el estado — el front muestra
-  // "unavailable" sin exponer detalles del escaneo.
-  const canResolve = tracking.status === 'Available' || tracking.status === 'Pending';
+  // Infectado o borrado: solo el estado ("unavailable", sin detalles del escaneo). En revisión o bloqueado por la
+  // política el archivo sigue existiendo y el nombre ya lo vieron al enviarlo: se muestra (E2E F8: salía "Attachment").
+  const canResolve = RESOLVABLE.has(tracking.status);
   const meta = canResolve
     ? await deps.cloudStorageMetadata.getMetadata(command.tenantId, command.fileId).catch(() => null)
     : null;
@@ -47,10 +49,14 @@ export async function getAttachmentMetadata(
   // el evento `cloudstorage.file.available.v1` no llegó/consumió — no dejamos el adjunto en "Scanning"
   // para siempre. CloudStorage es la fuente autoritativa del escaneo: promovemos y sanamos el tracking
   // (best-effort) para que el próximo emit y las demás vistas ya lo vean disponible.
+  // F8d: aprovecha la lectura para dejar el tipo real y la categoría en el tracking (Info por pestañas).
+  if (meta) await recordAttachmentMetadata({ tenantId: command.tenantId, fileId: command.fileId, known: meta }, deps).catch(() => undefined);
+
   let status = tracking.status;
-  if (status === 'Pending' && meta?.status === 'Available') {
-    status = 'Available';
-    await deps.attachmentTracking.markStatus({ fileId: command.fileId, status: 'Available' }).catch(() => undefined);
+  if (status === 'Pending' && (meta?.status === 'Available' || meta?.status === 'PendingReview')) {
+    // T-20: también sana "en revisión", para que el chat diga "Under review" y no "Scanning".
+    status = meta.status;
+    await deps.attachmentTracking.markStatus({ fileId: command.fileId, status }).catch(() => undefined);
   }
 
   return Result.ok({

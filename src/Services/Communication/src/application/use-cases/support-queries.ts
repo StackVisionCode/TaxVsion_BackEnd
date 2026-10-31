@@ -1,5 +1,6 @@
 import { Result } from '../../domain/shared/result.js';
 import type { SupportTicketRepository } from '../ports/support-ticket-repository.js';
+import type { ConversationActivity, ConversationActivityReader } from '../ports/conversation-activity-reader.js';
 import type {
   UserDirectoryEntrySnapshot,
   UserDirectoryRepository,
@@ -26,6 +27,18 @@ export interface SupportTicketDto {
   resolvedAtUtc: string | null;
   closedAtUtc: string | null;
   updatedAtUtc: string;
+  /** Bandeja del que abrió el ticket: mensajes de soporte sin leer y el último mensaje (solo en su lista). */
+  unreadCount?: number;
+  lastMessage?: SupportTicketLastMessageDto | null;
+}
+
+export interface SupportTicketLastMessageDto {
+  fromMe: boolean;
+  kind: string;
+  /** Texto recortado; null si se borró o no es texto. */
+  preview: string | null;
+  isDeleted: boolean;
+  createdAtUtc: string;
 }
 
 export interface ListForCustomerQuery {
@@ -108,7 +121,11 @@ function toDto(snap: {
 
 export async function listSupportTicketsForCustomer(
   q: ListForCustomerQuery,
-  deps: { supportTickets: SupportTicketRepository; userDirectory: UserDirectoryRepository },
+  deps: {
+    supportTickets: SupportTicketRepository;
+    userDirectory: UserDirectoryRepository;
+    conversationActivity?: ConversationActivityReader;
+  },
 ): Promise<Result<ListResult>> {
   const size = Math.min(Math.max(q.size, 1), 100);
   const page = Math.max(q.page, 1);
@@ -122,8 +139,39 @@ export async function listSupportTicketsForCustomer(
     }),
     deps.supportTickets.countForCustomer(q.tenantId, q.openedByUserId, q.includeClosed ?? false),
   ]);
-  const users = await readTicketUsers(items, deps.userDirectory);
-  return Result.ok({ items: items.map((item) => toDto(item, users)), page, size, totalCount });
+  const [users, activity] = await Promise.all([
+    readTicketUsers(items, deps.userDirectory),
+    deps.conversationActivity
+      ? deps.conversationActivity.readForUser({
+          tenantId: q.tenantId,
+          userId: q.openedByUserId,
+          conversationIds: items.map((item) => item.conversationId),
+        })
+      : Promise.resolve(new Map<string, ConversationActivity>()),
+  ]);
+  return Result.ok({
+    items: items.map((item) => withActivity(toDto(item, users), activity.get(item.conversationId), q.openedByUserId)),
+    page,
+    size,
+    totalCount,
+  });
+}
+
+function withActivity(dto: SupportTicketDto, activity: ConversationActivity | undefined, viewerId: string): SupportTicketDto {
+  const last = activity?.lastMessage ?? null;
+  return {
+    ...dto,
+    unreadCount: activity?.unreadCount ?? 0,
+    lastMessage: last
+      ? {
+          fromMe: last.senderId === viewerId.toLowerCase(),
+          kind: last.kind,
+          preview: last.isDeleted ? null : last.body,
+          isDeleted: last.isDeleted,
+          createdAtUtc: last.createdAtUtc.toISOString(),
+        }
+      : null,
+  };
 }
 
 export async function listSupportTicketsForAgent(

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { F7_SNAPSHOT_DEFAULTS } from '../helpers/fake-recording-session-repository.js';
 import { randomUUID } from 'node:crypto';
 import { RecordingSession, type RecordingSessionSnapshot } from '../../src/domain/recording/recording-session.js';
 import { RecordingConsentEntry } from '../../src/domain/recording/recording-consent-entry.js';
@@ -19,7 +20,7 @@ function requested() {
 }
 
 /** Fase Backend 2 no expone un camino publico a Processing — se rehidrata directo para probar complete/fail en aislamiento. */
-function processingSession(): RecordingSession {
+function processingSession(recordingFileId: string | null = null): RecordingSession {
   const snapshot: RecordingSessionSnapshot = {
     id: u(),
     tenantId: u(),
@@ -28,11 +29,12 @@ function processingSession(): RecordingSession {
     state: RecordingSessionState.Processing,
     requestedByUserId: u(),
     requestedAtUtc: new Date(),
-    startedAtUtc: new Date(),
+    startedAtUtc: new Date(Date.now() - 60_000),
     stoppedAtUtc: new Date(),
-    recordingFileId: null,
+    recordingFileId,
     durationSeconds: null,
     failureReason: null,
+    ...F7_SNAPSHOT_DEFAULTS,
   };
   return RecordingSession.rehydrate(snapshot);
 }
@@ -121,27 +123,28 @@ describe('RecordingSession.fail', () => {
   });
 });
 
-describe('RecordingSession.complete', () => {
-  it('transitions Processing -> Ready with fileId and duration', () => {
-    const session = processingSession();
-    const r = session.complete({ recordingFileId: u(), durationSeconds: 120 });
+describe('RecordingSession.markReady', () => {
+  it('transitions Processing -> Ready and derives the duration from start/stop', () => {
+    const session = processingSession(u());
+    const r = session.markReady();
     expect(r.isSuccess).toBe(true);
     expect(session.sessionState).toBe('Ready');
-    expect(session.toSnapshot().durationSeconds).toBe(120);
+    expect(session.toSnapshot().durationSeconds).toBe(60);
+    expect(session.toSnapshot().readyAtUtc).toBeInstanceOf(Date);
   });
 
   it('fails when not Processing', () => {
     const { session } = requested();
-    const r = session.complete({ recordingFileId: u(), durationSeconds: 10 });
+    const r = session.markReady();
     expect(r.isSuccess).toBe(false);
     if (!r.isSuccess) expect(r.error.code).toBe('RecordingSession.InvalidTransition');
   });
 
-  it('rejects negative duration', () => {
+  it('requires the recording file before Ready', () => {
     const session = processingSession();
-    const r = session.complete({ recordingFileId: u(), durationSeconds: -1 });
+    const r = session.markReady();
     expect(r.isSuccess).toBe(false);
-    if (!r.isSuccess) expect(r.error.code).toBe('RecordingSession.InvalidDuration');
+    if (!r.isSuccess) expect(r.error.code).toBe('RecordingSession.NoFile');
   });
 });
 

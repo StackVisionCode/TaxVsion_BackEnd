@@ -31,8 +31,32 @@ public sealed class EventBasedEmailDispatchGateway(
     // Cola propia de Postmaster (Postmaster.Api/Program.cs): recibe igual lo que llega por el fanout.
     public const string PostmasterQueue = "postmaster-events";
 
+    /// <summary>
+    /// Tope total (bytes decodificados) de <see cref="EmailDispatchRequest.InlineAttachments"/>. Van
+    /// dentro del evento, o sea en la outbox y en la cola: un .ics pesa 1–2 KB, así que superar esto es
+    /// un error del consumer, no un caso de uso.
+    /// </summary>
+    public const int MaxInlineAttachmentBytes = 256 * 1024;
+
     public async Task<EmailDispatchResult> QueueEmailAsync(EmailDispatchRequest request, CancellationToken ct = default)
     {
+        if (InlineAttachmentsTooLarge(request, out var inlineBytes))
+        {
+            logger.LogError(
+                "EventBasedEmailDispatchGateway rejected request for template {TemplateKey}: inline attachments weigh {Bytes} bytes (max {Max}).",
+                request.TemplateKey,
+                inlineBytes,
+                MaxInlineAttachmentBytes
+            );
+            return new EmailDispatchResult(
+                Guid.Empty,
+                Guid.Empty,
+                NotificationDispatchAttemptStatus.Failed,
+                ProviderMessageId: null,
+                Error: $"Inline attachments exceed {MaxInlineAttachmentBytes / 1024} KB."
+            );
+        }
+
         // Idempotencia real (bug encontrado en la verificación E2E de PayFlow): si Wolverine
         // reintenta el consumer que invoca este gateway, sin este chequeo se creaba un
         // NotificationLog/attempt nuevo -- y un segundo correo real -- por cada reintento, pese a
@@ -143,6 +167,7 @@ public sealed class EventBasedEmailDispatchGateway(
             // (EmailInlineAssetReference) en ambos lados, sin mapeo, porque el evento es exactamente
             // el contrato que este campo fue diseñado para viajar.
             InlineAssets = request.InlineAssets,
+            InlineAttachments = request.InlineAttachments is { Count: > 0 } ? request.InlineAttachments : null,
         };
 
         // PublishAsync + SaveChanges en el mismo scope → outbox transaccional (durable).
@@ -167,6 +192,26 @@ public sealed class EventBasedEmailDispatchGateway(
             ProviderMessageId: null,
             Error: null
         );
+    }
+
+    // Tamaño decodificado estimado desde el base64 (3 bytes por cada 4 caracteres), sin decodificar.
+    private static bool InlineAttachmentsTooLarge(EmailDispatchRequest request, out long totalBytes)
+    {
+        totalBytes = 0;
+        if (request.InlineAttachments is not { Count: > 0 } attachments)
+            return false;
+
+        foreach (var attachment in attachments)
+        {
+            var base64 = attachment.ContentBase64 ?? string.Empty;
+            var padding =
+                base64.EndsWith("==", StringComparison.Ordinal) ? 2
+                : base64.EndsWith('=') ? 1
+                : 0;
+            totalBytes += base64.Length / 4 * 3 - padding;
+        }
+
+        return totalBytes > MaxInlineAttachmentBytes;
     }
 
     private static IReadOnlyDictionary<string, string>? SerializeVariables(IReadOnlyDictionary<string, object>? source)

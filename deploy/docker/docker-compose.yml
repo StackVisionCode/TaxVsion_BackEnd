@@ -82,6 +82,27 @@ services:
   clamav:
     image: clamav/clamav:1.4.3
     container_name: taxvision-clamav
+    # Límites de clamd subidos por las grabaciones server-side (F7): con los 100M por defecto, un MP4
+    # de más de ~100 MB cortaba el INSTREAM y CloudStorage marcaba el archivo como scan_error. Se
+    # reescriben en cada arranque (borrar + agregar, idempotente) y luego se cede a /init, el
+    # ENTRYPOINT original de la imagen. 2100M cubre el tope de 2 GB de Recordings/RecordingTracks.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        conf=/etc/clamav/clamd.conf
+        sed -i -E '/^[[:space:]]*(StreamMaxLength|MaxFileSize|MaxScanSize)[[:space:]]/d' "$$conf"
+        {
+          echo "StreamMaxLength $${CLAMD_STREAM_MAX_LENGTH:-2100M}"
+          echo "MaxFileSize $${CLAMD_MAX_FILE_SIZE:-2100M}"
+          echo "MaxScanSize $${CLAMD_MAX_SCAN_SIZE:-2100M}"
+        } >> "$$conf"
+        exec /init
+    environment:
+      CLAMD_STREAM_MAX_LENGTH: ${CLAMD_STREAM_MAX_LENGTH:-2100M}
+      CLAMD_MAX_FILE_SIZE: ${CLAMD_MAX_FILE_SIZE:-2100M}
+      CLAMD_MAX_SCAN_SIZE: ${CLAMD_MAX_SCAN_SIZE:-2100M}
     expose:
       - "3310"
     volumes:
@@ -94,6 +115,32 @@ services:
       timeout: 10s
       retries: 20
       start_period: 120s
+
+  # T-20: moderación de contenido. Solo red interna, sin puerto publicado: CloudStorage lo llama en
+  # http://content-scanner:8080 con X-Scanner-Key. Devuelve puntuaciones; los umbrales viven en la BD
+  # de CloudStorage. El modelo va dentro de la imagen (descargado y verificado por SHA-256 en el build).
+  # La VM de producción es ARM64: la imagen se construye ahí mismo (onnxruntime y ffmpeg tienen arm64).
+  content-scanner:
+    image: taxvision/content-scanner:dev
+    container_name: taxvision-content-scanner
+    restart: unless-stopped
+    build:
+      context: ../..
+      dockerfile: src/Services/ContentScanner/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ContentScanner__ApiKey: ${CONTENT_SCANNER_API_KEY:?Set CONTENT_SCANNER_API_KEY in .env}
+    mem_limit: 768m
+    cpus: 1.0
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/ready >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   # SQL Server 2022 Developer edition — gratis para no-produccion-comercial-interna
   # (uso propio del negocio, sin redistribuir), version completa sin los limites de
@@ -126,8 +173,11 @@ services:
     networks:
       - taxvision-network
 
-  # --- Observabilidad detenida para liberar RAM/CPU. Reactivar: descomentar estos
-  # bloques + el depends_on del otel-collector. Los volumenes de datos se conservan. ---
+  # --- Observabilidad (D-54/D-59, F10): Prometheus + Grafana + cadvisor + node-exporter estan definidos
+  # bajo el perfil `observability` y APAGADOS por defecto (la RAM de la VM es el limite, E-196). Se
+  # encienden todos de una con:  docker compose --profile observability up -d
+  # La plataforma no depende de ellos: las metricas de negocio salen de Communication
+  # (`/communication/admin/analytics/*`). Loki y Tempo siguen comentados (no entran en la RAM actual). ---
   # loki:
   #   image: grafana/loki:3.7.2
   #   container_name: taxvision-loki
@@ -170,8 +220,9 @@ services:
       - "4318"
       - "9464"
     mem_limit: 512m
-    # Backends detenidos: el collector arranca igual y traga los spans/metricas de los
-    # 19 servicios (los descarta). Sin este depends_on no queda referencia colgando.
+    # Sin dependencias: arranca solo. Las metricas quedan en su endpoint Prometheus (:9464, pull)
+    # para cuando se encienda el perfil `observability`; nunca empuja ni reintenta contra nada
+    # apagado. Trazas y logs se descartan explicitamente (exporter nop) hasta que haya Tempo/Loki.
     # depends_on:
     #   - loki
     #   - tempo
@@ -180,82 +231,117 @@ services:
 
   # Metricas de contenedores (CPU/memoria/IO por servicio) — sin esto Prometheus
   # solo tiene metricas de aplicacion (OTel), cero visibilidad de infraestructura.
-  # cadvisor:
-  #   image: gcr.io/cadvisor/cadvisor:v0.49.1
-  #   container_name: taxvision-cadvisor
-  #   privileged: true
-  #   devices:
-  #     - /dev/kmsg
-  #   volumes:
-  #     - /:/rootfs:ro
-  #     - /var/run:/var/run:ro
-  #     - /sys:/sys:ro
-  #     - /var/lib/docker/:/var/lib/docker:ro
-  #     - /dev/disk/:/dev/disk:ro
-  #   expose:
-  #     - "8080"
-  #   networks:
-  #     - taxvision-network
+  cadvisor:
+    profiles:
+      - observability
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: taxvision-cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    # Menos coleccionistas y una pasada cada 30 s: el cadvisor por defecto pide bastante RAM/CPU.
+    command:
+      - "--housekeeping_interval=30s"
+      - "--docker_only=true"
+      - "--disable_metrics=percpu,sched,tcp,udp,disk,diskIO,hugetlb,referenced_memory,cpu_topology,resctrl"
+    expose:
+      - "8080"
+    mem_limit: ${CADVISOR_MEM_LIMIT:-192m}
+    networks:
+      - taxvision-network
 
   # Metricas del host: disco/memoria/CPU del server — vigila que minio-data
   # no se llene en silencio.
-  # node-exporter:
-  #   image: prom/node-exporter:v1.8.2
-  #   container_name: taxvision-node-exporter
-  #   pid: host
-  #   volumes:
-  #     - /proc:/host/proc:ro
-  #     - /sys:/host/sys:ro
-  #     - /:/rootfs:ro
-  #   command:
-  #     - "--path.procfs=/host/proc"
-  #     - "--path.sysfs=/host/sys"
-  #     - "--path.rootfs=/rootfs"
-  #     - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
-  #   expose:
-  #     - "9100"
-  #   networks:
-  #     - taxvision-network
+  node-exporter:
+    profiles:
+      - observability
+    image: prom/node-exporter:v1.8.2
+    container_name: taxvision-node-exporter
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    expose:
+      - "9100"
+    mem_limit: ${NODE_EXPORTER_MEM_LIMIT:-64m}
+    networks:
+      - taxvision-network
 
-  # prometheus:
-  #   image: prom/prometheus:v3.5.3
-  #   container_name: taxvision-prometheus
-  #   command:
-  #     - "--config.file=/etc/prometheus/prometheus.yml"
-  #     - "--storage.tsdb.path=/prometheus"
-  #   volumes:
-  #     - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-  #     - prometheus-data:/prometheus
-  #   # Solo loopback, via VPN+SSH — Grafana ya reexpone lo que hace falta ver.
-  #   ports:
-  #     - "127.0.0.1:19090:9090"
-  #   depends_on:
-  #     - otel-collector
-  #     - cadvisor
-  #     - node-exporter
-  #   networks:
-  #     - taxvision-network
+  prometheus:
+    profiles:
+      - observability
+    image: prom/prometheus:v3.5.3
+    container_name: taxvision-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      # Retencion acotada por tiempo y por tamano: el disco y la RAM no crecen sin techo.
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}"
+      - "--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-4GB}"
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    # Solo loopback, via VPN+SSH — Grafana ya reexpone lo que hace falta ver.
+    ports:
+      - "127.0.0.1:19090:9090"
+    mem_limit: ${PROMETHEUS_MEM_LIMIT:-512m}
+    depends_on:
+      - otel-collector
+      - cadvisor
+      - node-exporter
+    networks:
+      - taxvision-network
 
-  # grafana:
-  #   image: grafana/grafana:13.0.3
-  #   container_name: taxvision-grafana
-  #   environment:
-  #     GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER in .env}
-  #     GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
-  #     GF_USERS_ALLOW_SIGN_UP: "false"
-  #     GF_PLUGINS_PREINSTALL_DISABLED: "true"
-  #   volumes:
-  #     - grafana-data:/var/lib/grafana
-  #     - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
-  #   # Solo loopback — vos entras via VPN+SSH al server y ahi si abris localhost:3000.
-  #   ports:
-  #     - "127.0.0.1:3000:3000"
-  #   depends_on:
-  #     - prometheus
-  #     - loki
-  #     - tempo
-  #   networks:
-  #     - taxvision-network
+  grafana:
+    profiles:
+      - observability
+    image: grafana/grafana:13.0.3
+    container_name: taxvision-grafana
+    restart: unless-stopped
+    # Compose interpola todo el archivo aunque el perfil este apagado: un `:?` aqui romperia el
+    # despliegue normal. Por eso el chequeo va al arrancar: sin password, Grafana no levanta.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        if [ -z "$$GF_SECURITY_ADMIN_PASSWORD" ]; then
+          echo "Set GRAFANA_ADMIN_PASSWORD in .env before enabling the observability profile." >&2
+          exit 1
+        fi
+        exec /run.sh
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    # Solo loopback — vos entras via VPN+SSH al server y ahi si abris localhost:3000.
+    ports:
+      - "127.0.0.1:3000:3000"
+    mem_limit: ${GRAFANA_MEM_LIMIT:-256m}
+    depends_on:
+      - prometheus
+    networks:
+      - taxvision-network
 
   tenant-api:
     image: taxvision/tenant-api:dev
@@ -1806,6 +1892,12 @@ services:
       Minio__PublicUseTls: ${MINIO_USE_TLS:-true}
       ClamAv__Host: clamav
       ClamAv__Port: "3310"
+      # Tope del clamp de ClamAvVirusScanner (5..600): una grabación de 2 GB no termina en los 120 s por
+      # defecto y el escaneo caía en scan_error (F7).
+      ClamAv__TimeoutSeconds: "600"
+      # T-20: sin scanner (caído o sin configurar) la política falla cerrada: las imágenes quedan en revisión.
+      ContentScanner__BaseUrl: http://content-scanner:8080
+      ContentScanner__ApiKey: ${CONTENT_SCANNER_API_KEY:?Set CONTENT_SCANNER_API_KEY in .env}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # Auditoria RateLimit hallazgo #2 — primer acquirer M2M saliente de CloudStorage (antes
       # solo RECIBIA llamadas M2M), solo para leer el catalogo de PlanRateLimits de Subscription.
@@ -2263,6 +2355,14 @@ services:
       dockerfile: Dockerfile
     expose:
       - "5350"
+    # SFU (mediasoup, F1/D-05): cada worker escucha en UN puerto fijo (UDP y TCP con el mismo numero)
+    # gracias al WebRtcServer — worker i = PORT_BASE + i. Estos son los UNICOS puertos RTC que hay que
+    # publicar al host y reenviar en el router (hoy el router reenvia 40000-49999 UDP; el TCP se agrega
+    # con los mismos numeros, ver P-034). Antes el contenedor no publicaba ninguno y toda reunion SFU
+    # quedaba sin media. PORT_END = PORT_BASE + NUM_WORKERS - 1.
+    ports:
+      - "${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}:${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}/udp"
+      - "${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}:${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}/tcp"
     environment:
       NODE_ENV: production
       LOG_LEVEL: info
@@ -2355,13 +2455,22 @@ services:
       # Portal de clientes — a donde apunta el link corto de invitacion a un
       # meeting para un guest sin cuenta (Fase Backend 5/9e).
       COMMUNICATION_FRONTEND_BASE_URL: https://client.${TAXVISION_BASE_DOMAIN:-taxoffix.io}
-      # SFU propio (mediasoup) — NUM_WORKERS=0 por default en config.ts, o sea que
-      # esta apagado salvo que se prenda a proposito; el mesh WebRTC actual usa
-      # TURN (arriba) para NAT traversal, no esto. Si en el futuro se activa el
-      # SFU, ANNOUNCED_IP tiene que ser la IP publica del server (sin esto, los
-      # workers de mediasoup anuncian la IP interna del contenedor y el ICE
-      # candidate queda inalcanzable desde afuera).
+      # SFU propio (mediasoup). SIEMPRE encendido: NUM_WORKERS=0 significa "auto" (min(4, cpus)), no
+      # apagado — toda reunion con strategy=Sfu (cupo > umbral mesh) pasa por aqui. Se fija en 4 para que
+      # la lista de puertos publicada arriba sea determinista. ANNOUNCED_IP es la IP publica del server
+      # (sin ella los candidatos ICE llevan la IP interna del contenedor y nadie conecta). TURN no releva
+      # hacia el SFU (coturn vive en este mismo host, INV-02 H-12): los navegadores llegan directo a estos
+      # puertos, por eso van publicados.
       COMMUNICATION_MEDIASOUP_ANNOUNCED_IP: ${COMMUNICATION_MEDIASOUP_ANNOUNCED_IP:-}
+      COMMUNICATION_MEDIASOUP_NUM_WORKERS: ${COMMUNICATION_MEDIASOUP_NUM_WORKERS:-4}
+      COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED: ${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED:-true}
+      COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE: ${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}
+      COMMUNICATION_MEDIASOUP_ENABLE_TCP: ${COMMUNICATION_MEDIASOUP_ENABLE_TCP:-true}
+      # F7 — recorder server-side (red interna). TAP_LISTEN_IP: IP de escucha de los PlainTransport que
+      # envían el RTP de cada productor al recorder; TIMEOUT_MS acota cada llamada HTTP al recorder.
+      COMMUNICATION_RECORDER_BASE_URL: http://communication-recorder:5360
+      COMMUNICATION_RECORDER_TAP_LISTEN_IP: 0.0.0.0
+      COMMUNICATION_RECORDER_TIMEOUT_MS: "5000"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: communication-service
@@ -2439,6 +2548,90 @@ services:
     networks:
       - taxvision-network
 
+  # F7 — grabación server-side. Recibe RTP de los PlainTransport de mediasoup (communication-api) por
+  # la red interna, compone con ffmpeg y sube compuesto + pistas de audio por MinIO temp +
+  # SaveFileRequested. SIN ports: el RTP va de contenedor a contenedor y la API HTTP solo la llama
+  # communication-api con su JWT de servicio (no necesita cliente propio en Auth: solo valida).
+  communication-recorder:
+    image: taxvision/communication-recorder:dev
+    container_name: taxvision-communication-recorder
+    build:
+      context: ../../src/Services/CommunicationRecorder
+      dockerfile: Dockerfile
+    expose:
+      - "5360"
+    # ffmpeg componiendo 1080p consume RAM por hilo; el tope evita que una composición tumbe el host.
+    mem_limit: 1536m
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      SERVICE_NAME: communication-recorder
+      RECORDER_PORT: "5360"
+      RECORDER_RABBITMQ_URI: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      RECORDER_RABBITMQ_EXCHANGE: taxvision-events
+      RECORDER_CLOUDSTORAGE_EXTERNAL_QUEUE: cloudstorage-external-uploads
+      # DB 2 de Redis: jobs de composición hasta confirmar la publicación (0 = Communication, 1 = transcript worker).
+      RECORDER_REDIS_URI: redis://redis:6379/2
+      # Cuenta MinIO propia, IAM scoped a taxvision-temp/recording/* (policies/recording-source.json).
+      # NUNCA MINIO_ROOT_USER/PASSWORD.
+      RECORDER_MINIO_ENDPOINT: minio
+      RECORDER_MINIO_PORT: "9000"
+      RECORDER_MINIO_USE_SSL: "false"
+      RECORDER_MINIO_ACCESS_KEY: communication-recorder
+      RECORDER_MINIO_SECRET_KEY: ${RECORDER_MINIO_SECRET:?Set RECORDER_MINIO_SECRET in .env}
+      RECORDER_MINIO_TEMP_BUCKET: taxvision-temp
+      RECORDER_MINIO_SOURCE_PREFIX: recording
+      # Solo acepta el JWT de servicio de Communication (client_id en la lista).
+      RECORDER_AUTH_JWKS_URI: http://auth-api:8080/auth/.well-known/jwks.json
+      RECORDER_AUTH_ISSUER: TaxVision.Auth
+      RECORDER_AUTH_AUDIENCE: TaxVision.Services
+      RECORDER_ALLOWED_CLIENT_IDS: ${COMMUNICATION_SERVICE_AUTH_CLIENT_ID:-communication-worker}
+      # Rango RTP interno (no publicado). ANNOUNCED_IP vacío: Communication resuelve el host del recorder.
+      RECORDER_RTP_LISTEN_IP: 0.0.0.0
+      RECORDER_RTP_ANNOUNCED_IP: ""
+      RECORDER_RTP_PORT_MIN: "44000"
+      RECORDER_RTP_PORT_MAX: "44999"
+      RECORDER_SPOOL_DIR: /var/spool/communication-recorder
+      RECORDER_FFMPEG_BIN_PATH: ffmpeg
+      RECORDER_FFPROBE_BIN_PATH: ffprobe
+      RECORDER_FONT_FILE: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+      # Foto de perfil en el slate de cámara apagada (endpoint anónimo de avatares); sin ella, iniciales.
+      RECORDER_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      RECORDER_MAX_ACTIVE_SESSIONS: "4"
+      RECORDER_COMPOSE_THREADS: "2"
+      RECORDER_COMPOSE_NICE: "10"
+      RECORDER_ORPHAN_TIMEOUT_MINUTES: "30"
+    volumes:
+      # Pistas crudas y composiciones en curso: sobreviven a un reinicio del contenedor y las pistas
+      # de video se conservan aquí hasta tracksRetentionDays (no suben a CloudStorage).
+      # Misma ruta que la imagen crea para el usuario taxvision: si no existe en la imagen, Docker la
+      # monta como root y el recorder no puede escribir.
+      - recorder-spool:/var/spool/communication-recorder
+    # La imagen es Node: el chequeo usa fetch de Node, no un cliente HTTP externo.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:5360/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      auth-api:
+        condition: service_healthy
+    networks:
+      - taxvision-network
+
   # Fase D0 (cerrado en la revision post-D4) — crea/actualiza las cuentas de
   # servicio scoped de MinIO para Signature/CommunicationTranscriptWorker/Customer/
   # Correspondence (ver deploy/docker/minio/provision-service-accounts.sh + policies/*.json).
@@ -2468,6 +2661,7 @@ services:
       TENANT_MINIO_SECRET: ${TENANT_MINIO_SECRET:?Set TENANT_MINIO_SECRET in .env}
       DOCUMENTS_MINIO_SECRET: ${DOCUMENTS_MINIO_SECRET:?Set DOCUMENTS_MINIO_SECRET in .env}
       AUTH_MINIO_SECRET: ${AUTH_MINIO_SECRET:?Set AUTH_MINIO_SECRET in .env}
+      RECORDER_MINIO_SECRET: ${RECORDER_MINIO_SECRET:?Set RECORDER_MINIO_SECRET in .env}
     volumes:
       - ./minio:/provision:ro
     depends_on:
@@ -2675,6 +2869,7 @@ volumes:
   taxvision-logs:
   caddy-data:
   caddy-config:
+  recorder-spool:
 
 networks:
   taxvision-network:

@@ -116,6 +116,7 @@ public static class CustomerAvatarScanResultConsumer
             ct
         );
 
+    // T-20: bloqueada por contenido. Se descarta, pero queda constancia para el mensaje del front.
     public static Task Handle(
         FileBlockedByPolicyIntegrationEvent msg,
         ICustomerRepository repository,
@@ -124,17 +125,46 @@ public static class CustomerAvatarScanResultConsumer
         ILogger<CustomerEntity> logger,
         CancellationToken ct
     ) =>
-        DiscardAsync(
+        ModerateAsync(
             new ScanFailure(
                 msg.TenantId,
                 msg.FileId,
                 msg.OwnerType,
                 msg.OwnerId,
                 msg.FolderType,
-                "was blocked by policy"
+                "was blocked by the content policy"
             ),
             msg.CorrelationId,
             msg.EventId,
+            (customer, fileId) => customer.RejectPendingProfilePictureForPolicy(fileId),
+            repository,
+            unitOfWork,
+            correlation,
+            logger,
+            ct
+        );
+
+    // T-20: en revisión humana. La pendiente no vence; si el revisor aprueba, llega FileAvailable.
+    public static Task Handle(
+        FilePendingReviewIntegrationEvent msg,
+        ICustomerRepository repository,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<CustomerEntity> logger,
+        CancellationToken ct
+    ) =>
+        ModerateAsync(
+            new ScanFailure(
+                msg.TenantId,
+                msg.FileId,
+                msg.OwnerType,
+                msg.OwnerId,
+                msg.FolderType,
+                "is under content review"
+            ),
+            msg.CorrelationId,
+            msg.EventId,
+            (customer, fileId) => customer.HoldPendingProfilePictureForReview(fileId),
             repository,
             unitOfWork,
             correlation,
@@ -178,10 +208,33 @@ public static class CustomerAvatarScanResultConsumer
         string Reason
     );
 
-    private static async Task DiscardAsync(
+    private static Task DiscardAsync(
         ScanFailure failure,
         string? correlationId,
         Guid eventId,
+        ICustomerRepository repository,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<CustomerEntity> logger,
+        CancellationToken ct
+    ) =>
+        ModerateAsync(
+            failure,
+            correlationId,
+            eventId,
+            (customer, fileId) => customer.DiscardPendingProfilePicture(fileId),
+            repository,
+            unitOfWork,
+            correlation,
+            logger,
+            ct
+        );
+
+    private static async Task ModerateAsync(
+        ScanFailure failure,
+        string? correlationId,
+        Guid eventId,
+        Func<CustomerEntity, Guid, bool> apply,
         ICustomerRepository repository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
@@ -201,11 +254,11 @@ public static class CustomerAvatarScanResultConsumer
         if (customer is null || customer.TenantId != failure.TenantId)
             return;
 
-        if (!customer.DiscardPendingProfilePicture(failure.FileId))
+        if (!apply(customer, failure.FileId))
             return;
 
         logger.LogWarning(
-            "Avatar {FileId} of customer {CustomerId} {Reason}; discarding it.",
+            "Avatar {FileId} of customer {CustomerId} {Reason}.",
             failure.FileId,
             customerId,
             failure.Reason

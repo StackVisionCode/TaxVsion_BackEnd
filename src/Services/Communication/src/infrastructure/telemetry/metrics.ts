@@ -25,8 +25,59 @@ export const httpRequestDurationSeconds = new Histogram({
   registers: [metricsRegistry],
 });
 
+// F10 (ADD-08): proyecciones de analítica que fallaron (el mensaje no se reintenta por ellas).
+export const consumerProjectionFailuresTotal = new Counter({
+  name: 'communication_consumer_projection_failures_total',
+  help: 'Proyecciones de lectura (analitica) que fallaron tras el handler principal, por tipo de evento.',
+  labelNames: ['event_type'] as const,
+  registers: [metricsRegistry],
+});
+
 export const socketConnectionsActive = new Gauge({
   name: 'communication_socket_connections_active',
   help: 'Conexiones Socket.IO activas en este proceso (no cluster-wide).',
   registers: [metricsRegistry],
 });
+
+// F1 — transporte del SFU observable: fallos ICE/DTLS por direccion y workers sin WebRtcServer.
+export const sfuTransportFailuresTotal = new Counter({
+  name: 'communication_sfu_transport_failures_total',
+  help: 'Transports WebRTC del SFU que llegaron a ICE/DTLS failed, por direccion y capa.',
+  labelNames: ['direction', 'layer'] as const,
+  registers: [metricsRegistry],
+});
+
+export const sfuTransportsConnectedTotal = new Counter({
+  name: 'communication_sfu_transports_connected_total',
+  help: 'Transports WebRTC del SFU que completaron ICE, por direccion y protocolo seleccionado.',
+  labelNames: ['direction', 'protocol'] as const,
+  registers: [metricsRegistry],
+});
+
+// F10 (ADD-08 T-74): salas y participantes del SFU en este proceso (los actualiza el latido).
+export const sfuRoomsActive = new Gauge({
+  name: 'communication_sfu_rooms_active',
+  help: 'Salas del SFU abiertas en este proceso.',
+  registers: [metricsRegistry],
+});
+
+export const sfuParticipantsActive = new Gauge({
+  name: 'communication_sfu_participants_active',
+  help: 'Participantes con media en el SFU de este proceso.',
+  registers: [metricsRegistry],
+});
+
+export const sfuWebRtcServerFallbackWorkers = new Gauge({
+  name: 'communication_sfu_webrtcserver_fallback_workers',
+  help: 'Workers de mediasoup que no pudieron enlazar su WebRtcServer y usan el rango de puertos.',
+  registers: [metricsRegistry],
+});
+
+/**
+ * F11 (E-259): etiqueta `route` de las métricas HTTP. Sin ruta registrada (404) va todo a "unmatched":
+ * la URL cruda crearía una serie por cada path inventado (memoria sin techo y URLs con query en /metrics).
+ */
+export function routeLabelOf(registeredRoute: string | undefined): string {
+  return registeredRoute ?? 'unmatched';
+}
+

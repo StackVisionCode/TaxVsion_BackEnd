@@ -13,11 +13,9 @@ export const CommunicationPermissions = {
   ChatStart: 'communication.chat.start',
   ChatReply: 'communication.chat.reply',
   ChatModerate: 'communication.chat.moderate',
-  // Fase Backend 9 — reactions/pin/forward/search. Todos los participantes de
-  // una conversation pueden reaccionar y buscar (misma politica que ChatReply);
-  // pin en Direct = ambos, pin en Group/Meeting = quien tenga ChatModerate.
+  // Fase Backend 9 — pin/forward/search. Reaccionar no tiene permiso propio (D-66): exige ChatReply, quien
+  // puede escribir puede reaccionar. Pin en Direct = ambos, pin en Group/Meeting = quien tenga ChatModerate.
   // Estos son alias semanticos — el enforcement real vive en cada use case.
-  ChatReact: 'communication.chat.react',
   ChatPin: 'communication.chat.pin',
   ChatForward: 'communication.chat.forward',
   ChatSearch: 'communication.chat.search',
@@ -43,6 +41,11 @@ export const CommunicationPermissions = {
 
   SettingsManage: 'communication.settings.manage',
   AnalyticsRead: 'communication.analytics.read',
+
+  // PlatformOnly en el catálogo de Auth: además del código se exige actorType PlatformAdmin en la ruta.
+  PlatformManage: 'communication.platform.manage',
+  ConstraintsManage: 'communication.constraints.manage',
+  PlatformAnalyticsRead: 'communication.platform.analytics.read',
 
   /**
    * Palanca del portal: es la que el administrador reconoce en el cajon de accesos del cliente

@@ -69,6 +69,18 @@ function Wait-Port($port, $timeoutSec) {
   return $false
 }
 
+# 0) content-scanner (T-20) en Docker, en el mismo compose/proyecto que rabbitmq, redis, minio y clamav.
+#    `up -d content-scanner` es idempotente y no toca a los demás; la primera vez construye la imagen
+#    (descarga y verifica el modelo). Si no sube, CloudStorage falla cerrado: las imágenes quedan en revisión.
+$infraCompose = Join-Path $root "deploy\docker\docker-compose.local-infra.yml"
+$docker = Get-Command docker -ErrorAction SilentlyContinue
+if (-not $docker) { Write-Host "SKIP content-scanner: docker not in PATH." }
+else {
+  & $docker.Source compose -f $infraCompose --env-file (Join-Path $root ".env") up -d content-scanner *> (Join-Path $logs "content-scanner.compose.log")
+  if ($LASTEXITCODE -eq 0) { Write-Host "UP content-scanner (Docker) :5540" }
+  else { Write-Host "content-scanner did not start (see logs\content-scanner.compose.log) - continuing" }
+}
+
 # 1) Auth alone first: let it apply/validate migrations and warm SQL with no competition.
 Start-One $fleet[0]
 if (Wait-Port 5124 45) { Write-Host "Auth listening :5124"; Start-Sleep -Seconds 5 }
@@ -80,10 +92,12 @@ foreach ($s in $fleet[1..($fleet.Count-1)]) {
   Start-Sleep -Seconds $gap
 }
 
-# 3) Node (Communication + worker), same as start-fleet.ps1.
+# 3) Node (Communication + transcript worker + recorder), same as start-fleet.ps1.
 $nodeFleet = @(
   @{ n = "Communication";                  d = "src\Services\Communication";                  p = 5350 },
-  @{ n = "CommunicationTranscriptWorker";  d = "src\Services\CommunicationTranscriptWorker";  p = $null }
+  @{ n = "CommunicationTranscriptWorker";  d = "src\Services\CommunicationTranscriptWorker";  p = $null },
+  # Grabacion server-side (F7). En local 5365: el 5360 del contenedor lo usa Subscription aqui.
+  @{ n = "CommunicationRecorder";          d = "src\Services\CommunicationRecorder";          p = 5365 }
 )
 $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)
 if (-not $npm) { Write-Host "SKIP Node: npm.cmd not in PATH." }

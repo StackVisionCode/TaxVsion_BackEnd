@@ -1,3 +1,5 @@
+import { stopRecordingOnEnd, type RecordingLifecycleOptionalDeps } from './recording-lifecycle.js';
+import type { RecordingSessionRepository } from '../ports/recording-repository.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { CallRepository } from '../ports/call-repository.js';
@@ -5,6 +7,7 @@ import type { ConversationRepository } from '../ports/conversation-repository.js
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import { type CallUsageRepository, yearMonthUtc } from '../ports/call-usage-repository.js';
 import { CallEventTypes, type CallEndedEvent } from '../../contracts/events/call-events.js';
 import type { CallStateDto } from '../../contracts/socket/call-socket-events.js';
 import type { CallEndReason } from '../../domain/calls/call.js';
@@ -28,12 +31,16 @@ export interface EndCallResult {
   readonly state: CallStateDto;
 }
 
-export interface EndCallDeps {
+export interface EndCallDeps extends RecordingLifecycleOptionalDeps {
+  /** F7: grabacion activa se corta al terminar la llamada (CallEnded). */
+  readonly recordingSessions?: RecordingSessionRepository | undefined;
   readonly calls: CallRepository;
   readonly conversations: ConversationRepository;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
+  /** F4: minutos consumidos por oficina y mes (maxMonthlyMinutes). */
+  readonly callUsage?: CallUsageRepository | undefined;
 }
 
 export async function endCall(
@@ -78,6 +85,13 @@ export async function endCall(
 
   await deps.calls.save(call);
   const snapshot = call.toSnapshot();
+  await stopRecordingOnEnd(deps, {
+    tenantId: command.tenantId,
+    scope: 'Call',
+    scopeId: command.callId,
+    reason: 'CallEnded',
+    correlationId: command.correlationId,
+  });
 
   const endedEvent: CallEndedEvent = {
     eventId: randomUUID(),
@@ -95,6 +109,9 @@ export async function endCall(
     recordingFileId: snapshot.recordingFileId,
   };
   await deps.publisher.enqueue(endedEvent);
+  await deps.callUsage
+    ?.addSeconds({ tenantId: command.tenantId, yearMonth: yearMonthUtc(now), seconds: snapshot.durationSeconds ?? 0 })
+    .catch(() => undefined);
 
   // Registrar en el historial del chat (estilo WhatsApp): "Call · 2:34" / "Video call · 2:34". Solo llega
   // acá si la llamada fue contestada (el guard del dominio exige Accepted/Active para end) → siempre es una

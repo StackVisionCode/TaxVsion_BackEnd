@@ -108,6 +108,23 @@ public sealed class ClientRequestTests
         Assert.Equal(ClientRequestStatus.Pending, request.Status);
     }
 
+    /// <summary>T-20: en revisión cuenta como entregado; si el revisor lo rechaza, el pedido vuelve a pendiente.</summary>
+    [Fact]
+    public void A_document_under_review_keeps_the_request_submitted_until_the_reviewer_decides()
+    {
+        var request = NewRequest();
+        var fileId = Guid.NewGuid();
+        request.SubmitDocument(fileId, "w2.jpg", "image/jpeg", 68, Now);
+        var submitted = request.Status;
+
+        Assert.True(request.MarkDocumentUnderReview(fileId));
+        Assert.Equal(submitted, request.Status);
+        Assert.Equal(AttachmentStatus.UnderReview, request.Documents.Single().Status);
+
+        Assert.True(request.MarkDocumentRejected(fileId, "blocked-by-policy", Now));
+        Assert.Equal(ClientRequestStatus.Pending, request.Status);
+    }
+
     /// <summary>El motivo técnico viaja en el evento, para el preparador; el cliente no lo ve.</summary>
     [Fact]
     public void The_rejection_event_carries_the_real_reason_and_the_preparer()

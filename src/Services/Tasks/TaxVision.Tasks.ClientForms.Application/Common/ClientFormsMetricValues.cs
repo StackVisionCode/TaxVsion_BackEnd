@@ -34,6 +34,7 @@ public static class ClientFormsMetricValues
             FormFileVerdictStatus.Blocked => "blocked",
             FormFileVerdictStatus.ScanFailed => "scan_failed",
             FormFileVerdictStatus.Deleted => "deleted",
+            FormFileVerdictStatus.PendingReview => "pending_review",
             _ => Unknown,
         };
 }

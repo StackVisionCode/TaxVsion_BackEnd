@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { F7_SNAPSHOT_DEFAULTS } from '../helpers/fake-recording-session-repository.js';
 import { randomUUID } from 'node:crypto';
 import { Meeting } from '../../src/domain/meetings/meeting.js';
 import { RecordingSession, type RecordingSessionSnapshot } from '../../src/domain/recording/recording-session.js';
@@ -27,7 +28,7 @@ function liveMeetingWithAttendee() {
   return { meeting, host, attendeeUserId };
 }
 
-function processingSessionFor(meeting: Meeting): RecordingSession {
+function processingSessionFor(meeting: Meeting, recordingFileId: string | null = null): RecordingSession {
   const snapshot: RecordingSessionSnapshot = {
     id: u(),
     tenantId: meeting.tenantId,
@@ -38,9 +39,10 @@ function processingSessionFor(meeting: Meeting): RecordingSession {
     requestedAtUtc: new Date(),
     startedAtUtc: new Date(),
     stoppedAtUtc: new Date(),
-    recordingFileId: null,
+    recordingFileId,
     durationSeconds: null,
     failureReason: null,
+    ...F7_SNAPSHOT_DEFAULTS,
   };
   return RecordingSession.rehydrate(snapshot);
 }
@@ -147,11 +149,11 @@ describe('Meeting.failRecording / completeRecording', () => {
     }
   });
 
-  it('completes a Processing session with the final file and duration', () => {
+  it('marks a Processing session with its file as Ready', () => {
     const { meeting } = liveMeetingWithAttendee();
-    const processing = processingSessionFor(meeting);
     const fileId = u();
-    const r = meeting.completeRecording({ session: processing, recordingFileId: fileId, durationSeconds: 300 });
+    const processing = processingSessionFor(meeting, fileId);
+    const r = meeting.markRecordingReady({ session: processing });
     expect(r.isSuccess).toBe(true);
     if (r.isSuccess) {
       expect(r.value.sessionState).toBe('Ready');
@@ -162,8 +164,8 @@ describe('Meeting.failRecording / completeRecording', () => {
   it('rejects completing a session that belongs to another meeting', () => {
     const { meeting: meetingA } = liveMeetingWithAttendee();
     const { meeting: meetingB } = liveMeetingWithAttendee();
-    const processingOnB = processingSessionFor(meetingB);
-    const r = meetingA.completeRecording({ session: processingOnB, recordingFileId: u(), durationSeconds: 10 });
+    const processingOnB = processingSessionFor(meetingB, u());
+    const r = meetingA.markRecordingReady({ session: processingOnB });
     expect(r.isSuccess).toBe(false);
     if (!r.isSuccess) expect(r.error.code).toBe('Meeting.Recording.SessionMismatch');
   });

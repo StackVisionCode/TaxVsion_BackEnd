@@ -7,10 +7,7 @@ import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import { MeetingEventTypes, type MeetingRecordingStoppedEvent } from '../../contracts/events/meeting-events.js';
-import {
-  MeetingSocketEvents,
-  type MeetingRecordingStateChangedDto,
-} from '../../contracts/socket/meeting-socket-events.js';
+import { afterRecordingStopped, emitRecordingState, lifecycleFrom, type RecordingLifecycleOptionalDeps } from './recording-lifecycle.js';
 
 export interface StopMeetingRecordingCommand {
   readonly tenantId: string;
@@ -25,7 +22,7 @@ export interface StopMeetingRecordingResult {
   readonly elapsedSeconds: number;
 }
 
-export interface StopMeetingRecordingDeps {
+export interface StopMeetingRecordingDeps extends RecordingLifecycleOptionalDeps {
   readonly meetings: MeetingRepository;
   readonly recordingSessions: RecordingSessionRepository;
   readonly idempotency: IdempotencyStore;
@@ -93,18 +90,9 @@ export async function stopMeetingRecording(
   };
   await deps.publisher.enqueue(event);
 
-  const dto: MeetingRecordingStateChangedDto = { meetingId: command.meetingId, state: 'Stopping', updatedAtUtc: stoppedAtUtc };
-  deps.emitter.emitToMeeting({
-    tenantId: command.tenantId,
-    meetingId: command.meetingId,
-    event: MeetingSocketEvents.RecordingStateChanged,
-    envelope: {
-      eventId: randomUUID(),
-      correlationId: command.correlationId,
-      emittedAtUtc: new Date().toISOString(),
-      payload: dto,
-    },
-  });
+  emitRecordingState(deps, stopResult.value, command.correlationId);
+  const lifecycle = lifecycleFrom(deps);
+  if (lifecycle) await afterRecordingStopped(stopResult.value, lifecycle, command.correlationId);
 
   const result: StopMeetingRecordingResult = { meetingId: command.meetingId, elapsedSeconds };
   await deps.idempotency.commit({

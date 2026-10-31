@@ -11,7 +11,10 @@ public sealed record InitiateUploadRequest(
     OwnerType OwnerType,
     Guid? OwnerId,
     FolderType FolderType,
-    int? TaxYear
+    int? TaxYear,
+    // Subida mediada por un servicio (adjunto de chat, foto de grupo): la persona que subió. Solo cuenta con token
+    // de servicio; así los avisos de revisión o bloqueo le llegan a ella y no a la cuenta del servicio.
+    Guid? OnBehalfOfUserId = null
 );
 
 public sealed record InitiatedUploadResponse(
