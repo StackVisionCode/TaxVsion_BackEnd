@@ -15,6 +15,27 @@ export interface RabbitContext {
 
 let context: RabbitContext | undefined;
 
+/**
+ * Corren tras cada reconexión (canal nuevo), igual que en Communication: el `consume` vivía en el
+ * canal viejo, y sin volver a suscribirlo el worker queda conectado pero sin recibir pedidos.
+ */
+type ReconnectListener = () => Promise<void> | void;
+const reconnectListeners: ReconnectListener[] = [];
+
+export function onRabbitReconnected(listener: ReconnectListener): void {
+  reconnectListeners.push(listener);
+}
+
+async function notifyReconnected(): Promise<void> {
+  for (const listener of reconnectListeners) {
+    try {
+      await listener();
+    } catch (err) {
+      logger.error({ err: (err as Error).message }, 'rabbit reconnect listener failed');
+    }
+  }
+}
+
 async function tryConnect(): Promise<RabbitContext> {
   const parsed = new URL(config.rabbitmq.uri);
   const connection = await amqplib.connect({
@@ -39,7 +60,7 @@ async function tryConnect(): Promise<RabbitContext> {
     logger.warn('RabbitMQ connection closed — reconnecting');
     context = undefined;
     setTimeout(() => {
-      void connectRabbit();
+      void connectRabbit().then(() => notifyReconnected());
     }, 3000);
   });
 
