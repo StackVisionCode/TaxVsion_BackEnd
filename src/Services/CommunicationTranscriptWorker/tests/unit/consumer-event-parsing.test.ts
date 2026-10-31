@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 /** Mapeo trigger -> RecordingReadyEvent con los campos nuevos del contrato 9.3 y la nota de voz. */
 
-vi.mock('../../src/rabbit/rabbit-connection.js', () => ({ getRabbitContext: vi.fn() }));
+vi.mock('../../src/rabbit/rabbit-connection.js', () => ({ getRabbitContext: vi.fn(), onRabbitReconnected: vi.fn() }));
 
 const { toRecordingReadyEvent, parseAudioTracks } = await import('../../src/rabbit/consumer.js');
 const { COMMUNICATION_RECORDING_KINDS } = await import('../../src/contracts/recording-kinds.js');

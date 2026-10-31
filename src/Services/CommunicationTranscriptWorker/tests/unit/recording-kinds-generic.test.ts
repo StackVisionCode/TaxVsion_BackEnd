@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../src/rabbit/rabbit-connection.js', () => ({
   getRabbitContext: mocks.getRabbitContext,
+  onRabbitReconnected: vi.fn(),
 }));
 
 vi.resetModules();
