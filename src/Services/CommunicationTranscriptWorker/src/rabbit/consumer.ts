@@ -15,6 +15,8 @@ export interface AudioTrackRef {
   readonly userId: string;
   readonly displayName: string | null;
   readonly startOffsetMs: number;
+  /** Idioma de esta pista (el que el participante eligió); ausente = el del evento. */
+  readonly language?: string | undefined;
 }
 
 export type PassthroughValue = string | number | boolean | null;
@@ -289,11 +291,13 @@ export function parseAudioTracks(value: unknown): AudioTrackRef[] {
     const userId = str(track['userId']);
     if (!fileId || !userId) continue;
     const offset = Number(track['startOffsetMs']);
+    const language = str(track['language'])?.trim();
     tracks.push({
       fileId,
       userId,
       displayName: str(track['displayName'])?.trim() || null,
       startOffsetMs: Number.isFinite(offset) && offset > 0 ? Math.round(offset) : 0,
+      ...(language ? { language } : {}),
     });
   }
   return tracks;

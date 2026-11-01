@@ -34,9 +34,6 @@ export class PrismaSettingsRepository implements SettingsRepository {
       DefaultCameraOff: s.defaultCameraOff,
       DefaultMicrophoneOff: s.defaultMicrophoneOff,
       PersistChatOnEnd: s.persistChatOnEnd,
-      MessageRetentionDays: s.messageRetentionDays,
-      RecordingRetentionDays: s.recordingRetentionDays,
-      PurgeEnabled: s.purgeEnabled,
       RecordingConsentPolicy: s.recordingConsentPolicy,
       DefaultMeetingDurationMinutes: s.defaultMeetingDurationMinutes,
       MaxMeetingDurationMinutes: s.maxMeetingDurationMinutes,
@@ -76,12 +73,11 @@ export class PrismaSettingsRepository implements SettingsRepository {
     });
   }
 
-  async listPurgeEnabled(): Promise<Array<{ tenantId: string; messageRetentionDays: number }>> {
-    const rows = await this.prisma.tenantCommunicationSettings.findMany({
-      where: { PurgeEnabled: true },
-      select: { TenantId: true, MessageRetentionDays: true },
-    });
-    return rows.map((r) => ({ tenantId: r.TenantId, messageRetentionDays: r.MessageRetentionDays }));
+  async listTenantsWithContent(): Promise<string[]> {
+    // DISTINCT en SQL (Prisma `distinct` deduplica en memoria tras traer todas las filas).
+    const rows = await this.prisma.$queryRaw<Array<{ TenantId: string }>>`
+      SELECT TenantId FROM [Message] UNION SELECT TenantId FROM [RecordingSession]`;
+    return rows.map((r) => r.TenantId.toLowerCase());
   }
 
   private toSnapshot(row: {
@@ -98,9 +94,6 @@ export class PrismaSettingsRepository implements SettingsRepository {
     DefaultCameraOff: boolean;
     DefaultMicrophoneOff: boolean;
     PersistChatOnEnd: boolean;
-    MessageRetentionDays: number;
-    RecordingRetentionDays: number;
-    PurgeEnabled: boolean;
     RecordingConsentPolicy: string;
     DefaultMeetingDurationMinutes: number | null;
     MaxMeetingDurationMinutes: number | null;
@@ -149,9 +142,6 @@ export class PrismaSettingsRepository implements SettingsRepository {
       defaultCameraOff: row.DefaultCameraOff,
       defaultMicrophoneOff: row.DefaultMicrophoneOff,
       persistChatOnEnd: row.PersistChatOnEnd,
-      messageRetentionDays: row.MessageRetentionDays,
-      recordingRetentionDays: row.RecordingRetentionDays,
-      purgeEnabled: row.PurgeEnabled,
       recordingConsentPolicy: isRecordingConsentPolicy(row.RecordingConsentPolicy)
         ? row.RecordingConsentPolicy
         : RecordingConsentPolicy.NoRejections,

@@ -24,6 +24,8 @@ import { startPurgeScheduler } from './infrastructure/schedulers/purge-scheduler
 import { startRecordingConsentTimeoutScheduler } from './infrastructure/schedulers/recording-consent-timeout-scheduler.js';
 import { startMeetingLifecycleScheduler } from './infrastructure/schedulers/meeting-lifecycle-scheduler.js';
 import { startCallLifecycleScheduler } from './infrastructure/schedulers/call-lifecycle-scheduler.js';
+import { SocketCallRoomPresence } from './infrastructure/socket/socket-call-room-presence.js';
+import { RedisCallEmptinessClock } from './infrastructure/redis/redis-call-emptiness-clock.js';
 import { registerSessionHandlers } from './api/socket/handlers/session-handlers.js';
 import { startCustomerReconciliationScheduler } from './infrastructure/schedulers/customer-reconciliation-scheduler.js';
 import { startUserDirectoryReconciliationScheduler } from './infrastructure/schedulers/user-directory-reconciliation-scheduler.js';
@@ -56,7 +58,7 @@ import { SocketRealtimeEmitter } from './infrastructure/socket/socket-realtime-e
 import { SocketIoSessionTerminator } from './infrastructure/socket/socket-session-terminator.js';
 import { startSessionDenylistWatcher } from './infrastructure/redis/session-denylist-watcher.js';
 import { startPresenceChangedWatcher } from './infrastructure/redis/presence-changed-watcher.js';
-import { redisSub } from './infrastructure/redis/redis-client.js';
+import { redis, redisSub } from './infrastructure/redis/redis-client.js';
 import { platformSettings } from './infrastructure/platform/platform-settings-source.js';
 import { buildSfuObserver } from './infrastructure/webrtc/sfu-transport-telemetry.js';
 import { createSfuTransportStateReporter } from './application/use-cases/report-sfu-transport-state.js';
@@ -222,8 +224,14 @@ async function main(): Promise<void> {
   );
   // F4: aviso y corte por `maxCallMinutes` del plan.
   const callLifecycle = startCallLifecycleScheduler(
-    { intervalSeconds: 15 },
-    { ...container, emitter, lock: container.distributedLock },
+    { intervalSeconds: 15, abandonedGraceSeconds: config.calls.abandonedGraceSeconds },
+    {
+      ...container,
+      emitter,
+      lock: container.distributedLock,
+      roomPresence: new SocketCallRoomPresence(io),
+      emptinessClock: new RedisCallEmptinessClock(redis),
+    },
   );
   const customerReconciliation = startCustomerReconciliationScheduler(
     { enabled: config.customerReconcile.enabled, intervalHours: config.customerReconcile.intervalHours },

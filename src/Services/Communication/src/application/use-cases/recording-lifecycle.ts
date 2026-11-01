@@ -1,3 +1,5 @@
+import type { UserCommunicationPreferencesRepository } from '../ports/user-communication-preferences-repository.js';
+import { speakerTranscriptLanguage } from './speaker-transcript-language.js';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../infrastructure/logger/logger.js';
 import { Result, makeError } from '../../domain/shared/result.js';
@@ -66,6 +68,8 @@ export interface RecordingLifecycleDeps extends MeetingEventLogDeps {
   readonly capture?: RecordingCaptureService | undefined;
   readonly transcripts?: TranscriptArtifactRepository | undefined;
   readonly sfu?: Pick<SfuService, 'getRouterRtpCapabilities' | 'closeMeeting'> | undefined;
+  /** Idioma de voz de cada participante para su pista (INV-T01). */
+  readonly userPreferences?: Pick<UserCommunicationPreferencesRepository, 'find'> | undefined;
 }
 
 const envelope = <T>(correlationId: string, payload: T) => ({
@@ -364,11 +368,16 @@ export async function requestTranscript(session: RecordingSession, deps: Recordi
     await deps.transcripts.save(artifact);
   }
 
-  const audioTracks = await audioTrackRefs(session, deps);
+  // INV-T01 R-7: si el host eligió idioma para la reunión, rige para todos; si no, el de cada uno.
+  const meetingLanguage =
+    s.scope === RecordingScope.Meeting
+      ? ((await deps.meetings.findById(s.tenantId, s.scopeId))?.toSnapshot().transcriptLanguage ?? null)
+      : null;
+  const audioTracks = await audioTrackRefs(session, deps, meetingLanguage);
   const startedAtUtc = new Date().toISOString();
   const extra = {
     ...(audioTracks.length > 0 ? { audioTracks } : {}),
-    language: effective.recording.transcriptLanguage,
+    language: meetingLanguage ?? effective.recording.transcriptLanguage,
     prompt: effective.recording.transcriptPrompt,
     ...(s.maxDurationSeconds ? { maxDurationSeconds: s.maxDurationSeconds } : {}),
     timeoutFactorPct: effective.recording.workerTimeoutFactorPct,
@@ -403,7 +412,11 @@ export async function requestTranscript(session: RecordingSession, deps: Recordi
 }
 
 /** Pistas del manifest con el nombre del participante (el transcript etiqueta por hablante sin diarizar). */
-async function audioTrackRefs(session: RecordingSession, deps: RecordingLifecycleDeps): Promise<RecordingAudioTrackRef[]> {
+async function audioTrackRefs(
+  session: RecordingSession,
+  deps: RecordingLifecycleDeps,
+  meetingLanguage: string | null,
+): Promise<RecordingAudioTrackRef[]> {
   const s = session.toSnapshot();
   const tracks = s.tracksManifest?.audioTracks ?? [];
   if (tracks.length === 0) return [];
@@ -415,12 +428,21 @@ async function audioTrackRefs(session: RecordingSession, deps: RecordingLifecycl
     const call = await deps.calls.findById(s.tenantId, s.scopeId);
     for (const p of call?.toSnapshot().participants ?? []) names.set(p.userId, p.displayName);
   }
-  return tracks.map((t) => ({
-    fileId: t.fileId,
-    userId: t.userId,
-    displayName: (names.get(t.userId) ?? 'Participant') + (t.source === 'screen' ? ' (screen)' : ''),
-    startOffsetMs: t.startOffsetMs,
-  }));
+  const languages = new Map<string, string | null>();
+  for (const userId of new Set(tracks.map((t) => t.userId))) {
+    languages.set(userId, meetingLanguage ?? (await speakerTranscriptLanguage(deps.userPreferences, s.tenantId, userId)));
+  }
+  return tracks.map((t) => {
+    // La pantalla puede traer audio en cualquier idioma (un video): siempre auto.
+    const language = t.source === 'screen' ? 'auto' : languages.get(t.userId);
+    return {
+      fileId: t.fileId,
+      userId: t.userId,
+      displayName: (names.get(t.userId) ?? 'Participant') + (t.source === 'screen' ? ' (screen)' : ''),
+      startOffsetMs: t.startOffsetMs,
+      ...(language ? { language } : {}),
+    };
+  });
 }
 
 /** Recorder: compuesto subido → Processing; Meeting/Call apuntan al compuesto; se pide el transcript. */
@@ -563,6 +585,7 @@ export interface RecordingLifecycleOptionalDeps extends MeetingEventLogDeps {
   readonly capture?: RecordingCaptureService | undefined;
   readonly transcripts?: TranscriptArtifactRepository | undefined;
   readonly sfu?: Pick<SfuService, 'getRouterRtpCapabilities' | 'closeMeeting'> | undefined;
+  readonly userPreferences?: Pick<UserCommunicationPreferencesRepository, 'find'> | undefined;
 }
 
 /** Arma las deps del ciclo de vida si estan completas; sin resolver/repositorios = comportamiento previo a F7. */
@@ -585,6 +608,7 @@ export function lifecycleFrom(
     transcripts: deps.transcripts,
     sfu: deps.sfu,
     meetingEvents: deps.meetingEvents,
+    userPreferences: deps.userPreferences,
   };
 }
 

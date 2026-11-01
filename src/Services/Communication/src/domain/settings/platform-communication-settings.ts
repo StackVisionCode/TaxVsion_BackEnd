@@ -129,6 +129,14 @@ export interface PlatformCommunicationSettingsSnapshot {
   readonly callsRetentionDays: number | null;
   readonly meetingsRetentionDays: number | null;
   readonly invitationsRetentionDays: number | null;
+  /**
+   * Retención de mensajes y grabaciones y si la purga automática corre. La fija solo PlatformAdmin (una
+   * oficina de impuestos tiene obligaciones de conservar sus comunicaciones); por oficina se puede
+   * sobrescribir en `TenantCommunicationConstraints`.
+   */
+  readonly messageRetentionDays: number;
+  readonly recordingRetentionDays: number;
+  readonly purgeEnabled: boolean;
   readonly updatedByUserId: string | null;
   readonly updatedAtUtc: Date;
 }
@@ -220,6 +228,8 @@ export const PLATFORM_NUMERIC_RANGES: Record<Exclude<NumericKey, 'version'>, Tec
   transcriptWorkerTimeoutFactorPct: 'transcriptWorkerTimeoutFactorPct',
   recordingAvailabilityTimeoutMinutes: 'recordingAvailabilityTimeoutMinutes',
   analyticsRetentionDays: 'analyticsRetentionDays',
+  messageRetentionDays: 'messageRetentionDays',
+  recordingRetentionDays: 'recordingRetentionDays',
 };
 
 /** F10: claves numéricas opcionales (null = apagado); si traen valor, deben estar en su rango técnico. */
@@ -336,6 +346,9 @@ export class PlatformCommunicationSettings {
       callsRetentionDays: null,
       meetingsRetentionDays: null,
       invitationsRetentionDays: null,
+      messageRetentionDays: TECHNICAL_LIMITS.messageRetentionDays.fallback,
+      recordingRetentionDays: TECHNICAL_LIMITS.recordingRetentionDays.fallback,
+      purgeEnabled: false,
       updatedByUserId: null,
       updatedAtUtc: now,
     });

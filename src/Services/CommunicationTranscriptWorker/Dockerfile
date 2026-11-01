@@ -41,11 +41,11 @@ RUN set -eux; \
     cp -a build/bin/whisper-cli build/bin/whisper-bench build/bin/*.so* /opt/whisper-dist/bin/; \
     ls -la /opt/whisper-dist/bin
 
-# Modelos por build-arg. small-q5_1 hasta que el benchmark T-29 (VM) decida
-# (large-v3-turbo-q5_0 si el factor de tiempo real <= 0,5). SHA-256 = X-Linked-ETag
-# de Hugging Face; al cambiar el modelo pasar su sha o "" para no verificar.
-ARG WHISPER_MODEL=ggml-small-q5_1.bin
-ARG WHISPER_MODEL_SHA256=ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb
+# Modelos por build-arg. INV-T01: large-v3-turbo-q5_0 (574 MB, ~1.0–1.4 GB de RAM pico): clase large
+# en inglés y español; small no sirve a oficinas bilingües. SHA-256 = X-Linked-ETag de Hugging Face;
+# al cambiar el modelo pasar su sha o "" para no verificar.
+ARG WHISPER_MODEL=ggml-large-v3-turbo-q5_0.bin
+ARG WHISPER_MODEL_SHA256=394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
 ARG WHISPER_MODEL_BASE_URL=https://huggingface.co/ggerganov/whisper.cpp/resolve/main
 ARG WHISPER_VAD_MODEL=ggml-silero-v6.2.0.bin
 ARG WHISPER_VAD_MODEL_SHA256=2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987
@@ -78,7 +78,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg libgomp1 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-ARG WHISPER_MODEL=ggml-small-q5_1.bin
+ARG WHISPER_MODEL=ggml-large-v3-turbo-q5_0.bin
 ARG WHISPER_VAD_MODEL=ggml-silero-v6.2.0.bin
 
 ENV NODE_ENV=production

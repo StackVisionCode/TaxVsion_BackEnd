@@ -17,7 +17,6 @@ export interface TenantCommunicationSettingsSnapshot {
   /** F8b (D-20): varios clientes en un mismo grupo; ausente = false (uno solo). */
   readonly groupsAllowMultipleClients?: boolean;
   readonly screenshotsEnabled: boolean;
-  readonly messageRetentionDays: number;
 }
 
 export interface TenantSettingsProvider {

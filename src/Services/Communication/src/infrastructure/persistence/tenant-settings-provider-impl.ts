@@ -39,7 +39,6 @@ export class RedisCachedTenantSettingsProvider implements TenantSettingsProvider
           restrictCustomerChatToAssignedPreparer: row.RestrictCustomerChatToAssignedPreparer,
           groupsAllowMultipleClients: row.GroupsAllowMultipleClients,
           screenshotsEnabled: row.ScreenshotsEnabled,
-          messageRetentionDays: row.MessageRetentionDays,
         }
       : {
           tenantId,
@@ -48,7 +47,6 @@ export class RedisCachedTenantSettingsProvider implements TenantSettingsProvider
           restrictCustomerChatToAssignedPreparer: false,
           groupsAllowMultipleClients: false,
           screenshotsEnabled: true,
-          messageRetentionDays: 365,
         };
     await this.redis
       .set(key, JSON.stringify(snapshot), 'EX', RedisCachedTenantSettingsProvider.CACHE_TTL_SECONDS)

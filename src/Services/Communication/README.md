@@ -96,6 +96,8 @@ Salida: HTTP en `http://localhost:5350`, Socket.IO en `ws://localhost:5350/commu
 |---|---|---|
 | `GET` | `/communication/webrtc/ice` | Obtener ICE servers (STUN/TURN) con TTL |
 
+**Llamadas abandonadas:** el scheduler de llamadas (cada 15 s, con lock Redis) cierra como `Abandoned` las llamadas `Accepted`/`Active` que llevan `COMMUNICATION_CALL_ABANDONED_GRACE_SECONDS` (default 120) sin ningún socket en `t:{tenant}:call:{id}` (cuenta con `fetchSockets`, todas las instancias). La duración va hasta que la room quedó vacía (0 si la media nunca arrancó), avisa `call.state_changed` a ambos usuarios y publica `communication.call.ended.v1`. Sin esto, una llamada cuyo cierre se perdió (reinicio a mitad de llamada) contaba para siempre contra `maxConcurrentCalls`. Un corte provocado por el propio servidor (apagado o reinicio en un deploy) **no** termina la llamada: la media es P2P y sigue, y al reconectar el socket el cliente (CRM y portal) manda `call.rejoin { callId }` → vuelve a `t:{tenant}:call:{id}` y recibe el estado; si la llamada ya terminó, la cierra con ese estado. Si nadie vuelve, la cierra este barrido. Un corte del lado del cliente (red, pestaña cerrada) sigue terminando la llamada al instante.
+
 ### Meetings
 
 | Método | Ruta | Descripción |
@@ -104,6 +106,7 @@ Salida: HTTP en `http://localhost:5350`, Socket.IO en `ws://localhost:5350/commu
 | `GET` | `/communication/meetings` | Listar meetings del tenant |
 | `GET` | `/communication/meetings/:id` | Detalle + participantes + estado |
 | `POST` | `/communication/meetings/:id/invitations` | Generar link de invitación |
+| `PUT` | `/communication/meetings/:id/transcript-language` | Idioma del transcript de la reunión (host/cohost, antes de terminar; `null` = automático) |
 | `PATCH` | `/communication/meetings/:id` | Actualizar título / schedule |
 | `DELETE` | `/communication/meetings/:id` | Cancelar meeting |
 
@@ -137,6 +140,8 @@ Salida: HTTP en `http://localhost:5350`, Socket.IO en `ws://localhost:5350/commu
 |---|---|---|
 | `GET` | `/communication/settings` | Leer settings del tenant (límites de plan) |
 | `PATCH` | `/communication/settings` | Actualizar settings (admin only) |
+
+**Retención (mensajes, grabaciones y purga automática):** no la edita la oficina. La fija PlatformAdmin: global en `PUT /communication/admin/platform-settings` (`messageRetentionDays`, `recordingRetentionDays`, `purgeEnabled`) y, si hace falta, una excepción por oficina en `PUT /communication/admin/tenants/{id}/constraints` (mismos campos; `null` vuelve a la global). Rango 1–3650 días. El GET de la oficina la devuelve en `effective.retention`; la purga y el barrido de grabaciones resuelven la retención efectiva de cada oficina con mensajes o grabaciones. Migración `20261101000000_retention_platform_owned` (los valores que una oficina ya hubiera cambiado se conservan como su excepción).
 
 ### Analytics
 
@@ -221,6 +226,7 @@ Namespace: `/communication/socket.io`. Autenticación vía `handshake.auth.token
 | `call.accept` | C→S | `{ callId }` |
 | `call.reject` | C→S | `{ callId }` |
 | `call.end` | C→S | `{ callId }` |
+| `call.rejoin` | C→S (ack) | `{ callId }` → `{ state }`; vuelve a la room tras reconectar el socket (solo participantes; si terminó, no entra y devuelve el fin) |
 | `call.signal` | C→S | `{ callId, signal: RTCSessionDescriptionInit\|RTCIceCandidateInit }` |
 | `call.media_status` | C→S | `{ callId, audio: bool, video: bool, screenShare: bool }` |
 | `call.incoming` | S→C | `{ callId, callerUserId, kind, ringingAtUtc }` |
@@ -408,6 +414,7 @@ Todo lo que un cliente necesita para capturar, medir y adaptar media sale de la 
 - **Disponibilidad:** `cloudstorage.file.available/infected/blocked_by_policy/scan_failed.v1` de la carpeta `Recordings` → `Ready` o `Failed`. Respaldo en el barrido: metadata de CloudStorage pasado 60 s; sin registro tras `recordingAvailabilityTimeoutMinutes` → `StorageRejected`; composiciones sin respuesta → `CompositionTimeout`.
 - **Retención (T-37):** cada 60 min. Pistas de audio (`RecordingTracks`) a los `recordingTracksRetentionDays` para todas las oficinas; grabación + transcript a los `RecordingRetentionDays` solo con `PurgeEnabled`. Borrado por el contrato existente `FilesDeletionRequestedIntegrationEvent` a la cola `cloudstorage-file-deletions` (borrado lógico en CloudStorage).
 - **HTTP (contrato 9.6):** `GET /communication/meetings/:id/recording` y `GET /communication/calls/:id/recording` → `{ state, captureMode, startedAtUtc, stoppedAtUtc, durationSeconds, maxDurationSeconds, stopReason, format, sizeBytes, failureReason, playback, transcript }` (URLs presignadas solo con `Ready`). Ven quienes participaron; el staff que no participó necesita `communication.meeting.record` / `communication.call.record` (y la asignación del cliente en llamadas si aplica); el portal solo si `recordingVisibleInPortal`. 404 `*.Recording.NotFound`, 403 `*.Recording.Forbidden`. La lista de reuniones trae `recordingState` por ítem. `POST /communication/admin/recordings/:scope/:id/recompose` (PlatformOnly, 202) recompone desde el spool del recorder.
+- **Idioma del transcript (INV-T01):** reunión con idioma elegido (`Meeting.TranscriptLanguage`, al crear o con `PUT …/transcript-language`) → ese idioma para todas las pistas. Si es automático (null), cada pista va con el idioma que eligió su participante ("Language I speak", `UserCommunicationPreferences.TranscriptLanguage`) y, si no eligió, el de la oficina. La pantalla compartida siempre va en `auto`. Las notas de voz usan el idioma de quien la grabó. Forzar un idioma a quien habla otro hace que Whisper traduzca. Migración `20261101010000_meeting_transcript_language`.
 - **Notas de voz (D-27):** al enviar, `Message.TranscriptState = Processing | Skipped` según plan, oficina (`voiceNoteTranscriptEnabled`) y `voiceNoteTranscriptMaxSeconds`; `communication.chat.voice_note_transcription_requested.v1` → el worker responde `voice_note_transcript_ready|failed.v1` con el texto en línea → socket `chat.message.transcript_updated`. La búsqueda de mensajes incluye `TranscriptText`.
 - **Configuración en BD:** plataforma (`recordingLimitWarningMinutes`, `recordingLimitToleranceSeconds`, `recordingComposition{Width,Height,Fps,VideoKbps,AudioKbps,Format}`, `recordingCaptureSpatialLayer`, `recordingTracksRetentionDays`, `voiceNoteTranscriptMaxSeconds`, `transcriptWorkerTimeoutFactorPct`, `recordingAvailabilityTimeoutMinutes`, `serverSideRecordingEnabled`, `voiceNoteTranscriptEnabled`); oficina (`transcriptPrompt` ≤ 500, `voiceNoteTranscriptEnabled`).
 - **Variables:** `COMMUNICATION_RECORDER_BASE_URL` (vacío = sin recorder: la captura server falla con `RecorderUnavailable`), `COMMUNICATION_RECORDER_TAP_LISTEN_IP`, `COMMUNICATION_RECORDER_TIMEOUT_MS`, `COMMUNICATION_RECORDER_KEYFRAME_INTERVAL_SECONDS`. En local el recorder escucha en 5365 (5360 lo usa Subscription en la flota).

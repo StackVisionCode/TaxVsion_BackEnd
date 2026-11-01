@@ -112,7 +112,7 @@ async function checkAvailability(
 
 export interface RecordingRetentionDeps extends RecordingLifecycleDeps {
   readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'resolve' | 'platform'>;
-  readonly settings: Pick<SettingsRepository, 'listPurgeEnabled'>;
+  readonly settings: Pick<SettingsRepository, 'listTenantsWithContent'>;
   readonly fileDeletion: FileDeletionRequester;
 }
 
@@ -121,7 +121,7 @@ const RETENTION_BATCH = 50;
 
 /**
  * F7 (T-37): (1) pistas de audio vencidas (`recordingTracksRetentionDays`, global) para todas las
- * oficinas; (2) grabaciones y transcripts vencidos solo en oficinas con `PurgeEnabled`. Borra por
+ * oficinas; (2) grabaciones y transcripts vencidos solo en oficinas con la purga activa (retención efectiva). Borra por
  * evento a CloudStorage y marca la sesion; un reintento repite el pedido sin efecto adicional.
  */
 export async function runRecordingRetention(now: Date, deps: RecordingRetentionDeps): Promise<{ tracks: number; recordings: number }> {
@@ -138,11 +138,11 @@ export async function runRecordingRetention(now: Date, deps: RecordingRetentionD
   }
 
   let recordings = 0;
-  for (const tenant of await deps.settings.listPurgeEnabled()) {
-    const effective = await deps.effectiveSettings.resolve(tenant.tenantId);
+  for (const tenantId of await deps.settings.listTenantsWithContent()) {
+    const effective = await deps.effectiveSettings.resolve(tenantId);
     if (!effective.recording.purgeEnabled) continue;
     const cutoff = new Date(now.getTime() - effective.recording.retentionDays * 86_400_000);
-    for (const session of await deps.recordingSessions.listReadyToPurge(tenant.tenantId, cutoff, RETENTION_BATCH)) {
+    for (const session of await deps.recordingSessions.listReadyToPurge(tenantId, cutoff, RETENTION_BATCH)) {
       const s = session.toSnapshot();
       const files: FileDeletionTarget[] = [];
       if (s.recordingFileId) files.push({ fileId: s.recordingFileId, ownerType: 'Communication', ownerId: s.scopeId, folderType: 'Recordings' });

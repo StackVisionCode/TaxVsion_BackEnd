@@ -15,6 +15,7 @@ import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/ra
 import { initiateCall } from '../../../application/use-cases/initiate-call.js';
 import { respondToCall } from '../../../application/use-cases/respond-to-call.js';
 import { endCall } from '../../../application/use-cases/end-call.js';
+import { rejoinCall } from '../../../application/use-cases/rejoin-call.js';
 import { updateCallMediaStatus } from '../../../application/use-cases/update-call-media-status.js';
 import { relayCallSignal } from '../../../application/use-cases/relay-call-signal.js';
 import { attachCallRecording } from '../../../application/use-cases/attach-call-recording.js';
@@ -32,6 +33,7 @@ import {
 import {
   AttachCallRecordingPayloadSchema,
   CallActionPayloadSchema,
+  CallRejoinPayloadSchema,
   CallSfuConnectTransportPayloadSchema,
   CallSfuCreateTransportPayloadSchema,
   CallSfuProducePayloadSchema,
@@ -295,6 +297,23 @@ function wireCallSocket(
   socket.on(CallSocketEvents.Accept, (...args: unknown[]) => void respondAction('accept', args));
   socket.on(CallSocketEvents.Reject, (...args: unknown[]) => void respondAction('reject', args));
   socket.on(CallSocketEvents.Cancel, (...args: unknown[]) => void respondAction('cancel', args));
+
+  // Tras reconectar (reinicio del servidor, canal nuevo) el participante vuelve a la room de su llamada.
+  socket.on(CallSocketEvents.Rejoin, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = CallRejoinPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await rejoinCall({ tenantId, callId: parsed.data.callId, userId }, container);
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    if (result.value.open) await socket.join(`t:${tenantId}:call:${parsed.data.callId}`);
+    ack?.({ ok: true, value: { state: result.value.state } });
+  });
 
   socket.on(CallSocketEvents.End, async (...args: unknown[]) => {
     const raw = args[0];
@@ -722,7 +741,11 @@ function wireCallSocket(
   // Initiate/Accept), terminamos esa call y avisamos al peer — sin esto, la
   // otra punta se queda "en llamada" indefinidamente con nadie del otro lado.
   // `disconnecting`: las rooms siguen disponibles (en `disconnect` ya están vacías).
-  socket.on('disconnecting', () => {
+  // Si el corte lo provoca el propio servidor (apagado o reinicio en un deploy), la llamada NO se termina:
+  // la media es P2P y sigue; al reconectar el cliente manda `call.rejoin`, y si nadie vuelve la cierra el
+  // barrido de llamadas abandonadas.
+  socket.on('disconnecting', (reason: string) => {
+    if (SERVER_INITIATED_DISCONNECTS.has(reason)) return;
     const callRoomPrefix = `t:${tenantId}:call:`;
     const activeCallIds = [...socket.rooms].filter((room) => room.startsWith(callRoomPrefix));
     for (const room of activeCallIds) {
@@ -751,6 +774,9 @@ function wireCallSocket(
     }
   });
 }
+
+/** Motivos de Socket.IO cuando es el servidor el que corta (`disconnectSockets(true)` / `io.close()`). */
+const SERVER_INITIATED_DISCONNECTS: ReadonlySet<string> = new Set(['server namespace disconnect', 'server shutting down']);
 
 function envelope<T>(payload: T): SocketEnvelope<T> {
   return {

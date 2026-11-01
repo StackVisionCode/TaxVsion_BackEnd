@@ -30,6 +30,7 @@ export class PrismaMeetingRepository implements MeetingRepository {
           RecordingRequested: snapshot.recordingRequested,
           RecordingFileId: snapshot.recordingFileId,
           TranscriptFileId: snapshot.transcriptFileId,
+          TranscriptLanguage: snapshot.transcriptLanguage,
           HostUserId: snapshot.hostUserId,
           ScheduledForUtc: snapshot.scheduledForUtc,
           ScheduledDurationMinutes: snapshot.scheduledDurationMinutes,
@@ -56,6 +57,7 @@ export class PrismaMeetingRepository implements MeetingRepository {
           Strategy: snapshot.strategy,
           RecordingFileId: snapshot.recordingFileId,
           TranscriptFileId: snapshot.transcriptFileId,
+          TranscriptLanguage: snapshot.transcriptLanguage,
           HostUserId: snapshot.hostUserId,
           // Sin esta linea `reschedule()` movia la reunion solo en memoria: la fila conservaba la hora
           // vieja, el evento salia con la nueva y los invitados quedaban avisados de una hora que la

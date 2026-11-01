@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractDetectedLanguage, parseWhisperJson } from '../../src/whisper/whisper-output.js';
+import { correctedLanguage, extractDetectedLanguage, parseWhisperJson } from '../../src/whisper/whisper-output.js';
 
 describe('parseWhisperJson', () => {
   it('lee offsets en ms, recorta el texto y toma result.language', () => {
@@ -48,5 +48,29 @@ describe('extractDetectedLanguage', () => {
 
   it('null si no hay linea de idioma', () => {
     expect(extractDetectedLanguage('nothing here')).toBeNull();
+  });
+});
+
+describe('correctedLanguage', () => {
+  const fallbacks = { pt: 'es', it: 'es' };
+
+  it('una detección permitida no se toca', () => {
+    expect(correctedLanguage('es', ['en', 'es'], fallbacks)).toBeNull();
+    expect(correctedLanguage('en', ['en', 'es'], fallbacks)).toBeNull();
+  });
+
+  it('portugués o italiano vuelven a español', () => {
+    expect(correctedLanguage('pt', ['en', 'es'], fallbacks)).toBe('es');
+    expect(correctedLanguage('it', ['en', 'es'], fallbacks)).toBe('es');
+  });
+
+  it('con `*` lo desconocido va a ese idioma (islandés → español)', () => {
+    expect(correctedLanguage('is', ['en', 'es'], { ...fallbacks, '*': 'es' })).toBe('es');
+  });
+
+  it('lo que no está en el mapa va al primero permitido; sin lista no se corrige', () => {
+    expect(correctedLanguage('de', ['en', 'es'], fallbacks)).toBe('en');
+    expect(correctedLanguage('pt', ['en'], fallbacks)).toBe('en');
+    expect(correctedLanguage('pt', [], fallbacks)).toBeNull();
   });
 });

@@ -14,25 +14,17 @@ describe('TenantCommunicationSettings.defaults', () => {
     expect(s.maxMeetingParticipants).toBeNull();
     expect(s.employeeToEmployeeChatEnabled).toBe(false);
     expect(s.defaultCameraOff).toBe(true);
-    expect(s.messageRetentionDays).toBe(365);
+    // La retención ya no es de la oficina: la fija la plataforma (global o excepción por oficina).
+    expect('messageRetentionDays' in s).toBe(false);
   });
 });
 
 describe('TenantCommunicationSettings.update', () => {
   it('accepts partial patch', () => {
     const s = TenantCommunicationSettings.defaults(randomUUID());
-    const r = s.update({ chatEnabled: false, messageRetentionDays: 30 });
+    const r = s.update({ chatEnabled: false });
     expect(r.isSuccess).toBe(true);
     expect(s.toSnapshot().chatEnabled).toBe(false);
-    expect(s.toSnapshot().messageRetentionDays).toBe(30);
-  });
-
-  it('rejects invalid retention', () => {
-    const s = TenantCommunicationSettings.defaults(randomUUID());
-    const r = s.update({ messageRetentionDays: 100000 });
-    expect(r.isSuccess).toBe(false);
-    if (r.isSuccess) return;
-    expect(r.error.code).toBe('Settings.InvalidRetention');
   });
 });
 

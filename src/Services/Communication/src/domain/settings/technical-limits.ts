@@ -115,6 +115,9 @@ export const TECHNICAL_LIMITS = {
   // F10 (ADD-08 T-73): snapshot de analítica; y el histórico de calls/meetings/invitaciones (null = no se purga).
   analyticsRetentionDays: { min: 30, max: 3650, fallback: 730 },
   historyRetentionDays: { min: 30, max: 3650, fallback: 365 },
+  // Retención de mensajes y grabaciones: la decide la plataforma (global y, si hace falta, por oficina).
+  messageRetentionDays: { min: 1, max: 3650, fallback: 365 },
+  recordingRetentionDays: { min: 1, max: 3650, fallback: 90 },
 } as const satisfies Record<string, TechnicalRange>;
 
 export type TechnicalLimitKey = keyof typeof TECHNICAL_LIMITS;

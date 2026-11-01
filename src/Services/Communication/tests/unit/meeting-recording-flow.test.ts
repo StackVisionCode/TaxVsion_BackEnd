@@ -101,7 +101,7 @@ class FakeSettingsRepository implements SettingsRepository {
     return settings;
   }
   async save(): Promise<void> {}
-  async listPurgeEnabled(): Promise<Array<{ tenantId: string; messageRetentionDays: number }>> {
+  async listTenantsWithContent(): Promise<string[]> {
     return [];
   }
 }

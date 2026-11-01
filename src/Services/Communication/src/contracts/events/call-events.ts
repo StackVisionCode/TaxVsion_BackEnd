@@ -62,7 +62,7 @@ export interface CallEndedEvent extends IntegrationEvent {
   readonly callerUserId: string;
   readonly calleeUserId: string;
   readonly kind: 'Audio' | 'Video';
-  readonly endReason: 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | 'MaxDurationReached';
+  readonly endReason: 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | 'MaxDurationReached' | 'Abandoned';
   readonly durationSeconds: number;
   readonly endedAtUtc: string;
   readonly recordingFileId: string | null;

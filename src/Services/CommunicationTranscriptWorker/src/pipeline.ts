@@ -103,6 +103,8 @@ interface AudioSource {
   readonly fileId: string;
   readonly label: TrackLabel | null;
   readonly startOffsetMs: number;
+  /** Idioma de esta fuente; null = el del evento (INV-T01). */
+  readonly language?: string | null;
 }
 
 interface SourceResult {
@@ -131,6 +133,7 @@ function toSources(event: RecordingReadyEvent): AudioSource[] {
     fileId: track.fileId,
     label: { userId: track.userId, displayName: track.displayName },
     startOffsetMs: track.startOffsetMs,
+    language: track.language ?? null,
   }));
 }
 
@@ -199,7 +202,7 @@ async function transcribeSource(
 
     logger.info({ eventId: event.eventId, index }, 'running whisper.cpp');
     const transcription = await stage('WhisperError', () =>
-      transcribeWav(wavPath, base, { language: ctx.language, prompt: ctx.prompt, timeoutMs: ctx.timeoutMs }),
+      transcribeWav(wavPath, base, { language: source.language ?? ctx.language, prompt: ctx.prompt, timeoutMs: ctx.timeoutMs }),
     );
 
     const lastEndMs = transcription.segments.reduce((max, segment) => Math.max(max, segment.endMs), 0);

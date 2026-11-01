@@ -329,6 +329,11 @@ export interface RecordingAudioTrackRef {
   readonly userId: string;
   readonly displayName: string;
   readonly startOffsetMs: number;
+  /**
+   * Idioma de esta pista para whisper (INV-T01): el que el participante eligió para su voz; ausente =
+   * el del evento (oficina, normalmente `auto`). La pantalla compartida va siempre en `auto`.
+   */
+  readonly language?: string;
 }
 
 /** F7 (T-35): la grabacion se detuvo al llegar al limite (la reunion sigue). */

@@ -1,3 +1,4 @@
+import type { UserCommunicationPreferencesRepository } from '../ports/user-communication-preferences-repository.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
@@ -14,6 +15,7 @@ export interface RequestVoiceNoteTranscriptDeps {
   readonly messages: MessageRepository;
   readonly publisher: IntegrationEventPublisher;
   readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'resolve'>;
+  readonly userPreferences?: Pick<UserCommunicationPreferencesRepository, 'find'> | undefined;
   readonly emitter?: RealtimeEmitter | undefined;
 }
 
@@ -36,7 +38,11 @@ export async function requestVoiceNoteTranscript(
   const snap = message?.toSnapshot();
   if (!message || !snap || snap.conversationId !== command.conversationId) return Result.fail(notFound);
 
-  const policy = await resolveVoiceNotePolicy(deps.effectiveSettings, command.tenantId, snap.audioDurationMs ?? 0);
+  // El idioma es el de quien grabó la nota, no el de quien pide el transcript.
+  const policy = await resolveVoiceNotePolicy(deps.effectiveSettings, command.tenantId, snap.audioDurationMs ?? 0, {
+    userId: snap.senderId,
+    preferences: deps.userPreferences,
+  });
   if (!policy.transcribe || !snap.attachmentFileId) {
     return Result.fail(makeError('Chat.Message.TranscriptNotAvailable', "This voice note can't be transcribed."));
   }

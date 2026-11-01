@@ -1,3 +1,5 @@
+import type { UserCommunicationPreferencesRepository } from '../ports/user-communication-preferences-repository.js';
+import { speakerTranscriptLanguage } from './speaker-transcript-language.js';
 import { recordAttachmentMetadata } from './record-attachment-metadata.js';
 import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
 import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
@@ -50,6 +52,8 @@ export interface SendMessageResult {
 export interface SendMessageDeps {
   /** F7 (D-27): politica de transcript de notas de voz; sin resolver (tests viejos) no se pide transcript. */
   readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
+  /** Idioma de voz que eligió quien manda la nota (INV-T01). */
+  readonly userPreferences?: Pick<UserCommunicationPreferencesRepository, 'find'> | undefined;
   readonly conversations: ConversationRepository;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
@@ -154,7 +158,10 @@ export async function sendMessage(
   // F7 (D-27): una nota de voz nace transcribible a demanda (o Skipped si la politica no lo cubre).
   const voiceNotePolicy =
     deps.effectiveSettings && messageResult.value.isVoiceNote()
-      ? await resolveVoiceNotePolicy(deps.effectiveSettings, command.tenantId, messageResult.value.toSnapshot().audioDurationMs ?? 0)
+      ? await resolveVoiceNotePolicy(deps.effectiveSettings, command.tenantId, messageResult.value.toSnapshot().audioDurationMs ?? 0, {
+          userId: command.senderUserId,
+          preferences: deps.userPreferences,
+        })
       : null;
   if (voiceNotePolicy) messageResult.value.setTranscript({ state: voiceNotePolicy.transcribe ? 'NotRequested' : 'Skipped' });
 
@@ -217,12 +224,15 @@ export async function resolveVoiceNotePolicy(
   resolver: Pick<EffectiveSettingsResolver, 'resolve'>,
   tenantId: string,
   durationMs: number,
+  speaker?: { userId: string; preferences?: Pick<UserCommunicationPreferencesRepository, 'find'> | undefined },
 ): Promise<{ transcribe: boolean; language: string; prompt: string | null }> {
   const effective = await resolver.resolve(tenantId);
   const policy = effective.recording.voiceNote;
+  const speakerLanguage = speaker ? await speakerTranscriptLanguage(speaker.preferences, tenantId, speaker.userId) : null;
   return {
     transcribe: policy.enabled && durationMs > 0 && durationMs <= policy.maxSeconds * 1000,
-    language: effective.recording.transcriptLanguage,
+    // El idioma de quien habla (si lo eligió) manda sobre el de la oficina.
+    language: speakerLanguage ?? effective.recording.transcriptLanguage,
     prompt: effective.recording.transcriptPrompt,
   };
 }

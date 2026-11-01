@@ -142,6 +142,9 @@ const rawEnv = z
 
     COMMUNICATION_PLATFORM_TENANT_ID: z.string().uuid().default('8f58a521-4c25-4d91-9f4e-7ad5df14c001'),
 
+    // Llamada abierta sin ningún socket en su room durante este tiempo → se cierra como `Abandoned`.
+    COMMUNICATION_CALL_ABANDONED_GRACE_SECONDS: z.coerce.number().int().min(30).max(3600).default(120),
+
     // Fase Backend 5 — invitaciones a meetings. Secreto local HS256, propio de
     // Communication, para el shortLivedJoinTicket del guest (nada que ver con
     // el JWKS RS256 de Auth usado para usuarios con cuenta).
@@ -469,6 +472,10 @@ export const config = {
   },
 
   platformTenantId: rawEnv.COMMUNICATION_PLATFORM_TENANT_ID.toLowerCase(),
+
+  calls: {
+    abandonedGraceSeconds: rawEnv.COMMUNICATION_CALL_ABANDONED_GRACE_SECONDS,
+  },
 
   moduleGate: {
     enforce: rawEnv.COMMUNICATION_MODULE_GATE_ENFORCE,

@@ -51,9 +51,6 @@ model TenantCommunicationSettings {
   DefaultMicrophoneOff                   Boolean  @default(false)
   PersistChatOnEnd                       Boolean  @default(false)
   // Retención y purge (feature-flag OFF por default).
-  MessageRetentionDays                   Int      @default(365)
-  RecordingRetentionDays                 Int      @default(90)
-  PurgeEnabled                           Boolean  @default(false)
   // Politica de consentimiento de grabacion (Fase Backend 2) — ver
   // RecordingConsentPolicy en domain/recording/recording-consent.ts.
   // "AllAcceptedRequired" | "NoRejections" | "HostOverride"
@@ -247,6 +244,10 @@ model PlatformCommunicationSettings {
   // F10 (ADD-08): zona con la que se cortan los días de analítica y retenciones (null = no se purga).
   AnalyticsTimeZone                     String   @default("UTC") @db.NVarChar(64)
   AnalyticsRetentionDays                Int      @default(730)
+  // Retención de mensajes y grabaciones y purga automática: la decide la plataforma, no la oficina.
+  MessageRetentionDays                  Int      @default(365)
+  RecordingRetentionDays                Int      @default(90)
+  PurgeEnabled                          Boolean  @default(false)
   CallsRetentionDays                    Int?
   MeetingsRetentionDays                 Int?
   InvitationsRetentionDays              Int?
@@ -268,6 +269,10 @@ model TenantCommunicationConstraints {
   MaxRecordingMinutesVideoCall Int?
   RecordingAllowed             Boolean?
   GuestsAllowed                Boolean?
+  // Excepción de retención de esta oficina (null = la global de la plataforma). Solo PlatformAdmin.
+  MessageRetentionDays         Int?
+  RecordingRetentionDays       Int?
+  PurgeEnabled                 Boolean?
   Notes                        String?  @db.NVarChar(512)
   UpdatedByUserId              String?  @db.UniqueIdentifier
   CreatedAtUtc                 DateTime @default(now()) @db.DateTime2
@@ -887,6 +892,8 @@ model Meeting {
   RecordingFileId            String?   @db.UniqueIdentifier
   // Transcript STT (Fase 6) — mismo criterio que Call.TranscriptFileId.
   TranscriptFileId           String?   @db.UniqueIdentifier
+  // INV-T01 R-7: idioma del transcript de la reunión; null = el de cada participante / la oficina.
+  TranscriptLanguage         String?   @db.NVarChar(16)
   HostUserId                 String    @db.UniqueIdentifier
   ScheduledForUtc            DateTime? @db.DateTime2
   StartedAtUtc               DateTime? @db.DateTime2

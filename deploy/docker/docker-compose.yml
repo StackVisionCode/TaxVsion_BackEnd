@@ -2492,6 +2492,9 @@ services:
     build:
       context: ../../src/Services/CommunicationTranscriptWorker
       dockerfile: Dockerfile
+    # INV-T01: large-v3-turbo pica ~1.0–1.4 GB (más ffmpeg y Node). El tope protege a la VM compartida;
+    # whisper corre con nice 10 (TRANSCRIPT_WORKER_WHISPER_NICE) para no quitarle CPU a lo que está en vivo.
+    mem_limit: ${TRANSCRIPT_WORKER_MEM_LIMIT:-3g}
     environment:
       NODE_ENV: production
       LOG_LEVEL: info
@@ -2521,7 +2524,7 @@ services:
       TRANSCRIPT_WORKER_MINIO_TEMP_BUCKET: taxvision-temp
       TRANSCRIPT_WORKER_MINIO_SOURCE_PREFIX: transcript
       # Modelo/binario/idioma se dejan en los defaults del Dockerfile
-      # (ggml-base, whisper-cli, auto-detect) salvo que se sobreescriban aca.
+      # (ggml-large-v3-turbo-q5_0, whisper-cli, VAD Silero; idioma auto por pista) salvo que se sobreescriban aca.
       # TRANSCRIPT_WORKER_RECORDING_KINDS: no seteada a proposito — sin ella el
       # worker usa el default hardcodeado COMMUNICATION_RECORDING_KINDS (kind
       # call/meeting, campos callId/meetingId), o sea el comportamiento actual
