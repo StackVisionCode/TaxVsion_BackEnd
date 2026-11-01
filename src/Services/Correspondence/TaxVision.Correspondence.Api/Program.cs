@@ -75,6 +75,7 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // Gate de buzón de oficina: resuelve qué buzones ve el usuario (office.read) para ocultar el correo
 // de oficina en los listados a quien no tiene el permiso.
 builder.Services.AddScoped<IMailboxVisibilityResolver, MailboxVisibilityResolver>();
+builder.Services.AddScoped<ICustomerAccessResolver, CustomerAccessResolver>();
 
 // RBAC Fase 4 (RBAC_Hardening_Plan.md) — resource ownership sobre Draft, apagado por default
 // (Authorization:ResourceOwnership:Enabled). Sin permiso "manage" de override (a diferencia de
@@ -123,6 +124,9 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
+
+    // Consumer compartido (kit) de CustomerAssignmentsChanged: vive fuera del assembly → registro explícito.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =
@@ -141,6 +145,7 @@ builder.Host.UseWolverine(options =>
     // silencio — ningun otro servicio llega a recibirlo.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CorrespondenceCustomerEmailReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CorrespondenceThreadStateChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).

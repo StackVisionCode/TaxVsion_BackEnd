@@ -48,6 +48,7 @@ public sealed class SetThreadReadStateHandlerTests
             emailThreads,
             incomingEmails,
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -77,6 +78,7 @@ public sealed class SetThreadReadStateHandlerTests
             emailThreads,
             incomingEmails,
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -105,6 +107,7 @@ public sealed class SetThreadReadStateHandlerTests
             emailThreads,
             incomingEmails,
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -120,6 +123,7 @@ public sealed class SetThreadReadStateHandlerTests
             new FakeEmailThreadRepository(),
             new FakeIncomingEmailRepository(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 

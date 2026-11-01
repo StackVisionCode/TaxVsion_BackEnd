@@ -8,6 +8,58 @@ namespace TaxVision.Correspondence.Tests.Threads;
 public sealed class ArchiveThreadHandlerTests
 {
     [Fact]
+    public async Task Handle_PublishesTheArchivedStateWithNoUnreadAndTheActor()
+    {
+        var tenantId = Guid.NewGuid();
+        var thread = EmailThread.NewFromMessage(tenantId, Guid.NewGuid(), "Subject", null, DateTime.UtcNow).Value;
+        var emailThreads = new FakeEmailThreadRepository();
+        await emailThreads.AddAsync(thread);
+        var bus = new FakeMessageBus();
+        var actor = Guid.NewGuid();
+
+        await ArchiveThreadHandler.Handle(
+            new ArchiveThreadCommand(tenantId, thread.Id, ActorUserId: actor),
+            emailThreads,
+            new FakeIncomingEmailRepository(),
+            new FakeUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
+
+        var evt =
+            Assert.IsType<BuildingBlocks.Messaging.CorrespondenceIntegrationEvents.CorrespondenceThreadStateChangedIntegrationEvent>(
+                Assert.Single(bus.Published)
+            );
+        Assert.Equal("Archived", evt.Status);
+        Assert.Equal(0, evt.UnreadCount);
+        Assert.Equal(actor, evt.ActorUserId);
+    }
+
+    [Fact]
+    public async Task Handle_ForAClientNotAssignedToTheUser_ReturnsNotFoundAndKeepsTheThreadActive()
+    {
+        var tenantId = Guid.NewGuid();
+        var thread = EmailThread.NewFromMessage(tenantId, Guid.NewGuid(), "Subject", null, DateTime.UtcNow).Value;
+        var emailThreads = new FakeEmailThreadRepository();
+        await emailThreads.AddAsync(thread);
+        var bus = new FakeMessageBus();
+
+        var result = await ArchiveThreadHandler.Handle(
+            new ArchiveThreadCommand(tenantId, thread.Id, RestrictToUserId: Guid.NewGuid()),
+            emailThreads,
+            new FakeIncomingEmailRepository(),
+            new FakeUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("EmailThread.NotFound", result.Error.Code);
+        Assert.Equal(EmailThreadStatus.Active, thread.Status);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
     public async Task Handle_WithAnActiveThread_ArchivesItAndPersists()
     {
         var tenantId = Guid.NewGuid();
@@ -21,6 +73,7 @@ public sealed class ArchiveThreadHandlerTests
             emailThreads,
             new FakeIncomingEmailRepository(),
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -49,6 +102,7 @@ public sealed class ArchiveThreadHandlerTests
             emailThreads,
             new FakeIncomingEmailRepository(),
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
         var firstArchivedAt = thread.ArchivedAtUtc;
@@ -60,6 +114,7 @@ public sealed class ArchiveThreadHandlerTests
             emailThreads,
             new FakeIncomingEmailRepository(),
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -81,6 +136,7 @@ public sealed class ArchiveThreadHandlerTests
             emailThreads,
             new FakeIncomingEmailRepository(),
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -102,6 +158,7 @@ public sealed class ArchiveThreadHandlerTests
             emailThreads,
             new FakeIncomingEmailRepository(),
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 

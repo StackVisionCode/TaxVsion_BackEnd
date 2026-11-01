@@ -11,15 +11,20 @@ namespace TaxVision.Auth.Application.Abstractions;
 /// </para>
 /// </summary>
 /// <param name="RememberDevice">
-/// El usuario marcó "recordar este dispositivo" al resolver el segundo factor. Viaja en el vale
-/// porque el dispositivo de confianza se crea al CANJEARLO: así el token nace junto a los de la
-/// sesión y lo guarda el mismo origen que después lo va a reenviar en el próximo login.
+/// El usuario marcó "recordar este dispositivo" al resolver el segundo factor.
+/// </param>
+/// <param name="DeviceToken">
+/// Token del dispositivo de confianza ya creado en la entrada central (donde se resolvió el código):
+/// ese origen lo guarda para el próximo login central, y el canje lo devuelve igual para que también
+/// lo guarde el origen de la oficina. Un solo dispositivo para los dos. Vive solo en el vale (Redis, un
+/// uso, TTL corto); null = vale anterior a este cambio o sin "recordar".
 /// </param>
 public sealed record HandoffTicketPayload(
     Guid TenantId,
     Guid UserId,
     bool MustEnrollMfa = false,
-    bool RememberDevice = false
+    bool RememberDevice = false,
+    string? DeviceToken = null
 );
 
 /// <summary>

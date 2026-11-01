@@ -12,5 +12,7 @@ public sealed record DraftListItem(
     string Status,
     bool IsReply,
     DateTime UpdatedAtUtc,
-    DateTime? LastAutoSavedAtUtc
+    DateTime? LastAutoSavedAtUtc,
+    // Cliente del borrador; null = para alguien que no es cliente.
+    Guid? CustomerId
 );

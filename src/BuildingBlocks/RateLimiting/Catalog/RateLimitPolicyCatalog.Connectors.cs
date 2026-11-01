@@ -51,6 +51,19 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 40
     );
 
+    // TestManual — "Test connection" del alta manual: mismo I/O externo que ConnectManual pero sin guardar
+    // nada, con cupo propio para que unos intentos de contraseña no agoten el del alta.
+    public static readonly RateLimitPolicyDefinition ConnectorsAccountsManualTest = Define(
+        "connectors.i.accounts_manual_test",
+        RateLimitCategory.I,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 20,
+        windowSeconds: 1800,
+        RateLimitAlgorithm.FixedWindow,
+        overlayQuota: 80
+    );
+
     public static readonly RateLimitPolicyDefinition ConnectorsSend = Define(
         "connectors.k.send",
         RateLimitCategory.K,

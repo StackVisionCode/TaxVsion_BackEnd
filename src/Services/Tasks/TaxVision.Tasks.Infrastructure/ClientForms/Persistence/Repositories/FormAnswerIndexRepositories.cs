@@ -22,6 +22,8 @@ internal sealed class FormAnswerIndexReadRepository(TasksDbContext context) : IF
             .Where(entry => entry.Key == query.Key);
         if (!string.IsNullOrEmpty(query.Value))
             rows = rows.Where(entry => entry.ValueText == query.Value);
+        if (!string.IsNullOrEmpty(query.Contains))
+            rows = rows.Where(entry => entry.ValueText.Contains(query.Contains));
         rows = ApplyDateRange(rows, query.From, query.To);
 
         var total = await rows.CountAsync(ct);
@@ -48,7 +50,7 @@ internal sealed class FormAnswerIndexReadRepository(TasksDbContext context) : IF
             .ToArrayAsync(ct);
         return values
             .GroupBy(value => value)
-            .Select(group => new FormReportSummaryBucket(group.Key, group.Count()))
+            .Select(group => new FormReportSummaryBucket(group.Key, group.Count(), group.Key))
             .OrderByDescending(bucket => bucket.Count)
             .ThenBy(bucket => bucket.Value, StringComparer.Ordinal)
             .ToArray();
@@ -75,7 +77,8 @@ internal sealed class FormAnswerIndexReadRepository(TasksDbContext context) : IF
                 entry.CompletedAtUtc,
                 entry.Key,
                 entry.RowIndex,
-                entry.ValueText
+                entry.ValueText,
+                entry.VersionNumber
             ))
             .ToArray();
     }
@@ -185,7 +188,9 @@ internal sealed class FormAnswerIndexReadRepository(TasksDbContext context) : IF
             entry.RowIndex,
             entry.ValueText,
             entry.ValueNumber,
-            entry.ValueDate
+            entry.ValueDate,
+            entry.VersionNumber,
+            entry.ValueText
         );
 
     private static string DisplayName(FormAnswerIndexEntry entry, Lookups references) =>

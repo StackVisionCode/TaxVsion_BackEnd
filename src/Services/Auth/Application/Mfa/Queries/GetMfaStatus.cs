@@ -1,5 +1,6 @@
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Mfa;
 
 namespace TaxVision.Auth.Application.Mfa.Queries;
@@ -15,11 +16,13 @@ public sealed record MfaMethodResponse(
 
 public sealed record TrustedDeviceResponse(Guid Id, string? UserAgent, DateTime CreatedAtUtc, DateTime ExpiresAtUtc);
 
+/// <summary><see cref="RequiredByPolicy"/>: la oficina lo exige a este tipo de usuario (no se puede apagar).</summary>
 public sealed record MfaStatusResponse(
     bool MfaEnabled,
     IReadOnlyList<MfaMethodResponse> Methods,
     int RecoveryCodesRemaining,
-    IReadOnlyList<TrustedDeviceResponse> TrustedDevices
+    IReadOnlyList<TrustedDeviceResponse> TrustedDevices,
+    bool RequiredByPolicy
 );
 
 public sealed record GetMyMfaStatusQuery(Guid UserId);
@@ -63,7 +66,8 @@ public static class GetMyMfaStatusHandler
                         device.CreatedAtUtc,
                         device.ExpiresAtUtc
                     ))
-                    .ToList()
+                    .ToList(),
+                await MfaRequirement.IsRequiredByPolicyAsync(user, mfa, ct)
             )
         );
     }

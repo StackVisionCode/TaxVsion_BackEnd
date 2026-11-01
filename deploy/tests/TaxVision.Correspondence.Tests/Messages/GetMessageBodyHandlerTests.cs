@@ -51,6 +51,7 @@ public sealed class GetMessageBodyHandlerTests
             new FakeEmailThreadRepository(),
             connectorsClient,
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -82,6 +83,7 @@ public sealed class GetMessageBodyHandlerTests
             new FakeEmailThreadRepository(),
             connectorsClient,
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -104,6 +106,7 @@ public sealed class GetMessageBodyHandlerTests
             new FakeEmailThreadRepository(),
             new FakeConnectorsClient(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -132,6 +135,7 @@ public sealed class GetMessageBodyHandlerTests
             new FakeEmailThreadRepository(),
             connectorsClient,
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 

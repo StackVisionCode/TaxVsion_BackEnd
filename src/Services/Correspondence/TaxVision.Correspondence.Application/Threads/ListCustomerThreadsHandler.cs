@@ -21,6 +21,11 @@ public static class ListCustomerThreadsHandler
         CancellationToken ct
     )
     {
+        // Sin customers.view_all, un cliente no asignado no tiene correo para este usuario (página vacía, no 403:
+        // no confirma que el cliente exista).
+        if (!await emailThreads.IsCustomerVisibleAsync(query.TenantId, query.CustomerId, query.RestrictToUserId, ct))
+            return new PagedResult<ThreadSummary>([], query.Page, query.Size, 0);
+
         var page = await emailThreads.ListByCustomerAsync(
             query.TenantId,
             query.CustomerId,

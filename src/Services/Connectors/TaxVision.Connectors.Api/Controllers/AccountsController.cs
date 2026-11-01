@@ -118,6 +118,43 @@ public sealed class AccountsController(IMessageBus bus, IUserPermissionsSource p
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>
+    /// "Test connection" del alta manual: prueba IMAP y SMTP por separado sin guardar nada. 200 con el
+    /// resultado de cada uno (un fallo de servidor NO es un error HTTP: es la respuesta que se pidió).
+    /// </summary>
+    [HttpPost("accounts/manual/test")]
+    [Authorize]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("connectors.i.accounts_manual_test")]
+    public async Task<IActionResult> TestManual([FromBody] ConnectManualAccountRequest body, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out _) || !User.TryGetUserId(out _))
+            return Forbid();
+        if (!await CanConnectAsync(body.AsOffice, ct))
+            return Forbid();
+        User.TryGetEmail(out var initiatorEmail);
+
+        var result = await bus.InvokeAsync<Result<TestManualConnectionResult>>(
+            new TestManualConnectionQuery(
+                body.EmailAddress,
+                initiatorEmail,
+                body.AsOffice,
+                body.ImapHost,
+                body.ImapPort,
+                body.ImapUseSsl,
+                body.ImapUsername,
+                body.ImapPassword,
+                body.SmtpHost,
+                body.SmtpPort,
+                body.SmtpUseStartTls,
+                body.SmtpUsername,
+                body.SmtpPassword
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpGet("accounts")]
     [HasPermission(ConnectorsPermissions.AccountsRead)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]

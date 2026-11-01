@@ -44,16 +44,17 @@ public static class ListTrashHandler
         int take,
         CancellationToken ct
     ) =>
-        query.Customer.CustomerId is { } customerId
-            ? incomingEmails.ListTrashedByCustomerAsync(
+        query.Customer.IsUnlinked
+            ? Task.FromResult(new PagedResult<IncomingEmail>([], 1, take, 0))
+            : incomingEmails.ListTrashedByCustomerAsync(
                 query.TenantId,
-                customerId,
+                query.Customer.CustomerId,
+                query.Customer.RestrictToUserId,
                 1,
                 take,
                 query.VisibleAccountIds,
                 ct
-            )
-            : Task.FromResult(new PagedResult<IncomingEmail>([], 1, take, 0));
+            );
 
     private static TrashItem ToItem(IncomingEmail email) =>
         new(
@@ -64,7 +65,8 @@ public static class ListTrashHandler
             email.From,
             email.DeletedAtUtc!.Value,
             email.HasAttachments,
-            email.AttachmentCount
+            email.AttachmentCount,
+            email.CustomerId
         );
 
     private static TrashItem ToItem(Draft draft) =>
@@ -76,6 +78,7 @@ public static class ListTrashHandler
             draft.Recipients.Where(r => r.Type == EmailRecipientType.To).Select(r => r.Address).FirstOrDefault() ?? "",
             draft.DeletedAtUtc!.Value,
             draft.Attachments.Count > 0,
-            draft.Attachments.Count
+            draft.Attachments.Count,
+            draft.CustomerId
         );
 }

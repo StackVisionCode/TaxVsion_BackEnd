@@ -63,6 +63,20 @@ public interface IIncomingEmailRepository
     /// del inbox). Devuelve solo las entradas con conteo &gt; 0 — un hilo ausente del diccionario
     /// tiene 0 no-leídos. Usa <c>IX_IncomingEmails_TenantId_EmailThreadId_Unread</c> (filtrado).
     /// </summary>
+    /// <summary>Último entrante vivo de cada hilo (para el remitente y la vista previa del inbox).</summary>
+    Task<IReadOnlyDictionary<Guid, IncomingEmail>> GetLatestByThreadAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> emailThreadIds,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Hilos de la lista que tienen algún entrante vivo con adjuntos.</summary>
+    Task<IReadOnlySet<Guid>> GetThreadIdsWithAttachmentsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> emailThreadIds,
+        CancellationToken ct = default
+    );
+
     Task<IReadOnlyDictionary<Guid, int>> GetUnreadCountsByThreadAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> emailThreadIds,
@@ -83,7 +97,9 @@ public interface IIncomingEmailRepository
     // Papelera: entrantes borrados de un customer, más reciente primero.
     Task<PagedResult<IncomingEmail>> ListTrashedByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        // null = de todos los clientes (acotado por restrictToUserId)
+        Guid? customerId,
+        Guid? restrictToUserId,
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,

@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
@@ -20,7 +21,12 @@ namespace TaxVision.Correspondence.Api.Controllers;
 [ApiController]
 [Route("correspondence/messages")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolver visibility) : ControllerBase
+public sealed class MessagesController(
+    IMessageBus bus,
+    IMailboxVisibilityResolver visibility,
+    ICustomerAccessResolver customerAccess,
+    ICorrelationContext correlation
+) : ControllerBase
 {
     /// <summary>
     /// Marca este correo inbound como leído (estado compartido por el tenant). Idempotente — abrir el
@@ -46,7 +52,11 @@ public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolv
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result>(new TrashIncomingMessageCommand(tenantId, id), ct);
+        var (visible, restrictTo, actor) = await ResolveActionScopeAsync(tenantId, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new TrashIncomingMessageCommand(tenantId, id, visible, restrictTo, actor, correlation.CorrelationId),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -59,7 +69,11 @@ public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolv
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result>(new RestoreIncomingMessageCommand(tenantId, id), ct);
+        var (visible, restrictTo, actor) = await ResolveActionScopeAsync(tenantId, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new RestoreIncomingMessageCommand(tenantId, id, visible, restrictTo, actor, correlation.CorrelationId),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -72,7 +86,11 @@ public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolv
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result>(new PurgeIncomingMessageCommand(tenantId, id), ct);
+        var (visible, restrictTo, _) = await ResolveActionScopeAsync(tenantId, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new PurgeIncomingMessageCommand(tenantId, id, visible, restrictTo),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -81,8 +99,23 @@ public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolv
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result>(new SetMessageReadStateCommand(tenantId, id, isRead), ct);
+        var (visible, restrictTo, actor) = await ResolveActionScopeAsync(tenantId, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new SetMessageReadStateCommand(tenantId, id, isRead, visible, restrictTo, actor, correlation.CorrelationId),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Gate de las acciones sobre un mensaje (buzón y cliente asignado) y quién actúa, para el aviso en vivo.</summary>
+    private async Task<(IReadOnlyCollection<Guid>? Visible, Guid? RestrictTo, Guid? Actor)> ResolveActionScopeAsync(
+        Guid tenantId,
+        CancellationToken ct
+    )
+    {
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
+        var restrictTo = await customerAccess.ResolveRestrictedUserIdAsync(User, ct);
+        return (visible, restrictTo, User.TryGetUserId(out var userId) ? userId : null);
     }
 
     /// <summary>Fase 9 — metadata de UN mensaje, mismo DTO que el listado paginado del hilo. Nunca llama a Connectors (a diferencia de <see cref="GetBody"/>).</summary>
@@ -112,7 +145,13 @@ public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolv
 
         var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<Result<MessageBodyResult>>(
-            new GetMessageBodyQuery(tenantId, id, visible),
+            new GetMessageBodyQuery(
+                tenantId,
+                id,
+                visible,
+                User.TryGetUserId(out var userId) ? userId : null,
+                correlation.CorrelationId
+            ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

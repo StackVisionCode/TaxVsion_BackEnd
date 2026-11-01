@@ -225,11 +225,14 @@ public sealed class CentralLoginHandlersTests
         var session = await FromTicket(world, handoff.Value.Ticket);
 
         Assert.True(session.IsSuccess);
-        Assert.False(string.IsNullOrWhiteSpace(session.Value.DeviceToken));
+        // El login central (otro origen) recibe el token al resolver el código; el canje en la oficina
+        // devuelve el mismo: un solo dispositivo, guardado en los dos orígenes.
+        Assert.False(string.IsNullOrWhiteSpace(handoff.Value.DeviceToken));
+        Assert.Equal(handoff.Value.DeviceToken, session.Value.DeviceToken);
         Assert.Single(world.Mfa.AddedDevices);
 
-        // Segundo login desde el mismo navegador: una sola oficina y ya sin reto → vale directo.
-        var again = await Discover(world, "user@example.com", GoodPassword, session.Value.DeviceToken);
+        // Segundo login desde la entrada central: una sola oficina y ya sin reto → vale directo.
+        var again = await Discover(world, "user@example.com", GoodPassword, handoff.Value.DeviceToken);
 
         Assert.NotNull(again.Value.Ticket);
         Assert.Null(again.Value.DiscoverySessionRef);
@@ -245,6 +248,7 @@ public sealed class CentralLoginHandlersTests
         var handoff = await Handoff(world, discover.Value.DiscoverySessionRef!.Value, admin, mfaCode: "valid-totp");
         var session = await FromTicket(world, handoff.Value.Ticket);
 
+        Assert.Null(handoff.Value.DeviceToken);
         Assert.Null(session.Value.DeviceToken);
         Assert.Empty(world.Mfa.AddedDevices);
     }

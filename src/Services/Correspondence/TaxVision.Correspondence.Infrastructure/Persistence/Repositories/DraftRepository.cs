@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.CustomerVisibility;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Compose;
@@ -196,10 +197,32 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     // IS NULL explícito y no "CustomerId == @p" con un parámetro nullable: EF traduciría esa
     // comparación con la semántica de null de C# (un OR) y SQL Server dejaría de buscar por
     // IX_Drafts_TenantId_CustomerId_Status_UpdatedAtUtc.
-    private static IQueryable<Draft> InScope(IQueryable<Draft> drafts, DraftCustomerScope scope) =>
-        scope.CustomerId is { } customerId
-            ? drafts.Where(d => d.CustomerId == customerId)
-            : drafts.Where(d => d.CustomerId == null);
+    private IQueryable<Draft> InScope(IQueryable<Draft> drafts, DraftCustomerScope scope)
+    {
+        var assignments = db.Set<CustomerAssignmentProjection>();
+        if (scope.IsAll)
+        {
+            // Sin cliente siempre; de cliente, solo los visibles para quien no tiene customers.view_all.
+            return scope.RestrictToUserId is { } user
+                ? drafts.Where(d =>
+                    d.CustomerId == null
+                    || assignments.Any(a =>
+                        a.TenantId == d.TenantId && a.CustomerId == d.CustomerId && a.UserId == user
+                    )
+                )
+                : drafts;
+        }
+        if (scope.CustomerId is { } customerId)
+        {
+            var ofCustomer = drafts.Where(d => d.CustomerId == customerId);
+            return scope.RestrictToUserId is { } user
+                ? ofCustomer.Where(d =>
+                    assignments.Any(a => a.TenantId == d.TenantId && a.CustomerId == customerId && a.UserId == user)
+                )
+                : ofCustomer;
+        }
+        return drafts.Where(d => d.CustomerId == null);
+    }
 
     // Tracked (sin AsNoTracking): DraftCleanupJob muta cada fila (Draft.Discard()) y guarda por el
     // mismo UnitOfWork/DbContext del scope — a diferencia de los listados de solo lectura de arriba.

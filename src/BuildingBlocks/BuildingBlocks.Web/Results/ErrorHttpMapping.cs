@@ -175,7 +175,9 @@ public static class ErrorHttpMapping
             or "Seat.CheckoutInProgress"
             // El plan ya trae ese add-on, o el tenant ya lo tiene activo.
             or "AddOn.AlreadyIncludedInPlan"
-            or "AddOn.AlreadyActive" => StatusCodes.Status409Conflict,
+            or "AddOn.AlreadyActive"
+            // Resetear el segundo factor de un cliente que aún no tiene acceso al portal.
+            or "Auth.NoPortalAccount" => StatusCodes.Status409Conflict,
             "FormTemplate.Archived"
             or "FormTemplate.NotArchived"
             or "FormTemplate.NothingToPublish"

@@ -26,88 +26,6 @@ namespace TaxVision.Correspondence.Tests.Api;
 /// </summary>
 public sealed class DraftsControllerOwnershipTests
 {
-    private sealed class ControllableMessageBus : IMessageBus
-    {
-        public object? NextResult { get; set; }
-
-        public object? LastInvoked { get; private set; }
-
-        public Task<T> InvokeAsync<T>(
-            object message,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        )
-        {
-            LastInvoked = message;
-            return Task.FromResult((T)NextResult!);
-        }
-
-        public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null) => ValueTask.CompletedTask;
-
-        public ValueTask SendAsync<T>(T message, DeliveryOptions? options = null) =>
-            throw new NotImplementedException();
-
-        public ValueTask BroadcastToTopicAsync(string topicName, object message, DeliveryOptions? options = null) =>
-            throw new NotImplementedException();
-
-        public IReadOnlyList<Envelope> PreviewSubscriptions(object message) => throw new NotImplementedException();
-
-        public IReadOnlyList<Envelope> PreviewSubscriptions(object message, DeliveryOptions options) =>
-            throw new NotImplementedException();
-
-        public IDestinationEndpoint EndpointFor(string endpointName) => throw new NotImplementedException();
-
-        public IDestinationEndpoint EndpointFor(Uri uri) => throw new NotImplementedException();
-
-        public Task InvokeForTenantAsync(
-            string tenantId,
-            object message,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        ) => throw new NotImplementedException();
-
-        public Task<T> InvokeForTenantAsync<T>(
-            string tenantId,
-            object message,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        ) => throw new NotImplementedException();
-
-        public string? TenantId
-        {
-            get => null;
-            set { }
-        }
-
-        public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-            throw new NotImplementedException();
-
-        public Task InvokeAsync(
-            object message,
-            DeliveryOptions options,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        ) => throw new NotImplementedException();
-
-        public Task<T> InvokeAsync<T>(
-            object message,
-            DeliveryOptions options,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        ) => throw new NotImplementedException();
-
-        public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(
-            object message,
-            CancellationToken cancellation = default
-        ) => throw new NotImplementedException();
-
-        public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(
-            object message,
-            DeliveryOptions options,
-            CancellationToken cancellation = default
-        ) => throw new NotImplementedException();
-    }
-
     /// <summary>Wrapper real y liviano sobre <see cref="IsOwnerOrHasManageHandler{TResource}"/> — sin DI, sin ServiceProvider.</summary>
     private sealed class RealAuthorizationService(IAuthorizationHandler handler) : IAuthorizationService
     {
@@ -177,7 +95,8 @@ public sealed class DraftsControllerOwnershipTests
             authorizationService,
             new FakeOwnershipOptionsMonitor(flagEnabled),
             new Projections.FakeCorrelationContext(),
-            new FakeMailboxVisibilityResolver()
+            new FakeMailboxVisibilityResolver(),
+            new FakeCustomerAccessResolver()
         )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } },
@@ -258,9 +177,9 @@ public sealed class DraftsControllerOwnershipTests
 
         var results = new[]
         {
-            await controller.List(parsed, unlinked, 1, 20, CancellationToken.None),
-            await controller.ListSent(parsed, unlinked, 1, 20, CancellationToken.None),
-            await controller.ListTrash(parsed, unlinked, 1, 20, CancellationToken.None),
+            await controller.List(parsed, unlinked, null, 1, 20, CancellationToken.None),
+            await controller.ListSent(parsed, unlinked, null, 1, 20, CancellationToken.None),
+            await controller.ListTrash(parsed, unlinked, null, 1, 20, CancellationToken.None),
         };
 
         Assert.All(
@@ -286,7 +205,7 @@ public sealed class DraftsControllerOwnershipTests
                 0
             );
 
-        var result = await controller.ListSent(null, true, 1, 20, CancellationToken.None);
+        var result = await controller.ListSent(null, true, null, 1, 20, CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result);
         var query = Assert.IsType<TaxVision.Correspondence.Application.Compose.ListSentMessagesQuery>(bus.LastInvoked);
@@ -306,13 +225,58 @@ public sealed class DraftsControllerOwnershipTests
                 0
             );
 
-        await controller.ListSent(customerId, false, 1, 20, CancellationToken.None);
+        await controller.ListSent(customerId, false, null, 1, 20, CancellationToken.None);
 
         var query = Assert.IsType<TaxVision.Correspondence.Application.Compose.ListSentMessagesQuery>(bus.LastInvoked);
         Assert.Equal(customerId, query.Customer.CustomerId);
     }
 
-    private static (DraftsController Controller, ControllableMessageBus Bus) BuildListController()
+    [Fact]
+    public async Task ListSent_with_scope_all_lists_every_recipient_and_keeps_the_customer_restriction()
+    {
+        var restrictedUser = Guid.NewGuid();
+        var (controller, bus) = BuildListController(new FakeCustomerAccessResolver { RestrictTo = restrictedUser });
+        bus.NextResult =
+            new BuildingBlocks.Common.PagedResult<TaxVision.Correspondence.Application.Compose.SentMessageListItem>(
+                [],
+                1,
+                20,
+                0
+            );
+
+        var result = await controller.ListSent(null, false, "all", 1, 20, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        var query = Assert.IsType<TaxVision.Correspondence.Application.Compose.ListSentMessagesQuery>(bus.LastInvoked);
+        Assert.True(query.Customer.IsAll);
+        Assert.False(query.Customer.IsUnlinked);
+        Assert.Equal(restrictedUser, query.Customer.RestrictToUserId);
+    }
+
+    [Theory]
+    [InlineData("all", "11111111-1111-1111-1111-111111111111", false)]
+    [InlineData("all", null, true)]
+    [InlineData("everything", null, false)]
+    public async Task Scope_all_cannot_be_mixed_with_another_scope(string scopeName, string? customerId, bool unlinked)
+    {
+        var (controller, bus) = BuildListController();
+
+        var result = await controller.ListTrash(
+            customerId is null ? null : Guid.Parse(customerId),
+            unlinked,
+            scopeName,
+            1,
+            20,
+            CancellationToken.None
+        );
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Null(bus.LastInvoked);
+    }
+
+    private static (DraftsController Controller, ControllableMessageBus Bus) BuildListController(
+        FakeCustomerAccessResolver? customerAccess = null
+    )
     {
         var bus = new ControllableMessageBus();
         var principal = new ClaimsPrincipal(
@@ -333,7 +297,8 @@ public sealed class DraftsControllerOwnershipTests
             ),
             new FakeOwnershipOptionsMonitor(false),
             new Projections.FakeCorrelationContext(),
-            new FakeMailboxVisibilityResolver()
+            new FakeMailboxVisibilityResolver(),
+            customerAccess ?? new FakeCustomerAccessResolver()
         )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } },

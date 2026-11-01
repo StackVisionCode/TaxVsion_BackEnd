@@ -15,5 +15,7 @@ public sealed record SentMessageListItem(
     bool IsReply,
     DateTime SentAtUtc,
     bool HasAttachments,
-    int AttachmentCount
+    int AttachmentCount,
+    // Cliente en el que se archivó; null = enviado a alguien que no es cliente.
+    Guid? CustomerId
 );

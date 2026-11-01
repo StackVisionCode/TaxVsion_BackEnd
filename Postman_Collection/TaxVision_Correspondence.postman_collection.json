@@ -146,6 +146,99 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "ListInboxThreads",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/threads?status=Active&unreadOnly=false&q=&page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"threads"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "Active"
+								},
+								{
+									"key": "unreadOnly",
+									"value": "false"
+								},
+								{
+									"key": "q",
+									"value": ""
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Inbox de la oficina: hilos de TODOS los clientes visibles, más reciente primero. Visibilidad = buzón visible (connectors.accounts.office.read) Y, sin customers.view_all, solo clientes asignados (proyección CustomerAssignmentProjections). status=Active (defecto) | Archived; customerId opcional filtra a un cliente; unreadOnly=true; q busca en asunto, remitente y vista previa (máx. 200). Cada fila: threadId, customerId, subject, status, messageCount, first/lastMessageAtUtc, unreadCount, lastSenderAddress, lastSenderName, snippet (último entrante; null si solo hay enviados) y hasAttachments. 400 Correspondence.InvalidThreadStatus."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetUnreadCount",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/unread-count",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"unread-count"
+							],
+							"query": []
+						},
+						"description": "No leídos de los hilos activos visibles (mismas reglas que ListInboxThreads): { threads, messages }. Para los badges del menú y del Inbox sin cargar listas."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
 				}
 			]
 		},
@@ -782,6 +875,55 @@
 								"type": "text/javascript",
 								"exec": [
 									"pm.test(\"status 204 or documented error\", () => [204, 404, 409].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "ListSent (all recipients)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/sent?scope=all&page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"sent"
+							],
+							"query": [
+								{
+									"key": "scope",
+									"value": "all"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Sent sin elegir cliente: correo a clientes visibles + correo a quien no es cliente. Cada fila trae customerId (null = no es cliente). scope=all es excluyente con customerId y unlinked (400 Correspondence.CustomerScopeRequired). Igual en GET /correspondence/drafts?scope=all y GET /correspondence/trash?scope=all."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
 								]
 							}
 						}

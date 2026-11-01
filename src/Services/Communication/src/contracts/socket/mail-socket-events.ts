@@ -13,7 +13,19 @@ export interface MailIncomingEmailDto {
   incomingEmailId: string;
 }
 
+/** Estado visible de un hilo tras leerlo, archivarlo o mover un mensaje a la papelera (solo ids y contadores). */
+export interface MailThreadStateDto {
+  customerId: string;
+  emailThreadId: string;
+  status: string;
+  unreadCount: number;
+  messageCount: number;
+  actorUserId: string | null;
+}
+
 export const MailSocketEvents = {
   /** Correspondence persistió un correo entrante de un cliente; el front recarga los hilos. */
   IncomingEmail: 'mail.incoming',
+  /** Cambió el estado de un hilo; el front lo aplica en vivo (otras pestañas y empleados). */
+  ThreadState: 'mail.thread_state',
 } as const;

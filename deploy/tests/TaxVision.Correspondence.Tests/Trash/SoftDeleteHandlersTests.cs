@@ -17,6 +17,14 @@ public sealed class SoftDeleteHandlersTests
     private static readonly Guid Tenant = Guid.NewGuid();
     private static readonly Guid Customer = Guid.NewGuid();
 
+    private static async Task<(FakeEmailThreadRepository Threads, Guid ThreadId)> NewThreadRepositoryAsync()
+    {
+        var thread = EmailThread.NewFromMessage(Tenant, Customer, "Subject", null, DateTime.UtcNow).Value;
+        var threads = new FakeEmailThreadRepository();
+        await threads.AddAsync(thread);
+        return (threads, thread.Id);
+    }
+
     private static IncomingEmail NewIncoming(Guid threadId, bool read = false)
     {
         var email = IncomingEmail
@@ -71,6 +79,7 @@ public sealed class SoftDeleteHandlersTests
             threads,
             incoming,
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -89,7 +98,9 @@ public sealed class SoftDeleteHandlersTests
         var result = await UnarchiveThreadHandler.Handle(
             new UnarchiveThreadCommand(Tenant, thread.Id),
             threads,
+            new FakeIncomingEmailRepository(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -114,6 +125,7 @@ public sealed class SoftDeleteHandlersTests
             incoming,
             threads,
             uow,
+            new FakeMessageBus(),
             CancellationToken.None
         );
         Assert.True(email.IsDeleted);
@@ -124,6 +136,7 @@ public sealed class SoftDeleteHandlersTests
             incoming,
             threads,
             uow,
+            new FakeMessageBus(),
             CancellationToken.None
         );
         Assert.False(email.IsDeleted);
@@ -147,6 +160,7 @@ public sealed class SoftDeleteHandlersTests
             incoming,
             threads,
             uow,
+            new FakeMessageBus(),
             CancellationToken.None
         );
         await TrashIncomingMessageHandler.Handle(
@@ -154,6 +168,7 @@ public sealed class SoftDeleteHandlersTests
             incoming,
             threads,
             uow,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -163,13 +178,15 @@ public sealed class SoftDeleteHandlersTests
     [Fact]
     public async Task Purge_incoming_fails_when_not_trashed()
     {
-        var email = NewIncoming(Guid.NewGuid());
+        var (threads, threadId) = await NewThreadRepositoryAsync();
+        var email = NewIncoming(threadId);
         var incoming = new FakeIncomingEmailRepository();
         await incoming.AddAsync(email);
 
         var result = await PurgeIncomingMessageHandler.Handle(
             new PurgeIncomingMessageCommand(Tenant, email.Id),
             incoming,
+            threads,
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -181,7 +198,8 @@ public sealed class SoftDeleteHandlersTests
     [Fact]
     public async Task Purge_incoming_removes_it_when_trashed()
     {
-        var email = NewIncoming(Guid.NewGuid());
+        var (threads, threadId) = await NewThreadRepositoryAsync();
+        var email = NewIncoming(threadId);
         email.SoftDelete(DateTime.UtcNow);
         var incoming = new FakeIncomingEmailRepository();
         await incoming.AddAsync(email);
@@ -189,6 +207,7 @@ public sealed class SoftDeleteHandlersTests
         var result = await PurgeIncomingMessageHandler.Handle(
             new PurgeIncomingMessageCommand(Tenant, email.Id),
             incoming,
+            threads,
             new FakeUnitOfWork(),
             CancellationToken.None
         );

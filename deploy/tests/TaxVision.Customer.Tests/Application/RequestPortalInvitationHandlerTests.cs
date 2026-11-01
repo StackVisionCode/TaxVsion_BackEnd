@@ -95,6 +95,19 @@ public sealed class RequestPortalInvitationHandlerTests
             LastCall = (tenantId, customerId, email, requestedByUserId);
             return Task.FromResult(outcome);
         }
+
+        public Task<Result<PortalMfaStatus>> GetMfaStatusAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<Result<PortalMfaResetOutcome>> ResetMfaAsync(
+            Guid tenantId,
+            Guid customerId,
+            Guid requestedByUserId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
     }
 
     private sealed class SingleCustomer(DomainCustomer customer) : ICustomerRepository

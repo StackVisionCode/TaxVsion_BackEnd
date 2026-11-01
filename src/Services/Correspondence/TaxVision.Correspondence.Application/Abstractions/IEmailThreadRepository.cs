@@ -50,6 +50,28 @@ public interface IEmailThreadRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Inbox de la oficina: hilos de todos los clientes visibles (gate de buzón + cliente asignado), más
+    /// reciente primero, con filtros opcionales de estado, cliente, no leídos y búsqueda.
+    /// </summary>
+    Task<PagedResult<EmailThread>> ListVisibleAsync(InboxThreadFilter filter, CancellationToken ct = default);
+
+    /// <summary>No leídos de los hilos activos visibles (mismos gates que <see cref="ListVisibleAsync"/>).</summary>
+    Task<Threads.UnreadMailCount> CountUnreadAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid>? visibleAccountIds,
+        Guid? restrictToUserId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>¿El usuario puede ver el correo de este cliente? <paramref name="restrictToUserId"/> null = ve todos.</summary>
+    Task<bool> IsCustomerVisibleAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid? restrictToUserId,
+        CancellationToken ct = default
+    );
+
     /// <summary>¿El hilo tiene ≥1 mensaje (entrante vivo o enviado) de alguno de esos buzones? Gate de buzón de oficina: si es false para el set visible del usuario, el hilo se le oculta.</summary>
     Task<bool> HasVisibleMessageAsync(
         Guid tenantId,

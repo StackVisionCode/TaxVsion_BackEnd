@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Threads;
 
@@ -18,12 +19,22 @@ public static class ArchiveThreadHandler
         IEmailThreadRepository emailThreads,
         IIncomingEmailRepository incomingEmails,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
         var thread = await emailThreads.GetByIdAsync(command.TenantId, command.ThreadId, ct);
-        if (thread is null)
-            return Result.Failure(new Error("EmailThread.NotFound", "The thread was not found for this tenant."));
+        if (
+            thread is null
+            || !await ThreadAccess.CanSeeAsync(
+                emailThreads,
+                thread,
+                command.VisibleAccountIds,
+                command.RestrictToUserId,
+                ct
+            )
+        )
+            return Result.Failure(ThreadAccess.NotFound);
 
         thread.Archive();
 
@@ -34,6 +45,14 @@ public static class ArchiveThreadHandler
             email.MarkRead(now);
 
         await unitOfWork.SaveChangesAsync(ct);
+        await ThreadStateNotifier.PublishAsync(
+            bus,
+            incomingEmails,
+            thread,
+            command.ActorUserId,
+            command.CorrelationId,
+            ct
+        );
         return Result.Success();
     }
 }

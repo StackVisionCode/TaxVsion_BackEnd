@@ -40,6 +40,7 @@ public static class ListDraftsHandler
             draft.Status.ToString(),
             draft.ReplyContext is not null,
             draft.UpdatedAtUtc,
-            draft.LastAutoSavedAtUtc
+            draft.LastAutoSavedAtUtc,
+            draft.CustomerId
         );
 }
