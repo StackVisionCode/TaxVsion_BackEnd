@@ -7,6 +7,8 @@ import {
 import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
 import { recordAttachmentMetadata } from './record-attachment-metadata.js';
 import type { AttachmentTrackingStatus } from '../ports/attachment-tracking-repository.js';
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import { syncAttachmentStatusFromStorage } from './sync-attachment-status.js';
 
 /**
  * Metadata de un adjunto de chat para el que llama, previa autorizacion de
@@ -26,6 +28,7 @@ export interface AttachmentMetadataResult {
 
 export interface GetAttachmentMetadataDeps extends AuthorizeConversationAttachmentDeps {
   readonly cloudStorageMetadata: CloudStorageMetadataClient;
+  readonly emitter?: RealtimeEmitter | undefined;
 }
 
 const RESOLVABLE: ReadonlySet<AttachmentTrackingStatus> = new Set(['Available', 'Pending', 'PendingReview', 'BlockedByPolicy']);
@@ -52,12 +55,11 @@ export async function getAttachmentMetadata(
   // F8d: aprovecha la lectura para dejar el tipo real y la categoría en el tracking (Info por pestañas).
   if (meta) await recordAttachmentMetadata({ tenantId: command.tenantId, fileId: command.fileId, known: meta }, deps).catch(() => undefined);
 
-  let status = tracking.status;
-  if (status === 'Pending' && (meta?.status === 'Available' || meta?.status === 'PendingReview')) {
-    // T-20: también sana "en revisión", para que el chat diga "Under review" y no "Scanning".
-    status = meta.status;
-    await deps.attachmentTracking.markStatus({ fileId: command.fileId, status }).catch(() => undefined);
-  }
+  // T-20: también sana "en revisión", para que el chat diga "Under review" y no "Scanning".
+  const status =
+    tracking.status === 'Pending' && meta
+      ? ((await syncAttachmentStatusFromStorage({ tenantId: command.tenantId, fileId: command.fileId, known: meta }, deps)) ?? tracking.status)
+      : tracking.status;
 
   return Result.ok({
     fileId: command.fileId,
