@@ -1,3 +1,5 @@
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import { syncAttachmentStatusFromStorage } from './sync-attachment-status.js';
 import type { UserCommunicationPreferencesRepository } from '../ports/user-communication-preferences-repository.js';
 import { speakerTranscriptLanguage } from './speaker-transcript-language.js';
 import { recordAttachmentMetadata } from './record-attachment-metadata.js';
@@ -63,6 +65,8 @@ export interface SendMessageDeps {
   readonly attachmentReservations: AttachmentUploadReservationRepository;
   /** F8d: para la categoría provisional del adjunto (opcional). */
   readonly cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
+  /** Para avisar si el adjunto ya estaba escaneado al registrarlo. */
+  readonly emitter?: RealtimeEmitter | undefined;
 }
 
 export async function sendMessage(
@@ -177,7 +181,12 @@ export async function sendMessage(
       tenantId: command.tenantId,
     });
     // F8d: categoría provisional con el tipo declarado; al pasar el escaneo se reemplaza por el detectado.
-    void recordAttachmentMetadata({ tenantId: command.tenantId, fileId: messageSnapshot.attachmentFileId }, deps).catch(() => undefined);
+    // Si el escaneo ya terminó (un audio tarda < 1 s), el evento `available` pudo llegar antes de este
+    // registro y perderse: se toma el estado real de CloudStorage con la misma lectura.
+    const fileId = messageSnapshot.attachmentFileId;
+    void recordAttachmentMetadata({ tenantId: command.tenantId, fileId }, deps)
+      .then((known) => syncAttachmentStatusFromStorage({ tenantId: command.tenantId, fileId, known }, deps))
+      .catch(() => undefined);
   }
 
   const recipients = conversation

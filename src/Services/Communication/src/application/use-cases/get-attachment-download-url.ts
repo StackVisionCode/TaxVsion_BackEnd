@@ -5,6 +5,9 @@ import {
   type AuthorizeConversationAttachmentDeps,
 } from './authorize-conversation-attachment.js';
 import type { CloudStorageDownloadClient } from '../ports/cloudstorage-download-client.js';
+import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import { syncAttachmentStatusFromStorage } from './sync-attachment-status.js';
 
 /**
  * URL de descarga presignada de un adjunto de chat, previa autorizacion de
@@ -20,6 +23,9 @@ export interface AttachmentDownloadUrlResult {
 
 export interface GetAttachmentDownloadUrlDeps extends AuthorizeConversationAttachmentDeps {
   readonly cloudStorageDownload: CloudStorageDownloadClient;
+  /** Para no responder "en proceso" de un archivo que CloudStorage ya liberó (evento perdido). */
+  readonly cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
+  readonly emitter?: RealtimeEmitter | undefined;
 }
 
 export async function getAttachmentDownloadUrl(
@@ -28,7 +34,10 @@ export async function getAttachmentDownloadUrl(
 ): Promise<Result<AttachmentDownloadUrlResult>> {
   const authorized = await authorizeConversationAttachment(command, deps);
   if (!authorized.isSuccess) return Result.fail(authorized.error);
-  const { status } = authorized.value;
+  let { status } = authorized.value;
+  if (status === 'Pending') {
+    status = (await syncAttachmentStatusFromStorage({ tenantId: command.tenantId, fileId: command.fileId }, deps)) ?? status;
+  }
 
   if (status === 'Pending') {
     return Result.fail(makeError('Chat.Attachment.Pending', 'The attachment is still being processed.'));
