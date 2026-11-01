@@ -35,7 +35,7 @@ public static class FormReportExportHandler
         var entries = await read.ExportRowsAsync(query, ct);
         var columns = Columns(schema.Keys, entries);
         var headers = BaseHeaders.Concat(columns.Select(column => column.Label)).Select(FormReportCsv.Guard).ToArray();
-        var rows = Pivot(entries, columns);
+        var rows = Pivot(entries, columns, schema.Labels);
 
         audit.RecordStaffOutcome(
             query.TenantId,
@@ -77,7 +77,8 @@ public static class FormReportExportHandler
 
     private static IReadOnlyList<IReadOnlyList<string>> Pivot(
         IReadOnlyList<FormReportExportEntry> entries,
-        IReadOnlyList<Column> columns
+        IReadOnlyList<Column> columns,
+        FormReportLabels labels
     )
     {
         var rows = new List<IReadOnlyList<string>>();
@@ -100,7 +101,7 @@ public static class FormReportExportHandler
                 var values = group
                     .Where(entry => string.Equals(entry.Key, column.Key, StringComparison.Ordinal))
                     .OrderBy(entry => entry.RowIndex ?? 0)
-                    .Select(entry => entry.ValueText);
+                    .Select(entry => labels.Of(entry.VersionNumber, entry.Key, entry.ValueText));
                 cells.Add(string.Join("; ", values));
             }
             rows.Add(FormReportCsv.GuardRow(cells));

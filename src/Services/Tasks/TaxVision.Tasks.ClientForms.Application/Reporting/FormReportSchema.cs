@@ -2,8 +2,17 @@ using TaxVision.DataCollection.Engine.Definitions;
 
 namespace TaxVision.Tasks.ClientForms.Application.Reporting;
 
-/// <summary>Una clave reportable de un template: su etiqueta y tipo para la UI y las columnas del CSV.</summary>
-public sealed record FormReportableKey(string Key, string Label, string Type, bool Repeatable);
+/// <summary>
+/// Una clave reportable de un template: su etiqueta y tipo para la UI y las columnas del CSV, y sus
+/// opciones (valor del índice + etiqueta) para filtrar por opción. Sin opciones = texto libre.
+/// </summary>
+public sealed record FormReportableKey(
+    string Key,
+    string Label,
+    string Type,
+    bool Repeatable,
+    IReadOnlyList<ComponentOption> Options
+);
 
 /// <summary>
 /// Lee del schema del engine qué componentes son reportables. El schema ya prohíbe <c>reportable</c>
@@ -26,7 +35,13 @@ public static class FormReportSchema
                 if (!IsReportable(component) || !seen.Add(component.Key!))
                     continue;
                 keys.Add(
-                    new FormReportableKey(component.Key!, component.Label ?? component.Key!, component.Type, repeatable)
+                    new FormReportableKey(
+                        component.Key!,
+                        component.Label ?? component.Key!,
+                        component.Type,
+                        repeatable,
+                        FormReportOptions.For(component)
+                    )
                 );
             }
         }

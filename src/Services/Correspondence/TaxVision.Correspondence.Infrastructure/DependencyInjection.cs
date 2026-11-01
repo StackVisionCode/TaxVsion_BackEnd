@@ -1,3 +1,4 @@
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -52,6 +53,10 @@ public static class DependencyInjection
         services.AddScoped<IUnmatchedIncomingEmailRepository, UnmatchedIncomingEmailRepository>();
         // Fase 10 — compose/reply.
         services.AddScoped<IDraftRepository, DraftRepository>();
+
+        // Visibilidad por cliente (kit compartido): proyección de asignaciones + reconciliación desde Customer.
+        services.AddCustomerVisibilityProjection<CorrespondenceDbContext>();
+        services.AddCustomerVisibilityReconciliation<Reconciliation.CorrespondencePlatformTokenProvider>(configuration);
         // Fase 14 — rastro mínimo de auditoría (solo escritura, ver ICorrespondenceAuditLogRepository).
         services.AddScoped<ICorrespondenceAuditLogRepository, CorrespondenceAuditLogRepository>();
         // Fase 6 — resuelve threading (4 capas) para RawMessageReceivedConsumer; Wolverine lo

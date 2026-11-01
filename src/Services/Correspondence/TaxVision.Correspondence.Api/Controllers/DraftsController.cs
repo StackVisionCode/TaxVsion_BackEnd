@@ -37,14 +37,15 @@ public sealed class DraftsController(
     IAuthorizationService authorizationService,
     IOptionsMonitor<ResourceOwnershipOptions> ownershipOptions,
     ICorrelationContext correlation,
-    IMailboxVisibilityResolver visibility
+    IMailboxVisibilityResolver visibility,
+    ICustomerAccessResolver customerAccess
 ) : ControllerBase
 {
     private const int DefaultSize = 20;
 
     private static readonly Error CustomerScopeRequired = new(
         "Correspondence.CustomerScopeRequired",
-        "Pass either customerId or unlinked=true."
+        "Pass exactly one of customerId, unlinked=true or scope=all."
     );
 
     /// <summary>
@@ -106,13 +107,15 @@ public sealed class DraftsController(
     public async Task<IActionResult> List(
         [FromQuery] Guid? customerId,
         [FromQuery] bool unlinked,
+        [FromQuery(Name = "scope")] string? scopeName,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
     )
     {
-        if (!TryResolveCustomerScope(customerId, unlinked, out var scope))
+        if (!TryResolveCustomerScope(customerId, unlinked, scopeName, out var scope))
             return BadRequest(CustomerScopeRequired);
+        scope = scope.RestrictedTo(await customerAccess.ResolveRestrictedUserIdAsync(User, ct));
 
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
@@ -144,13 +147,15 @@ public sealed class DraftsController(
     public async Task<IActionResult> ListSent(
         [FromQuery] Guid? customerId,
         [FromQuery] bool unlinked,
+        [FromQuery(Name = "scope")] string? scopeName,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
     )
     {
-        if (!TryResolveCustomerScope(customerId, unlinked, out var scope))
+        if (!TryResolveCustomerScope(customerId, unlinked, scopeName, out var scope))
             return BadRequest(CustomerScopeRequired);
+        scope = scope.RestrictedTo(await customerAccess.ResolveRestrictedUserIdAsync(User, ct));
 
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
@@ -170,13 +175,15 @@ public sealed class DraftsController(
     public async Task<IActionResult> ListTrash(
         [FromQuery] Guid? customerId,
         [FromQuery] bool unlinked,
+        [FromQuery(Name = "scope")] string? scopeName,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
     )
     {
-        if (!TryResolveCustomerScope(customerId, unlinked, out var scope))
+        if (!TryResolveCustomerScope(customerId, unlinked, scopeName, out var scope))
             return BadRequest(CustomerScopeRequired);
+        scope = scope.RestrictedTo(await customerAccess.ResolveRestrictedUserIdAsync(User, ct));
 
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
@@ -390,9 +397,26 @@ public sealed class DraftsController(
     /// cliente (<c>customerId</c>) o el que no se archivó en ninguno (<c>unlinked=true</c>). Sin
     /// ninguno de los dos, 400: un <c>customerId</c> olvidado no debe leerse como "sin cliente".
     /// </summary>
-    private static bool TryResolveCustomerScope(Guid? customerId, bool unlinked, out DraftCustomerScope scope)
+    // Exactamente uno: customerId, unlinked=true o scope=all (todas las carpetas sin elegir cliente).
+    private static bool TryResolveCustomerScope(
+        Guid? customerId,
+        bool unlinked,
+        string? scopeName,
+        out DraftCustomerScope scope
+    )
     {
         scope = DraftCustomerScope.Unlinked;
+        if (!string.IsNullOrWhiteSpace(scopeName))
+        {
+            if (
+                !string.Equals(scopeName, "all", StringComparison.OrdinalIgnoreCase)
+                || unlinked
+                || customerId is not null
+            )
+                return false;
+            scope = DraftCustomerScope.All;
+            return true;
+        }
         if (unlinked)
             return customerId is null;
 

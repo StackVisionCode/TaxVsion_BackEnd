@@ -1,7 +1,9 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Threads;
 using TaxVision.Correspondence.Domain.Inbox;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Messages;
 
@@ -19,6 +21,7 @@ public static class GetMessageBodyHandler
         IEmailThreadRepository emailThreads,
         IConnectorsClient connectorsClient,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -49,7 +52,19 @@ public static class GetMessageBodyHandler
         if (bodyResult.IsFailure)
             return Result.Failure<MessageBodyResult>(bodyResult.Error);
 
-        await MarkFetchedAndReadAsync(email, unitOfWork, ct);
+        if (await MarkFetchedAndReadAsync(email, unitOfWork, ct))
+        {
+            var thread = await emailThreads.GetByIdAsync(query.TenantId, email.EmailThreadId, ct);
+            if (thread is not null)
+                await ThreadStateNotifier.PublishAsync(
+                    bus,
+                    incomingEmails,
+                    thread,
+                    query.ActorUserId,
+                    query.CorrelationId,
+                    ct
+                );
+        }
 
         var body = bodyResult.Value;
         return Result.Success(new MessageBodyResult(body.HtmlBody, body.TextBody, body.Headers));
@@ -71,10 +86,16 @@ public static class GetMessageBodyHandler
 
     // Abrir el cuerpo ES leerlo: se marca leído acá (estado compartido por el tenant) además de
     // registrar el body-fetch. Ambos son idempotentes, así que reabrir un correo ya leído no reescribe.
-    private static async Task MarkFetchedAndReadAsync(IncomingEmail email, IUnitOfWork unitOfWork, CancellationToken ct)
+    // Devuelve si pasó de no leído a leído (solo entonces cambia el estado visible del hilo).
+    private static async Task<bool> MarkFetchedAndReadAsync(
+        IncomingEmail email,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
     {
         email.MarkBodyFetched();
-        email.MarkRead(DateTime.UtcNow);
+        var becameRead = email.MarkRead(DateTime.UtcNow);
         await unitOfWork.SaveChangesAsync(ct);
+        return becameRead;
     }
 }

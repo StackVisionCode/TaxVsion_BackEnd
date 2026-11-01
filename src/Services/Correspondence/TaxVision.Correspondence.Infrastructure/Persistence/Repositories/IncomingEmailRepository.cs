@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.CustomerVisibility;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Inbox;
@@ -79,6 +80,50 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
             .OrderBy(x => x.ReceivedAtUtc)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyDictionary<Guid, IncomingEmail>> GetLatestByThreadAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> emailThreadIds,
+        CancellationToken ct = default
+    )
+    {
+        if (emailThreadIds.Count == 0)
+            return new Dictionary<Guid, IncomingEmail>();
+
+        // Una fila por hilo (ROW_NUMBER en SQL Server): el entrante vivo más reciente.
+        var latest = await db
+            .IncomingEmails.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(x => x.TenantId == tenantId && x.DeletedAtUtc == null && emailThreadIds.Contains(x.EmailThreadId))
+            .GroupBy(x => x.EmailThreadId)
+            .Select(g => g.OrderByDescending(x => x.ReceivedAtUtc).First())
+            .ToListAsync(ct);
+        return latest.ToDictionary(x => x.EmailThreadId);
+    }
+
+    public async Task<IReadOnlySet<Guid>> GetThreadIdsWithAttachmentsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> emailThreadIds,
+        CancellationToken ct = default
+    )
+    {
+        if (emailThreadIds.Count == 0)
+            return new HashSet<Guid>();
+
+        var ids = await db
+            .IncomingEmails.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(x =>
+                x.TenantId == tenantId
+                && x.DeletedAtUtc == null
+                && x.HasAttachments
+                && emailThreadIds.Contains(x.EmailThreadId)
+            )
+            .Select(x => x.EmailThreadId)
+            .Distinct()
+            .ToListAsync(ct);
+        return ids.ToHashSet();
+    }
+
     public async Task<IReadOnlyDictionary<Guid, int>> GetUnreadCountsByThreadAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> emailThreadIds,
@@ -120,7 +165,8 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
     // Papelera del customer (solo entrantes borrados), más reciente primero.
     public async Task<PagedResult<IncomingEmail>> ListTrashedByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
+        Guid? restrictToUserId,
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
@@ -133,7 +179,14 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
         var query = db
             .IncomingEmails.AsNoTracking()
             .IgnoreQueryFilters()
-            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.DeletedAtUtc != null);
+            .Where(x => x.TenantId == tenantId && x.DeletedAtUtc != null);
+        if (customerId is { } id)
+            query = query.Where(x => x.CustomerId == id);
+        if (restrictToUserId is { } user)
+            query = query.Where(x =>
+                db.Set<CustomerAssignmentProjection>()
+                    .Any(a => a.TenantId == tenantId && a.CustomerId == x.CustomerId && a.UserId == user)
+            );
 
         // Gate de buzón de oficina: oculta entrantes borrados de buzones no visibles.
         if (visibleAccountIds is not null)

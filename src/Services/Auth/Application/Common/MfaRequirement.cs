@@ -25,6 +25,15 @@ public static class MfaRequirement
         if (user.MfaEnabled)
             return true;
 
+        return await IsRequiredByPolicyAsync(user, mfa, ct);
+    }
+
+    /// <summary>
+    /// ¿La política del tenant exige segundo factor a este actor type? (sin política, solo los admins).
+    /// Es lo que impide apagarlo y lo que la UI muestra como "lo exige tu oficina".
+    /// </summary>
+    public static async Task<bool> IsRequiredByPolicyAsync(User user, IMfaRepository mfa, CancellationToken ct)
+    {
         var policy = await mfa.GetPolicyAsync(user.TenantId, ct);
         return policy?.RequiresFor(user.ActorType)
             ?? user.ActorType is UserActorType.TenantAdmin or UserActorType.PlatformAdmin;

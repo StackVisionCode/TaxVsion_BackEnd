@@ -114,6 +114,62 @@
 					]
 				},
 				{
+					"name": "TestManualConnection",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"emailAddress\": \"contacto@miempresa.com\",\n  \"imapHost\": \"imap.miempresa.com\",\n  \"imapPort\": 993,\n  \"imapUseSsl\": true,\n  \"imapUsername\": \"contacto@miempresa.com\",\n  \"imapPassword\": \"{{connectorsManualImapPassword}}\",\n  \"smtpHost\": \"smtp.miempresa.com\",\n  \"smtpPort\": 587,\n  \"smtpUseStartTls\": true,\n  \"smtpUsername\": \"contacto@miempresa.com\",\n  \"smtpPassword\": \"{{connectorsManualSmtpPassword}}\",\n  \"asOffice\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts/manual/test",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts",
+								"manual",
+								"test"
+							]
+						},
+						"description": "\"Test connection\" del alta manual: prueba IMAP y SMTP por separado SIN guardar nada (mismo body que ConnectManual; displayName se ignora). 200 = { imap: { ok, errorCode, message }, smtp: {...} } aunque un servidor falle; codigos: ManualAccountConnectivityValidator.{Imap|Smtp}{AuthFailed|Unreachable|TlsFailed|Failed}. Personal exige emailAddress == email de login (403/400 si no). Rate limit propio connectors.i.accounts_manual_test (20 / 30 min por usuario)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with both checks, or documented error\", () => {",
+									"  if (pm.response.code === 200) {",
+									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property(\"imap\");",
+									"    pm.expect(json).to.have.property(\"smtp\");",
+									"    pm.expect(json.imap).to.have.property(\"ok\");",
+									"  } else {",
+									"    pm.expect([400, 403, 429]).to.include(pm.response.code);",
+									"  }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
 					"name": "List",
 					"request": {
 						"method": "GET",

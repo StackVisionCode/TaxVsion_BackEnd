@@ -40,6 +40,7 @@ public sealed class FormReportsController(IMessageBus bus, IUserPermissionsSourc
         [FromQuery] Guid templateId,
         [FromQuery] string key,
         [FromQuery] string? value,
+        [FromQuery] string? contains,
         [FromQuery] DateOnly? from,
         [FromQuery] DateOnly? to,
         [FromQuery] int page = 1,
@@ -60,7 +61,8 @@ public sealed class FormReportsController(IMessageBus bus, IUserPermissionsSourc
                 value,
                 from,
                 to,
-                page
+                page,
+                contains
             ),
             ct
         );

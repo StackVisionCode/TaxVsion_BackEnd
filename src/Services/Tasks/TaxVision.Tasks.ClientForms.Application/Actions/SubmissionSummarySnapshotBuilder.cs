@@ -234,31 +234,9 @@ public static class SubmissionSummarySnapshotBuilder
         return string.Join(", ", parts);
     }
 
-    // Busca el label de la opción elegida en props.options ([{value,label}]); si no está, usa el valor.
-    private static string OptionLabel(FormComponent component, string optionValue)
-    {
-        if (
-            component.Props.ValueKind == JsonValueKind.Object
-            && component.Props.TryGetProperty("options", out var options)
-            && options.ValueKind == JsonValueKind.Array
-        )
-        {
-            foreach (var option in options.EnumerateArray())
-            {
-                if (
-                    option.ValueKind == JsonValueKind.Object
-                    && option.TryGetProperty("value", out var v)
-                    && v.ValueKind == JsonValueKind.String
-                    && string.Equals(v.GetString(), optionValue, StringComparison.Ordinal)
-                    && option.TryGetProperty("label", out var l)
-                    && l.ValueKind == JsonValueKind.String
-                    && !string.IsNullOrWhiteSpace(l.GetString())
-                )
-                    return l.GetString()!.Trim();
-            }
-        }
-        return optionValue;
-    }
+    // Etiqueta de la opción elegida (props.options); si ya no existe, el valor.
+    private static string OptionLabel(FormComponent component, string optionValue) =>
+        ComponentOptions.LabelOf(component, optionValue);
 
     private static IReadOnlyList<SubmissionSummaryAttachment> BuildAttachments(
         FormDefinition definition,

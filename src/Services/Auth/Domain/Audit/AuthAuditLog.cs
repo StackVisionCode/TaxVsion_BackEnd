@@ -70,6 +70,7 @@ public static class AuthAuditAction
     public const string TrustedDeviceAdded = "auth.mfa.trusted_device_added";
     public const string TrustedDeviceRevoked = "auth.mfa.trusted_device_revoked";
     public const string MfaPolicyUpdated = "auth.mfa.policy_updated";
+    public const string MfaResetByOffice = "auth.mfa.reset_by_office";
     public const string TokenRefreshed = "auth.token.refreshed";
     public const string TokenReuseDetected = "auth.token.reuse_detected";
     public const string RefreshTokenHostMismatch = "auth.token.host_mismatch";

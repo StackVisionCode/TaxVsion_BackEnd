@@ -6,5 +6,7 @@ public sealed record ListThreadMessagesQuery(
     Guid ThreadId,
     int Page,
     int Size,
-    IReadOnlyCollection<Guid>? VisibleAccountIds = null
+    IReadOnlyCollection<Guid>? VisibleAccountIds = null,
+    // null = ve todos los clientes; si no, el hilo debe ser de un cliente asignado o se devuelve NotFound.
+    Guid? RestrictToUserId = null
 );

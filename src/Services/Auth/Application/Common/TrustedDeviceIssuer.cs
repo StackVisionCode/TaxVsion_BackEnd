@@ -34,13 +34,31 @@ public static class TrustedDeviceIssuer
         if (!remember)
             return null;
 
-        var policy = await mfa.GetPolicyAsync(user.TenantId, ct);
+        return await IssueAsync(user.TenantId, user.Id, mfa, tokens, audit, request, correlation, ct);
+    }
+
+    /// <summary>
+    /// Crea el dispositivo de confianza y devuelve el token en claro. Versión por ids para la entrada
+    /// central, que conoce la oficina y el usuario pero no carga el aggregate.
+    /// </summary>
+    public static async Task<string> IssueAsync(
+        Guid tenantId,
+        Guid userId,
+        IMfaRepository mfa,
+        ISecureTokenService tokens,
+        IAuthAuditWriter audit,
+        IRequestContext request,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        var policy = await mfa.GetPolicyAsync(tenantId, ct);
         var trustedDays = policy?.TrustedDeviceDays ?? TrustedDeviceDefaults.Days;
 
         var deviceToken = tokens.GenerateToken();
         var device = TrustedDevice.Create(
-            user.TenantId,
-            user.Id,
+            tenantId,
+            userId,
             tokens.Hash(deviceToken),
             request.UserAgent,
             TimeSpan.FromDays(trustedDays)
@@ -49,8 +67,8 @@ public static class TrustedDeviceIssuer
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId,
-                user.Id,
+                tenantId,
+                userId,
                 AuthAuditAction.TrustedDeviceAdded,
                 true,
                 request.IpAddress,

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   bindCorrespondenceConsumers,
   parseCorrespondenceCustomerEmailReceived,
+  parseCorrespondenceThreadStateChanged,
 } from '../../src/application/event-handlers/correspondence-consumers.js';
 import type { IncomingEnvelope } from '../../src/application/ports/event-consumer.js';
 import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitter.js';
@@ -154,5 +155,51 @@ describe('correspondence.customer_email_received.v1', () => {
       expect(parsed.data.accountId).toBe(accountId);
       expect(parsed.data.mailboxOwnerUserId).toBe(ownerId);
     }
+  });
+});
+
+describe('correspondence.thread_state_changed.v1', () => {
+  const actorId = 'c3c3c3c3-6666-4666-8666-000000000006';
+  const officeReaderId = 'd4d4d4d4-7777-4777-8777-000000000007';
+  const stateEnvelope = (payload: Record<string, unknown>): IncomingEnvelope => ({
+    ...envelope(payload),
+    eventType: 'correspondence.thread_state_changed.v1',
+  });
+
+  it('emits the thread state to office mail readers and to the actor, once each', async () => {
+    const { handlers, emitter } = setup({
+      'connectors.accounts.office.read': [snapshot(officeReaderId, []), snapshot(actorId, [])],
+    });
+    const handler = handlers.get('correspondence.thread_state_changed.v1');
+    expect(handler).toBeDefined();
+
+    await handler!(
+      stateEnvelope({
+        CustomerId: customerId,
+        EmailThreadId: threadId,
+        Status: 'Archived',
+        UnreadCount: 0,
+        MessageCount: 3,
+        ActorUserId: actorId,
+      }),
+    );
+
+    const calls = vi.mocked(emitter.emitToUser).mock.calls.map(([input]) => input);
+    expect(calls.map((input) => input.userId).sort()).toEqual([actorId, officeReaderId].sort());
+    expect(calls[0]?.event).toBe(MailSocketEvents.ThreadState);
+    expect(calls[0]?.envelope.payload).toEqual({
+      customerId,
+      emailThreadId: threadId,
+      status: 'Archived',
+      unreadCount: 0,
+      messageCount: 3,
+      actorUserId: actorId,
+    });
+  });
+
+  it('ignores a payload without the thread counters', () => {
+    expect(
+      parseCorrespondenceThreadStateChanged({ CustomerId: customerId, EmailThreadId: threadId }).success,
+    ).toBe(false);
   });
 });

@@ -83,7 +83,8 @@ internal sealed class FakeIncomingEmailRepository : IIncomingEmailRepository
 
     public Task<PagedResult<IncomingEmail>> ListTrashedByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
+        Guid? restrictToUserId,
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
@@ -91,7 +92,7 @@ internal sealed class FakeIncomingEmailRepository : IIncomingEmailRepository
     )
     {
         var filtered = _store
-            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.IsDeleted)
+            .Where(x => x.TenantId == tenantId && (customerId is null || x.CustomerId == customerId) && x.IsDeleted)
             .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
             .OrderByDescending(x => x.DeletedAtUtc)
             .ToList();
@@ -112,5 +113,34 @@ internal sealed class FakeIncomingEmailRepository : IIncomingEmailRepository
             _store.FirstOrDefault(x =>
                 x.TenantId == tenantId && x.Attachments.Any(a => a.CloudStorageFileId == cloudStorageFileId)
             )
+        );
+
+    public Task<IReadOnlyDictionary<Guid, IncomingEmail>> GetLatestByThreadAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> emailThreadIds,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, IncomingEmail>>(
+            _store
+                .Where(x => x.TenantId == tenantId && !x.IsDeleted && emailThreadIds.Contains(x.EmailThreadId))
+                .GroupBy(x => x.EmailThreadId)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.ReceivedAtUtc).First())
+        );
+
+    public Task<IReadOnlySet<Guid>> GetThreadIdsWithAttachmentsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> emailThreadIds,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlySet<Guid>>(
+            _store
+                .Where(x =>
+                    x.TenantId == tenantId
+                    && !x.IsDeleted
+                    && x.HasAttachments
+                    && emailThreadIds.Contains(x.EmailThreadId)
+                )
+                .Select(x => x.EmailThreadId)
+                .ToHashSet()
         );
 }

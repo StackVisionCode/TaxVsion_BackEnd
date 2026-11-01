@@ -9,6 +9,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Customer.Api.Requests;
+using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Application.Customers.Avatars;
 using TaxVision.Customer.Application.Customers.Catalogs;
@@ -23,6 +24,7 @@ using TaxVision.Customer.Application.Customers.Commands.BulkChangeStatus;
 using TaxVision.Customer.Application.Customers.Commands.Create;
 using TaxVision.Customer.Application.Customers.Commands.Deactivate;
 using TaxVision.Customer.Application.Customers.Commands.GrantAccess;
+using TaxVision.Customer.Application.Customers.Commands.PortalMfa;
 using TaxVision.Customer.Application.Customers.Commands.Reactivate;
 using TaxVision.Customer.Application.Customers.Commands.RemoveAddress;
 using TaxVision.Customer.Application.Customers.Commands.RemoveContactPoint;
@@ -1020,6 +1022,58 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         );
 
         // 200 con el desenlace (Invited / Resent / AlreadyActive); un rechazo de Auth llega con su motivo.
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Segundo factor del portal del cliente (para la ficha): acceso al portal, activo y si la oficina lo exige.</summary>
+    [HttpGet("{id:guid}/portal-mfa")]
+    [HasPermission(CustomersPermissions.View)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.f.get")]
+    [ProducesResponseType<PortalMfaStatus>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPortalMfa(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<PortalMfaStatus>>(
+            new GetCustomerPortalMfaQuery(tenantId, id, userId, canViewAll),
+            ct
+        );
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Quita el segundo factor del portal del cliente (perdió el teléfono o los códigos), tras verificar su
+    /// identidad fuera del sistema. Si la oficina lo exige, el próximo login le pide activarlo de nuevo.
+    /// </summary>
+    [HttpPost("{id:guid}/portal-mfa/reset")]
+    [HasPermission(CustomersPermissions.Manage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
+    [ProducesResponseType<PortalMfaResetOutcome>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ResetPortalMfa(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<PortalMfaResetOutcome>>(
+            new ResetCustomerPortalMfaCommand(tenantId, id, userId, canViewAll),
+            ct
+        );
         if (result.IsSuccess)
             return Ok(result.Value);
         if (result.Error.Code == "Customer.NotFound")

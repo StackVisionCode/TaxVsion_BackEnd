@@ -6,5 +6,7 @@ public sealed record ListCustomerThreadsQuery(
     Guid CustomerId,
     int Page,
     int Size,
-    IReadOnlyCollection<Guid>? VisibleAccountIds = null
+    IReadOnlyCollection<Guid>? VisibleAccountIds = null,
+    // null = ve todos los clientes; si no, el cliente debe estar asignado o la página sale vacía.
+    Guid? RestrictToUserId = null
 );

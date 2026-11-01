@@ -39,21 +39,19 @@ public static class ListThreadMessagesHandler
         CancellationToken ct
     )
     {
+        // Gate de buzón y de cliente asignado: quien no ve el hilo recibe el mismo NotFound que si no existiera.
         var thread = await emailThreads.GetByIdAsync(query.TenantId, query.ThreadId, ct);
-        if (thread is null)
-            return Result.Failure<PagedResult<MessageSummary>>(
-                new Error("EmailThread.NotFound", "The thread was not found for this tenant.")
-            );
-
-        // Gate de buzón de oficina: un hilo sin ningún mensaje de un buzón visible se oculta (mismo
-        // NotFound que "no existe"). Si es visible se muestra ENTERO (incluidos los de oficina).
         if (
-            query.VisibleAccountIds is not null
-            && !await emailThreads.HasVisibleMessageAsync(query.TenantId, thread.Id, query.VisibleAccountIds, ct)
+            thread is null
+            || !await ThreadAccess.CanSeeAsync(
+                emailThreads,
+                thread,
+                query.VisibleAccountIds,
+                query.RestrictToUserId,
+                ct
+            )
         )
-            return Result.Failure<PagedResult<MessageSummary>>(
-                new Error("EmailThread.NotFound", "The thread was not found for this tenant.")
-            );
+            return Result.Failure<PagedResult<MessageSummary>>(ThreadAccess.NotFound);
 
         var inbound = await incomingEmails.ListAllByThreadAsync(query.TenantId, thread.Id, ct);
         var outbound = await drafts.ListSentByThreadAsync(query.TenantId, thread.Id, ct);

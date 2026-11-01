@@ -11,7 +11,9 @@ public sealed record FormReportAnswersQuery(
     string? Value,
     DateOnly? From,
     DateOnly? To,
-    int Page
+    int Page,
+    // Texto libre: búsqueda por parte del valor. `Value` es igualdad exacta (opciones del filtro).
+    string? Contains = null
 );
 
 public sealed record FormReportSummaryQuery(
@@ -47,10 +49,13 @@ public sealed record FormReportAnswerRow(
     int? RowIndex,
     string ValueText,
     decimal? ValueNumber,
-    DateOnly? ValueDate
+    DateOnly? ValueDate,
+    int VersionNumber,
+    // Lo que vio el cliente (etiqueta de la opción); en texto libre es el mismo valor.
+    string ValueLabel
 );
 
-public sealed record FormReportSummaryBucket(string Value, int Count);
+public sealed record FormReportSummaryBucket(string Value, int Count, string Label);
 
 public sealed record FormReportSummaryResponse(
     Guid TemplateId,
@@ -70,5 +75,6 @@ public sealed record FormReportExportEntry(
     DateTime CompletedAtUtc,
     string Key,
     int? RowIndex,
-    string ValueText
+    string ValueText,
+    int VersionNumber
 );

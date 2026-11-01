@@ -99,6 +99,18 @@ public sealed class FormReportAbacTests
         Assert.Equal("Yes", row.ValueText);
     }
 
+    [Fact]
+    public async Task Free_text_filter_matches_part_of_the_value_and_rows_carry_their_version()
+    {
+        await using var db = await SeedAsync();
+
+        var rows = await Read(db).SearchAsync(Answers(Stranger, true) with { Contains = "Ye" });
+
+        Assert.Equal(2, rows.Items.Count);
+        Assert.All(rows.Items, row => Assert.Equal("Yes", row.ValueText));
+        Assert.All(rows.Items, row => Assert.True(row.VersionNumber > 0));
+    }
+
     private static FormReportAnswersQuery Answers(Guid actor, bool canViewAll) =>
         new(TenantId, actor, canViewAll, TemplateId, "crypto", null, null, null, 1);
 

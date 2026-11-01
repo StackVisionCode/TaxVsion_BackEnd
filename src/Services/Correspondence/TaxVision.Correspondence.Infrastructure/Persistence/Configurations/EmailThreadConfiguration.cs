@@ -39,5 +39,16 @@ internal sealed class EmailThreadConfiguration : IEntityTypeConfiguration<EmailT
             })
             .IsDescending(false, false, true)
             .HasDatabaseName("IX_EmailThreads_TenantId_CustomerId_LastMessageAtUtc");
+
+        // Inbox de la oficina (todos los clientes): por estado, más reciente primero.
+        builder
+            .HasIndex(x => new
+            {
+                x.TenantId,
+                x.Status,
+                x.LastMessageAtUtc,
+            })
+            .IsDescending(false, false, true)
+            .HasDatabaseName("IX_EmailThreads_TenantId_Status_LastMessageAtUtc");
     }
 }

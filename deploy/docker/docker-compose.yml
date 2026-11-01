@@ -1310,6 +1310,8 @@ services:
       Correspondence__ServiceAuth__ClientId: ${CORRESPONDENCE_SERVICE_CLIENT_ID:-correspondence-worker}
       Correspondence__ServiceAuth__ClientSecret: ${CORRESPONDENCE_SERVICE_CLIENT_SECRET:-}
       Correspondence__Customer__BaseUrl: http://customer-api:8080
+      # Visibilidad por cliente: siembra las asignaciones cliente↔staff desde Customer (mismo kit que Notes/Tasks).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
       # Faltaba desde la propia Fase 5 (ConnectorsClient) — sin esto, ConnectorsClient caía al
       # default de desarrollo (localhost:5390), inalcanzable dentro de la red de contenedores.
       Correspondence__Connectors__BaseUrl: http://connectors-api:8080

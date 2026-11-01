@@ -43,6 +43,7 @@ public static class ListSentMessagesHandler
             // a tocar después (mismo criterio que ListThreadMessagesHandler.ToOutboundSummary).
             draft.UpdatedAtUtc,
             draft.Attachments.Count > 0,
-            draft.Attachments.Count
+            draft.Attachments.Count,
+            draft.CustomerId
         );
 }

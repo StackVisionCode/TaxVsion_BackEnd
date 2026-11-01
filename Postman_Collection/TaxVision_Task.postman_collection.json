@@ -6114,6 +6114,255 @@
               ]
             }
           ]
+        },
+        {
+            "name": "Reportes",
+            "description": "Reportes sobre los campos marcados como Reportable. El índice guarda el valor estable de cada opción (option1, Yes/No); las respuestas traen además la etiqueta que vio el cliente (valueLabel), resuelta con la versión de la plantilla que respondió. Permiso tasks.forms.read; ABAC de clientes.",
+            "item": [
+                {
+                    "name": "Campos reportables",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{UrlBase}}/tasks/forms/reports/keys?templateId={{formTemplateId}}",
+                            "host": [
+                                "{{UrlBase}}"
+                            ],
+                            "path": [
+                                "tasks",
+                                "forms",
+                                "reports",
+                                "keys"
+                            ],
+                            "query": [
+                                {
+                                    "key": "templateId",
+                                    "value": "{{formTemplateId}}"
+                                }
+                            ]
+                        },
+                        "description": "Claves reportables de la última versión publicada: key, label, type, repeatable y options ([{value,label}] para radio/select/checkboxGroup/yesNo/checkbox; vacío = texto libre)."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Respuestas filtradas por opción",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{UrlBase}}/tasks/forms/reports/answers?templateId={{formTemplateId}}&key=monthly_income&value=option1&page=1",
+                            "host": [
+                                "{{UrlBase}}"
+                            ],
+                            "path": [
+                                "tasks",
+                                "forms",
+                                "reports",
+                                "answers"
+                            ],
+                            "query": [
+                                {
+                                    "key": "templateId",
+                                    "value": "{{formTemplateId}}"
+                                },
+                                {
+                                    "key": "key",
+                                    "value": "monthly_income"
+                                },
+                                {
+                                    "key": "value",
+                                    "value": "option1"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                }
+                            ]
+                        },
+                        "description": "value = igualdad exacta con el valor de una opción (de keys.options). Cada fila trae valueText (valor guardado), versionNumber y valueLabel (lo que vio el cliente)."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"200\", () => pm.response.to.have.status(200));\npm.test(\"trae la etiqueta\", () => pm.response.json().items.forEach(r => pm.expect(r).to.have.property(\"valueLabel\")));"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Respuestas de texto libre (contiene)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{UrlBase}}/tasks/forms/reports/answers?templateId={{formTemplateId}}&key=note_key&contains=urgent&page=1",
+                            "host": [
+                                "{{UrlBase}}"
+                            ],
+                            "path": [
+                                "tasks",
+                                "forms",
+                                "reports",
+                                "answers"
+                            ],
+                            "query": [
+                                {
+                                    "key": "templateId",
+                                    "value": "{{formTemplateId}}"
+                                },
+                                {
+                                    "key": "key",
+                                    "value": "note_key"
+                                },
+                                {
+                                    "key": "contains",
+                                    "value": "urgent"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                }
+                            ]
+                        },
+                        "description": "contains = parte del valor, para campos de texto libre. from/to (yyyy-MM-dd) acotan por fecha de completado."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Resumen por opción",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{UrlBase}}/tasks/forms/reports/summary?templateId={{formTemplateId}}&key=monthly_income",
+                            "host": [
+                                "{{UrlBase}}"
+                            ],
+                            "path": [
+                                "tasks",
+                                "forms",
+                                "reports",
+                                "summary"
+                            ],
+                            "query": [
+                                {
+                                    "key": "templateId",
+                                    "value": "{{formTemplateId}}"
+                                },
+                                {
+                                    "key": "key",
+                                    "value": "monthly_income"
+                                }
+                            ]
+                        },
+                        "description": "Conteo por valor de todas las versiones; cada bucket trae value, count y label (la etiqueta de la versión más nueva que tenga ese valor)."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Exportar CSV",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{UrlBase}}/tasks/forms/reports/export?templateId={{formTemplateId}}",
+                            "host": [
+                                "{{UrlBase}}"
+                            ],
+                            "path": [
+                                "tasks",
+                                "forms",
+                                "reports",
+                                "export"
+                            ],
+                            "query": [
+                                {
+                                    "key": "templateId",
+                                    "value": "{{formTemplateId}}"
+                                }
+                            ]
+                        },
+                        "description": "CSV con una fila por solicitud completada y una columna por campo reportable; las opciones salen con su etiqueta. Queda auditado (report.exported)."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
         }
       ]
     }

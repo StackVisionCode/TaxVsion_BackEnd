@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Mfa;
 using Wolverine;
@@ -37,27 +38,12 @@ public static class DisableMfaHandler
         if (!hasher.Verify(command.Password, user.PasswordHash))
             return Result.Failure(new Error("Auth.Invalid", "Invalid credentials."));
 
-        var policy = await mfa.GetPolicyAsync(user.TenantId, ct);
-        var requiredByPolicy =
-            policy?.RequiresFor(user.ActorType)
-            ?? user.ActorType is Domain.Users.UserActorType.TenantAdmin or Domain.Users.UserActorType.PlatformAdmin;
-        if (requiredByPolicy)
+        if (await MfaRequirement.IsRequiredByPolicyAsync(user, mfa, ct))
         {
             return Result.Failure(new Error("Mfa.RequiredByPolicy", "MFA is required by your tenant policy."));
         }
 
-        user.DisableMfa();
-
-        var methods = await mfa.GetMethodsAsync(user.Id, ct);
-        foreach (var method in methods)
-            mfa.RemoveMethod(method);
-
-        var recoveryCodes = await mfa.GetRecoveryCodesAsync(user.Id, ct);
-        mfa.RemoveRecoveryCodes(recoveryCodes);
-
-        var devices = await mfa.GetTrustedDevicesAsync(user.Id, ct);
-        foreach (var device in devices)
-            device.Revoke();
+        await MfaFactors.ClearAsync(user, mfa, ct);
 
         await bus.PublishAsync(
             new SecurityAlertIntegrationEvent

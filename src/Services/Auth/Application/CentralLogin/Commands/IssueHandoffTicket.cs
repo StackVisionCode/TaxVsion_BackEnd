@@ -24,8 +24,12 @@ public sealed record IssueHandoffTicketCommand(
     bool RememberDevice = false
 );
 
-/// <summary>Subdominio destino + vale, para que el frontend arme la URL de <c>continue</c>.</summary>
-public sealed record HandoffTicketView(string Subdomain, Guid Ticket);
+/// <summary>
+/// Subdominio destino + vale, para que el frontend arme la URL de <c>continue</c>. <see cref="DeviceToken"/>:
+/// el dispositivo de confianza recién marcado, para que lo guarde el origen del login central (el que
+/// lo reenvía en el próximo <c>discover-login</c>); null si no se pidió.
+/// </summary>
+public sealed record HandoffTicketView(string Subdomain, Guid Ticket, string? DeviceToken = null);
 
 /// <summary>
 /// Paso 2 del login central (solo cuando hubo selector o MFA): valida que la oficina elegida está en
@@ -100,8 +104,23 @@ public static class IssueHandoffTicketHandler
 
         // Si retó y pasó, ya tiene método → no debe enrolar. Si no retaba, arrastra el flag de setup.
         var rememberDevice = command.RememberDevice && codeCheck == MfaCodeCheck.Totp;
+        // El dispositivo se marca acá, en el origen donde se resolvió el código y desde donde se vuelve a
+        // entrar: si naciera solo al canjear, lo guardaría el origen de la oficina y el próximo login
+        // central (otro origen) no lo encontraría y volvería a pedir el código.
+        var deviceToken = rememberDevice
+            ? await TrustedDeviceIssuer.IssueAsync(
+                office.TenantId,
+                office.UserId,
+                mfa,
+                tokens,
+                audit,
+                request,
+                correlation,
+                ct
+            )
+            : null;
         var ticket = await tickets.IssueAsync(
-            new HandoffTicketPayload(office.TenantId, office.UserId, office.MustEnroll, rememberDevice),
+            new HandoffTicketPayload(office.TenantId, office.UserId, office.MustEnroll, rememberDevice, deviceToken),
             ct
         );
         await sessions.ConsumeAsync(command.DiscoverySessionRef, ct);
@@ -121,6 +140,6 @@ public static class IssueHandoffTicketHandler
         );
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Success(new HandoffTicketView(tenant.SubDomain, ticket));
+        return Result.Success(new HandoffTicketView(tenant.SubDomain, ticket, deviceToken));
     }
 }

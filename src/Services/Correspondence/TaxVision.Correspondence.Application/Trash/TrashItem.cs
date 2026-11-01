@@ -9,5 +9,7 @@ public sealed record TrashItem(
     string Counterparty,
     DateTime DeletedAtUtc,
     bool HasAttachments,
-    int AttachmentCount
+    int AttachmentCount,
+    // Cliente del correo; null = enviado a alguien que no es cliente.
+    Guid? CustomerId
 );

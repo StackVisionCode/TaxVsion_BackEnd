@@ -129,7 +129,8 @@ public static class ExchangeHandoffTicketHandler
             sessions,
             takeoverTickets,
             ct,
-            payload.RememberDevice
+            // Con el dispositivo ya marcado en la entrada central, el takeover no crea otro.
+            payload.RememberDevice && payload.DeviceToken is null
         );
 
         if (outcome.TakeoverRequired)
@@ -176,18 +177,21 @@ public static class ExchangeHandoffTicketHandler
             ),
             ct
         );
-        // Dispositivo de confianza: se crea acá y no al emitir el vale porque el token tiene que
-        // nacer junto a los de la sesión — lo guarda el mismo origen que después lo reenviará.
-        var deviceToken = await TrustedDeviceIssuer.IssueIfRequestedAsync(
-            payload.RememberDevice,
-            user,
-            mfa,
-            secureTokens,
-            audit,
-            request,
-            correlation,
-            ct
-        );
+        // Dispositivo de confianza: el vale trae el que se marcó en la entrada central y se devuelve el
+        // mismo, para que también lo guarde el origen de la oficina. Un vale sin token (anterior a este
+        // cambio) lo crea acá como antes.
+        var deviceToken =
+            payload.DeviceToken
+            ?? await TrustedDeviceIssuer.IssueIfRequestedAsync(
+                payload.RememberDevice,
+                user,
+                mfa,
+                secureTokens,
+                audit,
+                request,
+                correlation,
+                ct
+            );
 
         await unitOfWork.SaveChangesAsync(ct);
 
