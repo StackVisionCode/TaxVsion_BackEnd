@@ -21,9 +21,7 @@ const PatchBody = z.object({
   defaultCameraOff: z.boolean().optional(),
   defaultMicrophoneOff: z.boolean().optional(),
   persistChatOnEnd: z.boolean().optional(),
-  messageRetentionDays: z.number().int().min(1).max(3650).optional(),
-  recordingRetentionDays: z.number().int().min(1).max(3650).optional(),
-  purgeEnabled: z.boolean().optional(),
+  // La retención (mensajes, grabaciones y purga) ya no la edita la oficina: la fija PlatformAdmin.
   recordingConsentPolicy: z.enum(['AllAcceptedRequired', 'NoRejections', 'HostOverride']).optional(),
   defaultMeetingDurationMinutes: OptionalInt,
   maxMeetingDurationMinutes: OptionalInt,

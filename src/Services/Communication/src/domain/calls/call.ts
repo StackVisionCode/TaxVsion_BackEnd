@@ -9,7 +9,7 @@ import { RecordingScope, type RecordingCaptureMode, type RecordingStopReason } f
 import { RecordingConsentEntry } from '../recording/recording-consent-entry.js';
 import type { RecordingConsentEntryStatus } from '../recording/recording-consent.js';
 
-export type CallEndReason = 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | 'MaxDurationReached';
+export type CallEndReason = 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | 'MaxDurationReached' | 'Abandoned';
 
 export interface CallSnapshot {
   readonly id: string;
@@ -257,6 +257,31 @@ export class Call {
       endedAtUtc: now,
       endReason: input.reason,
       durationSeconds: Math.max(0, Math.floor((now.getTime() - start.getTime()) / 1000)),
+      updatedAtUtc: now,
+      participants: this.participants.map((p) => p.toSnapshot()),
+    };
+    return Result.okVoid();
+  }
+
+  /**
+   * Cierre de una llamada abierta sin nadie conectado (reinicio del servidor, cierre perdido). La duración
+   * va hasta la última vez que hubo alguien (`lastSeenAt`); si la media nunca arrancó, es 0.
+   */
+  abandon(input: { lastSeenAt: Date; now?: Date }): Result<void> {
+    if (this.state.status !== CallStatus.Accepted && this.state.status !== CallStatus.Active) {
+      return Result.fail(makeError('Call.InvalidTransition', `Cannot abandon a call in ${this.state.status}.`));
+    }
+    const now = input.now ?? new Date();
+    const started = this.state.startedAtUtc;
+    this.participants.forEach((p) => {
+      if (!p.hasLeft) p.markLeft(input.lastSeenAt);
+    });
+    this.state = {
+      ...this.state,
+      status: CallStatus.Ended,
+      endedAtUtc: input.lastSeenAt,
+      endReason: 'Abandoned',
+      durationSeconds: started ? Math.max(0, Math.floor((input.lastSeenAt.getTime() - started.getTime()) / 1000)) : 0,
       updatedAtUtc: now,
       participants: this.participants.map((p) => p.toSnapshot()),
     };

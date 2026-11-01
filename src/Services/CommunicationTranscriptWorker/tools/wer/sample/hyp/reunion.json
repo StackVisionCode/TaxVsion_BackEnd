@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "language": "auto",
+  "segments": [
+    { "startMs": 0, "endMs": 3000, "speakerUserId": "u-ana", "speakerName": "Ana", "text": "Buenos días, ¿ya mandó el W-2?" },
+    { "startMs": 5000, "endMs": 7500, "speakerUserId": "u-luis", "speakerName": "Luis", "text": "Sí, lo mandé esta mañana." },
+    { "startMs": 9000, "endMs": 11000, "speakerUserId": "u-ana", "speakerName": "Ana", "text": "Perfecto, mándeme el 1099 por correo." },
+    { "startMs": 14000, "endMs": 15000, "speakerUserId": "u-ana", "speakerName": "Ana", "text": "Gracias por ver." },
+    { "startMs": 20000, "endMs": 23000, "speakerUserId": "u-luis", "speakerName": "Luis", "text": "Thank you for your help." }
+  ]
+}

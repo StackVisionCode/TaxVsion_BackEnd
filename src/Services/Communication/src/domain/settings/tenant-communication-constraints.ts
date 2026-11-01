@@ -16,6 +16,10 @@ export interface TenantCommunicationConstraintsSnapshot {
   readonly maxRecordingMinutesVideoCall: number | null;
   readonly recordingAllowed: boolean | null;
   readonly guestsAllowed: boolean | null;
+  /** Excepción de retención para esta oficina (null = la global de la plataforma). */
+  readonly messageRetentionDays: number | null;
+  readonly recordingRetentionDays: number | null;
+  readonly purgeEnabled: boolean | null;
   readonly notes: string | null;
   readonly updatedByUserId: string | null;
   readonly createdAtUtc: Date;
@@ -27,7 +31,13 @@ export type TenantCommunicationConstraintsPatch = Partial<
 >;
 
 const NUMERIC_RANGES: Record<
-  'maxMeetingParticipants' | 'maxMeetingDurationMinutes' | 'maxRecordingMinutesMeeting' | 'maxRecordingMinutesAudioCall' | 'maxRecordingMinutesVideoCall',
+  | 'maxMeetingParticipants'
+  | 'maxMeetingDurationMinutes'
+  | 'maxRecordingMinutesMeeting'
+  | 'maxRecordingMinutesAudioCall'
+  | 'maxRecordingMinutesVideoCall'
+  | 'messageRetentionDays'
+  | 'recordingRetentionDays',
   TechnicalLimitKey
 > = {
   maxMeetingParticipants: 'maxParticipants',
@@ -35,6 +45,8 @@ const NUMERIC_RANGES: Record<
   maxRecordingMinutesMeeting: 'maxRecordingMinutes',
   maxRecordingMinutesAudioCall: 'maxRecordingMinutes',
   maxRecordingMinutesVideoCall: 'maxRecordingMinutes',
+  messageRetentionDays: 'messageRetentionDays',
+  recordingRetentionDays: 'recordingRetentionDays',
 };
 
 const NOTES_MAX_LENGTH = 512;
@@ -58,6 +70,9 @@ export class TenantCommunicationConstraints {
       maxRecordingMinutesVideoCall: null,
       recordingAllowed: null,
       guestsAllowed: null,
+      messageRetentionDays: null,
+      recordingRetentionDays: null,
+      purgeEnabled: null,
       notes: null,
       updatedByUserId: null,
       createdAtUtc: now,

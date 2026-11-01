@@ -125,6 +125,9 @@ export class PrismaPlatformCommunicationSettingsRepository implements PlatformCo
       RecordingAvailabilityTimeoutMinutes: s.recordingAvailabilityTimeoutMinutes,
       AnalyticsTimeZone: s.analyticsTimeZone,
       AnalyticsRetentionDays: s.analyticsRetentionDays,
+      MessageRetentionDays: s.messageRetentionDays,
+      RecordingRetentionDays: s.recordingRetentionDays,
+      PurgeEnabled: s.purgeEnabled,
       CallsRetentionDays: s.callsRetentionDays,
       MeetingsRetentionDays: s.meetingsRetentionDays,
       InvitationsRetentionDays: s.invitationsRetentionDays,
@@ -237,6 +240,9 @@ function toSnapshot(row: {
   RecordingAvailabilityTimeoutMinutes: number;
   AnalyticsTimeZone: string;
   AnalyticsRetentionDays: number;
+  MessageRetentionDays: number;
+  RecordingRetentionDays: number;
+  PurgeEnabled: boolean;
   CallsRetentionDays: number | null;
   MeetingsRetentionDays: number | null;
   InvitationsRetentionDays: number | null;
@@ -345,6 +351,9 @@ function toSnapshot(row: {
     recordingAvailabilityTimeoutMinutes: row.RecordingAvailabilityTimeoutMinutes,
     analyticsTimeZone: row.AnalyticsTimeZone,
     analyticsRetentionDays: row.AnalyticsRetentionDays,
+    messageRetentionDays: row.MessageRetentionDays,
+    recordingRetentionDays: row.RecordingRetentionDays,
+    purgeEnabled: row.PurgeEnabled,
     callsRetentionDays: row.CallsRetentionDays,
     meetingsRetentionDays: row.MeetingsRetentionDays,
     invitationsRetentionDays: row.InvitationsRetentionDays,

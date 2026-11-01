@@ -50,3 +50,18 @@ export function extractDetectedLanguage(stdout: string): string | null {
   const match = /auto-detected language:\s*([a-z]{2,3})/i.exec(stdout);
   return match?.[1]?.toLowerCase() ?? null;
 }
+
+/**
+ * Idioma permitido para una detección que no lo es: el del mapa de parecidos (pt → es; `*` para el
+ * resto) si es permitido; si no, el primero de la lista. null = la detección ya es válida (o no hay lista).
+ */
+export function correctedLanguage(
+  detected: string,
+  allowed: readonly string[],
+  fallbacks: Readonly<Record<string, string>>,
+): string | null {
+  if (allowed.length === 0 || allowed.includes(detected)) return null;
+  const mapped = fallbacks[detected] ?? fallbacks['*'];
+  return mapped && allowed.includes(mapped) ? mapped : (allowed[0] ?? null);
+}
+

@@ -51,6 +51,7 @@ export async function continueMeeting(
       maxParticipants: snapshot.maxParticipants,
       requireWaitingRoom: snapshot.requireWaitingRoom,
       recordingRequested: snapshot.recordingRequested,
+      transcriptLanguage: snapshot.transcriptLanguage,
       continuationOfMeetingId: snapshot.id,
     },
     deps,

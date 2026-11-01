@@ -22,6 +22,8 @@ export interface ScheduleMeetingCommand {
   /** Informativa (D-35), acotada por el máximo de la oficina; sin valor, el default de la oficina. */
   readonly scheduledDurationMinutes?: number;
   readonly recordingRequested?: boolean;
+  /** null/ausente = automático (INV-T01 R-7). */
+  readonly transcriptLanguage?: string | null;
   /** "Start a new meeting" (D-34): reunión de la que ésta es continuación. */
   readonly continuationOfMeetingId?: string | null;
 }
@@ -78,6 +80,7 @@ export async function scheduleMeeting(
     scheduledForUtc: command.scheduledForUtc ? new Date(command.scheduledForUtc) : null,
     ...(command.scheduledDurationMinutes !== undefined ? { scheduledDurationMinutes: command.scheduledDurationMinutes } : {}),
     recordingRequested: command.recordingRequested ?? false,
+    transcriptLanguage: command.transcriptLanguage ?? null,
     mediaPolicy,
     durationPolicy,
     continuationOfMeetingId: command.continuationOfMeetingId ?? null,

@@ -44,6 +44,14 @@ export const wordsPerSecondAnomaliesTotal = new Counter({
   registers: [metricsRegistry],
 });
 
+// INV-T01: idioma detectado fuera de los permitidos y corregido (p. ej. español leído como italiano).
+export const languageCorrectionsTotal = new Counter({
+  name: 'transcript_worker_language_corrections_total',
+  help: 'Transcripciones en auto cuyo idioma detectado no estaba en TRANSCRIPT_WORKER_WHISPER_ALLOWED_LANGUAGES.',
+  labelNames: ['detected', 'chosen'] as const,
+  registers: [metricsRegistry],
+});
+
 // F7 — rechazos por duracion (INV-12 H-1). Tambien cuentan en pipelineFailuresTotal{reason="TooLong"}.
 export const tooLongTotal = new Counter({
   name: 'transcript_worker_too_long_total',

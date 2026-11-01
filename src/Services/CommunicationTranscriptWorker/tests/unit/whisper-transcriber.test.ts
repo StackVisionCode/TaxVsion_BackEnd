@@ -84,6 +84,37 @@ describe('transcribeWav', () => {
     ).rejects.toThrow('whisper-cli exited with code 1');
   });
 
+  it('auto que detecta portugués (no permitido) repite forzando español', async () => {
+    const outPrefix = path.join(dir, 'voice');
+    mocks.execFile.mockImplementation((_bin: string, args: string[], _opts: unknown, cb: ExecCallback) => {
+      const language = args[args.indexOf('-l') + 1];
+      const body =
+        language === 'auto'
+          ? { result: { language: 'pt' }, transcription: [{ offsets: { from: 0, to: 3000 }, text: ' provando o novo' }] }
+          : { result: { language }, transcription: [{ offsets: { from: 0, to: 3000 }, text: ' probando el nuevo transcript' }] };
+      void writeFile(`${outPrefix}.json`, JSON.stringify(body), 'utf-8').then(() => cb(null, { stdout: '', stderr: '' }));
+    });
+
+    const result = await transcribeWav(path.join(dir, 'a.wav'), outPrefix, { language: 'auto', prompt: null, timeoutMs: 10 });
+
+    expect(result.detectedLanguage).toBe('es');
+    expect(result.segments.map((s) => s.text)).toEqual(['probando el nuevo transcript']);
+    const languages = mocks.execFile.mock.calls.map((call) => (call[1] as string[])[(call[1] as string[]).indexOf('-l') + 1]);
+    expect(languages).toEqual(['auto', 'es']);
+  });
+
+  it('auto que detecta un idioma permitido no repite nada', async () => {
+    const outPrefix = path.join(dir, 'ok');
+    mocks.execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: ExecCallback) => {
+      void writeFile(`${outPrefix}.json`, WHISPER_JSON, 'utf-8').then(() => cb(null, { stdout: '', stderr: '' }));
+    });
+
+    const result = await transcribeWav(path.join(dir, 'a.wav'), outPrefix, { language: 'auto', prompt: null, timeoutMs: 10 });
+
+    expect(result.detectedLanguage).toBe('es');
+    expect(mocks.execFile).toHaveBeenCalledTimes(1);
+  });
+
   it('idioma auto sin result.language: cae al stdout "auto-detected language"', async () => {
     const outPrefix = path.join(dir, 'source-1');
     mocks.execFile.mockImplementation((_bin: string, _args: string[], _opts: unknown, cb: ExecCallback) => {

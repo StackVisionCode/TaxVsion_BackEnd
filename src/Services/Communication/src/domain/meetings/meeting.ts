@@ -16,7 +16,7 @@ import { RecordingSession } from '../recording/recording-session.js';
 import { RecordingScope, type RecordingCaptureMode, type RecordingStopReason } from '../recording/recording-session-state.js';
 import { RecordingConsentEntry } from '../recording/recording-consent-entry.js';
 import type { RecordingConsentEntryStatus } from '../recording/recording-consent.js';
-import { TECHNICAL_LIMITS } from '../settings/technical-limits.js';
+import { TECHNICAL_LIMITS, isTranscriptLanguage } from '../settings/technical-limits.js';
 
 export interface MeetingSnapshot {
   readonly id: string;
@@ -33,6 +33,11 @@ export interface MeetingSnapshot {
   readonly recordingRequested: boolean;
   readonly recordingFileId: string | null;
   readonly transcriptFileId: string | null;
+  /**
+   * Idioma del transcript de esta reunión (INV-T01 R-7): `en`, `es`… o `auto`. null = automático: cada
+   * participante con el idioma que eligió para su voz y, si no eligió, el de la oficina.
+   */
+  readonly transcriptLanguage: string | null;
   readonly hostUserId: string;
   readonly scheduledForUtc: Date | null;
   /** Informativa (invitación/calendario); nunca corta la reunión (D-35). */
@@ -93,6 +98,7 @@ export interface ScheduleMeetingInput {
   readonly scheduledForUtc?: Date | null;
   readonly scheduledDurationMinutes?: number;
   readonly recordingRequested?: boolean;
+  readonly transcriptLanguage?: string | null;
   readonly mediaPolicy?: MeetingMediaPolicy;
   readonly durationPolicy?: MeetingDurationPolicy;
   readonly continuationOfMeetingId?: string | null;
@@ -135,6 +141,10 @@ export class Meeting {
         makeError('Meeting.InvalidDuration', `Duration must be between 1 and ${durations.maxDurationMinutes} minutes.`),
       );
     }
+    const transcriptLanguage = input.transcriptLanguage?.trim() || null;
+    if (transcriptLanguage !== null && !isTranscriptLanguage(transcriptLanguage)) {
+      return Result.fail(makeError('Meeting.InvalidLanguage', 'transcriptLanguage must be null, "auto" or a language code.'));
+    }
     const id = randomUUID();
     const hostParticipant = MeetingParticipant.create({
       meetingId: id,
@@ -163,6 +173,7 @@ export class Meeting {
       recordingRequested: input.recordingRequested ?? false,
       recordingFileId: null,
       transcriptFileId: null,
+      transcriptLanguage,
       hostUserId: input.host.userId,
       scheduledForUtc: input.scheduledForUtc ?? null,
       scheduledDurationMinutes,
@@ -383,6 +394,25 @@ export class Meeting {
       scheduledForUtc: input.newScheduledForUtc,
       updatedAtUtc: now,
     };
+    return Result.okVoid();
+  }
+
+  /**
+   * Host o cohost cambian el idioma del transcript mientras la reunión no terminó; se aplica al pedir el
+   * transcript (al cerrar la grabación). null = automático.
+   */
+  setTranscriptLanguage(input: { byUserId: string; language: string | null; now?: Date }): Result<void> {
+    if (this.state.status !== MeetingStatus.Scheduled && this.state.status !== MeetingStatus.Live) {
+      return Result.fail(makeError('Meeting.InvalidTransition', `Cannot change the transcript language when ${this.state.status}.`));
+    }
+    if (input.byUserId !== this.state.hostUserId && !this.isCohost(input.byUserId)) {
+      return Result.fail(makeError('Meeting.HostOnly', 'Only host or cohost can change the transcript language.'));
+    }
+    const language = input.language?.trim() || null;
+    if (language !== null && !isTranscriptLanguage(language)) {
+      return Result.fail(makeError('Meeting.InvalidLanguage', 'transcriptLanguage must be null, "auto" or a language code.'));
+    }
+    this.state = { ...this.state, transcriptLanguage: language, updatedAtUtc: input.now ?? new Date() };
     return Result.okVoid();
   }
 

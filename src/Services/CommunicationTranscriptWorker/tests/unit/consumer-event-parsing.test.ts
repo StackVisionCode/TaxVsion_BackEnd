@@ -111,4 +111,14 @@ describe('parseAudioTracks', () => {
     ]);
     expect(parseAudioTracks(undefined)).toEqual([]);
   });
+
+  it('lee el idioma de cada pista; vacio o ausente = el del evento', () => {
+    expect(
+      parseAudioTracks([
+        { fileId: 'f1', userId: 'u1', language: 'es' },
+        { fileId: 'f2', userId: 'u2', language: '  ' },
+        { fileId: 'f3', userId: 'u3' },
+      ]).map((t) => t.language),
+    ).toEqual(['es', undefined, undefined]);
+  });
 });

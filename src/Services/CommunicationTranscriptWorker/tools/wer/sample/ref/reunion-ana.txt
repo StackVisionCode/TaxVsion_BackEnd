@@ -1,0 +1,3 @@
+# Pista de Ana (u-ana). Verbatim, en el idioma en que se dijo.
+00:00:00.0-00:00:03.0 [ES] Buenos días, ¿ya mandó el W-2?
+00:00:09.0-00:00:11.0 [MIX] Perfecto, mándeme el 1099 por email.

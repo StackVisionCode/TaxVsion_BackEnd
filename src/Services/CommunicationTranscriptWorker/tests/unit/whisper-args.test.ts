@@ -58,6 +58,24 @@ describe('buildWhisperArgs', () => {
   });
 });
 
+describe('buildWhisperArgs — exactitud (INV-T01)', () => {
+  it('con prompt y carryInitialPrompt el glosario va en cada ventana; sin prompt no se agrega el flag', () => {
+    const withPrompt = buildWhisperArgs({ ...BASE, prompt: 'IRS, ITIN, W-2', carryInitialPrompt: true });
+    expect(withPrompt).toContain('--carry-initial-prompt');
+    expect(withPrompt.indexOf('--carry-initial-prompt')).toBe(withPrompt.indexOf('--prompt') + 2);
+    expect(buildWhisperArgs({ ...BASE, carryInitialPrompt: true })).not.toContain('--carry-initial-prompt');
+  });
+
+  it('con VAD pasa umbral, margen de voz y silencio mínimo; sin VAD no los pasa', () => {
+    const vad = { threshold: 0.5, speechPadMs: 300, minSilenceMs: 500 };
+    const on = buildWhisperArgs({ ...BASE, vadModelPath: '/models/ggml-silero-v6.2.0.bin', vad });
+    expect(on.slice(on.indexOf('--vad'))).toEqual([
+      '--vad', '--vad-model', '/models/ggml-silero-v6.2.0.bin', '-vt', '0.5', '-vp', '300', '-vsd', '500',
+    ]);
+    expect(buildWhisperArgs({ ...BASE, vad })).not.toContain('-vp');
+  });
+});
+
 describe('resolveWhisperThreads', () => {
   it('0 = nucleos - 1, minimo 1', () => {
     expect(resolveWhisperThreads(0, 32)).toBe(31);
@@ -76,4 +94,5 @@ describe('resolveWhisperLanguage', () => {
     expect(resolveWhisperLanguage(undefined, 'es')).toBe('es');
     expect(resolveWhisperLanguage('  ', null)).toBe('auto');
   });
+
 });

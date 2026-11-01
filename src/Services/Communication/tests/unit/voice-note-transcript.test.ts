@@ -14,6 +14,7 @@ import type { ConversationRepository } from '../../src/application/ports/convers
 import { requestVoiceNoteTranscript } from '../../src/application/use-cases/request-voice-note-transcript.js';
 import { FakeEffectiveSettingsResolver } from '../helpers/fake-effective-settings.js';
 import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitter.js';
+import type { UserCommunicationPreferencesRepository } from '../../src/application/ports/user-communication-preferences-repository.js';
 
 const u = () => randomUUID();
 
@@ -149,8 +150,35 @@ describe('voice note transcript on demand (boton Transcribe)', () => {
       messageId: message.id,
       correlationId: 'c',
     };
-    return { message, updates, emitted, publisher, deps, command };
+    return { message, updates, emitted, publisher, deps, command, staff };
   }
+
+  function preferences(languages: Record<string, string | null>) {
+    return {
+      find: async (_tenantId: string, userId: string) =>
+        userId in languages ? { toSnapshot: () => ({ transcriptLanguage: languages[userId] }) } : null,
+    } as unknown as Pick<UserCommunicationPreferencesRepository, 'find'>;
+  }
+
+  function requestedLanguage(publisher: RecordingPublisher): string | undefined {
+    return (publisher.events[0] as unknown as { language?: string } | undefined)?.language;
+  }
+
+  it('usa el idioma que eligió quien grabó la nota, no el de quien la pide', async () => {
+    const t = onDemand('NotRequested');
+    const r = await requestVoiceNoteTranscript(t.command, { ...t.deps, userPreferences: preferences({ [t.staff.userId]: 'es', [t.command.userId]: 'en' }) });
+
+    expect(r.isSuccess).toBe(true);
+    expect(requestedLanguage(t.publisher)).toBe('es');
+  });
+
+  it('sin preferencia del que habla rige el idioma de la oficina', async () => {
+    const office = (await new FakeEffectiveSettingsResolver().resolve(u())).recording.transcriptLanguage;
+    const t = onDemand('NotRequested');
+    await requestVoiceNoteTranscript(t.command, { ...t.deps, userPreferences: preferences({ [t.staff.userId]: null }) });
+
+    expect(requestedLanguage(t.publisher)).toBe(office);
+  });
 
   it('cualquier participante lo pide: pasa a Processing, avisa al worker y al hilo', async () => {
     const t = onDemand('NotRequested');

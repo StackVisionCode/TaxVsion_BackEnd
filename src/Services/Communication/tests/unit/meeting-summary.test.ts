@@ -62,6 +62,7 @@ function meeting(participants: MeetingParticipantSnapshot[]): Meeting {
     recordingRequested: false,
     recordingFileId: null,
     transcriptFileId: null,
+    transcriptLanguage: null,
     hostUserId: HOST,
     scheduledForUtc: null,
     scheduledDurationMinutes: null,

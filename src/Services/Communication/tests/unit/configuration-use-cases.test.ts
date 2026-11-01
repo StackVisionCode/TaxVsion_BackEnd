@@ -52,7 +52,7 @@ class FakeSettingsRepo implements SettingsRepository {
   async save(settings: TenantCommunicationSettings): Promise<void> {
     this.rows.set(settings.tenantId, settings);
   }
-  async listPurgeEnabled(): Promise<Array<{ tenantId: string; messageRetentionDays: number }>> {
+  async listTenantsWithContent(): Promise<string[]> {
     return [];
   }
 }

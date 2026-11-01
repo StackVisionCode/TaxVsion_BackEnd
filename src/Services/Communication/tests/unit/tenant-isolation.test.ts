@@ -124,7 +124,6 @@ class FakeTenantSettingsProvider implements TenantSettingsProvider {
       employeeToEmployeeChatEnabled: true,
       restrictCustomerChatToAssignedPreparer: false,
       screenshotsEnabled: true,
-      messageRetentionDays: 365,
     };
   }
 }

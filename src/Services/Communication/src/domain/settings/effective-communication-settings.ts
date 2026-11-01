@@ -106,6 +106,12 @@ export interface EffectiveCommunicationSettings {
     readonly edit: ChatEditPolicy;
   };
   readonly support: { readonly enabled: boolean };
+  /** Retención: la de la oficina que fijó PlatformAdmin o, si no hay, la global. La oficina no la edita. */
+  readonly retention: {
+    readonly messageDays: number;
+    readonly recordingDays: number;
+    readonly purgeEnabled: boolean;
+  };
   readonly invitations: {
     readonly minTtlHours: number;
     readonly expiryGraceHours: number;
@@ -361,6 +367,11 @@ export function resolveCeilings(input: {
 
 export function resolveEffectiveSettings(input: ResolveEffectiveInput): EffectiveCommunicationSettings {
   const { platform, limits, constraints, tenant } = input;
+  const retention = {
+    messageDays: clampToTechnical('messageRetentionDays', constraints?.messageRetentionDays ?? platform.messageRetentionDays),
+    recordingDays: clampToTechnical('recordingRetentionDays', constraints?.recordingRetentionDays ?? platform.recordingRetentionDays),
+    purgeEnabled: constraints?.purgeEnabled ?? platform.purgeEnabled ?? false,
+  };
   const preferences = input.preferences ?? null;
   const ceilings = resolveCeilings({ platform, limits, constraints });
 
@@ -461,8 +472,8 @@ export function resolveEffectiveSettings(input: ResolveEffectiveInput): Effectiv
         captureSpatialLayer: clampToTechnical('recordingCaptureSpatialLayer', platform.recordingCaptureSpatialLayer),
       },
       tracksRetentionDays: clampToTechnical('recordingTracksRetentionDays', platform.recordingTracksRetentionDays),
-      retentionDays: tenant.recordingRetentionDays,
-      purgeEnabled: tenant.purgeEnabled,
+      retentionDays: retention.recordingDays,
+      purgeEnabled: retention.purgeEnabled,
       transcriptPrompt: tenant.transcriptPrompt ?? null,
       voiceNote: {
         enabled: ceilings.transcriptAllowed && (platform.voiceNoteTranscriptEnabled ?? true) && (tenant.voiceNoteTranscriptEnabled ?? true),
@@ -489,6 +500,7 @@ export function resolveEffectiveSettings(input: ResolveEffectiveInput): Effectiv
       },
     },
     support: { enabled: ceilings.supportAllowed && tenant.supportEnabled },
+    retention,
     invitations: {
       minTtlHours: clampToTechnical('invitationMinTtlHours', platform.invitationMinTtlHours),
       expiryGraceHours: clampToTechnical('invitationExpiryGraceHours', platform.invitationExpiryGraceHours),
