@@ -153,6 +153,16 @@ export class PrismaCallRepository implements CallRepository {
     return rows.map((row) => toDomainCall(row, row.Participants));
   }
 
+  async listOpenAcceptedBefore(cutoffUtc: Date, take: number): Promise<Call[]> {
+    const rows = await this.prisma.call.findMany({
+      where: { Status: { in: ['Accepted', 'Active'] }, AcceptedAtUtc: { not: null, lte: cutoffUtc } },
+      include: { Participants: true },
+      orderBy: { AcceptedAtUtc: 'asc' },
+      take,
+    });
+    return rows.map((row) => toDomainCall(row, row.Participants));
+  }
+
   /** F4: llamadas abiertas (sonando o en curso) de una oficina, para `maxConcurrentCalls`. */
   async countOpenForTenant(tenantId: string): Promise<number> {
     return this.prisma.call.count({ where: { TenantId: tenantId, Status: { in: ['Ringing', 'Accepted', 'Active'] } } });

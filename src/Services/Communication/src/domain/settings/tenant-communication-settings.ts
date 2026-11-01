@@ -43,9 +43,6 @@ export interface TenantCommunicationSettingsSnapshot {
   readonly defaultCameraOff: boolean;
   readonly defaultMicrophoneOff: boolean;
   readonly persistChatOnEnd: boolean;
-  readonly messageRetentionDays: number;
-  readonly recordingRetentionDays: number;
-  readonly purgeEnabled: boolean;
   /**
    * Gap cerrado en Fase Backend 3 — la columna Prisma existia desde Fase 2
    * (default 'NoRejections') pero nunca se conecto al aggregate. Ver
@@ -155,17 +152,11 @@ const CEILING_OF: Record<CeilingedKey, NumericCeilingKey> = {
 
 /** whisper.cpp toma el prompt como contexto inicial: corto, solo nombres y vocabulario. */
 export const TRANSCRIPT_PROMPT_MAX_LENGTH = 500;
-/** Días que la oficina puede conservar mensajes y grabaciones antes de la purga. */
-export const RETENTION_DAYS_RANGE = { min: 1, max: 3650 } as const;
-
 /** F9: rangos técnicos de los números que edita la oficina, para que la pantalla no los repita. */
-export type OfficeRangedKey = OfficeNumericKey | 'messageRetentionDays' | 'recordingRetentionDays';
+export type OfficeRangedKey = OfficeNumericKey;
 
 export function officeNumericRanges(): Readonly<Record<OfficeRangedKey, { readonly min: number; readonly max: number }>> {
-  const ranges = {
-    messageRetentionDays: { ...RETENTION_DAYS_RANGE },
-    recordingRetentionDays: { ...RETENTION_DAYS_RANGE },
-  } as Record<OfficeRangedKey, { min: number; max: number }>;
+  const ranges = {} as Record<OfficeRangedKey, { min: number; max: number }>;
   for (const key of Object.keys(OFFICE_NUMERIC_RANGES) as OfficeNumericKey[]) {
     const { min, max } = TECHNICAL_LIMITS[OFFICE_NUMERIC_RANGES[key]];
     ranges[key] = { min, max };
@@ -195,9 +186,6 @@ export class TenantCommunicationSettings {
       defaultCameraOff: true,
       defaultMicrophoneOff: false,
       persistChatOnEnd: false,
-      messageRetentionDays: 365,
-      recordingRetentionDays: 90,
-      purgeEnabled: false,
       recordingConsentPolicy: RecordingConsentPolicy.NoRejections,
       defaultMeetingDurationMinutes: null,
       maxMeetingDurationMinutes: null,
@@ -236,13 +224,6 @@ export class TenantCommunicationSettings {
 
   /** Validacion de forma (rangos tecnicos). La validacion contra el techo es `validateAgainstCeilings`. */
   update(patch: TenantCommunicationSettingsPatch, now: Date = new Date()): Result<ConfigurationChange[]> {
-    const { min: minDays, max: maxDays } = RETENTION_DAYS_RANGE;
-    if (patch.messageRetentionDays !== undefined && (patch.messageRetentionDays < minDays || patch.messageRetentionDays > maxDays)) {
-      return Result.fail(makeError('Settings.InvalidRetention', `messageRetentionDays must be ${minDays}..${maxDays}.`));
-    }
-    if (patch.recordingRetentionDays !== undefined && (patch.recordingRetentionDays < minDays || patch.recordingRetentionDays > maxDays)) {
-      return Result.fail(makeError('Settings.InvalidRetention', `recordingRetentionDays must be ${minDays}..${maxDays}.`));
-    }
     if (patch.recordingConsentPolicy !== undefined && !isRecordingConsentPolicy(patch.recordingConsentPolicy)) {
       return Result.fail(makeError('Settings.InvalidRecordingConsentPolicy', 'Invalid recordingConsentPolicy.'));
     }

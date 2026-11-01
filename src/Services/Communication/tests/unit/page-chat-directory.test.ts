@@ -13,7 +13,7 @@ import { createFakeProjectionRepository, fakeSnapshot } from '../helpers/fake-us
 describe('page-chat-directory', () => {
   const tenantId = 't1';
   const settings = (over: Record<string, unknown> = {}) => ({
-    get: async () => ({ tenantId, chatEnabled: true, employeeToEmployeeChatEnabled: true, restrictCustomerChatToAssignedPreparer: false, screenshotsEnabled: true, messageRetentionDays: 365, ...over }),
+    get: async () => ({ tenantId, chatEnabled: true, employeeToEmployeeChatEnabled: true, restrictCustomerChatToAssignedPreparer: false, screenshotsEnabled: true, ...over }),
   });
   const staffRow = (userId: string, displayName: string, actorType = 'TenantEmployee'): UserDirectoryEntrySnapshot => ({
     userId, tenantId, displayName, email: `${userId}@x.test`, isActive: true, actorType, avatarFileId: null, updatedAtUtc: new Date(0),

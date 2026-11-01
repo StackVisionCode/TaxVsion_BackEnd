@@ -39,6 +39,9 @@ class FakeCallRepository implements CallRepository {
   async listEndingBefore(): Promise<Call[]> {
     return [];
   }
+  async listOpenAcceptedBefore(): Promise<Call[]> {
+    return [];
+  }
   async countOpenForTenant(): Promise<number> {
     return 0;
   }

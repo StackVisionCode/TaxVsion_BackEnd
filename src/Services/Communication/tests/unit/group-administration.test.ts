@@ -54,7 +54,7 @@ const directory = new Map<string, UserDirectoryEntrySnapshot>([
 const portal = new Map<string, string>([[client, 'cust-1'], [client2, 'cust-2']]);
 
 function settings(over: Partial<TenantCommunicationSettingsSnapshot> = {}): TenantCommunicationSettingsSnapshot {
-  return { tenantId, chatEnabled: true, employeeToEmployeeChatEnabled: true, restrictCustomerChatToAssignedPreparer: false, screenshotsEnabled: true, messageRetentionDays: 365, ...over };
+  return { tenantId, chatEnabled: true, employeeToEmployeeChatEnabled: true, restrictCustomerChatToAssignedPreparer: false, screenshotsEnabled: true, ...over };
 }
 
 class MemoryConversations implements ConversationRepository {

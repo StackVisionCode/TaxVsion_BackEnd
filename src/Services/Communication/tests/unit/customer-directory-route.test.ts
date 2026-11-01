@@ -59,7 +59,6 @@ function fakeContainer(
           employeeToEmployeeChatEnabled: true,
           restrictCustomerChatToAssignedPreparer: false,
           screenshotsEnabled: true,
-          messageRetentionDays: 365,
         };
       },
     },

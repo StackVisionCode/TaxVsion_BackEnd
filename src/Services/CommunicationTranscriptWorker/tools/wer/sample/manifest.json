@@ -1,0 +1,4 @@
+[
+  { "id": "reunion-ana", "reference": "ref/reunion-ana.txt", "hypothesis": "hyp/reunion.json", "speakerUserId": "u-ana" },
+  { "id": "reunion-luis", "reference": "ref/reunion-luis.txt", "hypothesis": "hyp/reunion.json", "speakerUserId": "u-luis" }
+]

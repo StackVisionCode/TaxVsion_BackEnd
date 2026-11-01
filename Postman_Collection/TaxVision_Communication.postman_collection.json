@@ -585,7 +585,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"title\": \"Revisión documentos 1040\",\n  \"description\": \"Revisión de documentos para la declaración 1040\",\n  \"maxParticipants\": 10,\n  \"scheduledForUtc\": \"2026-07-15T18:00:00.000Z\",\n  \"passcode\": \"abc123\",\n  \"requireWaitingRoom\": false,\n  \"recordingRequested\": false,\n  \"scheduledDurationMinutes\": 45\n}"
+							"raw": "{\n  \"title\": \"Revisión documentos 1040\",\n  \"description\": \"Revisión de documentos para la declaración 1040\",\n  \"maxParticipants\": 10,\n  \"scheduledForUtc\": \"2026-07-15T18:00:00.000Z\",\n  \"passcode\": \"abc123\",\n  \"requireWaitingRoom\": false,\n  \"recordingRequested\": false,\n  \"scheduledDurationMinutes\": 45,\n  \"transcriptLanguage\": null\n}"
 						},
 						"url": {
 							"raw": "{{UrlBase}}/communication/meetings",
@@ -597,7 +597,7 @@
 								"meetings"
 							]
 						},
-						"description": "\n\nF3: `scheduledDurationMinutes` (entero) es la duración programada, informativa (D-35) y acotada por el máximo de la oficina (400 Meeting.InvalidDuration si lo supera; default = duración por defecto de la oficina). El corte real lo fija el Start con el máximo vigente (`endsAtUtc`); no existe prórroga (D-34). `maxParticipants` no puede superar el cupo efectivo (400 Plan.MeetingSizeExceeded)."
+						"description": "\n\nF3: `scheduledDurationMinutes` (entero) es la duración programada, informativa (D-35) y acotada por el máximo de la oficina (400 Meeting.InvalidDuration si lo supera; default = duración por defecto de la oficina). El corte real lo fija el Start con el máximo vigente (`endsAtUtc`); no existe prórroga (D-34). `maxParticipants` no puede superar el cupo efectivo (400 Plan.MeetingSizeExceeded). transcriptLanguage (opcional): null = automático (cada participante en el idioma que eligió para su voz, o el de la oficina); \"en\", \"es\"… fija el idioma del transcript para todos; la pantalla compartida siempre va en auto."
 					}
 				},
 				{
@@ -857,6 +857,35 @@
 							]
 						},
 						"description": "Requiere estar autenticado (host). newScheduledForUtc es nullable en el schema, pero hace falta una fecha ISO real para que el reschedule tenga efecto. Publica communication.meeting.rescheduled.v1. Responde 204 sin body."
+					}
+				},
+				{
+					"name": "Idioma del transcript de la reunión",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"transcriptLanguage\": \"es\"\n}"
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/transcript-language",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"{{meetingId}}",
+								"transcript-language"
+							]
+						},
+						"description": "Host o cohost (communication.meeting.host), mientras la reunión no terminó (Scheduled o Live). `null` vuelve a automático. Rige al pedir el transcript, al cerrar la grabación. 200 { transcriptLanguage }; 403 Meeting.HostOnly, 404 Meeting.NotFound, 409 Meeting.InvalidTransition, 400 Meeting.InvalidLanguage."
 					}
 				},
 				{
@@ -1855,7 +1884,7 @@
 							"name": "200 — Settings + limits + constraints + effective",
 							"status": "OK",
 							"code": 200,
-							"body": "{\n  \"settings\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"chatEnabled\": true,\n    \"callsEnabled\": true,\n    \"videoCallsEnabled\": true,\n    \"meetingsEnabled\": true,\n    \"supportEnabled\": true,\n    \"screenshotsEnabled\": true,\n    \"employeeToEmployeeChatEnabled\": false,\n    \"restrictCustomerChatToAssignedPreparer\": false,\n    \"defaultCameraOff\": true,\n    \"defaultMicrophoneOff\": false,\n    \"persistChatOnEnd\": false,\n    \"messageRetentionDays\": 365,\n    \"recordingRetentionDays\": 90,\n    \"purgeEnabled\": false,\n    \"recordingConsentPolicy\": \"NoRejections\",\n    \"defaultMeetingDurationMinutes\": null,\n    \"maxMeetingDurationMinutes\": null,\n    \"maxMeetingParticipants\": null,\n    \"maxRecordingMinutesMeeting\": null,\n    \"maxRecordingMinutesAudioCall\": null,\n    \"maxRecordingMinutesVideoCall\": null,\n    \"ringingTimeoutSeconds\": null,\n    \"meetingChatAttachmentsPerMinute\": null,\n    \"meetingChatAttachmentsPerMeeting\": null,\n    \"meetingSoundsPolicy\": null,\n    \"transcriptLanguage\": null,\n    \"recordingVisibleInPortal\": true,\n    \"guestsAllowed\": true\n  },\n  \"limits\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"planCode\": \"pro\",\n    \"maxMeetingParticipants\": 10,\n    \"maxMeetingMinutes\": 60,\n    \"maxConcurrentCalls\": 2,\n    \"maxMonthlyMinutes\": 600,\n    \"recordingEnabled\": true,\n    \"supportEnabled\": true,\n    \"isSuspended\": false,\n    \"enabledModules\": [\n      \"meetings\"\n    ],\n    \"maxRecordingMinutesMeeting\": 60,\n    \"maxRecordingMinutesAudioCall\": 60,\n    \"maxRecordingMinutesVideoCall\": 60,\n    \"recordingVideoEnabled\": true,\n    \"transcriptEnabled\": true,\n    \"callsEnabled\": true,\n    \"maxCallMinutes\": 60\n  },\n  \"constraints\": null,\n  \"effective\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"platformVersion\": 1,\n    \"planCode\": \"pro\",\n    \"isSuspended\": false,\n    \"ceilings\": {\n      \"maxParticipants\": 10,\n      \"maxMeetingDurationMinutes\": 60,\n      \"maxRecordingMinutesMeeting\": 60,\n      \"maxRecordingMinutesAudioCall\": 60,\n      \"maxRecordingMinutesVideoCall\": 60,\n      \"meetingChatAttachmentsPerMinute\": 5,\n      \"meetingChatAttachmentsPerMeeting\": 20,\n      \"recordingAllowed\": true,\n      \"recordingVideoAllowed\": true,\n      \"transcriptAllowed\": true,\n      \"callsAllowed\": true,\n      \"supportAllowed\": true,\n      \"guestsAllowed\": true\n    },\n    \"meeting\": {\n      \"enabled\": true,\n      \"maxDurationMinutes\": 60,\n      \"defaultDurationMinutes\": 60,\n      \"maxParticipants\": 10,\n      \"meshMaxParticipants\": 4,\n      \"disconnectGraceSeconds\": 30,\n      \"scheduledExpiryHours\": 24,\n      \"emptyEndMinutes\": 10,\n      \"dominantSpeakerMaxPerSecond\": 5,\n      \"guestsAllowed\": true,\n      \"soundsPolicy\": \"all\",\n      \"chatAttachmentsPerMinute\": 5,\n      \"chatAttachmentsPerMeeting\": 20\n    },\n    \"calls\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"ringingTimeoutSeconds\": 60,\n      \"maxCallMinutes\": 60,\n      \"maxConcurrentCalls\": 2,\n      \"maxMonthlyMinutes\": 600\n    },\n    \"recording\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"transcriptEnabled\": true,\n      \"maxMinutesMeeting\": 60,\n      \"maxMinutesAudioCall\": 60,\n      \"maxMinutesVideoCall\": 60,\n      \"consentTimeoutMeetingSeconds\": 30,\n      \"consentTimeoutCallSeconds\": 15,\n      \"visibleInPortal\": true,\n      \"transcriptLanguage\": \"auto\"\n    },\n    \"chat\": {\n      \"enabled\": true,\n      \"internalGroupsEnabled\": true,\n      \"employeeToEmployeeChatEnabled\": false,\n      \"maxReactionsPerMessage\": 3\n    },\n    \"support\": {\n      \"enabled\": true\n    },\n    \"invitations\": {\n      \"minTtlHours\": 168,\n      \"expiryGraceHours\": 24\n    },\n    \"user\": null\n  }\n}"
+							"body": "{\n  \"settings\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"chatEnabled\": true,\n    \"callsEnabled\": true,\n    \"videoCallsEnabled\": true,\n    \"meetingsEnabled\": true,\n    \"supportEnabled\": true,\n    \"screenshotsEnabled\": true,\n    \"employeeToEmployeeChatEnabled\": false,\n    \"restrictCustomerChatToAssignedPreparer\": false,\n    \"defaultCameraOff\": true,\n    \"defaultMicrophoneOff\": false,\n    \"persistChatOnEnd\": false,\n    \"recordingConsentPolicy\": \"NoRejections\",\n    \"defaultMeetingDurationMinutes\": null,\n    \"maxMeetingDurationMinutes\": null,\n    \"maxMeetingParticipants\": null,\n    \"maxRecordingMinutesMeeting\": null,\n    \"maxRecordingMinutesAudioCall\": null,\n    \"maxRecordingMinutesVideoCall\": null,\n    \"ringingTimeoutSeconds\": null,\n    \"meetingChatAttachmentsPerMinute\": null,\n    \"meetingChatAttachmentsPerMeeting\": null,\n    \"meetingSoundsPolicy\": null,\n    \"transcriptLanguage\": null,\n    \"recordingVisibleInPortal\": true,\n    \"guestsAllowed\": true\n  },\n  \"limits\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"planCode\": \"pro\",\n    \"maxMeetingParticipants\": 10,\n    \"maxMeetingMinutes\": 60,\n    \"maxConcurrentCalls\": 2,\n    \"maxMonthlyMinutes\": 600,\n    \"recordingEnabled\": true,\n    \"supportEnabled\": true,\n    \"isSuspended\": false,\n    \"enabledModules\": [\n      \"meetings\"\n    ],\n    \"maxRecordingMinutesMeeting\": 60,\n    \"maxRecordingMinutesAudioCall\": 60,\n    \"maxRecordingMinutesVideoCall\": 60,\n    \"recordingVideoEnabled\": true,\n    \"transcriptEnabled\": true,\n    \"callsEnabled\": true,\n    \"maxCallMinutes\": 60\n  },\n  \"constraints\": null,\n  \"effective\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"platformVersion\": 1,\n    \"planCode\": \"pro\",\n    \"isSuspended\": false,\n    \"ceilings\": {\n      \"maxParticipants\": 10,\n      \"maxMeetingDurationMinutes\": 60,\n      \"maxRecordingMinutesMeeting\": 60,\n      \"maxRecordingMinutesAudioCall\": 60,\n      \"maxRecordingMinutesVideoCall\": 60,\n      \"meetingChatAttachmentsPerMinute\": 5,\n      \"meetingChatAttachmentsPerMeeting\": 20,\n      \"recordingAllowed\": true,\n      \"recordingVideoAllowed\": true,\n      \"transcriptAllowed\": true,\n      \"callsAllowed\": true,\n      \"supportAllowed\": true,\n      \"guestsAllowed\": true\n    },\n    \"meeting\": {\n      \"enabled\": true,\n      \"maxDurationMinutes\": 60,\n      \"defaultDurationMinutes\": 60,\n      \"maxParticipants\": 10,\n      \"meshMaxParticipants\": 4,\n      \"disconnectGraceSeconds\": 30,\n      \"scheduledExpiryHours\": 24,\n      \"emptyEndMinutes\": 10,\n      \"dominantSpeakerMaxPerSecond\": 5,\n      \"guestsAllowed\": true,\n      \"soundsPolicy\": \"all\",\n      \"chatAttachmentsPerMinute\": 5,\n      \"chatAttachmentsPerMeeting\": 20\n    },\n    \"calls\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"ringingTimeoutSeconds\": 60,\n      \"maxCallMinutes\": 60,\n      \"maxConcurrentCalls\": 2,\n      \"maxMonthlyMinutes\": 600\n    },\n    \"recording\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"transcriptEnabled\": true,\n      \"maxMinutesMeeting\": 60,\n      \"maxMinutesAudioCall\": 60,\n      \"maxMinutesVideoCall\": 60,\n      \"consentTimeoutMeetingSeconds\": 30,\n      \"consentTimeoutCallSeconds\": 15,\n      \"visibleInPortal\": true,\n      \"transcriptLanguage\": \"auto\"\n    },\n    \"chat\": {\n      \"enabled\": true,\n      \"internalGroupsEnabled\": true,\n      \"employeeToEmployeeChatEnabled\": false,\n      \"maxReactionsPerMessage\": 3\n    },\n    \"support\": {\n      \"enabled\": true\n    },\n    \"invitations\": {\n      \"minTtlHours\": 168,\n      \"expiryGraceHours\": 24\n    },\n    \"user\": null\n  }\n}"
 						}
 					]
 				},
@@ -1871,7 +1900,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"meetingsEnabled\": true,\n  \"messageRetentionDays\": 730,\n  \"maxMeetingParticipants\": 6,\n  \"defaultMeetingDurationMinutes\": 30,\n  \"meetingSoundsPolicy\": \"hostOnly\",\n  \"guestsAllowed\": true,\n  \"restrictCustomerChatToAssignedPreparer\": true\n}"
+							"raw": "{\n  \"meetingsEnabled\": true,\n  \"maxMeetingParticipants\": 6,\n  \"defaultMeetingDurationMinutes\": 30,\n  \"meetingSoundsPolicy\": \"hostOnly\",\n  \"guestsAllowed\": true,\n  \"restrictCustomerChatToAssignedPreparer\": true\n}"
 						},
 						"url": {
 							"raw": "{{UrlBase}}/communication/settings",
@@ -1883,7 +1912,7 @@
 								"settings"
 							]
 						},
-						"description": "Requiere communication.settings.manage. Patch parcial; devuelve el mismo overview que el GET. Campos: chatEnabled, callsEnabled, videoCallsEnabled, meetingsEnabled, supportEnabled, screenshotsEnabled, employeeToEmployeeChatEnabled, restrictCustomerChatToAssignedPreparer, defaultCameraOff, defaultMicrophoneOff, persistChatOnEnd, messageRetentionDays (1-3650), recordingRetentionDays (1-3650), purgeEnabled, recordingConsentPolicy (AllAcceptedRequired|NoRejections|HostOverride), y los nuevos de la capa de configuración (null = hereda): defaultMeetingDurationMinutes, maxMeetingDurationMinutes, maxMeetingParticipants, maxRecordingMinutesMeeting, maxRecordingMinutesAudioCall, maxRecordingMinutesVideoCall, ringingTimeoutSeconds, meetingChatAttachmentsPerMinute, meetingChatAttachmentsPerMeeting, meetingSoundsPolicy (all|hostOnly|off), transcriptLanguage (auto|código), recordingVisibleInPortal, guestsAllowed. internalGroupsEnabled ya no es de oficina (D-16, interruptor global). Errores 400: Settings.AboveCeiling (supera el techo efectivo: plan, techo de PlatformAdmin o global), Settings.OutOfTechnicalRange, Settings.InvalidSoundsPolicy, Settings.InvalidLanguage, Settings.InvalidRetention. Efectos: fila por clave en ConfigurationAudit, evento communication.tenant_settings_changed.v1, invalidación inmediata de caché y socket settings.changed a los miembros."
+						"description": "Requiere communication.settings.manage. Patch parcial; devuelve el mismo overview que el GET. Campos: chatEnabled, callsEnabled, videoCallsEnabled, meetingsEnabled, supportEnabled, screenshotsEnabled, employeeToEmployeeChatEnabled, restrictCustomerChatToAssignedPreparer, defaultCameraOff, defaultMicrophoneOff, persistChatOnEnd, messageRetentionDays (1-3650), recordingRetentionDays (1-3650), purgeEnabled, recordingConsentPolicy (AllAcceptedRequired|NoRejections|HostOverride), y los nuevos de la capa de configuración (null = hereda): defaultMeetingDurationMinutes, maxMeetingDurationMinutes, maxMeetingParticipants, maxRecordingMinutesMeeting, maxRecordingMinutesAudioCall, maxRecordingMinutesVideoCall, ringingTimeoutSeconds, meetingChatAttachmentsPerMinute, meetingChatAttachmentsPerMeeting, meetingSoundsPolicy (all|hostOnly|off), transcriptLanguage (auto|código), recordingVisibleInPortal, guestsAllowed. internalGroupsEnabled ya no es de oficina (D-16, interruptor global). Errores 400: Settings.AboveCeiling (supera el techo efectivo: plan, techo de PlatformAdmin o global), Settings.OutOfTechnicalRange, Settings.InvalidSoundsPolicy, Settings.InvalidLanguage, Settings.InvalidRetention. Efectos: fila por clave en ConfigurationAudit, evento communication.tenant_settings_changed.v1, invalidación inmediata de caché y socket settings.changed a los miembros. La retención (mensajes, grabaciones, purga) ya no la edita la oficina: la fija PlatformAdmin en platform-settings (global) y en tenants/{id}/constraints (excepción); el GET la devuelve en effective.retention."
 					},
 					"event": [
 						{
@@ -2234,6 +2263,59 @@
 						}
 					},
 					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — tenant constraints updated\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Excepción de retención para una oficina",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/tenants/{{tenantId}}/constraints",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"tenants",
+								"{{tenantId}}",
+								"constraints"
+							]
+						},
+						"description": "PlatformOnly. Excepción de retención de esta oficina; null en un campo vuelve a la global de platform-settings.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"messageRetentionDays\": 3650,\n  \"recordingRetentionDays\": null,\n  \"purgeEnabled\": false\n}"
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						}
+					},
 					"event": [
 						{
 							"listen": "test",
@@ -2617,6 +2699,47 @@
 						}
 					},
 					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — platform reminder/guests\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Retención global de mensajes y grabaciones",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/platform-settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"platform-settings"
+							]
+						},
+						"description": "PlatformOnly. Retención para todas las oficinas (1–3650 días) y si corre la purga automática. La oficina ya no la edita; la ve en effective.retention del GET /communication/settings.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"messageRetentionDays\": 2555,\n  \"recordingRetentionDays\": 365,\n  \"purgeEnabled\": false\n}"
+						}
+					},
 					"event": [
 						{
 							"listen": "test",

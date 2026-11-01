@@ -302,6 +302,76 @@ describe('recording lifecycle (server capture)', () => {
     expect((await rt.transcripts.findByScope(meeting.tenantId, 'Meeting', meeting.id))?.toSnapshot().state).toBe('Processing');
   });
 
+  it('cada pista lleva el idioma que eligió su participante; la pantalla va en auto', async () => {
+    const rt = runtime();
+    const { meeting, host } = liveMeeting();
+    await rt.meetings.save(meeting);
+    const session = serverSession({ tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, requestedByUserId: host.userId, state: RecordingSessionState.Composing });
+    await rt.recordingSessions.save(session);
+    const guestId = u();
+    const userPreferences = {
+      find: async (_tenantId: string, userId: string) =>
+        userId === host.userId ? { toSnapshot: () => ({ transcriptLanguage: 'es' }) } : null,
+    } as unknown as RecordingLifecycleDeps['userPreferences'];
+    const track = (userId: string, source: 'camera' | 'screen') => ({ trackId: u(), userId, fileId: u(), source, startOffsetMs: 0, durationMs: 60_000 });
+
+    await handleRecordingComposed(
+      {
+        sessionId: session.id,
+        scope: 'Meeting' as const,
+        scopeId: meeting.id,
+        composedFileId: u(),
+        composedSizeBytes: 2048,
+        format: 'mp4',
+        durationSeconds: 60,
+        audioTracks: [track(host.userId, 'camera'), track(host.userId, 'screen'), track(guestId, 'camera')],
+        videoTrackCount: 1,
+      },
+      { tenantId: meeting.tenantId, correlationId: 'c' },
+      { ...rt.deps, userPreferences },
+    );
+
+    const processing = rt.publisher.events.find((e) => e.eventType === 'communication.meeting.recording_processing_started.v1');
+    const languages = (processing as unknown as { audioTracks: Array<{ language?: string }> }).audioTracks.map((t) => t.language);
+    expect(languages).toEqual(['es', 'auto', undefined]);
+  });
+
+  it('el idioma elegido para la reunión manda sobre el de cada participante (la pantalla sigue en auto)', async () => {
+    const rt = runtime();
+    const { meeting, host } = liveMeeting();
+    expect(meeting.setTranscriptLanguage({ byUserId: host.userId, language: 'en' }).isSuccess).toBe(true);
+    await rt.meetings.save(meeting);
+    const session = serverSession({ tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, requestedByUserId: host.userId, state: RecordingSessionState.Composing });
+    await rt.recordingSessions.save(session);
+    const userPreferences = {
+      find: async () => ({ toSnapshot: () => ({ transcriptLanguage: 'es' }) }),
+    } as unknown as RecordingLifecycleDeps['userPreferences'];
+    const track = (source: 'camera' | 'screen') => ({ trackId: u(), userId: host.userId, fileId: u(), source, startOffsetMs: 0, durationMs: 60_000 });
+
+    await handleRecordingComposed(
+      {
+        sessionId: session.id,
+        scope: 'Meeting' as const,
+        scopeId: meeting.id,
+        composedFileId: u(),
+        composedSizeBytes: 2048,
+        format: 'mp4',
+        durationSeconds: 60,
+        audioTracks: [track('camera'), track('screen')],
+        videoTrackCount: 1,
+      },
+      { tenantId: meeting.tenantId, correlationId: 'c' },
+      { ...rt.deps, userPreferences },
+    );
+
+    const processing = rt.publisher.events.find((e) => e.eventType === 'communication.meeting.recording_processing_started.v1') as unknown as {
+      language: string;
+      audioTracks: Array<{ language?: string }>;
+    };
+    expect(processing.language).toBe('en');
+    expect(processing.audioTracks.map((t) => t.language)).toEqual(['en', 'auto']);
+  });
+
   it('marks the recording Ready when CloudStorage makes the file available', async () => {
     const rt = runtime();
     const { meeting, host } = liveMeeting();

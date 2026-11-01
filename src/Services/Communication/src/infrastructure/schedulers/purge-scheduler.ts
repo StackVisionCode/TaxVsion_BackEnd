@@ -10,8 +10,8 @@ import { purgeCommunicationHistory } from './history-purge.js';
 /**
  * Purga datos viejos, dos categorias distintas:
  *   1. Datos de negocio (Message + MessageReceipt via cascade): SOLO para
- *      tenants con `PurgeEnabled=true` en TenantCommunicationSettings,
- *      usando su `MessageRetentionDays` configurado. Feature-flag OFF por
+ *      oficinas con la purga activa según su retención efectiva (global de la plataforma o la excepción
+ *      por oficina que fija PlatformAdmin), usando sus días de retención de mensajes. Feature-flag OFF por
  *      default — un tenant admin lo prende explicitamente.
  *   2. Datos operativos (OutboxMessage ya publicado, ProcessedEvent inbox,
  *      IdempotencyRecord expirado): retencion global de PlatformCommunicationSettings
@@ -42,7 +42,7 @@ export function startPurgeScheduler(
     prisma: PrismaClient;
     settings: SettingsRepository;
     lock: RedisDistributedLock;
-    effectiveSettings: Pick<EffectiveSettingsResolver, 'platform'>;
+    effectiveSettings: Pick<EffectiveSettingsResolver, 'platform' | 'resolve'>;
     analytics?: Pick<AnalyticsRepository, 'purgeBefore'>;
   },
 ): { stop(): void } {
@@ -52,12 +52,16 @@ export function startPurgeScheduler(
     const now = new Date();
     const platform = await deps.effectiveSettings.platform();
 
-    const purgeEnabledTenants = await deps.settings.listPurgeEnabled();
+    // Retención efectiva por oficina (global de la plataforma o la excepción que fijó PlatformAdmin).
     let purgedMessages = 0;
-    for (const tenant of purgeEnabledTenants) {
-      const cutoff = new Date(now.getTime() - tenant.messageRetentionDays * 86_400_000);
+    let tenantsWithPurgeEnabled = 0;
+    for (const tenantId of await deps.settings.listTenantsWithContent()) {
+      const { retention } = await deps.effectiveSettings.resolve(tenantId);
+      if (!retention.purgeEnabled) continue;
+      tenantsWithPurgeEnabled += 1;
+      const cutoff = new Date(now.getTime() - retention.messageDays * 86_400_000);
       const result = await deps.prisma.message.deleteMany({
-        where: { TenantId: tenant.tenantId, CreatedAtUtc: { lt: cutoff } },
+        where: { TenantId: tenantId, CreatedAtUtc: { lt: cutoff } },
       });
       purgedMessages += result.count;
     }
@@ -106,7 +110,7 @@ export function startPurgeScheduler(
 
     logger.info(
       {
-        tenantsWithPurgeEnabled: purgeEnabledTenants.length,
+        tenantsWithPurgeEnabled,
         purgedAnalyticsDays,
         purgedCalls: history.calls,
         purgedMeetings: history.meetings,

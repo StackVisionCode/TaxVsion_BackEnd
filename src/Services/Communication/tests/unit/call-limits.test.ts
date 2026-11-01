@@ -42,7 +42,7 @@ const idempotency: IdempotencyStore = {
 
 const settings: TenantSettingsProvider = {
   async get(tenantId: string): Promise<TenantCommunicationSettingsSnapshot> {
-    return { tenantId, chatEnabled: true, employeeToEmployeeChatEnabled: true, restrictCustomerChatToAssignedPreparer: false, screenshotsEnabled: true, messageRetentionDays: 365 };
+    return { tenantId, chatEnabled: true, employeeToEmployeeChatEnabled: true, restrictCustomerChatToAssignedPreparer: false, screenshotsEnabled: true };
   },
 };
 

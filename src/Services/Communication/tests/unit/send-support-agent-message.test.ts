@@ -85,7 +85,6 @@ function makeDeps(input: {
           employeeToEmployeeChatEnabled: true,
           restrictCustomerChatToAssignedPreparer: false,
           screenshotsEnabled: true,
-          messageRetentionDays: 365,
         };
       },
     } as unknown as SendSupportAgentMessageDeps['settings'],

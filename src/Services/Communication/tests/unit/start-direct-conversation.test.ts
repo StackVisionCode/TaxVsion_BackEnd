@@ -92,7 +92,6 @@ function fakeSettings(overrides: Partial<TenantCommunicationSettingsSnapshot> = 
         employeeToEmployeeChatEnabled: true,
         restrictCustomerChatToAssignedPreparer: false,
         screenshotsEnabled: true,
-        messageRetentionDays: 365,
         ...overrides,
       };
     },

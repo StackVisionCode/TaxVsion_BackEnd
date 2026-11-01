@@ -121,6 +121,10 @@ const PlatformPatchBody = z.object({
   callsRetentionDays: z.number().int().min(0).nullable().optional(),
   meetingsRetentionDays: z.number().int().min(0).nullable().optional(),
   invitationsRetentionDays: z.number().int().min(0).nullable().optional(),
+  // Retención de mensajes y grabaciones y purga automática, para todas las oficinas.
+  messageRetentionDays: z.number().int().min(0).optional(),
+  recordingRetentionDays: z.number().int().min(0).optional(),
+  purgeEnabled: z.boolean().optional(),
 });
 
 const ConstraintsPatchBody = z.object({
@@ -131,6 +135,10 @@ const ConstraintsPatchBody = z.object({
   maxRecordingMinutesVideoCall: OptionalPositiveInt,
   recordingAllowed: z.boolean().nullable().optional(),
   guestsAllowed: z.boolean().nullable().optional(),
+  // Excepción de retención de esta oficina (null = vuelve a la global).
+  messageRetentionDays: OptionalPositiveInt,
+  recordingRetentionDays: OptionalPositiveInt,
+  purgeEnabled: z.boolean().nullable().optional(),
   notes: z.string().max(512).nullable().optional(),
 });
 

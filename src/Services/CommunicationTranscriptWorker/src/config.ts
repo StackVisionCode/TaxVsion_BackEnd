@@ -81,10 +81,18 @@ const rawEnv = z
     // generan en el Dockerfile (build de whisper.cpp + descarga del modelo),
     // no vienen del npm install.
     TRANSCRIPT_WORKER_WHISPER_BIN_PATH: z.string().default('/opt/whisper.cpp/build/bin/whisper-cli'),
-    // Default = el del Dockerfile hasta que el benchmark T-29 elija modelo.
-    TRANSCRIPT_WORKER_WHISPER_MODEL_PATH: z.string().default('/opt/whisper.cpp/models/ggml-small-q5_1.bin'),
+    // INV-T01: large-v3-turbo (clase large en inglés y español, coste ≈ medium); small no sirve a
+    // oficinas bilingües. Mismo default que el Dockerfile.
+    TRANSCRIPT_WORKER_WHISPER_MODEL_PATH: z.string().default('/opt/whisper.cpp/models/ggml-large-v3-turbo-q5_0.bin'),
     // Silero VAD (ggml-silero-v6.2.0.bin). Vacio = VAD apagado.
     TRANSCRIPT_WORKER_WHISPER_VAD_MODEL_PATH: z.string().default(''),
+    // INV-T01 R-4: margen de voz y silencio minimo del VAD. Los defaults de whisper.cpp (30/100 ms)
+    // cortan el principio y el final de las palabras; el umbral queda en 0.5.
+    TRANSCRIPT_WORKER_WHISPER_VAD_THRESHOLD: z.coerce.number().min(0.05).max(0.95).default(0.5),
+    TRANSCRIPT_WORKER_WHISPER_VAD_SPEECH_PAD_MS: z.coerce.number().int().min(0).max(2000).default(300),
+    TRANSCRIPT_WORKER_WHISPER_VAD_MIN_SILENCE_MS: z.coerce.number().int().min(0).max(5000).default(500),
+    // INV-T01 R-3: el glosario va en CADA ventana de 30 s (sin esto solo condiciona la primera).
+    TRANSCRIPT_WORKER_WHISPER_CARRY_INITIAL_PROMPT: boolFromString('true'),
     // Anti-repeticion/alucinacion (INV-14 §13.2): contexto acotado y umbral de entropia.
     TRANSCRIPT_WORKER_WHISPER_MAX_CONTEXT: z.coerce.number().int().min(-1).default(64),
     TRANSCRIPT_WORKER_WHISPER_ENTROPY_THOLD: z.coerce.number().min(0).default(2.6),
@@ -92,11 +100,23 @@ const rawEnv = z
     TRANSCRIPT_WORKER_WHISPER_SUPPRESS_NST: boolFromString('true'),
     // 0 = nucleos − 1.
     TRANSCRIPT_WORKER_WHISPER_THREADS: z.coerce.number().int().min(0).default(0),
+    // Prioridad de whisper-cli (nice de Linux, 0–19): la VM es compartida y las llamadas y reuniones en
+    // vivo tienen que ganarle la CPU a una transcripción que puede esperar. 0 = sin cambio.
+    TRANSCRIPT_WORKER_WHISPER_NICE: z.coerce.number().int().min(0).max(19).default(10),
     // Respaldo si el evento no trae prompt (el de la oficina manda).
     TRANSCRIPT_WORKER_WHISPER_PROMPT: z.string().default(''),
     // Vacio = auto-detect por whisper.cpp. Fijalo (ej. "es", "en") si sabes
     // el idioma predominante de tu tenant base — evita el paso de deteccion.
     TRANSCRIPT_WORKER_WHISPER_LANGUAGE: z.string().default(''),
+    // Idiomas que se hablan en las oficinas (coma). Con idioma `auto`, si whisper detecta otro (en clips
+    // cortos confunde español con italiano o portugués) se repite con uno de estos. Vacio = cualquiera.
+    TRANSCRIPT_WORKER_WHISPER_ALLOWED_LANGUAGES: z.string().default('en,es'),
+    // Idioma permitido al que se lleva cada detección equivocada ("detectado:permitido", coma; `*` = el
+    // resto). Medido con turbo sobre notas reales: el español corto sale como it/pt/is, el inglés se
+    // reconoce con p ≈ 0,99; por eso lo desconocido va a español.
+    TRANSCRIPT_WORKER_WHISPER_LANGUAGE_FALLBACKS: z
+      .string()
+      .default('pt:es,gl:es,it:es,ca:es,fr:es,ro:es,oc:es,la:es,nl:en,de:en,cy:en,*:es'),
     TRANSCRIPT_WORKER_TEMP_DIR: z.string().default('/tmp/transcript-worker'),
 
     // whisper.cpp solo lee WAV PCM 16kHz mono — ffmpeg transcodifica el
@@ -108,9 +128,9 @@ const rawEnv = z
     TRANSCRIPT_WORKER_FFPROBE_BIN_PATH: z.string().default('ffprobe'),
     TRANSCRIPT_WORKER_FFPROBE_TIMEOUT_SECONDS: z.coerce.number().int().min(1).default(30),
     // Preprocesado antes de whisper (vacio = sin filtro). soxr requiere ffmpeg con libsoxr.
-    TRANSCRIPT_WORKER_AUDIO_FILTER: z
-      .string()
-      .default('highpass=f=80,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=resampler=soxr'),
+    // INV-T01 R-5: sin loudnorm (en una pasada es un compresor dinámico que sube el ruido de las pausas
+    // y engaña al VAD) ni reducción de ruido (empeora el WER de Whisper).
+    TRANSCRIPT_WORKER_AUDIO_FILTER: z.string().default('highpass=f=80,aresample=resampler=soxr'),
 
     // Limites (INV-12 H-1): timeout por corrida = max(minimo, maxDuration × factor);
     // duracion real > maxDuration + tolerancia => TranscriptFailed TooLong.
@@ -202,8 +222,19 @@ export const config = {
     binPath: rawEnv.TRANSCRIPT_WORKER_WHISPER_BIN_PATH,
     modelPath: rawEnv.TRANSCRIPT_WORKER_WHISPER_MODEL_PATH,
     language: rawEnv.TRANSCRIPT_WORKER_WHISPER_LANGUAGE || null,
+    allowedLanguages: rawEnv.TRANSCRIPT_WORKER_WHISPER_ALLOWED_LANGUAGES.split(',')
+      .map((code) => code.trim().toLowerCase())
+      .filter((code) => code.length > 0 && code !== 'auto'),
+    languageFallbacks: parseLanguageFallbacks(rawEnv.TRANSCRIPT_WORKER_WHISPER_LANGUAGE_FALLBACKS),
     prompt: rawEnv.TRANSCRIPT_WORKER_WHISPER_PROMPT || null,
     vadModelPath: rawEnv.TRANSCRIPT_WORKER_WHISPER_VAD_MODEL_PATH.trim() || null,
+    vad: {
+      threshold: rawEnv.TRANSCRIPT_WORKER_WHISPER_VAD_THRESHOLD,
+      speechPadMs: rawEnv.TRANSCRIPT_WORKER_WHISPER_VAD_SPEECH_PAD_MS,
+      minSilenceMs: rawEnv.TRANSCRIPT_WORKER_WHISPER_VAD_MIN_SILENCE_MS,
+    },
+    carryInitialPrompt: rawEnv.TRANSCRIPT_WORKER_WHISPER_CARRY_INITIAL_PROMPT,
+    nice: rawEnv.TRANSCRIPT_WORKER_WHISPER_NICE,
     maxContext: rawEnv.TRANSCRIPT_WORKER_WHISPER_MAX_CONTEXT,
     entropyThold: rawEnv.TRANSCRIPT_WORKER_WHISPER_ENTROPY_THOLD,
     beamSize: rawEnv.TRANSCRIPT_WORKER_WHISPER_BEAM_SIZE,
@@ -253,3 +284,14 @@ export const config = {
 } as const;
 
 export type AppConfig = typeof config;
+
+/** "pt:es,it:es" → { pt: 'es', it: 'es' }; las entradas mal escritas se ignoran. */
+export function parseLanguageFallbacks(raw: string): Readonly<Record<string, string>> {
+  const map: Record<string, string> = {};
+  for (const entry of raw.split(',')) {
+    const [from, to] = entry.split(':').map((code) => code?.trim().toLowerCase());
+    if (from && to) map[from] = to;
+  }
+  return map;
+}
+

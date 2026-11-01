@@ -36,6 +36,9 @@ class FakeCallRepository implements CallRepository {
   async listEndingBefore(): Promise<Call[]> {
     return [];
   }
+  async listOpenAcceptedBefore(): Promise<Call[]> {
+    return [];
+  }
   async countOpenForTenant(): Promise<number> {
     return 0;
   }
@@ -68,7 +71,6 @@ function fakeSettings(): TenantSettingsProvider {
         employeeToEmployeeChatEnabled: true,
         restrictCustomerChatToAssignedPreparer: false,
         screenshotsEnabled: true,
-        messageRetentionDays: 365,
       };
     },
   };

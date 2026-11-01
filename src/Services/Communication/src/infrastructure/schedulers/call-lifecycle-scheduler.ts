@@ -1,13 +1,17 @@
 import { logger } from '../logger/logger.js';
 import { sweepActiveCalls, type CallLifecycleSweepDeps } from '../../application/use-cases/call-lifecycle-sweep.js';
+import { sweepAbandonedCalls, type AbandonedCallSweepDeps } from '../../application/use-cases/sweep-abandoned-calls.js';
 import type { RedisDistributedLock } from '../redis/redis-distributed-lock.js';
 
-/** F4: aviso y corte por `maxCallMinutes`, mismo patron que el scheduler de reuniones (lock Redis, tick tecnico). */
+/**
+ * F4: aviso y corte por `maxCallMinutes`, mismo patron que el scheduler de reuniones (lock Redis, tick tecnico).
+ * También cierra las llamadas abandonadas (abiertas sin nadie conectado, `abandonedGraceSeconds`).
+ */
 const LOCK_KEY = 'comm:lock:call-lifecycle-scheduler';
 
 export function startCallLifecycleScheduler(
-  config: { intervalSeconds: number },
-  deps: CallLifecycleSweepDeps & { lock: RedisDistributedLock },
+  config: { intervalSeconds: number; abandonedGraceSeconds: number },
+  deps: CallLifecycleSweepDeps & AbandonedCallSweepDeps & { lock: RedisDistributedLock },
 ): { stop(): void } {
   const handle = setInterval(async () => {
     try {
@@ -15,6 +19,10 @@ export function startCallLifecycleScheduler(
         const report = await sweepActiveCalls({}, deps);
         if (report.warned + report.endedByTime > 0) {
           logger.info(report, 'CallLifecycleScheduler: tick applied changes');
+        }
+        const abandoned = await sweepAbandonedCalls({ graceSeconds: config.abandonedGraceSeconds }, deps);
+        if (abandoned.abandoned > 0) {
+          logger.info(abandoned, 'CallLifecycleScheduler: abandoned calls closed');
         }
       });
     } catch (err) {

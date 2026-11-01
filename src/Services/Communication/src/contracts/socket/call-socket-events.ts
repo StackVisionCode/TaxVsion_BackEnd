@@ -27,6 +27,10 @@ export const CallActionPayloadSchema = z.object({
 });
 export type CallActionPayload = z.infer<typeof CallActionPayloadSchema>;
 
+/** Volver a la room de la llamada tras reconectar el socket (el canal nuevo no hereda las rooms). */
+export const CallRejoinPayloadSchema = z.object({ callId: z.string().uuid() });
+export type CallRejoinPayload = z.infer<typeof CallRejoinPayloadSchema>;
+
 export const CallSignalPayloadSchema = z.object({
   callId: z.string().uuid(),
   targetPeerUserId: z.string().uuid(),
@@ -133,7 +137,7 @@ export interface IncomingCallDto {
 export interface CallStateDto {
   callId: string;
   status: 'Ringing' | 'Accepted' | 'Active' | 'Ended' | 'Rejected' | 'Cancelled' | 'MissedCall' | 'Failed';
-  endReason: 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | 'MaxDurationReached' | null;
+  endReason: 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | 'MaxDurationReached' | 'Abandoned' | null;
   durationSeconds: number | null;
   updatedAtUtc: string;
 }
@@ -291,6 +295,7 @@ export const CallSocketEvents = {
   Reject: 'call.reject',
   Cancel: 'call.cancel',
   End: 'call.end',
+  Rejoin: 'call.rejoin',
   Signal: 'call.signal',
   MediaStatus: 'call.media_status',
   ConnectionQuality: 'call.connection_quality',

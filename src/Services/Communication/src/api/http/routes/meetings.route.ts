@@ -12,6 +12,7 @@ import { scheduleMeeting } from '../../../application/use-cases/schedule-meeting
 import { startMeeting, endMeeting } from '../../../application/use-cases/meeting-lifecycle.js';
 import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js';
 import { rescheduleMeeting } from '../../../application/use-cases/reschedule-meeting.js';
+import { setMeetingTranscriptLanguage } from '../../../application/use-cases/set-meeting-transcript-language.js';
 import { continueMeeting } from '../../../application/use-cases/continue-meeting.js';
 import { listMeetingEvents } from '../../../application/use-cases/meeting-events-query.js';
 import { getMeetingSummary } from '../../../application/use-cases/get-meeting-summary.js';
@@ -31,6 +32,8 @@ const CreateMeetingBody = z.object({
   // Informativa (D-35): el dominio la acota al máximo de la oficina.
   scheduledDurationMinutes: z.number().int().min(1).max(480).optional(),
   recordingRequested: z.boolean().optional(),
+  // INV-T01 R-7: null/ausente = automático; el dominio valida el código.
+  transcriptLanguage: z.string().min(2).max(16).nullable().optional(),
 });
 
 const IdParams = z.object({ id: z.string().uuid() });
@@ -40,6 +43,7 @@ const StartMeetingBody = z.object({
 });
 const CancelMeetingBody = z.object({ reason: z.string().max(500).optional() });
 const RescheduleMeetingBody = z.object({ newScheduledForUtc: z.string().datetime().nullable() });
+const TranscriptLanguageBody = z.object({ transcriptLanguage: z.string().min(2).max(16).nullable() });
 const EventsQuery = z.object({
   after: z.coerce.number().int().min(0).optional(),
   take: z.coerce.number().int().min(1).max(500).default(200),
@@ -102,6 +106,7 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
         ...(body.scheduledForUtc !== undefined ? { scheduledForUtc: body.scheduledForUtc } : {}),
         ...(body.scheduledDurationMinutes !== undefined ? { scheduledDurationMinutes: body.scheduledDurationMinutes } : {}),
         ...(body.recordingRequested !== undefined ? { recordingRequested: body.recordingRequested } : {}),
+        ...(body.transcriptLanguage !== undefined ? { transcriptLanguage: body.transcriptLanguage } : {}),
       },
       container,
     );
@@ -191,6 +196,7 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
           // disponible sin abrir cada meeting; el campo ya vivia en el
           // aggregate/Prisma (Fase Transcript 5/6), solo faltaba exponerlo aca.
           transcriptFileId: snapshot.transcriptFileId,
+          transcriptLanguage: snapshot.transcriptLanguage,
           recordingState: recordingStates.get(snapshot.id) ?? null,
         })),
         page: query.page,
@@ -419,6 +425,29 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
         return reply.code(400).send({ code: result.error.code, message: result.error.message });
       }
       return reply.code(204).send();
+    },
+  );
+
+  // INV-T01 R-7: idioma del transcript de la reunión (host/cohost, antes de que termine).
+  app.put(
+    '/communication/meetings/:id/transcript-language',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingHost)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const body = TranscriptLanguageBody.parse(request.body);
+      const result = await setMeetingTranscriptLanguage(
+        { tenantId: principal.tenantId, meetingId: params.id, byUserId: principal.userId, language: body.transcriptLanguage },
+        container,
+      );
+      if (!result.isSuccess) {
+        const code = result.error.code;
+        const status = code === 'Meeting.NotFound' ? 404 : code === 'Meeting.HostOnly' ? 403 : code === 'Meeting.InvalidTransition' ? 409 : 400;
+        return reply.code(status).send({ code, message: result.error.message });
+      }
+      return reply.send(result.value);
     },
   );
 

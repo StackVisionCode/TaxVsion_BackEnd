@@ -137,6 +137,7 @@ function callOutcome(reason: string | undefined): Increments {
     case 'MaxDurationReached':
       return { callsCompleted: 1, callsEndedByLimit: 1 };
     case 'IceFailed':
+    case 'Abandoned': // quedó abierta sin nadie conectado: se perdió, no terminó bien
       return { callsFailed: 1 };
     case 'Rejected':
       return { callsRejected: 1 };

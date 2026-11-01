@@ -85,7 +85,6 @@ function fakeSettings(restrict: boolean): TenantSettingsProvider {
         employeeToEmployeeChatEnabled: true,
         restrictCustomerChatToAssignedPreparer: restrict,
         screenshotsEnabled: true,
-        messageRetentionDays: 365,
       };
     },
   } as unknown as TenantSettingsProvider;

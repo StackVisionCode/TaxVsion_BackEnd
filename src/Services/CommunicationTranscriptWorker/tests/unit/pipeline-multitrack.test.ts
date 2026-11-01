@@ -129,6 +129,22 @@ beforeEach(() => {
 });
 
 describe('processRecordingReady — pistas por participante (T-28)', () => {
+  it('cada pista se transcribe en su idioma; sin idioma propio usa el del evento (INV-T01)', async () => {
+    const { client } = makeCloudStorage();
+    const event = meetingEvent({
+      language: 'auto',
+      audioTracks: [
+        { fileId: 'track-ana', userId: 'u-ana', displayName: 'Ana Garcia', startOffsetMs: 0, language: 'es' },
+        { fileId: 'track-luis', userId: 'u-luis', displayName: 'Luis Perez', startOffsetMs: 5_000 },
+      ],
+    });
+
+    await processRecordingReady(event, { cloudStorage: client });
+
+    const languages = mocks.transcribeWav.mock.calls.map((call) => (call[2] as { language: string }).language);
+    expect(languages).toEqual(['es', 'auto']);
+  });
+
   it('descarga cada pista (no el compuesto), entrelaza por tiempo y sube TXT + JSON v2', async () => {
     const { client, downloads, uploads } = makeCloudStorage();
     const event = meetingEvent();
