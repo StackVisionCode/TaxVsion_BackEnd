@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Domain.FileTypes;
 using TaxVision.CloudStorage.Domain.Quotas;
 
 namespace TaxVision.CloudStorage.Application.Quotas;
@@ -30,12 +31,20 @@ public static class TenantEntitlementsChangedQuotaConsumer
         );
 
         var storageQuotaBytes = GetLong(message.EntitlementValues, "storage.max_bytes", fallback: 0);
+        // Lo que vende el plan en archivos (Subscription StorageEntitlementCatalog). Sin la clave = tier mínimo.
+        var maxFileBytes = GetLong(message.EntitlementValues, "storage.max_file_bytes", PlanFileAllowanceDefaults.MaxFileBytes);
+        var fileTypeGroups = message.EntitlementValues.TryGetValue("storage.file_type_groups", out var groups)
+            && !string.IsNullOrWhiteSpace(groups)
+            ? groups
+            : PlanFileAllowanceDefaults.FileTypeGroups;
         var isSuspended = message.SubscriptionStatus == "Suspended";
 
         await ApplyAsync(
             message.TenantId,
             message.PlanCode,
             storageQuotaBytes,
+            maxFileBytes,
+            fileTypeGroups,
             isSuspended,
             repository,
             options.Value,
@@ -48,6 +57,8 @@ public static class TenantEntitlementsChangedQuotaConsumer
         Guid tenantId,
         string planCode,
         long storageQuotaBytes,
+        long maxFileBytes,
+        string fileTypeGroups,
         bool isSuspended,
         IStorageLimitRepository repository,
         CloudStorageOptions options,
@@ -56,17 +67,16 @@ public static class TenantEntitlementsChangedQuotaConsumer
     )
     {
         var maxBytes = storageQuotaBytes > 0 ? storageQuotaBytes : options.DefaultStorageQuotaBytes;
-        var maxFileSizeBytes = options.ResolvePlanPolicy(planCode).MaxFileSizeBytes;
 
         var existing = await repository.GetAsync(tenantId, ct);
         if (existing is null)
         {
-            existing = TenantStorageLimit.Create(tenantId, planCode, maxBytes, maxFileSizeBytes);
+            existing = TenantStorageLimit.Create(tenantId, planCode, maxBytes, maxFileBytes, fileTypeGroups);
             repository.Add(existing);
         }
         else
         {
-            existing.ApplyPlan(planCode, maxBytes, maxFileSizeBytes);
+            existing.ApplyPlan(planCode, maxBytes, maxFileBytes, fileTypeGroups);
         }
 
         if (isSuspended)

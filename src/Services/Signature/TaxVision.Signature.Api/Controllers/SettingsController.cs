@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Application.Settings;
 using TaxVision.Signature.Application.Settings.Commands.UpdateSettings;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -19,7 +20,11 @@ namespace TaxVision.Signature.Api.Controllers;
 [ApiController]
 [Route("signature/settings")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class SettingsController(ITenantSignatureSettingsRepository repository, IMessageBus bus) : ControllerBase
+public sealed class SettingsController(
+    ITenantSignatureSettingsRepository repository,
+    ISignatureLimitsResolver limits,
+    IMessageBus bus
+) : ControllerBase
 {
     [HttpGet]
     [HasPermission(SignaturePermissions.SettingsManage)]
@@ -36,7 +41,8 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
         if (settings is null)
             return NotFound();
 
-        return Ok(TenantSignatureSettingsResponse.From(settings));
+        var ceilings = (await limits.ResolveAsync(tenantId, ct)).Ceilings;
+        return Ok(TenantSignatureSettingsResponse.From(settings, ceilings));
     }
 
     /// <summary>
@@ -94,6 +100,20 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
                 )
             );
 
+        // Formato de fecha del estampado si vino en el body. Valor inválido = 400.
+        DateStampFormat? dateStampFormat = null;
+        if (body.DateStampFormat is { Length: > 0 } rawDateFormat)
+        {
+            if (!Enum.TryParse<DateStampFormat>(rawDateFormat, ignoreCase: true, out var parsedDateFormat))
+                return BadRequest(
+                    new Error(
+                        "Signature.Settings.DateStampFormatInvalid",
+                        "DateStampFormat must be 'MonthDayYear', 'DayMonthYear' or 'IsoDate'."
+                    )
+                );
+            dateStampFormat = parsedDateFormat;
+        }
+
         // F7 — parsea el Kind si vino en el body. Valor inválido = 400.
         PartialCopyAudienceKind? audienceKind = null;
         if (body.PartialCopyDefaultAudienceKind is { Length: > 0 } raw)
@@ -120,7 +140,6 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
             body.GenerateCertificateByDefault,
             body.AllowEmployeeOwnSignature,
             body.DocumentLimits.MaxPdfBytes,
-            body.DocumentLimits.MaxImageBytes,
             body.DocumentLimits.MaxPagesPerDocument,
             body.RetentionPolicy.RetentionYears,
             body.RetentionPolicy.AllowPurge,
@@ -129,7 +148,17 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
             body.SendSealedDocumentDefault,
             body.ExpirationEnabledByDefault,
             body.SendCertificateToSignersDefault,
-            body.RequiresConsentByDefault
+            body.RequiresConsentByDefault,
+            body.Delivery is { } delivery
+                ? new DeliveryPolicyInput(
+                    delivery.LinkLifetimeDays,
+                    delivery.AllowPublicReissue,
+                    delivery.AttachDocuments,
+                    delivery.MaxAttachmentBytes
+                )
+                : null,
+            body.ShowSignatureFrame,
+            dateStampFormat
         );
 
         var result = await bus.InvokeAsync<Result>(cmd, ct);

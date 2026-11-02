@@ -22,6 +22,14 @@ public sealed class RequestDocumentConfiguration : IEntityTypeConfiguration<Requ
         builder.Property(document => document.SealedAtUtc);
         builder.Property(document => document.Note).HasMaxLength(RequestDocument.MaxNoteLength);
         builder.Property(document => document.PageCount);
+        builder
+            .Property(document => document.VerificationStatus)
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .HasDefaultValue(DocumentVerificationStatus.Pending)
+            .IsRequired();
+        builder.Property(document => document.RejectionCode).HasMaxLength(DocumentRejection.MaxCodeLength);
+        builder.Property(document => document.RejectionReason).HasMaxLength(DocumentRejection.MaxReasonLength);
 
         builder.OwnsOne(
             document => document.DocumentHashPre,

@@ -405,7 +405,8 @@ public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissio
             body.Width,
             body.Height,
             body.Label,
-            body.IsRequired
+            body.IsRequired,
+            body.FontSizePt
         );
         var result = await bus.InvokeAsync<Result<TemplateFieldCreatedResponse>>(cmd, ct);
         return result.IsSuccess

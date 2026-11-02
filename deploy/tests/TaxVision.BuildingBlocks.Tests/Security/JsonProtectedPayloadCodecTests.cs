@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -194,6 +195,39 @@ public sealed class JsonProtectedPayloadCodecTests
         );
         Assert.Throws<ArgumentException>(() =>
             codec.Protect("external-access.v1", binding with { ChallengeId = Guid.Empty }, new Content("secret", 1))
+        );
+    }
+
+    [Fact]
+    public void Round_trip_supports_a_key_binding_outside_client_forms()
+    {
+        var codec = Codec(Key(), version: 1);
+        var tenantId = Guid.NewGuid();
+        var deliveryId = Guid.NewGuid();
+        var binding = SignatureDeliveryPayloadSchemas.BindingFor(tenantId, deliveryId);
+
+        var protectedPayload = codec.Protect(SignatureDeliveryPayloadSchemas.DeliveryLink, binding, new Content("link", 1));
+
+        Assert.Equal(
+            new Content("link", 1),
+            codec.Unprotect<Content>(protectedPayload, SignatureDeliveryPayloadSchemas.DeliveryLink, binding)
+        );
+        Assert.Throws<CryptographicException>(() =>
+            codec.Unprotect<Content>(
+                protectedPayload,
+                SignatureDeliveryPayloadSchemas.DeliveryLink,
+                SignatureDeliveryPayloadSchemas.BindingFor(tenantId, Guid.NewGuid())
+            )
+        );
+    }
+
+    [Fact]
+    public void A_key_binding_without_a_key_is_rejected()
+    {
+        var codec = Codec(Key(), version: 1);
+
+        Assert.Throws<ArgumentException>(() =>
+            codec.Protect("any.v1", new ProtectedPayloadBinding(Guid.NewGuid(), null, null), new Content("x", 1))
         );
     }
 

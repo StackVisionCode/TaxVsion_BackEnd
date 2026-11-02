@@ -26,6 +26,9 @@ public sealed class TemplateField : BaseEntity
     public string? Label { get; private set; }
     public bool IsRequired { get; private set; }
 
+    /// <summary>Letra con la que se estampa (iniciales, fecha, texto). Null = automático según la caja.</summary>
+    public int? FontSizePt { get; private set; }
+
     internal static Result<TemplateField> Create(
         Guid templateId,
         Guid templateDocumentId,
@@ -33,7 +36,8 @@ public sealed class TemplateField : BaseEntity
         SignatureFieldKind kind,
         FieldPosition position,
         string? label,
-        bool isRequired
+        bool isRequired,
+        int? fontSizePt = null
     )
     {
         if (templateId == Guid.Empty)
@@ -56,6 +60,10 @@ public sealed class TemplateField : BaseEntity
                 new Error("Signature.TemplateField.Label", $"Label cannot exceed {MaxLabelLength} characters.")
             );
 
+        var fontSize = FieldTypography.Normalize(kind, fontSizePt);
+        if (fontSize.IsFailure)
+            return Result.Failure<TemplateField>(fontSize.Error);
+
         return Result.Success(
             new TemplateField
             {
@@ -67,6 +75,7 @@ public sealed class TemplateField : BaseEntity
                 Position = position,
                 Label = normalizedLabel,
                 IsRequired = KindDefaultsToRequired(kind) || isRequired,
+                FontSizePt = fontSize.Value,
             }
         );
     }

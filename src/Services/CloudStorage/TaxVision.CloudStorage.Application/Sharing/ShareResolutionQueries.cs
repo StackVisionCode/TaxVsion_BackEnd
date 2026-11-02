@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Sharing;
@@ -16,6 +17,9 @@ public enum ShareAccessOutcome
     Redirect,
     PasswordRequired,
     Denied,
+
+    /// <summary>Demasiadas contraseñas fallidas: el enlace no acepta intentos por un rato.</summary>
+    PasswordLocked,
 }
 
 /// <summary>Nunca distingue "no existe" de "revocado/expirado/agotado/sin permiso" — todo colapsa a Denied (anti-enumeracion).</summary>
@@ -24,6 +28,8 @@ public sealed record ShareAccessResult(ShareAccessOutcome Outcome, string? Presi
     public static ShareAccessResult Denied() => new(ShareAccessOutcome.Denied, null);
 
     public static ShareAccessResult NeedsPassword() => new(ShareAccessOutcome.PasswordRequired, null);
+
+    public static ShareAccessResult PasswordLocked() => new(ShareAccessOutcome.PasswordLocked, null);
 
     public static ShareAccessResult Redirect(string url) => new(ShareAccessOutcome.Redirect, url);
 }
@@ -55,6 +61,8 @@ public static class ResolvePublicShareHandler
         IFolderRepository folders,
         IObjectStorage storage,
         IShareLinkPasswordHasher passwordHasher,
+        IStorageLimitRepository limits,
+        IStoragePlatformSettingsProvider platform,
         IStorageAuditRepository audit,
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
@@ -103,17 +111,22 @@ public static class ResolvePublicShareHandler
             return ShareAccessResult.Denied();
         }
 
-        if (link.PasswordHash is { } passwordHash)
+        var password = await SharePasswordGuard.CheckAsync(link, query.Password, passwordHasher, limits, platform, now, ct);
+        if (password == SharePasswordOutcome.Missing)
+            return ShareAccessResult.NeedsPassword();
+        if (password is SharePasswordOutcome.Wrong or SharePasswordOutcome.Locked)
         {
-            if (string.IsNullOrEmpty(query.Password))
-                return ShareAccessResult.NeedsPassword();
-            if (!passwordHasher.Verify(query.Password, passwordHash))
-            {
-                AuditDenied(link, null, query.Ip, query.UserAgent, audit, clock);
-                await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "public", "WrongPassword", ct);
-                await unitOfWork.SaveChangesAsync(ct);
-                return ShareAccessResult.Denied();
-            }
+            var locked = password == SharePasswordOutcome.Locked;
+            AuditDenied(link, null, query.Ip, query.UserAgent, audit, clock);
+            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(
+                bus,
+                link,
+                "public",
+                locked ? "PasswordLocked" : "WrongPassword",
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            return locked ? ShareAccessResult.PasswordLocked() : ShareAccessResult.Denied();
         }
 
         var file = await ShareLinkResourceResolver.ResolveFileAsync(link, query.FileId, files, folders, ct);
@@ -129,7 +142,7 @@ public static class ResolvePublicShareHandler
         var url = await storage.PresignGetAsync(
             options.Value.MainBucket,
             file.ObjectKey,
-            TimeSpan.FromMinutes(2),
+            TimeSpan.FromMinutes((await platform.GetAsync(ct)).ShareUrlMinutes),
             disposition,
             ct
         );
@@ -244,6 +257,7 @@ public static class ResolvePrivateShareHandler
         IFileObjectRepository files,
         IFolderRepository folders,
         IObjectStorage storage,
+        IStoragePlatformSettingsProvider platform,
         IStorageAuditRepository audit,
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
@@ -309,7 +323,7 @@ public static class ResolvePrivateShareHandler
         var url = await storage.PresignGetAsync(
             options.Value.MainBucket,
             file.ObjectKey,
-            TimeSpan.FromMinutes(2),
+            TimeSpan.FromMinutes((await platform.GetAsync(ct)).ShareUrlMinutes),
             disposition,
             ct
         );

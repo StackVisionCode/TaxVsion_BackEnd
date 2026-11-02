@@ -2,6 +2,7 @@ using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
+using TaxVision.Signature.Domain.Settings;
 using TaxVision.Signature.Domain.Templates.ValueObjects;
 
 namespace TaxVision.Signature.Domain.Templates;
@@ -30,8 +31,6 @@ public sealed class SignatureTemplate : TenantEntity
     public const int MaxTitleLength = 200;
     public const int MaxDescriptionLength = 2000;
     public const int MinSlots = 1;
-    public const int MaxSlots = 20;
-    public const int MaxDocuments = 20;
     public const int DefaultReminderIntervalHours = 48;
 
     private readonly List<TemplateSignerSlot> _slots = [];
@@ -117,6 +116,7 @@ public sealed class SignatureTemplate : TenantEntity
     // ------------------------------------------------------------------
 
     public static Result<SignatureTemplate> CreateDraft(
+        SignatureLimits limits,
         Guid tenantId,
         Guid createdByUserId,
         string title,
@@ -142,7 +142,8 @@ public sealed class SignatureTemplate : TenantEntity
             createdByUserId,
             title,
             description,
-            defaultTokenExpirationHours
+            defaultTokenExpirationHours,
+            limits
         );
         if (validation.IsFailure)
             return Result.Failure<SignatureTemplate>(validation.Error);
@@ -236,6 +237,7 @@ public sealed class SignatureTemplate : TenantEntity
     }
 
     public Result UpdateDefaults(
+        SignatureLimits limits,
         int defaultTokenExpirationHours,
         bool requiresSequentialSigning,
         bool requiresConsent,
@@ -252,11 +254,14 @@ public sealed class SignatureTemplate : TenantEntity
     {
         EnsureDraft();
 
-        if (defaultTokenExpirationHours is < 1 or > 720)
+        if (
+            defaultTokenExpirationHours < SignatureLimits.MinTokenHours
+            || defaultTokenExpirationHours > limits.MaxTokenHours
+        )
             return Result.Failure(
                 new Error(
                     "Signature.Template.TokenExpiration",
-                    "Default token expiration must be between 1 and 720 hours."
+                    $"Default token expiration must be between {SignatureLimits.MinTokenHours} and {limits.MaxTokenHours} hours."
                 )
             );
 
@@ -358,12 +363,15 @@ public sealed class SignatureTemplate : TenantEntity
         return Result.Success();
     }
 
-    public Result<TemplateDocument> AddDocument(Guid fileId, string title)
+    public Result<TemplateDocument> AddDocument(SignatureLimits limits, Guid fileId, string title)
     {
         EnsureDraft();
-        if (_documents.Count >= MaxDocuments)
+        if (_documents.Count >= limits.MaxDocumentsPerRequest)
             return Result.Failure<TemplateDocument>(
-                new Error("Signature.Template.TooManyDocuments", $"Document count cannot exceed {MaxDocuments}.")
+                new Error(
+                    "Signature.Template.TooManyDocuments",
+                    $"Document count cannot exceed {limits.MaxDocumentsPerRequest}."
+                )
             );
         if (_documents.Any(document => document.FileId == fileId))
             return Result.Failure<TemplateDocument>(
@@ -420,7 +428,13 @@ public sealed class SignatureTemplate : TenantEntity
     // Slots — cada operación con SU regla
     // ------------------------------------------------------------------
 
+    /// <summary>
+    /// Los roles no pueden pasar el tope de la plataforma ni los firmantes que admite el plan (si no, la
+    /// plantilla no podría instanciarse), y el método pedido debe salir por un canal permitido.
+    /// </summary>
     public Result<TemplateSignerSlot> AddSlot(
+        SignatureLimits limits,
+        int maxRolesPerTemplate,
         TemplateSlotRole role,
         string defaultLanguage,
         SignerVerificationMethod? requiredVerificationMethod = null
@@ -428,10 +442,15 @@ public sealed class SignatureTemplate : TenantEntity
     {
         EnsureDraft();
 
-        if (_slots.Count >= MaxSlots)
+        var maxSlots = Math.Min(maxRolesPerTemplate, limits.MaxSignersPerRequest);
+        if (_slots.Count >= maxSlots)
             return Result.Failure<TemplateSignerSlot>(
-                new Error("Signature.Template.TooManySlots", $"Slot count cannot exceed {MaxSlots}.")
+                new Error("Signature.Template.TooManySlots", $"Slot count cannot exceed {maxSlots}.")
             );
+
+        var channelCheck = limits.CheckVerificationMethod(requiredVerificationMethod);
+        if (channelCheck.IsFailure)
+            return Result.Failure<TemplateSignerSlot>(channelCheck.Error);
 
         var order = NextSlotOrder();
         var slotResult = TemplateSignerSlot.Create(Id, order, role, defaultLanguage, requiredVerificationMethod);
@@ -530,7 +549,8 @@ public sealed class SignatureTemplate : TenantEntity
         SignatureFieldKind kind,
         FieldPosition position,
         string? label,
-        bool isRequired
+        bool isRequired,
+        int? fontSizePt = null
     )
     {
         EnsureDraft();
@@ -545,7 +565,16 @@ public sealed class SignatureTemplate : TenantEntity
                 new Error("Signature.Template.SlotMissing", "Cannot place a field on an unknown slot.")
             );
 
-        var fieldResult = TemplateField.Create(Id, templateDocumentId, slotOrder, kind, position, label, isRequired);
+        var fieldResult = TemplateField.Create(
+            Id,
+            templateDocumentId,
+            slotOrder,
+            kind,
+            position,
+            label,
+            isRequired,
+            fontSizePt
+        );
         if (fieldResult.IsFailure)
             return fieldResult;
 
@@ -718,7 +747,8 @@ public sealed class SignatureTemplate : TenantEntity
         Guid createdByUserId,
         string title,
         string? description,
-        int defaultTokenExpirationHours
+        int defaultTokenExpirationHours,
+        SignatureLimits limits
     )
     {
         if (tenantId == Guid.Empty)
@@ -742,11 +772,14 @@ public sealed class SignatureTemplate : TenantEntity
                     $"Description cannot exceed {MaxDescriptionLength} characters."
                 )
             );
-        if (defaultTokenExpirationHours is < 1 or > 720)
+        if (
+            defaultTokenExpirationHours < SignatureLimits.MinTokenHours
+            || defaultTokenExpirationHours > limits.MaxTokenHours
+        )
             return Result.Failure(
                 new Error(
                     "Signature.Template.TokenExpiration",
-                    "Default token expiration must be between 1 and 720 hours."
+                    $"Default token expiration must be between {SignatureLimits.MinTokenHours} and {limits.MaxTokenHours} hours."
                 )
             );
         return Result.Success();

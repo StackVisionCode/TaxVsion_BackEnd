@@ -157,6 +157,7 @@ public sealed class ContentReviewHandlerTests
             _storage,
             _audit,
             Options.Create(_options),
+            new FakeStoragePlatformSettingsProvider(),
             _clock,
             new FakeUnitOfWork(),
             CancellationToken.None

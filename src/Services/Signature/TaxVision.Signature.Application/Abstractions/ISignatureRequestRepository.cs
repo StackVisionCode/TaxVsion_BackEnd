@@ -86,7 +86,11 @@ public interface ISignatureRequestRepository
     /// inicial si aún no hubo ninguno), que no expiraron y no superaron el cap. Refleja en SQL la regla
     /// de <see cref="SignatureRequest.IsReminderDue"/>. Consumida por el <c>ReminderScheduler</c>.
     /// </summary>
-    Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(DateTime nowUtc, CancellationToken ct = default);
+    Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
+        DateTime nowUtc,
+        int maxRemindersPerRequest,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// Solicitudes en estado terminal (<c>Completed</c>/<c>Rejected</c>/<c>Canceled</c>/<c>Expired</c>)
@@ -94,6 +98,7 @@ public interface ISignatureRequestRepository
     /// <c>LegalHold</c> activo. Consumida por el <c>PurgeScheduler</c>.
     /// </summary>
     Task<IReadOnlyList<SignatureRequest>> ListPurgeCandidatesAsync(
+        Guid tenantId,
         DateTime olderThanUtc,
         int batchSize,
         CancellationToken ct = default
@@ -105,6 +110,15 @@ public interface ISignatureRequestRepository
     /// CloudStorage los sellados existentes al cliente firmante.
     /// </summary>
     Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Completadas del tenant con DOS o más firmantes-cliente (con campos y copias ya hechas), para generar
+    /// las copias de portal que no existían antes de F2b. Con seguimiento: el backfill las modifica.
+    /// </summary>
+    Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
         Guid tenantId,
         CancellationToken ct = default
     );

@@ -5,28 +5,25 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Limits;
 
 namespace TaxVision.Signature.Infrastructure.Scheduling;
 
+/// <summary>Interruptor operativo del job y tamaño del lote. Los años de retención son de cada tenant.</summary>
 public sealed class PurgeSchedulerOptions
 {
     public const string SectionName = "Signature:Purge";
 
-    /// <summary>Habilita o desactiva el purge (default: false — se activa cuando el negocio lo autorice).</summary>
     public bool Enabled { get; set; } = false;
 
-    /// <summary>Años de retención desde la última actualización antes de considerar candidato.</summary>
-    public int RetentionYears { get; set; } = 7;
-
-    /// <summary>Tamaño de lote por iteración para no saturar la BD.</summary>
     public int BatchSize { get; set; } = 100;
 }
 
 /// <summary>
-/// Job diario que purga solicitudes en estado terminal cuya última actualización es más
-/// antigua que la política de retención (default 7 años — IRS §6501) y que no tienen
-/// <c>LegalHold</c> activo. La eliminación es en cascada (Signers, Fields, Challenges,
-/// ConsentEvents, AuditEvents) — el ORM maneja los FK cascade.
+/// Job diario que purga, tenant por tenant, las solicitudes en estado terminal más viejas que su retención y
+/// sin <c>LegalHold</c>. Solo entra un tenant cuya oficina activó la purga y cuyo plan la permite; los años
+/// son los de la oficina, nunca menos que el mínimo del plan. La eliminación es en cascada (Signers, Fields,
+/// Challenges, ConsentEvents, AuditEvents) — el ORM maneja los FK cascade.
 ///
 /// <para>
 /// Deshabilitado por default para no perder data por accidente en dev. En producción se
@@ -78,12 +75,38 @@ public sealed class PurgeScheduler(
         if (!opt.Enabled)
             return;
 
+        IReadOnlyList<Guid> tenantIds;
+        using (var scope = serviceProvider.CreateScope())
+            tenantIds = await scope
+                .ServiceProvider.GetRequiredService<ITenantSignatureSettingsRepository>()
+                .ListTenantIdsWithPurgeEnabledAsync(ct);
+
+        foreach (var tenantId in tenantIds)
+        {
+            // Un scope por tenant: un fallo en uno no deja cambios a medias en el siguiente.
+            try
+            {
+                await PurgeTenantAsync(tenantId, opt.BatchSize, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "PurgeScheduler failed for tenant {TenantId}.", tenantId);
+            }
+        }
+    }
+
+    private async Task PurgeTenantAsync(Guid tenantId, int batchSize, CancellationToken ct)
+    {
         using var scope = serviceProvider.CreateScope();
+        var policy = await scope.ServiceProvider.GetRequiredService<ISignatureLimitsResolver>().ResolveAsync(tenantId, ct);
+        if (!policy.PurgeEnabled)
+            return;
+
         var repository = scope.ServiceProvider.GetRequiredService<ISignatureRequestRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-        var cutoff = DateTime.UtcNow.AddYears(-opt.RetentionYears);
-        var batch = await repository.ListPurgeCandidatesAsync(cutoff, opt.BatchSize, ct);
+        var cutoff = DateTime.UtcNow.AddYears(-policy.RetentionYears);
+        var batch = await repository.ListPurgeCandidatesAsync(tenantId, cutoff, batchSize, ct);
         if (batch.Count == 0)
             return;
 
@@ -92,8 +115,9 @@ public sealed class PurgeScheduler(
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "PurgeScheduler removed {Count} signature requests older than {Cutoff}.",
+            "PurgeScheduler removed {Count} signature requests of tenant {TenantId} older than {Cutoff}.",
             batch.Count,
+            tenantId,
             cutoff
         );
     }

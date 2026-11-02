@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -8,6 +6,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Delivery;
 using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
@@ -59,6 +58,7 @@ public static class SignatureRequestCompletedConsumer
         IFileMetadataRefRepository fileRefRepository,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
+        IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
         IUnitOfWork unitOfWork,
@@ -79,6 +79,7 @@ public static class SignatureRequestCompletedConsumer
             fileRefRepository,
             brandingRepository,
             sealer,
+            stampStyles,
             certificateRenderer,
             distributedLock,
             unitOfWork,
@@ -95,6 +96,7 @@ public static class SignatureRequestCompletedConsumer
         IFileMetadataRefRepository fileRefRepository,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
+        IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
         IUnitOfWork unitOfWork,
@@ -115,6 +117,7 @@ public static class SignatureRequestCompletedConsumer
             fileRefRepository,
             brandingRepository,
             sealer,
+            stampStyles,
             certificateRenderer,
             distributedLock,
             unitOfWork,
@@ -136,6 +139,7 @@ public static class SignatureRequestCompletedConsumer
         IFileMetadataRefRepository fileRefRepository,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
+        IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
         IUnitOfWork unitOfWork,
@@ -195,6 +199,7 @@ public static class SignatureRequestCompletedConsumer
                 storage,
                 brandingRepository,
                 sealer,
+                stampStyles,
                 certificateRenderer,
                 unitOfWork,
                 logger,
@@ -207,6 +212,11 @@ public static class SignatureRequestCompletedConsumer
             }
 
             await PublishSealedAsync(request, pipeline.Value, correlationId, bus);
+
+            // Varios clientes firmantes: cada uno recibe su copia en el portal. Va después del commit
+            // (outbox) por si el FileAvailable de algún archivo ganó la carrera y no encontró la solicitud.
+            if (pipeline.Value.RequestSealingCompleted && request.PendingCustomerCopies().Count > 0)
+                await bus.PublishAsync(new CreateCustomerPortalCopiesCommand(request.TenantId, request.Id));
         }
     }
 
@@ -400,6 +410,7 @@ public static class SignatureRequestCompletedConsumer
         ISignatureCloudStorageClient storage,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
+        IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IUnitOfWork unitOfWork,
         ILogger logger,
@@ -409,6 +420,8 @@ public static class SignatureRequestCompletedConsumer
         // Bajamos aquí (donde vive el I/O de CloudStorage) el PNG de firma de cada firmante cuyo archivo
         // ya pasó el scan (readyImageSignerIds), para que el engine estampe la imagen y quede puro (sin I/O).
         var signatureImages = await DownloadSignatureImagesAsync(request, readyImageSignerIds, storage, ct);
+        // Marco, formato de fecha y letra automática del tenant: el mismo estilo que vio el preparador.
+        var stampStyle = await stampStyles.ResolveAsync(request.TenantId, ct);
 
         // Firma reutilizable del preparador (canal paralelo, Form 8879). Best-effort: la imagen se subió al
         // crear el perfil (F1), así que ya está Available; si por lo que sea no baja, cae al sello tipográfico.
@@ -436,6 +449,7 @@ public static class SignatureRequestCompletedConsumer
                 originalBytesResult.Value,
                 signatureImages,
                 preparerImage,
+                stampStyle,
                 sealer
             );
             var sealedUpload = BuildSealedUpload(request, document, sealResult);
@@ -597,6 +611,7 @@ public static class SignatureRequestCompletedConsumer
         byte[] originalBytes,
         IReadOnlyDictionary<Guid, byte[]> signatureImages,
         byte[]? preparerImage,
+        StampStyle stampStyle,
         IDocumentSealingEngine sealer
     )
     {
@@ -609,7 +624,8 @@ public static class SignatureRequestCompletedConsumer
             originalBytes,
             fields,
             document.DocumentHashPre?.Value ?? string.Empty,
-            footer
+            footer,
+            stampStyle
         );
         return sealer.Seal(sealingRequest);
     }
@@ -645,8 +661,9 @@ public static class SignatureRequestCompletedConsumer
                         Label: field.Label,
                         SignerDisplayName: signer.FullName.Value,
                         SignedAtUtc: signedAt,
-                        SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? signerImage : null,
-                        Value: textValue
+                            SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? signerImage : null,
+                        Value: textValue,
+                        FontSizePt: field.FontSizePt
                     )
                 );
             }
@@ -686,7 +703,7 @@ public static class SignatureRequestCompletedConsumer
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
             Content: sealResult.SealedPdfBytes,
-            FileName: BuildDocumentFileName(document.Title, "_Signed.pdf"),
+            FileName: DocumentFileName.For(document.Title, "_Signed.pdf"),
             ContentType: "application/pdf",
             // Values must match CloudStorage's OwnerType / FolderType enums.
             OwnerType: ownerType,
@@ -786,7 +803,7 @@ public static class SignatureRequestCompletedConsumer
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
             Content: certificateBytes,
-            FileName: BuildDocumentFileName(title, "_Certificate.pdf"),
+            FileName: DocumentFileName.For(title, "_Certificate.pdf"),
             ContentType: "application/pdf",
             OwnerType: ownerType,
             OwnerId: ownerId,
@@ -794,39 +811,6 @@ public static class SignatureRequestCompletedConsumer
             TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year,
             ActorId: request.CreatedByUserId
         );
-    }
-
-    private const int MaxFileNameBaseLength = 120;
-
-    /// <summary>Nombre de descarga profesional desde el Title (translitera acentos, deja [A-Za-z0-9._-]). No toca el ObjectKey.</summary>
-    private static string BuildDocumentFileName(string title, string suffix)
-    {
-        var normalized = (title ?? string.Empty).Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(normalized.Length);
-        var lastWasUnderscore = false;
-        foreach (var ch in normalized)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
-                continue;
-
-            if (ch is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-' or '.')
-            {
-                sb.Append(ch);
-                lastWasUnderscore = false;
-            }
-            else if (!lastWasUnderscore)
-            {
-                sb.Append('_');
-                lastWasUnderscore = true;
-            }
-        }
-
-        var cleaned = sb.ToString().Trim('_', '.', '-');
-        if (cleaned.Length > MaxFileNameBaseLength)
-            cleaned = cleaned[..MaxFileNameBaseLength].Trim('_', '.', '-');
-        if (string.IsNullOrEmpty(cleaned))
-            cleaned = "Document";
-        return cleaned + suffix;
     }
 
     private static async Task<(string? IssuerName, byte[]? TenantLogo)> ResolveBrandingAsync(

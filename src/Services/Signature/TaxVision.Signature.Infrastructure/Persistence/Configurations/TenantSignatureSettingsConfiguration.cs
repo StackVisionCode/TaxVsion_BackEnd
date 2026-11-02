@@ -32,12 +32,16 @@ public sealed class TenantSignatureSettingsConfiguration : IEntityTypeConfigurat
             .HasMaxLength(16)
             .HasDefaultValue(Domain.Requests.ValueObjects.PartialCopyAudienceKind.All)
             .IsRequired();
-        // Default true en BD: tenants existentes mantienen el comportamiento histórico (sealed = ON).
-        builder.Property(settings => settings.SendSealedDocumentDefault).HasDefaultValue(true).IsRequired();
+        // Las filas existentes ya se rellenaron en ON al crear la columna; el default de la BD es false para
+        // que el false del dominio no se pierda (EF omite el valor CLR por defecto y aplicaría el de la BD).
+        builder.Property(settings => settings.SendSealedDocumentDefault).HasDefaultValue(false).IsRequired();
         builder.Property(settings => settings.SendCertificateToSignersDefault).HasDefaultValue(false).IsRequired();
         // Consentimiento ESIGN/UETA: tenants existentes se backfillean en ON (política legal por default).
         builder.Property(settings => settings.RequiresConsentByDefault).HasDefaultValue(true).IsRequired();
         builder.Property(settings => settings.ExpirationEnabledByDefault).HasDefaultValue(true).IsRequired();
+        // Estampado. Sin HasDefaultValue: el valor del dominio siempre se inserta; la migración rellena lo existente.
+        builder.Property(settings => settings.ShowSignatureFrame).IsRequired();
+        builder.Property(settings => settings.DateStampFormat).HasConversion<string>().HasMaxLength(16).IsRequired();
 
         builder.Property(settings => settings.AuditSecretEncrypted).HasMaxLength(512).IsRequired();
         builder.Property(settings => settings.AuditKeyVersion).IsRequired();
@@ -51,8 +55,35 @@ public sealed class TenantSignatureSettingsConfiguration : IEntityTypeConfigurat
             limits =>
             {
                 limits.Property(l => l.MaxPdfBytes).HasColumnName("Limits_MaxPdfBytes").IsRequired();
-                limits.Property(l => l.MaxImageBytes).HasColumnName("Limits_MaxImageBytes").IsRequired();
                 limits.Property(l => l.MaxPagesPerDocument).HasColumnName("Limits_MaxPagesPerDocument").IsRequired();
+            }
+        );
+
+        // DeliveryPolicy: owned value object; los defaults de columna cubren las filas existentes.
+        builder.OwnsOne(
+            settings => settings.Delivery,
+            delivery =>
+            {
+                delivery
+                    .Property(d => d.LinkLifetimeDays)
+                    .HasColumnName("Delivery_LinkLifetimeDays")
+                    .HasDefaultValue(DeliveryPolicy.DefaultLinkLifetimeDays)
+                    .IsRequired();
+                delivery
+                    .Property(d => d.AllowPublicReissue)
+                    .HasColumnName("Delivery_AllowPublicReissue")
+                    .HasDefaultValue(true)
+                    .IsRequired();
+                delivery
+                    .Property(d => d.AttachDocuments)
+                    .HasColumnName("Delivery_AttachDocuments")
+                    .HasDefaultValue(false)
+                    .IsRequired();
+                delivery
+                    .Property(d => d.MaxAttachmentBytes)
+                    .HasColumnName("Delivery_MaxAttachmentBytes")
+                    .HasDefaultValue(DeliveryPolicy.DefaultMaxAttachmentBytes)
+                    .IsRequired();
             }
         );
 
@@ -66,44 +97,22 @@ public sealed class TenantSignatureSettingsConfiguration : IEntityTypeConfigurat
             }
         );
 
-        // SignaturePlanConstraints: owned value object controlado por la plataforma.
+        // SignaturePlanConstraints: excepción de PlatformAdmin; cada columna nula hereda del plan.
         builder.OwnsOne(
             settings => settings.PlanConstraints,
             plan =>
             {
-                plan.Property(p => p.MaxAllowedPdfBytes)
-                    .HasColumnName("Plan_MaxAllowedPdfBytes")
-                    .HasDefaultValue(SignaturePlanConstraints.DefaultMaxAllowedPdfBytes)
-                    .IsRequired();
-                plan.Property(p => p.MaxAllowedImageBytes)
-                    .HasColumnName("Plan_MaxAllowedImageBytes")
-                    .HasDefaultValue(SignaturePlanConstraints.DefaultMaxAllowedImageBytes)
-                    .IsRequired();
-                plan.Property(p => p.MaxAllowedPages)
-                    .HasColumnName("Plan_MaxAllowedPages")
-                    .HasDefaultValue(SignaturePlanConstraints.DefaultMaxAllowedPages)
-                    .IsRequired();
-                plan.Property(p => p.MinRetentionYears)
-                    .HasColumnName("Plan_MinRetentionYears")
-                    .HasDefaultValue(SignaturePlanConstraints.DefaultMinRetentionYears)
-                    .IsRequired();
-                plan.Property(p => p.PurgeAllowed)
-                    .HasColumnName("Plan_PurgeAllowed")
-                    .HasDefaultValue(SignaturePlanConstraints.DefaultPurgeAllowed)
-                    .IsRequired();
-                plan.Property(p => p.AllowedChannels)
-                    .HasColumnName("Plan_AllowedChannels")
-                    .HasConversion<int>()
-                    .HasDefaultValue(SignaturePlanConstraints.DefaultAllowedChannels)
-                    // Sentinel: cuando el valor CLR es None (0), EF usa el default de la DB.
-                    // None nunca es válido (invariante de dominio), así que esto es seguro.
-                    .HasSentinel(VerificationChannel.None)
-                    .IsRequired();
-                plan.Property(p => p.MaxTokenExpirationHours)
-                    .HasColumnName("Plan_MaxTokenExpirationHours")
-                    .HasDefaultValue(SignaturePlanConstraints.DefaultMaxTokenExpirationHours)
-                    .IsRequired();
+                plan.Property(p => p.MaxDocumentsPerRequest).HasColumnName("Plan_MaxDocumentsPerRequest");
+                plan.Property(p => p.MaxSignersPerRequest).HasColumnName("Plan_MaxSignersPerRequest");
+                plan.Property(p => p.MaxAllowedPdfBytes).HasColumnName("Plan_MaxAllowedPdfBytes");
+                plan.Property(p => p.MaxAllowedPages).HasColumnName("Plan_MaxAllowedPages");
+                plan.Property(p => p.MinRetentionYears).HasColumnName("Plan_MinRetentionYears");
+                plan.Property(p => p.PurgeAllowed).HasColumnName("Plan_PurgeAllowed");
+                plan.Property(p => p.AllowedChannels).HasColumnName("Plan_AllowedChannels").HasConversion<int?>();
+                plan.Property(p => p.MaxTokenExpirationHours).HasColumnName("Plan_MaxTokenExpirationHours");
             }
         );
+        // Sin esto, una excepción con todo nulo se leería como null en vez de "sin excepción".
+        builder.Navigation(settings => settings.PlanConstraints).IsRequired();
     }
 }

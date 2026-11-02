@@ -13,7 +13,13 @@ using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Delivery;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Categories;
+using TaxVision.Signature.Application.Documents;
+using TaxVision.Signature.Application.Delivery;
+using TaxVision.Signature.Application.Documents.Verification;
+using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Application.Profiles.EffectiveSignature;
+using TaxVision.Signature.Application.Sealing;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Application.RateLimiting.Abstractions;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
@@ -76,7 +82,23 @@ public static class DependencyInjection
         services.AddScoped<ISignatureAnalyticsRepository, SignatureAnalyticsRepository>();
         services.AddScoped<ISignatureAnalyticsReadService, SignatureAnalyticsReadService>();
         services.AddScoped<IDocumentValidationRepository, DocumentValidationRepository>();
-        services.AddSingleton<IDocumentValidator, PdfSharpDocumentValidator>();
+        services.AddSingleton<IPdfInspector, PdfSharpPdfInspector>();
+        services.AddScoped<IDocumentLimitsResolver, TenantDocumentLimitsResolver>();
+        // F6 — límites efectivos (plan + excepción + oficina) y valores de plataforma con caché por réplica.
+        services.AddScoped<ITenantSignatureLimitsRepository, TenantSignatureLimitsRepository>();
+        services.AddScoped<ISignatureLimitsResolver, SignatureLimitsResolver>();
+        services.AddScoped<ISignaturePlatformSettingsRepository, SignaturePlatformSettingsRepository>();
+        services.AddSingleton<SignaturePlatformSettingsCache>();
+        services.AddScoped<ISignaturePlatformSettingsProvider, SignaturePlatformSettingsProvider>();
+        // Estilo de estampado (marco, fecha, letra automática): lo leen sellado, copias parciales y vista pública.
+        services.AddScoped<IStampStyleResolver, StampStyleResolver>();
+        services.AddScoped<IRequestDocumentVerifier, RequestDocumentVerifier>();
+        services.AddScoped<ISignedDocumentDeliveryRepository, SignedDocumentDeliveryRepository>();
+        services.AddScoped<ISignedDocumentDeliveryIssuer, SignedDocumentDeliveryIssuer>();
+        services.AddScoped<CustomerPortalCopier>();
+        services.AddScoped<DeliverableFiles>();
+        // El token de la entrega viaja cifrado a Notification (misma clave ENCRYPTION_MASTER_KEY).
+        services.AddProtectedPayloadProtection(configuration);
         services.AddScoped<IConsentEventRepository, ConsentEventRepository>();
         services.AddSingleton<IConsentTextProvider, StaticConsentTextProvider>();
         services.AddScoped<ISignatureAuditRepository, SignatureAuditRepository>();
@@ -181,6 +203,7 @@ public static class DependencyInjection
         );
         services.AddScoped<IAuthzRolePermissionsProjectionRepository, AuthzRolePermissionsProjectionRepository>();
         services.AddScoped<IAuditSecretFactory, AuditSecretFactory>();
+        services.AddOptions<SignerJwtOptions>().Bind(configuration.GetSection(SignerJwtOptions.SectionName));
         services.AddSingleton<IRsaKeyProvider, RsaSigningKeyProvider>();
         services.AddSingleton<ISigningTokenService, SigningTokenService>();
         // Denylist de jti distribuida (Redis vía ICacheService), para que una revocación por-token

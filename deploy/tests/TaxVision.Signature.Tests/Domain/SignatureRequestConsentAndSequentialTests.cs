@@ -110,6 +110,7 @@ public sealed class SignatureRequestConsentAndSequentialTests
     {
         var draft = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Consent Test",
@@ -131,6 +132,7 @@ public sealed class SignatureRequestConsentAndSequentialTests
     {
         var draft = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "No Consent",
@@ -152,6 +154,7 @@ public sealed class SignatureRequestConsentAndSequentialTests
     {
         var draft = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Sequential",
@@ -167,7 +170,7 @@ public sealed class SignatureRequestConsentAndSequentialTests
         AddSignerWithField(draft, "one@example.com", "Signer One");
         AddSignerWithField(draft, "two@example.com", "Signer Two");
         var hash = DocumentHash.Create(new string('b', 64)).Value;
-        draft.AttachOriginalHash(hash);
+        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(hash, 50).Value);
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -176,13 +179,13 @@ public sealed class SignatureRequestConsentAndSequentialTests
     {
         AddSignerWithField(request, email, "Some Name");
         var hash = DocumentHash.Create(new string('a', 64)).Value;
-        request.AttachOriginalHash(hash);
+        request.AttachVerifiedDocument(request.Documents[0].Id, VerifiedDocument.Create(hash, 50).Value);
     }
 
     private static void AddSignerWithField(SignatureRequest request, string email, string name)
     {
-        var signer = request.AddSigner(SignerEmail.Create(email).Value, SignerFullName.Create(name).Value, null).Value;
+        var signer = request.AddSigner(TestSignatureLimits.Default, SignerEmail.Create(email).Value, SignerFullName.Create(name).Value, null).Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        request.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
+        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
     }
 }

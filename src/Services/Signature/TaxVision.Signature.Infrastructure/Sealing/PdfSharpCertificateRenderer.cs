@@ -33,6 +33,7 @@ public sealed class PdfSharpCertificateRenderer(IPlatformSettings platform) : IC
     private const double MarginTop = 54;
     private const double MarginBottom = 54;
     private const double LogoHeight = 30;
+    private const double LogoTitleGap = 14;
 
     private const string SansFamily = "Helvetica";
     private const string SerifFamily = "Times";
@@ -137,14 +138,18 @@ public sealed class PdfSharpCertificateRenderer(IPlatformSettings platform) : IC
             new XPoint(ctx.ContentRight - badgeSize.Width, top + 12)
         );
 
-        ctx.CursorY = top + LogoHeight + 18;
+        // El título se ancla por arriba (no por la línea base): así el aire bajo el logo es real
+        // y no depende del ascendente de la fuente.
+        var titleTop = top + LogoHeight + LogoTitleGap;
+        var titleHeight = titleFont.GetHeight();
         gfx.DrawString(
             "Certificate of Completion",
             titleFont,
             new XSolidBrush(TextPrimary),
-            new XPoint(MarginLeft, ctx.CursorY)
+            new XRect(MarginLeft, titleTop, ctx.ContentWidth, titleHeight),
+            XStringFormats.TopLeft
         );
-        ctx.CursorY += 10;
+        ctx.CursorY = titleTop + titleHeight;
 
         if (!string.IsNullOrWhiteSpace(model.Title))
         {

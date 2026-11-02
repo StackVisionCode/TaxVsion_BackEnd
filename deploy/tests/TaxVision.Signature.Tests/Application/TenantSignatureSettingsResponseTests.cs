@@ -12,7 +12,7 @@ public sealed class TenantSignatureSettingsResponseTests
         settings.SetSendCertificateToSignersDefault(true);
         settings.SetRequiresConsentByDefault(false);
 
-        var response = TenantSignatureSettingsResponse.From(settings);
+        var response = TenantSignatureSettingsResponse.From(settings, TestSignatureLimits.Default);
 
         Assert.True(response.SendCertificateToSignersDefault);
         Assert.False(response.RequiresConsentByDefault);

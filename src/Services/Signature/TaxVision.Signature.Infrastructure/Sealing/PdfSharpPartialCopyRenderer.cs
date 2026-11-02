@@ -22,7 +22,7 @@ public sealed class PdfSharpPartialCopyRenderer : IPartialCopyRenderer
         using var input = new MemoryStream(request.OriginalPdfBytes, writable: false);
         using var pdf = PdfReader.Open(input, PdfDocumentOpenMode.Modify);
 
-        PdfSharpSealingEngine.StampAllFields(pdf, request.SignedFields);
+        PdfSharpSealingEngine.StampAllFields(pdf, request.SignedFields, request.Style);
         DrawAdvanceCopyBanner(pdf, request);
         DrawProgressFooter(pdf, request);
 

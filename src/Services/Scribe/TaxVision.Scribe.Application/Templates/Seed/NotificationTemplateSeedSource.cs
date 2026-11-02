@@ -36,7 +36,7 @@ public sealed record NotificationTemplateSeed(
     //      automático fallido, con intento, próximo reintento, tarjeta real y lo suspendido al final.
     // v21 (por plantilla): communication.meeting.invitation con título, fecha local, host, código,
     //      rama "in progress" y adjunto .ics (F6).
-    int ContentVersion = 21,
+    int ContentVersion = 22,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -1036,10 +1036,10 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Firma completada</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, el proceso de firma se completó exitosamente el {{ completed_at }} UTC. No necesitas hacer nada más.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, {% if is_reissue %}este es tu nuevo enlace para descargar los documentos firmados; el anterior ya no funciona.{% else %}el proceso de firma se completó exitosamente el {{ completed_at }} UTC. Puedes descargar los documentos firmados aquí abajo.{% endif %}</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Signature completed</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the signature process was completed successfully on {{ completed_at }} UTC. You can download the signed document below.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, {% if is_reissue %}here is your new link to download the signed documents; the previous one no longer works.{% else %}the signature process was completed successfully on {{ completed_at }} UTC. You can download the signed documents below.{% endif %}</td></tr>
               {% endif %}
               {% if download_links and download_links.size > 0 %}
               <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Documentos disponibles ({{ document_count }}):{% else %}Available documents ({{ document_count }}):{% endif %}</td></tr>
@@ -1051,6 +1051,12 @@ public static class NotificationTemplateSeedSource
               </tr>
               {% endfor %}
               {% endif %}
+              {% if delivery_url %}
+              <tr><td style="padding-top:20px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Este enlace es personal y vale hasta el {{ expires_at }}.{% if can_request_new_link %} Si vence, ábrelo igual y podrás pedir uno nuevo, que llegará a este mismo correo.{% else %} Si vence, pide uno nuevo a la oficina que te lo envió.{% endif %}{% if has_attachments %} También te adjuntamos los archivos.{% endif %}{% else %}This link is personal and valid until {{ expires_at }}.{% if can_request_new_link %} If it expires, open it anyway and you can request a new one, sent to this same email.{% else %} If it expires, ask the office that sent it for a new one.{% endif %}{% if has_attachments %} The files are also attached.{% endif %}{% endif %}</td></tr>
+              {% endif %}
+              {% if portal_url %}
+              <tr><td style="padding-top:10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}También están en tu portal de cliente: <a href="{{ portal_url }}" target="_blank" style="color:#1E466B;font-weight:bold;text-decoration:underline;">abrir el portal</a>.{% else %}They're also in your client portal: <a href="{{ portal_url }}" target="_blank" style="color:#1E466B;font-weight:bold;text-decoration:underline;">open the portal</a>.{% endif %}</td></tr>
+              {% endif %}
             </table>
             """,
             Variables:
@@ -1060,8 +1066,14 @@ public static class NotificationTemplateSeedSource
                 ("download_links", VariableType.String, false, null, "Lista de objetos { title, url } por documento."),
                 ("document_count", VariableType.Number, true, "1", "Cantidad de documentos sellados."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
+                ("delivery_url", VariableType.Url, false, null, "Página de entrega de Signature con todos los archivos."),
+                ("expires_at", VariableType.String, false, null, "Fecha (UTC) hasta la que vale el enlace."),
+                ("can_request_new_link", VariableType.Bool, false, "false", "Si al vencer el firmante puede pedir un enlace nuevo."),
+                ("portal_url", VariableType.Url, false, null, "Carpeta de documentos del portal (solo clientes con cuenta)."),
+                ("is_reissue", VariableType.Bool, false, "false", "Es un enlace nuevo que reemplaza al anterior."),
+                ("has_attachments", VariableType.Bool, false, "false", "Los archivos también van adjuntos."),
             ],
-            ContentVersion: 15
+            ContentVersion: 16
         );
 
     // F7 — copia inmediata: cada firmante recibe lo que firmó cuando firma él, aunque los demás
@@ -1081,9 +1093,9 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, gracias por completar {{ document_count }} documento(s) el {{ signed_at }} UTC.</td></tr>
               {% if total_signers and total_signers > 1 %}
               {% if send_sealed_to_signers %}
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Adjuntamos tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>; cuando el documento quede completo, recibirás el PDF final sellado.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Adjuntamos{% else %}Aquí tienes{% endif %} tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>; cuando el documento quede completo, recibirás el PDF final sellado.</td></tr>
               {% else %}
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Adjuntamos tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>. Guárdala como constancia de tu firma.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Adjuntamos{% else %}Aquí tienes{% endif %} tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>. Guárdala como constancia de tu firma.</td></tr>
               {% endif %}
               {% else %}
               {% if send_sealed_to_signers %}
@@ -1097,9 +1109,9 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, thanks for completing {{ document_count }} document(s) on {{ signed_at }} UTC.</td></tr>
               {% if total_signers and total_signers > 1 %}
               {% if send_sealed_to_signers %}
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Attached is your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>; when the document is complete, you'll receive the final sealed PDF.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Attached is{% else %}Here is{% endif %} your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>; when the document is complete, you'll receive the final sealed PDF.</td></tr>
               {% else %}
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Attached is your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>. Keep it as a record of your signature.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Attached is{% else %}Here is{% endif %} your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>. Keep it as a record of your signature.</td></tr>
               {% endif %}
               {% else %}
               {% if send_sealed_to_signers %}
@@ -1118,6 +1130,12 @@ public static class NotificationTemplateSeedSource
               </tr>
               {% endfor %}
               {% endif %}
+              {% if delivery_url %}
+              <tr><td style="padding-top:20px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Este enlace es personal y vale hasta el {{ expires_at }}.{% if can_request_new_link %} Si vence, ábrelo igual y podrás pedir uno nuevo, que llegará a este mismo correo.{% else %} Si vence, pide uno nuevo a la oficina que te lo envió.{% endif %}{% if has_attachments %} También te adjuntamos los archivos.{% endif %}{% else %}This link is personal and valid until {{ expires_at }}.{% if can_request_new_link %} If it expires, open it anyway and you can request a new one, sent to this same email.{% else %} If it expires, ask the office that sent it for a new one.{% endif %}{% if has_attachments %} The files are also attached.{% endif %}{% endif %}</td></tr>
+              {% endif %}
+              {% if portal_url %}
+              <tr><td style="padding-top:10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}También están en tu portal de cliente: <a href="{{ portal_url }}" target="_blank" style="color:#1E466B;font-weight:bold;text-decoration:underline;">abrir el portal</a>.{% else %}They're also in your client portal: <a href="{{ portal_url }}" target="_blank" style="color:#1E466B;font-weight:bold;text-decoration:underline;">open the portal</a>.{% endif %}</td></tr>
+              {% endif %}
             </table>
             """,
             Variables:
@@ -1135,8 +1153,14 @@ public static class NotificationTemplateSeedSource
                     "false",
                     "True si el preparador va a enviar el PDF sellado al final."
                 ),
+                ("delivery_url", VariableType.Url, false, null, "Página de entrega de Signature con todos los archivos."),
+                ("expires_at", VariableType.String, false, null, "Fecha (UTC) hasta la que vale el enlace."),
+                ("can_request_new_link", VariableType.Bool, false, "false", "Si al vencer el firmante puede pedir un enlace nuevo."),
+                ("portal_url", VariableType.Url, false, null, "Carpeta de documentos del portal (solo clientes con cuenta)."),
+                ("is_reissue", VariableType.Bool, false, "false", "Es un enlace nuevo que reemplaza al anterior."),
+                ("has_attachments", VariableType.Bool, false, "false", "Los archivos también van adjuntos."),
             ],
-            ContentVersion: 17
+            ContentVersion: 18
         );
 
     private static NotificationTemplateSeed SignatureCertificateReady { get; } =

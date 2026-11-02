@@ -30,6 +30,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Settings.IntegrationEvents;
 using TaxVision.Signature.Domain.Requests;
@@ -265,14 +266,12 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<DocumentSignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // F7 — copia inmediata al firmar.
     options.PublishMessage<SignerPartialCopyRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignerPartialCopyReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignedDocumentsDeliveryReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureDocumentsReadyForSealingIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureDocumentSealedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealingCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignatureReadyForDownloadIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignatureCertificateReadyForDownloadIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealingFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinVerifiedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -314,6 +313,10 @@ builder.Host.UseWolverine(options =>
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
 
 var app = builder.Build();
+
+// La clave de los enlaces de firma se carga ya: si falta o es inválida, el contenedor no arranca (y el deploy
+// lo muestra) en vez de fallar con el primer enlace que se abra.
+app.Services.GetRequiredService<IRsaKeyProvider>();
 
 // Reescribe RemoteIpAddress con la IP real del cliente (CF-Connecting-IP) ANTES de todo lo que la lea
 // (logging, rate limiter, host-guard, controllers, certificado de firma).

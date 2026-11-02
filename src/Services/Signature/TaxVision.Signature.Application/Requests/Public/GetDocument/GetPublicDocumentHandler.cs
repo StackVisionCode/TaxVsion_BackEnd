@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
@@ -91,7 +92,7 @@ public static class GetPublicDocumentHandler
         );
 
         var contentType = string.IsNullOrWhiteSpace(fileRef.ContentType) ? "application/pdf" : fileRef.ContentType;
-        var fileName = $"{SanitizeFileName(document.Title)}.pdf";
+        var fileName = DocumentFileName.For(document.Title, ".pdf");
         return Result.Success(new PublicDocumentStream(download.Value, contentType, fileName));
     }
 
@@ -132,9 +133,4 @@ public static class GetPublicDocumentHandler
     }
 
     // Para el Content-Disposition: evita caracteres que confunden el navegador o rutas.
-    private static string SanitizeFileName(string raw)
-    {
-        var cleaned = new string(raw.Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Trim();
-        return string.IsNullOrWhiteSpace(cleaned) ? "document" : cleaned;
-    }
 }

@@ -2,9 +2,8 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Abstractions;
-using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using Wolverine;
@@ -24,7 +23,7 @@ public static class FilesDeletionRequestedConsumer
         FilesDeletionRequestedIntegrationEvent message,
         IFileObjectRepository files,
         IStorageAuditRepository audit,
-        IOptions<CloudStorageOptions> options,
+        IStoragePlatformSettingsProvider platform,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -35,7 +34,7 @@ public static class FilesDeletionRequestedConsumer
     {
         using (correlation.Push(message.CorrelationId))
         {
-            var retention = TimeSpan.FromDays(options.Value.RecycleBinRetentionDays);
+            var retention = TimeSpan.FromDays((await platform.GetAsync(ct)).RecycleBinRetentionDays);
             foreach (var target in message.Files)
             {
                 var file = await files.GetAsync(message.TenantId, target.FileId, ct);

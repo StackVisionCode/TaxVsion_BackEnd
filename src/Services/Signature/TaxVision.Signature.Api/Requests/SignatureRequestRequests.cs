@@ -82,7 +82,9 @@ public sealed record PlaceFieldBody(
     double Width,
     double Height,
     string? Label,
-    bool IsRequired
+    bool IsRequired,
+    // Letra del estampado (iniciales/fecha/texto); null = automática según la caja.
+    int? FontSizePt = null
 );
 
 public sealed record CancelSignatureRequestBody(string? Reason);
@@ -155,5 +157,7 @@ public sealed record UpsertDraftFieldBody(
     double Width,
     double Height,
     string? Label,
-    bool IsRequired
+    bool IsRequired,
+    // Letra del estampado (iniciales/fecha/texto); null = automática según la caja.
+    int? FontSizePt = null
 );

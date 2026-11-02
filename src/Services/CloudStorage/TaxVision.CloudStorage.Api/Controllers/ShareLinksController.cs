@@ -86,9 +86,9 @@ public sealed class ShareLinksController(
 
     [HttpPost("files/{fileId:guid}/shares")]
     [HasPermission(CloudStoragePermissions.ShareCreate)]
-    // Service: Signature mintea un share-link de descarga del documento sellado por M2M (mismo
-    // precedente que FilesController.download-url). Requiere cloudstorage.share.create en su client.
-    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin, ActorType.Service)]
+    // Solo personas: compartir es una acción de usuario. Signature entrega el firmado con su propio
+    // enlace (download-url al abrirlo), no con shares.
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("cloudstorage.g.share_manage")]
     [ProducesResponseType<CreatedShareLinkResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(Guid fileId, CreateShareLinkRequest request, CancellationToken ct)

@@ -28,6 +28,11 @@ public sealed class ShareLink : TenantEntity, IHasOwner
     public int? MaxAccessCount { get; private set; }
     public int AccessCount { get; private set; }
 
+    /// <summary>Contraseñas fallidas seguidas; al llegar al tope de la oficina el enlace se bloquea un rato.</summary>
+    public int FailedPasswordAttempts { get; private set; }
+
+    public DateTime? PasswordLockedUntilUtc { get; private set; }
+
     /// <summary>Fase C4 — si el link cubre todo el subarbol (true) o solo el contenido directo de la carpeta (false). Siempre false en un link de File.</summary>
     public bool IsRecursive { get; private set; }
 
@@ -62,7 +67,8 @@ public sealed class ShareLink : TenantEntity, IHasOwner
         Guid createdBy,
         DateTime nowUtc,
         bool isRecursive = false,
-        bool appliesToFutureItems = false
+        bool appliesToFutureItems = false,
+        int defaultLifetimeDays = DefaultLifetimeDays
     )
     {
         if (resourceType == ShareResourceType.File && (isRecursive || appliesToFutureItems))
@@ -71,7 +77,8 @@ public sealed class ShareLink : TenantEntity, IHasOwner
         if (maxAccessCount is <= 0)
             return Result.Failure<(ShareLink, string)>(ShareErrors.InvalidMaxAccessCount);
 
-        var expiry = expiresAtUtc ?? nowUtc.AddDays(DefaultLifetimeDays);
+        // Sin fecha elegida: la vida por defecto de la oficina (DefaultLifetimeDays solo si no se pasa).
+        var expiry = expiresAtUtc ?? nowUtc.AddDays(defaultLifetimeDays);
         if (expiry <= nowUtc)
             return Result.Failure<(ShareLink, string)>(ShareErrors.ExpirationInPast);
 
@@ -126,6 +133,24 @@ public sealed class ShareLink : TenantEntity, IHasOwner
         AccessCount++;
         if (MaxAccessCount is { } max && AccessCount >= max)
             Status = ShareStatus.Exhausted;
+    }
+
+    public bool IsPasswordLocked(DateTime nowUtc) => PasswordLockedUntilUtc > nowUtc;
+
+    /// <summary>Suma un intento fallido; al llegar a <paramref name="maxAttempts"/> bloquea por <paramref name="lockDuration"/>.</summary>
+    public void RegisterWrongPassword(int maxAttempts, TimeSpan lockDuration, DateTime nowUtc)
+    {
+        FailedPasswordAttempts++;
+        if (FailedPasswordAttempts < maxAttempts)
+            return;
+        PasswordLockedUntilUtc = nowUtc.Add(lockDuration);
+        FailedPasswordAttempts = 0;
+    }
+
+    public void RegisterCorrectPassword()
+    {
+        FailedPasswordAttempts = 0;
+        PasswordLockedUntilUtc = null;
     }
 
     public Result Revoke(DateTime nowUtc)

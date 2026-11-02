@@ -1,11 +1,10 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
-using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files;
 using TaxVision.CloudStorage.Application.Files.Queries;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Sharing;
@@ -19,6 +18,9 @@ public enum PublicFolderOutcome
     Available,
     PasswordRequired,
     Denied,
+
+    /// <summary>Demasiadas contraseñas fallidas: el enlace no acepta intentos por un rato.</summary>
+    PasswordLocked,
 }
 
 public sealed record PublicFolderCrumb(Guid FolderId, string Name);
@@ -60,17 +62,24 @@ public static class ResolvePublicFolderContentsHandler
         IFileObjectRepository files,
         IFolderRepository folders,
         IShareLinkPasswordHasher passwordHasher,
+        IStorageLimitRepository limits,
+        IStoragePlatformSettingsProvider platform,
         ISystemClock clock,
+        IUnitOfWork unitOfWork,
         CancellationToken ct
     )
     {
         var link = await shares.GetByTokenHashAsync(ShareToken.HashOf(query.Token), ct);
-        var gate = PublicFolderShareGate.Check(
+        var gate = await PublicFolderShareGate.CheckAsync(
             link,
             query.RecipientEmail,
             query.Password,
             passwordHasher,
-            clock.UtcNow
+            limits,
+            platform,
+            clock.UtcNow,
+            unitOfWork,
+            ct
         );
         if (gate != PublicFolderOutcome.Available)
             return new PublicFolderContentsResult(gate);
@@ -168,6 +177,7 @@ public enum PublicZipOutcome
     PasswordRequired,
     Denied,
     TooLarge,
+    PasswordLocked,
 }
 
 public sealed record PublicZipResult(PublicZipOutcome Outcome, ZipDownloadPlan? Plan = null, string? ArchiveName = null)
@@ -177,6 +187,8 @@ public sealed record PublicZipResult(PublicZipOutcome Outcome, ZipDownloadPlan? 
     public static PublicZipResult NeedsPassword() => new(PublicZipOutcome.PasswordRequired);
 
     public static PublicZipResult TooLarge() => new(PublicZipOutcome.TooLarge);
+
+    public static PublicZipResult PasswordLocked() => new(PublicZipOutcome.PasswordLocked);
 }
 
 /// <summary>Arma el plan del "Download all (ZIP)" de una carpeta compartida por token. No escribe bytes (eso lo streamea el controller).</summary>
@@ -196,8 +208,9 @@ public static class PreparePublicFolderZipHandler
         IFileObjectRepository files,
         IFolderRepository folders,
         IShareLinkPasswordHasher passwordHasher,
+        IStorageLimitRepository limits,
+        IStoragePlatformSettingsProvider platform,
         IStorageAuditRepository audit,
-        IOptions<CloudStorageOptions> options,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -205,9 +218,21 @@ public static class PreparePublicFolderZipHandler
     {
         var now = clock.UtcNow;
         var link = await shares.GetByTokenHashAsync(ShareToken.HashOf(query.Token), ct);
-        var gate = PublicFolderShareGate.Check(link, query.RecipientEmail, query.Password, passwordHasher, now);
+        var gate = await PublicFolderShareGate.CheckAsync(
+            link,
+            query.RecipientEmail,
+            query.Password,
+            passwordHasher,
+            limits,
+            platform,
+            now,
+            unitOfWork,
+            ct
+        );
         if (gate == PublicFolderOutcome.PasswordRequired)
             return PublicZipResult.NeedsPassword();
+        if (gate == PublicFolderOutcome.PasswordLocked)
+            return PublicZipResult.PasswordLocked();
         if (gate != PublicFolderOutcome.Available)
             return PublicZipResult.Denied();
 
@@ -223,7 +248,7 @@ public static class PreparePublicFolderZipHandler
         if (root is null)
             return PublicZipResult.Denied();
 
-        var config = options.Value;
+        var config = await platform.GetAsync(ct);
 
         // Prefijos de carpeta: la raíz aporta su nombre; si es recursivo, los descendientes cuelgan por RelativePath.
         var folderEntryPrefixes = new Dictionary<Guid, string> { [root.Id] = root.Name };
@@ -282,12 +307,16 @@ public static class PreparePublicFolderZipHandler
 /// <summary>Puerta común de los flujos públicos de folder: token usable + servible por endpoint público + password.</summary>
 internal static class PublicFolderShareGate
 {
-    public static PublicFolderOutcome Check(
+    public static async Task<PublicFolderOutcome> CheckAsync(
         ShareLink? link,
         string? recipientEmail,
         string? password,
         IShareLinkPasswordHasher passwordHasher,
-        DateTime nowUtc
+        IStorageLimitRepository limits,
+        IStoragePlatformSettingsProvider platform,
+        DateTime nowUtc,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
     )
     {
         if (link is null || !link.IsUsable(nowUtc) || link.ResourceType != ShareResourceType.Folder)
@@ -304,14 +333,17 @@ internal static class PublicFolderShareGate
         if (!servedByPublic)
             return PublicFolderOutcome.Denied;
 
-        if (link.PasswordHash is { } passwordHash)
-        {
-            if (string.IsNullOrEmpty(password))
-                return PublicFolderOutcome.PasswordRequired;
-            if (!passwordHasher.Verify(password, passwordHash))
-                return PublicFolderOutcome.Denied;
-        }
+        var outcome = await SharePasswordGuard.CheckAsync(link, password, passwordHasher, limits, platform, nowUtc, ct);
+        // El guardia movió los contadores del enlace: se guardan ya, aunque el llamador niegue después.
+        if (outcome is SharePasswordOutcome.Accepted or SharePasswordOutcome.Wrong or SharePasswordOutcome.Locked)
+            await unitOfWork.SaveChangesAsync(ct);
 
-        return PublicFolderOutcome.Available;
+        return outcome switch
+        {
+            SharePasswordOutcome.Missing => PublicFolderOutcome.PasswordRequired,
+            SharePasswordOutcome.Wrong => PublicFolderOutcome.Denied,
+            SharePasswordOutcome.Locked => PublicFolderOutcome.PasswordLocked,
+            _ => PublicFolderOutcome.Available,
+        };
     }
 }

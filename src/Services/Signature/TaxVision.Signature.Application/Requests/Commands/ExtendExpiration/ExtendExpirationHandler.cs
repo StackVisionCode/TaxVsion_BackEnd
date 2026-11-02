@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -13,6 +14,7 @@ public static class ExtendExpirationHandler
     public static async Task<Result> Handle(
         ExtendExpirationCommand cmd,
         ISignatureRequestRepository repository,
+        ISignatureLimitsResolver limits,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -23,7 +25,8 @@ public static class ExtendExpirationHandler
         if (request is null)
             return NotFound();
 
-        var transition = request.ExtendExpiration(cmd.AdditionalHours);
+        var policy = await limits.ResolveAsync(cmd.TenantId, ct);
+        var transition = request.ExtendExpiration(policy.ForRequests, cmd.AdditionalHours);
         if (transition.IsFailure)
             return transition;
 

@@ -14,7 +14,7 @@ namespace TaxVision.Signature.Domain.Settings;
 ///   <item>Canales verificación: Email + SMS (Fase 1 de multicanal).</item>
 ///   <item>Canal por defecto: Email.</item>
 ///   <item>Retención: 7 años, purge deshabilitada.</item>
-///   <item>Límites de documento: 25 MB PDF / 10 MB imagen / 100 páginas.</item>
+///   <item>Límites de documento: 25 MB PDF / 100 páginas (dentro de los techos del plan).</item>
 ///   <item>Secreto HMAC del audit trail: generado al crear (cifrado con
 ///     <c>ISecretProtector</c> en Infrastructure antes de persistir).</item>
 /// </list>
@@ -28,8 +28,6 @@ public sealed class TenantSignatureSettings : BaseEntity
     public const VerificationChannel DefaultAllowedChannels = VerificationChannel.Email | VerificationChannel.Sms;
     public const VerificationChannel DefaultPreselectedChannel = VerificationChannel.Email;
     public const int DefaultTokenExpirationHours = 168; // 7 días
-    public const int MinTokenExpirationHours = 1;
-    public const int MaxTokenExpirationHours = 720; // 30 días
 
     public const int DefaultReminderIntervalHours = 48; // cada 2 días
     public const int MinReminderIntervalHours = 1;
@@ -91,16 +89,27 @@ public sealed class TenantSignatureSettings : BaseEntity
     /// <summary>F7 — default por tenant: las requests nuevas expiran (ON) o viven indefinido (OFF).</summary>
     public bool ExpirationEnabledByDefault { get; private set; }
 
+    /// <summary>
+    /// Marco alrededor de la firma en el PDF sellado ("Signed by", fecha/hora y referencia al certificado).
+    /// Opcional como en la industria; las iniciales, fechas y textos nunca llevan marco.
+    /// </summary>
+    public bool ShowSignatureFrame { get; private set; }
+
+    /// <summary>Formato con el que se estampa la fecha de firma en los campos Date.</summary>
+    public DateStampFormat DateStampFormat { get; private set; }
+
     /// <summary>Límites de documento (tamaño, páginas). Value Object inmutable.</summary>
     public DocumentLimits DocumentLimits { get; private set; } = default!;
 
     /// <summary>Política de retención (años, purge). Value Object inmutable.</summary>
     public RetentionPolicy Retention { get; private set; } = default!;
 
+    /// <summary>Entrega de los documentos firmados (vigencia del enlace, reemisión, adjuntos).</summary>
+    public DeliveryPolicy Delivery { get; private set; } = default!;
+
     /// <summary>
-    /// Techos que la plataforma impone sobre la configuración que este tenant puede elegir.
-    /// Actualizado por PlatformAdmin vía PUT /admin/tenants/{id}/signature-constraints.
-    /// Nunca nulo: se inicializa con <see cref="SignaturePlanConstraints.Default()"/> al crear el tenant.
+    /// Excepción de PlatformAdmin sobre lo que vende el plan (PUT /admin/tenants/{id}/signature-constraints).
+    /// Nunca nulo: sin excepción es <see cref="SignaturePlanConstraints.None()"/> y rige el plan.
     /// </summary>
     public SignaturePlanConstraints PlanConstraints { get; private set; } = default!;
 
@@ -158,9 +167,12 @@ public sealed class TenantSignatureSettings : BaseEntity
                 // Consentimiento ESIGN/UETA: política legal del despacho, ON por default.
                 RequiresConsentByDefault = true,
                 ExpirationEnabledByDefault = true,
+                ShowSignatureFrame = true,
+                DateStampFormat = DateStampFormat.MonthDayYear,
                 DocumentLimits = DocumentLimits.Default(),
                 Retention = RetentionPolicy.Default(),
-                PlanConstraints = SignaturePlanConstraints.Default(),
+                Delivery = DeliveryPolicy.Default(),
+                PlanConstraints = SignaturePlanConstraints.None(),
                 AuditSecretEncrypted = auditSecretEncrypted,
                 AuditKeyVersion = 1,
                 CreatedAtUtc = now,
@@ -225,15 +237,12 @@ public sealed class TenantSignatureSettings : BaseEntity
         return Result.Success();
     }
 
-    public Result ChangeDefaultTokenExpiration(int hours)
+    /// <summary>La vida por defecto del enlace del firmante, dentro del techo de horas vigente.</summary>
+    public Result ChangeDefaultTokenExpiration(int hours, SignatureLimits ceilings)
     {
-        if (hours is < MinTokenExpirationHours or > MaxTokenExpirationHours)
-            return Result.Failure(
-                new Error(
-                    "Signature.Settings.TokenExpiration",
-                    "DefaultTokenExpirationHours must be between 1 and 720."
-                )
-            );
+        var allowed = ceilings.CheckTokenHours(hours);
+        if (allowed.IsFailure)
+            return allowed;
 
         DefaultTokenExpirationHoursValue = hours;
         Touch();
@@ -291,6 +300,22 @@ public sealed class TenantSignatureSettings : BaseEntity
         if (ExpirationEnabledByDefault == enabled)
             return;
         ExpirationEnabledByDefault = enabled;
+        Touch();
+    }
+
+    public void SetShowSignatureFrame(bool show)
+    {
+        if (ShowSignatureFrame == show)
+            return;
+        ShowSignatureFrame = show;
+        Touch();
+    }
+
+    public void SetDateStampFormat(DateStampFormat format)
+    {
+        if (DateStampFormat == format)
+            return;
+        DateStampFormat = format;
         Touch();
     }
 
@@ -374,6 +399,14 @@ public sealed class TenantSignatureSettings : BaseEntity
         return Result.Success();
     }
 
+    public Result ReplaceDeliveryPolicy(DeliveryPolicy newPolicy)
+    {
+        ArgumentNullException.ThrowIfNull(newPolicy);
+        Delivery = newPolicy;
+        Touch();
+        return Result.Success();
+    }
+
     public Result ReplaceRetentionPolicy(RetentionPolicy newPolicy)
     {
         ArgumentNullException.ThrowIfNull(newPolicy);
@@ -383,68 +416,47 @@ public sealed class TenantSignatureSettings : BaseEntity
     }
 
     /// <summary>
-    /// Aplica nuevas restricciones de plan y auto-corrige la configuración del tenant
-    /// para que no exceda los techos. Llamado por PlatformAdmin.
-    ///
-    /// Auto-corrección:
-    /// - canales que ya no están en el plan → se deshabilitan (manteniendo al menos uno).
-    /// - DefaultVerificationChannel → se recalcula si quedó fuera del nuevo set permitido.
-    /// - TokenExpiration → se clampea al nuevo máximo.
-    /// - DocumentLimits → se clampean a los nuevos techos.
-    /// - RetentionYears → se eleva al nuevo mínimo si estaba por debajo.
-    /// - AllowPurge → se deshabilita si el plan ya no lo permite.
+    /// Guarda la excepción de PlatformAdmin. No reescribe lo que eligió la oficina: si queda por encima de
+    /// los techos nuevos, <see cref="EffectiveWithin"/> lo acota al leerlo (igual que si baja el plan).
     /// </summary>
-    public Result ApplyPlanConstraints(SignaturePlanConstraints newConstraints)
+    public void ApplyPlanConstraints(SignaturePlanConstraints newConstraints)
     {
         ArgumentNullException.ThrowIfNull(newConstraints);
-
         PlanConstraints = newConstraints;
-
-        // 1. Canales: quitar los que ya no están en el plan.
-        var validChannels = AllowedVerificationChannels & newConstraints.AllowedChannels;
-        if (validChannels == VerificationChannel.None)
-            validChannels = newConstraints.AllowedChannels; // fuerza al menos los del plan
-
-        AllowedVerificationChannels = validChannels;
-
-        if (!AllowedVerificationChannels.HasFlag(DefaultVerificationChannel))
-            DefaultVerificationChannel = FirstEnabled(AllowedVerificationChannels);
-
-        // 2. Token expiration.
-        if (DefaultTokenExpirationHoursValue > newConstraints.MaxTokenExpirationHours)
-            DefaultTokenExpirationHoursValue = newConstraints.MaxTokenExpirationHours;
-
-        // 3. Document limits (clampear a los nuevos techos del plan).
-        var clampedPdf = Math.Min(DocumentLimits.MaxPdfBytes, newConstraints.MaxAllowedPdfBytes);
-        var clampedImage = Math.Min(DocumentLimits.MaxImageBytes, newConstraints.MaxAllowedImageBytes);
-        var clampedPages = Math.Min(DocumentLimits.MaxPagesPerDocument, newConstraints.MaxAllowedPages);
-
-        var limitsResult = DocumentLimits.Default().WithMaxPdfBytes(clampedPdf);
-        if (limitsResult.IsFailure)
-            return limitsResult;
-
-        var imgResult = limitsResult.Value.WithMaxImageBytes(clampedImage);
-        if (imgResult.IsFailure)
-            return imgResult;
-
-        var pagesResult = imgResult.Value.WithMaxPages(clampedPages);
-        if (pagesResult.IsFailure)
-            return pagesResult;
-
-        DocumentLimits = pagesResult.Value;
-
-        // 4. Retention: elevar años si están por debajo del nuevo mínimo.
-        var effectiveYears = Math.Max(Retention.RetentionYears, newConstraints.MinRetentionYears);
-        var yearsResult = RetentionPolicy.Default().WithYears(effectiveYears);
-        if (yearsResult.IsFailure)
-            return yearsResult;
-
-        // 5. Purge: deshabilitar si el plan ya no lo permite.
-        var purge = Retention.AllowPurge && newConstraints.PurgeAllowed;
-        Retention = purge ? yearsResult.Value.WithPurgeAllowed() : yearsResult.Value.WithPurgeBlocked();
-
         Touch();
-        return Result.Success();
+    }
+
+    /// <summary>Lo que eligió la oficina acotado a los techos vigentes (plan + excepción).</summary>
+    public EffectiveSignaturePolicy EffectiveWithin(SignatureLimits planLimits)
+    {
+        var ceilings = PlanConstraints.ApplyTo(planLimits);
+
+        var channels = AllowedVerificationChannels & ceilings.AllowedChannels;
+        if (channels == VerificationChannel.None)
+            channels = ceilings.AllowedChannels;
+        var defaultChannel = channels.HasFlag(DefaultVerificationChannel)
+            ? DefaultVerificationChannel
+            : FirstEnabled(channels);
+
+        var forRequests = SignatureLimits.Create(
+            ceilings.MaxDocumentsPerRequest,
+            ceilings.MaxSignersPerRequest,
+            Math.Min(DocumentLimits.MaxPdfBytes, ceilings.MaxPdfBytes),
+            Math.Min(DocumentLimits.MaxPagesPerDocument, ceilings.MaxPagesPerDocument),
+            ceilings.MaxTokenHours,
+            ceilings.MinRetentionYears,
+            ceilings.PurgeAllowed,
+            channels
+        );
+
+        return new EffectiveSignaturePolicy(
+            ceilings,
+            forRequests,
+            Math.Min(DefaultTokenExpirationHoursValue, ceilings.MaxTokenHours),
+            Math.Max(Retention.RetentionYears, ceilings.MinRetentionYears),
+            Retention.AllowPurge && ceilings.PurgeAllowed,
+            defaultChannel
+        );
     }
 
     /// <summary>

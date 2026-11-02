@@ -3,11 +3,15 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Limits;
+using TaxVision.Signature.Application.Platform;
+using TaxVision.Signature.Application.Documents.Verification;
 using TaxVision.Signature.Application.Profiles.EffectiveSignature;
 using TaxVision.Signature.Application.Requests;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
+using TaxVision.Signature.Domain.Settings;
 using TaxVision.Signature.Domain.Templates;
 using Wolverine;
 
@@ -31,8 +35,10 @@ public static class CreateSignatureRequestFromTemplateHandler
         ISignatureTemplateRepository templateRepository,
         ISignatureRequestRepository requestRepository,
         ICustomerEmailProjectionRepository customerProjectionRepository,
-        IFileMetadataRefRepository fileRepository,
+        IRequestDocumentVerifier verifier,
         IEffectiveSignatureResolver effectiveResolver,
+        ISignatureLimitsResolver limits,
+        ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -58,16 +64,25 @@ public static class CreateSignatureRequestFromTemplateHandler
         if (signerVOs.IsFailure)
             return Result.Failure<SignatureRequestResponse>(signerVOs.Error);
 
-        var requestResult = CreateDraft(cmd, template);
+        var policy = (await limits.ResolveAsync(cmd.TenantId, ct)).ForRequests;
+        var maxFieldsPerSigner = (await platform.GetAsync(ct)).MaxFieldsPerSigner;
+        var requestResult = CreateDraft(cmd, template, policy);
         if (requestResult.IsFailure)
             return Result.Failure<SignatureRequestResponse>(requestResult.Error);
 
         var request = requestResult.Value;
-        var documentIds = AddDocuments(request, effectiveDocuments.Value);
+        var documentIds = AddDocuments(request, effectiveDocuments.Value, policy);
         if (documentIds.IsFailure)
             return Result.Failure<SignatureRequestResponse>(documentIds.Error);
 
-        var populated = PopulateSignersAndFields(request, template, signerVOs.Value, documentIds.Value);
+        var populated = PopulateSignersAndFields(
+            request,
+            template,
+            signerVOs.Value,
+            documentIds.Value,
+            policy,
+            maxFieldsPerSigner
+        );
         if (populated.IsFailure)
             return Result.Failure<SignatureRequestResponse>(populated.Error);
 
@@ -96,7 +111,10 @@ public static class CreateSignatureRequestFromTemplateHandler
                 return Result.Failure<SignatureRequestResponse>(pinResult.Error);
         }
 
-        await TryAttachHashesForAvailableFiles(request, fileRepository, ct);
+        var verified = await VerifyAvailableFiles(request, verifier, ct);
+        if (verified.IsFailure)
+            return Result.Failure<SignatureRequestResponse>(verified.Error);
+
         await requestRepository.AddAsync(request, ct);
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
@@ -286,7 +304,8 @@ public static class CreateSignatureRequestFromTemplateHandler
     /// </summary>
     private static Result<SignatureRequest> CreateDraft(
         CreateSignatureRequestFromTemplateCommand cmd,
-        SignatureTemplate template
+        SignatureTemplate template,
+        SignatureLimits limits
     )
     {
         // F7 — audiencia Specific se fija DESPUÉS (ApplySpecificAudienceIfNeeded) cuando los signerIds
@@ -295,12 +314,14 @@ public static class CreateSignatureRequestFromTemplateHandler
         var createWithPartialCopy =
             template.SendPartialCopyOnEachSignature && template.PartialCopyAudienceKind == PartialCopyAudienceKind.All;
         return SignatureRequest.CreateDraft(
+            limits: limits,
             tenantId: cmd.TenantId,
             createdByUserId: cmd.CreatedByUserId,
             title: template.Title,
             description: cmd.DescriptionOverride ?? template.Description,
             category: template.Category,
-            tokenExpirationHours: template.DefaultTokenExpirationHours,
+            // Si el plan bajó después de publicar la plantilla, la vida del enlace se acota al techo actual.
+            tokenExpirationHours: Math.Min(template.DefaultTokenExpirationHours, limits.MaxTokenHours),
             requiresSequentialSigning: template.RequiresSequentialSigning,
             requiresConsent: template.RequiresConsent,
             generateCertificate: template.GenerateCertificate,
@@ -316,13 +337,14 @@ public static class CreateSignatureRequestFromTemplateHandler
 
     private static Result<IReadOnlyDictionary<Guid, Guid>> AddDocuments(
         SignatureRequest request,
-        IReadOnlyList<EffectiveDocument> documents
+        IReadOnlyList<EffectiveDocument> documents,
+        SignatureLimits limits
     )
     {
         var requestDocumentIdByTemplateDocumentId = new Dictionary<Guid, Guid>(documents.Count);
         foreach (var document in documents)
         {
-            var addResult = request.AddDocument(document.FileId, document.Title);
+            var addResult = request.AddDocument(limits, document.FileId, document.Title);
             if (addResult.IsFailure)
                 return Result.Failure<IReadOnlyDictionary<Guid, Guid>>(addResult.Error);
             requestDocumentIdByTemplateDocumentId[document.TemplateDocumentId] = addResult.Value.Id;
@@ -337,13 +359,16 @@ public static class CreateSignatureRequestFromTemplateHandler
         SignatureRequest request,
         SignatureTemplate template,
         IReadOnlyList<SignerValueObjects> signers,
-        IReadOnlyDictionary<Guid, Guid> documentIds
+        IReadOnlyDictionary<Guid, Guid> documentIds,
+        SignatureLimits limits,
+        int maxFieldsPerSigner
     )
     {
         var signerIdBySlotOrder = new Dictionary<int, Guid>(signers.Count);
         foreach (var signer in signers)
         {
             var addResult = request.AddSigner(
+                limits,
                 signer.Email,
                 signer.FullName,
                 signer.MappedCustomerId,
@@ -366,12 +391,14 @@ public static class CreateSignatureRequestFromTemplateHandler
                     )
                 );
             var placeResult = request.PlaceField(
+                maxFieldsPerSigner,
                 signerId,
                 documentId,
                 field.Kind,
                 field.Position,
                 field.Label,
-                field.IsRequired
+                field.IsRequired,
+                field.FontSizePt
             );
             if (placeResult.IsFailure)
                 return Result.Failure<IReadOnlyDictionary<int, Guid>>(placeResult.Error);
@@ -461,22 +488,20 @@ public static class CreateSignatureRequestFromTemplateHandler
     // Reutiliza la misma lógica que la creación directa: si el archivo ya está
     // disponible se promueve a Ready; caso contrario espera el FileAvailable consumer.
 
-    private static async Task TryAttachHashesForAvailableFiles(
+    // Revisa en el servidor los archivos ya disponibles; uno inválido corta la creación.
+    private static async Task<Result> VerifyAvailableFiles(
         SignatureRequest request,
-        IFileMetadataRefRepository fileRepository,
+        IRequestDocumentVerifier verifier,
         CancellationToken ct
     )
     {
-        foreach (var document in request.Documents)
+        foreach (var document in request.Documents.ToList())
         {
-            var file = await fileRepository.GetByFileIdAsync(request.TenantId, document.OriginalFileId, ct);
-            if (file is null || file.Status != FileScanStatus.Available || string.IsNullOrEmpty(file.ChecksumSha256))
-                continue;
-
-            var hashResult = DocumentHash.Create(file.ChecksumSha256);
-            if (hashResult.IsSuccess)
-                request.AttachDocumentHash(document.Id, hashResult.Value);
+            var verification = await verifier.VerifyAsync(request, document.Id, ct);
+            if (verification.Kind == DocumentVerificationKind.Rejected)
+                return Result.Failure(DocumentVerificationErrors.Rejected(document, verification.Rejection!));
         }
+        return Result.Success();
     }
 
     private static Task PublishCreatedEventAsync(

@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Folders;
@@ -33,6 +34,7 @@ public static class InitiateMultipartUploadHandler
         ISystemFolderProvisioner systemFolders,
         IMultipartUploadStorage multipartStorage,
         IOptions<CloudStorageOptions> options,
+        IStoragePlatformSettingsProvider platform,
         IUploadPolicyResolver uploadPolicies,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
@@ -42,6 +44,7 @@ public static class InitiateMultipartUploadHandler
     {
         var request = command.Request;
         var config = options.Value;
+        var platformSettings = await platform.GetAsync(ct);
 
         // Mismo gate que el single-shot: sin esto, un cliente con Upload deny en la carpeta
         // destino podia subir por multipart (bypass real del per-item access).
@@ -72,7 +75,7 @@ public static class InitiateMultipartUploadHandler
             limits,
             keyBuilder,
             systemFolders,
-            config,
+            platformSettings,
             uploadPolicies,
             clock,
             bus,
@@ -82,7 +85,7 @@ public static class InitiateMultipartUploadHandler
             return Result.Failure<InitiatedMultipartUploadResponse>(registered.Error);
 
         var file = registered.Value;
-        var lifetime = TimeSpan.FromMinutes(Math.Clamp(config.PresignedUrlMinutes, 1, 60));
+        var lifetime = TimeSpan.FromMinutes(platformSettings.SignedUrlMinutes);
         var initiation = await multipartStorage.InitiateAsync(
             config.TempBucket,
             file.ObjectKey,

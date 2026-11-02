@@ -1,12 +1,14 @@
-using Microsoft.Extensions.Options;
-using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Domain.Files;
+using TaxVision.CloudStorage.Domain.FileTypes;
 using TaxVision.CloudStorage.Domain.Quotas;
 
 namespace TaxVision.CloudStorage.Tests.Application;
 
-/// <summary>D-33: el tamaño sale de la cadena en BD (Tenant > Plan > Global) y cae a CloudStorageOptions sin filas.</summary>
+/// <summary>
+/// El resolutor junta catálogo y carpeta (BD de plataforma), lo que vende el plan (proyección del tenant), la
+/// excepción de tamaño en BD (Tenant > Plan > Global, D-33) y, para el portal, la restricción de la oficina.
+/// </summary>
 public sealed class UploadPolicyResolverTests
 {
     private const long MB = 1024L * 1024;
@@ -14,28 +16,20 @@ public sealed class UploadPolicyResolverTests
     private static readonly Guid Actor = Guid.NewGuid();
     private static readonly DateTime Now = new(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc);
 
-    private static CloudStorageOptions OptionsWithStarterRecordings150MB()
-    {
-        var options = new CloudStorageOptions();
-        options.PlanPolicies["starter"] = new StoragePlanPolicy
-        {
-            MaxFileSizeBytes = 10 * MB,
-            AllowedExtensions = [".pdf", ".webm", ".mp4"],
-            AllowedContentTypes = ["application/pdf", "video/webm", "video/mp4"],
-            FolderOverridesBytes = new(StringComparer.OrdinalIgnoreCase) { ["Recordings"] = 150 * MB },
-        };
-        return options;
-    }
+    private static TenantStorageLimit Limit(Guid tenantId, string planCode = "starter", long maxFileBytes = 10 * MB, string? groups = null) =>
+        TenantStorageLimit.Create(tenantId, planCode, 10L * 1024 * MB, maxFileBytes, groups);
 
     private static UploadPolicyResolver Resolver(
         FakeUploadSizePolicyRepository repository,
-        CloudStorageOptions? options = null,
         UploadPolicyCache? cache = null,
-        DateTime? now = null
+        DateTime? now = null,
+        InMemoryFilePolicyCatalog? catalog = null,
+        FilePolicyCatalogCache? catalogCache = null
     ) =>
         new(
             repository,
-            Options.Create(options ?? OptionsWithStarterRecordings150MB()),
+            catalog ?? new InMemoryFilePolicyCatalog(),
+            catalogCache ?? new FilePolicyCatalogCache(),
             cache ?? new UploadPolicyCache(),
             new FakeSystemClock(now ?? Now)
         );
@@ -50,30 +44,22 @@ public sealed class UploadPolicyResolverTests
         UploadSizePolicy.CreateTenant(tenantId, folderType, bytes, Actor, Now).Value;
 
     [Fact]
-    public async Task Without_rows_the_size_is_the_CloudStorageOptions_fallback()
+    public async Task Without_rows_documents_get_the_smaller_of_folder_and_plan()
     {
-        var repository = new FakeUploadSizePolicyRepository();
-        var options = OptionsWithStarterRecordings150MB();
+        var policy = await Resolver(new FakeUploadSizePolicyRepository())
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Documents, false, default);
 
-        var policy = await Resolver(repository, options)
-            .ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
-
-        Assert.Equal(
-            options.ResolveUploadPolicy("starter", FolderType.Recordings).MaxFileSizeBytes,
-            policy.MaxFileSizeBytes
-        );
-        Assert.Equal(150 * MB, policy.MaxFileSizeBytes);
+        Assert.Equal(10 * MB, policy.MaxFileSizeBytes);
     }
 
     [Fact]
-    public async Task A_Global_row_overrides_the_fallback_even_above_the_FolderType_500MB_code_ceiling()
+    public async Task A_Global_row_overrides_the_folder_even_above_its_500MB_ceiling()
     {
         var repository = new FakeUploadSizePolicyRepository();
         repository.Seed(Global(FolderType.Recordings, 2048 * MB));
 
-        var policy = await Resolver(repository).ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
+        var policy = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
 
-        // Antes RecordingsPolicy() (500 MB) era el tope duro; ahora el único techo es el técnico (5 GB).
         Assert.Equal(2048 * MB, policy.MaxFileSizeBytes);
     }
 
@@ -83,96 +69,172 @@ public sealed class UploadPolicyResolverTests
         var repository = new FakeUploadSizePolicyRepository();
         repository.Seed(Global(FolderType.Recordings, 1000 * MB));
         repository.Seed(Plan("starter", FolderType.Recordings, 700 * MB));
-        var resolver = Resolver(repository);
 
-        var withPlan = await resolver.ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
+        var withPlan = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
         Assert.Equal(700 * MB, withPlan.MaxFileSizeBytes);
 
         repository.Seed(TenantRow(Tenant, FolderType.Recordings, 300 * MB));
-        var withTenant = await Resolver(repository).ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
+        var withTenant = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
         Assert.Equal(300 * MB, withTenant.MaxFileSizeBytes);
 
-        // Otro tenant del mismo plan no ve la fila Tenant; otro plan no ve la fila Plan.
-        var otherTenant = await Resolver(repository)
-            .ResolveAsync(Guid.NewGuid(), "starter", FolderType.Recordings, default);
-        Assert.Equal(700 * MB, otherTenant.MaxFileSizeBytes);
-        var otherPlan = await Resolver(repository)
-            .ResolveAsync(Guid.NewGuid(), "enterprise", FolderType.Recordings, default);
-        Assert.Equal(1000 * MB, otherPlan.MaxFileSizeBytes);
+        var other = Guid.NewGuid();
+        Assert.Equal(
+            700 * MB,
+            (await Resolver(repository).ResolveAsync(other, Limit(other), FolderType.Recordings, false, default)).MaxFileSizeBytes
+        );
+        Assert.Equal(
+            1000 * MB,
+            (await Resolver(repository).ResolveAsync(other, Limit(other, "enterprise"), FolderType.Recordings, false, default)).MaxFileSizeBytes
+        );
     }
 
     [Fact]
-    public async Task Rows_of_another_FolderType_do_not_apply()
+    public async Task Rows_of_another_folder_do_not_apply()
     {
         var repository = new FakeUploadSizePolicyRepository();
         repository.Seed(Global(FolderType.Recordings, 2048 * MB));
 
-        var documents = await Resolver(repository).ResolveAsync(Tenant, "starter", FolderType.Documents, default);
+        var documents = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Documents, false, default);
 
         Assert.Equal(10 * MB, documents.MaxFileSizeBytes);
     }
 
     [Fact]
-    public async Task Overrides_never_touch_the_allowed_types()
+    public async Task Size_overrides_never_touch_the_allowed_types()
     {
         var repository = new FakeUploadSizePolicyRepository();
+        var before = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
         repository.Seed(Global(FolderType.Recordings, 2048 * MB));
-        var options = OptionsWithStarterRecordings150MB();
 
-        var policy = await Resolver(repository, options)
-            .ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
-        var fromCode = options.ResolveUploadPolicy("starter", FolderType.Recordings);
+        var after = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
 
-        Assert.Equal(fromCode.AllowedExtensions, policy.AllowedExtensions);
-        Assert.Equal(fromCode.AllowedContentTypes, policy.AllowedContentTypes);
+        Assert.Equal(before.AllowedExtensions, after.AllowedExtensions);
+        Assert.Equal(before.AllowedContentTypes, after.AllowedContentTypes);
     }
 
     [Fact]
-    public async Task Resolved_size_is_cached_for_60_seconds_and_dropped_on_Invalidate()
+    public async Task The_plan_groups_come_from_the_tenant_projection()
+    {
+        var starter = await Resolver(new FakeUploadSizePolicyRepository())
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Documents, false, default);
+        var pro = await Resolver(new FakeUploadSizePolicyRepository())
+            .ResolveAsync(
+                Tenant,
+                Limit(Tenant, "pro", 25 * MB, "documents,spreadsheets,images,data,media,presentations,rich_text,web_images,archives,xml"),
+                FolderType.Documents,
+                false,
+                default
+            );
+
+        Assert.DoesNotContain(".zip", starter.AllowedExtensions);
+        Assert.Contains(".zip", pro.AllowedExtensions);
+        Assert.Equal(25 * MB, pro.MaxFileSizeBytes);
+    }
+
+    [Fact]
+    public async Task The_portal_restriction_applies_only_to_customer_uploads()
+    {
+        var limit = Limit(Tenant);
+        Assert.True(limit.SetPortalUploadRestriction(["documents"], 2 * MB).IsSuccess);
+        var resolver = Resolver(new FakeUploadSizePolicyRepository());
+
+        var staff = await resolver.ResolveAsync(Tenant, limit, FolderType.Documents, forCustomerPortal: false, default);
+        var portal = await resolver.ResolveAsync(Tenant, limit, FolderType.Documents, forCustomerPortal: true, default);
+
+        Assert.Contains(".png", staff.AllowedExtensions);
+        Assert.DoesNotContain(".png", portal.AllowedExtensions);
+        Assert.Equal(2 * MB, portal.MaxFileSizeBytes);
+    }
+
+    [Fact]
+    public void The_office_cannot_widen_beyond_its_plan()
+    {
+        var limit = Limit(Tenant);
+
+        Assert.True(limit.SetPortalUploadRestriction(["archives"], null).IsFailure);
+        Assert.True(limit.SetPortalUploadRestriction(null, 100).IsFailure);
+    }
+
+    [Fact]
+    public async Task A_folder_without_its_own_policy_falls_back_to_Other()
+    {
+        var catalog = new InMemoryFilePolicyCatalog(without: FolderType.Backups);
+
+        var backups = await Resolver(new FakeUploadSizePolicyRepository(), catalog: catalog)
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Backups, false, default);
+        var other = await Resolver(new FakeUploadSizePolicyRepository())
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Other, false, default);
+
+        Assert.Equal(other.AllowedExtensions, backups.AllowedExtensions);
+    }
+
+    [Fact]
+    public async Task The_size_override_is_cached_for_60_seconds_and_dropped_on_Invalidate()
     {
         var repository = new FakeUploadSizePolicyRepository();
         repository.Seed(Global(FolderType.Recordings, 1000 * MB));
         var cache = new UploadPolicyCache();
         var resolver = Resolver(repository, cache: cache);
 
-        var first = await resolver.ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
+        var first = await resolver.ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
         repository.Seed(TenantRow(Tenant, FolderType.Recordings, 300 * MB));
-        var cached = await resolver.ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
+        var cached = await resolver.ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
 
         Assert.Equal(1000 * MB, first.MaxFileSizeBytes);
         Assert.Equal(1000 * MB, cached.MaxFileSizeBytes);
         Assert.Equal(1, repository.ApplicableReads);
 
         cache.Invalidate();
-        var fresh = await resolver.ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
-        Assert.Equal(300 * MB, fresh.MaxFileSizeBytes);
+        Assert.Equal(
+            300 * MB,
+            (await resolver.ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default)).MaxFileSizeBytes
+        );
         Assert.Equal(2, repository.ApplicableReads);
 
-        // Pasado el TTL vuelve a leer aunque nadie invalide.
-        var later = Resolver(
-            repository,
-            cache: cache,
-            now: Now + UploadPolicyCache.TimeToLive + TimeSpan.FromSeconds(1)
-        );
-        await later.ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
+        var later = Resolver(repository, cache: cache, now: Now + UploadPolicyCache.TimeToLive + TimeSpan.FromSeconds(1));
+        await later.ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
         Assert.Equal(3, repository.ApplicableReads);
     }
 
     [Fact]
-    public async Task Cache_key_distinguishes_folder_plan_and_tenant()
+    public async Task The_catalog_is_read_once_per_ttl_and_again_after_Invalidate()
     {
-        var repository = new FakeUploadSizePolicyRepository();
-        repository.Seed(Plan("starter", FolderType.Recordings, 700 * MB));
-        repository.Seed(Plan("enterprise", FolderType.Recordings, 900 * MB));
-        var resolver = Resolver(repository, cache: new UploadPolicyCache());
+        var catalog = new InMemoryFilePolicyCatalog();
+        var catalogCache = new FilePolicyCatalogCache();
+        var resolver = Resolver(new FakeUploadSizePolicyRepository(), catalog: catalog, catalogCache: catalogCache);
 
-        var starter = await resolver.ResolveAsync(Tenant, "starter", FolderType.Recordings, default);
-        var enterprise = await resolver.ResolveAsync(Tenant, "enterprise", FolderType.Recordings, default);
-        var starterAgain = await resolver.ResolveAsync(Tenant, "STARTER", FolderType.Recordings, default);
+        await resolver.ResolveAsync(Tenant, Limit(Tenant), FolderType.Documents, false, default);
+        await resolver.ResolveAsync(Tenant, Limit(Tenant), FolderType.Tasks, false, default);
+        Assert.Equal(1, catalog.Reads);
 
-        Assert.Equal(700 * MB, starter.MaxFileSizeBytes);
-        Assert.Equal(900 * MB, enterprise.MaxFileSizeBytes);
-        Assert.Equal(700 * MB, starterAgain.MaxFileSizeBytes);
-        Assert.Equal(2, repository.ApplicableReads);
+        catalogCache.Invalidate();
+        await resolver.ResolveAsync(Tenant, Limit(Tenant), FolderType.Documents, false, default);
+        Assert.Equal(2, catalog.Reads);
+    }
+
+    internal sealed class InMemoryFilePolicyCatalog(FolderType? without = null) : IFilePolicyCatalogRepository
+    {
+        public int Reads { get; private set; }
+
+        public Task<IReadOnlyList<FileTypeDefinition>> ListFileTypesAsync(CancellationToken ct)
+        {
+            Reads++;
+            return Task.FromResult(TestFilePolicyCatalog.FileTypes());
+        }
+
+        public Task<FileTypeDefinition?> GetFileTypeAsync(string extension, CancellationToken ct) =>
+            Task.FromResult(TestFilePolicyCatalog.FileTypes().SingleOrDefault(definition => definition.Extension == extension));
+
+        public void AddFileType(FileTypeDefinition definition) { }
+
+        public Task<IReadOnlyList<FolderFilePolicy>> ListFolderPoliciesAsync(CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<FolderFilePolicy>>(
+                TestFilePolicyCatalog.FolderPolicies().Values.Where(policy => policy.FolderType != without).ToList()
+            );
+
+        public Task<FolderFilePolicy?> GetFolderPolicyAsync(FolderType folderType, CancellationToken ct) =>
+            Task.FromResult(TestFilePolicyCatalog.FolderPolicies().GetValueOrDefault(folderType));
+
+        public void AddAudit(FilePolicyAudit audit) { }
     }
 }

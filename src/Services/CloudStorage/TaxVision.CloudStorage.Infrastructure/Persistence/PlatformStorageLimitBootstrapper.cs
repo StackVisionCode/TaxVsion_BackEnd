@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Domain.FileTypes;
 using TaxVision.CloudStorage.Domain.Quotas;
 
 namespace TaxVision.CloudStorage.Infrastructure.Persistence;
@@ -22,7 +23,8 @@ public sealed class PlatformStorageLimitBootstrapper(
     ILogger<PlatformStorageLimitBootstrapper> logger
 ) : IHostedService
 {
-    private const string PlatformPlanCode = "starter";
+    // El tenant de plataforma no tiene plan comercial: archivos con el mínimo (PlanFileAllowanceDefaults).
+    private const string PlatformPlanCode = "platform";
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -37,14 +39,12 @@ public sealed class PlatformStorageLimitBootstrapper(
         if (await repository.GetAsync(PlatformTenant.Id, cancellationToken) is not null)
             return;
 
-        var configuration = options.Value;
-        var policy = configuration.ResolvePlanPolicy(PlatformPlanCode);
         repository.Add(
             TenantStorageLimit.Create(
                 PlatformTenant.Id,
                 PlatformPlanCode,
-                configuration.DefaultStorageQuotaBytes,
-                policy.MaxFileSizeBytes
+                options.Value.DefaultStorageQuotaBytes,
+                PlanFileAllowanceDefaults.MaxFileBytes
             )
         );
 

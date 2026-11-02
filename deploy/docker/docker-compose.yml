@@ -513,8 +513,7 @@ services:
       ServiceAuth__Clients__2__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__2__Permissions__1: cloudstorage.file.view
       ServiceAuth__Clients__2__Permissions__2: cloudstorage.file.upload
-      # Fase 4 (descarga en el correo): mintea un share-link de descarga del documento sellado.
-      ServiceAuth__Clients__2__Permissions__3: cloudstorage.share.create
+      # La entrega del firmado ya no crea shares: Signature pide download-url (file.download) al abrir el enlace.
       # Cliente de servicio (M2M) para Customer: sube el Excel/CSV de import directo a MinIO
       # con credenciales propias (ver Customer__Minio__* mas abajo) y solo usa este token para
       # descargarlo de vuelta (parseo de filas) y borrarlo al terminar — nunca para subir.
@@ -2003,6 +2002,9 @@ services:
       # (no crashea, pero el sellado no funciona) — ver DependencyInjection.cs linea 73-83.
       Signature__Sealing__Cms__CertificatePath: /run/secrets/signature-sealing.pfx
       Signature__Sealing__Cms__CertificatePassword: ${SIGNATURE_PFX_PASSWORD:?Set SIGNATURE_PFX_PASSWORD in .env}
+      # Clave RSA fija de los enlaces de firma (la escribe deploy.yml desde SIGNATURE_SIGNER_JWT_PEM_B64).
+      # Sin ella el servicio no arranca: una efímera invalidaba todos los enlaces en cada reinicio.
+      Signature__SignerJwt__PrivateKeyPem: /run/secrets/signature-signer-jwt.pem
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
       # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
@@ -2016,6 +2018,7 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/signature-sealing.pfx:/run/secrets/signature-sealing.pfx:ro
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/signature-signer-jwt.pem:/run/secrets/signature-signer-jwt.pem:ro
     depends_on:
       db-ready:
         condition: service_completed_successfully

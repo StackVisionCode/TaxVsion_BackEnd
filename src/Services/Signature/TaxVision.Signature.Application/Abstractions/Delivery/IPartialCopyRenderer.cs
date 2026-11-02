@@ -18,7 +18,8 @@ public sealed record PartialCopyRequest(
     IReadOnlyList<PartialCopySignerStatus> SignerProgress,
     string RecipientSignerDisplayName,
     string DocumentTitle,
-    bool SendSealedToSigners
+    bool SendSealedToSigners,
+    StampStyle Style
 );
 
 public sealed record PartialCopyResult(byte[] PdfBytes, string ChecksumSha256);

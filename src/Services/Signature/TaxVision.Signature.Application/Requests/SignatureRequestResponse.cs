@@ -29,7 +29,9 @@ public sealed record SignatureFieldResponse(
     double Width,
     double Height,
     string? Label,
-    bool IsRequired
+    bool IsRequired,
+    // Letra del estampado (iniciales/fecha/texto); null = automática según la caja.
+    int? FontSizePt = null
 );
 
 /// <summary>Campo del preparador (canal paralelo). Sin SignerId: no pertenece a un firmante.</summary>
@@ -55,8 +57,31 @@ public sealed record SignatureRequestDocumentResponse(
     Guid? CertificateFileId,
     string? HashPost,
     DateTime? SealedAtUtc,
-    string? Note
-);
+    string? Note,
+    int? PageCount,
+    DocumentVerificationStatus VerificationStatus,
+    string? RejectionCode,
+    string? RejectionReason
+)
+{
+    public static SignatureRequestDocumentResponse From(RequestDocument document) =>
+        new(
+            document.Id,
+            document.Order,
+            document.Title,
+            document.OriginalFileId,
+            document.DocumentHashPre?.Value,
+            document.SealedFileId,
+            document.CertificateFileId,
+            document.DocumentHashPost?.Value,
+            document.SealedAtUtc,
+            document.Note,
+            document.PageCount,
+            document.VerificationStatus,
+            document.RejectionCode,
+            document.RejectionReason
+        );
+}
 
 public sealed record SignatureRequestResponse(
     Guid Id,
@@ -111,7 +136,7 @@ public sealed record SignatureRequestResponse(
             request.Description,
             request.Category,
             request.Status,
-            request.Documents.OrderBy(document => document.Order).Select(MapDocument).ToList(),
+            request.Documents.OrderBy(document => document.Order).Select(SignatureRequestDocumentResponse.From).ToList(),
             request.CertificateFileId,
             request.RequiresSequentialSigning,
             request.RequiresConsent,
@@ -185,20 +210,7 @@ public sealed record SignatureRequestResponse(
             field.Position.Width,
             field.Position.Height,
             field.Label,
-            field.IsRequired
-        );
-
-    private static SignatureRequestDocumentResponse MapDocument(RequestDocument document) =>
-        new(
-            document.Id,
-            document.Order,
-            document.Title,
-            document.OriginalFileId,
-            document.DocumentHashPre?.Value,
-            document.SealedFileId,
-            document.CertificateFileId,
-            document.DocumentHashPost?.Value,
-            document.SealedAtUtc,
-            document.Note
+            field.IsRequired,
+            field.FontSizePt
         );
 }

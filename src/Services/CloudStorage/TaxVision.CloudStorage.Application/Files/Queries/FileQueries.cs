@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.CustomerAccess;
@@ -72,12 +73,18 @@ public static class ListFilesHandler
     }
 }
 
+/// <summary>
+/// <paramref name="ForPreview"/>: la URL es para VER el archivo en el navegador (visor), no para bajarlo. Se
+/// juzga con la capacidad Preview y se sirve <c>inline</c>; así un cliente "Preview-only" puede verlo
+/// aunque la descarga esté bloqueada. La descarga (false) sigue exigiendo Download y sale como adjunto.
+/// </summary>
 public sealed record IssueDownloadUrlQuery(
     Guid TenantId,
     Guid ActorId,
     StorageActorScope Scope,
     Guid FileId,
-    RequestAuditContext Audit
+    RequestAuditContext Audit,
+    bool ForPreview = false
 );
 
 public static class IssueDownloadUrlHandler
@@ -88,6 +95,7 @@ public static class IssueDownloadUrlHandler
         IStorageAuditRepository audit,
         IObjectStorage storage,
         IOptions<CloudStorageOptions> options,
+        IStoragePlatformSettingsProvider platform,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -99,26 +107,26 @@ public static class IssueDownloadUrlHandler
             return Result.Failure<DownloadUrlResponse>(FileErrors.NotFound);
         if (!query.Scope.CanAccess(file))
             return Result.Failure<DownloadUrlResponse>(FileErrors.NotFound);
-        // Portal con Download deny: 403 explícito con reason (el UI del portal muestra el copy).
-        if (query.Scope.IsDeniedForPortal(AccessResourceType.File, file.Id, AccessCapability.Download))
+        // Portal con deny de la capacidad pedida (Download o, para el visor, Preview): 403 con reason.
+        var capability = query.ForPreview ? AccessCapability.Preview : AccessCapability.Download;
+        if (query.Scope.IsDeniedForPortal(AccessResourceType.File, file.Id, capability))
             return Result.Failure<DownloadUrlResponse>(
-                CustomerAccessDenied.With(
-                    query.Scope.DenyReasonFor(AccessResourceType.File, file.Id, AccessCapability.Download)
-                )
+                CustomerAccessDenied.With(query.Scope.DenyReasonFor(AccessResourceType.File, file.Id, capability))
             );
         if (file.Status != FileStatus.Available)
             return Result.Failure<DownloadUrlResponse>(FileErrors.NotAvailable);
 
-        var lifetime = TimeSpan.FromMinutes(Math.Clamp(options.Value.PresignedUrlMinutes, 1, 60));
-        // Fuerza descarga (attachment) con el nombre real; sin esto el browser abriría inline exponiendo la URL.
-        var disposition = ContentDispositionBuilder.Build("attachment", file.OriginalName);
+        var lifetime = TimeSpan.FromMinutes((await platform.GetAsync(ct)).SignedUrlMinutes);
+        // Descarga: adjunto con el nombre real. Visor: inline (lo pinta el navegador, no lo guarda).
+        var disposition = ContentDispositionBuilder.Build(query.ForPreview ? "inline" : "attachment", file.OriginalName);
+        var action = query.ForPreview ? "preview.url-issued" : "download.url-issued";
         var url = await storage.PresignGetAsync(options.Value.MainBucket, file.ObjectKey, lifetime, disposition, ct);
         audit.Add(
             StorageAccessLog.Create(
                 query.TenantId,
                 file.Id,
                 query.ActorId,
-                "download.url-issued",
+                action,
                 "success",
                 query.Audit.IpAddress,
                 query.Audit.UserAgent,
@@ -133,7 +141,7 @@ public static class IssueDownloadUrlHandler
                 TenantId = query.TenantId,
                 FileId = file.Id,
                 ActorId = query.ActorId,
-                Action = "download.url-issued",
+                Action = action,
                 Outcome = "success",
                 IpAddress = query.Audit.IpAddress,
                 CorrelationId = query.Audit.CorrelationId,

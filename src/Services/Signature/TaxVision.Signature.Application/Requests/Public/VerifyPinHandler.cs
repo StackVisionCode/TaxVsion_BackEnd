@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using Wolverine;
@@ -24,6 +25,7 @@ public static class VerifyPinHandler
         ISignatureRequestRepository repository,
         IJtiDenylist denylist,
         IPinHasher hasher,
+        ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -41,7 +43,14 @@ public static class VerifyPinHandler
 
         var isMatch = MatchPinAgainstHash(request, pinValidation.Value.Value, hasher);
         var attemptedAt = DateTime.UtcNow;
-        var verify = request.VerifySignerWithPin(signer.Id, isMatch, attemptedAt, cmd.ClientIp, cmd.UserAgent);
+        var verify = request.VerifySignerWithPin(
+            signer.Id,
+            isMatch,
+            attemptedAt,
+            cmd.ClientIp,
+            cmd.UserAgent,
+            (await platform.GetAsync(ct)).Verification
+        );
         await unitOfWork.SaveChangesAsync(ct);
         await PublishOutcomeAsync(request, signer, verify.IsSuccess, attemptedAt, cmd.ClientIp, correlation, bus);
         return verify;

@@ -84,6 +84,7 @@ public sealed class SignatureDbContextTenantFilterTests
     private static SignatureRequest NewRequest(Guid tenantId) =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 tenantId,
                 Guid.NewGuid(),
                 $"Solicitud de {tenantId:N}",

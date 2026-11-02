@@ -61,3 +61,14 @@ public enum ShareLinkEffectiveStatus
     Revoked,
     Exhausted,
 }
+
+public static class ShareVisibilityRules
+{
+    /// <summary>Abre solo con el token (sin sesión ni email verificado).</summary>
+    public static bool IsUnauthenticatedLink(this ShareVisibility visibility) =>
+        visibility is ShareVisibility.Public or ShareVisibility.ExternalLink;
+
+    /// <summary>Sale de la oficina: a ellos aplican vida máxima, contraseña y tope de descargas.</summary>
+    public static bool IsExternal(this ShareVisibility visibility) =>
+        visibility is ShareVisibility.Public or ShareVisibility.ExternalLink or ShareVisibility.ExternalRecipients;
+}

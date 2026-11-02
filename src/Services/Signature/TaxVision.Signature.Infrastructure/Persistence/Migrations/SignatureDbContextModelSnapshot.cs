@@ -240,6 +240,110 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("ConsentEvents", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Delivery.DeliveryItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DeliveryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeliveryId");
+
+                    b.ToTable("SignedDocumentDeliveryItems", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Delivery.SignedDocumentDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AccessCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("IssueCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastAccessedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("LastIssuedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("RecipientEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RevokedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SignatureRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SignerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "SignatureRequestId");
+
+                    b.HasIndex("SignatureRequestId", "SignerId", "Purpose")
+                        .IsUnique()
+                        .HasFilter("[Purpose] = 'Completed'");
+
+                    b.ToTable("SignedDocumentDeliveries", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Permissions.AuthzRolePermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -312,6 +416,58 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("AuthzUserPermissionsProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Platform.SignaturePlatformSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AutoFontMaxPt")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AutoFontMinPt")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxFieldsPerSigner")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxProfilesPerPreparer")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxRemindersPerRequest")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxRolesPerTemplate")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxSignatureImageBytes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxVerificationAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OtpLength")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OtpLifetimeMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OtpResendCooldownSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("VerificationLockMinutes")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SignaturePlatformSettings", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Profiles.SignatureProfile", b =>
@@ -556,6 +712,34 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Requests.CustomerFileCopy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CopyFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SignatureRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SourceFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SignatureRequestId", "SourceFileId", "CustomerId")
+                        .IsUnique();
+
+                    b.ToTable("SignatureCustomerFileCopies", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.PreparerField", b =>
                 {
                     b.Property<Guid>("Id")
@@ -609,6 +793,14 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<int?>("PageCount")
                         .HasColumnType("int");
 
+                    b.Property<string>("RejectionCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<DateTime?>("SealedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -622,6 +814,13 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("VerificationStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasDefaultValue("Pending");
 
                     b.HasKey("Id");
 
@@ -647,6 +846,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("FontSizePt")
+                        .HasColumnType("int");
 
                     b.Property<bool>("IsRequired")
                         .HasColumnType("bit");
@@ -1062,6 +1264,58 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("SignerVerificationChallenges", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Settings.TenantSignatureLimits", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AllowedChannels")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxDocumentsPerRequest")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxPagesPerDocument")
+                        .HasColumnType("int");
+
+                    b.Property<long>("MaxPdfBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("MaxSignersPerRequest")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxTokenHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinRetentionYears")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("PurgeAllowed")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantSignatureLimits", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Settings.TenantSignatureSettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1086,6 +1340,11 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("DateStampFormat")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
 
                     b.Property<int>("DefaultReminderIntervalHoursValue")
                         .HasColumnType("int");
@@ -1132,7 +1391,10 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<bool>("SendSealedDocumentDefault")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
-                        .HasDefaultValue(true);
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("ShowSignatureFrame")
+                        .HasColumnType("bit");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -1288,6 +1550,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("FontSizePt")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsRequired")
                         .HasColumnType("bit");
 
@@ -1434,6 +1699,24 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CreatedAtUtc");
 
                     b.ToTable("DocumentValidationRecords", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Delivery.DeliveryItem", b =>
+                {
+                    b.HasOne("TaxVision.Signature.Domain.Delivery.SignedDocumentDelivery", null)
+                        .WithMany("Items")
+                        .HasForeignKey("DeliveryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Requests.CustomerFileCopy", b =>
+                {
+                    b.HasOne("TaxVision.Signature.Domain.Requests.SignatureRequest", null)
+                        .WithMany("CustomerCopies")
+                        .HasForeignKey("SignatureRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.PreparerField", b =>
@@ -1808,14 +2091,47 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Settings.TenantSignatureSettings", b =>
                 {
-                    b.OwnsOne("TaxVision.Signature.Domain.Settings.DocumentLimits", "DocumentLimits", b1 =>
+                    b.OwnsOne("TaxVision.Signature.Domain.Settings.DeliveryPolicy", "Delivery", b1 =>
                         {
                             b1.Property<Guid>("TenantSignatureSettingsId")
                                 .HasColumnType("uniqueidentifier");
 
-                            b1.Property<long>("MaxImageBytes")
+                            b1.Property<bool>("AllowPublicReissue")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("bit")
+                                .HasDefaultValue(true)
+                                .HasColumnName("Delivery_AllowPublicReissue");
+
+                            b1.Property<bool>("AttachDocuments")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("bit")
+                                .HasDefaultValue(false)
+                                .HasColumnName("Delivery_AttachDocuments");
+
+                            b1.Property<int>("LinkLifetimeDays")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("int")
+                                .HasDefaultValue(30)
+                                .HasColumnName("Delivery_LinkLifetimeDays");
+
+                            b1.Property<long>("MaxAttachmentBytes")
+                                .ValueGeneratedOnAdd()
                                 .HasColumnType("bigint")
-                                .HasColumnName("Limits_MaxImageBytes");
+                                .HasDefaultValue(10485760L)
+                                .HasColumnName("Delivery_MaxAttachmentBytes");
+
+                            b1.HasKey("TenantSignatureSettingsId");
+
+                            b1.ToTable("TenantSignatureSettings");
+
+                            b1.WithOwner()
+                                .HasForeignKey("TenantSignatureSettingsId");
+                        });
+
+                    b.OwnsOne("TaxVision.Signature.Domain.Settings.DocumentLimits", "DocumentLimits", b1 =>
+                        {
+                            b1.Property<Guid>("TenantSignatureSettingsId")
+                                .HasColumnType("uniqueidentifier");
 
                             b1.Property<int>("MaxPagesPerDocument")
                                 .HasColumnType("int")
@@ -1859,46 +2175,36 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                             b1.Property<Guid>("TenantSignatureSettingsId")
                                 .HasColumnType("uniqueidentifier");
 
-                            b1.Property<int>("AllowedChannels")
-                                .ValueGeneratedOnAdd()
+                            b1.Property<int?>("AllowedChannels")
                                 .HasColumnType("int")
-                                .HasDefaultValue(3)
                                 .HasColumnName("Plan_AllowedChannels");
 
-                            b1.Property<long>("MaxAllowedImageBytes")
-                                .ValueGeneratedOnAdd()
-                                .HasColumnType("bigint")
-                                .HasDefaultValue(10485760L)
-                                .HasColumnName("Plan_MaxAllowedImageBytes");
-
-                            b1.Property<int>("MaxAllowedPages")
-                                .ValueGeneratedOnAdd()
+                            b1.Property<int?>("MaxAllowedPages")
                                 .HasColumnType("int")
-                                .HasDefaultValue(100)
                                 .HasColumnName("Plan_MaxAllowedPages");
 
-                            b1.Property<long>("MaxAllowedPdfBytes")
-                                .ValueGeneratedOnAdd()
+                            b1.Property<long?>("MaxAllowedPdfBytes")
                                 .HasColumnType("bigint")
-                                .HasDefaultValue(26214400L)
                                 .HasColumnName("Plan_MaxAllowedPdfBytes");
 
-                            b1.Property<int>("MaxTokenExpirationHours")
-                                .ValueGeneratedOnAdd()
+                            b1.Property<int?>("MaxDocumentsPerRequest")
                                 .HasColumnType("int")
-                                .HasDefaultValue(720)
+                                .HasColumnName("Plan_MaxDocumentsPerRequest");
+
+                            b1.Property<int?>("MaxSignersPerRequest")
+                                .HasColumnType("int")
+                                .HasColumnName("Plan_MaxSignersPerRequest");
+
+                            b1.Property<int?>("MaxTokenExpirationHours")
+                                .HasColumnType("int")
                                 .HasColumnName("Plan_MaxTokenExpirationHours");
 
-                            b1.Property<int>("MinRetentionYears")
-                                .ValueGeneratedOnAdd()
+                            b1.Property<int?>("MinRetentionYears")
                                 .HasColumnType("int")
-                                .HasDefaultValue(7)
                                 .HasColumnName("Plan_MinRetentionYears");
 
-                            b1.Property<bool>("PurgeAllowed")
-                                .ValueGeneratedOnAdd()
+                            b1.Property<bool?>("PurgeAllowed")
                                 .HasColumnType("bit")
-                                .HasDefaultValue(false)
                                 .HasColumnName("Plan_PurgeAllowed");
 
                             b1.HasKey("TenantSignatureSettingsId");
@@ -1908,6 +2214,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                             b1.WithOwner()
                                 .HasForeignKey("TenantSignatureSettingsId");
                         });
+
+                    b.Navigation("Delivery")
+                        .IsRequired();
 
                     b.Navigation("DocumentLimits")
                         .IsRequired();
@@ -2061,8 +2370,15 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Delivery.SignedDocumentDelivery", b =>
+                {
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignatureRequest", b =>
                 {
+                    b.Navigation("CustomerCopies");
+
                     b.Navigation("Documents");
 
                     b.Navigation("PreparerFields");

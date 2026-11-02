@@ -53,15 +53,20 @@ public interface ISignatureCloudStorageClient
     Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default);
 
     /// <summary>
-    /// Crea un share-link público de DESCARGA (visibility ExternalRecipients + permission Download)
-    /// para el documento sellado, con los emails de los firmantes como recipients. Devuelve el token
-    /// plano (se emite una sola vez) que se pone en el correo. Best-effort desde el sellado.
+    /// URL firmada de corta vida (adjunto) para que el navegador del firmante baje un archivo de su entrega.
+    /// Signature la pide con su token M2M en el momento de abrir el enlace; no crea ningún share.
     /// </summary>
-    Task<Result<string>> CreateDownloadShareLinkAsync(
+    Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Copia en servidor (sin bajar bytes) de un archivo final a la carpeta "Signed Documents" del portal de
+    /// un cliente (owner Customer, FolderType Signatures). CloudStorage la escanea como cualquier archivo.
+    /// </summary>
+    Task<Result<Guid>> CopyToCustomerAsync(
         Guid tenantId,
-        Guid fileId,
-        IReadOnlyList<string> recipientEmails,
-        DateTime expiresAtUtc,
+        Guid sourceFileId,
+        Guid customerId,
+        int taxYear,
         CancellationToken ct = default
     );
 

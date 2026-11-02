@@ -119,31 +119,7 @@ public sealed class SealingMultiDocumentTests
             storage.Uploads.Skip(2).Select(item => item.Upload.FileName)
         );
 
-        var firstDocument = request.Documents[0];
-        await SignatureCertificateReadyConsumer.Handle(
-            new FileAvailableIntegrationEvent
-            {
-                TenantId = request.TenantId,
-                CorrelationId = "certificate-ready",
-                FileId = firstDocument.CertificateFileId!.Value,
-                ObjectKey = "certificates/federal-return.pdf",
-                ContentType = "application/pdf",
-                SizeBytes = 3,
-                ChecksumSha256 = new string('f', 64),
-                CreatedBy = request.CreatedByUserId,
-            },
-            repository,
-            storage,
-            bus,
-            correlation,
-            NullLogger<SignatureRequest>.Instance,
-            CancellationToken.None
-        );
-
-        var ready = Assert.Single(bus.Messages.OfType<SignatureCertificateReadyForDownloadIntegrationEvent>());
-        Assert.Equal(firstDocument.Id, ready.DocumentId);
-        Assert.Equal(firstDocument.Title, ready.DocumentTitle);
-        Assert.Equal(firstSigner.Id, Assert.Single(ready.Signers).SignerId);
+        // Qué certificado recibe cada firmante lo cubre SignedDocumentDeliveryIssuerTests.
     }
 
     private static async Task SubmitAndSeal(
@@ -190,6 +166,7 @@ public sealed class SealingMultiDocumentTests
             new EmptyFileMetadataRepository(),
             new EmptyBrandingRepository(),
             new DeterministicSealer(),
+            new FixedStampStyle(),
             new DeterministicCertificateRenderer(),
             new AcquiredDistributedLock(),
             unitOfWork,
@@ -207,15 +184,16 @@ public sealed class SealingMultiDocumentTests
     )
     {
         var request = SignatureRequest
-            .CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "Two-document package", null, "Fiscal", 72, false, false, true)
+            .CreateDraft(TestSignatureLimits.Default, Guid.NewGuid(), Guid.NewGuid(), "Two-document package", null, "Fiscal", 72, false, false, true)
             .Value;
-        request.AddDocument(Guid.NewGuid(), "Federal return");
-        request.AddDocument(Guid.NewGuid(), "State return");
+        request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Federal return");
+        request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "State return");
         firstSigner = request
-            .AddSigner(SignerEmail.Create("first@example.com").Value, SignerFullName.Create("First Signer").Value, null)
+            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("first@example.com").Value, SignerFullName.Create("First Signer").Value, null)
             .Value;
         secondSigner = request
             .AddSigner(
+                TestSignatureLimits.Default,
                 SignerEmail.Create("second@example.com").Value,
                 SignerFullName.Create("Second Signer").Value,
                 null
@@ -223,8 +201,8 @@ public sealed class SealingMultiDocumentTests
             .Value;
         PlaceSignature(request, firstSigner.Id, request.Documents[0].Id);
         PlaceSignature(request, secondSigner.Id, request.Documents[1].Id);
-        request.AttachDocumentHash(request.Documents[0].Id, Hash('a'));
-        request.AttachDocumentHash(request.Documents[1].Id, Hash('b'));
+        request.AttachVerifiedDocument(request.Documents[0].Id, VerifiedDocument.Create(Hash('a'), 50).Value);
+        request.AttachVerifiedDocument(request.Documents[1].Id, VerifiedDocument.Create(Hash('b'), 50).Value);
         if (perDocumentCertificates)
         {
             Assert.True(request.SetCertificateGenerationMode(CertificateGenerationMode.PerDocument).IsSuccess);
@@ -269,6 +247,7 @@ public sealed class SealingMultiDocumentTests
         Assert.True(
             request
                 .PlaceField(
+                    TestSignatureLimits.MaxFieldsPerSigner,
                     signerId,
                     documentId,
                     SignatureFieldKind.Signature,
@@ -342,14 +321,19 @@ public sealed class SealingMultiDocumentTests
 
         public Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
             DateTime nowUtc,
+            int maxRemindersPerRequest,
             CancellationToken ct = default
         ) => Empty();
 
         public Task<IReadOnlyList<SignatureRequest>> ListPurgeCandidatesAsync(
+            Guid tenantId,
             DateTime olderThanUtc,
             int batchSize,
             CancellationToken ct = default
         ) => Empty();
+
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,
@@ -385,13 +369,12 @@ public sealed class SealingMultiDocumentTests
             return Task.FromResult(Result.Success(fileId));
         }
 
-        public Task<Result<string>> CreateDownloadShareLinkAsync(
-            Guid tenantId,
-            Guid fileId,
-            IReadOnlyList<string> recipientEmails,
-            DateTime expiresAtUtc,
-            CancellationToken ct = default
-        ) => Task.FromResult(Result.Success("download-token"));
+        public Task<Result<Guid>> CopyToCustomerAsync(Guid tenantId, Guid sourceFileId, Guid customerId, int taxYear, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+
+        public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult(Result.Success(new Uri($"https://minio.test/{fileId}")));
 
         public Task<Result<SignatureFileMetadata>> GetFileAsync(
             Guid tenantId,

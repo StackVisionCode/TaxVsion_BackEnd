@@ -177,7 +177,13 @@ public sealed class SaveFileFromSourceHandlerTests
     [Fact]
     public void A_subscription_receipt_is_a_system_upload_so_the_plan_does_not_narrow_it()
     {
-        var policy = new CloudStorageOptions().ResolveUploadPolicy("starter", FolderType.SaaSReceipts);
+        var policy = TaxVision.CloudStorage.Domain.FileTypes.EffectiveUploadPolicyCalculator.Calculate(
+            TestFilePolicyCatalog.Folder(FolderType.SaaSReceipts),
+            TestFilePolicyCatalog.FileTypes(),
+            new TaxVision.CloudStorage.Domain.FileTypes.PlanFileAllowance(new HashSet<string>(), 1),
+            null,
+            null
+        );
 
         Assert.Contains(".pdf", policy.AllowedExtensions);
         Assert.Contains("application/pdf", policy.AllowedContentTypes);

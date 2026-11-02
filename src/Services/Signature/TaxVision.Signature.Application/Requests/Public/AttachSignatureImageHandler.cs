@@ -1,6 +1,7 @@
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
 
 namespace TaxVision.Signature.Application.Requests.Public;
@@ -19,6 +20,7 @@ public static class AttachSignatureImageHandler
         ISignatureRequestRepository repository,
         IJtiDenylist denylist,
         ISignatureCloudStorageClient storage,
+        ISignaturePlatformSettingsProvider platform,
         CancellationToken ct
     )
     {
@@ -32,7 +34,10 @@ public static class AttachSignatureImageHandler
                 new Error("Signature.Image.NotPending", "This signer can no longer submit a signature.")
             );
 
-        var validation = SignatureImageValidator.Validate(cmd.Content);
+        var validation = SignatureImageValidator.Validate(
+            cmd.Content,
+            (await platform.GetAsync(ct)).MaxSignatureImageBytes
+        );
         if (validation.IsFailure)
             return Result.Failure<Guid>(validation.Error);
 

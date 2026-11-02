@@ -6,7 +6,9 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Categories;
+using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Application.Messaging;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Application.Requests.Commands.Send;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -32,8 +34,11 @@ public static class SignatureRequestFromFormRequestedConsumer
         SignatureRequestFromFormRequestedIntegrationEvent command,
         ISignatureRequestRepository repository,
         ITenantSignatureSettingsRepository settingsRepository,
+        ISignatureLimitsResolver limits,
+        ISignaturePlatformSettingsProvider platform,
         ISignatureCategoryResolver categoryResolver,
         ISignatureCloudStorageClient storage,
+        IRequestDocumentVerifier verifier,
         ICustomerEmailProjectionRepository customerEmails,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -59,7 +64,9 @@ public static class SignatureRequestFromFormRequestedConsumer
             }
 
             // 2) Validar cada documento: debe estar disponible, ser de owner/carpeta de firma y casar el hash.
-            var validated = new List<(SignatureRequestFromFormDocument Doc, string Hash)>(command.Documents.Count);
+            var validated = new List<(SignatureRequestFromFormDocument Doc, VerifiableFile File)>(
+                command.Documents.Count
+            );
             foreach (var doc in command.Documents)
             {
                 var lookup = await storage.GetFileAsync(command.TenantId, doc.FileId, ct);
@@ -96,7 +103,7 @@ public static class SignatureRequestFromFormRequestedConsumer
                     return;
                 }
 
-                validated.Add((doc, meta.ChecksumSha256!));
+                validated.Add((doc, new VerifiableFile(meta.ChecksumSha256!, meta.ContentType ?? string.Empty, meta.SizeBytes)));
             }
 
             // 3) Resolver firmantes: un request dirigido a un cliente llega sin email (Tasks no lo guarda);
@@ -118,7 +125,18 @@ public static class SignatureRequestFromFormRequestedConsumer
             }
 
             // 4) Construir la solicitud (borrador + documentos con hash + firmantes + campos).
-            var built = await BuildRequestAsync(command, signers, validated, settingsRepository, categoryResolver, ct);
+            var policy = await limits.ResolveAsync(command.TenantId, ct);
+            var maxFieldsPerSigner = (await platform.GetAsync(ct)).MaxFieldsPerSigner;
+            var built = await BuildRequestAsync(
+                command,
+                signers,
+                validated,
+                settingsRepository,
+                categoryResolver,
+                policy,
+                maxFieldsPerSigner,
+                ct
+            );
             if (built.IsFailure)
             {
                 logger.LogWarning(
@@ -131,6 +149,18 @@ public static class SignatureRequestFromFormRequestedConsumer
             }
 
             var request = built.Value;
+
+            // 4b) Revisión del servidor de cada copia (PDF real, tamaño, páginas, firmas previas).
+            var rejectedOrDeferred = await VerifyDocumentsAsync(request, validated, verifier, ct);
+            if (rejectedOrDeferred == DocumentVerificationKind.Deferred)
+                // No se pudo descargar todavía: reintentar por el inbox durable.
+                throw new InvalidOperationException($"Signature copy for {command.RequestId} could not be verified yet; retrying.");
+            if (rejectedOrDeferred == DocumentVerificationKind.Rejected)
+            {
+                logger.LogWarning("Signature request from form {RequestId}: a document was rejected.", command.RequestId);
+                await PublishFailedAsync(command, SignatureRequestFromFormOutcomes.DocumentRejected, correlation, bus);
+                return;
+            }
 
             // 5) Guardar ANTES de publicar (outbox durable).
             await repository.AddAsync(request, ct);
@@ -198,16 +228,37 @@ public static class SignatureRequestFromFormRequestedConsumer
         return resolved;
     }
 
+    // Verified si todas pasan; Rejected si alguna se rechaza; Deferred si alguna no se pudo revisar aún.
+    private static async Task<DocumentVerificationKind> VerifyDocumentsAsync(
+        SignatureRequest request,
+        IReadOnlyList<(SignatureRequestFromFormDocument Doc, VerifiableFile File)> validated,
+        IRequestDocumentVerifier verifier,
+        CancellationToken ct
+    )
+    {
+        foreach (var (doc, file) in validated)
+        {
+            var document = request.Documents.First(candidate => candidate.OriginalFileId == doc.FileId);
+            var verification = await verifier.VerifyAsync(request, document.Id, file, ct);
+            if (verification.Kind != DocumentVerificationKind.Verified)
+                return verification.Kind;
+        }
+        return DocumentVerificationKind.Verified;
+    }
+
     private static async Task<Result<SignatureRequest>> BuildRequestAsync(
         SignatureRequestFromFormRequestedIntegrationEvent command,
         IReadOnlyList<SignatureRequestFromFormSigner> signers,
-        IReadOnlyList<(SignatureRequestFromFormDocument Doc, string Hash)> validated,
+        IReadOnlyList<(SignatureRequestFromFormDocument Doc, VerifiableFile File)> validated,
         ITenantSignatureSettingsRepository settingsRepository,
         ISignatureCategoryResolver categoryResolver,
+        EffectiveSignaturePolicy policy,
+        int maxFieldsPerSigner,
         CancellationToken ct
     )
     {
         var settings = await settingsRepository.GetByTenantIdAsync(command.TenantId, ct);
+        var requestLimits = policy.ForRequests;
 
         // Categoría: canónica si es una conocida del tenant; si no, el texto crudo (se congela igual).
         var category = string.IsNullOrWhiteSpace(command.Category) ? "Client form" : command.Category!;
@@ -216,13 +267,13 @@ public static class SignatureRequestFromFormRequestedConsumer
             category = resolved.Value;
 
         var draft = SignatureRequest.CreateDraft(
+            limits: requestLimits,
             tenantId: command.TenantId,
             createdByUserId: command.CreatedByUserId,
             title: command.Title,
             description: null,
             category: category,
-            tokenExpirationHours: settings?.DefaultTokenExpirationHoursValue
-                ?? TenantSignatureSettings.DefaultTokenExpirationHours,
+            tokenExpirationHours: policy.DefaultTokenHours,
             requiresSequentialSigning: false,
             requiresConsent: settings?.RequiresConsentByDefault ?? true,
             generateCertificate: settings?.GenerateCertificateByDefault ?? true,
@@ -246,19 +297,11 @@ public static class SignatureRequestFromFormRequestedConsumer
         );
 
         var documentIds = new List<Guid>(validated.Count);
-        foreach (var (doc, hash) in validated)
+        foreach (var (doc, _) in validated)
         {
-            var add = request.AddDocument(doc.FileId, command.Title, null);
+            var add = request.AddDocument(requestLimits, doc.FileId, command.Title, null);
             if (add.IsFailure)
                 return Result.Failure<SignatureRequest>(add.Error);
-
-            var hashVo = DocumentHash.Create(hash);
-            if (hashVo.IsFailure)
-                return Result.Failure<SignatureRequest>(hashVo.Error);
-
-            var attach = request.AttachDocumentHash(add.Value.Id, hashVo.Value);
-            if (attach.IsFailure)
-                return Result.Failure<SignatureRequest>(attach.Error);
 
             documentIds.Add(add.Value.Id);
         }
@@ -292,6 +335,7 @@ public static class SignatureRequestFromFormRequestedConsumer
 
             // CustomerId EXPLÍCITO del comando (no se deduce por email): un prospecto queda sin cliente.
             var added = request.AddSigner(
+                requestLimits,
                 email.Value,
                 fullName.Value,
                 signer.CustomerId,
@@ -313,6 +357,7 @@ public static class SignatureRequestFromFormRequestedConsumer
                 return Result.Failure<SignatureRequest>(position.Error);
 
             var field = request.PlaceField(
+                maxFieldsPerSigner,
                 added.Value.Id,
                 placementDocumentId,
                 SignatureFieldKind.Signature,

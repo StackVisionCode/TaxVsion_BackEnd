@@ -1,9 +1,8 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Options;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Abstractions;
-using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.CustomerAccess;
@@ -59,7 +58,7 @@ public static class PrepareZipDownloadHandler
         IFileObjectRepository files,
         IFolderRepository folders,
         IStorageAuditRepository audit,
-        IOptions<CloudStorageOptions> options,
+        IStoragePlatformSettingsProvider platform,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -71,7 +70,7 @@ public static class PrepareZipDownloadHandler
         if (requestedFileIds.Length == 0 && requestedFolderIds.Length == 0)
             return Result.Failure<ZipDownloadPlan>(FileErrors.NoFilesRequested);
 
-        var config = options.Value;
+        var config = await platform.GetAsync(ct);
 
         // Chequeos baratos (sin tocar la BD) antes de cualquier I/O — fail fast.
         if (requestedFileIds.Length > config.MaxZipFiles)

@@ -38,4 +38,13 @@ public enum SignatureAuditEventKind
     /// número de páginas, el payload reporta cuántos campos quedaron invalidados.
     /// </summary>
     DocumentReplaced,
+
+    /// <summary>Entrega de documentos firmados emitida a un firmante (enlace propio de Signature, sin share).</summary>
+    DeliveryIssued,
+
+    /// <summary>Enlace de entrega rotado: lo pidió el firmante con el enlace vencido o lo reenvió la oficina.</summary>
+    DeliveryReissued,
+
+    /// <summary>La oficina revocó una entrega: su enlace deja de funcionar.</summary>
+    DeliveryRevoked,
 }

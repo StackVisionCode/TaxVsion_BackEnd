@@ -113,7 +113,7 @@ public static class SubscriptionPlanCatalogSeeder
         AddEntitlement(version, "invitations.max_pending", EntitlementValueType.Int, maxPendingInvitations.ToString());
         AddEntitlement(version, "storage.max_bytes", EntitlementValueType.Long, storageQuotaBytes.ToString());
 
-        foreach (var seed in CommunicationEntitlementCatalog.SeedsFor(tier))
+        foreach (var seed in PlanEntitlementCatalogs.SeedsFor(tier))
             AddEntitlement(version, seed.Key, seed.ValueType, seed.DefaultValue);
 
         foreach (var module in modules)

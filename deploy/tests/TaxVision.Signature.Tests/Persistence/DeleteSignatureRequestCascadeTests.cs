@@ -60,6 +60,7 @@ public sealed class DeleteSignatureRequestCascadeTests
     {
         var request = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Tenant,
                 Guid.NewGuid(),
                 "Logos_Certificate",
@@ -73,14 +74,14 @@ public sealed class DeleteSignatureRequestCascadeTests
             )
             .Value;
 
-        var document = request.AddDocument(Guid.NewGuid(), "Logos_Certificate.pdf", pageCount: 1).Value;
+        var document = request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Logos_Certificate.pdf", pageCount: 1).Value;
         var signer = request
-            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam Signer").Value, null)
+            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam Signer").Value, null)
             .Value;
 
         var position = FieldPosition.Create(1, 0.5, 0.5, 0.1, 0.05).Value;
         // Campo del firmante y campo del preparador: ambos con FK requerida NoAction al documento.
-        request.PlaceField(signer.Id, document.Id, SignatureFieldKind.Signature, position, null, false);
+        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, document.Id, SignatureFieldKind.Signature, position, null, false);
         request.PlacePreparerField(document.Id, SignatureFieldKind.Signature, position, null);
         return request;
     }

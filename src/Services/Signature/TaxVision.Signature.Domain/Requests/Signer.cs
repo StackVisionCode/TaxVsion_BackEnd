@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Signature.Domain.Platform;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 
 namespace TaxVision.Signature.Domain.Requests;
@@ -624,9 +625,6 @@ public sealed class Signer : BaseEntity
     // Practitioner PIN — cada regla en su método
     // ------------------------------------------------------------------
 
-    public const int MaxPinAttempts = 5;
-    public static readonly TimeSpan PinLockDuration = TimeSpan.FromMinutes(30);
-
     /// <summary>
     /// <c>true</c> si el firmante está bloqueado por intentos fallidos en el instante
     /// <paramref name="now"/>. Se auto-libera cuando pasa <see cref="PinLockedUntilUtc"/>.
@@ -650,11 +648,16 @@ public sealed class Signer : BaseEntity
     }
 
     /// <summary>
-    /// Incrementa el contador de intentos fallidos. Si alcanza <see cref="MaxPinAttempts"/>
-    /// bloquea al firmante por <see cref="PinLockDuration"/>. El bloqueo NO impide la firma
-    /// automáticamente — lo controla el aggregate en <c>VerifySignerWithPin</c>.
+    /// Incrementa el contador de intentos fallidos. Al llegar a los intentos de la plataforma bloquea al
+    /// firmante el tiempo que ella fija. El bloqueo NO impide la firma automáticamente — lo controla el
+    /// aggregate en <c>VerifySignerWithPin</c>.
     /// </summary>
-    internal Result RecordPinFailedAttempt(DateTime attemptedAtUtc, string? clientIp, string? userAgent)
+    internal Result RecordPinFailedAttempt(
+        DateTime attemptedAtUtc,
+        string? clientIp,
+        string? userAgent,
+        VerificationPolicy policy
+    )
     {
         EnsurePending();
 
@@ -669,8 +672,8 @@ public sealed class Signer : BaseEntity
         ClientIp = TruncateIp(clientIp) ?? ClientIp;
         UserAgent = TruncateUserAgent(userAgent) ?? UserAgent;
 
-        if (PinFailedAttempts >= MaxPinAttempts)
-            PinLockedUntilUtc = attemptedAtUtc.Add(PinLockDuration);
+        if (PinFailedAttempts >= policy.MaxAttempts)
+            PinLockedUntilUtc = attemptedAtUtc.Add(policy.LockDuration);
 
         return Result.Success();
     }

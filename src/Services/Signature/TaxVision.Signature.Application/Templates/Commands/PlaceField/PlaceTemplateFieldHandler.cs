@@ -39,7 +39,8 @@ public static class PlaceTemplateFieldHandler
             cmd.Kind,
             positionResult.Value,
             cmd.Label,
-            cmd.IsRequired
+            cmd.IsRequired,
+            cmd.FontSizePt
         );
         if (placement.IsFailure)
             return Result.Failure<TemplateFieldCreatedResponse>(placement.Error);

@@ -24,5 +24,7 @@ public sealed record SealedFieldRender(
     byte[]? SignatureImageBytes = null,
     // Texto que el firmante escribió en un campo Text (P4). Null/empty en los demás tipos y en los
     // campos de texto opcionales que dejó en blanco.
-    string? Value = null
+    string? Value = null,
+    // Letra elegida por el preparador para iniciales/fecha/texto; null = automática según la caja.
+    int? FontSizePt = null
 );

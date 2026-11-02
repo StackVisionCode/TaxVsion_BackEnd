@@ -85,7 +85,7 @@ public static class SaveFileFromSourceHandler
                 );
             }
 
-            var policy = await uploadPolicies.ResolveAsync(evt.TenantId, limit.PlanCode, folderType, ct);
+            var policy = await uploadPolicies.ResolveAsync(evt.TenantId, limit, folderType, forCustomerPortal: false, ct);
             var extension = Path.GetExtension(evt.OriginalName).ToLowerInvariant();
             if (
                 !policy.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)

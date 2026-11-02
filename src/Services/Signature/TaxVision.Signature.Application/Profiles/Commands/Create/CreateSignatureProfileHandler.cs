@@ -2,6 +2,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Application.Profiles.Authorization;
 using TaxVision.Signature.Application.Requests.Public;
 using TaxVision.Signature.Domain.Profiles;
@@ -15,6 +16,7 @@ public static class CreateSignatureProfileHandler
         ISignatureProfileRepository repository,
         ITenantSignatureSettingsRepository settingsRepository,
         ISignatureCloudStorageClient storage,
+        ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -37,16 +39,17 @@ public static class CreateSignatureProfileHandler
         }
 
         // Tope de firmas activas por ámbito (antes de subir nada): archivar una libera cupo.
+        var platformSettings = await platform.GetAsync(ct);
         var existing = await repository.ListByOwnerAsync(cmd.TenantId, cmd.OwnerUserId, includeArchived: false, ct);
-        if (existing.Count >= SignatureProfile.MaxActiveProfilesPerScope)
+        if (existing.Count >= platformSettings.MaxProfilesPerPreparer)
             return Result.Failure<SignatureProfileResponse>(
                 new Error(
                     "Signature.Profile.LimitReached",
-                    $"You can keep at most {SignatureProfile.MaxActiveProfilesPerScope} signatures. Archive or delete one first."
+                    $"You can keep at most {platformSettings.MaxProfilesPerPreparer} signatures. Archive or delete one first."
                 )
             );
 
-        var imageValidation = SignatureImageValidator.Validate(cmd.Content);
+        var imageValidation = SignatureImageValidator.Validate(cmd.Content, platformSettings.MaxSignatureImageBytes);
         if (imageValidation.IsFailure)
             return Result.Failure<SignatureProfileResponse>(imageValidation.Error);
 

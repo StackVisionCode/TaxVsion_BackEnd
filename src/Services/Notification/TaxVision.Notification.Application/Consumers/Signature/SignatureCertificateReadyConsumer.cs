@@ -14,6 +14,8 @@ namespace TaxVision.Notification.Application.Consumers.Signature;
 /// SMS si lo prefiere y tiene teléfono, si no email renderizado en Scribe (misma vía que el resto de
 /// correos de Signature). Un email por firmante.
 /// </summary>
+// LEGADO (2026-11): Signature ya no publica este evento (lo reemplazó SignedDocumentsDeliveryReadyIntegrationEvent,
+// sin shares). Queda solo para drenar mensajes en vuelo durante el despliegue; retirar en el siguiente release.
 public static class SignatureCertificateReadyConsumer
 {
     private const string TemplateKey = SignatureTemplateCatalog.CertificateKey;

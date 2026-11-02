@@ -18,11 +18,19 @@ public sealed record DocumentValidationOutcome(
 );
 
 /// <summary>
-/// Ejecuta el preflight PDF: MIME whitelist, tamaño, integridad estructural,
-/// número de páginas y detección de firmas previas (evita re-firmar un PDF ya firmado
-/// y romperle la firma anterior — regla P-05 del diseño).
+/// Hechos del PDF, sin los límites de la oficina: si es un PDF íntegro (<see cref="StructuralIssues"/> vacío),
+/// cuántas páginas tiene y si ya trae firmas. Los límites los aplica <c>DocumentAcceptancePolicy</c>.
 /// </summary>
-public interface IDocumentValidator
+public sealed record PdfInspection(
+    IReadOnlyList<DocumentValidationIssue> StructuralIssues,
+    string ContentSha256,
+    long SizeBytes,
+    int? PageCount,
+    bool HasExistingSignatures
+);
+
+/// <summary>Abre el PDF y extrae sus hechos: MIME, cabecera, integridad, páginas y firmas previas.</summary>
+public interface IPdfInspector
 {
-    DocumentValidationOutcome Validate(byte[] content, string fileName, string declaredContentType);
+    PdfInspection Inspect(byte[] content, string declaredContentType);
 }

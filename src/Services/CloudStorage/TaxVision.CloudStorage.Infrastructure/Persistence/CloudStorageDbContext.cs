@@ -10,10 +10,12 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
+using TaxVision.CloudStorage.Domain.FileTypes;
 using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
 using TaxVision.CloudStorage.Domain.Moderation;
 using TaxVision.CloudStorage.Domain.Permissions;
+using TaxVision.CloudStorage.Domain.Platform;
 using TaxVision.CloudStorage.Domain.Providers;
 using TaxVision.CloudStorage.Domain.Quotas;
 using TaxVision.CloudStorage.Domain.RateLimiting;
@@ -48,6 +50,10 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     // Topes de tamaño administrados por PlatformAdmin (D-33). No tenant-owned: fuera del filtro fail-closed.
     public DbSet<UploadSizePolicy> UploadSizePolicies => Set<UploadSizePolicy>();
     public DbSet<UploadSizePolicyAudit> UploadSizePolicyAudits => Set<UploadSizePolicyAudit>();
+    public DbSet<FileTypeDefinition> FileTypeDefinitions => Set<FileTypeDefinition>();
+    public DbSet<FolderFilePolicy> FolderFilePolicies => Set<FolderFilePolicy>();
+    public DbSet<FilePolicyAudit> FilePolicyAudits => Set<FilePolicyAudit>();
+    public DbSet<StoragePlatformSettings> StoragePlatformSettings => Set<StoragePlatformSettings>();
 
     // Política de moderación de contenido (T-20): una fila de plataforma, fuera del filtro fail-closed.
     public DbSet<ContentModerationPolicy> ContentModerationPolicies => Set<ContentModerationPolicy>();

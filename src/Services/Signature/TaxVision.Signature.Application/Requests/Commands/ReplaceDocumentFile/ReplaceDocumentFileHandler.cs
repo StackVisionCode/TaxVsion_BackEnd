@@ -3,8 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
-using TaxVision.Signature.Domain.Projections;
-using TaxVision.Signature.Domain.Requests.ValueObjects;
+using TaxVision.Signature.Application.Documents.Verification;
 using Wolverine;
 
 namespace TaxVision.Signature.Application.Requests.Commands.ReplaceDocumentFile;
@@ -14,7 +13,7 @@ public static class ReplaceDocumentFileHandler
     public static async Task<Result<ReplaceDocumentFileResponse>> Handle(
         ReplaceDocumentFileCommand cmd,
         ISignatureRequestRepository repository,
-        IFileMetadataRefRepository fileRepository,
+        IRequestDocumentVerifier verifier,
         IUnitOfWork unitOfWork,
         ISignatureRequestListCacheInvalidator listCache,
         IMessageBus bus,
@@ -34,15 +33,16 @@ public static class ReplaceDocumentFileHandler
 
         var outcome = replace.Value;
 
-        // Reengancha el DocumentHashPre con el checksum del nuevo archivo si CloudStorage ya lo tiene
-        // disponible; si no, queda null hasta que llegue el FileAvailable y lo rellenemos por otra vía.
-        var file = await fileRepository.GetByFileIdAsync(cmd.TenantId, cmd.NewFileId, ct);
-        if (file is { Status: FileScanStatus.Available, ChecksumSha256: not null })
-        {
-            var hash = DocumentHash.Create(file.ChecksumSha256);
-            if (hash.IsSuccess)
-                request.AttachDocumentHash(cmd.DocumentId, hash.Value);
-        }
+        // Si CloudStorage ya tiene el nuevo archivo disponible se revisa ahora; si no, queda pendiente hasta
+        // que llegue el FileAvailable. Un archivo inválido no reemplaza al anterior.
+        var verification = await verifier.VerifyAsync(request, cmd.DocumentId, ct);
+        if (verification.Kind == DocumentVerificationKind.Rejected)
+            return Result.Failure<ReplaceDocumentFileResponse>(
+                DocumentVerificationErrors.Rejected(
+                    request.Documents.Single(document => document.Id == cmd.DocumentId),
+                    verification.Rejection!
+                )
+            );
 
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);

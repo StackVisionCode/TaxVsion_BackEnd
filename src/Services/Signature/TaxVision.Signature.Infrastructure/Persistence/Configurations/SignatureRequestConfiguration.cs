@@ -171,5 +171,14 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder
             .Metadata.FindNavigation(nameof(SignatureRequest.Documents))!
             .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(request => request.CustomerCopies)
+            .WithOne()
+            .HasForeignKey(copy => copy.SignatureRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder
+            .Metadata.FindNavigation(nameof(SignatureRequest.CustomerCopies))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
     }
 }

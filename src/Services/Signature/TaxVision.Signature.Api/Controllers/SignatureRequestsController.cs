@@ -14,6 +14,7 @@ using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Audit;
 using TaxVision.Signature.Application.Requests;
+using TaxVision.Signature.Application.Delivery;
 using TaxVision.Signature.Application.Requests.Commands.AddDocument;
 using TaxVision.Signature.Application.Requests.Commands.AddSigner;
 using TaxVision.Signature.Application.Requests.Commands.Cancel;
@@ -448,7 +449,8 @@ public sealed class SignatureRequestsController(
             body.Width,
             body.Height,
             body.Label,
-            body.IsRequired
+            body.IsRequired,
+            body.FontSizePt
         );
         var result = await bus.InvokeAsync<Result<SignatureFieldResponse>>(cmd, ct);
         return result.IsSuccess
@@ -766,7 +768,8 @@ public sealed class SignatureRequestsController(
                 f.Width,
                 f.Height,
                 f.Label,
-                f.IsRequired
+                f.IsRequired,
+                f.FontSizePt
             ))
             .ToList();
 
@@ -890,6 +893,121 @@ public sealed class SignatureRequestsController(
 
         var result = await bus.InvokeAsync<Result>(new ResendSignerInvitationCommand(tenantId, id, signerId), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- GET /signature/requests/{id}/deliveries ----------
+    // Entregas de documentos firmados de la solicitud (enlace propio de Signature, no shares de Documents).
+    [HttpGet("{id:guid}/deliveries")]
+    [HasPermission(SignaturePermissions.RequestRead)]
+    [RateLimit("signature.f.request_read")]
+    [ProducesResponseType<IReadOnlyList<SignedDocumentDeliveryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ListDeliveries([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+        if (!await CanSeeRequestAsync(tenantId, id, userId, ct))
+            return NotFound();
+
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<SignedDocumentDeliveryResponse>>>(
+            new ListRequestDeliveriesQuery(tenantId, id),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- POST /signature/requests/{id}/deliveries ----------
+    // Emite las entregas que falten (recuperación si el evento que las dispara se perdió). Idempotente.
+    [HttpPost("{id:guid}/deliveries")]
+    [HasPermission(SignaturePermissions.RequestResend)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType<IReadOnlyList<SignedDocumentDeliveryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> IssueDeliveries([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+        if (!await CanSeeRequestAsync(tenantId, id, userId, ct))
+            return NotFound();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Send, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<SignedDocumentDeliveryResponse>>>(
+            new IssueDeliveriesCommand(tenantId, id, userId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- POST /signature/requests/{id}/deliveries/{deliveryId}/resend ----------
+    // Enlace nuevo (el anterior deja de valer) al mismo email de la entrega.
+    [HttpPost("{id:guid}/deliveries/{deliveryId:guid}/resend")]
+    [HasPermission(SignaturePermissions.RequestResend)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType<SignedDocumentDeliveryResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResendDelivery(
+        [FromRoute] Guid id,
+        [FromRoute] Guid deliveryId,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+        if (!await CanSeeRequestAsync(tenantId, id, userId, ct))
+            return NotFound();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Send, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result<SignedDocumentDeliveryResponse>>(
+            new ResendDeliveryCommand(tenantId, id, deliveryId, userId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- POST /signature/requests/{id}/deliveries/{deliveryId}/revoke ----------
+    [HttpPost("{id:guid}/deliveries/{deliveryId:guid}/revoke")]
+    [HasPermission(SignaturePermissions.RequestCancel)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType<SignedDocumentDeliveryResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RevokeDelivery(
+        [FromRoute] Guid id,
+        [FromRoute] Guid deliveryId,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+        if (!await CanSeeRequestAsync(tenantId, id, userId, ct))
+            return NotFound();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Cancel, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result<SignedDocumentDeliveryResponse>>(
+            new RevokeDeliveryCommand(tenantId, id, deliveryId, userId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // Misma visibilidad que el detalle (autor / asignación de clientes): quien no ve la solicitud, no ve sus entregas.
+    private async Task<bool> CanSeeRequestAsync(Guid tenantId, Guid id, Guid userId, CancellationToken ct)
+    {
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var request = await bus.InvokeAsync<SignatureRequestResponse?>(
+            new GetSignatureRequestByIdQuery(tenantId, id, userId, canViewAll),
+            ct
+        );
+        return request is not null;
     }
 
     // ---------- PUT /signature/requests/{id}/practitioner-pin ----------

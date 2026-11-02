@@ -24,6 +24,7 @@ public sealed class UpdateSignatureRequestHandlerTests
                 TokenExpirationHours = 120,
             },
             repo,
+            new FixedSignatureLimitsResolver(),
             new FakeUnitOfWork(),
             cache,
             new FakeCategoryResolver(),
@@ -47,6 +48,7 @@ public sealed class UpdateSignatureRequestHandlerTests
         var result = await UpdateSignatureRequestHandler.Handle(
             Command(sent),
             repo,
+            new FixedSignatureLimitsResolver(),
             new FakeUnitOfWork(),
             new FakeCache(),
             new FakeCategoryResolver(),
@@ -69,6 +71,7 @@ public sealed class UpdateSignatureRequestHandlerTests
                 SendCertificateToSigners = true,
             },
             repo,
+            new FixedSignatureLimitsResolver(),
             new FakeUnitOfWork(),
             new FakeCache(),
             new FakeCategoryResolver(),
@@ -98,6 +101,7 @@ public sealed class UpdateSignatureRequestHandlerTests
                 48
             ),
             repo,
+            new FixedSignatureLimitsResolver(),
             new FakeUnitOfWork(),
             new FakeCache(),
             new FakeCategoryResolver(),
@@ -127,6 +131,7 @@ public sealed class UpdateSignatureRequestHandlerTests
     private static SignatureRequest Draft(bool generateCertificate = false) =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Consent 2026",
@@ -144,11 +149,11 @@ public sealed class UpdateSignatureRequestHandlerTests
     {
         var request = Draft();
         var signer = request
-            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam").Value, null)
+            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam").Value, null)
             .Value;
         var position = FieldPosition.Create(1, 0.5, 0.5, 0.1, 0.05).Value;
-        request.PlaceField(signer.Id, SignatureFieldKind.Signature, position, null, false);
-        request.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
+        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, position, null, false);
+        request.AttachVerifiedDocument(request.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
         return request;
     }
 
@@ -199,10 +204,12 @@ public sealed class UpdateSignatureRequestHandlerTests
 
         public Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
             DateTime nowUtc,
+            int maxRemindersPerRequest,
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
         public Task<IReadOnlyList<SignatureRequest>> ListPurgeCandidatesAsync(
+            Guid tenantId,
             DateTime olderThanUtc,
             int batchSize,
             CancellationToken ct = default
@@ -213,6 +220,9 @@ public sealed class UpdateSignatureRequestHandlerTests
             int batchSize,
             CancellationToken ct = default
         ) => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,

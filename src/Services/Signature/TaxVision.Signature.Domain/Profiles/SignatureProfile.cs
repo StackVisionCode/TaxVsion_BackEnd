@@ -14,9 +14,6 @@ public sealed class SignatureProfile : TenantEntity
     public const int MinLabelLength = 1;
     public const int MaxLabelLength = 80;
 
-    /// <summary>Tope de firmas activas (no archivadas) por ámbito (usuario u oficina). Archivar libera cupo.</summary>
-    public const int MaxActiveProfilesPerScope = 10;
-
     private SignatureProfile() { }
 
     /// <summary>Dueño de la firma: un usuario (firma personal) o <c>null</c> = firma de oficina del tenant.</summary>

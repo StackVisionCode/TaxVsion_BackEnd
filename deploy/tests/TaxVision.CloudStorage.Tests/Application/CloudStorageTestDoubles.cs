@@ -1,9 +1,11 @@
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
+using TaxVision.CloudStorage.Domain.Platform;
 using TaxVision.CloudStorage.Domain.Quotas;
 using TaxVision.CloudStorage.Domain.Sharing;
 using Wolverine;
@@ -862,27 +864,28 @@ internal sealed class FakeSystemClock(DateTime utcNow) : ISystemClock
     public DateTime UtcNow { get; } = utcNow;
 }
 
-/// <summary>Resolver sin filas en BD: devuelve exactamente lo que daba CloudStorageOptions (fallback técnico de D-33).</summary>
-internal sealed class FakeUploadPolicyResolver(
-    TaxVision.CloudStorage.Application.Configuration.CloudStorageOptions? options = null
-) : TaxVision.CloudStorage.Application.Quotas.IUploadPolicyResolver
+/// <summary>Resolver con la regla real y el catálogo sembrado, sin BD; <see cref="MaxFileSizeOverride"/> simula una fila de tamaño.</summary>
+internal sealed class FakeUploadPolicyResolver : TaxVision.CloudStorage.Application.Quotas.IUploadPolicyResolver
 {
-    private readonly TaxVision.CloudStorage.Application.Configuration.CloudStorageOptions _options =
-        options ?? new TaxVision.CloudStorage.Application.Configuration.CloudStorageOptions();
-
     /// <summary>Simula una fila administrada: reemplaza solo el tamaño, nunca los tipos.</summary>
     public long? MaxFileSizeOverride { get; set; }
 
-    public Task<TaxVision.CloudStorage.Application.Configuration.EffectiveUploadPolicy> ResolveAsync(
+    public Task<TaxVision.CloudStorage.Domain.FileTypes.EffectiveUploadPolicy> ResolveAsync(
         Guid tenantId,
-        string planCode,
+        TaxVision.CloudStorage.Domain.Quotas.TenantStorageLimit limit,
         FolderType folderType,
+        bool forCustomerPortal,
         CancellationToken ct
-    )
-    {
-        var policy = _options.ResolveUploadPolicy(planCode, folderType);
-        return Task.FromResult(MaxFileSizeOverride is { } bytes ? policy with { MaxFileSizeBytes = bytes } : policy);
-    }
+    ) =>
+        Task.FromResult(
+            TaxVision.CloudStorage.Domain.FileTypes.EffectiveUploadPolicyCalculator.Calculate(
+                TestFilePolicyCatalog.Folder(folderType),
+                TestFilePolicyCatalog.FileTypes(),
+                limit.PlanAllowance(),
+                MaxFileSizeOverride,
+                forCustomerPortal ? limit.PortalRestriction() : null
+            )
+        );
 }
 
 internal sealed class FakeUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
@@ -985,4 +988,28 @@ internal sealed class FakeMessageBus : IMessageBus
         DeliveryOptions options,
         CancellationToken cancellation = default
     ) => throw new NotImplementedException();
+}
+
+/// <summary>
+/// Ajustes de plataforma fijos para los handlers. Los topes se fijan por reflexión para poder probar bordes
+/// por debajo de los rangos que acepta PlatformAdmin (p. ej. un ZIP de 0 archivos).
+/// </summary>
+internal sealed class FakeStoragePlatformSettingsProvider(StoragePlatformSettings? settings = null)
+    : IStoragePlatformSettingsProvider
+{
+    public StoragePlatformSettings Settings { get; } = settings ?? StoragePlatformSettings.Defaults();
+
+    public int Invalidations { get; private set; }
+
+    public Task<StoragePlatformSettings> GetAsync(CancellationToken ct) => Task.FromResult(Settings);
+
+    public void Invalidate() => Invalidations++;
+
+    public static FakeStoragePlatformSettingsProvider With(params (string Property, object Value)[] overrides)
+    {
+        var settings = StoragePlatformSettings.Defaults();
+        foreach (var (property, value) in overrides)
+            typeof(StoragePlatformSettings).GetProperty(property)!.SetValue(settings, value);
+        return new FakeStoragePlatformSettingsProvider(settings);
+    }
 }

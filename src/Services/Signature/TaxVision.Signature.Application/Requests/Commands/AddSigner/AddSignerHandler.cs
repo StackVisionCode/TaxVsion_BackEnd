@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 
@@ -17,6 +18,7 @@ public static class AddSignerHandler
         AddSignerCommand cmd,
         ISignatureRequestRepository requestRepository,
         ICustomerEmailProjectionRepository customerProjectionRepository,
+        ISignatureLimitsResolver limits,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -36,7 +38,9 @@ public static class AddSignerHandler
             ct
         );
 
+        var policy = await limits.ResolveAsync(cmd.TenantId, ct);
         var signerResult = request.AddSigner(
+            policy.ForRequests,
             voResult.Value.Email,
             voResult.Value.FullName,
             mappedCustomerId,
@@ -116,7 +120,8 @@ public static class AddSignerHandler
                     f.Position.Width,
                     f.Position.Height,
                     f.Label,
-                    f.IsRequired
+                    f.IsRequired,
+                    f.FontSizePt
                 ))
                 .ToList(),
             signer.PartialCopyRequestedAtUtc,

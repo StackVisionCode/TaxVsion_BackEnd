@@ -44,23 +44,20 @@ public sealed class SealingFontResolver : IFontResolver
     public SealingFontResolver()
     {
         var searchDirs = GetFontDirectories();
-        var familyDefaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        // Cada alias de familia con sus cuatro estilos (regular, negrita, cursiva, negrita cursiva).
+        var aliases = new (string Alias, string[] Candidates)[]
         {
-            ["Helvetica"] = FindFirst(searchDirs, SansCandidates, bold: false, italic: false),
-            ["Helvetica-Bold"] = FindFirst(searchDirs, SansCandidates, bold: true, italic: false),
-            ["Helvetica-Italic"] = FindFirst(searchDirs, SansCandidates, bold: false, italic: true),
-            ["Helvetica-BoldItalic"] = FindFirst(searchDirs, SansCandidates, bold: true, italic: true),
-            ["Arial"] = FindFirst(searchDirs, SansCandidates, bold: false, italic: false),
-            ["Arial-Bold"] = FindFirst(searchDirs, SansCandidates, bold: true, italic: false),
-            ["Arial-Italic"] = FindFirst(searchDirs, SansCandidates, bold: false, italic: true),
-            ["Arial-BoldItalic"] = FindFirst(searchDirs, SansCandidates, bold: true, italic: true),
-            ["Times"] = FindFirst(searchDirs, SerifCandidates, bold: false, italic: false),
-            ["Times-Bold"] = FindFirst(searchDirs, SerifCandidates, bold: true, italic: false),
-            ["Times New Roman"] = FindFirst(searchDirs, SerifCandidates, bold: false, italic: false),
-            ["Courier"] = FindFirst(searchDirs, MonoCandidates, bold: false, italic: false),
-            ["Courier-Bold"] = FindFirst(searchDirs, MonoCandidates, bold: true, italic: false),
-            ["Courier New"] = FindFirst(searchDirs, MonoCandidates, bold: false, italic: false),
+            ("Helvetica", SansCandidates),
+            ("Arial", SansCandidates),
+            ("Times", SerifCandidates),
+            ("Times New Roman", SerifCandidates),
+            ("Courier", MonoCandidates),
+            ("Courier New", MonoCandidates),
         };
+        var familyDefaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (alias, candidates) in aliases)
+        foreach (var (bold, italic) in new[] { (false, false), (true, false), (false, true), (true, true) })
+            familyDefaults[BuildKey(alias, bold, italic)] = FindFirst(searchDirs, candidates, bold, italic);
         foreach (var (key, path) in familyDefaults)
         {
             if (string.IsNullOrEmpty(path))

@@ -55,6 +55,7 @@ public sealed class SignerChannelResolverTests
         var phoneVo = phone is null ? null : SignerPhoneNumber.Create(phone).Value;
         var draft = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Test",
@@ -69,6 +70,7 @@ public sealed class SignerChannelResolverTests
             .Value;
         return draft
             .AddSigner(
+                TestSignatureLimits.Default,
                 SignerEmail.Create("s@example.com").Value,
                 SignerFullName.Create("The Signer").Value,
                 mappedCustomerId: null,

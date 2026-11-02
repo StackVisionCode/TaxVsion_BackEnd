@@ -30,6 +30,9 @@ public sealed class SignatureField : BaseEntity
     /// <summary>Marca el campo como obligatorio. Aplica a Text, Checkbox e Initials.</summary>
     public bool IsRequired { get; private set; }
 
+    /// <summary>Letra con la que se estampa (iniciales, fecha, texto). Null = automático según la caja.</summary>
+    public int? FontSizePt { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
 
     internal static Result<SignatureField> Create(
@@ -39,7 +42,8 @@ public sealed class SignatureField : BaseEntity
         SignatureFieldKind kind,
         FieldPosition position,
         string? label,
-        bool isRequired
+        bool isRequired,
+        int? fontSizePt = null
     )
     {
         if (requestId == Guid.Empty)
@@ -61,6 +65,10 @@ public sealed class SignatureField : BaseEntity
                 new Error("Signature.Field.Label", $"Label cannot exceed {MaxLabelLength} characters.")
             );
 
+        var fontSize = FieldTypography.Normalize(kind, fontSizePt);
+        if (fontSize.IsFailure)
+            return Result.Failure<SignatureField>(fontSize.Error);
+
         return Result.Success(
             new SignatureField
             {
@@ -72,6 +80,7 @@ public sealed class SignatureField : BaseEntity
                 Position = position,
                 Label = normalizedLabel,
                 IsRequired = KindDefaultsToRequired(kind) || isRequired,
+                FontSizePt = fontSize.Value,
                 CreatedAtUtc = DateTime.UtcNow,
             }
         );

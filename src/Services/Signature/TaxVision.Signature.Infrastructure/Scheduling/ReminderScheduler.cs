@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Messaging;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -65,9 +66,11 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var tokenService = scope.ServiceProvider.GetRequiredService<ISigningTokenService>();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+        var platform = scope.ServiceProvider.GetRequiredService<ISignaturePlatformSettingsProvider>();
 
         var now = DateTime.UtcNow;
-        var candidates = await repository.ListReminderCandidatesAsync(now, ct);
+        var maxReminders = (await platform.GetAsync(ct)).MaxRemindersPerRequest;
+        var candidates = await repository.ListReminderCandidatesAsync(now, maxReminders, ct);
         if (candidates.Count == 0)
             return;
 

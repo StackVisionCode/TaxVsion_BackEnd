@@ -12,4 +12,7 @@ public interface ITenantSignatureSettingsRepository
     Task<TenantSignatureSettings?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
 
     Task AddAsync(TenantSignatureSettings settings, CancellationToken ct = default);
+
+    /// <summary>Tenants cuya oficina activó la purga (el plan se revisa aparte, con los techos vigentes).</summary>
+    Task<IReadOnlyList<Guid>> ListTenantIdsWithPurgeEnabledAsync(CancellationToken ct = default);
 }

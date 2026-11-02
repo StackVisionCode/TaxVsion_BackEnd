@@ -189,6 +189,7 @@ public sealed class SignatureRequestMultiDocumentTests
     {
         var request = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Multi-document request",
@@ -201,17 +202,18 @@ public sealed class SignatureRequestMultiDocumentTests
                 true
             )
             .Value;
-        request.AddDocument(Guid.NewGuid(), "Second document");
-        request.AttachDocumentHash(request.Documents[0].Id, Hash('a'));
-        request.AttachDocumentHash(request.Documents[1].Id, Hash('b'));
+        request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Second document");
+        request.AttachVerifiedDocument(request.Documents[0].Id, VerifiedDocument.Create(Hash('a'), 50).Value);
+        request.AttachVerifiedDocument(request.Documents[1].Id, VerifiedDocument.Create(Hash('b'), 50).Value);
         return request;
     }
 
     private static Signer AddSigner(SignatureRequest request, string email, string name) =>
-        request.AddSigner(SignerEmail.Create(email).Value, SignerFullName.Create(name).Value, null).Value;
+        request.AddSigner(TestSignatureLimits.Default, SignerEmail.Create(email).Value, SignerFullName.Create(name).Value, null).Value;
 
     private static void PlaceSignature(SignatureRequest request, Guid signerId, Guid documentId) =>
         request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
             signerId,
             documentId,
             SignatureFieldKind.Signature,

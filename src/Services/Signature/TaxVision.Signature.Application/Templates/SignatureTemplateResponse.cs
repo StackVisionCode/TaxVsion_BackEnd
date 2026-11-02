@@ -23,7 +23,9 @@ public sealed record TemplateFieldResponse(
     double Width,
     double Height,
     string? Label,
-    bool IsRequired
+    bool IsRequired,
+    // Letra del estampado (iniciales/fecha/texto); null = automática según la caja.
+    int? FontSizePt = null
 );
 
 /// <summary>Campo del preparador predefinido en la plantilla (sin slot). Se hereda al instanciar.</summary>
@@ -131,7 +133,8 @@ public sealed record SignatureTemplateResponse(
                     f.Position.Width,
                     f.Position.Height,
                     f.Label,
-                    f.IsRequired
+                    f.IsRequired,
+                    f.FontSizePt
                 ))
                 .ToList(),
             template

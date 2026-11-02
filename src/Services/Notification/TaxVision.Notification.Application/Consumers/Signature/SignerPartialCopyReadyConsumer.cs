@@ -11,6 +11,8 @@ namespace TaxVision.Notification.Application.Consumers.Signature;
 /// con su copia parcial. El share-token se convierte a URL pública del portal del tenant; si viene
 /// vacío el template oculta el botón y el preparador puede reenviar la copia después.
 /// </summary>
+// LEGADO (2026-11): Signature ya no publica este evento (lo reemplazó SignedDocumentsDeliveryReadyIntegrationEvent,
+// sin shares). Queda solo para drenar mensajes en vuelo durante el despliegue; retirar en el siguiente release.
 public static class SignerPartialCopyReadyConsumer
 {
     public static async Task Handle(

@@ -131,7 +131,7 @@ public sealed class CaptureMethodAndCooldownTests
             SignerVerificationMethod.SmsOtp,
             "hash-1",
             now,
-            TimeSpan.FromMinutes(10)
+            TestSignatureLimits.Verification
         );
 
         var again = request.IssueVerificationChallenge(
@@ -139,7 +139,7 @@ public sealed class CaptureMethodAndCooldownTests
             SignerVerificationMethod.SmsOtp,
             "hash-2",
             now.AddSeconds(10),
-            TimeSpan.FromMinutes(10)
+            TestSignatureLimits.Verification
         );
 
         Assert.True(again.IsFailure);
@@ -157,7 +157,7 @@ public sealed class CaptureMethodAndCooldownTests
             SignerVerificationMethod.SmsOtp,
             "hash-sms",
             now,
-            TimeSpan.FromMinutes(10)
+            TestSignatureLimits.Verification
         );
 
         var email = request.IssueVerificationChallenge(
@@ -165,7 +165,7 @@ public sealed class CaptureMethodAndCooldownTests
             SignerVerificationMethod.EmailOtp,
             "hash-email",
             now.AddSeconds(2),
-            TimeSpan.FromMinutes(10)
+            TestSignatureLimits.Verification
         );
 
         Assert.True(email.IsSuccess);
@@ -182,15 +182,15 @@ public sealed class CaptureMethodAndCooldownTests
             SignerVerificationMethod.SmsOtp,
             "hash-old",
             now,
-            TimeSpan.FromMinutes(10)
+            TestSignatureLimits.Verification
         );
 
         var afterCooldown = request.IssueVerificationChallenge(
             signer.Id,
             SignerVerificationMethod.SmsOtp,
             "hash-new",
-            now.Add(SignatureRequest.ChallengeResendCooldown).AddSeconds(1),
-            TimeSpan.FromMinutes(10)
+            now.Add(TestSignatureLimits.Verification.ResendCooldown).AddSeconds(1),
+            TestSignatureLimits.Verification
         );
 
         Assert.True(afterCooldown.IsSuccess);
@@ -202,6 +202,7 @@ public sealed class CaptureMethodAndCooldownTests
     {
         var draft = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Test",
@@ -215,11 +216,11 @@ public sealed class CaptureMethodAndCooldownTests
             )
             .Value;
         var signer = draft
-            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("The Signer").Value, null)
+            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("The Signer").Value, null)
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
+        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
+        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -228,6 +229,7 @@ public sealed class CaptureMethodAndCooldownTests
     {
         var draft = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Test",
@@ -242,6 +244,7 @@ public sealed class CaptureMethodAndCooldownTests
             .Value;
         var signer = draft
             .AddSigner(
+                TestSignatureLimits.Default,
                 SignerEmail.Create("s@example.com").Value,
                 SignerFullName.Create("The Signer").Value,
                 null,
@@ -249,8 +252,8 @@ public sealed class CaptureMethodAndCooldownTests
             )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
+        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
+        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
         draft.Send(DateTime.UtcNow);
         return draft;
     }

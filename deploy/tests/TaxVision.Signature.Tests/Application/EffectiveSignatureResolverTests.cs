@@ -89,6 +89,9 @@ public sealed class EffectiveSignatureResolverTests
             Task.FromResult<TenantSignatureSettings?>(settings);
 
         public Task AddAsync(TenantSignatureSettings s, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<Guid>> ListTenantIdsWithPurgeEnabledAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
     private sealed class FakeProfiles(SignatureProfile? personalDefault, SignatureProfile? officeDefault)

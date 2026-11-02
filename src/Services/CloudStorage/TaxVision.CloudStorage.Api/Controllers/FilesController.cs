@@ -219,13 +219,19 @@ public sealed class FilesController(
     )]
     [RateLimit("cloudstorage.f.download_url")]
     [ProducesResponseType<DownloadUrlResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> IssueDownloadUrl(Guid fileId, CancellationToken ct)
+    public async Task<IActionResult> IssueDownloadUrl(
+        Guid fileId,
+        [FromQuery] string? purpose,
+        CancellationToken ct
+    )
     {
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        // `?purpose=preview` = URL para el visor (capacidad Preview, inline); sin él, descarga.
+        var forPreview = string.Equals(purpose, "preview", StringComparison.OrdinalIgnoreCase);
         var result = await bus.InvokeAsync<Result<DownloadUrlResponse>>(
-            new IssueDownloadUrlQuery(tenantId, actorId, scope, fileId, AuditContext()),
+            new IssueDownloadUrlQuery(tenantId, actorId, scope, fileId, AuditContext(), forPreview),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -330,7 +336,9 @@ public sealed class FilesController(
 
     [HttpPost("{fileId:guid}/copies")]
     [HasPermission(CloudStoragePermissions.FileUpload)]
-    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    // Service: Signature deja una copia del documento firmado en el portal de cada cliente firmante
+    // cuando firman varios (copia en servidor + scan, sin bajar ni subir bytes). Requiere file.upload.
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin, ActorType.Service)]
     [RateLimit("cloudstorage.i.upload")]
     [ProducesResponseType<CopiedFileResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Copy(Guid fileId, CopyFileRequest request, CancellationToken ct)

@@ -3,13 +3,13 @@ using TaxVision.Signature.Domain.Settings;
 namespace TaxVision.Signature.Application.Settings;
 
 /// <summary>
-/// Proyección de <see cref="SignaturePlanConstraints"/> incluida en
-/// <see cref="TenantSignatureSettingsResponse"/> para que el frontend conozca
-/// los techos del plan y deshabilite opciones que los excedan.
+/// Techos vigentes del tenant (plan + excepción de PlatformAdmin) incluidos en
+/// <see cref="TenantSignatureSettingsResponse"/> para que el frontend deshabilite lo que los exceda.
 /// </summary>
 public sealed record SignaturePlanConstraintsResponse(
+    int MaxDocumentsPerRequest,
+    int MaxSignersPerRequest,
     long MaxAllowedPdfBytes,
-    long MaxAllowedImageBytes,
     int MaxAllowedPages,
     int MinRetentionYears,
     bool PurgeAllowed,
@@ -17,15 +17,16 @@ public sealed record SignaturePlanConstraintsResponse(
     int MaxTokenExpirationHours
 )
 {
-    public static SignaturePlanConstraintsResponse From(SignaturePlanConstraints constraints) =>
+    public static SignaturePlanConstraintsResponse From(SignatureLimits ceilings) =>
         new(
-            constraints.MaxAllowedPdfBytes,
-            constraints.MaxAllowedImageBytes,
-            constraints.MaxAllowedPages,
-            constraints.MinRetentionYears,
-            constraints.PurgeAllowed,
-            ChannelsAsStrings(constraints.AllowedChannels),
-            constraints.MaxTokenExpirationHours
+            ceilings.MaxDocumentsPerRequest,
+            ceilings.MaxSignersPerRequest,
+            ceilings.MaxPdfBytes,
+            ceilings.MaxPagesPerDocument,
+            ceilings.MinRetentionYears,
+            ceilings.PurgeAllowed,
+            ChannelsAsStrings(ceilings.AllowedChannels),
+            ceilings.MaxTokenHours
         );
 
     private static IReadOnlyList<string> ChannelsAsStrings(VerificationChannel mask)

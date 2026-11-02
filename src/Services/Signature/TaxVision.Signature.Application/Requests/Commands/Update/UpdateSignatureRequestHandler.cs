@@ -2,6 +2,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Categories;
+using TaxVision.Signature.Application.Limits;
 
 namespace TaxVision.Signature.Application.Requests.Commands.Update;
 
@@ -14,6 +15,7 @@ public static class UpdateSignatureRequestHandler
     public static async Task<Result> Handle(
         UpdateSignatureRequestCommand cmd,
         ISignatureRequestRepository repository,
+        ISignatureLimitsResolver limits,
         IUnitOfWork unitOfWork,
         ISignatureRequestListCacheInvalidator listCache,
         ISignatureCategoryResolver categoryResolver,
@@ -28,7 +30,14 @@ public static class UpdateSignatureRequestHandler
         if (category.IsFailure)
             return Result.Failure(category.Error);
 
-        var metadata = request.UpdateMetadata(cmd.Title, cmd.Description, category.Value, cmd.TokenExpirationHours);
+        var policy = await limits.ResolveAsync(cmd.TenantId, ct);
+        var metadata = request.UpdateMetadata(
+            policy.ForRequests,
+            cmd.Title,
+            cmd.Description,
+            category.Value,
+            cmd.TokenExpirationHours
+        );
         if (metadata.IsFailure)
             return metadata;
 
@@ -73,7 +82,7 @@ public static class UpdateSignatureRequestHandler
 
         if (cmd.ExpirationEnabled is { } expOn)
         {
-            var applied = expOn ? request.EnableExpiration(cmd.TokenExpirationHours) : request.DisableExpiration();
+            var applied = expOn ? request.EnableExpiration(policy.ForRequests, cmd.TokenExpirationHours) : request.DisableExpiration();
             if (applied.IsFailure)
                 return applied;
         }
