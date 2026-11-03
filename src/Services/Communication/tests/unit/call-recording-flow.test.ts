@@ -131,7 +131,7 @@ describe('startCallRecording — policy fija AllAcceptedRequired', () => {
     expect(result.isSuccess).toBe(false);
     if (!result.isSuccess) expect(result.error.code).toBe('RecordingSession.ConsentPolicyNotSatisfied');
 
-    const session = await harness.recordingSessions.findByScope(call.tenantId, RecordingScope.Call, call.id);
+    const session = await harness.recordingSessions.findLatestByScope(call.tenantId, RecordingScope.Call, call.id);
     expect(session?.sessionState).toBe('Requesting');
     expect(harness.publisher.events).toHaveLength(0);
   });
@@ -168,7 +168,7 @@ describe('startCallRecording — policy fija AllAcceptedRequired', () => {
     );
     expect(result.isSuccess).toBe(true);
 
-    const session = await harness.recordingSessions.findByScope(call.tenantId, RecordingScope.Call, call.id);
+    const session = await harness.recordingSessions.findLatestByScope(call.tenantId, RecordingScope.Call, call.id);
     expect(session?.sessionState).toBe('Recording');
     expect(harness.publisher.events).toHaveLength(1);
     expect(harness.publisher.events[0]?.eventType).toBe('communication.call.recording_started.v1');

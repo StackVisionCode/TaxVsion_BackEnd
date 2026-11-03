@@ -85,4 +85,31 @@ public sealed class EmailLayoutVersion : BaseEntity
     }
 
     internal void Archive() => Status = EmailVersionStatus.Archived;
+
+    /// <summary>
+    /// CloudStorage rechazó <paramref name="fileId"/>: una Draft suelta el design/preview que lo apunten.
+    /// Published/Archived son inmutables y el HTML es obligatorio, no se suelta.
+    /// </summary>
+    internal bool ReleaseRejectedOptionalFile(Guid fileId)
+    {
+        if (Status != EmailVersionStatus.Draft)
+            return false;
+
+        var released = false;
+        if (DesignJsonFileId == fileId)
+        {
+            DesignJsonFileId = null;
+            DesignJsonStorageKey = null;
+            released = true;
+        }
+
+        if (PreviewImageFileId == fileId)
+        {
+            PreviewImageFileId = null;
+            PreviewImageStorageKey = null;
+            released = true;
+        }
+
+        return released;
+    }
 }

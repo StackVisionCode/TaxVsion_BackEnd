@@ -52,6 +52,7 @@ export async function continueMeeting(
       requireWaitingRoom: snapshot.requireWaitingRoom,
       recordingRequested: snapshot.recordingRequested,
       transcriptLanguage: snapshot.transcriptLanguage,
+      guestsAllowed: snapshot.guestsAllowed,
       continuationOfMeetingId: snapshot.id,
     },
     deps,

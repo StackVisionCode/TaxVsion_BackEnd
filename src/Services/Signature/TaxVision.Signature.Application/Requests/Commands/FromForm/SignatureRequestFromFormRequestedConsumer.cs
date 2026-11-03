@@ -10,6 +10,7 @@ using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Application.Requests.Commands.Send;
+using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using TaxVision.Signature.Domain.Settings;
@@ -21,14 +22,40 @@ namespace TaxVision.Signature.Application.Requests.Commands.FromForm;
 /// P-18 — Signature crea una solicitud de firma desde un comando de Tasks (cola
 /// signature-client-form-commands). Valida owner/carpeta y el hash esperado de la copia; crea la
 /// solicitud con firmantes y campos; guarda ANTES de publicar; invoca Send si AutoSend. Idempotente
-/// por ExternalReference. Un fallo de negocio se PUBLICA (…Failed), no se lanza (el reintento no ayuda);
-/// un archivo aún no disponible SÍ se lanza para reintentar por el inbox durable.
+/// por ExternalReference. Un fallo de negocio se PUBLICA (…Failed), no se lanza (el reintento no ayuda).
+/// Una copia que no estará nunca (rechazada, infectada, bloqueada, borrada) también se publica como Failed
+/// al momento; una copia en vuelo (404 o aún escaneando) se reintenta con <see cref="CopyWaitCooldowns"/> y,
+/// en el último intento, se publica Failed en vez de acabar en la cola de errores sin que Tasks se entere.
+/// Un fallo de infraestructura (5xx, timeout) sigue el camino estándar: reintento y cola de errores.
 /// </summary>
 public static class SignatureRequestFromFormRequestedConsumer
 {
     private const string OwnerTypeSignature = "Signature";
     private const string FolderTypeSignatures = "Signatures";
     private const string AvailableStatus = "Available";
+
+    /// <summary>
+    /// Espera de una copia en vuelo: un reintento por cada pausa; el intento que sigue a la última es el final.
+    /// Program.cs registra con este mismo arreglo la política de <see cref="SignatureCopyNotReadyException"/>.
+    /// </summary>
+    public static readonly TimeSpan[] CopyWaitCooldowns =
+    [
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(15),
+    ];
+
+    /// <summary>Número del último intento (Envelope.Attempts empieza en 1): el primero más un reintento por pausa.</summary>
+    public static int FinalAttempt => CopyWaitCooldowns.Length + 1;
+
+    // Estados de CloudStorage en los que el archivo ya no va a estar disponible.
+    private static readonly string[] FinalUnavailableStatuses =
+    [
+        "Infected",
+        "ScanFailed",
+        "SoftDeleted",
+        "BlockedByPolicy",
+    ];
 
     public static async Task Handle(
         SignatureRequestFromFormRequestedIntegrationEvent command,
@@ -44,6 +71,8 @@ public static class SignatureRequestFromFormRequestedConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ISignatureRequestListCacheInvalidator listCache,
+        IFileMetadataRefRepository files,
+        Envelope envelope,
         ILogger<SignatureRequestFromFormRequestedIntegrationEvent> logger,
         CancellationToken ct
     )
@@ -70,16 +99,41 @@ public static class SignatureRequestFromFormRequestedConsumer
             foreach (var doc in command.Documents)
             {
                 var lookup = await storage.GetFileAsync(command.TenantId, doc.FileId, ct);
-                if (lookup.IsFailure)
-                    // La copia puede no estar disponible todavía: reintentar por el inbox durable.
-                    throw new InvalidOperationException($"Signature copy {doc.FileId} is not available yet; retrying.");
+                var availability = await ResolveAvailabilityAsync(command.TenantId, doc.FileId, lookup, files, ct);
+                if (availability == CopyAvailability.LookupUnavailable)
+                    // CloudStorage no respondió (5xx, timeout): camino estándar de reintento y cola de errores.
+                    throw new InvalidOperationException(
+                        $"Signature copy {doc.FileId} could not be looked up ({lookup.Error.Code}); retrying."
+                    );
+
+                var finalAttempt = envelope.Attempts >= FinalAttempt;
+                if (
+                    availability == CopyAvailability.Unavailable
+                    || (availability == CopyAvailability.InFlight && finalAttempt)
+                )
+                {
+                    logger.LogWarning(
+                        "Signature copy {FileId} for form request {RequestId} is {Availability} (attempt {Attempt}); rejecting.",
+                        doc.FileId,
+                        command.RequestId,
+                        availability,
+                        envelope.Attempts
+                    );
+                    await PublishFailedAsync(
+                        command,
+                        SignatureRequestFromFormOutcomes.FileNotAvailable,
+                        correlation,
+                        bus
+                    );
+                    return;
+                }
+
+                if (availability == CopyAvailability.InFlight)
+                    throw new SignatureCopyNotReadyException(
+                        $"Signature copy {doc.FileId} is not available yet (attempt {envelope.Attempts} of {FinalAttempt}); retrying."
+                    );
 
                 var meta = lookup.Value;
-                if (
-                    !string.Equals(meta.Status, AvailableStatus, StringComparison.OrdinalIgnoreCase)
-                    || string.IsNullOrEmpty(meta.ChecksumSha256)
-                )
-                    throw new InvalidOperationException($"Signature copy {doc.FileId} is not available yet; retrying.");
 
                 if (
                     !string.Equals(meta.OwnerType, OwnerTypeSignature, StringComparison.OrdinalIgnoreCase)
@@ -194,6 +248,45 @@ public static class SignatureRequestFromFormRequestedConsumer
             if (command.AutoSend)
                 await bus.PublishAsync(new SendSignatureRequestCommand(command.TenantId, request.Id));
         }
+    }
+
+    private enum CopyAvailability
+    {
+        Available,
+        InFlight,
+        Unavailable,
+        LookupUnavailable,
+    }
+
+    // CloudStorage es la fuente; la proyección local aporta los resultados finales que ya anunció
+    // (guardado rechazado, infección, bloqueo, scan fallido), que el lookup puede ver como 404.
+    private static async Task<CopyAvailability> ResolveAvailabilityAsync(
+        Guid tenantId,
+        Guid fileId,
+        Result<SignatureFileMetadata> lookup,
+        IFileMetadataRefRepository files,
+        CancellationToken ct
+    )
+    {
+        if (lookup.IsSuccess)
+        {
+            var meta = lookup.Value;
+            if (string.Equals(meta.Status, AvailableStatus, StringComparison.OrdinalIgnoreCase))
+                return string.IsNullOrEmpty(meta.ChecksumSha256)
+                    ? CopyAvailability.InFlight
+                    : CopyAvailability.Available;
+            if (FinalUnavailableStatuses.Contains(meta.Status, StringComparer.OrdinalIgnoreCase))
+                return CopyAvailability.Unavailable;
+        }
+
+        var projection = await files.GetByFileIdAsync(tenantId, fileId, ct);
+        if (projection is { HasScanOutcome: true } && projection.Status != FileScanStatus.Available)
+            return CopyAvailability.Unavailable;
+
+        if (lookup.IsSuccess || lookup.Error.Code == SignatureStorage.FileNotFoundCode)
+            return CopyAvailability.InFlight;
+
+        return CopyAvailability.LookupUnavailable;
     }
 
     // Completa el email (y el nombre si falta) de los firmantes dirigidos a un cliente: el comando llega

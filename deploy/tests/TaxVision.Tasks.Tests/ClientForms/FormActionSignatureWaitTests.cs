@@ -172,6 +172,19 @@ public sealed class FormActionSignatureWaitTests
         Assert.Equal(FormActionRunStatus.Requested, Assert.Single(request.ActionRuns).Status);
     }
 
+    [Fact]
+    public void A_repeated_signature_failure_changes_nothing_the_second_time()
+    {
+        var (request, _) = Waiting();
+
+        Assert.True(request.MarkSignatureFailed(1).IsSuccess);
+        var repeated = request.MarkSignatureFailed(1);
+
+        Assert.True(repeated.IsFailure);
+        Assert.Equal(FormRequestErrors.SignatureNotPending, repeated.Error);
+        Assert.Equal(FormRevisionSignatureStatus.Failed, request.RevisionSignatureStatus(1));
+    }
+
     // Enviada y planificada (esperando); la firma de la revisión 1 está en curso.
     private static (FormRequest Request, FormActionPlanner Planner) Waiting()
     {

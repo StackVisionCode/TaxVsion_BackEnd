@@ -5,12 +5,13 @@ import {
   RecordingSessionState,
   RecordingStopReason,
   type RecordingScope,
+  isCaptureActiveRecordingState,
   isTerminalRecordingState,
 } from './recording-session-state.js';
 
 /**
- * Grabacion de un Meeting o Call — tabla propia (RecordingSession), NO columna de Meeting/Call. Una
- * sola sesion por (Scope, ScopeId) durante toda la vida del meeting/call; si falla, queda Failed.
+ * Grabacion de un Meeting o Call — tabla propia (RecordingSession), NO columna de Meeting/Call. D-71:
+ * puede haber varias por meeting/call (`sequence` 1, 2, ...), pero solo una capturando a la vez.
  *
  * Quien orquesta las transiciones es Meeting/Call (autorizacion host/cohost); esta clase protege el
  * state machine (ver recording-session-state.ts) y los datos de la captura server-side de F7.
@@ -57,6 +58,8 @@ export interface RecordingSessionSnapshot {
   readonly readyAtUtc: Date | null;
   readonly tracksPurgedAtUtc: Date | null;
   readonly purgedAtUtc: Date | null;
+  /** D-71: numero de la grabacion dentro del meeting/call. */
+  readonly sequence: number;
 }
 
 /**
@@ -76,14 +79,15 @@ export class RecordingSession {
   }
 
   /**
-   * Crea una nueva sesion en Requesting. El llamador (Meeting/Call.requestRecording) carga antes la
-   * existente para distinguir "no existe" de "existe y viola el @@unique".
+   * Crea una nueva sesion en Requesting. El llamador (Meeting/Call.requestRecording) decide con la
+   * ultima sesion si se puede pedir otra y con que numero.
    */
   static request(input: {
     tenantId: string;
     scope: RecordingScope;
     scopeId: string;
     requestedByUserId: string;
+    sequence?: number;
     now?: Date;
   }): Result<RecordingSession> {
     return Result.ok(
@@ -112,6 +116,7 @@ export class RecordingSession {
         readyAtUtc: null,
         tracksPurgedAtUtc: null,
         purgedAtUtc: null,
+        sequence: input.sequence ?? 1,
       }),
     );
   }
@@ -301,6 +306,15 @@ export class RecordingSession {
   get scope(): RecordingScope {
     return this.state.scope;
   }
+  get sequence(): number {
+    return this.state.sequence;
+  }
+
+  /** D-71: todavia captura (o esta por hacerlo); mientras tanto no se puede pedir otra grabacion. */
+  get isCapturing(): boolean {
+    return isCaptureActiveRecordingState(this.state.state);
+  }
+
   get scopeId(): string {
     return this.state.scopeId;
   }

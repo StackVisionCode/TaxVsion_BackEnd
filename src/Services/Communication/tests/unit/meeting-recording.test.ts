@@ -50,7 +50,7 @@ function processingSessionFor(meeting: Meeting, recordingFileId: string | null =
 describe('Meeting.requestRecording', () => {
   it('host can request recording; returns a Requesting session and the joined participant ids', () => {
     const { meeting, host, attendeeUserId } = liveMeetingWithAttendee();
-    const r = meeting.requestRecording({ actorUserId: host.userId, existingSession: null });
+    const r = meeting.requestRecording({ actorUserId: host.userId, latestSession: null });
     expect(r.isSuccess).toBe(true);
     if (!r.isSuccess) return;
     expect(r.value.session.sessionState).toBe('Requesting');
@@ -61,18 +61,33 @@ describe('Meeting.requestRecording', () => {
 
   it('rejects non-host/non-cohost actors', () => {
     const { meeting } = liveMeetingWithAttendee();
-    const r = meeting.requestRecording({ actorUserId: u(), existingSession: null });
+    const r = meeting.requestRecording({ actorUserId: u(), latestSession: null });
     expect(r.isSuccess).toBe(false);
     if (!r.isSuccess) expect(r.error.code).toBe('Meeting.HostOnly');
   });
 
-  it('rejects a second request when a session already exists for this meeting', () => {
+  it('rejects another request while the latest recording is still capturing', () => {
     const { meeting, host } = liveMeetingWithAttendee();
-    const first = meeting.requestRecording({ actorUserId: host.userId, existingSession: null });
+    const first = meeting.requestRecording({ actorUserId: host.userId, latestSession: null });
     if (!first.isSuccess) throw new Error();
-    const second = meeting.requestRecording({ actorUserId: host.userId, existingSession: first.value.session });
+    const second = meeting.requestRecording({ actorUserId: host.userId, latestSession: first.value.session });
     expect(second.isSuccess).toBe(false);
-    if (!second.isSuccess) expect(second.error.code).toBe('Meeting.Recording.AlreadyRequested');
+    if (!second.isSuccess) expect(second.error.code).toBe('Meeting.Recording.InProgress');
+  });
+
+  it('D-71: a new recording can start once the previous one stopped, with the next number', () => {
+    const { meeting, host } = liveMeetingWithAttendee();
+    const first = meeting.requestRecording({ actorUserId: host.userId, latestSession: null });
+    if (!first.isSuccess) throw new Error();
+    expect(first.value.session.sequence).toBe(1);
+    const session = first.value.session;
+    expect(session.start({ policyAllows: true, now: new Date(), captureMode: 'Server' }).isSuccess).toBe(true);
+    expect(session.stop(new Date()).isSuccess).toBe(true);
+    expect(session.beginComposing().isSuccess).toBe(true);
+
+    const second = meeting.requestRecording({ actorUserId: host.userId, latestSession: session });
+    expect(second.isSuccess).toBe(true);
+    if (second.isSuccess) expect(second.value.session.sequence).toBe(2);
   });
 });
 
@@ -95,7 +110,7 @@ describe('Meeting.recordConsent', () => {
 describe('Meeting.startRecording / stopRecording', () => {
   it('host starts recording when policy allows', () => {
     const { meeting, host } = liveMeetingWithAttendee();
-    const requested = meeting.requestRecording({ actorUserId: host.userId, existingSession: null });
+    const requested = meeting.requestRecording({ actorUserId: host.userId, latestSession: null });
     if (!requested.isSuccess) throw new Error();
     const r = meeting.startRecording({ actorUserId: host.userId, session: requested.value.session, policyAllows: true });
     expect(r.isSuccess).toBe(true);
@@ -104,7 +119,7 @@ describe('Meeting.startRecording / stopRecording', () => {
 
   it('rejects starting when actor is not host/cohost', () => {
     const { meeting, host } = liveMeetingWithAttendee();
-    const requested = meeting.requestRecording({ actorUserId: host.userId, existingSession: null });
+    const requested = meeting.requestRecording({ actorUserId: host.userId, latestSession: null });
     if (!requested.isSuccess) throw new Error();
     const r = meeting.startRecording({ actorUserId: u(), session: requested.value.session, policyAllows: true });
     expect(r.isSuccess).toBe(false);
@@ -114,7 +129,7 @@ describe('Meeting.startRecording / stopRecording', () => {
   it('rejects a session that belongs to a different meeting', () => {
     const { meeting: meetingA, host: hostA } = liveMeetingWithAttendee();
     const { meeting: meetingB, host: hostB } = liveMeetingWithAttendee();
-    const requestedOnB = meetingB.requestRecording({ actorUserId: hostB.userId, existingSession: null });
+    const requestedOnB = meetingB.requestRecording({ actorUserId: hostB.userId, latestSession: null });
     if (!requestedOnB.isSuccess) throw new Error();
     const r = meetingA.startRecording({
       actorUserId: hostA.userId,
@@ -127,7 +142,7 @@ describe('Meeting.startRecording / stopRecording', () => {
 
   it('host stops a Recording session', () => {
     const { meeting, host } = liveMeetingWithAttendee();
-    const requested = meeting.requestRecording({ actorUserId: host.userId, existingSession: null });
+    const requested = meeting.requestRecording({ actorUserId: host.userId, latestSession: null });
     if (!requested.isSuccess) throw new Error();
     meeting.startRecording({ actorUserId: host.userId, session: requested.value.session, policyAllows: true });
     const r = meeting.stopRecording({ actorUserId: host.userId, session: requested.value.session });
@@ -139,7 +154,7 @@ describe('Meeting.startRecording / stopRecording', () => {
 describe('Meeting.failRecording / completeRecording', () => {
   it('fails a session without requiring a specific actor', () => {
     const { meeting, host } = liveMeetingWithAttendee();
-    const requested = meeting.requestRecording({ actorUserId: host.userId, existingSession: null });
+    const requested = meeting.requestRecording({ actorUserId: host.userId, latestSession: null });
     if (!requested.isSuccess) throw new Error();
     const r = meeting.failRecording({ session: requested.value.session, reason: 'worker crashed' });
     expect(r.isSuccess).toBe(true);

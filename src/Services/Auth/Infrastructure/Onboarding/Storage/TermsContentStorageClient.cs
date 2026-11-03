@@ -1,8 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
@@ -11,29 +9,26 @@ using Minio;
 using Minio.DataModel.Args;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Infrastructure.Onboarding.Security;
-using Wolverine;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.Storage;
 
 /// <summary>
 /// Auditoría (gap MinIO/legal-docs) — combina las dos mitades del patrón D0/D1, igual que
 /// Scribe's <c>CloudStorageClient</c>: sube directo a MinIO con IAM propia de Auth (nunca las
-/// credenciales root de CloudStorage) y publica <see cref="SaveFileRequestedIntegrationEvent"/>
-/// para que CloudStorage lo registre/escanee; y lee vía HTTP+M2M (mint de JWT en proceso, mismo
-/// patrón que <c>CloudStorageDownloadUrlClient</c>, pero con su propio <c>ClientId</c> — cada
-/// cliente M2M de Onboarding usa parámetros fijos por <c>ClientId</c>, ver
+/// credenciales root de CloudStorage); el <c>SaveFileRequestedIntegrationEvent</c> lo publica
+/// <c>PublishTermsVersionHandler</c> después de guardar la versión. Lee vía HTTP+M2M (mint de JWT en
+/// proceso, mismo patrón que <c>CloudStorageDownloadUrlClient</c>, pero con su propio <c>ClientId</c> —
+/// cada cliente M2M de Onboarding usa parámetros fijos por <c>ClientId</c>, ver
 /// <c>OnboardingServiceTokenCache</c> Auditoría F27).
 /// <para>
 /// El documento vive bajo <see cref="PlatformTenant.Id"/> con <c>OwnerType=Tenant</c>/<c>OwnerId=null</c>
 /// y <c>FolderType=Templates</c> (política existente: 5 MB, permite .html/text-html) — es un recurso
-/// de plataforma, no de un tenant real, igual que los templates System de Scribe.
+/// de plataforma, no de un tenant real, igual que los templates System de Scribe (ver <c>TermsContentFile</c>).
 /// </para>
 /// </summary>
 public sealed class TermsContentStorageClient(
     IMinioClient minioClient,
     IOptions<AuthMinioOptions> minioOptions,
-    IMessageBus bus,
-    ICorrelationContext correlation,
     HttpClient httpClient,
     OnboardingServiceTokenCache tokenCache,
     ILogger<TermsContentStorageClient> logger
@@ -44,12 +39,11 @@ public sealed class TermsContentStorageClient(
 
     private static readonly JsonSerializerOptions ResponseJsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public async Task<Result> UploadAsync(
+    public async Task<Result<StoredTermsContent>> UploadAsync(
         Guid fileId,
         byte[] content,
         string fileName,
         string contentType,
-        Guid actorId,
         CancellationToken ct = default
     )
     {
@@ -72,30 +66,12 @@ public sealed class TermsContentStorageClient(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "MinIO PUT failed for terms content upload {FileName} ({FileId}).", fileName, fileId);
-            return Result.Failure(new Error("TermsContentStorageClient.Upload", "MinIO PUT failed."));
+            return Result.Failure<StoredTermsContent>(
+                new Error("TermsContentStorageClient.Upload", "MinIO PUT failed.")
+            );
         }
 
-        await bus.PublishAsync(
-            new SaveFileRequestedIntegrationEvent
-            {
-                TenantId = PlatformTenant.Id,
-                CorrelationId = correlation.CorrelationId,
-                FileId = fileId,
-                RequestingService = "auth",
-                SourceBucket = opt.TempBucket,
-                SourceObjectKey = sourceObjectKey,
-                ActorId = actorId,
-                OwnerType = "Tenant",
-                OwnerId = null,
-                FolderType = "Templates",
-                TaxYear = null,
-                OriginalName = fileName,
-                ContentType = contentType,
-                SizeBytes = content.LongLength,
-            }
-        );
-
-        return Result.Success();
+        return Result.Success(new StoredTermsContent(fileId, opt.TempBucket, sourceObjectKey));
     }
 
     public async Task<Result<string>> DownloadTextAsync(Guid fileId, CancellationToken ct = default)

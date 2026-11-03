@@ -171,6 +171,14 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                     b.Property<Guid?>("SignatureCopyFileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("SignatureCopyFolderType")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("SignatureCopyOwnerType")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
                     b.Property<string>("SourceService")
                         .IsRequired()
                         .HasMaxLength(60)

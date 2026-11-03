@@ -332,10 +332,13 @@ public sealed class FormSubmissionRevision : BaseEntity
         }
     }
 
-    internal void MarkSignatureFailed()
+    /// <summary>Solo desde una firma en curso; un fallo repetido no cambia nada (devuelve false).</summary>
+    internal bool MarkSignatureFailed()
     {
-        if (SignatureStatus is FormRevisionSignatureStatus.Requesting or FormRevisionSignatureStatus.Sent)
-            SignatureStatus = FormRevisionSignatureStatus.Failed;
+        if (SignatureStatus is not (FormRevisionSignatureStatus.Requesting or FormRevisionSignatureStatus.Sent))
+            return false;
+        SignatureStatus = FormRevisionSignatureStatus.Failed;
+        return true;
     }
 
     internal void MarkSignatureSigned()

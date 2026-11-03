@@ -563,6 +563,27 @@
 					]
 				},
 				{
+					"name": "Resolver código para unirse (staff, MNT-01) — GET meetings/code/:shortCode",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/code/R8HBKMUEQ",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"code",
+								"R8HBKMUEQ"
+							]
+						},
+						"description": "Requiere communication.meeting.join (Employee y Tenant Admin lo tienen). Busca el código solo en la oficina del JWT: un código de otra oficina o inexistente → 404 `Meeting.NotFound`. Respuesta `{ meetingId, title, hostDisplayName, status, requiresPasscode, isLocked }`; el CRM entra por el lobby con el `meetingId` real (bloqueo, passcode y sala de espera los aplica `meeting.join`). A diferencia de `by-code` (público, sin id)."
+					},
+					"response": []
+				},
+				{
 					"name": "Crear meeting",
 					"event": [
 						{
@@ -585,7 +606,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"title\": \"Revisión documentos 1040\",\n  \"description\": \"Revisión de documentos para la declaración 1040\",\n  \"maxParticipants\": 10,\n  \"scheduledForUtc\": \"2026-07-15T18:00:00.000Z\",\n  \"passcode\": \"abc123\",\n  \"requireWaitingRoom\": false,\n  \"recordingRequested\": false,\n  \"scheduledDurationMinutes\": 45,\n  \"transcriptLanguage\": null\n}"
+							"raw": "{\n  \"title\": \"Revisi\\u00f3n documentos 1040\",\n  \"description\": \"Revisi\\u00f3n de documentos para la declaraci\\u00f3n 1040\",\n  \"maxParticipants\": 10,\n  \"scheduledForUtc\": \"2026-07-15T18:00:00.000Z\",\n  \"passcode\": \"abc123\",\n  \"requireWaitingRoom\": false,\n  \"recordingRequested\": false,\n  \"scheduledDurationMinutes\": 45,\n  \"transcriptLanguage\": null,\n  \"guestsAllowed\": true\n}"
 						},
 						"url": {
 							"raw": "{{UrlBase}}/communication/meetings",
@@ -948,6 +969,128 @@
 					}
 				},
 				{
+					"name": "Acceso de externos de la reunión (D-69) — GET guest-access",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/guest-access",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"{{meetingId}}",
+								"guest-access"
+							]
+						},
+						"description": "Host/cohost (`communication.meeting.host`). Respuesta `{ guestsAllowed, officeAllowsGuests, guestLinkUrl }`; `guestLinkUrl` null = enlace apagado (el token se deriva con HMAC por versión, nunca se guarda). 404 `Meeting.NotFound`, 403 `Meeting.HostOnly`."
+					},
+					"response": []
+				},
+				{
+					"name": "Permitir / quitar externos en vivo (D-69) — PUT guest-access",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"allowed\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/guest-access",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"{{meetingId}}",
+								"guest-access"
+							]
+						},
+						"description": "Host/cohost. `allowed:false` rechaza a los externos que esperaban (`meeting.participant.denied`), apaga el enlace y bloquea nuevos; los que ya están dentro siguen. `allowed:true` falla con 400 `Meeting.GuestsNotAllowed` si la oficina/plan no admite externos. Emite `meeting.state.changed { guestsAllowed, guestLinkEnabled }`."
+					},
+					"response": []
+				},
+				{
+					"name": "Encender / rotar enlace de la reunión (D-68) — POST guest-link",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"rotate\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/guest-link",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"{{meetingId}}",
+								"guest-link"
+							]
+						},
+						"description": "Host/cohost. Enlace compartible de varios usos: cada persona entra como guest distinto (UUID propio en el ticket) y SIEMPRE espera a que la admitan (D-67); con la reunión bloqueada `join-by-token` responde 403 `Meeting.Locked`, sin nombre 400 `Meeting.Guest.NameRequired`. `rotate:true` invalida el enlace anterior para quien no haya entrado. Rate limit de `join-by-token` por enlace + IP."
+					},
+					"response": []
+				},
+				{
+					"name": "Apagar enlace de la reunión (D-68) — DELETE guest-link",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/guest-link",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"{{meetingId}}",
+								"guest-link"
+							]
+						},
+						"description": "Host/cohost. Quien ya entró sigue; nadie nuevo puede pedir entrar con el enlace."
+					},
+					"response": []
+				},
+				{
 					"name": "Crear invitaciones a meeting",
 					"event": [
 						{
@@ -984,7 +1127,7 @@
 								"invitations"
 							]
 						},
-						"description": "Requiere estar autenticado (host o cohost del meeting). invitees: array de 1 a 50 items. kind (obligatorio): 'employee' | 'customer' | 'external'. employee: userId (Auth). customer: customerId (se resuelve al userId de portal activo para que el meeting aparezca en su lista + reciba el aviso realtime meeting.invited); email/name opcionales. external: email/name (sin cuenta, entra por token). Al crear la invitación se emite el socket 'meeting.invited' al room del invitado con cuenta; al iniciar el meeting se emite 'meeting.started' a invitados/participantes."
+						"description": "Requiere estar autenticado (host o cohost del meeting). invitees: array de 1 a 50 items. kind (obligatorio): 'employee' | 'customer' | 'external'. employee: userId (Auth). customer: customerId (se resuelve al userId de portal activo para que el meeting aparezca en su lista + reciba el aviso realtime meeting.invited); email/name opcionales. external: email/name (sin cuenta, entra por token). Al crear la invitación se emite el socket 'meeting.invited' al room del invitado con cuenta; al iniciar el meeting se emite 'meeting.started' a invitados/participantes.\n\nMNT-01: dentro de la oficina de la reunión, un `external` cuyo email es de staff se invita como empleado y el de UN cliente como cliente (con varios clientes con ese email queda externo; el mismo cliente en otra oficina es otra ficha y nunca coincide). Quien ya tiene invitación abierta (o se repite en el lote) no se reenvía: aparece en `skipped: [{ email, name, reason: \"AlreadyInvited\" }]`. Cada invitación devuelve su `inviteeKind`. Externos con la reunión cerrada a ellos → 400 `Meeting.GuestsNotAllowed`."
 					}
 				},
 				{
@@ -1054,7 +1197,7 @@
 								"join-by-token"
 							]
 						},
-						"description": "PUBLICA — sin JWT, rate-limited (config.rateLimit.meetingJoinByToken). Flujo de guest join. token obligatorio (64 caracteres); displayName opcional. Anti-enumeración: cualquier fallo (revoked/used/expired/not-found) devuelve 404 genérico 'Meeting.Invitation.NotFound'."
+						"description": "PUBLICA — sin JWT, rate-limited (config.rateLimit.meetingJoinByToken). Flujo de guest join. token obligatorio (64 caracteres); displayName opcional. Anti-enumeración: cualquier fallo (revoked/used/expired/not-found) devuelve 404 genérico 'Meeting.Invitation.NotFound'.\n\nD-68: acepta también el enlace de la reunión (`{meetingId}.{mac}`) con `displayName` obligatorio. La respuesta trae `guestUserId` (identidad del ticket) e `invitationId` (null por enlace). 403 `Meeting.GuestsNotAllowed` / `Meeting.Locked`, 400 `Meeting.Guest.NameRequired`, resto 404 uniforme."
 					}
 				},
 				{
@@ -1877,14 +2020,14 @@
 								"settings"
 							]
 						},
-						"description": "Requiere communication.settings.manage. Devuelve cuatro bloques: settings (ajustes de la oficina; los numéricos nuevos son null = hereda), limits (proyección del plan: null = el plan no define la clave), constraints (techos fijados por PlatformAdmin, null si no hay) y effective (valores vigentes resueltos: global → plan → techo → oficina, con el bloque ceilings = lo máximo que la oficina puede fijar). Tras un cambio llega el socket settings.changed al room de miembros.\n\nF9: la respuesta trae además `ranges` (mínimo y máximo técnico de cada número editable, incluidas las retenciones) y `transcriptPromptMaxLength`; el CRM los usa en Settings → Communication para no repetirlos."
+						"description": "Requiere communication.settings.manage. Devuelve cuatro bloques: settings (ajustes de la oficina; los numéricos nuevos son null = hereda), limits (proyección del plan: null = el plan no define la clave), constraints (techos fijados por PlatformAdmin, null si no hay) y effective (valores vigentes resueltos: global → plan → techo → oficina, con el bloque ceilings = lo máximo que la oficina puede fijar). Tras un cambio llega el socket settings.changed al room de miembros.\n\nF9: la respuesta trae además `ranges` (mínimo y máximo técnico de cada número editable, incluidas las retenciones) y `transcriptPromptMaxLength`; el CRM los usa en Settings → Communication para no repetirlos.\n\nD-72: `effective.retention` = { messageDays, recordingDays, purgeEnabled, managedByTenant, platformDefault }. managedByTenant dice si la oficina gestiona su propia retención (capacidad que da PlatformAdmin); platformDefault es lo que rige cuando la oficina no fija un valor (excepción de la oficina en constraints o global)."
 					},
 					"response": [
 						{
 							"name": "200 — Settings + limits + constraints + effective",
 							"status": "OK",
 							"code": 200,
-							"body": "{\n  \"settings\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"chatEnabled\": true,\n    \"callsEnabled\": true,\n    \"videoCallsEnabled\": true,\n    \"meetingsEnabled\": true,\n    \"supportEnabled\": true,\n    \"screenshotsEnabled\": true,\n    \"employeeToEmployeeChatEnabled\": false,\n    \"restrictCustomerChatToAssignedPreparer\": false,\n    \"defaultCameraOff\": true,\n    \"defaultMicrophoneOff\": false,\n    \"persistChatOnEnd\": false,\n    \"recordingConsentPolicy\": \"NoRejections\",\n    \"defaultMeetingDurationMinutes\": null,\n    \"maxMeetingDurationMinutes\": null,\n    \"maxMeetingParticipants\": null,\n    \"maxRecordingMinutesMeeting\": null,\n    \"maxRecordingMinutesAudioCall\": null,\n    \"maxRecordingMinutesVideoCall\": null,\n    \"ringingTimeoutSeconds\": null,\n    \"meetingChatAttachmentsPerMinute\": null,\n    \"meetingChatAttachmentsPerMeeting\": null,\n    \"meetingSoundsPolicy\": null,\n    \"transcriptLanguage\": null,\n    \"recordingVisibleInPortal\": true,\n    \"guestsAllowed\": true\n  },\n  \"limits\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"planCode\": \"pro\",\n    \"maxMeetingParticipants\": 10,\n    \"maxMeetingMinutes\": 60,\n    \"maxConcurrentCalls\": 2,\n    \"maxMonthlyMinutes\": 600,\n    \"recordingEnabled\": true,\n    \"supportEnabled\": true,\n    \"isSuspended\": false,\n    \"enabledModules\": [\n      \"meetings\"\n    ],\n    \"maxRecordingMinutesMeeting\": 60,\n    \"maxRecordingMinutesAudioCall\": 60,\n    \"maxRecordingMinutesVideoCall\": 60,\n    \"recordingVideoEnabled\": true,\n    \"transcriptEnabled\": true,\n    \"callsEnabled\": true,\n    \"maxCallMinutes\": 60\n  },\n  \"constraints\": null,\n  \"effective\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"platformVersion\": 1,\n    \"planCode\": \"pro\",\n    \"isSuspended\": false,\n    \"ceilings\": {\n      \"maxParticipants\": 10,\n      \"maxMeetingDurationMinutes\": 60,\n      \"maxRecordingMinutesMeeting\": 60,\n      \"maxRecordingMinutesAudioCall\": 60,\n      \"maxRecordingMinutesVideoCall\": 60,\n      \"meetingChatAttachmentsPerMinute\": 5,\n      \"meetingChatAttachmentsPerMeeting\": 20,\n      \"recordingAllowed\": true,\n      \"recordingVideoAllowed\": true,\n      \"transcriptAllowed\": true,\n      \"callsAllowed\": true,\n      \"supportAllowed\": true,\n      \"guestsAllowed\": true\n    },\n    \"meeting\": {\n      \"enabled\": true,\n      \"maxDurationMinutes\": 60,\n      \"defaultDurationMinutes\": 60,\n      \"maxParticipants\": 10,\n      \"meshMaxParticipants\": 4,\n      \"disconnectGraceSeconds\": 30,\n      \"scheduledExpiryHours\": 24,\n      \"emptyEndMinutes\": 10,\n      \"dominantSpeakerMaxPerSecond\": 5,\n      \"guestsAllowed\": true,\n      \"soundsPolicy\": \"all\",\n      \"chatAttachmentsPerMinute\": 5,\n      \"chatAttachmentsPerMeeting\": 20\n    },\n    \"calls\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"ringingTimeoutSeconds\": 60,\n      \"maxCallMinutes\": 60,\n      \"maxConcurrentCalls\": 2,\n      \"maxMonthlyMinutes\": 600\n    },\n    \"recording\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"transcriptEnabled\": true,\n      \"maxMinutesMeeting\": 60,\n      \"maxMinutesAudioCall\": 60,\n      \"maxMinutesVideoCall\": 60,\n      \"consentTimeoutMeetingSeconds\": 30,\n      \"consentTimeoutCallSeconds\": 15,\n      \"visibleInPortal\": true,\n      \"transcriptLanguage\": \"auto\"\n    },\n    \"chat\": {\n      \"enabled\": true,\n      \"internalGroupsEnabled\": true,\n      \"employeeToEmployeeChatEnabled\": false,\n      \"maxReactionsPerMessage\": 3\n    },\n    \"support\": {\n      \"enabled\": true\n    },\n    \"invitations\": {\n      \"minTtlHours\": 168,\n      \"expiryGraceHours\": 24\n    },\n    \"user\": null\n  }\n}"
+							"body": "{\n  \"settings\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"chatEnabled\": true,\n    \"callsEnabled\": true,\n    \"videoCallsEnabled\": true,\n    \"meetingsEnabled\": true,\n    \"supportEnabled\": true,\n    \"screenshotsEnabled\": true,\n    \"employeeToEmployeeChatEnabled\": false,\n    \"restrictCustomerChatToAssignedPreparer\": false,\n    \"defaultCameraOff\": true,\n    \"defaultMicrophoneOff\": false,\n    \"recordingConsentPolicy\": \"NoRejections\",\n    \"defaultMeetingDurationMinutes\": null,\n    \"maxMeetingDurationMinutes\": null,\n    \"maxMeetingParticipants\": null,\n    \"maxRecordingMinutesMeeting\": null,\n    \"maxRecordingMinutesAudioCall\": null,\n    \"maxRecordingMinutesVideoCall\": null,\n    \"ringingTimeoutSeconds\": null,\n    \"meetingChatAttachmentsPerMinute\": null,\n    \"meetingChatAttachmentsPerMeeting\": null,\n    \"meetingSoundsPolicy\": null,\n    \"transcriptLanguage\": null,\n    \"recordingVisibleInPortal\": true,\n    \"guestsAllowed\": true,\n    \"purgeEnabled\": null,\n    \"messageRetentionDays\": null,\n    \"recordingRetentionDays\": null\n  },\n  \"limits\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"planCode\": \"pro\",\n    \"maxMeetingParticipants\": 10,\n    \"maxMeetingMinutes\": 60,\n    \"maxConcurrentCalls\": 2,\n    \"maxMonthlyMinutes\": 600,\n    \"recordingEnabled\": true,\n    \"supportEnabled\": true,\n    \"isSuspended\": false,\n    \"enabledModules\": [\n      \"meetings\"\n    ],\n    \"maxRecordingMinutesMeeting\": 60,\n    \"maxRecordingMinutesAudioCall\": 60,\n    \"maxRecordingMinutesVideoCall\": 60,\n    \"recordingVideoEnabled\": true,\n    \"transcriptEnabled\": true,\n    \"callsEnabled\": true,\n    \"maxCallMinutes\": 60\n  },\n  \"constraints\": null,\n  \"effective\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"platformVersion\": 1,\n    \"planCode\": \"pro\",\n    \"isSuspended\": false,\n    \"ceilings\": {\n      \"maxParticipants\": 10,\n      \"maxMeetingDurationMinutes\": 60,\n      \"maxRecordingMinutesMeeting\": 60,\n      \"maxRecordingMinutesAudioCall\": 60,\n      \"maxRecordingMinutesVideoCall\": 60,\n      \"meetingChatAttachmentsPerMinute\": 5,\n      \"meetingChatAttachmentsPerMeeting\": 20,\n      \"recordingAllowed\": true,\n      \"recordingVideoAllowed\": true,\n      \"transcriptAllowed\": true,\n      \"callsAllowed\": true,\n      \"supportAllowed\": true,\n      \"guestsAllowed\": true\n    },\n    \"meeting\": {\n      \"enabled\": true,\n      \"maxDurationMinutes\": 60,\n      \"defaultDurationMinutes\": 60,\n      \"maxParticipants\": 10,\n      \"meshMaxParticipants\": 4,\n      \"disconnectGraceSeconds\": 30,\n      \"scheduledExpiryHours\": 24,\n      \"emptyEndMinutes\": 10,\n      \"dominantSpeakerMaxPerSecond\": 5,\n      \"guestsAllowed\": true,\n      \"soundsPolicy\": \"all\",\n      \"chatAttachmentsPerMinute\": 5,\n      \"chatAttachmentsPerMeeting\": 20\n    },\n    \"calls\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"ringingTimeoutSeconds\": 60,\n      \"maxCallMinutes\": 60,\n      \"maxConcurrentCalls\": 2,\n      \"maxMonthlyMinutes\": 600\n    },\n    \"recording\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"transcriptEnabled\": true,\n      \"maxMinutesMeeting\": 60,\n      \"maxMinutesAudioCall\": 60,\n      \"maxMinutesVideoCall\": 60,\n      \"consentTimeoutMeetingSeconds\": 30,\n      \"consentTimeoutCallSeconds\": 15,\n      \"visibleInPortal\": true,\n      \"transcriptLanguage\": \"auto\"\n    },\n    \"chat\": {\n      \"enabled\": true,\n      \"internalGroupsEnabled\": true,\n      \"employeeToEmployeeChatEnabled\": false,\n      \"maxReactionsPerMessage\": 3\n    },\n    \"support\": {\n      \"enabled\": true\n    },\n    \"invitations\": {\n      \"minTtlHours\": 168,\n      \"expiryGraceHours\": 24\n    },\n    \"user\": null,\n    \"retention\": {\n      \"messageDays\": 365,\n      \"recordingDays\": 90,\n      \"purgeEnabled\": false,\n      \"managedByTenant\": false,\n      \"platformDefault\": {\n        \"messageDays\": 365,\n        \"recordingDays\": 90,\n        \"purgeEnabled\": false\n      }\n    }\n  }\n}"
 						}
 					]
 				},
@@ -1912,7 +2055,7 @@
 								"settings"
 							]
 						},
-						"description": "Requiere communication.settings.manage. Patch parcial; devuelve el mismo overview que el GET. Campos: chatEnabled, callsEnabled, videoCallsEnabled, meetingsEnabled, supportEnabled, screenshotsEnabled, employeeToEmployeeChatEnabled, restrictCustomerChatToAssignedPreparer, defaultCameraOff, defaultMicrophoneOff, persistChatOnEnd, messageRetentionDays (1-3650), recordingRetentionDays (1-3650), purgeEnabled, recordingConsentPolicy (AllAcceptedRequired|NoRejections|HostOverride), y los nuevos de la capa de configuración (null = hereda): defaultMeetingDurationMinutes, maxMeetingDurationMinutes, maxMeetingParticipants, maxRecordingMinutesMeeting, maxRecordingMinutesAudioCall, maxRecordingMinutesVideoCall, ringingTimeoutSeconds, meetingChatAttachmentsPerMinute, meetingChatAttachmentsPerMeeting, meetingSoundsPolicy (all|hostOnly|off), transcriptLanguage (auto|código), recordingVisibleInPortal, guestsAllowed. internalGroupsEnabled ya no es de oficina (D-16, interruptor global). Errores 400: Settings.AboveCeiling (supera el techo efectivo: plan, techo de PlatformAdmin o global), Settings.OutOfTechnicalRange, Settings.InvalidSoundsPolicy, Settings.InvalidLanguage, Settings.InvalidRetention. Efectos: fila por clave en ConfigurationAudit, evento communication.tenant_settings_changed.v1, invalidación inmediata de caché y socket settings.changed a los miembros. La retención (mensajes, grabaciones, purga) ya no la edita la oficina: la fija PlatformAdmin en platform-settings (global) y en tenants/{id}/constraints (excepción); el GET la devuelve en effective.retention."
+						"description": "Requiere communication.settings.manage. Patch parcial; devuelve el mismo overview que el GET. Campos: chatEnabled, callsEnabled, videoCallsEnabled, meetingsEnabled, supportEnabled, screenshotsEnabled, employeeToEmployeeChatEnabled, restrictCustomerChatToAssignedPreparer, defaultCameraOff, defaultMicrophoneOff, recordingConsentPolicy (AllAcceptedRequired|NoRejections|HostOverride), y los nuevos de la capa de configuración (null = hereda): defaultMeetingDurationMinutes, maxMeetingDurationMinutes, maxMeetingParticipants, maxRecordingMinutesMeeting, maxRecordingMinutesAudioCall, maxRecordingMinutesVideoCall, ringingTimeoutSeconds, meetingChatAttachmentsPerMinute, meetingChatAttachmentsPerMeeting, meetingSoundsPolicy (all|hostOnly|off), transcriptLanguage (auto|código), recordingVisibleInPortal, guestsAllowed. internalGroupsEnabled ya no es de oficina (D-16, interruptor global). Errores 400: Settings.AboveCeiling (supera el techo efectivo: plan, techo de PlatformAdmin o global), Settings.OutOfTechnicalRange, Settings.InvalidSoundsPolicy, Settings.InvalidLanguage, Settings.InvalidRetention. Efectos: fila por clave en ConfigurationAudit, evento communication.tenant_settings_changed.v1, invalidación inmediata de caché y socket settings.changed a los miembros. D-72: purgeEnabled, messageRetentionDays (1-3650) y recordingRetentionDays (1-3650) (null = default de la plataforma) solo se aceptan si effective.retention.managedByTenant es true; si no, 400 Settings.RetentionNotManagedByTenant (reenviar el valor guardado no cuenta como cambio). Con la capacidad apagada los valores de la oficina se conservan pero no rigen."
 					},
 					"event": [
 						{
@@ -2300,10 +2443,10 @@
 								"constraints"
 							]
 						},
-						"description": "PlatformOnly. Excepción de retención de esta oficina; null en un campo vuelve a la global de platform-settings.",
+						"description": "PlatformOnly. Excepción de retención de esta oficina; null en un campo vuelve a la global de platform-settings. D-72: retentionManagedByTenant = true deja que la oficina gestione su propia retención (null = la global).",
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"messageRetentionDays\": 3650,\n  \"recordingRetentionDays\": null,\n  \"purgeEnabled\": false\n}"
+							"raw": "{\n  \"messageRetentionDays\": 3650,\n  \"recordingRetentionDays\": null,\n  \"purgeEnabled\": false,\n  \"retentionManagedByTenant\": true\n}"
 						},
 						"auth": {
 							"type": "bearer",
@@ -2324,6 +2467,89 @@
 								"exec": [
 									"pm.test(\"200 — tenant constraints updated\", () => {",
 									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Actualizar retención de la oficina (D-72)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"purgeEnabled\": true,\n  \"messageRetentionDays\": 2555,\n  \"recordingRetentionDays\": 365\n}"
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"settings"
+							]
+						},
+						"description": "D-72. Requiere communication.settings.manage y que la oficina gestione su retención (retentionManagedByTenant en platform-settings o en la excepción de la oficina). null en un campo vuelve al default de la plataforma. Las grabaciones arrastran su transcript; el chat de las reuniones sigue la retención de mensajes."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — office retention saved\", () => {",
+									"    pm.response.to.have.status(200);",
+									"    pm.expect(pm.response.json().effective.retention.managedByTenant).to.eql(true);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Actualizar retención sin la capacidad (400 Settings.RetentionNotManagedByTenant)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"settings"
+							]
+						},
+						"description": "Caso negativo D-72: la oficina no gestiona su retención (default) → 400 Settings.RetentionNotManagedByTenant.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"purgeEnabled\": true\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"400 — Settings.RetentionNotManagedByTenant\", () => {",
+									"    pm.response.to.have.status(400);",
+									"    pm.expect(pm.response.json().code).to.eql(\"Settings.RetentionNotManagedByTenant\");",
 									"});"
 								]
 							}
@@ -2734,10 +2960,10 @@
 								"platform-settings"
 							]
 						},
-						"description": "PlatformOnly. Retención para todas las oficinas (1–3650 días) y si corre la purga automática. La oficina ya no la edita; la ve en effective.retention del GET /communication/settings.",
+						"description": "PlatformOnly. Retención para todas las oficinas (1–3650 días) y si corre la purga automática. D-72: retentionManagedByTenant (default false) deja que las oficinas gestionen su propia retención desde PUT /communication/settings; se puede sobrescribir por oficina en tenants/{id}/constraints. La oficina la ve en effective.retention del GET /communication/settings.",
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"messageRetentionDays\": 2555,\n  \"recordingRetentionDays\": 365,\n  \"purgeEnabled\": false\n}"
+							"raw": "{\n  \"messageRetentionDays\": 2555,\n  \"recordingRetentionDays\": 365,\n  \"purgeEnabled\": false,\n  \"retentionManagedByTenant\": false\n}"
 						}
 					},
 					"event": [

@@ -224,6 +224,119 @@ public sealed class UserAvatarScanResultConsumerTests
         Assert.Null(user.AvatarModerationState);
     }
 
+    [Fact]
+    public async Task SaveRejected_de_la_pendiente_la_descarta_y_conserva_la_confirmada()
+    {
+        var user = AvatarDoubles.Employee();
+        var confirmed = AvatarDoubles.GiveConfirmedAvatar(user);
+        var pending = Guid.NewGuid();
+        user.BeginAvatarChange(pending, DateTime.UtcNow);
+        var unitOfWork = new OrderedUnitOfWork(new FakeMessageBus());
+
+        await RejectedAsync(AvatarDoubles.Users(user), Rejected(user, pending), unitOfWork);
+
+        Assert.Null(user.PendingAvatarFileId);
+        Assert.Equal(confirmed, user.AvatarFileId);
+        Assert.Equal(1, unitOfWork.Saves);
+
+        // Redelivery: ya no es la pendiente, no se vuelve a guardar.
+        await RejectedAsync(AvatarDoubles.Users(user), Rejected(user, pending), unitOfWork);
+        Assert.Equal(1, unitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task SaveRejected_de_una_foto_vieja_no_toca_la_pendiente_mas_nueva()
+    {
+        var user = AvatarDoubles.Employee();
+        var older = Guid.NewGuid();
+        user.BeginAvatarChange(older, DateTime.UtcNow);
+        var newer = Guid.NewGuid();
+        user.BeginAvatarChange(newer, DateTime.UtcNow);
+        var unitOfWork = new OrderedUnitOfWork(new FakeMessageBus());
+
+        await RejectedAsync(AvatarDoubles.Users(user), Rejected(user, older), unitOfWork);
+
+        Assert.Equal(newer, user.PendingAvatarFileId);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task SaveRejected_de_otro_servicio_se_ignora_sin_consultar()
+    {
+        var user = AvatarDoubles.Employee();
+        var pending = Guid.NewGuid();
+        user.BeginAvatarChange(pending, DateTime.UtcNow);
+        var throwingUsers = StubProxy<TaxVision.Auth.Application.Abstractions.IUserRepository>.Create(
+            (_, _) => (false, null)
+        );
+        var unitOfWork = new OrderedUnitOfWork(new FakeMessageBus());
+
+        await RejectedAsync(throwingUsers, Rejected(user, pending) with { RequestingService = "customer" }, unitOfWork);
+
+        Assert.Equal(pending, user.PendingAvatarFileId);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task SaveRejected_de_un_usuario_o_archivo_desconocido_es_no_op()
+    {
+        var user = AvatarDoubles.Employee();
+        var unitOfWork = new OrderedUnitOfWork(new FakeMessageBus());
+
+        await RejectedAsync(AvatarDoubles.Users(null), Rejected(user, Guid.NewGuid()), unitOfWork);
+        await RejectedAsync(AvatarDoubles.Users(user), Rejected(user, Guid.NewGuid()), unitOfWork);
+
+        Assert.Null(user.PendingAvatarFileId);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task SaveRejected_con_tenant_distinto_al_del_usuario_se_ignora()
+    {
+        var user = AvatarDoubles.Employee();
+        var pending = Guid.NewGuid();
+        user.BeginAvatarChange(pending, DateTime.UtcNow);
+        var unitOfWork = new OrderedUnitOfWork(new FakeMessageBus());
+
+        await RejectedAsync(
+            AvatarDoubles.Users(user),
+            Rejected(user, pending) with
+            {
+                TenantId = Guid.NewGuid(),
+            },
+            unitOfWork
+        );
+
+        Assert.Equal(pending, user.PendingAvatarFileId);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
+    private static FileSaveRejectedIntegrationEvent Rejected(User user, Guid fileId) =>
+        new()
+        {
+            TenantId = user.TenantId,
+            FileId = fileId,
+            RequestingService = "auth",
+            OwnerType = "User",
+            OwnerId = user.Id,
+            FolderType = "Avatars",
+            Reason = "UploadPolicy",
+        };
+
+    private static Task RejectedAsync(
+        TaxVision.Auth.Application.Abstractions.IUserRepository users,
+        FileSaveRejectedIntegrationEvent msg,
+        OrderedUnitOfWork unitOfWork
+    ) =>
+        UserAvatarScanResultConsumer.Handle(
+            msg,
+            users,
+            unitOfWork,
+            new AvatarCorrelation(),
+            NullLogger<User>.Instance,
+            CancellationToken.None
+        );
+
     private static Task ReviewAsync(User user, Guid fileId, OrderedUnitOfWork unitOfWork) =>
         UserAvatarScanResultConsumer.Handle(
             new FilePendingReviewIntegrationEvent

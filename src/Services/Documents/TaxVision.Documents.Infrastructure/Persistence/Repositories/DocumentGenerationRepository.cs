@@ -31,6 +31,11 @@ public sealed class DocumentGenerationRepository(DocumentsDbContext dbContext) :
     public Task<DocumentGeneration?> GetByFileIdAsync(Guid fileId, CancellationToken ct = default) =>
         dbContext.DocumentGenerations.IgnoreQueryFilters().FirstOrDefaultAsync(g => g.FileId == fileId, ct);
 
+    public Task<DocumentGeneration?> GetBySignatureCopyFileIdAsync(Guid fileId, CancellationToken ct = default) =>
+        dbContext
+            .DocumentGenerations.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(g => g.SignatureCopyFileId == fileId, ct);
+
     public async Task AddAsync(DocumentGeneration generation, CancellationToken ct = default) =>
         await dbContext.DocumentGenerations.AddAsync(generation, ct);
 }

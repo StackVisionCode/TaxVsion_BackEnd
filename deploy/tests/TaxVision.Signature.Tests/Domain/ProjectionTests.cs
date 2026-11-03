@@ -110,4 +110,65 @@ public sealed class ProjectionTests
         Assert.NotNull(projection.RejectionReason);
         Assert.Equal(1000, projection.RejectionReason!.Length);
     }
+
+    [Fact]
+    public void FileMetadataRef_for_rejected_records_a_final_outcome_without_object_metadata()
+    {
+        var projection = FileMetadataRef.ForRejected(Guid.NewGuid(), Guid.NewGuid(), "StorageQuota.Exceeded");
+
+        Assert.Equal(FileScanStatus.Rejected, projection.Status);
+        Assert.True(projection.HasScanOutcome);
+        Assert.Equal("StorageQuota.Exceeded", projection.RejectionReason);
+        Assert.Equal(string.Empty, projection.ObjectKey);
+        Assert.Equal(string.Empty, projection.ContentType);
+    }
+
+    [Fact]
+    public void FileMetadataRef_for_infected_records_the_scan_report()
+    {
+        var projection = FileMetadataRef.ForInfected(Guid.NewGuid(), Guid.NewGuid(), "Eicar-Test-Signature");
+
+        Assert.Equal(FileScanStatus.Infected, projection.Status);
+        Assert.Equal("Eicar-Test-Signature", projection.RejectionReason);
+    }
+
+    [Fact]
+    public void FileMetadataRef_mark_rejected_never_downgrades_an_available_file()
+    {
+        var projection = FileMetadataRef.ForAvailable(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "k",
+            "application/pdf",
+            10,
+            new string('a', 64)
+        );
+
+        projection.MarkRejected("late");
+
+        Assert.Equal(FileScanStatus.Available, projection.Status);
+        Assert.Null(projection.RejectionReason);
+    }
+
+    [Fact]
+    public void FileMetadataRef_mark_rejected_keeps_a_more_specific_infected_outcome()
+    {
+        var projection = FileMetadataRef.ForInfected(Guid.NewGuid(), Guid.NewGuid(), "virus");
+
+        projection.MarkRejected("scan_error");
+
+        Assert.Equal(FileScanStatus.Infected, projection.Status);
+        Assert.Equal("virus", projection.RejectionReason);
+    }
+
+    [Fact]
+    public void FileMetadataRef_rejected_file_becomes_available_on_a_later_rescan()
+    {
+        var projection = FileMetadataRef.ForRejected(Guid.NewGuid(), Guid.NewGuid(), "scan_error");
+
+        projection.MarkAvailable("k", "application/pdf", 10, new string('a', 64));
+
+        Assert.Equal(FileScanStatus.Available, projection.Status);
+        Assert.Null(projection.RejectionReason);
+    }
 }

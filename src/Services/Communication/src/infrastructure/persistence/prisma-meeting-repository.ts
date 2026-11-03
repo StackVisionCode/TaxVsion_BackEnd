@@ -25,6 +25,9 @@ export class PrismaMeetingRepository implements MeetingRepository {
           PasscodeHash: snapshot.passcodeHash,
           RequireWaitingRoom: snapshot.requireWaitingRoom,
           IsLocked: snapshot.isLocked,
+          GuestsAllowed: snapshot.guestsAllowed,
+          GuestLinkEnabled: snapshot.guestLinkEnabled,
+          GuestLinkVersion: snapshot.guestLinkVersion,
           MaxParticipants: snapshot.maxParticipants,
           Strategy: snapshot.strategy,
           RecordingRequested: snapshot.recordingRequested,
@@ -54,6 +57,9 @@ export class PrismaMeetingRepository implements MeetingRepository {
           PasscodeHash: snapshot.passcodeHash,
           RequireWaitingRoom: snapshot.requireWaitingRoom,
           IsLocked: snapshot.isLocked,
+          GuestsAllowed: snapshot.guestsAllowed,
+          GuestLinkEnabled: snapshot.guestLinkEnabled,
+          GuestLinkVersion: snapshot.guestLinkVersion,
           Strategy: snapshot.strategy,
           RecordingFileId: snapshot.recordingFileId,
           TranscriptFileId: snapshot.transcriptFileId,
@@ -199,6 +205,15 @@ export class PrismaMeetingRepository implements MeetingRepository {
 
   async findByShortCodeAnyTenant(shortCode: string): Promise<Meeting | null> {
     const row = await this.prisma.meeting.findFirst({ where: { ShortCode: shortCode } });
+    if (!row) return null;
+    const participants = await this.prisma.meetingParticipant.findMany({
+      where: { MeetingId: row.Id, TenantId: row.TenantId },
+    });
+    return toDomainMeeting(row, participants);
+  }
+
+  async findByIdAnyTenant(meetingId: string): Promise<Meeting | null> {
+    const row = await this.prisma.meeting.findFirst({ where: { Id: meetingId } });
     if (!row) return null;
     const participants = await this.prisma.meetingParticipant.findMany({
       where: { MeetingId: row.Id, TenantId: row.TenantId },

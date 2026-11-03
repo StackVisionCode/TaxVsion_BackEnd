@@ -58,10 +58,11 @@ describe('mergeSegments + formatTranscriptTxt', () => {
     expect(mergeSegments([a, b, c]).map((s) => s.text)).toEqual(['corto', 'largo', 'igual']);
   });
 
-  it('sin hablante: [hh:mm:ss] texto; vacio => cadena vacia', () => {
+  it('sin hablante: [hh:mm:ss] texto; sin voz => aviso, nunca 0 bytes', () => {
     const single = shiftAndLabel([{ startMs: 3_725_000, endMs: 3_726_000, text: 'una hora despues' }], 0, null);
     expect(formatTranscriptTxt(single)).toBe('[01:02:05] una hora despues\n');
-    expect(formatTranscriptTxt([])).toBe('');
+    // CloudStorage rechazaba el .txt vacio y el transcript quedaba apuntando a un archivo inexistente.
+    expect(formatTranscriptTxt([])).toBe('No speech was detected in this recording.\n');
   });
 });
 

@@ -293,16 +293,18 @@ public sealed class SaveFileFromSourceHandlerTests
     }
 
     [Fact]
-    public async Task Invalid_OwnerType_is_dropped_without_touching_quota_or_storage()
+    public async Task Invalid_OwnerType_is_rejected_without_touching_quota_or_storage()
     {
         var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
         var limits = new FakeStorageLimitRepository();
         limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
         var storage = new FakeObjectStorage();
         var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
 
         await SaveFileFromSourceHandler.Handle(
-            Evt(tenantId, Guid.NewGuid(), b => b.OwnerType = "NotARealOwnerType"),
+            Evt(tenantId, fileId, b => b.OwnerType = "NotARealOwnerType"),
             new FakeFileObjectRepository(),
             limits,
             new FakeStorageAuditRepository(),
@@ -313,14 +315,14 @@ public sealed class SaveFileFromSourceHandlerTests
             new FakeUploadPolicyResolver(),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
-            new FakeMessageBus(),
+            bus,
             new FakeCorrelationContext(),
             NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
         Assert.Empty(storage.Copied);
-        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+        AssertRejected(bus, unitOfWork, fileId, "InvalidOwnerOrFolder");
     }
 
     [Fact]
@@ -361,9 +363,11 @@ public sealed class SaveFileFromSourceHandlerTests
     }
 
     [Fact]
-    public async Task Extension_rejected_by_the_upload_policy_is_dropped_and_releases_nothing()
+    public async Task Extension_rejected_by_the_upload_policy_is_rejected_and_releases_nothing()
     {
         var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
         var limit = TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000);
         var limits = new FakeStorageLimitRepository();
         limits.Seed(limit);
@@ -373,7 +377,7 @@ public sealed class SaveFileFromSourceHandlerTests
         await SaveFileFromSourceHandler.Handle(
             Evt(
                 tenantId,
-                Guid.NewGuid(),
+                fileId,
                 b =>
                 {
                     b.OriginalName = "malware.exe";
@@ -390,28 +394,30 @@ public sealed class SaveFileFromSourceHandlerTests
             new FakeUploadPolicyResolver(),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
-            new FakeMessageBus(),
+            bus,
             new FakeCorrelationContext(),
             NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
         Assert.Empty(storage.Copied);
-        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+        AssertRejected(bus, unitOfWork, fileId, "UploadPolicy");
         Assert.Equal(0, limit.ReservedBytes);
     }
 
     [Fact]
-    public async Task Quota_exceeded_is_dropped()
+    public async Task Quota_exceeded_is_rejected()
     {
         var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
         var limits = new FakeStorageLimitRepository();
         limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 100, maxFileSizeBytes: 1_000_000));
         var storage = new FakeObjectStorage();
         var unitOfWork = new FakeUnitOfWork();
 
         await SaveFileFromSourceHandler.Handle(
-            Evt(tenantId, Guid.NewGuid(), b => b.SizeBytes = 10_000),
+            Evt(tenantId, fileId, b => b.SizeBytes = 10_000),
             new FakeFileObjectRepository(),
             limits,
             new FakeStorageAuditRepository(),
@@ -422,14 +428,59 @@ public sealed class SaveFileFromSourceHandlerTests
             new FakeUploadPolicyResolver(),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
-            new FakeMessageBus(),
+            bus,
             new FakeCorrelationContext(),
             NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
         Assert.Empty(storage.Copied);
-        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+        AssertRejected(bus, unitOfWork, fileId, "StorageQuota.Exceeded");
+    }
+
+    [Fact]
+    public async Task Empty_file_is_rejected_as_empty_not_as_too_large()
+    {
+        // MNT-01 E-291: un transcript sin voz llegaba con 0 bytes y Reserve() lo rechazaba como
+        // "FileTooLarge", sin que el productor se enterara (seguia apuntando a un archivo inexistente).
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
+        var storage = new FakeObjectStorage();
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+
+        await SaveFileFromSourceHandler.Handle(
+            Evt(tenantId, fileId, b => b.SizeBytes = 0),
+            new FakeFileObjectRepository(),
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            storage,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
+            DefaultOptions(),
+            new FakeUploadPolicyResolver(),
+            new FakeSystemClock(DateTime.UtcNow),
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Empty(storage.Copied);
+        AssertRejected(bus, unitOfWork, fileId, "EmptyFile");
+    }
+
+    /// <summary>El servicio que pidio el guardado se entera del rechazo (y queda auditado).</summary>
+    private static void AssertRejected(FakeMessageBus bus, FakeUnitOfWork unitOfWork, Guid fileId, string reason)
+    {
+        var rejected = Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>());
+        Assert.Equal(fileId, rejected.FileId);
+        Assert.Equal(reason, rejected.Reason);
+        Assert.Equal("signature", rejected.RequestingService);
+        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
     }
 
     // ===== Fase 2: auto-colocacion en carpeta de sistema (M2M) =====

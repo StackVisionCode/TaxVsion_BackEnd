@@ -72,13 +72,19 @@ export function formatTimestamp(ms: number): string {
   return [hours, minutes, seconds].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
+/**
+ * Sin voz (todos en mute): el .txt nunca va vacio. CloudStorage rechaza un archivo de 0 bytes sin
+ * avisar y el transcript_ready apuntaria a un archivo que no existe (MNT-01).
+ */
+export const NO_SPEECH_TRANSCRIPT_TXT = 'No speech was detected in this recording.\n';
+
 /** TXT: `[hh:mm:ss] Nombre: texto`, o `[hh:mm:ss] texto` sin hablante. */
 export function formatTranscriptTxt(segments: readonly TranscriptSegment[]): string {
   const lines = segments.map((segment) => {
     const speaker = segment.speakerName ? `${segment.speakerName}: ` : '';
     return `[${formatTimestamp(segment.startMs)}] ${speaker}${segment.text}`;
   });
-  return lines.length === 0 ? '' : `${lines.join('\n')}\n`;
+  return lines.length === 0 ? NO_SPEECH_TRANSCRIPT_TXT : `${lines.join('\n')}\n`;
 }
 
 export function buildTranscriptJsonV2(input: {

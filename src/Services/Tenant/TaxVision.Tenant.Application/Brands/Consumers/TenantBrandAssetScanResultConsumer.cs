@@ -1,10 +1,12 @@
 using System.Linq;
+using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Tenant.Application.Brands.Abstractions;
+using TaxVision.Tenant.Application.Brands.Commands;
 using TaxVision.Tenant.Domain.Brands;
 using TaxVision.Tenant.Domain.Enums;
 using Wolverine;
@@ -102,6 +104,8 @@ public static class TenantBrandAssetScanResultConsumer
         FileInfectedDetectedIntegrationEvent msg,
         ITenantBrandRepository repo,
         IUnitOfWork unitOfWork,
+        ICacheService cache,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantBrand> logger,
         CancellationToken ct
@@ -114,6 +118,8 @@ public static class TenantBrandAssetScanResultConsumer
             msg.EventId,
             repo,
             unitOfWork,
+            cache,
+            bus,
             correlation,
             logger,
             ct
@@ -123,6 +129,8 @@ public static class TenantBrandAssetScanResultConsumer
         FileBlockedByPolicyIntegrationEvent msg,
         ITenantBrandRepository repo,
         IUnitOfWork unitOfWork,
+        ICacheService cache,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantBrand> logger,
         CancellationToken ct
@@ -135,6 +143,8 @@ public static class TenantBrandAssetScanResultConsumer
             msg.EventId,
             repo,
             unitOfWork,
+            cache,
+            bus,
             correlation,
             logger,
             ct
@@ -148,6 +158,8 @@ public static class TenantBrandAssetScanResultConsumer
         Guid eventId,
         ITenantBrandRepository repo,
         IUnitOfWork unitOfWork,
+        ICacheService cache,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantBrand> logger,
         CancellationToken ct
@@ -160,15 +172,23 @@ public static class TenantBrandAssetScanResultConsumer
         if (brand is null || asset is null)
             return;
 
+        // Replay o asset ya reemplazado/confirmado: nada que guardar ni anunciar.
+        var key = asset.Key;
+        if (!brand.DiscardPendingAsset(key, fileId))
+            return;
+
         logger.LogWarning(
             "Tenant {TenantId} brand asset {Key} (file {FileId}) {Reason}; discarding.",
             tenantId,
-            asset.Key,
+            key,
             fileId,
             reason
         );
-        brand.DiscardPendingAsset(asset.Key, fileId);
         await unitOfWork.SaveChangesAsync(ct);
+        // Igual que el rechazo de CloudStorage: el upload pisó el logo anterior, así que Tenant queda sin
+        // logo y Scribe/Documents deben enterarse.
+        await BrandCommandSupport.InvalidateAsync(cache, tenantId, brand.Surface, ct);
+        await BrandLogoEvents.PublishRemovedIfCrmLogoAsync(bus, correlation, tenantId, brand.Surface, key);
     }
 
     private static string CorrelationOf(string? correlationId, Guid eventId) =>

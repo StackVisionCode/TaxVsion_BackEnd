@@ -2223,6 +2223,48 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 : _documents.Count > 0 && _documents.All(document => document.CertificateFileId is not null)
         );
 
+    /// <summary>
+    /// CloudStorage rechazó guardar un archivo final (<paramref name="fileId"/>): nunca existirá. Suelta la
+    /// referencia solo si sigue apuntando a ese archivo, para que la solicitud no ofrezca una descarga
+    /// inexistente y el pipeline de sellado (re-entrante) pueda regenerarlo. Un sellado rechazado vuelve
+    /// el documento a "por sellar" y suelta también el certificado de la solicitud, que atestigua el hash
+    /// de todos los documentos. Devuelve qué se soltó y los certificados (archivos existentes) que quedaron
+    /// desligados, o <c>null</c> si nada lo referencia (idempotente).
+    /// </summary>
+    public SealingArtifactRelease? ReleaseRejectedArtifact(Guid fileId)
+    {
+        if (fileId == Guid.Empty)
+            return null;
+
+        var sealedDocument = _documents.Find(document => document.SealedFileId == fileId);
+        if (sealedDocument is not null)
+        {
+            Guid?[] detached = [sealedDocument.CertificateFileId, CertificateFileId];
+            sealedDocument.ReleaseSeal();
+            CertificateFileId = null;
+            Touch();
+            return new SealingArtifactRelease(
+                SealingArtifactKind.SealedDocument,
+                detached.Where(id => id is not null).Select(id => id!.Value).Distinct().ToList()
+            );
+        }
+
+        if (CertificateFileId == fileId)
+        {
+            CertificateFileId = null;
+            Touch();
+            return new SealingArtifactRelease(SealingArtifactKind.RequestCertificate, []);
+        }
+
+        var certifiedDocument = _documents.Find(document => document.CertificateFileId == fileId);
+        if (certifiedDocument is null)
+            return null;
+
+        certifiedDocument.ReleaseCertificate();
+        Touch();
+        return new SealingArtifactRelease(SealingArtifactKind.DocumentCertificate, []);
+    }
+
     // ==================================================================
     // Helpers privados — cada uno con propósito único
     // ==================================================================

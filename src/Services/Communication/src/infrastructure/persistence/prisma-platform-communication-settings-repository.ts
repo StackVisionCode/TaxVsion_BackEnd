@@ -107,7 +107,6 @@ export class PrismaPlatformCommunicationSettingsRepository implements PlatformCo
       ReactionsPerMeetingPerMinute: s.reactionsPerMeetingPerMinute,
       MeetingReactionCatalog: JSON.stringify(s.meetingReactionCatalog),
       MeetingReminderMinutesBefore: s.meetingReminderMinutesBefore,
-      GuestsWaitingRoomDefault: s.guestsWaitingRoomDefault,
       ServerSideRecordingEnabled: s.serverSideRecordingEnabled,
       RecordingLimitWarningMinutes: s.recordingLimitWarningMinutes,
       RecordingLimitToleranceSeconds: s.recordingLimitToleranceSeconds,
@@ -128,6 +127,7 @@ export class PrismaPlatformCommunicationSettingsRepository implements PlatformCo
       MessageRetentionDays: s.messageRetentionDays,
       RecordingRetentionDays: s.recordingRetentionDays,
       PurgeEnabled: s.purgeEnabled,
+      RetentionManagedByTenant: s.retentionManagedByTenant,
       CallsRetentionDays: s.callsRetentionDays,
       MeetingsRetentionDays: s.meetingsRetentionDays,
       InvitationsRetentionDays: s.invitationsRetentionDays,
@@ -222,7 +222,6 @@ function toSnapshot(row: {
   ReactionsPerMeetingPerMinute: number;
   MeetingReactionCatalog: string;
   MeetingReminderMinutesBefore: number;
-  GuestsWaitingRoomDefault: boolean;
   ServerSideRecordingEnabled: boolean;
   RecordingLimitWarningMinutes: number;
   RecordingLimitToleranceSeconds: number;
@@ -243,6 +242,7 @@ function toSnapshot(row: {
   MessageRetentionDays: number;
   RecordingRetentionDays: number;
   PurgeEnabled: boolean;
+  RetentionManagedByTenant: boolean;
   CallsRetentionDays: number | null;
   MeetingsRetentionDays: number | null;
   InvitationsRetentionDays: number | null;
@@ -332,7 +332,6 @@ function toSnapshot(row: {
     // Invalido -> [] y rehydrate() lo repone al default dejando rastro.
     meetingReactionCatalog: parseReactionCatalogColumn(row.MeetingReactionCatalog) ?? [],
     meetingReminderMinutesBefore: row.MeetingReminderMinutesBefore,
-    guestsWaitingRoomDefault: row.GuestsWaitingRoomDefault,
     serverSideRecordingEnabled: row.ServerSideRecordingEnabled,
     recordingLimitWarningMinutes: row.RecordingLimitWarningMinutes,
     recordingLimitToleranceSeconds: row.RecordingLimitToleranceSeconds,
@@ -354,6 +353,7 @@ function toSnapshot(row: {
     messageRetentionDays: row.MessageRetentionDays,
     recordingRetentionDays: row.RecordingRetentionDays,
     purgeEnabled: row.PurgeEnabled,
+    retentionManagedByTenant: row.RetentionManagedByTenant,
     callsRetentionDays: row.CallsRetentionDays,
     meetingsRetentionDays: row.MeetingsRetentionDays,
     invitationsRetentionDays: row.InvitationsRetentionDays,

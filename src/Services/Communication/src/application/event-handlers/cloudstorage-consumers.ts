@@ -40,6 +40,8 @@ export function bindCloudStorageConsumers(
     inAppSourcePolicy: 'Communication' | 'Notification';
     /** F7 (T-34): el archivo de una grabacion disponible o rechazado mueve su sesion a Ready/Failed. */
     recordingFiles?: RecordingFileStatusHandler | undefined;
+    /** MNT-01 (E-292): el .txt de un transcript confirmado o rechazado (sin puntero a un archivo inexistente). */
+    transcriptFiles?: TranscriptFileStatusHandler | undefined;
     /** F8d: al quedar disponible se guarda el tipo DETECTADO y la categoría del adjunto. */
     cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
     /** Para avisar a quien mandó el adjunto: el archivo lo crea la cuenta de servicio de Communication. */
@@ -63,16 +65,19 @@ export function bindCloudStorageConsumers(
       await recordAttachmentMetadata({ tenantId: env.tenantId, fileId }, deps).catch(() => undefined);
     }
     if (isRecordingFolder(env)) await deps.recordingFiles?.onAvailable(env.tenantId, fileId, env.correlationId ?? null);
+    if (folderOf(env) === 'Transcripts') await deps.transcriptFiles?.onAvailable(env.tenantId, fileId);
   });
 
   register('cloudstorage.file.infected.v1', async (env) => {
     await flagAttachment(env, 'Infected', deps);
     await rejectRecording(env, 'Infected', deps.recordingFiles);
+    await rejectTranscript(env, 'Infected', deps.transcriptFiles);
   });
   register('cloudstorage.file.deleted.v1', (env) => flagAttachment(env, 'Deleted', deps));
   register('cloudstorage.file.blocked_by_policy.v1', async (env) => {
     await flagAttachment(env, 'BlockedByPolicy', deps);
     await rejectRecording(env, 'BlockedByPolicy', deps.recordingFiles);
+    await rejectTranscript(env, 'BlockedByPolicy', deps.transcriptFiles);
     if (deps.inAppSourcePolicy === 'Communication') {
       await notifyFileBlockedByPolicy(env, deps);
     }
@@ -83,8 +88,36 @@ export function bindCloudStorageConsumers(
       await notifyFilePendingReview(env, deps);
     }
   });
-  // Solo grabaciones: un adjunto de chat con escaneo fallido sigue su camino de siempre (sin cambio).
-  register('cloudstorage.file.scan_failed.v1', (env) => rejectRecording(env, 'ScanFailed', deps.recordingFiles));
+  // Solo grabaciones y transcripts: un adjunto de chat con escaneo fallido sigue su camino de siempre (sin cambio).
+  register('cloudstorage.file.scan_failed.v1', async (env) => {
+    await rejectRecording(env, 'ScanFailed', deps.recordingFiles);
+    await rejectTranscript(env, 'ScanFailed', deps.transcriptFiles);
+  });
+  // MNT-01 (E-292): CloudStorage descarto un SaveFileRequested (vacio, politica, cuota): el archivo nunca
+  // existira. Antes no avisaba y la grabacion esperaba al barrido; el transcript quedaba apuntando a la nada.
+  register('cloudstorage.file.save_rejected.v1', async (env) => {
+    const reason = getString(env.payload, 'reason') ?? getString(env.payload, 'Reason') ?? 'StorageRejected';
+    const folder = folderOf(env);
+    if (folder === 'Recordings') await rejectRecording(env, 'StorageRejected', deps.recordingFiles);
+    if (folder === 'Transcripts') await rejectTranscript(env, reason, deps.transcriptFiles);
+  });
+}
+
+/** MNT-01 (E-292): lo que Communication hace cuando cambia el estado del archivo de un transcript. */
+export interface TranscriptFileStatusHandler {
+  onAvailable(tenantId: string, fileId: string): Promise<void>;
+  onRejected(tenantId: string, fileId: string, reason: string): Promise<void>;
+}
+
+function folderOf(env: IncomingEnvelope): string | undefined {
+  return getString(env.payload, 'folderType') ?? getString(env.payload, 'FolderType');
+}
+
+async function rejectTranscript(env: IncomingEnvelope, reason: string, handler: TranscriptFileStatusHandler | undefined): Promise<void> {
+  if (!handler || folderOf(env) !== 'Transcripts') return;
+  const fileId = getString(env.payload, 'fileId') ?? getString(env.payload, 'FileId');
+  if (!fileId) return;
+  await handler.onRejected(env.tenantId, fileId, reason);
 }
 
 /** F7: lo que Communication hace cuando cambia el estado del archivo de una grabacion. */

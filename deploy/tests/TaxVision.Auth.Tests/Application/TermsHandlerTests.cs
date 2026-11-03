@@ -69,6 +69,9 @@ public sealed class TermsHandlerTests
         public Task<TermsVersion?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult(_all.FirstOrDefault(v => v.Id == id));
 
+        public Task<TermsVersion?> GetByContentFileIdAsync(Guid contentFileId, CancellationToken ct = default) =>
+            throw new NotImplementedException();
+
         public Task<TermsVersion?> GetCurrentAsync(
             TermsKind kind,
             string locale,

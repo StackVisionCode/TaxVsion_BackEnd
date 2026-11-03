@@ -133,16 +133,34 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         Assert.Empty(bus.Published);
     }
 
-    [Fact]
-    public async Task An_infected_file_discards_the_pending_asset()
+    private static async Task<RecordingMessageBus> DiscardAsync(
+        InMemoryBrandRepository repo,
+        Guid fileId,
+        bool blockedByPolicy = false
+    )
     {
-        var repo = new InMemoryBrandRepository();
-        var fileId = Guid.NewGuid();
-        repo.Seed(
-            TenantId,
-            BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
-        );
+        var bus = new RecordingMessageBus();
+        if (blockedByPolicy)
+        {
+            await TenantBrandAssetScanResultConsumer.Handle(
+                new FileBlockedByPolicyIntegrationEvent
+                {
+                    TenantId = TenantId,
+                    FileId = fileId,
+                    ObjectKey = $"tenant-branding/{fileId:N}/logo.png",
+                    PolicyReason = "nsfw",
+                    CreatedBy = Guid.NewGuid(),
+                },
+                repo,
+                new CountingUnitOfWork(),
+                new NoopCache(),
+                bus,
+                new NoopCorrelationContext(),
+                NullLogger<TenantBrand>.Instance,
+                CancellationToken.None
+            );
+            return bus;
+        }
 
         await TenantBrandAssetScanResultConsumer.Handle(
             new FileInfectedDetectedIntegrationEvent
@@ -154,11 +172,101 @@ public sealed class TenantBrandAssetScanResultConsumerTests
             },
             repo,
             new CountingUnitOfWork(),
+            new NoopCache(),
+            bus,
             new NoopCorrelationContext(),
             NullLogger<TenantBrand>.Instance,
             CancellationToken.None
         );
+        return bus;
+    }
+
+    [Fact]
+    public async Task An_infected_crm_logo_is_discarded_and_its_removal_announced()
+    {
+        var repo = new InMemoryBrandRepository();
+        var fileId = Guid.NewGuid();
+        repo.Seed(
+            TenantId,
+            BrandSurface.Crm,
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+        );
+
+        var bus = await DiscardAsync(repo, fileId);
 
         Assert.Empty(repo.All.Single().Assets);
+        Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task A_policy_blocked_crm_logo_is_discarded_and_its_removal_announced()
+    {
+        var repo = new InMemoryBrandRepository();
+        var fileId = Guid.NewGuid();
+        repo.Seed(
+            TenantId,
+            BrandSurface.Crm,
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+        );
+
+        var bus = await DiscardAsync(repo, fileId, blockedByPolicy: true);
+
+        Assert.Empty(repo.All.Single().Assets);
+        Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task An_infected_portal_logo_is_discarded_without_notifying_scribe()
+    {
+        var repo = new InMemoryBrandRepository();
+        var fileId = Guid.NewGuid();
+        repo.Seed(
+            TenantId,
+            BrandSurface.Portal,
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+        );
+
+        var bus = await DiscardAsync(repo, fileId);
+
+        Assert.Empty(repo.All.Single().Assets);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task A_replayed_infected_event_does_not_announce_the_removal_twice()
+    {
+        var repo = new InMemoryBrandRepository();
+        var fileId = Guid.NewGuid();
+        repo.Seed(
+            TenantId,
+            BrandSurface.Crm,
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+        );
+
+        await DiscardAsync(repo, fileId);
+        var bus = await DiscardAsync(repo, fileId);
+
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task An_infected_event_for_a_confirmed_logo_is_a_no_op()
+    {
+        var repo = new InMemoryBrandRepository();
+        var fileId = Guid.NewGuid();
+        repo.Seed(
+            TenantId,
+            BrandSurface.Crm,
+            b =>
+            {
+                b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null);
+                b.ConfirmAsset(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow);
+            }
+        );
+
+        var bus = await DiscardAsync(repo, fileId);
+
+        Assert.Equal(BrandAssetStatus.Confirmed, repo.All.Single().Assets.Single().Status);
+        Assert.Empty(bus.Published);
     }
 }

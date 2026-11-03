@@ -10,6 +10,9 @@ public interface ISignatureProfileRepository
 {
     Task<SignatureProfile?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>La firma cuya imagen es <paramref name="fileId"/> (archivada o no), o null.</summary>
+    Task<SignatureProfile?> GetByFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
+
     /// <summary>
     /// Firmas visibles para un usuario: siempre las de oficina (OwnerUserId == null) y, solo si
     /// <paramref name="includePersonal"/>, también las suyas. Con el toggle de firma propia apagado

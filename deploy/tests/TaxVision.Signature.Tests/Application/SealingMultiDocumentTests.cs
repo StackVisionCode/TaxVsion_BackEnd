@@ -122,6 +122,87 @@ public sealed class SealingMultiDocumentTests
         // Qué certificado recibe cada firmante lo cubre SignedDocumentDeliveryIssuerTests.
     }
 
+    [Fact]
+    public async Task A_redelivered_seal_publishes_nothing_new_and_a_reseal_after_release_gets_a_new_key()
+    {
+        var request = NewRequest(out var firstSigner, out var secondSigner);
+        var firstDocument = request.Documents[0];
+        var repository = new StoredRequestRepository(request);
+        var storage = new MemoryStorage(request.Documents.Select(document => document.OriginalFileId));
+        var bus = new SealingMessageBus();
+        var unitOfWork = new CountingUnitOfWork();
+        var correlation = new FixedCorrelationContext("reseal");
+        var signedAt = DateTime.UtcNow;
+        await SubmitAndSeal(
+            request,
+            firstSigner,
+            firstDocument.Id,
+            signedAt,
+            repository,
+            storage,
+            unitOfWork,
+            bus,
+            correlation
+        );
+        await SubmitAndSeal(
+            request,
+            secondSigner,
+            request.Documents[1].Id,
+            signedAt.AddMinutes(1),
+            repository,
+            storage,
+            unitOfWork,
+            bus,
+            correlation
+        );
+        var readyEvent = bus.Messages.OfType<SignatureDocumentsReadyForSealingIntegrationEvent>().First();
+        var firstSeal = bus.Messages.OfType<SignatureDocumentSealedIntegrationEvent>().First();
+
+        // Redelivery del mismo sellado: el pipeline lo salta, no hay un segundo hecho.
+        await Seal(readyEvent, repository, storage, unitOfWork, bus, correlation);
+        Assert.Equal(2, bus.Messages.OfType<SignatureDocumentSealedIntegrationEvent>().Count());
+
+        // CloudStorage rechazó el sellado: al volver a sellar es otro archivo y otra clave.
+        Assert.Equal(SealingArtifactKind.SealedDocument, request.ReleaseRejectedArtifact(firstSeal.SealedFileId)?.Kind);
+        await Seal(readyEvent, repository, storage, unitOfWork, bus, correlation);
+
+        var reseal = bus.Messages.OfType<SignatureDocumentSealedIntegrationEvent>().Last();
+        Assert.Equal(firstDocument.Id, reseal.DocumentId);
+        Assert.NotEqual(firstSeal.SealedFileId, reseal.SealedFileId);
+        Assert.NotEqual(firstSeal.IdempotencyKey, reseal.IdempotencyKey);
+        Assert.Equal(
+            SignatureSealingIdempotencyKeys.DocumentSealed(request.Id, firstDocument.Id, reseal.SealedFileId),
+            reseal.IdempotencyKey
+        );
+        Assert.Equal(request.CertificateFileId, reseal.CertificateFileId);
+        Assert.True(request.AllDocumentsSealed());
+    }
+
+    private static Task Seal(
+        SignatureDocumentsReadyForSealingIntegrationEvent readyEvent,
+        ISignatureRequestRepository repository,
+        ISignatureCloudStorageClient storage,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation
+    ) =>
+        SignatureRequestCompletedConsumer.Handle(
+            readyEvent,
+            repository,
+            storage,
+            new EmptyFileMetadataRepository(),
+            new EmptyBrandingRepository(),
+            new DeterministicSealer(),
+            new FixedStampStyle(),
+            new DeterministicCertificateRenderer(),
+            new AcquiredDistributedLock(),
+            unitOfWork,
+            bus,
+            correlation,
+            NullLogger<SignatureRequest>.Instance,
+            CancellationToken.None
+        );
+
     private static async Task SubmitAndSeal(
         SignatureRequest request,
         Signer signer,

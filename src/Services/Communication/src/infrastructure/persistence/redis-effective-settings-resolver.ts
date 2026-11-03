@@ -24,9 +24,9 @@ export interface EffectiveSettingsResolverDeps {
   readonly preferences: UserCommunicationPreferencesRepository;
 }
 
-// v2: la retención pasó a la plataforma; una copia vieja en Redis no trae esos campos.
-const PLATFORM_KEY = 'comm:platform-settings:v2';
-const tenantKey = (tenantId: string): string => `comm:effective:v2:${tenantId}`;
+// v3 (D-72): retención gestionable por la oficina; una copia v2 no trae `managedByTenant`.
+const PLATFORM_KEY = 'comm:platform-settings:v3';
+const tenantKey = (tenantId: string): string => `comm:effective:v3:${tenantId}`;
 /** Redis es la caché compartida entre instancias; el TTL solo acota una invalidación perdida. */
 const REDIS_TTL_SECONDS = 60;
 /** Capa en proceso para rutas calientes (dominant_speaker, disconnect): corta en segundos. */

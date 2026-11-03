@@ -12,6 +12,7 @@ import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
 import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
 import { resolveUserDisplayName } from './resolve-user-display-name.js';
 import type { UserDirectoryRepository } from '../ports/user-directory-repository.js';
+import type { CustomerDirectoryRepository } from '../ports/customer-directory-repository.js';
 import { buildMeetingJoinUrl } from './build-meeting-join-url.js';
 import { config } from '../../infrastructure/config.js';
 import type { EffectiveCommunicationSettings } from '../../domain/settings/effective-communication-settings.js';
@@ -59,6 +60,8 @@ export interface CreateMeetingInvitationsCommand {
 
 export interface CreateMeetingInvitationSummary {
   readonly id: string;
+  /** MNT-01: con que tipo quedo (un "externo" con email de empleado o cliente de la oficina se invita como tal). */
+  readonly inviteeKind: MeetingInviteeKind;
   /** Solo los primeros 8 chars — el token completo nunca se re-expone tras crearse. */
   readonly tokenPreview: string;
   readonly expiresAt: string;
@@ -66,14 +69,27 @@ export interface CreateMeetingInvitationSummary {
   readonly joinUrl: string;
 }
 
+/** MNT-01: invitado que no se volvio a invitar porque ya tiene una invitacion abierta en la reunion. */
+export interface SkippedMeetingInvitee {
+  readonly email: string | null;
+  readonly name: string | null;
+  readonly reason: 'AlreadyInvited';
+}
+
 export interface CreateMeetingInvitationsResult {
   readonly invitations: readonly CreateMeetingInvitationSummary[];
+  readonly skipped: readonly SkippedMeetingInvitee[];
 }
 
 export interface CreateMeetingInvitationsDeps extends MeetingEventLogDeps {
   readonly meetings: MeetingRepository;
-  /** F6: nombres legibles del host y de quien invita para el email y el toast. */
-  readonly userDirectory?: Pick<UserDirectoryRepository, 'findByUserId'> | undefined;
+  /**
+   * F6: nombres legibles del host y de quien invita. MNT-01: un "externo" cuyo email es de staff de la
+   * oficina se invita como empleado.
+   */
+  readonly userDirectory?: Pick<UserDirectoryRepository, 'findByUserId' | 'findActiveStaffByEmail'> | undefined;
+  /** MNT-01: un "externo" cuyo email es de un cliente de ESTA oficina se invita como cliente. */
+  readonly customerDirectory?: Pick<CustomerDirectoryRepository, 'findActiveByEmail'> | undefined;
   readonly publisher: IntegrationEventPublisher;
   readonly customerPortalAccounts: CustomerPortalAccountRepository;
   readonly tenantHostResolver: TenantHostResolver;
@@ -113,13 +129,21 @@ export async function createMeetingInvitations(
 
   const now = new Date();
   const effective = await deps.effectiveSettings.resolve(command.tenantId);
-  // F11 (E-259): sin invitados externos permitidos no se crea su enlace (antes solo fallaba al usarlo).
-  if (!effective.meeting.guestsAllowed && command.invitees.some((i) => i.kind === 'External')) {
-    return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This office does not allow external guests.'));
+  const existing = await deps.meetings.listInvitationsByMeeting(command.tenantId, command.meetingId);
+  const { invitees, skipped } = await normalizeInvitees(command.tenantId, command.invitees, existing, now, deps);
+  if (invitees.length === 0) return Result.ok({ invitations: [], skipped });
+
+  // F11 (E-259) + D-69: sin externos permitidos (oficina o reunion) no se crea su enlace.
+  if (invitees.some((i) => i.kind === 'External')) {
+    if (!effective.meeting.guestsAllowed) {
+      return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This office does not allow external guests.'));
+    }
+    if (!meetingSnapshot.guestsAllowed) {
+      return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This meeting does not allow external guests.'));
+    }
   }
   // F11 (E-259): tope por reunión: cada invitación puede ser un email a cualquier dirección.
-  const existing = await deps.meetings.listInvitationsByMeeting(command.tenantId, command.meetingId);
-  if (existing.length + command.invitees.length > deps.maxInvitationsPerMeeting) {
+  if (existing.length + invitees.length > deps.maxInvitationsPerMeeting) {
     return Result.fail(
       makeError('Meeting.Invitation.LimitReached', `A meeting can have at most ${deps.maxInvitationsPerMeeting} invitations.`),
     );
@@ -130,7 +154,7 @@ export async function createMeetingInvitations(
     effective,
   });
   const issued: Array<{ invitation: MeetingInvitation; plainToken: string }> = [];
-  for (const invitee of command.invitees) {
+  for (const invitee of invitees) {
     // Empleado: el userId de Auth ya viene del picker. Cliente: se resuelve su userId de portal
     // activo a partir del customerId (el picker de customers no expone userId). External: sin userId.
     let inviteeUserId = invitee.userId ?? null;
@@ -241,6 +265,7 @@ export async function createMeetingInvitations(
 
     summaries.push({
       id: snap.id,
+      inviteeKind: snap.inviteeKind,
       tokenPreview: `${plainToken.slice(0, 8)}...`,
       expiresAt: snap.expiresAtUtc.toISOString(),
       inviteeEmail: snap.inviteeEmail,
@@ -248,5 +273,65 @@ export async function createMeetingInvitations(
     });
   }
 
-  return Result.ok({ invitations: summaries });
+  return Result.ok({ invitations: summaries, skipped });
+}
+
+/**
+ * MNT-01: antes de invitar, dentro de ESTA oficina (el mismo cliente puede existir en varias; cada una
+ * tiene su propia ficha y aqui solo se mira la de la reunion):
+ *  - un "externo" con email de staff se invita como empleado (staff + portal con el mismo email: gana
+ *    el staff); con email de UN cliente, como cliente (con varios clientes con ese email queda externo);
+ *  - quien ya tiene una invitacion abierta en la reunion (o se repite en el lote) no se vuelve a invitar.
+ */
+async function normalizeInvitees(
+  tenantId: string,
+  requested: readonly CreateMeetingInvitationInput[],
+  existing: readonly MeetingInvitation[],
+  now: Date,
+  deps: CreateMeetingInvitationsDeps,
+): Promise<{ invitees: CreateMeetingInvitationInput[]; skipped: SkippedMeetingInvitee[] }> {
+  const taken = new Set<string>();
+  for (const invitation of existing) {
+    const snap = invitation.toSnapshot();
+    const open = !snap.revokedAtUtc && !snap.closedAtUtc && snap.expiresAtUtc.getTime() > now.getTime();
+    if (!open) continue;
+    if (snap.inviteeEmail) taken.add(emailKey(snap.inviteeEmail));
+    if (snap.inviteeUserId) taken.add(`user:${snap.inviteeUserId}`);
+  }
+
+  const invitees: CreateMeetingInvitationInput[] = [];
+  const skipped: SkippedMeetingInvitee[] = [];
+  for (const input of requested) {
+    const invitee = await recognizeInvitee(tenantId, input, deps);
+    const keys = [invitee.email ? emailKey(invitee.email) : null, invitee.userId ? `user:${invitee.userId}` : null].filter(
+      (key): key is string => key !== null,
+    );
+    if (keys.some((key) => taken.has(key))) {
+      skipped.push({ email: invitee.email ?? null, name: invitee.name ?? null, reason: 'AlreadyInvited' });
+      continue;
+    }
+    keys.forEach((key) => taken.add(key));
+    invitees.push(invitee);
+  }
+  return { invitees, skipped };
+}
+
+async function recognizeInvitee(
+  tenantId: string,
+  invitee: CreateMeetingInvitationInput,
+  deps: CreateMeetingInvitationsDeps,
+): Promise<CreateMeetingInvitationInput> {
+  if (invitee.kind !== 'External' || !invitee.email) return invitee;
+  const staff = await deps.userDirectory?.findActiveStaffByEmail?.(tenantId, invitee.email).catch(() => null);
+  if (staff) return { kind: 'Employee', userId: staff.userId, email: staff.email, name: staff.displayName };
+  const customers = (await deps.customerDirectory?.findActiveByEmail?.(tenantId, invitee.email).catch(() => [])) ?? [];
+  const [customer] = customers;
+  if (customers.length === 1 && customer) {
+    return { kind: 'Customer', customerId: customer.customerId, email: customer.email, name: customer.displayName };
+  }
+  return invitee;
+}
+
+function emailKey(email: string): string {
+  return `email:${email.trim().toLowerCase()}`;
 }

@@ -87,6 +87,10 @@ public static class FormRequestErrors
         "FormRequest.AlreadyLinked",
         "The request is already linked to another customer."
     );
+    public static readonly Error SignatureNotPending = new(
+        "FormRequest.SignatureNotPending",
+        "The revision has no signature in progress."
+    );
     public static readonly Error LinkNotBlocked = new(
         "FormRequest.LinkNotBlocked",
         "The customer link is not blocked."

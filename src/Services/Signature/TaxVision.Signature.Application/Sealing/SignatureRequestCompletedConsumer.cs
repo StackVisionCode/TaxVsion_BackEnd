@@ -156,8 +156,11 @@ public static class SignatureRequestCompletedConsumer
             // solicitud en paralelo (double-processing en clúster). Si otro nodo lo tomó,
             // salimos limpiamente — el idempotency-check del pipeline evita duplicados
             // aunque el lock se salte por TTL prematuro.
-            var lockKey = $"signature:sealing:{signatureRequestId:N}";
-            await using var lockHandle = await distributedLock.AcquireAsync(lockKey, SealingLockTtl, ct);
+            await using var lockHandle = await distributedLock.AcquireAsync(
+                SealingLockKey(signatureRequestId),
+                SealingLockTtl,
+                ct
+            );
             if (!lockHandle.IsAcquired)
             {
                 logger.LogInformation(
@@ -303,7 +306,7 @@ public static class SignatureRequestCompletedConsumer
     ///   <item><description>Ausente o <c>Pending</c> → aún escaneando: lanza
     ///     <see cref="SignatureImageNotReadyException"/> para que Wolverine reintente el sellado.</description></item>
     ///   <item><description><c>Available</c> → el id del firmante entra al set descargable.</description></item>
-    ///   <item><description><c>Infected</c>/<c>Deleted</c> → se excluye (nunca se embebe): ese campo
+    ///   <item><description><c>Infected</c>/<c>Deleted</c>/<c>Rejected</c> → se excluye (nunca se embebe): ese campo
     ///     cae al sello tipográfico. No se reintenta porque no va a mejorar.</description></item>
     /// </list>
     /// </summary>
@@ -322,7 +325,7 @@ public static class SignatureRequestCompletedConsumer
     )
     {
         var projection = await fileRefRepository.GetByFileIdAsync(tenantId, fileId, ct);
-        if (projection is { Status: FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted })
+        if (projection is { HasScanOutcome: true })
             return projection;
 
         var deadline = DateTime.UtcNow + InProcessScanPollBudget;
@@ -330,7 +333,7 @@ public static class SignatureRequestCompletedConsumer
         {
             await Task.Delay(InProcessScanPollInterval, ct);
             projection = await fileRefRepository.GetByFileIdAsync(tenantId, fileId, ct);
-            if (projection is { Status: FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted })
+            if (projection is { HasScanOutcome: true })
                 return projection;
         }
 
@@ -366,6 +369,7 @@ public static class SignatureRequestCompletedConsumer
 
                 case FileScanStatus.Infected:
                 case FileScanStatus.Deleted:
+                case FileScanStatus.Rejected:
                     logger.LogWarning(
                         "Signature image {FileId} for signer {SignerId} is {Status}; sealing with typographic fallback.",
                         imageFileId,
@@ -988,7 +992,11 @@ public static class SignatureRequestCompletedConsumer
                 {
                     TenantId = request.TenantId,
                     CorrelationId = correlationId,
-                    IdempotencyKey = $"signature.doc_sealed:{request.Id:N}:{sealedDocument.DocumentId:N}:v1",
+                    IdempotencyKey = SignatureSealingIdempotencyKeys.DocumentSealed(
+                        request.Id,
+                        sealedDocument.DocumentId,
+                        sealedDocument.SealedFileId
+                    ),
                     SignatureRequestId = request.Id,
                     CreatedByUserId = request.CreatedByUserId,
                     DocumentId = sealedDocument.DocumentId,
@@ -1045,6 +1053,9 @@ public static class SignatureRequestCompletedConsumer
             .AsTask();
 
     // ============== Helpers ==============
+
+    /// <summary>Lock por solicitud del sellado; lo comparte quien toque sus archivos finales.</summary>
+    internal static string SealingLockKey(Guid signatureRequestId) => $"signature:sealing:{signatureRequestId:N}";
 
     private static string ResolveCorrelationId(string? sourceCorrelationId, Guid sourceEventId) =>
         string.IsNullOrWhiteSpace(sourceCorrelationId) ? sourceEventId.ToString("N") : sourceCorrelationId;

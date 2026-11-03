@@ -65,6 +65,9 @@ class FakeMeetingRepository implements MeetingRepository {
   async findByShortCodeAnyTenant(): Promise<Meeting | null> {
     return null;
   }
+  async findByIdAnyTenant(): Promise<null> {
+    return null;
+  }
   async saveInvitation(invitation: MeetingInvitation): Promise<void> {
     this.invitations.set(invitation.toSnapshot().id, invitation);
   }
@@ -216,7 +219,7 @@ function buildHarness() {
   // El fin de reunión pasa por el cierre ordenado: SFU, presencia y grabación como dobles mínimos.
   const sfu = { closeMeeting: async () => undefined, closeParticipant: async () => undefined, listProducersForUser: () => [] } as unknown as SfuService;
   const presence = { clearBusy: async () => undefined, markBusy: async () => undefined } as unknown as PresenceService;
-  const recordingSessions = { findByScope: async () => null } as unknown as RecordingSessionRepository;
+  const recordingSessions = { findLatestByScope: async () => null } as unknown as RecordingSessionRepository;
   const idempotency = {} as IdempotencyStore;
   return {
     meetings,
@@ -391,6 +394,98 @@ describe('createMeetingInvitations', () => {
   });
 });
 
+describe('MNT-01: invitation validation inside the meeting office', () => {
+  const staff = (tenantId: string, email: string) => ({
+    userId: u(), tenantId, displayName: 'Laura Staff', email, isActive: true, actorType: 'TenantEmployee', avatarFileId: null, updatedAtUtc: new Date(),
+  });
+  const customer = (tenantId: string, email: string) => ({
+    customerId: u(), tenantId, displayName: 'Carlos Client', email, isActive: true, avatarFileId: null, updatedAtUtc: new Date(),
+  });
+  /** Directorios por oficina: cada oficina tiene sus propias filas (el mismo cliente en dos oficinas = dos filas). */
+  function directories(rows: { staff?: ReturnType<typeof staff>[]; customers?: ReturnType<typeof customer>[] }) {
+    return {
+      userDirectory: {
+        findByUserId: async () => null,
+        findActiveStaffByEmail: async (tenantId: string, email: string) =>
+          (rows.staff ?? []).find((r) => r.tenantId === tenantId && r.email.toLowerCase() === email.toLowerCase()) ?? null,
+      },
+      customerDirectory: {
+        findActiveByEmail: async (tenantId: string, email: string) =>
+          (rows.customers ?? []).filter((r) => r.tenantId === tenantId && r.email.toLowerCase() === email.toLowerCase()),
+      },
+    };
+  }
+  const invite = (harness: ReturnType<typeof buildHarness>, meeting: Meeting, host: { userId: string }, invitees: { email: string }[]) =>
+    createMeetingInvitations(
+      { tenantId: meeting.tenantId, correlationId: u(), meetingId: meeting.id, actorUserId: host.userId, invitees: invitees.map((i) => ({ kind: 'External' as const, ...i })) },
+      harness,
+    );
+
+  it('an "external" email of a client of THIS office is invited as that client', async () => {
+    const { meeting, host } = liveMeeting();
+    const client = customer(meeting.tenantId, 'carlos@example.com');
+    const harness = { ...buildHarness(), ...directories({ customers: [client] }) };
+    await harness.meetings.save(meeting);
+
+    const result = await invite(harness, meeting, host, [{ email: 'Carlos@Example.com' }]);
+
+    expect(result.isSuccess).toBe(true);
+    if (!result.isSuccess) return;
+    expect(result.value.invitations[0]?.inviteeKind).toBe('Customer');
+  });
+
+  it('the same client in another office does not count: it stays external here', async () => {
+    const { meeting, host } = liveMeeting();
+    const otherOffice = customer(u(), 'carlos@example.com');
+    const harness = { ...buildHarness(), ...directories({ customers: [otherOffice] }) };
+    await harness.meetings.save(meeting);
+
+    const result = await invite(harness, meeting, host, [{ email: 'carlos@example.com' }]);
+
+    expect(result.isSuccess && result.value.invitations[0]?.inviteeKind).toBe('External');
+  });
+
+  it('staff wins when the same email is also a client portal account in the office', async () => {
+    const { meeting, host } = liveMeeting();
+    const harness = {
+      ...buildHarness(),
+      ...directories({ staff: [staff(meeting.tenantId, 'laura@example.com')], customers: [customer(meeting.tenantId, 'laura@example.com')] }),
+    };
+    await harness.meetings.save(meeting);
+
+    const result = await invite(harness, meeting, host, [{ email: 'laura@example.com' }]);
+
+    expect(result.isSuccess && result.value.invitations[0]?.inviteeKind).toBe('Employee');
+  });
+
+  it('two clients of the office sharing the email stay external (no guessing)', async () => {
+    const { meeting, host } = liveMeeting();
+    const harness = {
+      ...buildHarness(),
+      ...directories({ customers: [customer(meeting.tenantId, 'family@example.com'), customer(meeting.tenantId, 'family@example.com')] }),
+    };
+    await harness.meetings.save(meeting);
+
+    const result = await invite(harness, meeting, host, [{ email: 'family@example.com' }]);
+
+    expect(result.isSuccess && result.value.invitations[0]?.inviteeKind).toBe('External');
+  });
+
+  it('someone already invited (open invitation) or repeated in the batch is skipped and reported', async () => {
+    const { meeting, host } = liveMeeting();
+    const harness = buildHarness();
+    await harness.meetings.save(meeting);
+    await invite(harness, meeting, host, [{ email: 'pepe@example.com' }]);
+
+    const again = await invite(harness, meeting, host, [{ email: 'PEPE@example.com' }, { email: 'ana@example.com' }, { email: 'ana@example.com' }]);
+
+    expect(again.isSuccess).toBe(true);
+    if (!again.isSuccess) return;
+    expect(again.value.invitations.map((i) => i.inviteeEmail)).toEqual(['ana@example.com']);
+    expect(again.value.skipped.map((s) => s.email?.toLowerCase())).toEqual(['pepe@example.com', 'ana@example.com']);
+  });
+});
+
 describe('startMeeting realtime notices', () => {
   it('pushes meeting.started to invited users but not to the host', async () => {
     const harness = buildHarness();
@@ -496,14 +591,14 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     expect(invitations.isSuccess).toBe(true);
     if (invitations.isSuccess) expect(invitations.value.invitations[0]?.usedAt).toBeNull();
 
-    const guestUserId = resolved.value.invitationId;
+    const guestUserId = resolved.value.invitationId!;
     const joinResult = await joinMeeting(
       {
         tenantId: meeting.tenantId,
         correlationId: u(),
         meetingId: meeting.id,
         user: { userId: guestUserId, displayName: 'Invitado Externo', actorType: 'Guest' },
-        guestInvitationId: resolved.value.invitationId,
+        guestInvitationId: resolved.value.invitationId!,
       },
       harness,
     );
@@ -530,14 +625,14 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     const resolved = await resolveInvitationToken({ token }, harness);
     if (!resolved.isSuccess) throw new Error();
 
-    const guestUserId = resolved.value.invitationId;
+    const guestUserId = resolved.value.invitationId!;
     const first = await joinMeeting(
       {
         tenantId: meeting.tenantId,
         correlationId: u(),
         meetingId: meeting.id,
         user: { userId: guestUserId, displayName: 'Invitado', actorType: 'Guest' },
-        guestInvitationId: resolved.value.invitationId,
+        guestInvitationId: resolved.value.invitationId!,
       },
       harness,
     );
@@ -549,7 +644,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
         correlationId: u(),
         meetingId: meeting.id,
         user: { userId: guestUserId, displayName: 'Invitado', actorType: 'Guest' },
-        guestInvitationId: resolved.value.invitationId,
+        guestInvitationId: resolved.value.invitationId!,
       },
       harness,
     );
@@ -566,7 +661,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
         correlationId: u(),
         meetingId: meeting.id,
         user: { userId: guestUserId, displayName: 'Invitado', actorType: 'Guest' },
-        guestInvitationId: resolved.value.invitationId,
+        guestInvitationId: resolved.value.invitationId!,
       },
       harness,
     );
@@ -583,7 +678,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
         correlationId: u(),
         meetingId: meeting.id,
         user: { userId: guestUserId, displayName: 'Invitado', actorType: 'Guest' },
-        guestInvitationId: resolved.value.invitationId,
+        guestInvitationId: resolved.value.invitationId!,
       },
       harness,
     );
@@ -779,8 +874,8 @@ describe('joinMeeting — la invitacion solo sirve para su meeting y su invitado
         tenantId,
         correlationId: u(),
         meetingId: second.meeting.id,
-        user: { userId: resolved.value.invitationId, displayName: 'Invitado', actorType: 'Guest' },
-        guestInvitationId: resolved.value.invitationId,
+        user: { userId: resolved.value.invitationId!, displayName: 'Invitado', actorType: 'Guest' },
+        guestInvitationId: resolved.value.invitationId!,
       },
       harness,
     );

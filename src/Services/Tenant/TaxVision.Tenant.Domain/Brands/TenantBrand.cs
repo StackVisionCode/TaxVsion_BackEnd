@@ -151,15 +151,17 @@ public sealed class TenantBrand : TenantEntity
     }
 
     /// <summary>Descarta un upload que CloudStorage rechazó (infectado / bloqueado), solo si el
-    /// fileId pendiente coincide (si ya se reemplazó, no pisa el asset nuevo). Idempotente.</summary>
-    public void DiscardPendingAsset(BrandAssetKey key, Guid fileId)
+    /// fileId pendiente coincide (si ya se reemplazó, no pisa el asset nuevo). Idempotente: devuelve
+    /// true solo si de verdad lo quitó.</summary>
+    public bool DiscardPendingAsset(BrandAssetKey key, Guid fileId)
     {
         var existing = FindAsset(key);
         if (existing is null || existing.FileId != fileId || existing.Status != BrandAssetStatus.Pending)
-            return;
+            return false;
 
         _assets.Remove(existing);
         Touch();
+        return true;
     }
 
     /// <summary>Elimina un asset. Idempotente: no falla si no estaba.</summary>

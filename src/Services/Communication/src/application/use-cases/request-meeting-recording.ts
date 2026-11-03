@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import { RecordingScope } from '../../domain/recording/recording-session-state.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
-import type { RecordingSessionRepository } from '../ports/recording-repository.js';
+import { RecordingSequenceTakenError, type RecordingSessionRepository } from '../ports/recording-repository.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
@@ -88,18 +88,24 @@ export async function requestMeetingRecording(
     }
   }
 
-  const existingSession = await deps.recordingSessions.findByScope(
+  const latestSession = await deps.recordingSessions.findLatestByScope(
     command.tenantId,
     RecordingScope.Meeting,
     command.meetingId,
   );
 
-  const requestResult = meeting.requestRecording({ actorUserId: command.actorUserId, existingSession });
+  const requestResult = meeting.requestRecording({ actorUserId: command.actorUserId, latestSession });
   if (!requestResult.isSuccess) {
     await release();
     return Result.fail(requestResult.error);
   }
-  await deps.recordingSessions.save(requestResult.value.session);
+  try {
+    await deps.recordingSessions.save(requestResult.value.session);
+  } catch (err) {
+    if (!(err instanceof RecordingSequenceTakenError)) throw err;
+    await release();
+    return Result.fail(makeError('Meeting.Recording.InProgress', 'This meeting is already being recorded.'));
+  }
 
   const requestedAtUtc = requestResult.value.session.toSnapshot().requestedAtUtc.toISOString();
 

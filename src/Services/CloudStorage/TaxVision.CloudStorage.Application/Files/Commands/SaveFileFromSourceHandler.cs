@@ -65,6 +65,7 @@ public static class SaveFileFromSourceHandler
                     evt.OwnerType,
                     evt.FolderType
                 );
+                await RejectAsync(evt, "InvalidOwnerOrFolder", audit, unitOfWork, bus, correlation, clock, ct);
                 return;
             }
 
@@ -85,6 +86,18 @@ public static class SaveFileFromSourceHandler
                 );
             }
 
+            // 0 bytes no es un archivo: antes caia en Reserve() como "FileTooLarge" y confundia al diagnosticar.
+            if (evt.SizeBytes <= 0)
+            {
+                logger.LogWarning(
+                    "SaveFileRequested {FileId} from {Service} rejected: empty file.",
+                    evt.FileId,
+                    evt.RequestingService
+                );
+                await RejectAsync(evt, "EmptyFile", audit, unitOfWork, bus, correlation, clock, ct);
+                return;
+            }
+
             var policy = await uploadPolicies.ResolveAsync(evt.TenantId, limit, folderType, forCustomerPortal: false, ct);
             var extension = Path.GetExtension(evt.OriginalName).ToLowerInvariant();
             if (
@@ -98,6 +111,7 @@ public static class SaveFileFromSourceHandler
                     evt.FileId,
                     evt.RequestingService
                 );
+                await RejectAsync(evt, "UploadPolicy", audit, unitOfWork, bus, correlation, clock, ct);
                 return;
             }
 
@@ -110,6 +124,7 @@ public static class SaveFileFromSourceHandler
                     evt.RequestingService,
                     reserve.Error.Code
                 );
+                await RejectAsync(evt, reserve.Error.Code, audit, unitOfWork, bus, correlation, clock, ct);
                 return;
             }
 
@@ -131,6 +146,7 @@ public static class SaveFileFromSourceHandler
                     evt.RequestingService,
                     key.Error.Code
                 );
+                await RejectAsync(evt, key.Error.Code, audit, unitOfWork, bus, correlation, clock, ct);
                 return;
             }
 
@@ -158,6 +174,7 @@ public static class SaveFileFromSourceHandler
                     evt.RequestingService,
                     registered.Error.Code
                 );
+                await RejectAsync(evt, registered.Error.Code, audit, unitOfWork, bus, correlation, clock, ct);
                 return;
             }
 
@@ -219,5 +236,50 @@ public static class SaveFileFromSourceHandler
             await bus.PublishAsync(new ScanFileCommand(evt.TenantId, file.Id, correlation.CorrelationId));
             await unitOfWork.SaveChangesAsync(ct);
         }
+    }
+
+    /// <summary>
+    /// Rechazo definitivo: queda auditado y el servicio que lo pidió se entera
+    /// (<see cref="FileSaveRejectedIntegrationEvent"/>), porque ya pudo apuntar ese FileId en su aggregate.
+    /// </summary>
+    private static async Task RejectAsync(
+        SaveFileRequestedIntegrationEvent evt,
+        string reason,
+        IStorageAuditRepository audit,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        ISystemClock clock,
+        CancellationToken ct
+    )
+    {
+        audit.Add(
+            StorageAccessLog.Create(
+                evt.TenantId,
+                evt.FileId,
+                evt.ActorId,
+                "upload.from-source",
+                "rejected",
+                null,
+                null,
+                correlation.CorrelationId,
+                $"service={evt.RequestingService};reason={reason}",
+                clock.UtcNow
+            )
+        );
+        await bus.PublishAsync(
+            new FileSaveRejectedIntegrationEvent
+            {
+                TenantId = evt.TenantId,
+                FileId = evt.FileId,
+                RequestingService = evt.RequestingService,
+                OwnerType = evt.OwnerType,
+                OwnerId = evt.OwnerId,
+                FolderType = evt.FolderType,
+                Reason = reason,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+        await unitOfWork.SaveChangesAsync(ct);
     }
 }

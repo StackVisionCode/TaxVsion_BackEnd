@@ -32,6 +32,11 @@ export function isTerminalRecordingState(state: RecordingSessionState): boolean 
   return state === 'Ready' || state === 'Failed';
 }
 
+/** D-71: pedida, grabando o deteniendose; lo que sigue (componer, procesar) ya no bloquea otra grabacion. */
+export function isCaptureActiveRecordingState(state: RecordingSessionState): boolean {
+  return state === 'Requesting' || state === 'Recording' || state === 'Stopping';
+}
+
 /** 'Meeting' | 'Call' — coincide 1:1 con RecordingSession.Scope en Prisma. */
 export const RecordingScope = {
   Meeting: 'Meeting',

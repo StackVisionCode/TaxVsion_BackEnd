@@ -142,6 +142,18 @@ public sealed class RequestDocument : BaseEntity
         return Result.Success();
     }
 
+    // El sellado nunca llegó a CloudStorage: el documento vuelve a "por sellar". Su certificado atestigua
+    // el hash de ese sellado, así que también cae (RecordCertificate exige documento sellado).
+    internal void ReleaseSeal()
+    {
+        SealedFileId = null;
+        DocumentHashPost = null;
+        SealedAtUtc = null;
+        CertificateFileId = null;
+    }
+
+    internal void ReleaseCertificate() => CertificateFileId = null;
+
     internal Result ReplaceOriginalFile(Guid newFileId, int? newPageCount)
     {
         if (newFileId == Guid.Empty)

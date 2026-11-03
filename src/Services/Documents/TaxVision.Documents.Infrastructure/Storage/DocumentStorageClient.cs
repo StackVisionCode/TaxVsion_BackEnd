@@ -68,7 +68,7 @@ public sealed class DocumentStorageClient(
                 TenantId = tenantId,
                 CorrelationId = correlationId,
                 FileId = fileId,
-                RequestingService = "documents",
+                RequestingService = IDocumentStorageClient.RequestingService,
                 SourceBucket = opt.TempBucket,
                 SourceObjectKey = sourceObjectKey,
                 ActorId = actorId,

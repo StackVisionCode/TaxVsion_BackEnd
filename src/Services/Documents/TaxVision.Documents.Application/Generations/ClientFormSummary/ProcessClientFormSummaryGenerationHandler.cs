@@ -179,7 +179,12 @@ public static class ProcessClientFormSummaryGenerationHandler
                 {
                     // Sólo se anuncia la copia si quedó subida: así Tasks nunca pide firmar un archivo inexistente.
                     var anchorPage = ResolveAnchorPage(pageCounter, pdf.Value, logger);
-                    generation.AttachSignatureCopy(signatureFileId, anchorPage);
+                    generation.AttachSignatureCopy(
+                        signatureFileId,
+                        anchorPage,
+                        signatureCopy.OwnerType,
+                        signatureCopy.FolderType
+                    );
                     await unitOfWork.SaveChangesAsync(ct);
                 }
                 else

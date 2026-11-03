@@ -448,6 +448,9 @@ public sealed class SignatureProfileHandlersTests
         public Task<SignatureProfile?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
             Task.FromResult(store.FirstOrDefault(p => p.TenantId == tenantId && p.Id == id));
 
+        public Task<SignatureProfile?> GetByFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult(store.FirstOrDefault(p => p.TenantId == tenantId && p.FileId == fileId));
+
         public Task<IReadOnlyList<SignatureProfile>> ListVisibleAsync(
             Guid tenantId,
             Guid userId,

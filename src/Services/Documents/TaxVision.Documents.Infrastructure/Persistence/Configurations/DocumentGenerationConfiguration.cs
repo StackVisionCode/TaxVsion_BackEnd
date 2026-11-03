@@ -69,6 +69,8 @@ public sealed class DocumentGenerationConfiguration : IEntityTypeConfiguration<D
         builder.Property(g => g.ExternalReferenceId);
         builder.Property(g => g.SignatureCopyFileId);
         builder.Property(g => g.SignatureAnchorPage);
+        builder.Property(g => g.SignatureCopyOwnerType).HasMaxLength(60);
+        builder.Property(g => g.SignatureCopyFolderType).HasMaxLength(60);
         builder.Property(g => g.AttemptCount).IsRequired();
         builder.Property(g => g.ErrorCode).HasMaxLength(100);
         builder.Property(g => g.ErrorMessage).HasMaxLength(2000);

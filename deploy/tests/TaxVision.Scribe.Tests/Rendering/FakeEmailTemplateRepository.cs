@@ -65,4 +65,15 @@ internal sealed class FakeEmailTemplateRepository(EmailTemplate template) : IEma
         );
         return Task.FromResult<IReadOnlyList<EmailTemplate>>(hasEligibleVersion ? [template] : []);
     }
+
+    public Task<IReadOnlyList<EmailTemplate>> GetReferencingFileAsync(Guid fileId, CancellationToken ct = default)
+    {
+        var referenced = template.Versions.Any(v =>
+            v.HtmlFileId == fileId
+            || v.TextFileId == fileId
+            || v.DesignJsonFileId == fileId
+            || v.PreviewImageFileId == fileId
+        );
+        return Task.FromResult<IReadOnlyList<EmailTemplate>>(referenced ? [template] : []);
+    }
 }

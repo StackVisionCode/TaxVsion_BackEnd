@@ -6,4 +6,5 @@ public interface ISystemAssetRefRepository
 {
     Task<SystemAssetRef?> GetByKeyAsync(string key, CancellationToken ct = default);
     Task AddAsync(SystemAssetRef assetRef, CancellationToken ct = default);
+    void Remove(SystemAssetRef assetRef);
 }

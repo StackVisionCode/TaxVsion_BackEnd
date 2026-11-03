@@ -17,6 +17,18 @@ public sealed class IncomingEmailAttachment
     /// <summary>partId MIME (ej. "1.2.3") — siempre corto; 100 sobra de sobra.</summary>
     public const int PartIdMaxLength = 100;
 
+    /// <summary>Código de rechazo de CloudStorage (ej. "StorageQuota.Exceeded") — corto por diseño.</summary>
+    public const int StorageRejectionReasonMaxLength = 100;
+
+    // Rechazos que se repiten igual al reintentar: mismos bytes (EmptyFile) y mismo dueño/carpeta fijos
+    // en código (InvalidOwnerOrFolder). Cuota, suspensión y política de subida (la oficina puede
+    // cambiarla) pueden liberarse → reintentables.
+    private static readonly HashSet<string> PermanentStorageRejections = new(StringComparer.Ordinal)
+    {
+        "EmptyFile",
+        "InvalidOwnerOrFolder",
+    };
+
     private IncomingEmailAttachment() { }
 
     public Guid Id { get; private set; }
@@ -40,6 +52,19 @@ public sealed class IncomingEmailAttachment
     public Guid? CloudStorageFileId { get; private set; }
     public DateTime? DownloadedAtUtc { get; private set; }
     public string? FailureReason { get; private set; }
+
+    /// <summary>
+    /// Código con el que CloudStorage rechazó la última copia (null si el último fallo no fue de
+    /// storage). A diferencia de <see cref="FailureReason"/>, es un código estable y apto para
+    /// elegir el mensaje al usuario.
+    /// </summary>
+    public string? StorageRejectionReason { get; private set; }
+
+    /// <summary>Falló porque CloudStorage rechazó la copia con un motivo que reintentar no cambia.</summary>
+    public bool HasPermanentStorageRejection =>
+        DownloadStatus == AttachmentDownloadStatus.Failed
+        && StorageRejectionReason is not null
+        && PermanentStorageRejections.Contains(StorageRejectionReason);
 
     /// <summary>
     /// Solo <see cref="IncomingEmail.Create"/> construye instancias — mismo motivo que
@@ -92,6 +117,7 @@ public sealed class IncomingEmailAttachment
 
         DownloadStatus = AttachmentDownloadStatus.InProgress;
         FailureReason = null;
+        StorageRejectionReason = null;
         return Result.Success();
     }
 
@@ -110,6 +136,7 @@ public sealed class IncomingEmailAttachment
         CloudStorageFileId = cloudStorageFileId;
         DownloadedAtUtc = DateTime.UtcNow;
         FailureReason = null;
+        StorageRejectionReason = null;
         return Result.Success();
     }
 
@@ -126,6 +153,7 @@ public sealed class IncomingEmailAttachment
 
         DownloadStatus = AttachmentDownloadStatus.Failed;
         FailureReason = reason.Length > FailureReasonMaxLength ? reason[..FailureReasonMaxLength] : reason;
+        StorageRejectionReason = null;
         return Result.Success();
     }
 
@@ -147,11 +175,34 @@ public sealed class IncomingEmailAttachment
         return true;
     }
 
+    // CloudStorage rechazó guardar la copia: ese archivo nunca existirá. Vuelve a Failed guardando el
+    // código, solo si todavía apunta a ese archivo; true si cambió.
+    public bool ReleaseRejectedFile(Guid cloudStorageFileId, string rejectionReason)
+    {
+        if (
+            CloudStorageFileId != cloudStorageFileId
+            || DownloadStatus is not (AttachmentDownloadStatus.Downloaded or AttachmentDownloadStatus.UnderReview)
+        )
+            return false;
+
+        DownloadStatus = AttachmentDownloadStatus.Failed;
+        CloudStorageFileId = null;
+        DownloadedAtUtc = null;
+        StorageRejectionReason =
+            rejectionReason.Length > StorageRejectionReasonMaxLength
+                ? rejectionReason[..StorageRejectionReasonMaxLength]
+                : rejectionReason;
+        var reason = $"Storage rejected the file: {rejectionReason}";
+        FailureReason = reason.Length > FailureReasonMaxLength ? reason[..FailureReasonMaxLength] : reason;
+        return true;
+    }
+
     // El escaneo lo marcó peligroso. Terminal e idempotente — desde cualquier estado.
     public void MarkBlocked(string reason)
     {
         DownloadStatus = AttachmentDownloadStatus.Blocked;
         CloudStorageFileId = null;
         FailureReason = reason.Length > FailureReasonMaxLength ? reason[..FailureReasonMaxLength] : reason;
+        StorageRejectionReason = null;
     }
 }

@@ -156,7 +156,8 @@ builder.Host.UseWolverine(options =>
     options.ApplyStandardFailurePolicies();
 
     // Consume File* de CloudStorage (resultado del escaneo del archivo de import subido
-    // directo a MinIO, ver ImportFileScanResultConsumer — Fase D para Customer).
+    // directo a MinIO, ver ImportFileScanResultConsumer — Fase D para Customer) y FileSaveRejected
+    // (imports y fotos de cliente que CloudStorage no llegó a registrar).
     options
         .ListenToRabbitQueue(
             "customer-events",

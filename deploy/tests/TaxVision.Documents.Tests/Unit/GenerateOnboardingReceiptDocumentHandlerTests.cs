@@ -151,6 +151,9 @@ public sealed class GenerateOnboardingReceiptDocumentHandlerTests
         public Task<DocumentGeneration?> GetByFileIdAsync(Guid fileId, CancellationToken ct = default) =>
             Task.FromResult(_generations.FirstOrDefault(g => g.FileId == fileId));
 
+        public Task<DocumentGeneration?> GetBySignatureCopyFileIdAsync(Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult(_generations.FirstOrDefault(g => g.SignatureCopyFileId == fileId));
+
         public Task AddAsync(DocumentGeneration generation, CancellationToken ct = default)
         {
             _generations.Add(generation);

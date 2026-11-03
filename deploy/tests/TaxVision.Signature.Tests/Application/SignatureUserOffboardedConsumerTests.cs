@@ -99,6 +99,9 @@ public sealed class SignatureUserOffboardedConsumerTests
         public Task<SignatureProfile?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
             throw new NotImplementedException();
 
+        public Task<SignatureProfile?> GetByFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            throw new NotImplementedException();
+
         public Task<IReadOnlyList<SignatureProfile>> ListVisibleAsync(
             Guid tenantId,
             Guid userId,

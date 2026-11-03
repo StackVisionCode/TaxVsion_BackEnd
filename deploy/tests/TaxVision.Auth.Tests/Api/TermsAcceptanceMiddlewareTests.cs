@@ -60,6 +60,9 @@ public sealed class TermsAcceptanceMiddlewareTests
         public Task<TermsVersion?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             throw new NotImplementedException();
 
+        public Task<TermsVersion?> GetByContentFileIdAsync(Guid contentFileId, CancellationToken ct = default) =>
+            throw new NotImplementedException();
+
         public Task<TermsVersion?> GetCurrentAsync(
             TermsKind kind,
             string locale,

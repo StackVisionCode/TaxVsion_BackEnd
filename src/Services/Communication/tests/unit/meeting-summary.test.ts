@@ -57,6 +57,9 @@ function meeting(participants: MeetingParticipantSnapshot[]): Meeting {
     passcodeHash: null,
     requireWaitingRoom: false,
     isLocked: false,
+    guestsAllowed: true,
+    guestLinkEnabled: false,
+    guestLinkVersion: 0,
     maxParticipants: 10,
     strategy: 'Sfu',
     recordingRequested: false,
@@ -138,7 +141,7 @@ function deps(m: Meeting, events: MeetingEventLogEntry[], invitations: MeetingIn
       list: async (input: { afterSeq?: number; take: number }) =>
         events.filter((e) => e.seq > (input.afterSeq ?? 0)).slice(0, input.take),
     } as unknown as MeetingEventLogRepository,
-    recordingSessions: { findByScope: async () => null },
+    recordingSessions: { findLatestByScope: async () => null },
     userDirectory: { findByUserIds: async (ids: readonly string[]) => directory.filter((d) => ids.includes(d.userId)) },
   };
 }

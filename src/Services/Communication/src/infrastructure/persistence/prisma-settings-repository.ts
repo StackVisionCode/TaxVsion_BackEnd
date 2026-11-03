@@ -33,7 +33,6 @@ export class PrismaSettingsRepository implements SettingsRepository {
       GroupsAllowMultipleClients: s.groupsAllowMultipleClients,
       DefaultCameraOff: s.defaultCameraOff,
       DefaultMicrophoneOff: s.defaultMicrophoneOff,
-      PersistChatOnEnd: s.persistChatOnEnd,
       RecordingConsentPolicy: s.recordingConsentPolicy,
       DefaultMeetingDurationMinutes: s.defaultMeetingDurationMinutes,
       MaxMeetingDurationMinutes: s.maxMeetingDurationMinutes,
@@ -57,7 +56,6 @@ export class PrismaSettingsRepository implements SettingsRepository {
       ReactionsEnabled: s.reactionsEnabled,
       MeetingReactionCatalog: s.meetingReactionCatalog === null ? null : JSON.stringify(s.meetingReactionCatalog),
       MeetingReminderMinutesBefore: s.meetingReminderMinutesBefore,
-      GuestsWaitingRoom: s.guestsWaitingRoom,
       TranscriptPrompt: s.transcriptPrompt,
       VoiceNoteTranscriptEnabled: s.voiceNoteTranscriptEnabled,
       ChatEditWindowMinutesDirect: s.chatEditWindowMinutesDirect,
@@ -65,6 +63,9 @@ export class PrismaSettingsRepository implements SettingsRepository {
       ChatEditWindowMinutesSupport: s.chatEditWindowMinutesSupport,
       ChatEditWindowMinutesMeeting: s.chatEditWindowMinutesMeeting,
       ChatMaxEditsPerMessage: s.chatMaxEditsPerMessage,
+      PurgeEnabled: s.purgeEnabled,
+      MessageRetentionDays: s.messageRetentionDays,
+      RecordingRetentionDays: s.recordingRetentionDays,
     };
     await this.prisma.tenantCommunicationSettings.upsert({
       where: { TenantId: s.tenantId },
@@ -93,7 +94,6 @@ export class PrismaSettingsRepository implements SettingsRepository {
     GroupsAllowMultipleClients: boolean;
     DefaultCameraOff: boolean;
     DefaultMicrophoneOff: boolean;
-    PersistChatOnEnd: boolean;
     RecordingConsentPolicy: string;
     DefaultMeetingDurationMinutes: number | null;
     MaxMeetingDurationMinutes: number | null;
@@ -117,7 +117,6 @@ export class PrismaSettingsRepository implements SettingsRepository {
     ReactionsEnabled: boolean | null;
     MeetingReactionCatalog: string | null;
     MeetingReminderMinutesBefore: number | null;
-    GuestsWaitingRoom: boolean | null;
     TranscriptPrompt: string | null;
     VoiceNoteTranscriptEnabled: boolean | null;
     ChatEditWindowMinutesDirect: number | null;
@@ -125,6 +124,9 @@ export class PrismaSettingsRepository implements SettingsRepository {
     ChatEditWindowMinutesSupport: number | null;
     ChatEditWindowMinutesMeeting: number | null;
     ChatMaxEditsPerMessage: number | null;
+    PurgeEnabled: boolean | null;
+    MessageRetentionDays: number | null;
+    RecordingRetentionDays: number | null;
     CreatedAtUtc: Date;
     UpdatedAtUtc: Date;
   }): TenantCommunicationSettingsSnapshot {
@@ -141,7 +143,6 @@ export class PrismaSettingsRepository implements SettingsRepository {
       groupsAllowMultipleClients: row.GroupsAllowMultipleClients,
       defaultCameraOff: row.DefaultCameraOff,
       defaultMicrophoneOff: row.DefaultMicrophoneOff,
-      persistChatOnEnd: row.PersistChatOnEnd,
       recordingConsentPolicy: isRecordingConsentPolicy(row.RecordingConsentPolicy)
         ? row.RecordingConsentPolicy
         : RecordingConsentPolicy.NoRejections,
@@ -167,7 +168,6 @@ export class PrismaSettingsRepository implements SettingsRepository {
       reactionsEnabled: row.ReactionsEnabled,
       meetingReactionCatalog: parseReactionCatalogColumn(row.MeetingReactionCatalog),
       meetingReminderMinutesBefore: row.MeetingReminderMinutesBefore,
-      guestsWaitingRoom: row.GuestsWaitingRoom,
       transcriptPrompt: row.TranscriptPrompt,
       voiceNoteTranscriptEnabled: row.VoiceNoteTranscriptEnabled,
       chatEditWindowMinutesDirect: row.ChatEditWindowMinutesDirect,
@@ -175,6 +175,9 @@ export class PrismaSettingsRepository implements SettingsRepository {
       chatEditWindowMinutesSupport: row.ChatEditWindowMinutesSupport,
       chatEditWindowMinutesMeeting: row.ChatEditWindowMinutesMeeting,
       chatMaxEditsPerMessage: row.ChatMaxEditsPerMessage,
+      purgeEnabled: row.PurgeEnabled,
+      messageRetentionDays: row.MessageRetentionDays,
+      recordingRetentionDays: row.RecordingRetentionDays,
       createdAtUtc: row.CreatedAtUtc,
       updatedAtUtc: row.UpdatedAtUtc,
     };

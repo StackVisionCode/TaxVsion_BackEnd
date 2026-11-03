@@ -31,6 +31,7 @@ using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Requests.Commands.FromForm;
 using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Settings.IntegrationEvents;
 using TaxVision.Signature.Domain.Requests;
@@ -284,6 +285,8 @@ builder.Host.UseWolverine(options =>
     // Fase D1 — reemplaza el HttpClient a CloudStorage para subir el sellado/certificate.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ReassignFileOwnerRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Certificados que quedaron atestiguando un sellado rechazado: borrado verificado, punto a punto como Auth/Customer/Tasks.
+    options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
     options.PublishMessage<SignatureSettingsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignaturePlanConstraintsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // P-18 — resultados de la creación de firma desde un formulario (hechos al fan-out, los consume Tasks).
@@ -305,6 +308,12 @@ builder.Host.UseWolverine(options =>
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(60)
         );
+
+    // Copia de un formulario aún en vuelo: el consumer cuenta los intentos con este mismo arreglo y, en el
+    // último, publica SignatureRequestFromFormFailed en vez de dejar el mensaje en la cola de errores.
+    options
+        .Policies.OnException<SignatureCopyNotReadyException>()
+        .RetryWithCooldown(SignatureRequestFromFormRequestedConsumer.CopyWaitCooldowns);
 
     options.ApplyStandardFailurePolicies();
 });

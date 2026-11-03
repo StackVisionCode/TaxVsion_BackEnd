@@ -22,4 +22,6 @@ internal sealed class FakeSystemAssetRefRepository : ISystemAssetRefRepository
         _store[assetRef.Key] = assetRef;
         return Task.CompletedTask;
     }
+
+    public void Remove(SystemAssetRef assetRef) => _store.Remove(assetRef.Key);
 }

@@ -26,6 +26,12 @@ export class InMemoryMeetingRepository {
     const m = this.meetings.get(meetingId);
     return m && m.tenantId === tenantId ? m : null;
   }
+  async findByIdAnyTenant(meetingId: string): Promise<Meeting | null> {
+    return this.meetings.get(meetingId) ?? null;
+  }
+  async findByShortCode(tenantId: string, shortCode: string): Promise<Meeting | null> {
+    return [...this.meetings.values()].find((m) => m.tenantId === tenantId && m.toSnapshot().shortCode === shortCode) ?? null;
+  }
   async listLive(): Promise<Meeting[]> {
     return [...this.meetings.values()].filter((m) => m.status === 'Live');
   }
@@ -166,7 +172,7 @@ export function buildMeetingRuntime(platformPatch: Partial<PlatformCommunication
     emitter,
     sfu: sfu.asService(),
     presence: presence.asService(),
-    recordingSessions: { findByScope: async () => null } as unknown as RecordingSessionRepository,
+    recordingSessions: { findLatestByScope: async () => null } as unknown as RecordingSessionRepository,
     idempotency: {} as IdempotencyStore,
     conversations: {
       findById: async () => null,

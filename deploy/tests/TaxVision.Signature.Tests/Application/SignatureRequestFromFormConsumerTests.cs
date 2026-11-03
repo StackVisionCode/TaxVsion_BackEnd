@@ -97,10 +97,142 @@ public sealed class SignatureRequestFromFormConsumerTests
         var bus = new CapturingBus();
         var command = BuildCommand(tenantId, fileId, customerId: null, autoSend: false);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<SignatureCopyNotReadyException>(() =>
             Handle(command, repo, bus, StorageWith(fileId, "Processing", null, "Signature", "Signatures"))
         );
         Assert.Null(repo.Added);
+    }
+
+    [Fact]
+    public async Task A_copy_with_a_final_rejected_projection_fails_at_once_without_retrying()
+    {
+        var fileId = Guid.NewGuid();
+        var command = BuildCommand(Guid.NewGuid(), fileId, customerId: null, autoSend: false);
+        var files = new ProjectionFiles(FileMetadataRef.ForRejected(command.TenantId, fileId, "StorageQuota.Exceeded"));
+        var repo = new CapturingRepository();
+        var bus = new CapturingBus();
+
+        await Handle(command, repo, bus, new FailingLookup(SignatureStorage.FileNotFoundCode), files, attempt: 1);
+
+        Assert.Null(repo.Added);
+        AssertSingleFailed(bus, SignatureRequestFromFormOutcomes.FileNotAvailable);
+    }
+
+    [Theory]
+    [InlineData("Infected")]
+    [InlineData("BlockedByPolicy")]
+    [InlineData("ScanFailed")]
+    [InlineData("SoftDeleted")]
+    public async Task A_copy_storage_will_never_make_available_fails_at_once(string status)
+    {
+        var fileId = Guid.NewGuid();
+        var command = BuildCommand(Guid.NewGuid(), fileId, customerId: null, autoSend: false);
+        var bus = new CapturingBus();
+
+        await Handle(
+            command,
+            new CapturingRepository(),
+            bus,
+            StorageWith(fileId, status, null, "Signature", "Signatures")
+        );
+
+        AssertSingleFailed(bus, SignatureRequestFromFormOutcomes.FileNotAvailable);
+    }
+
+    [Fact]
+    public async Task An_unregistered_copy_is_retried_before_the_final_attempt()
+    {
+        var command = BuildCommand(Guid.NewGuid(), Guid.NewGuid(), customerId: null, autoSend: false);
+        var bus = new CapturingBus();
+
+        await Assert.ThrowsAsync<SignatureCopyNotReadyException>(() =>
+            Handle(
+                command,
+                new CapturingRepository(),
+                bus,
+                new FailingLookup(SignatureStorage.FileNotFoundCode),
+                new ProjectionFiles(),
+                attempt: SignatureRequestFromFormRequestedConsumer.FinalAttempt - 1
+            )
+        );
+
+        Assert.Empty(bus.Messages);
+    }
+
+    [Fact]
+    public async Task An_unregistered_copy_on_the_final_attempt_fails_instead_of_dead_lettering()
+    {
+        var command = BuildCommand(Guid.NewGuid(), Guid.NewGuid(), customerId: null, autoSend: false);
+        var repo = new CapturingRepository();
+        var bus = new CapturingBus();
+
+        await Handle(
+            command,
+            repo,
+            bus,
+            new FailingLookup(SignatureStorage.FileNotFoundCode),
+            new ProjectionFiles(),
+            attempt: SignatureRequestFromFormRequestedConsumer.FinalAttempt
+        );
+
+        Assert.Null(repo.Added);
+        AssertSingleFailed(bus, SignatureRequestFromFormOutcomes.FileNotAvailable);
+    }
+
+    [Fact]
+    public async Task A_copy_still_scanning_on_the_final_attempt_fails_instead_of_dead_lettering()
+    {
+        var fileId = Guid.NewGuid();
+        var command = BuildCommand(Guid.NewGuid(), fileId, customerId: null, autoSend: false);
+        var bus = new CapturingBus();
+
+        await Handle(
+            command,
+            new CapturingRepository(),
+            bus,
+            StorageWith(fileId, "Scanning", null, "Signature", "Signatures"),
+            new ProjectionFiles(),
+            attempt: SignatureRequestFromFormRequestedConsumer.FinalAttempt
+        );
+
+        AssertSingleFailed(bus, SignatureRequestFromFormOutcomes.FileNotAvailable);
+    }
+
+    [Fact]
+    public async Task A_storage_outage_keeps_the_standard_retry_path_even_on_the_final_attempt()
+    {
+        var command = BuildCommand(Guid.NewGuid(), Guid.NewGuid(), customerId: null, autoSend: false);
+        var bus = new CapturingBus();
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Handle(
+                command,
+                new CapturingRepository(),
+                bus,
+                new FailingLookup("Signature.Storage.FileLookup"),
+                new ProjectionFiles(),
+                attempt: SignatureRequestFromFormRequestedConsumer.FinalAttempt
+            )
+        );
+
+        Assert.Contains("could not be looked up", thrown.Message, StringComparison.Ordinal);
+        Assert.Empty(bus.Messages);
+    }
+
+    [Fact]
+    public void The_final_attempt_follows_the_copy_wait_policy() =>
+        Assert.Equal(
+            SignatureRequestFromFormRequestedConsumer.CopyWaitCooldowns.Length + 1,
+            SignatureRequestFromFormRequestedConsumer.FinalAttempt
+        );
+
+    private static void AssertSingleFailed(CapturingBus bus, string errorCode)
+    {
+        var failed = Assert.IsType<SignatureRequestFromFormFailedIntegrationEvent>(
+            Assert.Single(bus.Messages.Where(m => m is SignatureRequestFromFormFailedIntegrationEvent))
+        );
+        Assert.Equal(errorCode, failed.ErrorCode);
+        Assert.DoesNotContain(bus.Messages, m => m is SignatureRequestFromFormCreatedIntegrationEvent);
     }
 
     [Fact]
@@ -157,7 +289,9 @@ public sealed class SignatureRequestFromFormConsumerTests
         SignatureRequestFromFormRequestedIntegrationEvent command,
         CapturingRepository repo,
         CapturingBus bus,
-        ConfiguredStorage storage
+        ISignatureCloudStorageClient storage,
+        IFileMetadataRefRepository? files = null,
+        int attempt = 1
     ) =>
         SignatureRequestFromFormRequestedConsumer.Handle(
             command,
@@ -173,9 +307,48 @@ public sealed class SignatureRequestFromFormConsumerTests
             bus,
             new FixedCorrelationContext("corr"),
             new NoOpCache(),
+            files ?? new ProjectionFiles(),
+            new Envelope { Attempts = attempt },
             NullLogger<SignatureRequestFromFormRequestedIntegrationEvent>.Instance,
             CancellationToken.None
         );
+
+    private sealed class ProjectionFiles(params FileMetadataRef[] seed) : IFileMetadataRefRepository
+    {
+        public Task<FileMetadataRef?> GetByFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult(seed.FirstOrDefault(file => file.TenantId == tenantId && file.FileId == fileId));
+
+        public Task AddAsync(FileMetadataRef projection, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class FailingLookup(string errorCode) : ISignatureCloudStorageClient
+    {
+        public Task<Result<SignatureFileMetadata>> GetFileAsync(
+            Guid tenantId,
+            Guid id,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Failure<SignatureFileMetadata>(new Error(errorCode, "lookup failed")));
+
+        public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<Result<Guid>> UploadAsync(
+            Guid tenantId,
+            SignatureFileUpload upload,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<Result<Guid>> CopyToCustomerAsync(
+            Guid tenantId,
+            Guid sourceFileId,
+            Guid customerId,
+            int taxYear,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+    }
 
     private static SignatureRequestFromFormRequestedIntegrationEvent BuildCommand(
         Guid tenantId,

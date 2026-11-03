@@ -29,6 +29,9 @@ public interface IDocumentGenerationRepository
     /// <summary>Correlación del evento CloudStorage FileAvailable → la generación que subió ese FileId.</summary>
     Task<DocumentGeneration?> GetByFileIdAsync(Guid fileId, CancellationToken ct = default);
 
+    /// <summary>Cross-tenant: la generación cuya copia de firma (P-18) es ese FileId.</summary>
+    Task<DocumentGeneration?> GetBySignatureCopyFileIdAsync(Guid fileId, CancellationToken ct = default);
+
     Task AddAsync(DocumentGeneration generation, CancellationToken ct = default);
 }
 
@@ -94,6 +97,9 @@ public sealed record IssuerSnapshot(
 /// nunca guarda bytes. SCAFFOLD.</summary>
 public interface IDocumentStorageClient
 {
+    /// <summary>RequestingService con que Documents firma sus SaveFileRequested (y que CloudStorage devuelve al rechazar).</summary>
+    const string RequestingService = "documents";
+
     Task<Result> RequestSaveAsync(
         Guid tenantId,
         Guid fileId,

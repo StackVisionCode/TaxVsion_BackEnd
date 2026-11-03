@@ -81,11 +81,18 @@ public static class SignerPartialCopyConsumer
                 if (projection?.Status != FileScanStatus.Available)
                 {
                     logger.LogInformation(
-                        "Partial copy for signer {SignerId} delayed: image scan {Status}.",
+                        "Partial copy for signer {SignerId}: image scan {Status}.",
                         signer.Id,
                         projection?.Status
                     );
-                    if (DateTime.UtcNow - evt.SignedAtUtc <= MaxScanWait)
+                    // Con resultado final (rechazada/infectada) se sigue ya con el sello tipográfico.
+                    if (
+                        PartialCopyScanGate.ShouldWaitForImage(
+                            projection,
+                            DateTime.UtcNow - evt.SignedAtUtc,
+                            MaxScanWait
+                        )
+                    )
                         throw new InvalidOperationException("Signature image not scanned yet; redeliver scheduled.");
                 }
             }
@@ -256,15 +263,26 @@ public static class SignerPartialCopyConsumer
                 ct
             );
             // El enlace de entrega se resuelve al abrirlo, pero se espera el scan para no avisar de una
-            // copia que todavía no se puede descargar.
-            var scanned = uploadedProjection?.Status == FileScanStatus.Available;
-            if (!scanned && DateTime.UtcNow - evt.SignedAtUtc <= MaxScanWait)
+            // copia que todavía no se puede descargar. Una copia que CloudStorage no aceptó nunca se entrega.
+            var decision = PartialCopyScanGate.ForUploadedCopy(
+                uploadedProjection,
+                DateTime.UtcNow - evt.SignedAtUtc,
+                MaxScanWait
+            );
+            if (decision == PartialCopyScanDecision.Fail)
+                return Result.Failure<IReadOnlyList<PartialCopyOutcome>>(
+                    new Error(
+                        "Signature.PartialCopy.FileNotAccepted",
+                        $"The in-progress copy of '{document.Title}' was not accepted by storage ({uploadedProjection!.Status}: {uploadedProjection.RejectionReason})."
+                    )
+                );
+            if (decision == PartialCopyScanDecision.Wait)
             {
                 throw new InvalidOperationException(
                     $"Partial copy file {upload.Value} not Available yet ({uploadedProjection?.Status.ToString() ?? "null"}); redeliver scheduled."
                 );
             }
-            if (!scanned)
+            if (decision == PartialCopyScanDecision.DeliverUnscanned)
             {
                 logger.LogWarning(
                     "Partial copy file {FileId} for signer {SignerId}, document {DocumentId} is still {Status}; it is delivered anyway.",
@@ -300,7 +318,7 @@ public static class SignerPartialCopyConsumer
     )
     {
         var projection = await fileRefRepository.GetByFileIdAsync(tenantId, fileId, ct);
-        if (projection is { Status: FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted })
+        if (projection is { HasScanOutcome: true })
             return projection;
 
         var deadline = DateTime.UtcNow + InProcessScanPollBudget;
@@ -308,7 +326,7 @@ public static class SignerPartialCopyConsumer
         {
             await Task.Delay(InProcessScanPollInterval, ct);
             projection = await fileRefRepository.GetByFileIdAsync(tenantId, fileId, ct);
-            if (projection is { Status: FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted })
+            if (projection is { HasScanOutcome: true })
                 return projection;
         }
 

@@ -28,6 +28,11 @@ export interface MeetingSnapshot {
   readonly passcodeHash: string | null;
   readonly requireWaitingRoom: boolean;
   readonly isLocked: boolean;
+  /** D-69: esta reunion admite invitados externos (nunca por encima de lo que permite la oficina). */
+  readonly guestsAllowed: boolean;
+  /** D-68: enlace de la reunion para externos; la version invalida los enlaces anteriores. */
+  readonly guestLinkEnabled: boolean;
+  readonly guestLinkVersion: number;
   readonly maxParticipants: number;
   readonly strategy: MeetingStrategy;
   readonly recordingRequested: boolean;
@@ -99,6 +104,8 @@ export interface ScheduleMeetingInput {
   readonly scheduledDurationMinutes?: number;
   readonly recordingRequested?: boolean;
   readonly transcriptLanguage?: string | null;
+  /** D-69: valor inicial = el de la oficina; quien agenda puede apagarlo. */
+  readonly guestsAllowed?: boolean;
   readonly mediaPolicy?: MeetingMediaPolicy;
   readonly durationPolicy?: MeetingDurationPolicy;
   readonly continuationOfMeetingId?: string | null;
@@ -168,6 +175,9 @@ export class Meeting {
       passcodeHash: input.passcodeHash ?? null,
       requireWaitingRoom: input.requireWaitingRoom ?? true,
       isLocked: false,
+      guestsAllowed: input.guestsAllowed ?? true,
+      guestLinkEnabled: false,
+      guestLinkVersion: 0,
       maxParticipants,
       strategy: maxParticipants <= policy.meshMaxParticipants ? MeetingStrategy.Mesh : MeetingStrategy.Sfu,
       recordingRequested: input.recordingRequested ?? false,
@@ -203,8 +213,8 @@ export class Meeting {
     passcodeMatch: boolean | null;
     audioDefault?: boolean;
     videoDefault?: boolean;
-    /** F6 (D-47): la politica de la oficina manda a los guests a la sala de espera aunque la reunion no la exija. */
-    forceWaitingRoom?: boolean;
+    /** D-67: un invitado externo (sin cuenta) siempre espera a que lo admitan. */
+    isGuest?: boolean;
     now?: Date;
   }): Result<{ requiresAdmission: boolean; role: MeetingRole; rejoined: boolean; handLoweredOnRejoin: boolean }> {
     const now = input.now ?? new Date();
@@ -236,6 +246,10 @@ export class Meeting {
     if (existing && existing.status === 'Waiting') {
       return Result.ok({ requiresAdmission: true, role: existing.role, rejoined: false, handLoweredOnRejoin: false });
     }
+    // D-69: con los externos apagados no entra uno nuevo (los que ya estaban adentro siguen arriba).
+    if (input.isGuest === true && !this.state.guestsAllowed) {
+      return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This meeting does not allow external guests.'));
+    }
 
     const isHost = input.userId === this.state.hostUserId;
     const activeJoined = this.participants.filter((p) => p.isJoined).length;
@@ -246,7 +260,7 @@ export class Meeting {
     // F11 (E-259): a quien el host sacó o rechazó no le basta con volver a pedir entrar: espera a que el
     // host lo admita de nuevo (antes volvía directo si la reunión no estaba bloqueada ni con sala de espera).
     const removedByHost = existing?.status === ParticipantStatus.Removed;
-    const requiresAdmission = !isHost && (this.state.requireWaitingRoom || input.forceWaitingRoom === true || removedByHost);
+    const requiresAdmission = !isHost && (this.state.requireWaitingRoom || input.isGuest === true || removedByHost);
     const role: MeetingRole = isHost ? MeetingRole.Host : MeetingRole.Attendee;
     const joinOrder = this.nextJoinOrder();
 
@@ -435,6 +449,60 @@ export class Meeting {
     target.remove(now);
     this.commit(now);
     return Result.okVoid();
+  }
+
+  /**
+   * D-69: host o cohost abren o cierran la reunion a externos. Al cerrarla se rechaza a los externos que
+   * esperaban (se devuelven para avisarles); los que ya estan adentro siguen.
+   */
+  setGuestAccess(input: { hostUserId: string; allowed: boolean; now?: Date }): Result<{ deniedUserIds: readonly string[] }> {
+    const guard = this.ensureCanHostAct(input.hostUserId);
+    if (!guard.isSuccess) return guard;
+    const now = input.now ?? new Date();
+    const denied = input.allowed
+      ? []
+      : this.participants.filter((p) => p.actorType === 'Guest' && p.status === ParticipantStatus.Waiting);
+    denied.forEach((p) => p.remove(now));
+    this.state = {
+      ...this.state,
+      guestsAllowed: input.allowed,
+      // Sin externos el enlace no sirve: se apaga (encenderlo de nuevo genera uno nuevo).
+      guestLinkEnabled: input.allowed ? this.state.guestLinkEnabled : false,
+    };
+    this.commit(now);
+    return Result.ok({ deniedUserIds: denied.map((p) => p.userId) });
+  }
+
+  /**
+   * D-68: enciende el enlace de la reunion. Encenderlo desde apagado o rotarlo sube la version, asi
+   * que un enlace anterior ya no sirve.
+   */
+  enableGuestLink(input: { hostUserId: string; rotate: boolean; now?: Date }): Result<{ version: number }> {
+    const guard = this.ensureCanHostAct(input.hostUserId);
+    if (!guard.isSuccess) return guard;
+    if (isTerminalMeetingStatus(this.state.status)) {
+      return Result.fail(makeError('Meeting.NotJoinable', `Meeting is ${this.state.status}.`));
+    }
+    if (!this.state.guestsAllowed) {
+      return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This meeting does not allow external guests.'));
+    }
+    if (this.state.guestLinkEnabled && !input.rotate) return Result.ok({ version: this.state.guestLinkVersion });
+    this.state = { ...this.state, guestLinkEnabled: true, guestLinkVersion: this.state.guestLinkVersion + 1 };
+    this.commit(input.now ?? new Date());
+    return Result.ok({ version: this.state.guestLinkVersion });
+  }
+
+  disableGuestLink(input: { hostUserId: string; now?: Date }): Result<void> {
+    const guard = this.ensureCanHostAct(input.hostUserId);
+    if (!guard.isSuccess) return guard;
+    this.state = { ...this.state, guestLinkEnabled: false };
+    this.commit(input.now ?? new Date());
+    return Result.okVoid();
+  }
+
+  /** D-68: el enlace (de esa version) sigue sirviendo para pedir entrar. */
+  acceptsGuestLink(version: number): boolean {
+    return this.state.guestsAllowed && this.state.guestLinkEnabled && this.state.guestLinkVersion === version && !isTerminalMeetingStatus(this.state.status);
   }
 
   setLocked(input: { hostUserId: string; locked: boolean }): Result<void> {
@@ -780,9 +848,11 @@ export class Meeting {
     return Result.okVoid();
   }
 
-  /** F7 (T-37): la retencion borro los archivos; la ficha ya no los ofrece. */
-  clearRecordingFiles(): void {
-    this.state = { ...this.state, recordingFileId: null, transcriptFileId: null, updatedAtUtc: new Date() };
+  /** F7 (T-37): la retencion borro los archivos de una grabacion; solo se sueltan si son los que se muestran (D-71). */
+  clearRecordingFiles(files: { recordingFileId: string | null; transcriptFileId: string | null }): void {
+    const recordingFileId = files.recordingFileId !== null && this.state.recordingFileId === files.recordingFileId ? null : this.state.recordingFileId;
+    const transcriptFileId = files.transcriptFileId !== null && this.state.transcriptFileId === files.transcriptFileId ? null : this.state.transcriptFileId;
+    this.state = { ...this.state, recordingFileId, transcriptFileId, updatedAtUtc: new Date() };
   }
 
   attachTranscript(fileId: string): Result<void> {
@@ -813,26 +883,23 @@ export class Meeting {
   // construir el payload correspondiente.
   // ------------------------------------------------------------------
 
+  /** D-71: se puede grabar varias veces; solo se rechaza mientras la ultima grabacion sigue capturando. */
   requestRecording(input: {
     actorUserId: string;
-    existingSession: RecordingSession | null;
+    latestSession: RecordingSession | null;
     now?: Date;
   }): Result<{ session: RecordingSession; participantUserIds: readonly string[] }> {
     const guard = this.ensureCanHostAct(input.actorUserId);
     if (!guard.isSuccess) return guard;
-    if (input.existingSession !== null) {
-      return Result.fail(
-        makeError(
-          'Meeting.Recording.AlreadyRequested',
-          'A recording session already exists for this meeting.',
-        ),
-      );
+    if (input.latestSession?.isCapturing) {
+      return Result.fail(makeError('Meeting.Recording.InProgress', 'This meeting is already being recorded.'));
     }
     const sessionResult = RecordingSession.request({
       tenantId: this.state.tenantId,
       scope: RecordingScope.Meeting,
       scopeId: this.state.id,
       requestedByUserId: input.actorUserId,
+      sequence: (input.latestSession?.sequence ?? 0) + 1,
       now: input.now ?? new Date(),
     });
     if (!sessionResult.isSuccess) return sessionResult;

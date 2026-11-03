@@ -38,6 +38,8 @@ export interface MeetingRepository {
    * findInvitationByHash aplica al TokenHash.
    */
   findByShortCodeAnyTenant(shortCode: string): Promise<Meeting | null>;
+  /** D-68: el enlace de la reunion trae su id (GUID global); la oficina sale de la reunion. */
+  findByIdAnyTenant(meetingId: string): Promise<Meeting | null>;
   saveInvitation(invitation: MeetingInvitation): Promise<void>;
   /**
    * Cross-tenant lookup por diseno: el TokenHash es globalmente unico (SHA-256

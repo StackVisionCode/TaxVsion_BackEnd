@@ -175,7 +175,7 @@ async function stopRecordingIfActive(input: FinalizeEndedMeetingInput, deps: Fin
     return;
   }
   const session = await deps.recordingSessions
-    .findByScope(input.tenantId, RecordingScope.Meeting, input.snapshot.id)
+    .findLatestByScope(input.tenantId, RecordingScope.Meeting, input.snapshot.id)
     .catch(() => null);
   if (!session || session.toSnapshot().state !== 'Recording' || !deps.emitter) return;
   await stopMeetingRecording(

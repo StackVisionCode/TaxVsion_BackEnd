@@ -30,6 +30,9 @@ internal sealed class IncomingEmailAttachmentConfiguration : IEntityTypeConfigur
         builder.Property(x => x.CloudStorageFileId);
         builder.Property(x => x.DownloadedAtUtc);
         builder.Property(x => x.FailureReason).HasMaxLength(IncomingEmailAttachment.FailureReasonMaxLength);
+        builder
+            .Property(x => x.StorageRejectionReason)
+            .HasMaxLength(IncomingEmailAttachment.StorageRejectionReasonMaxLength);
 
         // Alimenta el job de retry de Fase 12 (buscar todos los Failed para reintentar).
         builder.HasIndex(x => x.DownloadStatus).HasDatabaseName("IX_IncomingEmailAttachments_DownloadStatus");

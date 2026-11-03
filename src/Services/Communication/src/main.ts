@@ -71,6 +71,11 @@ import {
   markRecordingFileAvailable,
   markRecordingFileRejected,
 } from './application/use-cases/recording-lifecycle.js';
+import {
+  markTranscriptFileAvailable,
+  releaseRejectedTranscriptFile,
+  type TranscriptFileStatusDeps,
+} from './application/use-cases/transcript-file-status.js';
 import type { RecordingCaptureService } from './application/services/recording-capture.service.js';
 
 /**
@@ -277,6 +282,12 @@ async function main(): Promise<void> {
   // F7: ciclo de vida de grabaciones del sistema (recorder, CloudStorage, transcript, limite, retencion).
   const recordingLifecycle = lifecycleFrom({ ...container, emitter });
   if (!recordingLifecycle) throw new Error('Recording lifecycle dependencies are incomplete.');
+  // MNT-01 (E-292): confirmacion o rechazo del .txt de un transcript en CloudStorage.
+  const transcriptFileStatus: TranscriptFileStatusDeps = {
+    transcripts: container.transcripts,
+    meetings: container.meetings,
+    calls: container.calls,
+  };
   bindInAppNotificationConsumers(consumers.register.bind(consumers), {
     notifications: container.inAppNotifications,
     emitter,
@@ -386,6 +397,14 @@ async function main(): Promise<void> {
         markRecordingFileAvailable({ tenantId, fileId, correlationId }, recordingLifecycle),
       onRejected: (tenantId, fileId, reason, correlationId) =>
         markRecordingFileRejected({ tenantId, fileId, reason, correlationId }, recordingLifecycle),
+    },
+    transcriptFiles: {
+      onAvailable: async (tenantId, fileId) => {
+        await markTranscriptFileAvailable({ tenantId, fileId }, transcriptFileStatus);
+      },
+      onRejected: async (tenantId, fileId, reason) => {
+        await releaseRejectedTranscriptFile({ tenantId, fileId, reason }, transcriptFileStatus);
+      },
     },
   });
   bindCloudStorageNotificationConsumers(consumers.register.bind(consumers), {

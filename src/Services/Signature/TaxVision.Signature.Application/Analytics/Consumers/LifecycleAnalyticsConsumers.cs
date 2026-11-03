@@ -131,6 +131,9 @@ public static class SignatureRequestSealingCompletedAnalyticsConsumer
             var request = await requestRepository.GetByIdAsync(evt.TenantId, evt.SignatureRequestId, ct);
             if (request is null)
                 return;
+            // Un re-sellado (tras un rechazo de CloudStorage) vuelve a publicar el evento: cuenta una sola vez.
+            if (!await analyticsRepository.TryMarkSealedAsync(evt.TenantId, evt.SignatureRequestId, ct))
+                return;
             var day = DateOnly.FromDateTime(evt.SealedAtUtc);
             var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
                 evt.TenantId,

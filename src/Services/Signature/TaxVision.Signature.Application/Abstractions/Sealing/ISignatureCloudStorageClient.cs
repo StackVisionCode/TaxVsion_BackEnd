@@ -13,6 +13,16 @@ public sealed record SignatureFileUpload(
     Guid ActorId
 );
 
+/// <summary>Cómo se identifica Signature ante CloudStorage al pedir guardar un archivo.</summary>
+public static class SignatureStorage
+{
+    /// <summary>Valor de <c>RequestingService</c> en SaveFileRequested; CloudStorage lo devuelve en FileSaveRejected.</summary>
+    public const string RequestingService = "signature";
+
+    /// <summary>Código de error de <c>GetFileAsync</c> cuando CloudStorage responde 404 (el archivo no está registrado).</summary>
+    public const string FileNotFoundCode = "Signature.Storage.FileNotFound";
+}
+
 /// <summary>
 /// Metadata mínima de un file en CloudStorage; la proyección local se puede regenerar desde esto
 /// cuando el bus (FileAvailable) la dejó stale.

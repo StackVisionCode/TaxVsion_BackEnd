@@ -98,7 +98,6 @@ const PlatformPatchBody = z.object({
   meetingReactionCatalog: z.array(z.string().min(1).max(16)).max(30).optional(),
   // F6: recordatorio (0 = apagado) y sala de espera para guests.
   meetingReminderMinutesBefore: z.number().int().min(0).optional(),
-  guestsWaitingRoomDefault: z.boolean().optional(),
   // F7: grabación server-side, límites, composición, retención de pistas y notas de voz (rangos en el dominio).
   serverSideRecordingEnabled: z.boolean().optional(),
   recordingLimitWarningMinutes: z.number().int().min(0).optional(),
@@ -125,6 +124,8 @@ const PlatformPatchBody = z.object({
   messageRetentionDays: z.number().int().min(0).optional(),
   recordingRetentionDays: z.number().int().min(0).optional(),
   purgeEnabled: z.boolean().optional(),
+  // D-72: si las oficinas gestionan su propia retención.
+  retentionManagedByTenant: z.boolean().optional(),
 });
 
 const ConstraintsPatchBody = z.object({
@@ -139,6 +140,8 @@ const ConstraintsPatchBody = z.object({
   messageRetentionDays: OptionalPositiveInt,
   recordingRetentionDays: OptionalPositiveInt,
   purgeEnabled: z.boolean().nullable().optional(),
+  // D-72 (null = vuelve a la global).
+  retentionManagedByTenant: z.boolean().nullable().optional(),
   notes: z.string().max(512).nullable().optional(),
 });
 
@@ -174,7 +177,7 @@ export async function registerAdminSettingsRoutes(app: FastifyInstance, containe
     if (denied) return reply.code(denied.status).send(denied.body);
     const params = RecomposeParams.parse(request.params);
     const scope = params.scope === 'Call' ? RecordingScope.Call : RecordingScope.Meeting;
-    const session = await container.recordingSessions.findByScopeAnyTenant(scope, params.id);
+    const session = await container.recordingSessions.findLatestByScopeAnyTenant(scope, params.id);
     const lifecycle = lifecycleFrom({ ...container, emitter: container.emitter });
     if (!session || !lifecycle) return reply.code(404).send({ code: 'Recording.NotFound', message: 'Recording not found.' });
     const result = await recomposeRecording(

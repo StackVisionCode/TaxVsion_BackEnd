@@ -16,4 +16,10 @@ public interface ISignatureAnalyticsRepository
         SignatureCategory category,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Registra que la solicitud ya sumó en <c>RequestsSealed</c>. Devuelve false si ya estaba registrada
+    /// (re-sellado): el sellado de una solicitud cuenta una sola vez.
+    /// </summary>
+    Task<bool> TryMarkSealedAsync(Guid tenantId, Guid signatureRequestId, CancellationToken ct = default);
 }

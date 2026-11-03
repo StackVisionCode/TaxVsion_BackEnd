@@ -11,6 +11,7 @@ import {
 import {
   type EffectiveCommunicationSettings,
   resolveCeilings,
+  resolveRetention,
 } from '../../domain/settings/effective-communication-settings.js';
 import type { TenantCommunicationConstraintsSnapshot } from '../../domain/settings/tenant-communication-constraints.js';
 import { ConfigurationAuditReason, ConfigurationAuditScope } from '../../domain/settings/configuration-audit.js';
@@ -90,8 +91,8 @@ export interface UpdateSettingsCommand {
 }
 
 /**
- * Tenant Admin ajusta su oficina. Orden: forma (rangos técnicos) → techo efectivo (T-46) →
- * persistir → auditar → invalidar cachés al instante (T-13) → evento + aviso realtime.
+ * Tenant Admin ajusta su oficina. Orden: capacidad de retención (D-72) → techo efectivo (T-46) →
+ * forma (rangos técnicos) → persistir → auditar → invalidar cachés al instante (T-13) → evento + aviso realtime.
  */
 export async function updateSettings(
   cmd: UpdateSettingsCommand,
@@ -103,11 +104,17 @@ export async function updateSettings(
     deps.limits.findByTenantId(cmd.tenantId),
     deps.tenantConstraints.findByTenantId(cmd.tenantId),
   ]);
-  const ceilings = resolveCeilings({
-    platform: platform.toSnapshot(),
-    limits,
-    constraints: constraints ? constraints.toSnapshot() : null,
+  const platformSnapshot = platform.toSnapshot();
+  const constraintsSnapshot = constraints ? constraints.toSnapshot() : null;
+  const { managedByTenant } = resolveRetention({
+    platform: platformSnapshot,
+    constraints: constraintsSnapshot,
+    tenant: settings.toSnapshot(),
   });
+  const retentionAllowed = settings.validateRetentionPatch(cmd.patch, managedByTenant);
+  if (!retentionAllowed.isSuccess) return Result.fail(retentionAllowed.error);
+
+  const ceilings = resolveCeilings({ platform: platformSnapshot, limits, constraints: constraintsSnapshot });
   const withinCeilings = TenantCommunicationSettings.validateAgainstCeilings(cmd.patch, ceilings);
   if (!withinCeilings.isSuccess) return Result.fail(withinCeilings.error);
 

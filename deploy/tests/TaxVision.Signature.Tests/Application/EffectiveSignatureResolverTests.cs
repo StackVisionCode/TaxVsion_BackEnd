@@ -100,6 +100,9 @@ public sealed class EffectiveSignatureResolverTests
         public Task<SignatureProfile?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
             Task.FromResult<SignatureProfile?>(null);
 
+        public Task<SignatureProfile?> GetByFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult<SignatureProfile?>(null);
+
         public Task<IReadOnlyList<SignatureProfile>> ListVisibleAsync(
             Guid tenantId,
             Guid userId,

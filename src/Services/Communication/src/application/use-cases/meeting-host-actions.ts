@@ -18,6 +18,8 @@ import { ensureMeetingConversation, removeFromMeetingConversation } from './ensu
 import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
 import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
+import { currentMeetingRecording } from '../services/meeting-recording-state.js';
+import type { RecordingSessionRepository } from '../ports/recording-repository.js';
 
 export interface AdmitCommand {
   readonly tenantId: string;
@@ -41,6 +43,7 @@ export async function admitParticipant(
     conversations: ConversationRepository;
     userDirectory: UserDirectoryRepository;
     avatars?: AvatarResolver;
+    recordingSessions?: Pick<RecordingSessionRepository, 'findLatestByScope'>;
   },
 ): Promise<Result<AdmitResult>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
@@ -106,7 +109,10 @@ export async function admitParticipant(
     // `participant.changed` solo trae su propio participante — sin esto el cliente
     // recien admitido no conoce conversationId ni la lista completa (rompia el chat
     // del meeting y el arranque de SFU tras la sala de espera).
-    snapshot: buildMeetingSnapshotDto(snapshot, target.role, conversationId, avatars),
+    snapshot: {
+      ...buildMeetingSnapshotDto(snapshot, target.role, conversationId, avatars),
+      recording: await currentMeetingRecording(deps.recordingSessions, cmd.tenantId, snapshot.id),
+    },
   });
 }
 

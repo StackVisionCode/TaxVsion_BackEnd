@@ -105,7 +105,6 @@ export interface PlatformCommunicationSettingsSnapshot {
   readonly meetingReactionCatalog: readonly string[];
   // F6 (D-47/D-48): recordatorio T-N (0 = apagado) y sala de espera por defecto para guests.
   readonly meetingReminderMinutesBefore: number;
-  readonly guestsWaitingRoomDefault: boolean;
   // F7: grabación server-side (false = mezcla en el cliente, C-03 transitorio), límites, composición y retención.
   readonly serverSideRecordingEnabled: boolean;
   readonly recordingLimitWarningMinutes: number;
@@ -137,6 +136,8 @@ export interface PlatformCommunicationSettingsSnapshot {
   readonly messageRetentionDays: number;
   readonly recordingRetentionDays: number;
   readonly purgeEnabled: boolean;
+  /** D-72: si las oficinas gestionan su propia retención (default false; por oficina, en constraints). */
+  readonly retentionManagedByTenant: boolean;
   readonly updatedByUserId: string | null;
   readonly updatedAtUtc: Date;
 }
@@ -325,7 +326,6 @@ export class PlatformCommunicationSettings {
       reactionsPerMeetingPerMinute: TECHNICAL_LIMITS.reactionsPerMeetingPerMinute.fallback,
       meetingReactionCatalog: [...DEFAULT_MEETING_REACTION_CATALOG],
       meetingReminderMinutesBefore: TECHNICAL_LIMITS.meetingReminderMinutesBefore.fallback,
-      guestsWaitingRoomDefault: true,
       serverSideRecordingEnabled: true,
       recordingLimitWarningMinutes: TECHNICAL_LIMITS.recordingLimitWarningMinutes.fallback,
       recordingLimitToleranceSeconds: TECHNICAL_LIMITS.recordingLimitToleranceSeconds.fallback,
@@ -349,6 +349,7 @@ export class PlatformCommunicationSettings {
       messageRetentionDays: TECHNICAL_LIMITS.messageRetentionDays.fallback,
       recordingRetentionDays: TECHNICAL_LIMITS.recordingRetentionDays.fallback,
       purgeEnabled: false,
+      retentionManagedByTenant: false,
       updatedByUserId: null,
       updatedAtUtc: now,
     });
@@ -388,9 +389,10 @@ export class PlatformCommunicationSettings {
       next['reactionsEnabled'] = true;
       corrected.push('reactionsEnabled');
     }
-    if (typeof snapshot.guestsWaitingRoomDefault !== 'boolean') {
-      next['guestsWaitingRoomDefault'] = true;
-      corrected.push('guestsWaitingRoomDefault');
+    // D-72: una copia anterior sin el campo no concede la capacidad.
+    if (typeof snapshot.retentionManagedByTenant !== 'boolean') {
+      next['retentionManagedByTenant'] = false;
+      corrected.push('retentionManagedByTenant');
     }
     for (const key of ['serverSideRecordingEnabled', 'voiceNoteTranscriptEnabled'] as const) {
       if (typeof snapshot[key] !== 'boolean') {

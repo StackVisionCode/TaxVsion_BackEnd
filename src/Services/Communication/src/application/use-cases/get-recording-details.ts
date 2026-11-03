@@ -10,6 +10,8 @@ import type { EffectiveSettingsResolver } from '../ports/effective-settings-reso
 import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
 import type { CustomerAssignmentProjectionRepository } from '../ports/customer-assignment-projection-repository.js';
 import { seesAllCustomers } from './customer-visibility.js';
+import type { RecordingSession } from '../../domain/recording/recording-session.js';
+import { findRecordingTranscript } from '../services/recording-transcript-lookup.js';
 
 export interface PresignedUrlDto {
   readonly url: string;
@@ -17,7 +19,10 @@ export interface PresignedUrlDto {
 }
 
 /** Contrato 9.6: lo que la ficha muestra de una grabacion (y su transcript). */
-export interface RecordingDetailsDto {
+export interface RecordingItemDto {
+  readonly recordingId: string;
+  /** D-71: numero de la grabacion dentro del meeting/call. */
+  readonly sequence: number;
   readonly state: string;
   readonly captureMode: string;
   readonly startedAtUtc: string | null;
@@ -38,6 +43,11 @@ export interface RecordingDetailsDto {
     readonly json: PresignedUrlDto | null;
     readonly failureReason: string | null;
   } | null;
+}
+
+/** La ultima grabacion (campos de siempre) + todas las del meeting/call, de la primera a la ultima (D-71). */
+export interface RecordingDetailsDto extends RecordingItemDto {
+  readonly recordings: readonly RecordingItemDto[];
 }
 
 export interface GetRecordingDetailsDeps {
@@ -99,13 +109,21 @@ export async function getRecordingDetails(
     if (!effective.recording.visibleInPortal) return Result.fail(forbidden);
   }
 
-  const session = await deps.recordingSessions.findByScope(viewer.tenantId, input.scope, input.scopeId);
-  if (!session || session.toSnapshot().purgedAtUtc) return Result.fail(notFound);
+  const sessions = (await deps.recordingSessions.listByScope(viewer.tenantId, input.scope, input.scopeId)).filter(
+    (session) => !session.toSnapshot().purgedAtUtc,
+  );
+  const latest = sessions.at(-1);
+  if (!latest) return Result.fail(notFound);
+  const recordings = await Promise.all(sessions.map((session) => toRecordingItem(session, viewer.tenantId, deps)));
+  return Result.ok({ ...recordings[recordings.length - 1]!, recordings });
+}
+
+async function toRecordingItem(session: RecordingSession, tenantId: string, deps: GetRecordingDetailsDeps): Promise<RecordingItemDto> {
   const s = session.toSnapshot();
   const ready = s.state === 'Ready' && s.recordingFileId !== null;
-  const playback = ready ? await presign(deps, viewer.tenantId, s.recordingFileId) : null;
+  const playback = ready ? await presign(deps, tenantId, s.recordingFileId) : null;
 
-  const artifact = await deps.transcripts.findByScope(viewer.tenantId, input.scope, input.scopeId);
+  const artifact = await findRecordingTranscript(deps.transcripts, session);
   const t = artifact?.toSnapshot();
   const transcript = t
     ? {
@@ -113,13 +131,15 @@ export async function getRecordingDetails(
         language: t.language,
         speakerCount: t.speakerCount,
         wordCount: t.wordCount,
-        txt: t.state === 'Ready' ? await presign(deps, viewer.tenantId, t.txtFileId) : null,
-        json: t.state === 'Ready' ? await presign(deps, viewer.tenantId, t.jsonFileId) : null,
+        txt: t.state === 'Ready' ? await presign(deps, tenantId, t.txtFileId) : null,
+        json: t.state === 'Ready' ? await presign(deps, tenantId, t.jsonFileId) : null,
         failureReason: t.failureReason,
       }
     : null;
 
-  return Result.ok({
+  return {
+    recordingId: s.id,
+    sequence: s.sequence,
     state: s.state,
     captureMode: s.captureMode,
     startedAtUtc: s.startedAtUtc ? s.startedAtUtc.toISOString() : null,
@@ -132,7 +152,7 @@ export async function getRecordingDetails(
     failureReason: s.state === 'Failed' ? s.failureReason : null,
     playback,
     transcript,
-  });
+  };
 }
 
 /** URL de descarga presignada (Communication autoriza; CloudStorage firma como servicio). */

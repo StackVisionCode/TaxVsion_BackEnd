@@ -138,6 +138,7 @@ async function runOnceForMeetings(
       meetingId: snap.scopeId,
       state: 'Failed',
       updatedAtUtc: new Date().toISOString(),
+      recordingId: snap.id,
     };
     deps.emitter.emitToMeeting({
       tenantId: snap.tenantId,
@@ -213,6 +214,7 @@ async function runOnceForCalls(
       callId: snap.scopeId,
       state: 'Failed',
       updatedAtUtc: new Date().toISOString(),
+      recordingId: snap.id,
     };
     deps.emitter.emitToCall({
       tenantId: snap.tenantId,

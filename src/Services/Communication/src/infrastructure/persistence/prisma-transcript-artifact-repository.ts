@@ -30,17 +30,42 @@ export class PrismaTranscriptArtifactRepository implements TranscriptArtifactRep
       FailureReason: s.failureReason,
       CreatedAtUtc: s.createdAtUtc,
       CompletedAtUtc: s.completedAtUtc,
+      FilesConfirmedAtUtc: s.filesConfirmedAtUtc,
     };
     await this.prisma.transcriptArtifact.upsert({
-      where: { Scope_ScopeId: { Scope: s.scope, ScopeId: s.scopeId } },
+      where: { Id: s.id },
       create: { Id: s.id, TenantId: s.tenantId, Scope: s.scope, ScopeId: s.scopeId, ...mutable },
       update: mutable,
     });
   }
 
   async findByScope(tenantId: string, scope: TranscriptScope, scopeId: string): Promise<TranscriptArtifact | null> {
-    const row = await this.prisma.transcriptArtifact.findFirst({ where: { TenantId: tenantId, Scope: scope, ScopeId: scopeId } });
+    const row = await this.prisma.transcriptArtifact.findFirst({
+      where: { TenantId: tenantId, Scope: scope, ScopeId: scopeId },
+      orderBy: { CreatedAtUtc: 'desc' },
+    });
     return row ? toDomain(row) : null;
+  }
+
+  async findByRecordingSession(tenantId: string, recordingSessionId: string): Promise<TranscriptArtifact | null> {
+    const row = await this.prisma.transcriptArtifact.findFirst({ where: { TenantId: tenantId, RecordingSessionId: recordingSessionId } });
+    return row ? toDomain(row) : null;
+  }
+
+  async findByFileId(tenantId: string, fileId: string): Promise<TranscriptArtifact | null> {
+    const row = await this.prisma.transcriptArtifact.findFirst({
+      where: { TenantId: tenantId, OR: [{ TxtFileId: fileId }, { JsonFileId: fileId }] },
+    });
+    return row ? toDomain(row) : null;
+  }
+
+  async listReadyUnconfirmed(completedBefore: Date, take: number): Promise<TranscriptArtifact[]> {
+    const rows = await this.prisma.transcriptArtifact.findMany({
+      where: { State: 'Ready', FilesConfirmedAtUtc: null, TxtFileId: { not: null }, CompletedAtUtc: { lt: completedBefore } },
+      orderBy: { CompletedAtUtc: 'asc' },
+      take,
+    });
+    return rows.map(toDomain);
   }
 }
 
@@ -67,5 +92,6 @@ function toDomain(row: PrismaTranscriptArtifact): TranscriptArtifact {
     failureReason: row.FailureReason,
     createdAtUtc: row.CreatedAtUtc,
     completedAtUtc: row.CompletedAtUtc,
+    filesConfirmedAtUtc: row.FilesConfirmedAtUtc,
   });
 }

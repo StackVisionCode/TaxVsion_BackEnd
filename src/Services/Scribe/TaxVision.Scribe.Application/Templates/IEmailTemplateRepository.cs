@@ -42,4 +42,7 @@ public interface IEmailTemplateRepository
         int batchSize,
         CancellationToken ct = default
     );
+
+    /// <summary>Templates (System + Tenant) con alguna versión que apunta a <paramref name="fileId"/> — rechazos de CloudStorage.</summary>
+    Task<IReadOnlyList<EmailTemplate>> GetReferencingFileAsync(Guid fileId, CancellationToken ct = default);
 }

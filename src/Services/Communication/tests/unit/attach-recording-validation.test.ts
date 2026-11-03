@@ -48,6 +48,9 @@ class FakeMeetingRepository implements MeetingRepository {
   async findByShortCodeAnyTenant(): Promise<null> {
     return null;
   }
+  async findByIdAnyTenant(): Promise<null> {
+    return null;
+  }
   async saveInvitation(): Promise<void> {}
   async findInvitationByHash(): Promise<null> {
     return null;

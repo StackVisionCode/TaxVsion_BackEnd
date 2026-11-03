@@ -59,6 +59,9 @@ class InMemoryTranscripts implements TranscriptArtifactRepository {
   async findByScope(_tenantId: string, scope: string, scopeId: string): Promise<TranscriptArtifact | null> {
     return this.items.get(`${scope}:${scopeId}`) ?? null;
   }
+  async findByRecordingSession(_tenantId: string, recordingSessionId: string): Promise<TranscriptArtifact | null> {
+    return [...this.items.values()].find((a) => a.toSnapshot().recordingSessionId === recordingSessionId) ?? null;
+  }
 }
 
 /** Captura falsa: registra lo que se le pide y siempre acepta. */

@@ -80,7 +80,7 @@ export async function requestCallRecording(
     }
   }
 
-  const existingSession = await deps.recordingSessions.findByScope(command.tenantId, RecordingScope.Call, command.callId);
+  const existingSession = await deps.recordingSessions.findLatestByScope(command.tenantId, RecordingScope.Call, command.callId);
 
   const requestResult = call.requestRecording({ actorUserId: command.actorUserId, existingSession });
   if (!requestResult.isSuccess) {

@@ -500,9 +500,11 @@ export class Call {
     return Result.okVoid();
   }
 
-  /** F7 (T-37): la retencion borro los archivos; la ficha ya no los ofrece. */
-  clearRecordingFiles(): void {
-    this.state = { ...this.state, recordingFileId: null, transcriptFileId: null, updatedAtUtc: new Date() };
+  /** F7 (T-37): la retencion borro los archivos de una grabacion; solo se sueltan si son los que se muestran (D-71). */
+  clearRecordingFiles(files: { recordingFileId: string | null; transcriptFileId: string | null }): void {
+    const recordingFileId = files.recordingFileId !== null && this.state.recordingFileId === files.recordingFileId ? null : this.state.recordingFileId;
+    const transcriptFileId = files.transcriptFileId !== null && this.state.transcriptFileId === files.transcriptFileId ? null : this.state.transcriptFileId;
+    this.state = { ...this.state, recordingFileId, transcriptFileId, updatedAtUtc: new Date() };
   }
 
   attachTranscript(fileId: string): Result<void> {

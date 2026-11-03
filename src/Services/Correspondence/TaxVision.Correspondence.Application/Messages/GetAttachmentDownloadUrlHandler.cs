@@ -7,10 +7,10 @@ namespace TaxVision.Correspondence.Application.Messages;
 /// <summary>
 /// Lectura bajo demanda (Fase 8) — HTTP-triggered, no un consumer Wolverine (mismo criterio que
 /// <see cref="GetMessageBodyHandler"/>/<see cref="ListMessageAttachmentsHandler"/>: no empuja
-/// correlación). Nunca dispara la descarga por su cuenta — si el attachment todavía no está
-/// <see cref="AttachmentDownloadStatus.Downloaded"/>, devuelve un error 409 "todavía no está
-/// listo" en vez de descargar implícitamente (plan §22/§25: son dos endpoints separados a
-/// propósito).
+/// correlación). Nunca dispara la descarga por su cuenta (plan §22/§25: son dos endpoints separados
+/// a propósito): sin pedir o en curso devuelve 409 "todavía no está listo"; si la descarga falló,
+/// 400 con un mensaje apto para el usuario (<see cref="AttachmentFailureErrors"/>), nunca el
+/// <c>FailureReason</c> crudo.
 /// </summary>
 public static class GetAttachmentDownloadUrlHandler
 {
@@ -102,6 +102,10 @@ public static class GetAttachmentDownloadUrlHandler
                     "This attachment is under review against our content policy."
                 )
             );
+
+        // Failed no es "todavía no" (409, el front seguiría esperando): error final con mensaje para el usuario.
+        if (attachment.DownloadStatus == AttachmentDownloadStatus.Failed)
+            return Result.Failure<IncomingEmailAttachment>(AttachmentFailureErrors.For(attachment));
 
         return attachment.DownloadStatus != AttachmentDownloadStatus.Downloaded
             ? Result.Failure<IncomingEmailAttachment>(

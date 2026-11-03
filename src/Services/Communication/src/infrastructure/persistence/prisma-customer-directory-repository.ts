@@ -44,6 +44,15 @@ export class PrismaCustomerDirectoryRepository implements CustomerDirectoryRepos
     return toSnapshot(row);
   }
 
+  async findActiveByEmail(tenantId: string, email: string): Promise<CustomerDirectoryEntrySnapshot[]> {
+    // La intercalacion de SQL Server no distingue mayusculas: el email se compara tal cual.
+    const rows = await this.prisma.customerDirectoryEntry.findMany({
+      where: { TenantId: tenantId, Email: email.trim(), IsActive: true },
+      take: 2,
+    });
+    return rows.map(toSnapshot);
+  }
+
   async markInactive(customerId: string): Promise<void> {
     await this.prisma.customerDirectoryEntry
       .update({ where: { CustomerId: customerId }, data: { IsActive: false } })

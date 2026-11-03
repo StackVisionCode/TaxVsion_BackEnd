@@ -91,7 +91,7 @@ public sealed class CloudStorageClient(
             {
                 TenantId = tenantId ?? PlatformTenant.Id,
                 FileId = fileId,
-                RequestingService = "scribe",
+                RequestingService = ScribeStorageIdentity.RequestingService,
                 SourceBucket = options.TempBucket,
                 SourceObjectKey = sourceObjectKey,
                 ActorId = actorId,

@@ -184,6 +184,9 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // F7: un compuesto que no pasa el escaneo deja la grabacion en Failed (antes se ignoraba).
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileScanFailedIntegrationEvent':
     'cloudstorage.file.scan_failed.v1',
+  // MNT-01 (E-292): CloudStorage descarto un SaveFileRequested; grabaciones y transcripts sueltan el FileId.
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileSaveRejectedIntegrationEvent':
+    'cloudstorage.file.save_rejected.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkFolderItemAddedIntegrationEvent':
     'cloudstorage.sharelink.folder_item_added.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkAccessedIntegrationEvent':

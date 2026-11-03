@@ -67,6 +67,9 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<SignatureAnalyticsSnapshot> SignatureAnalyticsSnapshots => Set<SignatureAnalyticsSnapshot>();
 
+    public DbSet<SignatureAnalyticsSealedRequest> SignatureAnalyticsSealedRequests =>
+        Set<SignatureAnalyticsSealedRequest>();
+
     public DbSet<DocumentValidationRecord> DocumentValidationRecords => Set<DocumentValidationRecord>();
 
     public DbSet<SignedDocumentDelivery> SignedDocumentDeliveries => Set<SignedDocumentDelivery>();

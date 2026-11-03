@@ -1,4 +1,6 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Results;
+using Microsoft.AspNetCore.Http;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Messages;
 using TaxVision.Correspondence.Domain.Inbox;
@@ -180,5 +182,63 @@ public sealed class GetAttachmentDownloadUrlHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("IncomingEmailAttachment.NotFound", result.Error.Code);
+    }
+
+    // Failed es final: error con mensaje para el usuario (no 409, que el CRM sigue esperando) y
+    // nunca el FailureReason crudo.
+    [Theory]
+    [InlineData("EmptyFile", "This attachment is empty and can't be saved.")]
+    [InlineData("UploadPolicy", "This file type can't be stored. Ask your admin to allow it, then try again.")]
+    [InlineData("StorageQuota.Exceeded", "Your office's storage is full. Free up space and try again.")]
+    [InlineData("StorageQuota.Suspended", "Storage is suspended for your office.")]
+    [InlineData("SomethingElse", "This attachment couldn't be saved to storage.")]
+    public async Task Handle_WithStorageRejectedAttachment_ReturnsUserSafeNonConflictError(
+        string rejection,
+        string expectedMessage
+    )
+    {
+        var (tenantId, email, repo) = await DownloadedEmailAsync();
+        var attachment = email.Attachments.Single();
+        attachment.ReleaseRejectedFile(attachment.CloudStorageFileId!.Value, rejection);
+        var cloudStorage = new FakeCloudStorageClient();
+
+        var result = await GetAttachmentDownloadUrlHandler.Handle(
+            new GetAttachmentDownloadUrlQuery(tenantId, email.Id, attachment.Id),
+            repo,
+            new Ingest.FakeEmailThreadRepository(),
+            cloudStorage,
+            CancellationToken.None
+        );
+
+        Assert.Equal(AttachmentFailureErrors.StorageRejectedCode, result.Error.Code);
+        Assert.Equal(expectedMessage, result.Error.Message);
+        Assert.DoesNotContain(attachment.FailureReason!, result.Error.Message);
+        Assert.Equal(StatusCodes.Status400BadRequest, result.Error.ToHttpStatusCode());
+        Assert.Empty(cloudStorage.Calls);
+    }
+
+    [Fact]
+    public async Task Handle_WithMailboxDownloadFailure_ReturnsRetryMessageWithoutTheRawReason()
+    {
+        var tenantId = Guid.NewGuid();
+        var email = NewIncomingEmail(tenantId);
+        var attachment = email.Attachments.Single();
+        attachment.MarkInProgress();
+        attachment.MarkFailed("GetMessageAttachmentHandler.ProviderFailed: Gmail 500 internal token xyz");
+        var repo = new FakeIncomingEmailRepository();
+        await repo.AddAsync(email);
+
+        var result = await GetAttachmentDownloadUrlHandler.Handle(
+            new GetAttachmentDownloadUrlQuery(tenantId, email.Id, attachment.Id),
+            repo,
+            new Ingest.FakeEmailThreadRepository(),
+            new FakeCloudStorageClient(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(AttachmentFailureErrors.DownloadFailedCode, result.Error.Code);
+        Assert.Equal("The attachment couldn't be downloaded from the mailbox. Try again.", result.Error.Message);
+        Assert.DoesNotContain("Gmail", result.Error.Message);
+        Assert.Equal(StatusCodes.Status400BadRequest, result.Error.ToHttpStatusCode());
     }
 }

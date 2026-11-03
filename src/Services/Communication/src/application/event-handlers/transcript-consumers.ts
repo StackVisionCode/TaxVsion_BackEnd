@@ -14,13 +14,15 @@ import { attachCallTranscript } from '../use-cases/attach-call-transcript.js';
 import { attachMeetingTranscript } from '../use-cases/attach-meeting-transcript.js';
 import { appendCallSystemMessage } from '../use-cases/append-call-system-message.js';
 import { RecordingCaptureMode, RecordingScope } from '../../domain/recording/recording-session-state.js';
-import { TranscriptArtifact, type TranscriptScope } from '../../domain/recording/transcript-artifact.js';
+import { TranscriptArtifact } from '../../domain/recording/transcript-artifact.js';
 import type { MessageTranscriptState } from '../../domain/conversations/message.js';
 import { CallSocketEvents, type CallTranscriptReadyDto } from '../../contracts/socket/call-socket-events.js';
 import { MeetingSocketEvents, type MeetingTranscriptReadyDto } from '../../contracts/socket/meeting-socket-events.js';
 import { ChatSocketEvents, type MessageTranscriptUpdatedDto } from '../../contracts/socket/chat-socket-events.js';
 import { ChatEventTypes } from '../../contracts/events/chat-events.js';
-import { failRecording, type RecordingLifecycleDeps } from '../use-cases/recording-lifecycle.js';
+import { failRecording, isNewestWithFile, type RecordingLifecycleDeps } from '../use-cases/recording-lifecycle.js';
+import { findRecordingTranscript } from '../services/recording-transcript-lookup.js';
+import type { RecordingSession } from '../../domain/recording/recording-session.js';
 import { logger } from '../../infrastructure/logger/logger.js';
 
 /**
@@ -64,7 +66,8 @@ export function bindTranscriptConsumers(
       logger.warn({ err: result.error, callId }, 'attachCallTranscript failed');
       return;
     }
-    await completeArtifact(deps, env.tenantId, 'Call', callId, transcriptFileId, v2);
+    const callSession = await sessionOfTranscript(deps, env.tenantId, 'Call', callId, getString(env.payload, 'recordingFileId'));
+    await completeArtifact(deps, env.tenantId, 'Call', callId, transcriptFileId, v2, callSession);
 
     const dto: CallTranscriptReadyDto = {
       callId,
@@ -101,13 +104,17 @@ export function bindTranscriptConsumers(
     const transcriptFileId = getString(env.payload, 'transcriptFileId');
     if (!meetingId || !transcriptFileId) return;
     const v2 = readTranscriptV2(env.payload);
+    const session = await sessionOfTranscript(deps, env.tenantId, 'Meeting', meetingId, getString(env.payload, 'recordingFileId'));
 
-    const result = await attachMeetingTranscript({ tenantId: env.tenantId, meetingId, transcriptFileId }, { meetings: deps.meetings });
-    if (!result.isSuccess) {
-      logger.warn({ err: result.error, meetingId }, 'attachMeetingTranscript failed');
-      return;
+    // D-71: la reunion muestra el transcript de su grabacion mas reciente.
+    if (!session || (await isNewestWithFile(session, deps))) {
+      const result = await attachMeetingTranscript({ tenantId: env.tenantId, meetingId, transcriptFileId }, { meetings: deps.meetings });
+      if (!result.isSuccess) {
+        logger.warn({ err: result.error, meetingId }, 'attachMeetingTranscript failed');
+        return;
+      }
     }
-    await completeArtifact(deps, env.tenantId, 'Meeting', meetingId, transcriptFileId, v2);
+    await completeArtifact(deps, env.tenantId, 'Meeting', meetingId, transcriptFileId, v2, session);
 
     const dto: MeetingTranscriptReadyDto = {
       meetingId,
@@ -135,9 +142,8 @@ export function bindTranscriptConsumers(
       if (!scopeId) return;
       logger.warn({ scope, scopeId, reason, error: getString(env.payload, 'errorMessage') }, 'transcript failed');
       if (!deps.transcripts) return;
-      const artifact =
-        (await deps.transcripts.findByScope(env.tenantId, scope, scopeId)) ??
-        TranscriptArtifact.start({ tenantId: env.tenantId, scope, scopeId });
+      const session = await sessionOfTranscript(deps, env.tenantId, scope, scopeId, getString(env.payload, 'recordingFileId'));
+      const artifact = await artifactFor(deps.transcripts, env.tenantId, scope, scopeId, session);
       artifact.fail(reason);
       await deps.transcripts.save(artifact);
     });
@@ -152,7 +158,7 @@ export function bindTranscriptConsumers(
       const scopeId = getString(env.payload, idField);
       const reason = getString(env.payload, 'failureReason') ?? 'NoAudioStream';
       if (!scopeId || !deps.lifecycle) return;
-      const session = await deps.recordingSessions.findByScope(env.tenantId, scope, scopeId);
+      const session = await deps.recordingSessions.findLatestByScope(env.tenantId, scope, scopeId);
       if (!session || session.captureMode !== RecordingCaptureMode.Client) return;
       if (session.sessionState !== 'Processing' && session.sessionState !== 'Stopping') return;
       await failRecording(session, reason, deps.lifecycle, env.correlationId ?? `recording:${session.id}`);
@@ -201,17 +207,40 @@ function readTranscriptV2(payload: Record<string, unknown>): TranscriptV2 {
   };
 }
 
+/** D-71: la grabacion del transcript por su archivo (el worker lo devuelve); si no viene, la mas reciente. */
+async function sessionOfTranscript(
+  deps: TranscriptConsumerDeps,
+  tenantId: string,
+  scope: 'Meeting' | 'Call',
+  scopeId: string,
+  recordingFileId: string | undefined,
+): Promise<RecordingSession | null> {
+  const byFile = recordingFileId ? await deps.recordingSessions.findByRecordingFileId(tenantId, recordingFileId) : null;
+  return byFile ?? (await deps.recordingSessions.findLatestByScope(tenantId, scope, scopeId));
+}
+
+async function artifactFor(
+  transcripts: TranscriptArtifactRepository,
+  tenantId: string,
+  scope: 'Meeting' | 'Call',
+  scopeId: string,
+  session: RecordingSession | null,
+): Promise<TranscriptArtifact> {
+  const existing = session ? await findRecordingTranscript(transcripts, session) : await transcripts.findByScope(tenantId, scope, scopeId);
+  return existing ?? TranscriptArtifact.start({ tenantId, scope, scopeId, recordingSessionId: session?.id ?? null });
+}
+
 async function completeArtifact(
   deps: TranscriptConsumerDeps,
   tenantId: string,
-  scope: TranscriptScope,
+  scope: 'Meeting' | 'Call',
   scopeId: string,
   txtFileId: string,
   v2: TranscriptV2,
+  session: RecordingSession | null,
 ): Promise<void> {
   if (!deps.transcripts) return;
-  const artifact =
-    (await deps.transcripts.findByScope(tenantId, scope, scopeId)) ?? TranscriptArtifact.start({ tenantId, scope, scopeId });
+  const artifact = await artifactFor(deps.transcripts, tenantId, scope, scopeId, session);
   const done = artifact.complete({
     txtFileId,
     jsonFileId: v2.jsonFileId,

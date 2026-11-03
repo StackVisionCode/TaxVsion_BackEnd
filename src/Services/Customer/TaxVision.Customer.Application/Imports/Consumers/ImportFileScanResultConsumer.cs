@@ -24,6 +24,9 @@ namespace TaxVision.Customer.Application.Imports.Consumers;
 /// a Canceling antes de que el worker arranque). Solo el worker llama ConfirmCanceled(), asi que
 /// los 3 handlers de abajo deben resolver ese caso ellos mismos o el attempt queda en Canceling
 /// para siempre (y Canceling cuenta como "activo" para el indice unico por tenant).
+///
+/// FileSaveRejected (CloudStorage descartó el pedido de guardado) se filtra por RequestingService
+/// "customer" + carpeta Imports antes de buscar el attempt.
 /// </summary>
 public static class ImportFileScanResultConsumer
 {
@@ -148,6 +151,72 @@ public static class ImportFileScanResultConsumer
                 ImportJobId = attempt.Id,
                 CreatedByUserId = attempt.CreatedByUserId,
                 Reason = attempt.FailureReason ?? "Uploaded file was blocked by content policy.",
+                FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
+            }
+        );
+    }
+
+    // CloudStorage no registró el archivo: nunca llegará FileAvailable y el attempt quedaría Queued
+    // (activo) para siempre, bloqueando nuevos imports del tenant.
+    public static async Task Handle(
+        FileSaveRejectedIntegrationEvent msg,
+        ICustomerImportRepository repository,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        ILogger<CustomerImportAttempt> logger,
+        CancellationToken ct
+    )
+    {
+        if (!CustomerImportFiles.IsImportFile(msg.RequestingService, msg.FolderType))
+            return;
+
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
+        var attempt = await repository.GetByIdAsync(msg.FileId, ct);
+        if (attempt is null || attempt.TenantId != msg.TenantId)
+        {
+            logger.LogWarning(
+                "Import file {FileId} was rejected by storage ({Reason}) but matches no import; ignoring.",
+                msg.FileId,
+                msg.Reason
+            );
+            return;
+        }
+
+        if (attempt.Status == ImportStatus.Canceling)
+        {
+            logger.LogInformation(
+                "Import {AttemptId} was canceled before its file was stored; confirming cancel.",
+                attempt.Id
+            );
+            attempt.ConfirmCanceled();
+            await unitOfWork.SaveChangesAsync(ct);
+            return;
+        }
+
+        // Solo espera el archivo un attempt Queued; cualquier otro estado ya avanzó o terminó.
+        if (attempt.Status != ImportStatus.Queued)
+            return;
+
+        logger.LogWarning(
+            "Import {AttemptId} file was rejected by storage ({Reason}); failing the attempt.",
+            attempt.Id,
+            msg.Reason
+        );
+        var reason = CustomerImportFiles.RejectionMessage(msg.Reason);
+        attempt.Fail(reason);
+        await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new CustomerImportFailedIntegrationEvent
+            {
+                TenantId = attempt.TenantId,
+                CorrelationId = msg.CorrelationId,
+                ImportJobId = attempt.Id,
+                CreatedByUserId = attempt.CreatedByUserId,
+                Reason = attempt.FailureReason ?? reason,
                 FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
             }
         );

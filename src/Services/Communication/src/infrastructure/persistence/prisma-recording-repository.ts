@@ -1,10 +1,11 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { RecordingSession } from '../../domain/recording/recording-session.js';
 import type { RecordingConsentEntry } from '../../domain/recording/recording-consent-entry.js';
 import type { RecordingScope } from '../../domain/recording/recording-session-state.js';
-import type {
-  RecordingSessionRepository,
-  RecordingConsentRepository,
+import {
+  RecordingSequenceTakenError,
+  type RecordingSessionRepository,
+  type RecordingConsentRepository,
 } from '../../application/ports/recording-repository.js';
 import { toDomainRecordingSession, toDomainRecordingConsentEntry } from './recording-mapper.js';
 
@@ -33,30 +34,54 @@ export class PrismaRecordingSessionRepository implements RecordingSessionReposit
       TracksPurgedAtUtc: s.tracksPurgedAtUtc,
       PurgedAtUtc: s.purgedAtUtc,
     };
-    await this.prisma.recordingSession.upsert({
-      where: { Scope_ScopeId: { Scope: s.scope, ScopeId: s.scopeId } },
+    // Dos pedidos a la vez con el mismo numero chocan en el @@unique (Scope, ScopeId, Sequence).
+    await this.prisma.recordingSession
+      .upsert({
+      where: { Id: s.id },
       create: {
         Id: s.id,
         TenantId: s.tenantId,
         Scope: s.scope,
         ScopeId: s.scopeId,
+        Sequence: s.sequence,
         RequestedByUserId: s.requestedByUserId,
         RequestedAtUtc: s.requestedAtUtc,
         ...mutable,
       },
       update: mutable,
-    });
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new RecordingSequenceTakenError();
+        throw err;
+      });
   }
 
-  async findByScope(tenantId: string, scope: RecordingScope, scopeId: string): Promise<RecordingSession | null> {
+  async findById(tenantId: string, sessionId: string): Promise<RecordingSession | null> {
+    const row = await this.prisma.recordingSession.findFirst({ where: { TenantId: tenantId, Id: sessionId } });
+    return row ? toDomainRecordingSession(row) : null;
+  }
+
+  async findLatestByScope(tenantId: string, scope: RecordingScope, scopeId: string): Promise<RecordingSession | null> {
     const row = await this.prisma.recordingSession.findFirst({
       where: { TenantId: tenantId, Scope: scope, ScopeId: scopeId },
+      orderBy: { Sequence: 'desc' },
     });
     return row ? toDomainRecordingSession(row) : null;
   }
 
-  async findByScopeAnyTenant(scope: RecordingScope, scopeId: string): Promise<RecordingSession | null> {
-    const row = await this.prisma.recordingSession.findFirst({ where: { Scope: scope, ScopeId: scopeId } });
+  async listByScope(tenantId: string, scope: RecordingScope, scopeId: string): Promise<RecordingSession[]> {
+    const rows = await this.prisma.recordingSession.findMany({
+      where: { TenantId: tenantId, Scope: scope, ScopeId: scopeId },
+      orderBy: { Sequence: 'asc' },
+    });
+    return rows.map(toDomainRecordingSession);
+  }
+
+  async findLatestByScopeAnyTenant(scope: RecordingScope, scopeId: string): Promise<RecordingSession | null> {
+    const row = await this.prisma.recordingSession.findFirst({
+      where: { Scope: scope, ScopeId: scopeId },
+      orderBy: { Sequence: 'desc' },
+    });
     return row ? toDomainRecordingSession(row) : null;
   }
 
@@ -65,7 +90,9 @@ export class PrismaRecordingSessionRepository implements RecordingSessionReposit
     const rows = await this.prisma.recordingSession.findMany({
       where: { TenantId: tenantId, Scope: scope, ScopeId: { in: [...scopeIds] }, PurgedAtUtc: null },
       select: { ScopeId: true, State: true },
+      orderBy: { Sequence: 'asc' },
     });
+    // Orden ascendente: la ultima grabacion de cada scope pisa a las anteriores.
     return new Map(rows.map((r) => [r.ScopeId, r.State]));
   }
 

@@ -95,7 +95,7 @@ internal sealed class SignatureCloudStorageClient(
             {
                 TenantId = tenantId,
                 FileId = fileId,
-                RequestingService = "signature",
+                RequestingService = SignatureStorage.RequestingService,
                 SourceBucket = options.TempBucket,
                 SourceObjectKey = sourceObjectKey,
                 ActorId = upload.ActorId,
@@ -173,7 +173,7 @@ internal sealed class SignatureCloudStorageClient(
             using var response = await httpClient.SendAsync(request, ct);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 return Result.Failure<SignatureFileMetadata>(
-                    new Error("Signature.Storage.FileLookup", "File not found in CloudStorage.")
+                    new Error(SignatureStorage.FileNotFoundCode, "File not found in CloudStorage.")
                 );
             if (!response.IsSuccessStatusCode)
             {

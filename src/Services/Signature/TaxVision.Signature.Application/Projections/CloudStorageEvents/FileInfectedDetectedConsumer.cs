@@ -8,7 +8,7 @@ using TaxVision.Signature.Domain.Projections;
 namespace TaxVision.Signature.Application.Projections.CloudStorageEvents;
 
 /// <summary>
-/// El archivo dio positivo en el scan de ClamAV. La proyección local queda marcada
+/// El archivo dio positivo en el scan de ClamAV. La proyección local queda marcada (o se crea)
 /// como <c>Infected</c> para que ninguna solicitud lo tome como válido.
 /// </summary>
 public static class FileInfectedDetectedConsumer
@@ -28,14 +28,17 @@ public static class FileInfectedDetectedConsumer
             var existing = await repository.GetByFileIdAsync(evt.TenantId, evt.FileId, ct);
             if (existing is null)
             {
+                // Sin fila previa (nunca hubo FileAvailable): se crea ya infectada para que quien espera el
+                // scan vea un resultado final en vez de esperar hasta su tope.
                 logger.LogInformation(
-                    "FileInfectedDetected {FileId} but no local projection exists yet; nothing to update.",
+                    "FileInfectedDetected {FileId} with no local projection; recording it.",
                     evt.FileId
                 );
-                return;
+                await repository.AddAsync(FileMetadataRef.ForInfected(evt.TenantId, evt.FileId, evt.ScanReport), ct);
             }
+            else
+                existing.MarkInfected(evt.ScanReport);
 
-            existing.MarkInfected(evt.ScanReport);
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

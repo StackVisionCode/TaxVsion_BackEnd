@@ -95,7 +95,7 @@ export async function attachCallRecording(
     return Result.fail(makeError(RecordingErrors.CallEmptyFile.code, RecordingErrors.CallEmptyFile.message));
   }
 
-  const session = await deps.recordingSessions.findByScope(command.tenantId, RecordingScope.Call, command.callId);
+  const session = await deps.recordingSessions.findLatestByScope(command.tenantId, RecordingScope.Call, command.callId);
 
   if (session === null) {
     // ---------- LEGACY PATH ----------

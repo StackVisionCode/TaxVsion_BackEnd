@@ -143,4 +143,75 @@ public sealed class IncomingEmailAttachmentTests
 
         Assert.Equal(IncomingEmailAttachment.FailureReasonMaxLength, attachment.FailureReason!.Length);
     }
+
+    [Fact]
+    public void ReleaseRejectedFile_returns_downloaded_attachment_to_failed_without_file()
+    {
+        var attachment = NewAttachment();
+        var fileId = Guid.NewGuid();
+        attachment.MarkInProgress();
+        attachment.MarkDownloaded(fileId);
+
+        var released = attachment.ReleaseRejectedFile(fileId, "EmptyFile");
+
+        Assert.True(released);
+        Assert.Equal(AttachmentDownloadStatus.Failed, attachment.DownloadStatus);
+        Assert.Null(attachment.CloudStorageFileId);
+        Assert.Null(attachment.DownloadedAtUtc);
+        Assert.Equal("EmptyFile", attachment.StorageRejectionReason);
+        Assert.Equal("Storage rejected the file: EmptyFile", attachment.FailureReason);
+        Assert.True(attachment.MarkInProgress().IsSuccess);
+        Assert.Null(attachment.StorageRejectionReason);
+    }
+
+    [Fact]
+    public void ReleaseRejectedFile_ignores_a_different_file_and_is_idempotent()
+    {
+        var attachment = NewAttachment();
+        var currentFileId = Guid.NewGuid();
+        attachment.MarkInProgress();
+        attachment.MarkDownloaded(currentFileId);
+
+        Assert.False(attachment.ReleaseRejectedFile(Guid.NewGuid(), "x"));
+        Assert.Equal(AttachmentDownloadStatus.Downloaded, attachment.DownloadStatus);
+        Assert.Equal(currentFileId, attachment.CloudStorageFileId);
+
+        Assert.True(attachment.ReleaseRejectedFile(currentFileId, "x"));
+        Assert.False(attachment.ReleaseRejectedFile(currentFileId, "x"));
+    }
+
+    [Theory]
+    [InlineData("EmptyFile", true)]
+    [InlineData("UploadPolicy", false)]
+    [InlineData("InvalidOwnerOrFolder", true)]
+    [InlineData("StorageQuota.Exceeded", false)]
+    [InlineData("StorageQuota.Suspended", false)]
+    [InlineData("StorageQuota.FileTooLarge", false)]
+    public void HasPermanentStorageRejection_depends_on_the_rejection_code(string rejection, bool permanent)
+    {
+        var attachment = NewAttachment();
+        var fileId = Guid.NewGuid();
+        attachment.MarkInProgress();
+        attachment.MarkDownloaded(fileId);
+
+        attachment.ReleaseRejectedFile(fileId, rejection);
+
+        Assert.Equal(permanent, attachment.HasPermanentStorageRejection);
+    }
+
+    [Fact]
+    public void Mailbox_failure_after_a_storage_rejection_clears_the_rejection_code()
+    {
+        var attachment = NewAttachment();
+        var fileId = Guid.NewGuid();
+        attachment.MarkInProgress();
+        attachment.MarkDownloaded(fileId);
+        attachment.ReleaseRejectedFile(fileId, "StorageQuota.Exceeded");
+        attachment.MarkInProgress();
+
+        attachment.MarkFailed("Connectors timed out");
+
+        Assert.Null(attachment.StorageRejectionReason);
+        Assert.False(attachment.HasPermanentStorageRejection);
+    }
 }

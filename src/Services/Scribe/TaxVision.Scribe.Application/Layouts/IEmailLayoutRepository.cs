@@ -9,4 +9,7 @@ public interface IEmailLayoutRepository
     Task<Result<EmailLayout>> GetByIdAsync(Guid layoutId, CancellationToken ct = default);
 
     Task AddAsync(EmailLayout layout, CancellationToken ct = default);
+
+    /// <summary>Layouts (System + Tenant) con alguna versión que apunta a <paramref name="fileId"/> — rechazos de CloudStorage.</summary>
+    Task<IReadOnlyList<EmailLayout>> GetReferencingFileAsync(Guid fileId, CancellationToken ct = default);
 }

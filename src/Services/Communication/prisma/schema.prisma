@@ -49,8 +49,6 @@ model TenantCommunicationSettings {
   // Meeting UX defaults (cierran fricción detectada en el frontend cliente).
   DefaultCameraOff                       Boolean  @default(true)
   DefaultMicrophoneOff                   Boolean  @default(false)
-  PersistChatOnEnd                       Boolean  @default(false)
-  // Retención y purge (feature-flag OFF por default).
   // Politica de consentimiento de grabacion (Fase Backend 2) — ver
   // RecordingConsentPolicy en domain/recording/recording-consent.ts.
   // "AllAcceptedRequired" | "NoRejections" | "HostOverride"
@@ -82,9 +80,8 @@ model TenantCommunicationSettings {
   // F5 (D-50; null = hereda): reacciones apagadas por la oficina o catalogo acotado (JSON array).
   ReactionsEnabled                       Boolean?
   MeetingReactionCatalog                 String?  @db.NVarChar(1024)
-  // F6 (null = hereda): recordatorio T-N y sala de espera para guests.
+  // F6 (null = hereda): recordatorio T-N. D-67: los externos siempre esperan admision (sin opcion).
   MeetingReminderMinutesBefore           Int?
-  GuestsWaitingRoom                      Boolean?
   // F7 (null = hereda): vocabulario del transcript (T-30) y notas de voz transcritas (D-27).
   TranscriptPrompt                       String?  @db.NVarChar(500)
   VoiceNoteTranscriptEnabled             Boolean?
@@ -94,6 +91,10 @@ model TenantCommunicationSettings {
   ChatEditWindowMinutesSupport           Int?
   ChatEditWindowMinutesMeeting           Int?
   ChatMaxEditsPerMessage                 Int?
+  // D-72 (null = no fijado): retención de la oficina; solo rige si PlatformAdmin le dio la capacidad.
+  PurgeEnabled                           Boolean?
+  MessageRetentionDays                   Int?
+  RecordingRetentionDays                 Int?
   // Auditoría.
   CreatedAtUtc                           DateTime @default(now()) @db.DateTime2
   UpdatedAtUtc                           DateTime @default(now()) @updatedAt @db.DateTime2
@@ -222,9 +223,8 @@ model PlatformCommunicationSettings {
   ReactionsPerUserPer10s                Int      @default(5)
   ReactionsPerMeetingPerMinute          Int      @default(300)
   MeetingReactionCatalog                String   @default("[\"👍\",\"👏\",\"❤️\",\"😂\",\"😮\",\"🎉\",\"🙏\",\"🤔\",\"✅\",\"🔥\"]") @db.NVarChar(1024)
-  // F6 (T-64, D-47): recordatorio T-N (0 = apagado) y sala de espera por defecto para guests.
+  // F6 (T-64): recordatorio T-N (0 = apagado). D-67: los externos siempre esperan admision (sin opcion).
   MeetingReminderMinutesBefore          Int      @default(15)
-  GuestsWaitingRoomDefault              Boolean  @default(true)
   // F7: grabación server-side (0 = mezcla en el cliente, C-03), límites, composición, retención y notas de voz.
   ServerSideRecordingEnabled            Boolean  @default(true)
   RecordingLimitWarningMinutes          Int      @default(5)
@@ -248,6 +248,8 @@ model PlatformCommunicationSettings {
   MessageRetentionDays                  Int      @default(365)
   RecordingRetentionDays                Int      @default(90)
   PurgeEnabled                          Boolean  @default(false)
+  // D-72: si las oficinas gestionan su propia retención (default no; excepción por oficina en constraints).
+  RetentionManagedByTenant              Boolean  @default(false)
   CallsRetentionDays                    Int?
   MeetingsRetentionDays                 Int?
   InvitationsRetentionDays              Int?
@@ -273,6 +275,8 @@ model TenantCommunicationConstraints {
   MessageRetentionDays         Int?
   RecordingRetentionDays       Int?
   PurgeEnabled                 Boolean?
+  // D-72: la oficina gestiona su propia retención (null = la global).
+  RetentionManagedByTenant     Boolean?
   Notes                        String?  @db.NVarChar(512)
   UpdatedByUserId              String?  @db.UniqueIdentifier
   CreatedAtUtc                 DateTime @default(now()) @db.DateTime2
@@ -885,6 +889,10 @@ model Meeting {
   PasscodeHash               String?   @db.NVarChar(255) // Argon2; null = sin passcode
   RequireWaitingRoom         Boolean   @default(true)
   IsLocked                   Boolean   @default(false)
+  // D-69: la reunion admite externos; D-68: enlace para externos (la version invalida los anteriores).
+  GuestsAllowed              Boolean   @default(true)
+  GuestLinkEnabled           Boolean   @default(false)
+  GuestLinkVersion           Int       @default(0)
   MaxParticipants            Int       @default(4)
   // "Mesh" | "Sfu" — decidido al Start segun MaxParticipants + tenant setting.
   Strategy                   String    @default("Mesh") @db.NVarChar(16)
@@ -1212,8 +1220,8 @@ model RecordingConsentEvent {
   @@index([TenantId, Scope, ScopeId, RespondedAtUtc])
 }
 
-// Una unica fila por (Scope, ScopeId) durante toda la vida del meeting/call —
-// no hay "reintentar grabar" dentro de la misma sesion; Failed es terminal.
+// Varias grabaciones por meeting/call (D-71): una fila por grabacion, numeradas por Sequence; solo una
+// puede estar capturando a la vez (lo protege el dominio y el @@unique con Sequence).
 model RecordingSession {
   Id                 String    @id @default(uuid()) @db.UniqueIdentifier
   TenantId           String    @db.UniqueIdentifier
@@ -1244,8 +1252,10 @@ model RecordingSession {
   // F7 (T-37): retención de pistas de audio y del compuesto.
   TracksPurgedAtUtc  DateTime? @db.DateTime2
   PurgedAtUtc        DateTime? @db.DateTime2
+  // D-71: numero de la grabacion dentro del meeting/call (1, 2, ...).
+  Sequence           Int       @default(1)
 
-  @@unique([Scope, ScopeId])
+  @@unique([Scope, ScopeId, Sequence])
   @@index([TenantId, Scope, ScopeId])
   @@index([State, CaptureMode])
   @@index([ComposedFileId])
@@ -1272,9 +1282,13 @@ model TranscriptArtifact {
   FailureReason      String?   @db.NVarChar(64)
   CreatedAtUtc       DateTime  @default(now()) @db.DateTime2
   CompletedAtUtc     DateTime? @db.DateTime2
+  // MNT-01 (E-292): CloudStorage confirmo el .txt; null = el barrido verifica que exista.
+  FilesConfirmedAtUtc DateTime? @db.DateTime2
 
-  @@unique([Scope, ScopeId])
+  // D-71: un transcript por grabacion; las notas de voz (sin sesion) siguen siendo uno por mensaje.
+  @@unique([Scope, ScopeId, RecordingSessionId])
   @@index([TenantId, Scope, ScopeId])
+  @@index([State, FilesConfirmedAtUtc])
 }
 
 // -----------------------------------------------------------------------------

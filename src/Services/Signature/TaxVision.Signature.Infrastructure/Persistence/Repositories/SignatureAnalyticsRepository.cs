@@ -32,4 +32,20 @@ public sealed class SignatureAnalyticsRepository(SignatureDbContext db) : ISigna
         await db.SignatureAnalyticsSnapshots.AddAsync(created, ct);
         return created;
     }
+
+    public async Task<bool> TryMarkSealedAsync(Guid tenantId, Guid signatureRequestId, CancellationToken ct = default)
+    {
+        // Mismo motivo que arriba para IgnoreQueryFilters: el tenant viene explícito desde el evento.
+        var counted = await db
+            .SignatureAnalyticsSealedRequests.IgnoreQueryFilters()
+            .AnyAsync(mark => mark.TenantId == tenantId && mark.SignatureRequestId == signatureRequestId, ct);
+        if (counted)
+            return false;
+
+        await db.SignatureAnalyticsSealedRequests.AddAsync(
+            SignatureAnalyticsSealedRequest.Create(tenantId, signatureRequestId),
+            ct
+        );
+        return true;
+    }
 }

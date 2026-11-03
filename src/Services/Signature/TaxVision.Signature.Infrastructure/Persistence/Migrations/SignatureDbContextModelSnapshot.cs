@@ -50,6 +50,29 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerAssignmentProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Analytics.SignatureAnalyticsSealedRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CountedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SignatureRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SignatureRequestId")
+                        .IsUnique();
+
+                    b.ToTable("SignatureAnalyticsSealedRequests", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Analytics.SignatureAnalyticsSnapshot", b =>
                 {
                     b.Property<Guid>("Id")

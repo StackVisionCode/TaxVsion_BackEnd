@@ -301,6 +301,7 @@ function wireMeetingSocket(
       typeof principal.raw['display_name'] === 'string' ? principal.raw['display_name'] : undefined;
     const guestInvitationId =
       typeof principal.raw['invitation_id'] === 'string' ? principal.raw['invitation_id'] : undefined;
+    const guestLinkVersion = typeof principal.raw['link_version'] === 'number' ? principal.raw['link_version'] : undefined;
     // Fallback legible cuando el directorio no tiene fila (owner viejo de onboarding / race): el email
     // del JWT, para que la tile del participante nunca muestre el GUID crudo.
     const selfEmail = typeof principal.raw['email'] === 'string' ? principal.raw['email'] : undefined;
@@ -318,6 +319,7 @@ function wireMeetingSocket(
           ? { invitationToken: parsed.data.invitationToken }
           : {}),
         ...(isGuest && guestInvitationId !== undefined ? { guestInvitationId } : {}),
+        ...(isGuest && guestInvitationId === undefined && guestLinkVersion !== undefined ? { guestLinkVersion } : {}),
         ...(parsed.data.audioDefault !== undefined ? { audioDefault: parsed.data.audioDefault } : {}),
         ...(parsed.data.videoDefault !== undefined ? { videoDefault: parsed.data.videoDefault } : {}),
       },

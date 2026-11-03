@@ -637,8 +637,10 @@ public sealed class FormRequest : AggregateRoot
         var revision = Submission?.CurrentRevision(revisionNumber);
         if (revision is null)
             return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureFailed();
-        return Result.Success();
+        // Un segundo aviso de fallo (dispatch duplicado) no vuelve a planificar ni a notificar.
+        return revision.MarkSignatureFailed()
+            ? Result.Success()
+            : Result.Failure(FormRequestErrors.SignatureNotPending);
     }
 
     public Result MarkSignatureSigned(int revisionNumber)

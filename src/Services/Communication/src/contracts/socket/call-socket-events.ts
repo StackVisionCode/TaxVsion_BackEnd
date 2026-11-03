@@ -196,6 +196,8 @@ export interface CallRecordingStateChangedDto {
   maxDurationSeconds?: number | null;
   /** F7: en Stopping = User|LimitReached|MeetingEnded|CallEnded; en Failed = codigo del fallo. */
   reason?: string | null;
+  recordingId?: string;
+  requestedByUserId?: string;
 }
 
 /** F7 (T-35): la grabacion de la llamada se corta pronto por el limite. */
