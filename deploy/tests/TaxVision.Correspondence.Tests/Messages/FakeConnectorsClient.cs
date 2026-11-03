@@ -60,4 +60,18 @@ internal sealed class FakeConnectorsClient : IConnectorsClient
         bool includeOffice,
         CancellationToken ct = default
     ) => Task.FromResult(VisibleAccountIdsResponse);
+
+    public Result<IReadOnlyList<MailboxAddress>> MailboxAddressesResponse { get; set; } =
+        Result.Success<IReadOnlyList<MailboxAddress>>([]);
+
+    public int MailboxAddressesCalls { get; private set; }
+
+    public Task<Result<IReadOnlyList<MailboxAddress>>> GetMailboxAddressesAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    )
+    {
+        MailboxAddressesCalls++;
+        return Task.FromResult(MailboxAddressesResponse);
+    }
 }

@@ -90,6 +90,21 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
             .HasFilter("[IsRead] = 0")
             .HasDatabaseName("IX_IncomingEmails_TenantId_EmailThreadId_Unread");
 
+        // Personas de /search: remitentes por dirección, cubriendo lo que lee la agregación (medido con 200k
+        // entrantes: sin él, un usuario con buzón/cliente restringido tardaba ~24 s; con él, <1 s).
+        builder
+            .HasIndex(x => new { x.TenantId, x.From })
+            .IncludeProperties(x => new
+            {
+                x.FromDisplayName,
+                x.ReceivedAtUtc,
+                x.EmailThreadId,
+                x.DeletedAtUtc,
+                x.CustomerId,
+                x.AccountId,
+            })
+            .HasDatabaseName("IX_IncomingEmails_TenantId_From");
+
         builder
             .HasMany(x => x.Recipients)
             .WithOne()

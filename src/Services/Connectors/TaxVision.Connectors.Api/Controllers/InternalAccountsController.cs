@@ -39,4 +39,19 @@ public sealed class InternalAccountsController(IMessageBus bus) : ControllerBase
         );
         return Ok(new { accountIds = ids });
     }
+
+    // Búsqueda de Correspondence: excluir buzones propios de "personas" y resolver from= de lo enviado.
+    [HttpPost("addresses")]
+    [RateLimitExempt("M2M interno ServiceOnly — mismo criterio que MessagesController (Connectors Fase 8).")]
+    public async Task<IActionResult> Addresses([FromBody] MailboxAddressesRequest body, CancellationToken ct)
+    {
+        if (!this.TryResolveTenantId(body.TenantId, out var tenantId))
+            return Forbid();
+
+        var accounts = await bus.InvokeAsync<IReadOnlyList<MailboxAddressDto>>(
+            new ListMailboxAddressesQuery(tenantId),
+            ct
+        );
+        return Ok(new { accounts });
+    }
 }

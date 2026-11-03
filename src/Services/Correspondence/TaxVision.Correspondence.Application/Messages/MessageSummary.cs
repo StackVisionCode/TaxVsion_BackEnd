@@ -45,7 +45,10 @@ public sealed record MessageSummary(
     string? DeliveryStatus = null,
     IReadOnlyList<Delivery.RecipientDeliverySummary>? Deliveries = null,
     // Solo Kind = DeliveryNotice.
-    Delivery.DeliveryNoticeSummary? DeliveryNotice = null
+    Delivery.DeliveryNoticeSummary? DeliveryNotice = null,
+    // Solo outbound: copia y copia oculta (la oficina ve el Bcc de lo que ella envió, como en cualquier cliente de correo).
+    IReadOnlyList<string>? CcAddresses = null,
+    IReadOnlyList<string>? BccAddresses = null
 );
 
 /// <summary>Valores de <see cref="MessageSummary.Kind"/> (contrato con el front).</summary>

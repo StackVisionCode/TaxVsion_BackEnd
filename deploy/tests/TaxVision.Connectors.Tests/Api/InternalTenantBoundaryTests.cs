@@ -65,6 +65,35 @@ public sealed class InternalTenantBoundaryTests
     }
 
     [Fact]
+    public async Task Addresses_is_forbidden_when_the_body_tenant_is_not_the_token_tenant()
+    {
+        var bus = new FakeMessageBus();
+        var controller = new InternalAccountsController(bus) { ControllerContext = ServiceTokenFor(Guid.NewGuid()) };
+
+        var result = await controller.Addresses(new MailboxAddressesRequest(Guid.NewGuid()), CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Empty(bus.Invoked);
+    }
+
+    [Fact]
+    public async Task Addresses_uses_the_token_tenant_when_it_matches_the_body()
+    {
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus
+        {
+            InvokeAnyResult = (IReadOnlyList<MailboxAddressDto>)[new(Guid.NewGuid(), "office@firm.com", "Office")],
+        };
+        var controller = new InternalAccountsController(bus) { ControllerContext = ServiceTokenFor(tenantId) };
+
+        var result = await controller.Addresses(new MailboxAddressesRequest(tenantId), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        var query = Assert.IsType<ListMailboxAddressesQuery>(Assert.Single(bus.Invoked));
+        Assert.Equal(tenantId, query.TenantId);
+    }
+
+    [Fact]
     public async Task GetBody_is_forbidden_when_the_body_tenant_is_not_the_token_tenant()
     {
         var bus = new FakeMessageBus();

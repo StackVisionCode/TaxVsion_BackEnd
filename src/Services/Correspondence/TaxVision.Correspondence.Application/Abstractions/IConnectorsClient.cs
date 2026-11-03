@@ -48,7 +48,13 @@ public interface IConnectorsClient
         bool includeOffice,
         CancellationToken ct = default
     );
+
+    /// <summary>Dirección de cada buzón del tenant (oficina y personales): la búsqueda los excluye de "personas" y resuelve <c>from</c> de lo enviado.</summary>
+    Task<Result<IReadOnlyList<MailboxAddress>>> GetMailboxAddressesAsync(Guid tenantId, CancellationToken ct = default);
 }
+
+/// <summary>Un buzón del tenant tal cual lo conoce Connectors.</summary>
+public sealed record MailboxAddress(Guid AccountId, string EmailAddress, string? DisplayName);
 
 /// <summary>
 /// Body de un mensaje tal cual lo devuelve Connectors. Deliberadamente no incluye los adjuntos

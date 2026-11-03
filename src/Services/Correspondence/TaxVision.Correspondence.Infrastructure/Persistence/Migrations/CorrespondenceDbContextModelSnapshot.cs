@@ -269,6 +269,11 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DraftId");
 
+                    b.HasIndex("TenantId", "Address")
+                        .HasDatabaseName("IX_DraftRecipients_TenantId_Address");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "Address"), new[] { "DisplayName", "DraftId" });
+
                     b.ToTable("DraftRecipients", (string)null);
                 });
 
@@ -499,6 +504,11 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "EmailThreadId")
                         .HasDatabaseName("IX_IncomingEmails_TenantId_EmailThreadId_Unread")
                         .HasFilter("[IsRead] = 0");
+
+                    b.HasIndex("TenantId", "From")
+                        .HasDatabaseName("IX_IncomingEmails_TenantId_From");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "From"), new[] { "FromDisplayName", "ReceivedAtUtc", "EmailThreadId", "DeletedAtUtc", "CustomerId", "AccountId" });
 
                     b.HasIndex("TenantId", "InternetMessageId")
                         .IsUnique()

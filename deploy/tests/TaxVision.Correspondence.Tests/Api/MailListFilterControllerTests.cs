@@ -167,11 +167,26 @@ public sealed class MailListFilterControllerTests
     [Fact]
     public async Task Search_receives_every_filter_and_validates_them()
     {
-        var bus = new ControllableMessageBus { NextResult = new MailSearchResult([], []) };
+        var bus = new ControllableMessageBus { NextResult = new MailSearchResult([], [], []) };
         var controller = Search(bus);
         var customerId = Guid.NewGuid();
 
-        await controller.Search("w-2", 5, customerId, false, true, true, Day, Day.AddDays(7), CancellationToken.None);
+        await controller.Search(
+            "w-2",
+            5,
+            customerId,
+            false,
+            true,
+            true,
+            Day,
+            Day.AddDays(7),
+            null,
+            null,
+            null,
+            null,
+            null,
+            CancellationToken.None
+        );
         var criteria = Assert.IsType<SearchMailQuery>(bus.LastInvoked).Criteria;
 
         Assert.Equal(customerId, criteria.CustomerId);
@@ -180,11 +195,41 @@ public sealed class MailListFilterControllerTests
         Assert.Equal(Day, criteria.FromUtc);
         Assert.Equal(Day.AddDays(7), criteria.ToUtc);
         AssertBadRequest(
-            await controller.Search("w-2", 5, customerId, true, false, false, null, null, CancellationToken.None),
+            await controller.Search(
+                "w-2",
+                5,
+                customerId,
+                true,
+                false,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                CancellationToken.None
+            ),
             "Correspondence.CustomerFilterConflict"
         );
         AssertBadRequest(
-            await controller.Search("w-2", 5, null, false, false, false, Day, Day.AddDays(-1), CancellationToken.None),
+            await controller.Search(
+                "w-2",
+                5,
+                null,
+                false,
+                false,
+                false,
+                Day,
+                Day.AddDays(-1),
+                null,
+                null,
+                null,
+                null,
+                null,
+                CancellationToken.None
+            ),
             "Correspondence.InvalidDateRange"
         );
     }

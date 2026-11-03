@@ -111,7 +111,7 @@ public static class ListThreadMessagesHandler
             FromDisplayName: null,
             draft.Subject,
             Snippet: null,
-            ToAddresses: draft.Recipients.Where(r => r.Type == EmailRecipientType.To).Select(r => r.Address).ToList(),
+            ToAddresses: draft.AddressesOf(EmailRecipientType.To),
             // Ver el WHY-comment de Draft.MarkSent: UpdatedAtUtc ES el instante de envío, ningún
             // otro método del aggregate lo vuelve a tocar una vez Sent.
             OccurredAtUtc: draft.UpdatedAtUtc,
@@ -122,7 +122,9 @@ public static class ListThreadMessagesHandler
             IsRead: true,
             SenderTrust: null,
             DeliveryStatus: DeliveryStatusSummary.Overall(draft),
-            Deliveries: DeliveryStatusSummary.Recipients(draft)
+            Deliveries: DeliveryStatusSummary.Recipients(draft),
+            CcAddresses: draft.AddressesOf(EmailRecipientType.Cc),
+            BccAddresses: draft.AddressesOf(EmailRecipientType.Bcc)
         );
 
     private static MessageSummary ToNoticeSummary(DeliveryNotice notice, string subject) =>

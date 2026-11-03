@@ -38,7 +38,8 @@ internal static class MailSearchTestData
         string? subject = null,
         string snippet = "Here it is",
         DateTime? at = null,
-        IReadOnlyCollection<IncomingEmailAttachmentData>? attachments = null
+        IReadOnlyCollection<IncomingEmailAttachmentData>? attachments = null,
+        params string[] to
     ) =>
         IncomingEmail
             .Create(
@@ -55,6 +56,12 @@ internal static class MailSearchTestData
                 at ?? DateTime.UtcNow,
                 hasAttachments: attachments is { Count: > 0 },
                 attachmentCount: attachments?.Count ?? 0,
+                recipients: to.Select(a => new IncomingEmailRecipientData(
+                        EmailAddress.Create(a).Value,
+                        EmailRecipientType.To,
+                        null
+                    ))
+                    .ToList(),
                 attachments: attachments
             )
             .Value;
@@ -96,6 +103,34 @@ internal static class MailSearchTestData
         );
         foreach (var attachment in attachments)
             draft.AttachFile(attachment);
+        return draft;
+    }
+
+    /// <summary>Un enviado (o borrador si <paramref name="send"/> es false) con varios destinatarios y nombres.</summary>
+    public static Draft Outgoing(
+        Guid tenantId,
+        Guid? customerId,
+        Guid accountId,
+        string subject,
+        bool send,
+        Guid? author,
+        params (string Address, string? Name, EmailRecipientType Type)[] recipients
+    )
+    {
+        var draft = Draft.CreateNew(tenantId, customerId, accountId, author ?? Guid.NewGuid()).Value;
+        draft.AutoSave(
+            subject,
+            "<p>body</p>",
+            "body",
+            recipients
+                .Select(r => new DraftRecipientData(EmailAddress.Create(r.Address).Value, r.Type, r.Name))
+                .ToList()
+        );
+        if (send)
+        {
+            draft.MarkSending();
+            draft.MarkSent(Guid.NewGuid());
+        }
         return draft;
     }
 

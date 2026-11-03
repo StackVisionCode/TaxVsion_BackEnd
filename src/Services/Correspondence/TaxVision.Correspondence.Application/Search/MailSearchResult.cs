@@ -1,10 +1,29 @@
 namespace TaxVision.Correspondence.Application.Search;
 
 /// <summary>
-/// Respuesta de <c>GET /correspondence/search</c>: correos y archivos que el usuario puede ver. Los
-/// clientes no salen de aquí: el front los busca en su directorio de clientes en paralelo.
+/// Respuesta de <c>GET /correspondence/search</c>: correos, archivos y personas que el usuario puede ver; un grupo
+/// no pedido viene vacío. Los clientes no salen de aquí: el front los busca en su directorio de clientes en paralelo.
 /// </summary>
-public sealed record MailSearchResult(IReadOnlyList<EmailSearchHit> Emails, IReadOnlyList<FileSearchHit> Files);
+public sealed record MailSearchResult(
+    IReadOnlyList<EmailSearchHit> Emails,
+    IReadOnlyList<FileSearchHit> Files,
+    IReadOnlyList<PersonSearchHit> People
+);
+
+/// <summary>
+/// Un corresponsal: remitente de entrantes y/o destinatario de salientes visibles, distinto por dirección (en
+/// minúsculas). <see cref="MessageCount"/> y <see cref="LastContactAtUtc"/> sobre los correos que pasan los filtros;
+/// <see cref="DisplayName"/> y <see cref="CustomerId"/> = los más recientes que haya. <see cref="Direction"/>:
+/// <c>From</c> (solo nos escribió), <c>To</c> (solo le escribimos) o <c>Both</c>.
+/// </summary>
+public sealed record PersonSearchHit(
+    string Address,
+    string? DisplayName,
+    Guid? CustomerId,
+    int MessageCount,
+    DateTime LastContactAtUtc,
+    string Direction
+);
 
 /// <summary>
 /// Un correo que coincide. <see cref="Source"/>: <c>Thread</c> (conversación de Inbox/Archived; una fila por
@@ -28,7 +47,10 @@ public sealed record EmailSearchHit(
     string? Snippet,
     bool HasAttachments,
     // Conversación: algo sin leer; entrante: su leído; enviado/borrador: siempre false.
-    bool IsUnread = false
+    bool IsUnread = false,
+    // Solo enviados/borradores: copia y copia oculta.
+    IReadOnlyList<string>? CcAddresses = null,
+    IReadOnlyList<string>? BccAddresses = null
 );
 
 /// <summary>
@@ -71,4 +93,8 @@ public static class MailSearchValues
     public const string MatchedFrom = "From";
     public const string MatchedSnippet = "Snippet";
     public const string MatchedTo = "To";
+
+    public const string DirectionFrom = "From";
+    public const string DirectionTo = "To";
+    public const string DirectionBoth = "Both";
 }

@@ -77,7 +77,7 @@ public static class ListTrashHandler
             "Sent",
             draft.EmailThreadId,
             draft.Subject,
-            draft.Recipients.Where(r => r.Type == EmailRecipientType.To).Select(r => r.Address).FirstOrDefault() ?? "",
+            draft.AddressesOf(EmailRecipientType.To).FirstOrDefault() ?? "",
             draft.DeletedAtUtc!.Value,
             draft.Attachments.Count > 0,
             draft.Attachments.Count,

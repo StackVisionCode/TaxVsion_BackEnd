@@ -39,7 +39,7 @@ public static class ListSentMessagesHandler
             draft.Id,
             draft.EmailThreadId,
             draft.Subject,
-            draft.Recipients.Where(r => r.Type == EmailRecipientType.To).Select(r => r.Address).ToList(),
+            draft.AddressesOf(EmailRecipientType.To),
             draft.ReplyContext is not null,
             // UpdatedAtUtc ES el instante de envío una vez Sent — ningún método del aggregate lo vuelve
             // a tocar después (mismo criterio que ListThreadMessagesHandler.ToOutboundSummary).
@@ -48,6 +48,8 @@ public static class ListSentMessagesHandler
             draft.Attachments.Count,
             draft.CustomerId,
             DeliveryStatusSummary.Overall(draft),
-            DeliveryStatusSummary.Recipients(draft)
+            DeliveryStatusSummary.Recipients(draft),
+            draft.AddressesOf(EmailRecipientType.Cc),
+            draft.AddressesOf(EmailRecipientType.Bcc)
         );
 }

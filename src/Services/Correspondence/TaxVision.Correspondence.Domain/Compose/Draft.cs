@@ -89,6 +89,10 @@ public sealed class Draft : IHasOwner, ITenantOwned
     public Guid? EmailThreadId { get; private set; }
 
     public IReadOnlyCollection<DraftRecipient> Recipients => _recipients.AsReadOnly();
+
+    /// <summary>Direcciones de un tipo (To/Cc/Bcc) en el orden en que se cargaron.</summary>
+    public IReadOnlyList<string> AddressesOf(EmailRecipientType type) =>
+        _recipients.Where(r => r.Type == type).Select(r => r.Address).ToList();
     public IReadOnlyCollection<DraftAttachment> Attachments => _attachments.AsReadOnly();
 
     /// <summary>

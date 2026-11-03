@@ -12,4 +12,7 @@ public interface IMailSearchRepository
     Task<IReadOnlyList<EmailSearchHit>> SearchEmailsAsync(MailSearchCriteria criteria, CancellationToken ct = default);
 
     Task<IReadOnlyList<FileSearchHit>> SearchFilesAsync(MailSearchCriteria criteria, CancellationToken ct = default);
+
+    /// <summary>Corresponsales distintos por dirección, agregados en SQL, por último contacto.</summary>
+    Task<IReadOnlyList<PersonSearchHit>> SearchPeopleAsync(MailSearchCriteria criteria, CancellationToken ct = default);
 }

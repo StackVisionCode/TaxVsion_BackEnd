@@ -93,6 +93,42 @@ public sealed class ListSentMessagesHandlerTests
     }
 
     [Fact]
+    public async Task Handle_SeparatesToCcAndBcc()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var drafts = new FakeDraftRepository();
+        var draft = Draft.CreateNew(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        draft.AutoSave(
+            "Copias",
+            "<p>x</p>",
+            "x",
+            [
+                new DraftRecipientData(EmailAddress.Create("to@x.com").Value, EmailRecipientType.To, null),
+                new DraftRecipientData(EmailAddress.Create("cc@x.com").Value, EmailRecipientType.Cc, null),
+                new DraftRecipientData(EmailAddress.Create("bcc@x.com").Value, EmailRecipientType.Bcc, null),
+            ]
+        );
+        draft.MarkSending();
+        draft.MarkSent(Guid.NewGuid());
+        await drafts.AddAsync(draft);
+
+        var row = Assert.Single(
+            (
+                await ListSentMessagesHandler.Handle(
+                    new ListSentMessagesQuery(tenantId, customerId, 1, 20),
+                    drafts,
+                    CancellationToken.None
+                )
+            ).Items
+        );
+
+        Assert.Equal(["to@x.com"], row.ToAddresses);
+        Assert.Equal(["cc@x.com"], row.CcAddresses!);
+        Assert.Equal(["bcc@x.com"], row.BccAddresses!);
+    }
+
+    [Fact]
     public async Task Handle_NeverLeaksOtherCustomerOrTenant()
     {
         var tenantId = Guid.NewGuid();

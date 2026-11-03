@@ -60,6 +60,28 @@ public sealed class MailSearchSqlServerTranslationTests
         var search = new MailSearchRepository(db);
         Assert.Empty(await search.SearchEmailsAsync(criteria));
         Assert.Empty(await search.SearchFilesAsync(criteria));
+        Assert.Empty(await search.SearchPeopleAsync(criteria));
+
+        // Campos, carpeta y personas en cada carpeta (con y sin remitentes resueltos / buzones propios).
+        MailSearchFolder?[] folders = [null, .. Enum.GetValues<MailSearchFolder>()];
+        foreach (var folder in folders)
+        {
+            var fields = criteria with
+            {
+                UnreadOnly = false,
+                From = "ana",
+                To = "bob",
+                Subject = "w-2",
+                Folder = folder,
+                SenderAccountIds = gated ? [Guid.NewGuid()] : [],
+                OwnMailboxAddresses = gated ? ["office@firm.com"] : [],
+            };
+            Assert.Empty(await search.SearchEmailsAsync(fields));
+            Assert.Empty(await search.SearchEmailsAsync(fields with { Term = null }));
+            Assert.Empty(await search.SearchFilesAsync(fields with { Term = null }));
+            Assert.Empty(await search.SearchPeopleAsync(fields));
+            Assert.Empty(await search.SearchPeopleAsync(fields with { From = null, To = null }));
+        }
 
         var scope = DraftCustomerScope.All.RestrictedTo(restrictTo);
         var drafts = new DraftRepository(db);
@@ -220,6 +242,71 @@ public sealed class MailSearchSqlServerTranslationTests
                 new MailSearchCriteria(tenantId, "quote", 10, [account], null, null)
             )
         );
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task People_aggregate_on_sql_server_inside_a_rolled_back_transaction()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CORRESPONDENCE_SQLSERVER_TESTS");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return;
+
+        var tenantId = Guid.NewGuid();
+        var account = Guid.NewGuid();
+        var customer = Guid.NewGuid();
+        await using var db = new CorrespondenceDbContext(
+            new DbContextOptionsBuilder<CorrespondenceDbContext>().UseSqlServer(connectionString).Options,
+            new TenantContext(tenantId)
+        );
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var thread = Search.MailSearchTestData.Thread(tenantId, customer, "Docs", DateTime.UtcNow.AddDays(-3));
+        var incoming = Search.MailSearchTestData.Incoming(
+            tenantId,
+            thread,
+            account,
+            from: "ana@client.com",
+            fromName: "Ana Perez",
+            at: DateTime.UtcNow.AddDays(-3),
+            to: ["office@firm.com"]
+        );
+        var sent = Search.MailSearchTestData.Outgoing(
+            tenantId,
+            null,
+            account,
+            "Docs",
+            true,
+            null,
+            ("ana@client.com", null, TaxVision.Correspondence.Domain.Inbox.EmailRecipientType.To),
+            ("office@firm.com", "Office", TaxVision.Correspondence.Domain.Inbox.EmailRecipientType.Cc)
+        );
+        db.AddRange(thread, incoming, sent);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var people = await new MailSearchRepository(db).SearchPeopleAsync(
+            new MailSearchCriteria(
+                tenantId,
+                "ana",
+                10,
+                [account],
+                null,
+                null,
+                Subject: "Docs",
+                OwnMailboxAddresses: ["office@firm.com"]
+            )
+        );
+
+        var person = Assert.Single(people);
+        Assert.Equal("ana@client.com", person.Address);
+        Assert.Equal(2, person.MessageCount);
+        Assert.Equal(sent.UpdatedAtUtc, person.LastContactAtUtc, TimeSpan.FromMilliseconds(1));
+        // El enviado no trae nombre ni cliente: ganan los del entrante.
+        Assert.Equal("Ana Perez", person.DisplayName);
+        Assert.Equal(customer, person.CustomerId);
+        Assert.Equal("Both", person.Direction);
 
         await tx.RollbackAsync();
     }

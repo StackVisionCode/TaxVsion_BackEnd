@@ -25,5 +25,12 @@ internal sealed class DraftRecipientConfiguration : IEntityTypeConfiguration<Dra
         builder.Property(x => x.DeliveryStatus).HasConversion<string>().HasMaxLength(16);
         builder.Property(x => x.DeliveryCategory).HasMaxLength(DeliveryNotice.CategoryMaxLength);
         builder.Property(x => x.DeliveryUpdatedAtUtc);
+
+        // Personas de /search: destinatarios por dirección del tenant (medido con 75k: nombre/cliente de las
+        // personas del límite pasan de ~0,5 s a ~30 ms por consulta).
+        builder
+            .HasIndex(x => new { x.TenantId, x.Address })
+            .IncludeProperties(x => new { x.DisplayName, x.DraftId })
+            .HasDatabaseName("IX_DraftRecipients_TenantId_Address");
     }
 }
