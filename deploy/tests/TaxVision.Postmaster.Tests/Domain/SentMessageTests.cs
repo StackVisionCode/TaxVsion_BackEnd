@@ -471,6 +471,25 @@ public sealed class SentMessageTests
     }
 
     [Fact]
+    public void ApplyDeliveryFeedback_same_delivery_by_another_path_is_not_recorded_twice()
+    {
+        var (message, recipient) = SentToOne();
+        Assert.True(message.ApplyDeliveryFeedback(recipient.Id, Outcome(DeliveryOutcome.Delivered, T0), null).Value);
+        var eventsAfterFirst = message.Events.Count;
+
+        // Webhook y consulta de respaldo informan la misma entrega con distinta precisión de hora.
+        var again = message.ApplyDeliveryFeedback(
+            recipient.Id,
+            Outcome(DeliveryOutcome.Delivered, T0.AddMilliseconds(400)),
+            null
+        );
+
+        Assert.True(again.IsSuccess);
+        Assert.False(again.Value);
+        Assert.Equal(eventsAfterFirst, message.Events.Count);
+    }
+
+    [Fact]
     public void ApplyDeliveryFeedback_for_unknown_recipient_fails()
     {
         var (message, _) = SentToOne();

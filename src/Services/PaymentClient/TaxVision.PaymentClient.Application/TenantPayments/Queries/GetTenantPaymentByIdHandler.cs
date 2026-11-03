@@ -35,7 +35,12 @@ public static class GetTenantPaymentByIdHandler
                 payment.NextActionUrl,
                 payment.FailureCode,
                 payment.FailureReason,
-                payment.PaidAtUtc
+                payment.PaidAtUtc,
+                payment.Payer.ReceiptEmail,
+                payment.Payer.PayerName,
+                payment.Payer.PayerEmail,
+                payment.Payer.CardBrand,
+                payment.Payer.CardLast4
             )
         );
     }

@@ -36,6 +36,13 @@ public sealed class TenantPaymentConfigConfiguration : IEntityTypeConfiguration<
             .HasColumnName("WebhookSecretEncrypted")
             .HasColumnType("nvarchar(max)");
 
+        builder.Property(config => config.WebhookSetup).HasConversion<string>().HasMaxLength(20);
+        builder.Property(config => config.ProviderWebhookId).HasMaxLength(200);
+        builder
+            .HasIndex(config => config.WebhookSetupRequestedAtUtc)
+            .HasFilter("[WebhookSetup] = 'Pending'")
+            .HasDatabaseName("IX_TenantPaymentConfigs_PendingWebhookSetup");
+
         builder
             .Property(config => config.StatementDescriptor)
             .HasConversion(descriptor => descriptor.Value, value => StatementDescriptor.Create(value).Value)

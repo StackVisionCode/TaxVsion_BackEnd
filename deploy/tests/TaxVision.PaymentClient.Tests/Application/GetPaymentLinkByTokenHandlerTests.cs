@@ -36,6 +36,14 @@ public sealed class GetPaymentLinkByTokenHandlerTests
         Assert.Equal("Acme Tax Office", response.TenantName);
     }
 
+    [Fact]
+    public async Task The_checkout_carries_the_office_subdomain_so_the_page_can_show_its_logo()
+    {
+        var response = await HandleAsync(RegisterTenant());
+
+        Assert.Equal("acme-tax", response.TenantBrandingKey);
+    }
+
     private static async Task<PaymentLinkCheckoutResponse> HandleAsync(Tenant tenant)
     {
         var link = PaymentLink
@@ -153,6 +161,12 @@ public sealed class GetPaymentLinkByTokenHandlerTests
         public Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<IReadOnlyList<TenantPaymentConfig>> GetStalePendingWebhookSetupsAsync(
+            DateTime requestedBeforeUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
+
         public void Remove(TenantPaymentConfig config) => throw new NotSupportedException();
     }
 
@@ -161,6 +175,10 @@ public sealed class GetPaymentLinkByTokenHandlerTests
         public IPaymentProvider Resolve(PaymentProviderCode code) => throw new NotSupportedException();
 
         public bool IsRegistered(PaymentProviderCode code) => false;
+
+        public IReadOnlyList<PaymentProviderDescriptor> GetAvailableProviders() => [];
+
+        public PaymentProviderDescriptor? FindDescriptor(PaymentProviderCode code) => null;
     }
 
     private sealed class SingleTenantRegistry(Tenant tenant) : ITenantRegistry

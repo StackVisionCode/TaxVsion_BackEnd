@@ -3,6 +3,7 @@ using JasperFx.CodeGeneration;
 using Microsoft.Extensions.DependencyInjection;
 using TaxVision.Postmaster.Application.Feedback.Commands.ProcessDeliveryFeedback;
 using TaxVision.Postmaster.Application.Feedback.Commands.ReconcileDeliveryFeedback;
+using TaxVision.Postmaster.Application.Feedback.Commands.ReconcileEngagementFeedback;
 using Wolverine.Runtime.Handlers;
 using Xunit;
 
@@ -18,6 +19,7 @@ public sealed class DeliveryFeedbackHandlerCompilationTests(PostmasterApiFactory
     [Theory]
     [InlineData(typeof(ProcessDeliveryFeedbackCommand))]
     [InlineData(typeof(ReconcileDeliveryFeedbackCommand))]
+    [InlineData(typeof(ReconcileEngagementFeedbackCommand))]
     [InlineData(typeof(EmailProviderFeedbackReceivedIntegrationEvent))]
     [InlineData(
         typeof(BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsDeliveryReportDetectedIntegrationEvent)

@@ -51,16 +51,25 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
 
     // IgnoreQueryFilters: jobs cross-tenant (RBAC Fase 5) — barren pagos atascados/vencidos de
     // todos los tenants, nunca sirven una request autenticada.
-    public async Task<IReadOnlyList<TenantPayment>> GetStuckProcessingAsync(
-        DateTime cutoffUtc,
+    public async Task<IReadOnlyList<AwaitingProviderPayment>> GetAwaitingProviderConfirmationAsync(
+        DateTime stuckBeforeUtc,
+        DateTime createdAfterUtc,
         int batchSize,
         CancellationToken ct = default
     ) =>
-        await WithChildren(db.TenantPayments)
-            .IgnoreQueryFilters()
-            .Where(payment => payment.Status == PaymentStatus.Processing && payment.UpdatedAtUtc < cutoffUtc)
-            .OrderBy(payment => payment.UpdatedAtUtc)
+        await db
+            .TenantPayments.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(payment =>
+                (payment.Status == PaymentStatus.Processing || payment.Status == PaymentStatus.RequiresAction)
+                && payment.UpdatedAtUtc < stuckBeforeUtc
+                && payment.CreatedAtUtc > createdAfterUtc
+            )
+            // NULL va primero en orden ascendente: los nunca consultados antes que el resto.
+            .OrderBy(payment => payment.LastProviderCheckAtUtc)
+            .ThenBy(payment => payment.UpdatedAtUtc)
             .Take(batchSize)
+            .Select(payment => new AwaitingProviderPayment(payment.Id, payment.TenantId))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<TenantPayment>> GetDueForRetryAsync(
@@ -114,6 +123,30 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
+    }
+
+    public Task<bool> AnyForProviderAsync(Guid tenantId, PaymentProviderCode code, CancellationToken ct = default) =>
+        db
+            .TenantPayments.IgnoreQueryFilters()
+            .AnyAsync(payment => payment.TenantId == tenantId && payment.ProviderCode == code, ct);
+
+    // Un EXISTS por config de la oficina (pocas filas), cortado en el primer pago: sin N+1 ni contar pagos.
+    public async Task<IReadOnlySet<PaymentProviderCode>> GetConfiguredProvidersWithPaymentsAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    )
+    {
+        var codes = await db
+            .TenantPaymentConfigs.IgnoreQueryFilters()
+            .Where(config => config.TenantId == tenantId)
+            .Where(config =>
+                db.TenantPayments.IgnoreQueryFilters()
+                    .Any(payment => payment.TenantId == tenantId && payment.ProviderCode == config.ProviderCode)
+            )
+            .Select(config => config.ProviderCode)
+            .ToListAsync(ct);
+
+        return codes.ToHashSet();
     }
 
     public async Task AddAsync(TenantPayment payment, CancellationToken ct = default) =>

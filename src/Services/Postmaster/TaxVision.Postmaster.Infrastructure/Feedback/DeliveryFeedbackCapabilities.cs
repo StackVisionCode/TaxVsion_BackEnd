@@ -9,13 +9,16 @@ namespace TaxVision.Postmaster.Infrastructure.Feedback;
 /// </summary>
 public sealed class DeliveryFeedbackCapabilities(
     IEnumerable<IDeliveryFeedbackTranslator> translators,
-    IEnumerable<IDeliveryFeedbackPoller> pollers
+    IEnumerable<IDeliveryFeedbackPoller> pollers,
+    IEnumerable<IEngagementFeedbackPoller> engagementPollers
 ) : IDeliveryFeedbackCapabilities
 {
     private readonly Dictionary<FeedbackSource, IDeliveryFeedbackTranslator> _translators = translators.ToDictionary(
         t => t.Source
     );
     private readonly Dictionary<FeedbackSource, IDeliveryFeedbackPoller> _pollers = pollers.ToDictionary(p => p.Source);
+    private readonly Dictionary<FeedbackSource, IEngagementFeedbackPoller> _engagementPollers =
+        engagementPollers.ToDictionary(p => p.Source);
 
     public bool SupportsPush(FeedbackSource source) => _translators.ContainsKey(source);
 
@@ -24,4 +27,7 @@ public sealed class DeliveryFeedbackCapabilities(
     public IDeliveryFeedbackTranslator? FindTranslator(FeedbackSource source) => _translators.GetValueOrDefault(source);
 
     public IDeliveryFeedbackPoller? FindPoller(FeedbackSource source) => _pollers.GetValueOrDefault(source);
+
+    public IEngagementFeedbackPoller? FindEngagementPoller(FeedbackSource source) =>
+        _engagementPollers.GetValueOrDefault(source);
 }

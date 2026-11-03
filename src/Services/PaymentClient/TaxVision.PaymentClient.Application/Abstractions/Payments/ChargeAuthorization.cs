@@ -32,12 +32,26 @@ public sealed record ChargeAuthorizationResult(
     string? NextActionType = null,
     string? NextActionUrl = null,
     string? FailureCode = null,
-    string? FailureMessage = null
+    string? FailureMessage = null,
+    ProviderPayerDetails? Payer = null
 );
+
+/// <summary>Lo que el proveedor devuelve del pagador en el cobro; cualquier dato puede faltar. PII.</summary>
+public sealed record ProviderPayerDetails(string? Name, string? Email, string? CardBrand, string? CardLast4);
+
+/// <summary>Qué cargo consultar al proveedor: la referencia guardada en el pago y, en modo Connect,
+/// la cuenta conectada donde vive (header <c>Stripe-Account</c>).</summary>
+public sealed record ChargeStatusLookup(string ProviderChargeReference, string? OnBehalfOf = null);
 
 public sealed record RefundResult(string ProviderRefundReference, PaymentStatus Status, Money RefundedAmount);
 
-public sealed record WebhookVerificationResult(string ProviderEventId, string EventType, string RawPayload);
+/// <summary><paramref name="Signature"/>: firma recibida, solo para dejarla en el registro del evento.</summary>
+public sealed record WebhookVerificationResult(
+    string ProviderEventId,
+    string EventType,
+    string RawPayload,
+    string? Signature = null
+);
 
 /// <summary>Datos canónicos extraídos de un webhook ya verificado — <c>TenantPayment</c> los
 /// aplica sin conocer el formato del provider. <paramref name="RefundedAmountCents"/> solo se
@@ -54,4 +68,8 @@ public sealed record WebhookEventPayload(
     // pago Succeeded (defense-in-depth: bloquea capturas parciales / misconfig).
     long? PaidAmountCents = null,
     string? PaidCurrency = null
-);
+)
+{
+    /// <summary>Evento que el adaptador no procesa: se registra como rechazado y se responde 200.</summary>
+    public const string UnsupportedEventTypeCode = "Webhook.UnsupportedEventType";
+}

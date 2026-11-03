@@ -12,4 +12,7 @@ public interface IDeliveryFeedbackCapabilities
     IDeliveryFeedbackTranslator? FindTranslator(FeedbackSource source);
 
     IDeliveryFeedbackPoller? FindPoller(FeedbackSource source);
+
+    /// <summary>Null si el origen no permite consultar aperturas y clics por rango.</summary>
+    IEngagementFeedbackPoller? FindEngagementPoller(FeedbackSource source);
 }

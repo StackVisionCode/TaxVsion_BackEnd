@@ -193,9 +193,18 @@ public static class DependencyInjection
         // Avisos de no entrega que llegan al buzón de la oficina (los lee Connectors).
         services.AddSingleton<IDeliveryFeedbackTranslator, DsnFeedbackTranslator>();
         services.AddSingleton<JobLeaderLock>();
-        services.Configure<DeliveryFeedbackReconciliationOptions>(
-            configuration.GetSection(DeliveryFeedbackReconciliationOptions.SectionName)
-        );
+        services
+            .AddOptions<DeliveryFeedbackReconciliationOptions>()
+            .Bind(configuration.GetSection(DeliveryFeedbackReconciliationOptions.SectionName))
+            .Validate(o => o.EngagementLookbackHours > 0, "DeliveryFeedback:EngagementLookbackHours must be positive.")
+            .Validate(
+                o =>
+                    o.MaxEngagementEventsPerRun
+                        is > 0
+                            and <= DeliveryFeedbackReconciliationOptions.MaxEngagementEventsPerRunLimit,
+                $"DeliveryFeedback:MaxEngagementEventsPerRun must be between 1 and {DeliveryFeedbackReconciliationOptions.MaxEngagementEventsPerRunLimit}."
+            )
+            .ValidateOnStart();
 
         var smtp2GoSection = configuration.GetSection(Smtp2GoFeedbackOptions.SectionName);
         services.Configure<Smtp2GoFeedbackOptions>(smtp2GoSection);
@@ -210,6 +219,7 @@ public static class DependencyInjection
             }
         );
         services.AddScoped<IDeliveryFeedbackPoller>(sp => sp.GetRequiredService<Smtp2GoActivityFeedbackPoller>());
+        services.AddScoped<IEngagementFeedbackPoller>(sp => sp.GetRequiredService<Smtp2GoActivityFeedbackPoller>());
     }
 
     /// <summary>Si no hay Redis configurado (dev local) se degrada a un limiter no-op — mismo criterio que Signature Fase 4.</summary>

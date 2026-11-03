@@ -413,6 +413,10 @@ jobs:
           # Pagina de checkout (frontend) para el fallback sin-subdominio; con subdominio se usa
           # TenantBaseDomain. app.<dominio> sirve la misma SPA que los hosts de oficina.
           PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL=https://app.${{ secrets.TAXVISION_BASE_DOMAIN }}
+          # Registro automático del webhook de cada oficina (crea endpoints en SUS cuentas de Stripe/PayPal).
+          # Encendido: host de la API, mismo que PAYMENTCLIENT_PUBLIC_BASE_URL (Caddy -> Gateway ->
+          # /payments-client/webhooks/*). Vacío = apagado.
+          PAYMENTCLIENT_WEBHOOKS_PUBLIC_BASE_URL=https://${{ secrets.TAXVISION_DOMAIN }}
 
           # ---------- Communication (TURN, CORS, plataforma, SFU opcional) ----------
           # TURN corre nativo en el server (fuera de este compose) — solo la URL/secreto

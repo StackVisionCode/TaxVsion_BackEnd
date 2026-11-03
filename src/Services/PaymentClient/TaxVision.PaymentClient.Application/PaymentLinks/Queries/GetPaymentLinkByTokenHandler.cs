@@ -51,15 +51,18 @@ public static class GetPaymentLinkByTokenHandler
             purposeDescription = payable?.Description;
         }
 
+        // Varios activos a la vez: el cliente elige uno. Orden estable y nombre visible del adaptador.
         var active = await configs.GetActiveByTenantAsync(link.TenantId, ct);
         var methods = active
-            .Where(c => adapters.IsRegistered(c.ProviderCode))
-            .Select(c => new CheckoutPaymentMethod(
-                c.ProviderCode.ToString(),
-                c.ProviderCode.ToString(),
-                c.StatementDescriptor.Value,
-                c.PublishableKey,
-                c.ApiBaseUrl
+            .OrderBy(c => c.ProviderCode)
+            .Select(c => (Config: c, Descriptor: adapters.FindDescriptor(c.ProviderCode)))
+            .Where(m => m.Descriptor is not null)
+            .Select(m => new CheckoutPaymentMethod(
+                m.Config.ProviderCode.ToString(),
+                m.Descriptor!.DisplayName,
+                m.Config.StatementDescriptor.Value,
+                m.Config.PublishableKey,
+                m.Config.ApiBaseUrl
             ))
             .ToList();
 
@@ -71,7 +74,8 @@ public static class GetPaymentLinkByTokenHandler
                 link.Purpose.ExternalReferenceId,
                 tenant.CustomerFacingName,
                 methods,
-                purposeDescription
+                purposeDescription,
+                tenant.SubDomain
             )
         );
     }

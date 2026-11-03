@@ -8,10 +8,12 @@ public static class ListTenantPaymentConfigsHandler
     public static async Task<Result<IReadOnlyList<TenantPaymentConfigResponse>>> Handle(
         ListTenantPaymentConfigsQuery query,
         ITenantPaymentConfigRepository configs,
+        ITenantPaymentRepository payments,
         CancellationToken ct
     )
     {
         var all = await configs.GetAllByTenantAsync(query.TenantId, ct);
+        var withPayments = await payments.GetConfiguredProvidersWithPaymentsAsync(query.TenantId, ct);
 
         IReadOnlyList<TenantPaymentConfigResponse> response = all.Select(config => new TenantPaymentConfigResponse(
                 config.Id,
@@ -23,7 +25,9 @@ public static class ListTenantPaymentConfigsHandler
                 config.StatementDescriptor.Value,
                 config.IsActive,
                 config.SettledAtUtc,
-                config.ApiBaseUrl
+                config.ApiBaseUrl,
+                withPayments.Contains(config.ProviderCode),
+                config.WebhookSetup?.ToString()
             ))
             .ToList();
 

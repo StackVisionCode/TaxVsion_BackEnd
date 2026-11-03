@@ -16,9 +16,44 @@ namespace TaxVision.PaymentClient.Infrastructure.Providers.Stripe;
 /// hacia el caller: toda <see cref="StripeException"/> se envuelve en <see cref="Result{T}"/>.
 /// </summary>
 [PaymentProvider(PaymentProviderCode.Stripe)]
-public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger) : IPaymentProvider
+public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, IStripeClientFactory? clients = null)
+    : IPaymentProvider,
+        IPaymentWebhookRegistration
 {
+    private readonly IStripeClientFactory _clients = clients ?? StripeClientFactory.Default;
+
     public PaymentProviderCode Code => PaymentProviderCode.Stripe;
+
+    private const string PaymentIntentSucceeded = "payment_intent.succeeded";
+    private const string PaymentIntentFailed = "payment_intent.payment_failed";
+    private const string PaymentIntentCanceled = "payment_intent.canceled";
+    private const string ChargeRefunded = "charge.refunded";
+    private const string ChargeDisputeCreated = "charge.dispute.created";
+    private const string SignatureHeaderName = "Stripe-Signature";
+
+    // Webhook firmado (3DS, reembolsos, disputas): signing secret opcional; sin él lo atascado lo resuelve
+    // la revisión periódica. SDK con URL fija.
+    public PaymentProviderDescriptor Descriptor { get; } =
+        new(
+            PaymentProviderCode.Stripe,
+            DisplayName: "Stripe",
+            PublicKeyLabel: "Publishable key",
+            SecretKeyLabel: "Secret key",
+            UsesWebhookSecret: true,
+            AcceptsApiBaseUrl: false,
+            CredentialsHelpUrl: "https://dashboard.stripe.com/apikeys",
+            // Los mismos que entiende ParseWebhookEventAsync: la oficina los marca al crear el endpoint.
+            WebhookEvents:
+            [
+                PaymentIntentSucceeded,
+                PaymentIntentFailed,
+                PaymentIntentCanceled,
+                ChargeRefunded,
+                ChargeDisputeCreated,
+            ],
+            WebhookRouteName: PaymentWebhookRoutes.Stripe,
+            WebhookSecretLabel: "Signing secret"
+        );
 
     public async Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
         TenantProviderCredentials credentials,
@@ -26,7 +61,7 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger) :
         CancellationToken ct
     )
     {
-        var client = new StripeClient(credentials.SecretKey);
+        var client = _clients.Create(credentials.SecretKey);
         var service = new PaymentIntentService(client);
 
         try
@@ -43,6 +78,9 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger) :
                     StatementDescriptorSuffix = request.Descriptor.Value,
                     Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value),
                     ApplicationFeeAmount = request.ApplicationFee?.AmountCents,
+                    // Datos del pagador (charge + payment method) en la misma respuesta; con Connect
+                    // se expanden dentro de la cuenta conectada (mismo header Stripe-Account).
+                    Expand = [.. StripePayerDetailsReader.ExpandedFields],
                 },
                 new RequestOptions
                 {
@@ -66,13 +104,20 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger) :
                     ProviderChargeReference: ex.StripeError?.PaymentIntent?.Id ?? string.Empty,
                     Status: PaymentStatus.Failed,
                     FailureCode: ex.StripeError?.Code,
-                    FailureMessage: ex.StripeError?.Message ?? ex.Message
+                    FailureMessage: ex.StripeError?.Message ?? ex.Message,
+                    Payer: StripePayerDetailsReader.FromError(ex.StripeError)
                 )
             );
         }
     }
 
     private static ChargeAuthorizationResult MapToChargeResult(PaymentIntent intent) =>
+        MapStatus(intent) with
+        {
+            Payer = StripePayerDetailsReader.FromPaymentIntent(intent),
+        };
+
+    private static ChargeAuthorizationResult MapStatus(PaymentIntent intent) =>
         intent.Status switch
         {
             "succeeded" => new ChargeAuthorizationResult(intent.Id, PaymentStatus.Succeeded),
@@ -91,6 +136,165 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger) :
             ),
         };
 
+    /// <summary>Retrieve del PaymentIntent guardado como referencia; en Connect, dentro de la cuenta
+    /// conectada (header <c>Stripe-Account</c>).</summary>
+    public async Task<Result<WebhookEventPayload>> GetChargeStatusAsync(
+        TenantProviderCredentials credentials,
+        ChargeStatusLookup lookup,
+        CancellationToken ct
+    )
+    {
+        var service = new PaymentIntentService(_clients.Create(credentials.SecretKey));
+        try
+        {
+            var intent = await service.GetAsync(
+                lookup.ProviderChargeReference,
+                new PaymentIntentGetOptions(),
+                new RequestOptions { StripeAccount = lookup.OnBehalfOf },
+                ct
+            );
+            return Result.Success(MapIntentStatus(intent));
+        }
+        catch (StripeException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Stripe PaymentIntent lookup failed. Reference={Reference}",
+                lookup.ProviderChargeReference
+            );
+            return Result.Failure<WebhookEventPayload>(
+                new Error("Stripe.ChargeStatus.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
+        }
+    }
+
+    /// <summary>Estado del PaymentIntent en el payload canónico del webhook. <c>requires_payment_method</c>
+    /// solo cuenta como fallo si Stripe dejó el error del intento; si no, sigue pendiente.</summary>
+    public static WebhookEventPayload MapIntentStatus(PaymentIntent intent) =>
+        intent.Status switch
+        {
+            "succeeded" => new WebhookEventPayload(
+                intent.Id,
+                PaymentStatus.Succeeded,
+                null,
+                null,
+                null,
+                PaidAmountCents: intent.AmountReceived,
+                PaidCurrency: intent.Currency
+            ),
+            "canceled" => new WebhookEventPayload(
+                intent.Id,
+                PaymentStatus.Cancelled,
+                intent.CancellationReason,
+                null,
+                null
+            ),
+            "requires_payment_method" when intent.LastPaymentError is { } error => new WebhookEventPayload(
+                intent.Id,
+                PaymentStatus.Failed,
+                error.Code ?? error.DeclineCode ?? intent.Status,
+                error.Message,
+                null
+            ),
+            "requires_action" => new WebhookEventPayload(intent.Id, PaymentStatus.RequiresAction, null, null, null),
+            _ => new WebhookEventPayload(intent.Id, PaymentStatus.Processing, null, null, null),
+        };
+
+    /// <summary>
+    /// Crea el webhook endpoint (POST /v1/webhook_endpoints) con los eventos del descriptor y la versión de
+    /// API del SDK (la firma la verifica <c>EventUtility</c>, que exige esa versión). El <c>secret</c> solo
+    /// viene al crear: si ya había endpoints para nuestra URL no se pueden reutilizar, así que se crea uno
+    /// nuevo y después se borran los viejos (best-effort).
+    /// </summary>
+    public async Task<Result<RegisteredWebhook>> RegisterWebhookAsync(
+        TenantProviderCredentials credentials,
+        WebhookRegistrationRequest request,
+        CancellationToken ct
+    )
+    {
+        var service = new WebhookEndpointService(_clients.Create(credentials.SecretKey));
+        var url = request.Url.AbsoluteUri;
+        try
+        {
+            var existing = await service.ListAsync(
+                new WebhookEndpointListOptions { Limit = 100 },
+                cancellationToken: ct
+            );
+            var created = await service.CreateAsync(
+                new WebhookEndpointCreateOptions
+                {
+                    Url = url,
+                    EnabledEvents = [.. request.Events],
+                    ApiVersion = StripeConfiguration.ApiVersion,
+                    Description = WebhookDescription,
+                },
+                cancellationToken: ct
+            );
+            if (string.IsNullOrEmpty(created.Id) || string.IsNullOrEmpty(created.Secret))
+                return Result.Failure<RegisteredWebhook>(
+                    new Error("Stripe.Webhook.NoSecret", "Stripe did not return the webhook signing secret.")
+                );
+
+            foreach (var stale in existing.Data.Where(e => e.Url == url && e.Id != created.Id))
+                await DeleteWebhookAsync(credentials, stale.Id, ct);
+
+            return Result.Success(new RegisteredWebhook(created.Id, created.Secret));
+        }
+        catch (StripeException ex)
+        {
+            logger.LogWarning(ex, "Stripe webhook registration failed ({Status}).", (int)ex.HttpStatusCode);
+            return Result.Failure<RegisteredWebhook>(MapRegistrationError(ex));
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "Stripe webhook registration could not reach Stripe.");
+            return Result.Failure<RegisteredWebhook>(new Error(WebhookRegistrationErrors.TransientCode, ex.Message));
+        }
+    }
+
+    /// <summary>DELETE /v1/webhook_endpoints/{id}; uno que ya no existe (404) cuenta como borrado.</summary>
+    public async Task<Result> DeleteWebhookAsync(
+        TenantProviderCredentials credentials,
+        string providerWebhookId,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            await new WebhookEndpointService(_clients.Create(credentials.SecretKey)).DeleteAsync(
+                providerWebhookId,
+                cancellationToken: ct
+            );
+            return Result.Success();
+        }
+        catch (StripeException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return Result.Success();
+        }
+        catch (StripeException ex)
+        {
+            logger.LogWarning(ex, "Stripe webhook deletion failed ({Status}).", (int)ex.HttpStatusCode);
+            return Result.Failure(MapRegistrationError(ex));
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "Stripe webhook deletion could not reach Stripe.");
+            return Result.Failure(new Error(WebhookRegistrationErrors.TransientCode, ex.Message));
+        }
+    }
+
+    // Lo ve la oficina en su panel de Stripe junto al endpoint.
+    private const string WebhookDescription = "Refunds and disputes sync (created automatically)";
+
+    /// <summary>429/5xx o sin respuesta = pasajero; el resto (clave restringida sin permiso, URL inválida) no.</summary>
+    private static Error MapRegistrationError(StripeException ex)
+    {
+        var status = (int)ex.HttpStatusCode;
+        return status is 0 or 429 or >= 500
+            ? new Error(WebhookRegistrationErrors.TransientCode, ex.StripeError?.Message ?? ex.Message)
+            : new Error($"Stripe.Webhook.{ex.StripeError?.Type ?? "Failed"}", ex.StripeError?.Message ?? ex.Message);
+    }
+
     public async Task<Result<RefundResult>> RefundAsync(
         TenantProviderCredentials credentials,
         string providerChargeReference,
@@ -99,7 +303,7 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger) :
         CancellationToken ct
     )
     {
-        var client = new StripeClient(credentials.SecretKey);
+        var client = _clients.Create(credentials.SecretKey);
         var service = new RefundService(client);
 
         try
@@ -128,16 +332,23 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger) :
 
     public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
         string rawPayload,
-        string signatureHeader,
-        string webhookSecret,
+        IReadOnlyDictionary<string, string> headers,
+        TenantProviderCredentials credentials,
         CancellationToken ct
     )
     {
+        var signatureHeader = headers.Find(SignatureHeaderName) ?? string.Empty;
         try
         {
-            var stripeEvent = EventUtility.ConstructEvent(rawPayload, signatureHeader, webhookSecret);
+            var stripeEvent = EventUtility.ConstructEvent(
+                rawPayload,
+                signatureHeader,
+                credentials.WebhookSecret ?? string.Empty
+            );
             return Task.FromResult(
-                Result.Success(new WebhookVerificationResult(stripeEvent.Id, stripeEvent.Type, rawPayload))
+                Result.Success(
+                    new WebhookVerificationResult(stripeEvent.Id, stripeEvent.Type, rawPayload, signatureHeader)
+                )
             );
         }
         catch (StripeException ex)
@@ -173,13 +384,13 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger) :
 
         var result = eventType switch
         {
-            "payment_intent.succeeded" => ParsePaymentIntent(stripeEvent, PaymentStatus.Succeeded),
-            "payment_intent.payment_failed" => ParsePaymentIntent(stripeEvent, PaymentStatus.Failed),
-            "payment_intent.canceled" => ParsePaymentIntent(stripeEvent, PaymentStatus.Cancelled),
-            "charge.refunded" => ParseCharge(stripeEvent),
-            "charge.dispute.created" => ParseDispute(stripeEvent),
+            PaymentIntentSucceeded => ParsePaymentIntent(stripeEvent, PaymentStatus.Succeeded),
+            PaymentIntentFailed => ParsePaymentIntent(stripeEvent, PaymentStatus.Failed),
+            PaymentIntentCanceled => ParsePaymentIntent(stripeEvent, PaymentStatus.Cancelled),
+            ChargeRefunded => ParseCharge(stripeEvent),
+            ChargeDisputeCreated => ParseDispute(stripeEvent),
             _ => Result.Failure<WebhookEventPayload>(
-                new Error("Stripe.Webhook.UnsupportedEventType", $"Event type '{eventType}' is not handled.")
+                new Error(WebhookEventPayload.UnsupportedEventTypeCode, $"Event type '{eventType}' is not handled.")
             ),
         };
 

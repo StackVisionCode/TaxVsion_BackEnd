@@ -54,6 +54,10 @@ builder.Services.AddPaymentClientInfrastructure(builder.Configuration);
 builder
     .Services.AddOptions<TaxVision.PaymentClient.Api.Common.PaymentClientPublicOptions>()
     .Bind(builder.Configuration.GetSection(TaxVision.PaymentClient.Api.Common.PaymentClientPublicOptions.SectionName));
+builder.Services.AddSingleton<
+    TaxVision.PaymentClient.Application.Abstractions.Payments.IPaymentWebhookUrlBuilder,
+    TaxVision.PaymentClient.Api.Common.LinkGeneratorPaymentWebhookUrlBuilder
+>();
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(
@@ -171,6 +175,12 @@ builder.Services.AddHostedService<PaymentLinkExpirationJob>();
 builder.Services.AddHostedService<TenantRecurringExecutionJob>();
 builder.Services.AddHostedService<TenantRecurringRetryJob>();
 
+// Pagos atascados en Processing/RequiresAction sin webhook: le pregunta al proveedor y aplica su estado.
+builder.Services.AddHostedService<StuckPaymentReconciliationJob>();
+
+// Registros automáticos de webhook que quedaron Pending sin comando: los re-encola (o los da por fallidos).
+builder.Services.AddHostedService<PendingWebhookSetupSweepJob>();
+
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
 );
@@ -234,6 +244,13 @@ builder.Host.UseWolverine(options =>
     options
         .PublishMessage<BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantConnectAccountOnboardingRequiredIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
+
+    // Registro automático del webhook: cola local DURABLE (el comando queda en SQL; los reintentos
+    // programados también sobreviven a un reinicio).
+    options
+        .PublishMessage<TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.RegisterTenantPaymentWebhook.RegisterTenantPaymentWebhookCommand>()
+        .ToLocalQueue("payment-client-webhook-setup")
+        .UseDurableInbox();
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).

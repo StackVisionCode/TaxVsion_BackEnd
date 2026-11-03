@@ -104,7 +104,7 @@ public sealed class ReconcileDeliveryFeedbackHandlerTests
     ) =>
         ReconcileDeliveryFeedbackHandler.Handle(
             new ReconcileDeliveryFeedbackCommand(Now.AddHours(-72), Now.AddHours(-6), max, Now),
-            new DeliveryFeedbackCapabilities([], poller is null ? [] : [poller]),
+            new DeliveryFeedbackCapabilities([], poller is null ? [] : [poller], []),
             new SentMessageRepository(db),
             new DeliveryFeedbackReceiptRepository(db),
             new UnmatchedDeliveryFeedbackRepository(db),

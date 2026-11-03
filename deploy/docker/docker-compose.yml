@@ -2145,6 +2145,9 @@ services:
       PaymentClient__Public__UseTenantHosts: "true"
       # Base (fallback) de la PAGINA de checkout del frontend ({base}/pay/{token}). Dev = ng serve 4200.
       PaymentClient__Public__CheckoutPageBaseUrl: ${PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL:-http://localhost:4200}
+      # Registro automático del webhook de cada oficina en Stripe/PayPal: base https pública por la que el
+      # proveedor llega a /payments-client/webhooks/*. Vacía = apagado (dev/local: no llegan a localhost).
+      PaymentClient__Webhooks__PublicBaseUrl: ${PAYMENTCLIENT_WEBHOOKS_PUBLIC_BASE_URL:-}
       # RBAC Fase 7: enforza permisos contra la proyección local (poblada por eventos de Auth) en vez de
       # leer perms embebidos en el JWT — los tokens self-service vienen sin perms. Habilita los endpoints
       # humanos de config de pago (settings 2B). Mismo modo que documents-api.

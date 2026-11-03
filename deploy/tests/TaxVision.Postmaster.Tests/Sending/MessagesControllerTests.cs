@@ -10,11 +10,9 @@ namespace TaxVision.Postmaster.Tests.Sending;
 
 public sealed class MessagesControllerTests
 {
-    [Fact]
-    public async Task List_answers_400_for_an_unknown_status_without_querying()
-    {
-        // FakeMessageBus no implementa InvokeAsync: si el controller consultara, el test fallaría.
-        var controller = new MessagesController(new FakeMessageBus())
+    // FakeMessageBus no implementa InvokeAsync: si el controller consultara, el test fallaría.
+    private static MessagesController CreateController() =>
+        new(new FakeMessageBus())
         {
             ControllerContext = new ControllerContext
             {
@@ -27,9 +25,21 @@ public sealed class MessagesControllerTests
             },
         };
 
-        var result = await controller.List("Pending", null, null, null, 1, 25, CancellationToken.None);
+    [Fact]
+    public async Task List_answers_400_for_an_unknown_status_without_querying()
+    {
+        var result = await CreateController().List("Pending", null, null, null, null, 1, 25, CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal("SentMessageActivityFilter.InvalidStatus", Assert.IsType<Error>(badRequest.Value).Code);
+    }
+
+    [Fact]
+    public async Task List_answers_400_for_an_unknown_engagement_without_querying()
+    {
+        var result = await CreateController().List(null, null, "Read", null, null, 1, 25, CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("SentMessageActivityFilter.InvalidEngagement", Assert.IsType<Error>(badRequest.Value).Code);
     }
 }

@@ -16,6 +16,7 @@ public static class TenantPaymentChargeOutcome
     public static void ApplyChargeOutcome(TenantPayment payment, ChargeAuthorizationResult outcome, Guid actorUserId)
     {
         var nowUtc = DateTime.UtcNow;
+        RecordPayer(payment, outcome.Payer);
 
         if (outcome.Status == PaymentStatus.Failed)
         {
@@ -70,6 +71,7 @@ public static class TenantPaymentChargeOutcome
     )
     {
         var nowUtc = DateTime.UtcNow;
+        RecordPayer(payment, outcome.Payer);
 
         if (outcome.Status == PaymentStatus.Failed)
         {
@@ -120,6 +122,13 @@ public static class TenantPaymentChargeOutcome
                 nowUtc
             );
         }
+    }
+
+    // También en un rechazo: la marca/últimos 4 de la tarjeta declinada le sirven al dueño.
+    private static void RecordPayer(TenantPayment payment, ProviderPayerDetails? payer)
+    {
+        if (payer is not null)
+            payment.RecordProviderPayerDetails(payer.Name, payer.Email, payer.CardBrand, payer.CardLast4);
     }
 
     public static void FailPayment(TenantPayment payment, Error error, Guid actorUserId) =>

@@ -91,7 +91,7 @@ public sealed class ConnectorsDeliveryReportDetectedConsumerTests
     ) =>
         ConnectorsDeliveryReportDetectedConsumer.Handle(
             evt,
-            new DeliveryFeedbackCapabilities([new DsnFeedbackTranslator()], []),
+            new DeliveryFeedbackCapabilities([new DsnFeedbackTranslator()], [], []),
             new SentMessageRepository(db),
             new DeliveryFeedbackReceiptRepository(db),
             new UnmatchedDeliveryFeedbackRepository(db),

@@ -430,6 +430,9 @@ public sealed class SentMessage : TenantEntity
         if (recipient is null)
             return Result.Failure<bool>(RecipientNotFound(recipientId));
 
+        // El mismo resultado llegado por otra vía (webhook y consultas de respaldo) ya está anotado: se valida
+        // igual, pero no se repite en el historial.
+        var alreadyRecorded = recipient.HasRecorded(feedback);
         var outcomeBefore = recipient.Outcome;
         var firstOfItsKind = IsFirstSignal(recipient, feedback);
         var applied =
@@ -438,6 +441,8 @@ public sealed class SentMessage : TenantEntity
                 : ApplySignal(recipient, feedback);
         if (applied.IsFailure)
             return Result.Failure<bool>(applied.Error);
+        if (alreadyRecorded)
+            return Result.Success(false);
         RefreshActivity();
 
         AppendRecipientEvent(

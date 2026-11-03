@@ -6,8 +6,11 @@ namespace TaxVision.PaymentClient.Infrastructure.Providers;
 
 /// <summary>Resuelve un <see cref="IPaymentProvider"/> vía DI keyed. El registro de cada key
 /// ocurre por reflexión en <c>PaymentProviderRegistrationExtensions</c> — esta clase no conoce
-/// ningún provider concreto.</summary>
-public sealed class KeyedPaymentAdapterFactory(IServiceProvider serviceProvider) : IPaymentAdapterFactory
+/// ningún provider concreto; recibe los códigos registrados para armar el catálogo.</summary>
+public sealed class KeyedPaymentAdapterFactory(
+    IServiceProvider serviceProvider,
+    IReadOnlyCollection<PaymentProviderCode> registeredCodes
+) : IPaymentAdapterFactory
 {
     public IPaymentProvider Resolve(PaymentProviderCode code) =>
         serviceProvider.GetKeyedService<IPaymentProvider>(code)
@@ -15,4 +18,10 @@ public sealed class KeyedPaymentAdapterFactory(IServiceProvider serviceProvider)
 
     public bool IsRegistered(PaymentProviderCode code) =>
         serviceProvider.GetKeyedService<IPaymentProvider>(code) is not null;
+
+    public IReadOnlyList<PaymentProviderDescriptor> GetAvailableProviders() =>
+        registeredCodes.Order().Select(Resolve).Select(provider => provider.Descriptor).ToList();
+
+    public PaymentProviderDescriptor? FindDescriptor(PaymentProviderCode code) =>
+        serviceProvider.GetKeyedService<IPaymentProvider>(code)?.Descriptor;
 }

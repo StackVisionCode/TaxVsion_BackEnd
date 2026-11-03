@@ -77,12 +77,13 @@ public sealed class ListSentMessagesHandlerTests
         string? recipient = null,
         bool mask = false,
         int page = 1,
-        int size = 25
+        int size = 25,
+        string? engagement = null
     ) =>
         ListSentMessagesHandler.Handle(
             new ListSentMessagesQuery(
                 TenantId,
-                SentMessageActivityFilter.Create(status, recipient, null, null).Value,
+                SentMessageActivityFilter.Create(status, recipient, null, null, engagement).Value,
                 page,
                 size,
                 mask
@@ -119,6 +120,62 @@ public sealed class ListSentMessagesHandlerTests
         var result = await ListAsync(db, status: status);
 
         Assert.Equal(expectedRecipient, Assert.Single(Assert.Single(result.Items).Recipients));
+    }
+
+    private static async Task RecordAsync(PostmasterDbContext db, SentMessage message, EngagementSignal signal)
+    {
+        message.ApplyDeliveryFeedback(
+            message.Recipients.Single().Id,
+            DeliveryFeedback
+                .ForSignal(signal, T0.AddMinutes(5), FeedbackSource.Smtp2Go, Guid.NewGuid().ToString("N"))
+                .Value,
+            null
+        );
+        await db.SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData("Opened", new[] { "opened@example.com", "clicked@example.com" })]
+    [InlineData("clicked", new[] { "clicked@example.com" })]
+    public async Task List_filters_by_engagement_and_still_reports_it(string engagement, string[] expected)
+    {
+        await using var db = CreateContext();
+        var opened = await AddAsync(db, "opened@example.com", DeliveryOutcome.Delivered);
+        await RecordAsync(db, opened, EngagementSignal.Opened);
+        var clicked = await AddAsync(db, "clicked@example.com", DeliveryOutcome.Delivered);
+        await RecordAsync(db, clicked, EngagementSignal.Opened);
+        await RecordAsync(db, clicked, EngagementSignal.Clicked);
+        await AddAsync(db, "silent@example.com", DeliveryOutcome.Delivered);
+
+        var result = await ListAsync(db, engagement: engagement);
+
+        Assert.Equal(expected.Order(), result.Items.Select(i => i.Recipients.Single()).Order());
+        Assert.All(result.Items, i => Assert.True(i.Opened));
+        Assert.Equal(expected.Contains("clicked@example.com"), result.Items.Any(i => i.Clicked));
+    }
+
+    [Fact]
+    public async Task List_combines_engagement_with_status()
+    {
+        await using var db = CreateContext();
+        var delivered = await AddAsync(db, "delivered@example.com", DeliveryOutcome.Delivered);
+        await RecordAsync(db, delivered, EngagementSignal.Opened);
+        var deferred = await AddAsync(db, "deferred@example.com", DeliveryOutcome.Deferred);
+        await RecordAsync(db, deferred, EngagementSignal.Opened);
+
+        var result = await ListAsync(db, status: SentMessageActivityStatus.Delivered, engagement: "Opened");
+
+        Assert.Equal("delivered@example.com", Assert.Single(Assert.Single(result.Items).Recipients));
+    }
+
+    [Theory]
+    [InlineData("Read")]
+    [InlineData("0")]
+    public void Filter_rejects_an_unknown_engagement(string engagement)
+    {
+        var filter = SentMessageActivityFilter.Create(null, null, null, null, engagement);
+
+        Assert.Equal("SentMessageActivityFilter.InvalidEngagement", filter.Error.Code);
     }
 
     [Fact]

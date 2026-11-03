@@ -17,5 +17,10 @@ public sealed record TenantPaymentResponse(
     string? NextActionUrl,
     string? FailureCode,
     string? FailureReason,
-    DateTime? PaidAtUtc
+    DateTime? PaidAtUtc,
+    string? ReceiptEmail,
+    string? PayerName,
+    string? PayerEmail,
+    string? CardBrand,
+    string? CardLast4
 );

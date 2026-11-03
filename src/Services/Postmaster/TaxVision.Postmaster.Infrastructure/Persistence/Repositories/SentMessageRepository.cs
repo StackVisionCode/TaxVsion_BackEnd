@@ -85,6 +85,14 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
             query = query.Where(m => m.Recipients.Any(r => r.Address.Contains(recipient)));
         }
 
+        // Los mismos contadores que pintan los íconos de la fila.
+        query = filter.Engagement switch
+        {
+            SentMessageEngagement.Opened => query.Where(m => m.Recipients.Any(r => r.OpenCount > 0)),
+            SentMessageEngagement.Clicked => query.Where(m => m.Recipients.Any(r => r.ClickCount > 0)),
+            _ => query,
+        };
+
         // La misma columna que se muestra en la fila: cada fila de una pestaña dice esa pestaña.
         return filter.Status is { } status ? query.Where(m => m.Activity == status) : query;
     }
@@ -128,6 +136,33 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
             .AsNoTracking()
             .Take(max)
             .ToListAsync(ct);
+
+    /// <summary>Por tandas: SQL Server acepta hasta ~2100 parámetros por consulta.</summary>
+    private const int KnownProviderIdsChunkSize = 500;
+
+    public async Task<IReadOnlySet<string>> FindKnownProviderMessageIdsAsync(
+        IReadOnlyCollection<string> providerMessageIds,
+        CancellationToken ct = default
+    )
+    {
+        var known = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var chunk in providerMessageIds.Distinct(StringComparer.Ordinal).Chunk(KnownProviderIdsChunkSize))
+        {
+            var found = await (
+                from recipient in dbContext.SentMessageRecipients.IgnoreQueryFilters()
+                join message in dbContext.SentMessages.IgnoreQueryFilters() on recipient.SentMessageId equals message.Id
+                where
+                    message.DeliveryLane == DeliveryLane.SystemProvider
+                    && recipient.ProviderMessageId != null
+                    && chunk.Contains(recipient.ProviderMessageId)
+                select recipient.ProviderMessageId!
+            )
+                .Distinct()
+                .ToListAsync(ct);
+            known.UnionWith(found);
+        }
+        return known;
+    }
 
     public async Task<Result<SentMessage>> FindByInternetMessageIdForFeedbackAsync(
         string internetMessageId,

@@ -46,7 +46,7 @@ public sealed class ProcessDeliveryFeedbackHandlerTests
         public Task<Result<DeliveryFeedbackTally>> ProcessAsync(params TranslatedFeedback[] items) =>
             ProcessDeliveryFeedbackHandler.Handle(
                 new ProcessDeliveryFeedbackCommand("Smtp2Go", "{}", SentAt.AddMinutes(10)),
-                new DeliveryFeedbackCapabilities([new FakeTranslator(items)], []),
+                new DeliveryFeedbackCapabilities([new FakeTranslator(items)], [], []),
                 new SentMessageRepository(Db),
                 new DeliveryFeedbackReceiptRepository(Db),
                 new UnmatchedDeliveryFeedbackRepository(Db),
@@ -231,7 +231,7 @@ public sealed class ProcessDeliveryFeedbackHandlerTests
 
         var result = await ProcessDeliveryFeedbackHandler.Handle(
             new ProcessDeliveryFeedbackCommand("Mailgun", "{}", SentAt),
-            new DeliveryFeedbackCapabilities([], []),
+            new DeliveryFeedbackCapabilities([], [], []),
             new SentMessageRepository(fixture.Db),
             new DeliveryFeedbackReceiptRepository(fixture.Db),
             new UnmatchedDeliveryFeedbackRepository(fixture.Db),

@@ -114,6 +114,35 @@ public sealed class TenantPaymentConfigTests
     private static EncryptedSecret Secret(string cipherText) => EncryptedSecret.Create(cipherText).Value;
 
     [Fact]
+    public void Activates_with_only_the_secret_key_because_the_webhook_secret_is_optional()
+    {
+        var config = CreateConfig(PaymentProviderCode.PayPal);
+        var nowUtc = DateTime.UtcNow;
+
+        var update = config.UpdateSecrets(Secret("paypal_secret"), null, Guid.Empty, nowUtc);
+        var activate = config.MarkActive(Guid.Empty, nowUtc);
+
+        Assert.True(update.IsSuccess);
+        Assert.True(activate.IsSuccess);
+        Assert.True(config.IsActive);
+        Assert.Null(config.WebhookSecretEncrypted);
+    }
+
+    [Fact]
+    public void UpdateSecrets_without_a_webhook_secret_keeps_the_stored_one()
+    {
+        var config = CreateConfig();
+        var nowUtc = DateTime.UtcNow;
+        config.UpdateSecrets(Secret("sk_live_x"), Secret("whsec_x"), Guid.Empty, nowUtc);
+
+        var result = config.UpdateSecrets(Secret("sk_live_y"), null, Guid.Empty, nowUtc);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("sk_live_y", config.SecretKeyEncrypted!.CipherText);
+        Assert.Equal("whsec_x", config.WebhookSecretEncrypted!.CipherText);
+    }
+
+    [Fact]
     public void UpdateSecrets_on_a_Connect_mode_config_is_rejected()
     {
         var config = CreateConnectConfig();
@@ -162,11 +191,11 @@ public sealed class TenantPaymentConfigTests
 
     private static StatementDescriptor Descriptor() => StatementDescriptor.Create("ACME TAX SVC").Value;
 
-    private static TenantPaymentConfig CreateConfig() =>
+    private static TenantPaymentConfig CreateConfig(PaymentProviderCode provider = PaymentProviderCode.Stripe) =>
         TenantPaymentConfig
             .Create(
                 Guid.NewGuid(),
-                PaymentProviderCode.Stripe,
+                provider,
                 TenantPaymentMode.DirectApiKeys,
                 "pk_test_123",
                 Descriptor(),

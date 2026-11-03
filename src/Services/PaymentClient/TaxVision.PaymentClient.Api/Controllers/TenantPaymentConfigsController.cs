@@ -7,6 +7,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.PaymentClient.Api.Common;
+using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.ActivateTenantPaymentConfig;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.CreateTenantPaymentConfig;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.DeactivateTenantPaymentConfig;
@@ -24,7 +25,11 @@ namespace TaxVision.PaymentClient.Api.Controllers;
 [Route("payments-client/config")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class TenantPaymentConfigsController(IMessageBus bus) : ControllerBase
+public sealed class TenantPaymentConfigsController(
+    IMessageBus bus,
+    IPaymentAdapterFactory adapters,
+    LinkGenerator links
+) : ControllerBase
 {
     /// <summary>Fase 2B: lista TODOS los métodos de pago del tenant (activos e inactivos) para settings.</summary>
     [HttpGet]
@@ -43,6 +48,34 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    /// <summary>Catálogo de proveedores conectables (solo los que tienen adaptador) y qué pide cada uno.
+    /// Ruta literal: gana sobre <c>{provider}</c>.</summary>
+    [HttpGet("providers")]
+    [RateLimit("payment_client.f.config_read")]
+    [HasPermission(PaymentClientPermissions.ConfigRead)]
+    [ProducesResponseType<IReadOnlyList<AvailablePaymentProviderResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListProviders(CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<AvailablePaymentProviderResponse>>>(
+            new ListAvailablePaymentProvidersQuery(),
+            ct
+        );
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+        return Ok(result.Value.Select(p => p with { WebhookPath = WebhookPathFor(p.Code, tenantId) }).ToList());
+    }
+
+    /// <summary>Ruta de webhook de esta oficina para el proveedor, salida del enrutado (no armada a mano).</summary>
+    private string? WebhookPathFor(string providerCode, Guid tenantId) =>
+        Enum.TryParse<PaymentProviderCode>(providerCode, out var code)
+        && adapters.FindDescriptor(code)?.WebhookRouteName is { } routeName
+            ? links.GetPathByName(HttpContext, routeName, new { tenantId })
+            : null;
 
     [HttpGet("{provider}")]
     [RateLimit("payment_client.f.config_read")]
@@ -121,10 +154,11 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    public sealed record UpdateSecretsRequest(string SecretKey, string WebhookSecret);
+    public sealed record UpdateSecretsRequest(string SecretKey, string? WebhookSecret = null);
 
     /// <summary>El secreto llega en texto plano SOLO en este request HTTPS — el handler lo
-    /// cifra con <c>ISecretProtector</c> antes de persistirlo, nunca se loguea.</summary>
+    /// cifra con <c>ISecretProtector</c> antes de persistirlo, nunca se loguea. El webhook secret
+    /// es opcional (solo sincroniza reembolsos/disputas); vacío conserva el ya guardado.</summary>
     [HttpPut("{provider}/secrets")]
     [RateLimit("payment_client.g.config_manage")]
     [HasPermission(PaymentClientPermissions.ConfigManage)]

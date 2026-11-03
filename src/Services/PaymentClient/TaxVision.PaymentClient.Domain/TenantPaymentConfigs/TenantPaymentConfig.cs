@@ -29,6 +29,17 @@ public sealed class TenantPaymentConfig : TenantEntity
     public string? ApiBaseUrl { get; private set; }
     public EncryptedSecret? SecretKeyEncrypted { get; private set; }
     public EncryptedSecret? WebhookSecretEncrypted { get; private set; }
+
+    /// <summary>Estado del webhook en el proveedor (null = nunca intentado y sin manual).</summary>
+    public WebhookSetupStatus? WebhookSetup { get; private set; }
+
+    /// <summary>Id del webhook que creó el backend en el proveedor (para reemplazarlo o borrarlo). Null si
+    /// nunca se creó uno automático.</summary>
+    public string? ProviderWebhookId { get; private set; }
+
+    /// <summary>Cuándo se encoló (o re-encoló) el registro automático; la revisión de pendientes lo usa
+    /// para detectar uno que se perdió (caída entre guardar y encolar).</summary>
+    public DateTime? WebhookSetupRequestedAtUtc { get; private set; }
     public StatementDescriptor StatementDescriptor { get; private set; } = null!;
     public bool IsActive { get; private set; }
     public DateTime? SettledAtUtc { get; private set; }
@@ -83,9 +94,11 @@ public sealed class TenantPaymentConfig : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>El webhook secret es opcional: cobrar no depende de él, solo sincroniza reembolsos y
+    /// disputas. Null = no se envió y se conserva el que ya hubiera guardado.</summary>
     public Result UpdateSecrets(
         EncryptedSecret secretKey,
-        EncryptedSecret webhookSecret,
+        EncryptedSecret? webhookSecret,
         Guid actorUserId,
         DateTime nowUtc
     )
@@ -99,7 +112,11 @@ public sealed class TenantPaymentConfig : TenantEntity
             );
 
         SecretKeyEncrypted = secretKey;
-        WebhookSecretEncrypted = webhookSecret;
+        if (webhookSecret is not null)
+        {
+            WebhookSecretEncrypted = webhookSecret;
+            WebhookSetup = WebhookSetupStatus.Manual;
+        }
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -107,8 +124,84 @@ public sealed class TenantPaymentConfig : TenantEntity
     public Result RotateWebhookSecret(EncryptedSecret newSecret, Guid actorUserId, DateTime nowUtc)
     {
         WebhookSecretEncrypted = newSecret;
+        WebhookSetup = WebhookSetupStatus.Manual;
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>Encola el registro automático del webhook. Nunca pisa un secreto manual.</summary>
+    public Result BeginAutomaticWebhookSetup(DateTime nowUtc)
+    {
+        if (Mode != TenantPaymentMode.DirectApiKeys)
+            return Result.Failure(
+                new Error("TenantPaymentConfig.WrongMode", "Webhooks are only registered for DirectApiKeys mode.")
+            );
+
+        if (WebhookSetup == WebhookSetupStatus.Manual)
+            return Result.Failure(
+                new Error("TenantPaymentConfig.ManualWebhook", "The office configured its webhook manually.")
+            );
+
+        WebhookSetup = WebhookSetupStatus.Pending;
+        WebhookSetupRequestedAtUtc = nowUtc;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Re-encolado de un pendiente que se perdió: renueva la marca para no dispararlo dos veces.</summary>
+    public Result RenewWebhookSetupRequest(DateTime nowUtc)
+    {
+        if (WebhookSetup != WebhookSetupStatus.Pending)
+            return Result.Failure(
+                new Error("TenantPaymentConfig.WebhookSetupNotPending", "The automatic webhook setup is not pending.")
+            );
+
+        WebhookSetupRequestedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Guarda el secreto del webhook que creó el backend. Solo si sigue pendiente: si mientras
+    /// tanto llegó uno manual, gana el manual.</summary>
+    public Result CompleteAutomaticWebhookSetup(
+        EncryptedSecret webhookSecret,
+        string providerWebhookId,
+        DateTime nowUtc
+    )
+    {
+        if (WebhookSetup != WebhookSetupStatus.Pending)
+            return Result.Failure(
+                new Error("TenantPaymentConfig.WebhookSetupNotPending", "The automatic webhook setup is not pending.")
+            );
+
+        if (string.IsNullOrWhiteSpace(providerWebhookId))
+            return Result.Failure(
+                new Error("TenantPaymentConfig.InvalidProviderWebhookId", "The provider webhook id is required.")
+            );
+
+        WebhookSecretEncrypted = webhookSecret;
+        ProviderWebhookId = providerWebhookId.Trim();
+        WebhookSetup = WebhookSetupStatus.Automatic;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    public Result FailAutomaticWebhookSetup(DateTime nowUtc)
+    {
+        if (WebhookSetup != WebhookSetupStatus.Pending)
+            return Result.Failure(
+                new Error("TenantPaymentConfig.WebhookSetupNotPending", "The automatic webhook setup is not pending.")
+            );
+
+        WebhookSetup = WebhookSetupStatus.Failed;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>El webhook automático ya se borró en el proveedor: deja de recordarlo.</summary>
+    public void ForgetProviderWebhook(string providerWebhookId)
+    {
+        if (string.Equals(ProviderWebhookId, providerWebhookId, StringComparison.Ordinal))
+            ProviderWebhookId = null;
     }
 
     public Result UpdateStatementDescriptor(StatementDescriptor descriptor, Guid actorUserId, DateTime nowUtc)
@@ -118,6 +211,8 @@ public sealed class TenantPaymentConfig : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Basta la clave secreta: sin webhook secret se cobra igual, pero los webhooks de esa
+    /// oficina se rechazan por no poder verificarse.</summary>
     public Result MarkActive(Guid actorUserId, DateTime nowUtc)
     {
         if (Mode != TenantPaymentMode.DirectApiKeys)
@@ -125,7 +220,7 @@ public sealed class TenantPaymentConfig : TenantEntity
                 new Error("TenantPaymentConfig.WrongMode", "Use MarkActiveViaConnect for a Connect-mode config.")
             );
 
-        if (SecretKeyEncrypted is null || WebhookSecretEncrypted is null)
+        if (SecretKeyEncrypted is null)
             return Result.Failure(
                 new Error("TenantPaymentConfig.SecretsMissing", "Cannot activate a config with no secrets loaded.")
             );

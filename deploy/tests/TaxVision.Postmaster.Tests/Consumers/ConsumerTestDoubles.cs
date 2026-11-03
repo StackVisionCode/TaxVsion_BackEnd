@@ -275,6 +275,19 @@ internal sealed class FakeSentMessageRepository : ISentMessageRepository
         CancellationToken ct = default
     ) => Task.FromResult<IReadOnlyList<PendingDeliveryRef>>([]);
 
+    public Task<IReadOnlySet<string>> FindKnownProviderMessageIdsAsync(
+        IReadOnlyCollection<string> providerMessageIds,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlySet<string>>(
+            Added
+                .SelectMany(m => m.Recipients)
+                .Select(r => r.ProviderMessageId)
+                .OfType<string>()
+                .Where(providerMessageIds.Contains)
+                .ToHashSet(StringComparer.Ordinal)
+        );
+
     public Task<Result<SentMessage>> FindByInternetMessageIdForFeedbackAsync(
         string internetMessageId,
         CancellationToken ct = default
