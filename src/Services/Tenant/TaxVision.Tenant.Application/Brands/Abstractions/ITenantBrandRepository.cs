@@ -25,4 +25,20 @@ public interface ITenantBrandRepository
     /// para correlacionar el resultado del escaneo (que solo trae TenantId+FileId) contra la marca y
     /// su assetKey. Cualquier estado (el asset a confirmar está Pending). Null si no es nuestro.</summary>
     Task<TenantBrand?> GetByAssetFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
+
+    /// <summary>Logos CONFIRMADOS de todos los tenants y superficies, paginados en orden estable. Solo
+    /// lectura: lo usa la republicación de logos hacia las proyecciones de otros servicios.</summary>
+    Task<IReadOnlyList<ConfirmedBrandLogo>> ListConfirmedLogosAsync(int skip, int take, CancellationToken ct = default);
 }
+
+/// <summary>Un logo confirmado con su tenant y superficie, listo para volver a anunciarlo.</summary>
+public sealed record ConfirmedBrandLogo(
+    Guid TenantId,
+    BrandSurface Surface,
+    Guid FileId,
+    string ContentType,
+    long SizeBytes,
+    int? Width,
+    int? Height,
+    DateTime ConfirmedAtUtc
+);

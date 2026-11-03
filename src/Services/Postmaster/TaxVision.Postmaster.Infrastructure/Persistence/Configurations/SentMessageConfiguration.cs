@@ -40,6 +40,7 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.Property(m => m.Stream).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(m => m.ProviderCode).HasMaxLength(50).IsRequired();
         builder.Property(m => m.Status).HasConversion<string>().HasMaxLength(25).IsRequired();
+        builder.Property(m => m.Activity).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(m => m.QueuedAtUtc).IsRequired();
         builder.Property(m => m.SentAtUtc);
         builder.Property(m => m.LastEventAtUtc);
@@ -137,6 +138,13 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(m => new { m.TenantId, m.QueuedAtUtc });
+        // Pestañas de "Email activity": filtro por estado, ordenado por fecha.
+        builder.HasIndex(m => new
+        {
+            m.TenantId,
+            m.Activity,
+            m.QueuedAtUtc,
+        });
         builder.HasIndex(m => new { m.TenantId, m.NotificationLogId });
         builder.HasIndex(m => new { m.TenantId, m.CorrespondenceDraftId });
         builder.HasIndex(m => new { m.TenantId, m.CampaignId });

@@ -69,9 +69,10 @@ public sealed class ClientFormNotificationSender(
         if (!entry.AllowedChannels.Contains(NotificationChannel.Email))
             return null;
         var variables = new Dictionary<string, object?>(request.Variables) { ["language"] = request.Language };
-        var render = (await scribe.RenderAsync(request.TemplateKey, request.TenantId, variables, ct)).EnsureRendered(
-            request.TemplateKey
-        );
+        // Participante externo del formulario: lo ve como cliente de la oficina.
+        var render = (
+            await scribe.RenderAsync(request.TemplateKey, request.TenantId, variables, ScribeRenderAudience.Client, ct)
+        ).EnsureRendered(request.TemplateKey);
         var dispatch = render.ToDispatchRequest(
             request.TenantId,
             request.Email,
@@ -154,8 +155,9 @@ public sealed class ClientFormNotificationSender(
         }
 
         var variables = Variables(request, destination, host);
+        var audience = request.CustomerRecipient ? ScribeRenderAudience.Client : ScribeRenderAudience.Staff;
         var render = (
-            await scribe.RenderAsync(request.EmailTemplateKey, request.TenantId, variables, ct)
+            await scribe.RenderAsync(request.EmailTemplateKey, request.TenantId, variables, audience, ct)
         ).EnsureRendered(request.EmailTemplateKey);
         await emailGateway.QueueEmailAsync(
             render.ToDispatchRequest(

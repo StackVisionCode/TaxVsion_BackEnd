@@ -265,12 +265,28 @@ public sealed class SealingMultiDocumentTests
     )
     {
         var request = SignatureRequest
-            .CreateDraft(TestSignatureLimits.Default, Guid.NewGuid(), Guid.NewGuid(), "Two-document package", null, "Fiscal", 72, false, false, true)
+            .CreateDraft(
+                TestSignatureLimits.Default,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Two-document package",
+                null,
+                "Fiscal",
+                72,
+                false,
+                false,
+                true
+            )
             .Value;
         request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Federal return");
         request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "State return");
         firstSigner = request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("first@example.com").Value, SignerFullName.Create("First Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("first@example.com").Value,
+                SignerFullName.Create("First Signer").Value,
+                null
+            )
             .Value;
         secondSigner = request
             .AddSigner(
@@ -413,8 +429,10 @@ public sealed class SealingMultiDocumentTests
             CancellationToken ct = default
         ) => Empty();
 
-        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,
@@ -450,9 +468,13 @@ public sealed class SealingMultiDocumentTests
             return Task.FromResult(Result.Success(fileId));
         }
 
-        public Task<Result<Guid>> CopyToCustomerAsync(Guid tenantId, Guid sourceFileId, Guid customerId, int taxYear, CancellationToken ct = default) =>
-            throw new NotSupportedException();
-
+        public Task<Result<Guid>> CopyToCustomerAsync(
+            Guid tenantId,
+            Guid sourceFileId,
+            Guid customerId,
+            int taxYear,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             Task.FromResult(Result.Success(new Uri($"https://minio.test/{fileId}")));
@@ -481,6 +503,17 @@ public sealed class SealingMultiDocumentTests
 
         public Task<IReadOnlyList<TenantBrandingRef>> ListAllAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<TenantBrandingRef>>([]);
+
+        public Task<TenantLogoRef?> GetLogoAsync(
+            Guid tenantId,
+            TenantLogoSurface surface,
+            CancellationToken ct = default
+        ) => Task.FromResult<TenantLogoRef?>(null);
+
+        public Task<IReadOnlyList<TenantLogoRef>> ListLogosAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<TenantLogoRef>>([]);
+
+        public Task AddLogoAsync(TenantLogoRef logo, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class DeterministicSealer : IDocumentSealingEngine

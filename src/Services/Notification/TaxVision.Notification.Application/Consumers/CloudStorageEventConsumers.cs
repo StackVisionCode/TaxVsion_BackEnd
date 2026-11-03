@@ -128,6 +128,7 @@ public static class ShareLinkExternalRecipientInvitedConsumer
                         ["permission"] = evt.Permission,
                         ["language"] = evt.Language,
                     },
+                    ScribeRenderAudience.Client,
                     ct
                 )
             ).EnsureRendered(TemplateKey);

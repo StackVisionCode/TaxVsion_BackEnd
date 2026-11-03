@@ -41,15 +41,15 @@ public sealed class SettingsController(
         if (settings is null)
             return NotFound();
 
-        var ceilings = (await limits.ResolveAsync(tenantId, ct)).Ceilings;
-        return Ok(TenantSignatureSettingsResponse.From(settings, ceilings));
+        var policy = await limits.ResolveAsync(tenantId, ct);
+        return Ok(TenantSignatureSettingsResponse.From(settings, policy));
     }
 
     /// <summary>
     /// Reemplaza la configuración completa del tenant (semántica PUT). El tenant admin
     /// puede ajustar canales de verificación, expiración de tokens, recordatorios,
-    /// generación de certificado, límites de documentos y política de retención.
-    /// El TenantId se toma exclusivamente del JWT.
+    /// generación de certificado, límites de documentos y la purga. Los años de retención se ignoran: los
+    /// fija la oficina en Cumplimiento. El TenantId se toma exclusivamente del JWT.
     /// </summary>
     [HttpPut]
     [HasPermission(SignaturePermissions.SettingsManage)]
@@ -141,7 +141,6 @@ public sealed class SettingsController(
             body.AllowEmployeeOwnSignature,
             body.DocumentLimits.MaxPdfBytes,
             body.DocumentLimits.MaxPagesPerDocument,
-            body.RetentionPolicy.RetentionYears,
             body.RetentionPolicy.AllowPurge,
             body.SendPartialCopyDefault,
             audienceKind,

@@ -243,10 +243,20 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<long>("ProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("SubDomain")
                         .IsRequired()
@@ -463,6 +473,11 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Activity")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<Guid?>("CampaignId")
                         .HasColumnType("uniqueidentifier");
 
@@ -604,6 +619,8 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "NotificationLogId");
 
                     b.HasIndex("TenantId", "QueuedAtUtc");
+
+                    b.HasIndex("TenantId", "Activity", "QueuedAtUtc");
 
                     b.ToTable("SentMessages", (string)null);
                 });

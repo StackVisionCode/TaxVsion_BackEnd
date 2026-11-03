@@ -36,6 +36,7 @@ public sealed record NotificationTemplateSeed(
     //      automático fallido, con intento, próximo reintento, tarjeta real y lo suspendido al final.
     // v21 (por plantilla): communication.meeting.invitation con título, fecha local, host, código,
     //      rama "in progress" y adjunto .ics (F6).
+    // v23 (por plantilla): tenant.wisp_review_due.v1 nueva — revisión anual del WISP (F4 Cumplimiento).
     int ContentVersion = 22,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
@@ -93,6 +94,7 @@ public static class NotificationTemplateSeedSource
             SubscriptionMandateCreated,
             UserSlotGated,
             UserSlotUnlocked,
+            WispReviewDue,
             ReminderDue,
             TaskWaitingOnClient,
             AppointmentScheduled,
@@ -263,6 +265,8 @@ public static class NotificationTemplateSeedSource
         ["subscription.mandate_created"] = "Automatic renewal is now enabled on your subscription.",
         ["seats.user_gated.v1"] = "A team member lost access because the office is over its active seat limit.",
         ["seats.user_unlocked.v1"] = "A team member can access the office again.",
+        ["tenant.wisp_review_due.v1"] =
+            "Your annual security plan (WISP) review needs attention. Mark it reviewed in Office settings.",
         ["reminder.due"] = "A quick reminder about something on your list.",
         ["task.waiting_on_client.v1"] = "We're still missing a few documents from you to move forward.",
         ["calendar.appointment_scheduled.v1"] = "Your appointment is booked. Here are the details.",
@@ -409,6 +413,48 @@ public static class NotificationTemplateSeedSource
                 ("userEmail", VariableType.String, false, null, "Email of the restored team member."),
                 ("tenantName", VariableType.String, true, null, "Office name."),
             ]
+        );
+
+    /// <summary>
+    /// F4 Cumplimiento — la revisión anual del WISP está por vencer (DueSoon) o venció (Overdue). Va al
+    /// responsable de seguridad y a quienes administran la oficina; la manda la plataforma (system-base).
+    /// </summary>
+    private static NotificationTemplateSeed WispReviewDue { get; } =
+        new(
+            EventKey: "tenant.wisp_review_due.v1",
+            TemplateKey: "tenant.wisp_review_due.v1",
+            Name: "Tenant — WISP annual review due",
+            Subject: "{% if is_overdue %}Your security plan review is overdue{% else %}Your security plan review is due {{ due_date }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Compliance</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#D97706" style="background-color:#D97706;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">{% if is_overdue %}Your security plan review is overdue{% else %}Your security plan review is due soon{% endif %}</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if is_overdue %}The annual review of your office's written information security plan (WISP) was due on <strong style="color:#23384B;">{{ due_date }}</strong>.{% else %}The annual review of your office's written information security plan (WISP) is due on <strong style="color:#23384B;">{{ due_date }}</strong>.{% endif %} The FTC Safeguards Rule requires reviewing the WISP at least once a year.</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Once you've reviewed it, open <strong style="color:#23384B;">Office settings &rarr; Compliance</strong> and mark it reviewed.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ settings_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open Compliance settings</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you're the security coordinator or an administrator of your office on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("is_overdue", VariableType.Bool, true, "false", "true when the review date already passed."),
+                ("due_date", VariableType.String, true, null, "Review due date, already formatted (en-US)."),
+                ("settings_url", VariableType.Url, true, null, "Office settings → Compliance in the office CRM."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ],
+            // Explícita y mayor que el default: el seeder publica solo si supera la SeedContentVersion guardada.
+            ContentVersion: 23
         );
 
     private static NotificationTemplateSeed Invitation { get; } =

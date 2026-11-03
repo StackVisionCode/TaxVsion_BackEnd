@@ -21,6 +21,12 @@ public interface IOAuthConnectionRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Scope aceptado de cada conexión ACTIVA de esas cuentas (proyección, sin cargar tokens).</summary>
+    Task<IReadOnlyDictionary<Guid, string>> ListActiveScopesByAccountIdsAsync(
+        IReadOnlyCollection<Guid> accountIds,
+        CancellationToken ct = default
+    );
+
     /// <summary>Purga la connection (y su token hijo) al retirar al dueño del buzón. Default no-op para los fakes.</summary>
     void Remove(OAuthConnection connection) { }
 }

@@ -109,6 +109,11 @@ public static class ExchangeHandoffTicketHandler
         if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
             return Result.Failure<HandoffSessionResponse>(invalid);
 
+        // Defensa en profundidad: DiscoverLogin ya no autentica al PlatformAdmin; un vale suyo no se canjea
+        // (mismo error genérico: no revela el tipo de cuenta).
+        if (!CentralLoginActorPolicy.IsAllowed(user, command.Surface))
+            return Result.Failure<HandoffSessionResponse>(invalid);
+
         if (
             command.Surface == SessionSurface.Account
             && AccountSurfacePolicy.Check(user, payload.MustEnrollMfa) is { } denied

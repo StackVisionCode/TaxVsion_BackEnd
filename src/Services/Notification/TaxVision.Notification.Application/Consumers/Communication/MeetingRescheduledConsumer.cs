@@ -78,6 +78,7 @@ public static class MeetingRescheduledConsumer
                         ["host_name"] = evt.HostDisplayName,
                         ["meeting_code"] = evt.ShortCode,
                     },
+                    ScribeRenderAudience.Client,
                     ct
                 )
             ).EnsureRendered(EventKey);

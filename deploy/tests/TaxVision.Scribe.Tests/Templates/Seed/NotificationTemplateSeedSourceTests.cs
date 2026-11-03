@@ -447,4 +447,52 @@ public sealed class NotificationTemplateSeedSourceTests
         Assert.Contains("document_title", seed.Html);
         Assert.True(seed.ContentVersion >= 17);
     }
+
+    // ---------- F4 Cumplimiento: revisión anual del WISP ----------
+
+    [Fact]
+    public void Wisp_review_template_declares_every_variable_it_uses_and_carries_version_23()
+    {
+        var seed = WispSeed();
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+
+        Assert.Empty(used.Except(declared));
+        Assert.Equal("tenant.wisp_review_due.v1", seed.TemplateKey);
+        Assert.Equal("system-base", seed.LayoutKey);
+        Assert.Equal(TemplateChannel.Email, seed.Channel);
+        // Versión propia por encima del default (22): sin eso el seeder no la publicaría sobre una guardada.
+        Assert.True(seed.ContentVersion >= 23, $"ContentVersion {seed.ContentVersion} < 23");
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+    }
+
+    [Theory]
+    [InlineData(false, "Your security plan review is due November 30, 2026", "is due on")]
+    [InlineData(true, "Your security plan review is overdue", "was due on")]
+    public void Wisp_review_template_renders_both_stages(bool isOverdue, string subject, string bodyFragment)
+    {
+        var seed = WispSeed();
+        var context = new TemplateContext();
+        context.SetValue("is_overdue", isOverdue);
+        context.SetValue("due_date", "November 30, 2026");
+        context.SetValue("settings_url", "https://manfer.taxoffix.io/company/settings#compliance");
+        context.SetValue("product_name", "TaxOffix");
+
+        var renderedSubject = Parser.Parse(seed.Subject).Render(context);
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Equal(subject, renderedSubject);
+        Assert.Contains(bodyFragment, html);
+        Assert.Contains("<strong style=\"color:#23384B;\">November 30, 2026</strong>", html);
+        Assert.Contains("FTC Safeguards Rule", html);
+        Assert.Contains("at least once a year", html);
+        Assert.Contains("Office settings &rarr; Compliance", html);
+        Assert.Contains("href=\"https://manfer.taxoffix.io/company/settings#compliance\"", html);
+    }
+
+    private static NotificationTemplateSeed WispSeed() =>
+        Assert.Single(NotificationTemplateSeedSource.All, item => item.EventKey == "tenant.wisp_review_due.v1");
 }

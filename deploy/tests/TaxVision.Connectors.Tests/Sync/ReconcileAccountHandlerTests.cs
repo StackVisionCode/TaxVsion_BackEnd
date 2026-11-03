@@ -214,6 +214,8 @@ public class ReconcileAccountHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Null(client.ReceivedCursors[0]);
+        // Primer sync: desde que se conectó la cuenta, no toda la historia del buzón.
+        Assert.Equal(Now, client.ReceivedFirstSyncFrom[0]);
         Assert.True(result.Value.CursorWasSeeded);
         Assert.Equal(3, result.Value.MessagesFound);
         Assert.Empty(subscriptionRepository.Subscriptions); // Never queried/created for IMAP.

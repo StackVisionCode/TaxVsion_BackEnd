@@ -10,12 +10,13 @@ namespace TaxVision.Scribe.Application.Rendering;
 /// <summary>
 /// Resuelve qué logo embeber en un correo. System consulta SystemAssetRef (sembrado por
 /// ScribeSystemAssetSeeder desde un archivo local al arrancar — ya no config estática). Tenant
-/// consulta TenantLogoRef; si no hay uno activo, cae al logo de plataforma con IsFallback=true y deja
-/// una nota interna deduplicada (a lo sumo 1 por tenant por día — ver TenantLogoMissingNotification).
+/// consulta TenantLogoRef según la audiencia: Staff usa el del CRM; Client usa el del Portal y cae al
+/// del CRM. Si no hay uno activo, cae al logo de plataforma con IsFallback=true y deja una nota interna
+/// deduplicada (a lo sumo 1 por tenant por día — ver TenantLogoMissingNotification).
 /// Si el logo de plataforma tampoco está sembrado todavía (recién
 /// arrancó, o el seeder falló), devuelve <see cref="Guid.Empty"/> — el caller (FluidTemplateRenderer)
 /// debe tratar eso como "sin logo" y omitir el inline asset, nunca bloquear el envío por esto.
-/// Cache L1 5min, key "logo:{tenantId?}".
+/// Cache L1 5min, key por tenant y audiencia (ver <see cref="LogoCacheKeys"/>).
 /// </summary>
 public sealed class LogoResolver(
     ITenantLogoRefRepository logoRefRepository,
@@ -28,16 +29,21 @@ public sealed class LogoResolver(
 {
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
 
-    public async Task<LogoAsset> ResolveAsync(LogoScope logoScope, Guid? tenantId, CancellationToken ct = default)
+    public async Task<LogoAsset> ResolveAsync(
+        LogoScope logoScope,
+        Guid? tenantId,
+        RenderAudience audience = RenderAudience.Staff,
+        CancellationToken ct = default
+    )
     {
-        var cacheKey = $"logo:{(logoScope == LogoScope.Tenant ? tenantId : null)?.ToString() ?? "system"}";
+        var tenantScoped = logoScope == LogoScope.Tenant && tenantId is not null;
+        var cacheKey = tenantScoped ? LogoCacheKeys.Tenant(tenantId!.Value, audience) : LogoCacheKeys.System;
         if (l1Cache.TryGetValue<LogoAsset>(cacheKey, out var cached) && cached is not null)
             return cached;
 
-        var resolved =
-            logoScope == LogoScope.Tenant && tenantId is not null
-                ? await ResolveTenantLogoAsync(tenantId.Value, ct)
-                : await SystemLogoAsync(ct);
+        var resolved = tenantScoped
+            ? await ResolveTenantLogoAsync(tenantId!.Value, audience, ct)
+            : await SystemLogoAsync(ct);
 
         l1Cache.Set(
             cacheKey,
@@ -70,11 +76,17 @@ public sealed class LogoResolver(
         "image/gif",
     };
 
-    private async Task<LogoAsset> ResolveTenantLogoAsync(Guid tenantId, CancellationToken ct)
+    private async Task<LogoAsset> ResolveTenantLogoAsync(Guid tenantId, RenderAudience audience, CancellationToken ct)
     {
-        var logoRef = await logoRefRepository.GetByTenantIdAsync(tenantId, ct);
-        if (logoRef is not null && logoRef.IsActive)
+        var logos = await logoRefRepository.ListByTenantAsync(tenantId, ct);
+        var hasActiveLogo = false;
+        foreach (var surface in TenantLogoSurfaces.PreferenceFor(audience))
         {
+            var logoRef = logos.FirstOrDefault(l => l.Surface == surface && l.IsActive);
+            if (logoRef is null)
+                continue;
+
+            hasActiveLogo = true;
             if (EmailSafeRasterTypes.Contains(logoRef.ContentType))
                 return new LogoAsset(
                     logoRef.CloudStorageFileId,
@@ -83,18 +95,18 @@ public sealed class LogoResolver(
                     IsFallback: false
                 );
 
-            // El tenant SÍ tiene logo, solo que no es usable en email (SVG) → cae al logo de
-            // plataforma. No dispara la nota de "logo faltante": no es que falte, es incompatible.
             logger.LogWarning(
-                "Tenant {TenantId} logo content-type '{ContentType}' is not email-safe (email clients do not render SVG); falling back to the platform logo for this email.",
+                "Tenant {TenantId} {Surface} logo content-type '{ContentType}' is not email-safe (email clients do not render SVG); trying the next option.",
                 tenantId,
+                surface,
                 logoRef.ContentType
             );
-            var systemFallback = await SystemLogoAsync(ct);
-            return systemFallback with { IsFallback = true };
         }
 
-        await NotifyMissingLogoAsync(tenantId, ct);
+        // El tenant SÍ tiene logo, solo que no es usable en email (SVG) → cae al logo de plataforma.
+        // No dispara la nota de "logo faltante": no es que falte, es incompatible.
+        if (!hasActiveLogo)
+            await NotifyMissingLogoAsync(tenantId, ct);
 
         // IsFallback siempre true acá: significa "este tenant no tiene su propio logo", no
         // "el logo de plataforma está configurado" — eso lo decide SystemLogoAsync para su propio

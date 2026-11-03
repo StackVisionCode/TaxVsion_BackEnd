@@ -206,6 +206,13 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // FileInfectedDetectedIntegrationEvent) — requiere el mecanismo de fan-out por rol de la
   // Fase 4 del plan de notificaciones, todavia no construido. Publicarlo sin consumirlo es
   // intencional, no un olvido.
+  // Correspondence — Wolverine suele mandar ya el alias; el nombre CLR queda cubierto por si no.
+  'BuildingBlocks.Messaging.CorrespondenceIntegrationEvents.CorrespondenceCustomerEmailReceivedIntegrationEvent':
+    'correspondence.customer_email_received.v1',
+  'BuildingBlocks.Messaging.CorrespondenceIntegrationEvents.CorrespondenceThreadStateChangedIntegrationEvent':
+    'correspondence.thread_state_changed.v1',
+  'BuildingBlocks.Messaging.CorrespondenceIntegrationEvents.CorrespondenceDeliveryNoticeReceivedIntegrationEvent':
+    'correspondence.delivery_notice_received.v1',
   // Connectors
   'BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsOAuthRefreshFailedIntegrationEvent':
     'connectors.oauth.refresh_failed.v1',

@@ -19,7 +19,12 @@ public sealed class GoogleOAuthClient(
     public string ConfiguredScope => options.Value.Scope;
     public string RedirectUri => options.Value.RedirectUri;
 
-    public Task<OAuthTokenGrant> RefreshAccessTokenAsync(string refreshToken, CancellationToken ct = default)
+    // Google no recibe scope en el refresh: devuelve siempre el del grant original.
+    public Task<OAuthTokenGrant> RefreshAccessTokenAsync(
+        string refreshToken,
+        string grantedScope,
+        CancellationToken ct = default
+    )
     {
         var config = options.Value;
         return SendTokenRequestAsync(

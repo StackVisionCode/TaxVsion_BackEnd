@@ -475,6 +475,35 @@ public sealed class TenantOnboardingTests
         Assert.Equal(TenantOnboardingStatus.Provisioning, onboarding.Status);
         Assert.Equal(TenantProvisioningStep.Tenant, onboarding.CurrentStep);
         Assert.Equal("castillotax", onboarding.RequestedSubdomain);
+        Assert.Null(onboarding.TimeZoneId);
+    }
+
+    [Theory]
+    [InlineData("America/Chicago", "America/Chicago")]
+    [InlineData(" America/New_York ", "America/New_York")]
+    [InlineData("Not/AZone", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void StartProvisioning_keeps_only_a_valid_browser_time_zone_and_never_fails(
+        string? timeZoneId,
+        string? expected
+    )
+    {
+        var onboarding = AtRegistrationPending();
+
+        var result = onboarding.StartProvisioning(
+            "Castillo Tax Services",
+            "castillotax",
+            Guid.NewGuid(),
+            new string('b', 64),
+            "203.0.113.10",
+            "Mozilla/5.0",
+            Now,
+            timeZoneId
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, onboarding.TimeZoneId);
     }
 
     [Fact]

@@ -43,4 +43,8 @@ public sealed record DeliveryPolicyBody(
 
 public sealed record DocumentLimitsBody(long MaxPdfBytes, int MaxPagesPerDocument);
 
-public sealed record RetentionPolicyBody(int RetentionYears, bool AllowPurge);
+/// <summary>
+/// Solo <paramref name="AllowPurge"/> cambia algo. <paramref name="RetentionYears"/> se acepta para no romper clientes
+/// que aún lo envían, pero se ignora: los años los fija la oficina en Cumplimiento (Tenant).
+/// </summary>
+public sealed record RetentionPolicyBody(bool AllowPurge, int? RetentionYears = null);

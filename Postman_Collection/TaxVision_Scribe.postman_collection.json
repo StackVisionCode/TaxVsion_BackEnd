@@ -23,7 +23,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"eventKey\": \"auth.password_reset_requested.v1\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"locale\": \"es-MX\",\n  \"variables\": {\n    \"user_name\": \"Maria Fernanda\",\n    \"reset_link\": \"https://app.taxvision.mx/reset-password?token=abc123\"\n  },\n  \"logoScope\": \"Tenant\"\n}",
+							"raw": "{\n  \"eventKey\": \"auth.password_reset_requested.v1\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"locale\": \"es-MX\",\n  \"variables\": {\n    \"user_name\": \"Maria Fernanda\",\n    \"reset_link\": \"https://app.taxvision.mx/reset-password?token=abc123\"\n  },\n  \"logoScope\": \"Tenant\",\n  \"audience\": \"Client\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -40,7 +40,7 @@
 								"render"
 							]
 						},
-						"description": "Resuelve EventKey -> TemplateKey (EventTemplateResolver, prioriza mapping Tenant sobre System) y renderiza la version Published con Fluid. `logoScope` es `System` (default) o `Tenant` — controla si se resuelve el logo del tenant o el logo generico de TaxVision (ILogoResolver). Devuelve `RenderedContent` (subject/html/text/inlineAssets — Fase 9 del hardening, referencias CID a CloudStorage que Postmaster resuelve a bytes reales). Requiere scribe.render. Errores reales: EventKey/Locale con formato invalido (400, sin codigo mapeado explicito), EmailRenderer.NoMapping / EmailRenderer.NoPublishedVersion / EmailRenderer.LayoutVersionNotFound (404 — no hay mapping para el evento, o el template/layout resuelto no tiene version Published)."
+						"description": "Resuelve EventKey -> TemplateKey (EventTemplateResolver, prioriza mapping Tenant sobre System) y renderiza la version Published con Fluid. `logoScope` es `System` (default) o `Tenant` — controla si se resuelve el logo del tenant o el logo generico de TaxVision (ILogoResolver). `audience` es `Staff` (default) o `Client`: con `Client` el logo de la oficina es el del Portal y cae al del CRM (Notification manda `Client` cuando escribe a un cliente, firmante o invitado externo). Devuelve `RenderedContent` (subject/html/text/inlineAssets — Fase 9 del hardening, referencias CID a CloudStorage que Postmaster resuelve a bytes reales). Requiere scribe.render. Errores reales: EventKey/Locale con formato invalido (400, sin codigo mapeado explicito), EmailRenderer.NoMapping / EmailRenderer.NoPublishedVersion / EmailRenderer.LayoutVersionNotFound (404 — no hay mapping para el evento, o el template/layout resuelto no tiene version Published)."
 					},
 					"response": [],
 					"event": [

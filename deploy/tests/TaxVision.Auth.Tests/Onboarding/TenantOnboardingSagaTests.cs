@@ -19,7 +19,7 @@ public sealed class TenantOnboardingSagaTests
 {
     private static readonly SecureTokenService Tokens = new();
 
-    private static TenantOnboarding NewProvisioningOnboarding(DateTime now)
+    private static TenantOnboarding NewProvisioningOnboarding(DateTime now, string? timeZoneId = null)
     {
         var onboarding = OnboardingTestFactory.NewOnboarding(now);
         Assert.True(onboarding.MarkPaymentProcessing(Guid.NewGuid(), "pi_123").IsSuccess);
@@ -38,7 +38,8 @@ public sealed class TenantOnboardingSagaTests
                     new string('a', 64),
                     "127.0.0.1",
                     "xunit",
-                    now
+                    now,
+                    timeZoneId
                 )
                 .IsSuccess
         );
@@ -345,12 +346,38 @@ public sealed class TenantOnboardingSagaTests
         var result = await CreateTenantForOnboardingHandler.Handle(
             command,
             client,
+            new FakeTenantOnboardingRepository(),
             correlation,
             CancellationToken.None
         );
 
         Assert.Null(result);
         Assert.Equal(command.OnboardingId, client.LastRequest!.OnboardingId);
+        Assert.Null(client.LastRequest.DefaultTimeZoneId);
+    }
+
+    [Fact]
+    public async Task CreateTenantForOnboardingHandler_forwards_the_time_zone_stored_at_registration()
+    {
+        var onboarding = NewProvisioningOnboarding(DateTime.UtcNow, "America/Chicago");
+        var command = new CreateTenantForOnboardingCommand(
+            onboarding.Id,
+            "Ada's Office",
+            "adas-office",
+            "buyer@example.com",
+            DateTime.UtcNow
+        );
+        var client = new FakeTenantProvisioningClient(Result.Success());
+
+        await CreateTenantForOnboardingHandler.Handle(
+            command,
+            client,
+            new FakeTenantOnboardingRepository { Existing = onboarding },
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Equal("America/Chicago", client.LastRequest!.DefaultTimeZoneId);
     }
 
     [Fact]
@@ -371,6 +398,7 @@ public sealed class TenantOnboardingSagaTests
         var result = await CreateTenantForOnboardingHandler.Handle(
             command,
             client,
+            new FakeTenantOnboardingRepository(),
             correlation,
             CancellationToken.None
         );

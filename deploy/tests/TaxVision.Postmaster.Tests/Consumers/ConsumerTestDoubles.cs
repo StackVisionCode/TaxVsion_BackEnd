@@ -493,12 +493,19 @@ internal sealed class FakeTenantDirectoryRepository : ITenantDirectoryRepository
 {
     public Dictionary<Guid, string> Names { get; } = [];
 
-    public Task<TenantDirectoryEntry?> FindAsync(Guid tenantId, CancellationToken ct = default) =>
-        Task.FromResult(
-            Names.TryGetValue(tenantId, out var name)
-                ? TenantDirectoryEntry.Create(tenantId, name, "oficina", DateTime.UtcNow)
-                : null
-        );
+    // Nombre comercial del perfil de la oficina para las oficinas de Names.
+    public Dictionary<Guid, string?> DisplayNames { get; } = [];
+
+    public Task<TenantDirectoryEntry?> FindAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        if (!Names.TryGetValue(tenantId, out var name))
+            return Task.FromResult<TenantDirectoryEntry?>(null);
+
+        var entry = TenantDirectoryEntry.Create(tenantId, name, "oficina", DateTime.UtcNow);
+        if (DisplayNames.TryGetValue(tenantId, out var displayName))
+            entry.ApplyProfile(1, displayName, DateTime.UtcNow);
+        return Task.FromResult<TenantDirectoryEntry?>(entry);
+    }
 
     public Task UpsertAsync(
         Guid tenantId,

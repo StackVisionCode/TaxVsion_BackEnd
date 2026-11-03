@@ -29,7 +29,7 @@ public class GoogleOAuthClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(HttpStatusCode.OK, """{ "access_token": "at", "expires_in": 3600 }""");
 
-        var grant = await CreateClient(handler).RefreshAccessTokenAsync("refresh-token");
+        var grant = await CreateClient(handler).RefreshAccessTokenAsync("refresh-token", "granted-scope");
 
         Assert.Equal("at", grant.AccessToken);
         Assert.Equal(3600, grant.ExpiresInSeconds);
@@ -82,7 +82,7 @@ public class GoogleOAuthClientTests
         );
 
         var ex = await Assert.ThrowsAsync<OAuthProviderException>(() =>
-            CreateClient(handler).RefreshAccessTokenAsync("refresh-token")
+            CreateClient(handler).RefreshAccessTokenAsync("refresh-token", "granted-scope")
         );
 
         Assert.True(ex.RequiresReconnect);
@@ -108,7 +108,7 @@ public class GoogleOAuthClientTests
         handler.Enqueue(status, body);
 
         var ex = await Assert.ThrowsAsync<OAuthProviderException>(() =>
-            CreateClient(handler).RefreshAccessTokenAsync("refresh-token")
+            CreateClient(handler).RefreshAccessTokenAsync("refresh-token", "granted-scope")
         );
 
         Assert.False(ex.RequiresReconnect);

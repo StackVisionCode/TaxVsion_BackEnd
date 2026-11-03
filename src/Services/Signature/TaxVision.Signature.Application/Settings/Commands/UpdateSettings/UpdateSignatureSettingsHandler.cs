@@ -69,14 +69,6 @@ public static class UpdateSignatureSettingsHandler
                 )
             );
 
-        if (cmd.RetentionYears < plan.MinRetentionYears)
-            return Result.Failure(
-                new Error(
-                    "Signature.Settings.RetentionBelowPlan",
-                    $"Your plan requires a minimum retention of {plan.MinRetentionYears} years."
-                )
-            );
-
         if (cmd.AllowPurge && !plan.PurgeAllowed)
             return Result.Failure(
                 new Error("Signature.Settings.PurgeNotInPlan", "Your plan does not allow enabling document purge.")
@@ -187,19 +179,8 @@ public static class UpdateSignatureSettingsHandler
                 return r;
         }
 
-        var retentionResult = RetentionPolicy.Default().WithYears(cmd.RetentionYears);
-        if (retentionResult.IsFailure)
-            return Result.Failure(retentionResult.Error);
-
-        var policy = cmd.AllowPurge
-            ? retentionResult.Value.WithPurgeAllowed()
-            : retentionResult.Value.WithPurgeBlocked();
-
-        {
-            var r = settings.ReplaceRetentionPolicy(policy);
-            if (r.IsFailure)
-                return r;
-        }
+        // Solo la purga: los años los fija Cumplimiento y el mínimo del plan se aplica al leerlos.
+        settings.SetPurgeAllowed(cmd.AllowPurge);
 
         await unitOfWork.SaveChangesAsync(ct);
 

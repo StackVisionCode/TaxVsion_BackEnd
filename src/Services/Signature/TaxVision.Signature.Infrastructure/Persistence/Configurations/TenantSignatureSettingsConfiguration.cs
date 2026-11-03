@@ -97,6 +97,12 @@ public sealed class TenantSignatureSettingsConfiguration : IEntityTypeConfigurat
             }
         );
 
+        // Retención de la oficina proyectada desde Tenant (F4); null = no la fijó.
+        builder.Property(settings => settings.OfficeRetentionYears).HasColumnName("OfficeRetention_Years");
+        builder
+            .Property(settings => settings.OfficeRetentionUpdatedAtUtc)
+            .HasColumnName("OfficeRetention_UpdatedAtUtc");
+
         // SignaturePlanConstraints: excepción de PlatformAdmin; cada columna nula hereda del plan.
         builder.OwnsOne(
             settings => settings.PlanConstraints,

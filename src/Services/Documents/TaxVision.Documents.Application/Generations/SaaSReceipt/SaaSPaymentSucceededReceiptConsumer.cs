@@ -57,7 +57,10 @@ public static class SaaSPaymentSucceededReceiptConsumer
                         evt.ProviderReferenceMask,
                         evt.Quantity,
                         evt.UnitAmountCents,
-                        SecondaryDescriptionOf(evt.PaymentType, evt.Quantity ?? 0)
+                        SecondaryDescriptionOf(evt.PaymentType, evt.Quantity ?? 0),
+                        evt.BilledTo?.LegalName,
+                        evt.BilledTo?.Ein,
+                        evt.BilledTo?.Address
                     )
                 ),
                 ct

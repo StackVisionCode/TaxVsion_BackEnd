@@ -20,7 +20,8 @@ public sealed record CompleteOnboardingRegistrationCommand(
     string OfficeName,
     string Subdomain,
     bool TermsAccepted,
-    Guid TermsVersionId
+    Guid TermsVersionId,
+    string? TimeZoneId = null
 );
 
 public sealed record CompleteOnboardingRegistrationResponse(string Status, string StatusUrl);
@@ -226,7 +227,8 @@ public static class CompleteOnboardingRegistrationHandler
             context.TermsContentHash,
             requestContext.IpAddress ?? "unknown",
             requestContext.UserAgent ?? "unknown",
-            nowUtc
+            nowUtc,
+            command.TimeZoneId
         );
         if (startResult.IsFailure)
             return startResult;

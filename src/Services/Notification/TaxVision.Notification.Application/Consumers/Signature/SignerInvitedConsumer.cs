@@ -129,6 +129,7 @@ public static class SignerInvitedConsumer
                         ["requires_consent"] = evt.RequiresConsent,
                         ["language"] = evt.Language,
                     },
+                    ScribeRenderAudience.Client,
                     ct
                 )
             ).EnsureRendered("sig.signer_invited.v1");

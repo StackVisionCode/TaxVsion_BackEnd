@@ -67,6 +67,7 @@ public sealed class ImapClient(
         Guid accountId,
         Guid tenantId,
         string? sinceCursor,
+        DateTime? firstSyncFromUtc = null,
         CancellationToken ct = default
     ) =>
         ExecuteAsync(
@@ -87,10 +88,12 @@ public sealed class ImapClient(
                             SearchQuery.Uids(new UniqueIdRange(new UniqueId(liveBaseline + 1), UniqueId.MaxValue)),
                             token
                         )
-                        : await inbox.SearchAsync(SearchQuery.All, token)
-                )
-                    .OrderBy(u => u.Id)
-                    .ToList();
+                        // Sin cursor válido: desde la fecha de conexión (SINCE es por día), no todo el buzón.
+                        : await inbox.SearchAsync(
+                            firstSyncFromUtc is { } from ? SearchQuery.DeliveredAfter(from.Date) : SearchQuery.All,
+                            token
+                        )
+                ).OrderBy(u => u.Id).ToList();
 
                 var page = new List<UniqueId>(MaxMessagesPerSync);
                 var budget = MaxMessagesPerSync;
@@ -273,7 +276,8 @@ public sealed class ImapClient(
             string.Empty, // IMAP no tiene snippet — no vale la pena descargar el body para generarlo acá.
             summary.Envelope?.Date?.UtcDateTime ?? DateTime.UtcNow,
             ExtractAttachments(summary),
-            AuthenticationResultsHeaderParser.Parse(authHeader)
+            AuthenticationResultsHeaderParser.Parse(authHeader),
+            summary.Body?.ContentType?.MimeType
         );
     }
 

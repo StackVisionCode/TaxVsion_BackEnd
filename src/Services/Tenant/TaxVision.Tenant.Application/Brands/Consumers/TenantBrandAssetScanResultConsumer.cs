@@ -20,9 +20,9 @@ namespace TaxVision.Tenant.Application.Brands.Consumers;
 /// FileId que no es de ninguna marca de este tenant no es nuestro (o lo pertenece al modelo viejo,
 /// que tiene su propio consumer) y se ignora, igual que el consumer del logo legado.
 ///
-/// <para>Solo el logo de la superficie CRM alimenta el email: al confirmarlo se publica
-/// <see cref="TenantLogoUpdatedIntegrationEvent"/> (MISMO contrato que el modelo viejo) para que
-/// Scribe actualice su TenantLogoRef. El logo del portal y el favicon no viajan a Scribe.</para>
+/// <para>Al confirmar el logo del CRM o del Portal se publica
+/// <see cref="TenantLogoUpdatedIntegrationEvent"/> con su superficie: Scribe, Documents y Signature
+/// guardan uno por superficie (lo que ve el cliente usa el del Portal). El favicon no viaja.</para>
 /// </summary>
 public static class TenantBrandAssetScanResultConsumer
 {
@@ -30,6 +30,7 @@ public static class TenantBrandAssetScanResultConsumer
         FileAvailableIntegrationEvent msg,
         ITenantBrandRepository repo,
         IUnitOfWork unitOfWork,
+        ICacheService cache,
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantBrand> logger,
@@ -68,28 +69,23 @@ public static class TenantBrandAssetScanResultConsumer
             );
             brand.RemoveAsset(key);
             await unitOfWork.SaveChangesAsync(ct);
+            await BrandCommandSupport.InvalidateAsync(cache, msg.TenantId, brand.Surface, ct);
             return;
         }
 
         await unitOfWork.SaveChangesAsync(ct);
+        // El GET de la marca cachea 5 min: sin esto el CRM seguía viendo "Pending" tras confirmarse.
+        await BrandCommandSupport.InvalidateAsync(cache, msg.TenantId, brand.Surface, ct);
 
-        // Solo el logo del CRM alimenta el email (Scribe). Portal/favicon no.
-        if (brand.Surface == BrandSurface.Crm && key == BrandAssetKey.Logo)
-        {
-            await bus.PublishAsync(
-                new TenantLogoUpdatedIntegrationEvent
-                {
-                    TenantId = msg.TenantId,
-                    CloudStorageFileId = msg.FileId,
-                    ContentType = msg.ContentType,
-                    SizeBytes = msg.SizeBytes,
-                    Width = width,
-                    Height = height,
-                    UpdatedAtUtc = updatedAtUtc,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
-        }
+        // El logo de CRM y Portal sale con su superficie; el favicon no.
+        await BrandLogoEvents.PublishUpdatedIfLogoAsync(
+            bus,
+            correlation,
+            msg.TenantId,
+            brand.Surface,
+            key,
+            new LogoSnapshot(msg.FileId, msg.ContentType, msg.SizeBytes, width, height, updatedAtUtc)
+        );
 
         logger.LogInformation(
             "Tenant {TenantId} brand asset confirmed: surface={Surface} key={Key} file={FileId}.",
@@ -188,7 +184,7 @@ public static class TenantBrandAssetScanResultConsumer
         // Igual que el rechazo de CloudStorage: el upload pisó el logo anterior, así que Tenant queda sin
         // logo y Scribe/Documents deben enterarse.
         await BrandCommandSupport.InvalidateAsync(cache, tenantId, brand.Surface, ct);
-        await BrandLogoEvents.PublishRemovedIfCrmLogoAsync(bus, correlation, tenantId, brand.Surface, key);
+        await BrandLogoEvents.PublishRemovedIfLogoAsync(bus, correlation, tenantId, brand.Surface, key);
     }
 
     private static string CorrelationOf(string? correlationId, Guid eventId) =>

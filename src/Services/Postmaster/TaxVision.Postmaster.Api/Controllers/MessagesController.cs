@@ -36,14 +36,12 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
+        var filter = SentMessageActivityFilter.Create(status, recipient, from, to);
+        if (filter.IsFailure)
+            return BadRequest(filter.Error);
+
         var result = await bus.InvokeAsync<PagedResult<SentMessageSummaryDto>>(
-            new ListSentMessagesQuery(
-                tenantId,
-                new SentMessageActivityFilter(status, recipient, from, to),
-                page,
-                size,
-                MaskRecipients()
-            ),
+            new ListSentMessagesQuery(tenantId, filter.Value, page, size, MaskRecipients()),
             ct
         );
         return Ok(result);

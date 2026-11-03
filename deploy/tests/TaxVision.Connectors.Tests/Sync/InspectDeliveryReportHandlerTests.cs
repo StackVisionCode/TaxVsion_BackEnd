@@ -13,9 +13,12 @@ public class InspectDeliveryReportHandlerTests
 {
     private static readonly DateTime ReceivedAt = new(2026, 10, 21, 12, 0, 0, DateTimeKind.Utc);
 
-    private sealed class FakeParser(params DeliveryReportEntry[] entries) : IDeliveryReportParser
+    private sealed class FakeParser(DeliveryReport report) : IDeliveryReportParser
     {
-        public IReadOnlyList<DeliveryReportEntry> Parse(byte[] rawMime) => entries;
+        public FakeParser(params DeliveryReportEntry[] entries)
+            : this(new DeliveryReport(entries, null, null, null)) { }
+
+        public DeliveryReport Parse(byte[] rawMime) => report;
     }
 
     private static (TenantEmailAccount Account, FakeTenantEmailAccountRepository Repository) Account()
@@ -71,6 +74,59 @@ public class InspectDeliveryReportHandlerTests
         Assert.Equal("failed", failed.Action);
         Assert.Equal("5.1.1", failed.StatusCode);
         Assert.Equal(ReceivedAt, failed.ReportedAtUtc);
+    }
+
+    [Fact]
+    public async Task Handle_adds_the_notice_subject_sender_and_summary_to_every_event()
+    {
+        var (account, repository) = Account();
+        var bus = new FakeMessageBus();
+        var parser = new FakeParser(
+            new DeliveryReport(
+                [
+                    new DeliveryReportEntry("pm.1@office.com", "a@example.com", "failed", "5.1.1", null),
+                    new DeliveryReportEntry("pm.1@office.com", "b@example.com", "failed", "5.2.2", null),
+                ],
+                "Undeliverable: Your documents",
+                "postmaster@contoso.com",
+                "Your message to a@example.com couldn't be delivered."
+            )
+        );
+
+        await HandleAsync(account, repository, new FakeEmailProviderClient(ProviderCode.Gmail), parser, bus);
+
+        var events = bus.Published.OfType<ConnectorsDeliveryReportDetectedIntegrationEvent>().ToList();
+        Assert.Equal(2, events.Count);
+        Assert.All(
+            events,
+            e =>
+            {
+                Assert.Equal("Undeliverable: Your documents", e.ReportSubject);
+                Assert.Equal("postmaster@contoso.com", e.ReportFrom);
+                Assert.Equal("Your message to a@example.com couldn't be delivered.", e.ReportSummary);
+            }
+        );
+    }
+
+    [Fact]
+    public async Task Handle_truncates_long_summaries_and_diagnostics()
+    {
+        var (account, repository) = Account();
+        var bus = new FakeMessageBus();
+        var parser = new FakeParser(
+            new DeliveryReport(
+                [new DeliveryReportEntry("pm.1@office.com", "a@example.com", "failed", "5.1.1", new string('d', 900))],
+                "Undeliverable",
+                "postmaster@contoso.com",
+                new string('s', 2000)
+            )
+        );
+
+        await HandleAsync(account, repository, new FakeEmailProviderClient(ProviderCode.Gmail), parser, bus);
+
+        var published = Assert.Single(bus.Published.OfType<ConnectorsDeliveryReportDetectedIntegrationEvent>());
+        Assert.Equal(500, published.ReportSummary!.Length);
+        Assert.Equal(500, published.DiagnosticSnippet!.Length);
     }
 
     [Fact]

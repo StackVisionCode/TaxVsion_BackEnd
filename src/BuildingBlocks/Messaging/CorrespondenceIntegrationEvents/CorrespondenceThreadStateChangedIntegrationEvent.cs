@@ -11,7 +11,9 @@ namespace BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 public sealed record CorrespondenceThreadStateChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid EmailThreadId { get; init; }
-    public required Guid CustomerId { get; init; }
+
+    // null = conversación con alguien que no es cliente (D-1).
+    public Guid? CustomerId { get; init; }
     public required string Status { get; init; }
     public required int UnreadCount { get; init; }
     public required int MessageCount { get; init; }

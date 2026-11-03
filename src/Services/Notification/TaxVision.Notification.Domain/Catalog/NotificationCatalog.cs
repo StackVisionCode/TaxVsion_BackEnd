@@ -277,6 +277,17 @@ public static class NotificationCatalog
             "email_thread",
             NotificationAction.Open
         ),
+        // Correo enviado desde el CRM que no se entregó: solo a quien lo envió.
+        Entry(
+            NotificationKinds.CorrespondenceDeliveryFailed,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "email_thread",
+            NotificationAction.Open
+        ),
         Entry(
             NotificationKinds.TasksTaskAssigned,
             NotificationCatalogCategory.Work,
@@ -809,6 +820,18 @@ public static class NotificationCatalog
             false,
             "document",
             NotificationAction.Review
+        ),
+        Entry(
+            // Revisión anual del WISP (FTC Safeguards): obligación de la oficina, no se apaga en campana ni correo.
+            NotificationKinds.TenantWispReviewDue,
+            NotificationCatalogCategory.Security,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmailPush,
+            true,
+            "compliance_settings",
+            NotificationAction.Review,
+            InAppEmail
         ),
     }.ToFrozenDictionary(entry => entry.Kind, StringComparer.Ordinal);
 

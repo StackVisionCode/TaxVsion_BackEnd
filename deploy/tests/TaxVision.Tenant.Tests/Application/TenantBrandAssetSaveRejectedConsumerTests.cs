@@ -63,10 +63,11 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
         // Scribe/Documents dejan de mostrar el logo — mismo evento que el delete.
         var evt = Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
         Assert.Equal(TenantId, evt.TenantId);
+        Assert.Equal(TenantBrandSurfaces.Crm, evt.Surface);
     }
 
     [Fact]
-    public async Task A_rejected_portal_logo_is_discarded_without_notifying_scribe()
+    public async Task A_rejected_portal_logo_announces_the_removal_of_the_portal_surface()
     {
         var repo = new InMemoryBrandRepository();
         var fileId = Guid.NewGuid();
@@ -79,7 +80,8 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
         var (bus, _) = await HandleAsync(repo, Rejected(fileId));
 
         Assert.Empty(repo.All.Single().Assets);
-        Assert.Empty(bus.Published);
+        var evt = Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
+        Assert.Equal(TenantBrandSurfaces.Portal, evt.Surface);
     }
 
     [Fact]

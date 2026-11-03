@@ -287,6 +287,17 @@ internal sealed class FakeOAuthConnectionRepository : IOAuthConnectionRepository
         return Task.FromResult(ids);
     }
 
+    public Task<IReadOnlyDictionary<Guid, string>> ListActiveScopesByAccountIdsAsync(
+        IReadOnlyCollection<Guid> accountIds,
+        CancellationToken ct = default
+    )
+    {
+        IReadOnlyDictionary<Guid, string> scopes = Connections
+            .Where(c => accountIds.Contains(c.AccountId) && c.Status == OAuthConnectionStatus.Active)
+            .ToDictionary(c => c.AccountId, c => c.Scope);
+        return Task.FromResult(scopes);
+    }
+
     public void Remove(OAuthConnection connection) => Connections.Remove(connection);
 }
 
@@ -315,9 +326,17 @@ internal sealed class FakeOAuthProviderClient(ProviderCode providerCode) : IOAut
         return Task.CompletedTask;
     }
 
-    public Task<OAuthTokenGrant> RefreshAccessTokenAsync(string refreshToken, CancellationToken ct = default)
+    public List<string> RefreshScopes { get; } = [];
+
+    public Task<OAuthTokenGrant> RefreshAccessTokenAsync(
+        string refreshToken,
+        string grantedScope,
+        CancellationToken ct = default
+    )
     {
         Interlocked.Increment(ref _callCount);
+        lock (RefreshScopes)
+            RefreshScopes.Add(grantedScope);
         if (ThrowOnRefresh is not null)
             throw ThrowOnRefresh;
 

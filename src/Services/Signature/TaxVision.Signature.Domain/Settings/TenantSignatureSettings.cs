@@ -13,7 +13,7 @@ namespace TaxVision.Signature.Domain.Settings;
 /// <list type="bullet">
 ///   <item>Canales verificación: Email + SMS (Fase 1 de multicanal).</item>
 ///   <item>Canal por defecto: Email.</item>
-///   <item>Retención: 7 años, purge deshabilitada.</item>
+///   <item>Retención: 7 años, purge deshabilitada (los años de la oficina, si llegan, mandan).</item>
 ///   <item>Límites de documento: 25 MB PDF / 100 páginas (dentro de los techos del plan).</item>
 ///   <item>Secreto HMAC del audit trail: generado al crear (cifrado con
 ///     <c>ISecretProtector</c> en Infrastructure antes de persistir).</item>
@@ -101,8 +101,17 @@ public sealed class TenantSignatureSettings : BaseEntity
     /// <summary>Límites de documento (tamaño, páginas). Value Object inmutable.</summary>
     public DocumentLimits DocumentLimits { get; private set; } = default!;
 
-    /// <summary>Política de retención (años, purge). Value Object inmutable.</summary>
+    /// <summary>
+    /// Política de retención propia de Signature (purge y los años guardados antes de F4). Los años solo
+    /// rigen si la oficina no fijó su retención en Cumplimiento.
+    /// </summary>
     public RetentionPolicy Retention { get; private set; } = default!;
+
+    /// <summary>Retención de la oficina proyectada desde Tenant (Cumplimiento). Null = la oficina no la fijó.</summary>
+    public int? OfficeRetentionYears { get; private set; }
+
+    /// <summary>Fecha del último cambio de retención aplicado; ordena los eventos de Tenant.</summary>
+    public DateTime? OfficeRetentionUpdatedAtUtc { get; private set; }
 
     /// <summary>Entrega de los documentos firmados (vigencia del enlace, reemisión, adjuntos).</summary>
     public DeliveryPolicy Delivery { get; private set; } = default!;
@@ -415,6 +424,48 @@ public sealed class TenantSignatureSettings : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>Activa o apaga la purga de la oficina; los años no cambian (los fija Cumplimiento).</summary>
+    public void SetPurgeAllowed(bool allowed)
+    {
+        if (Retention.AllowPurge == allowed)
+            return;
+
+        Retention = allowed ? Retention.WithPurgeAllowed() : Retention.WithPurgeBlocked();
+        Touch();
+    }
+
+    /// <summary>
+    /// Proyecta la retención de la oficina (dueño: Tenant). Un cambio más viejo que el aplicado se ignora y
+    /// repetir el mismo no cambia nada. Devuelve true si cambió algo.
+    /// </summary>
+    public Result<bool> ApplyOfficeRetention(int? years, DateTime updatedAtUtc)
+    {
+        if (years is < RetentionPolicy.MinRetentionYears or > RetentionPolicy.MaxRetentionYears)
+            return Result.Failure<bool>(
+                new Error(
+                    "Signature.Retention.OfficeYears",
+                    $"Office retention must be between {RetentionPolicy.MinRetentionYears} and {RetentionPolicy.MaxRetentionYears} years."
+                )
+            );
+
+        if (OfficeRetentionUpdatedAtUtc is { } applied && updatedAtUtc < applied)
+            return Result.Success(false);
+
+        if (OfficeRetentionYears == years && OfficeRetentionUpdatedAtUtc == updatedAtUtc)
+            return Result.Success(false);
+
+        OfficeRetentionYears = years;
+        OfficeRetentionUpdatedAtUtc = updatedAtUtc;
+        Touch();
+        return Result.Success(true);
+    }
+
+    /// <summary>Años que pide la oficina antes del piso del plan: Cumplimiento si los fijó; si no, los de Signature.</summary>
+    public RetentionYearsSource RetentionSource =>
+        OfficeRetentionYears.HasValue ? RetentionYearsSource.Office : RetentionYearsSource.Signature;
+
+    private int RequestedRetentionYears => OfficeRetentionYears ?? Retention.RetentionYears;
+
     /// <summary>
     /// Guarda la excepción de PlatformAdmin. No reescribe lo que eligió la oficina: si queda por encima de
     /// los techos nuevos, <see cref="EffectiveWithin"/> lo acota al leerlo (igual que si baja el plan).
@@ -453,9 +504,10 @@ public sealed class TenantSignatureSettings : BaseEntity
             ceilings,
             forRequests,
             Math.Min(DefaultTokenExpirationHoursValue, ceilings.MaxTokenHours),
-            Math.Max(Retention.RetentionYears, ceilings.MinRetentionYears),
+            Math.Max(RequestedRetentionYears, ceilings.MinRetentionYears),
             Retention.AllowPurge && ceilings.PurgeAllowed,
-            defaultChannel
+            defaultChannel,
+            RetentionSource
         );
     }
 

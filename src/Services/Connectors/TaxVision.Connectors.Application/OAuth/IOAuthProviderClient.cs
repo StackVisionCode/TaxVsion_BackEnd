@@ -48,7 +48,16 @@ public interface IOAuthProviderClient
     /// </summary>
     string RedirectUri { get; }
 
-    Task<OAuthTokenGrant> RefreshAccessTokenAsync(string refreshToken, CancellationToken ct = default);
+    /// <summary>
+    /// <paramref name="grantedScope"/> es el scope que el usuario aceptó (<c>OAuthConnection.Scope</c>), no
+    /// <see cref="ConfiguredScope"/>: si el servicio pide permisos nuevos, Entra rechaza el refresh que los
+    /// incluye (consent_required) y la cuenta caería en Error en vez de pedir solo ampliar permisos.
+    /// </summary>
+    Task<OAuthTokenGrant> RefreshAccessTokenAsync(
+        string refreshToken,
+        string grantedScope,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// Intercambia el <c>code</c> del callback de autorización (flujo de conectar cuenta) por el

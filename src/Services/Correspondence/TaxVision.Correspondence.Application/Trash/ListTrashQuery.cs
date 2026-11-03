@@ -8,5 +8,7 @@ public sealed record ListTrashQuery(
     DraftCustomerScope Customer,
     int Page,
     int Size,
-    IReadOnlyCollection<Guid>? VisibleAccountIds = null
+    IReadOnlyCollection<Guid>? VisibleAccountIds = null,
+    // Texto, solo con adjuntos y rango de fechas; null = sin filtro.
+    MailListFilter? Filter = null
 );

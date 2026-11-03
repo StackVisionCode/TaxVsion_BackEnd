@@ -16,7 +16,7 @@ const NormalizedPayloadSchema = z.object({
 });
 
 const ThreadStatePayloadSchema = z.object({
-  customerId: z.string().uuid(),
+  customerId: z.string().uuid().nullable(),
   emailThreadId: z.string().uuid(),
   status: z.string().min(1),
   unreadCount: z.number().int().nonnegative(),
@@ -24,9 +24,35 @@ const ThreadStatePayloadSchema = z.object({
   actorUserId: z.string().uuid().nullable().optional(),
 });
 
+const DeliveryNoticePayloadSchema = z.object({
+  deliveryNoticeId: z.string().uuid(),
+  emailThreadId: z.string().uuid(),
+  customerId: z.string().uuid().nullable(),
+  sentByUserId: z.string().uuid().nullable(),
+  outcome: z.string().min(1),
+  category: z.string().nullable(),
+});
+
+/** El contrato .NET lleva el cliente como Guid obligatorio en algunos eventos: Guid.Empty = "no es cliente". */
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+function optionalId(value: unknown): unknown {
+  return value === undefined || value === NIL_UUID ? null : value;
+}
+
+export function parseCorrespondenceDeliveryNoticeReceived(payload: Record<string, unknown>) {
+  return DeliveryNoticePayloadSchema.safeParse({
+    deliveryNoticeId: readDotNetField(payload, 'DeliveryNoticeId', 'deliveryNoticeId'),
+    emailThreadId: readDotNetField(payload, 'EmailThreadId', 'emailThreadId'),
+    customerId: optionalId(readDotNetField(payload, 'CustomerId', 'customerId')),
+    sentByUserId: optionalId(readDotNetField(payload, 'SentByUserId', 'sentByUserId')),
+    outcome: readDotNetField(payload, 'Outcome', 'outcome'),
+    category: readDotNetField(payload, 'Category', 'category') ?? null,
+  });
+}
+
 export function parseCorrespondenceThreadStateChanged(payload: Record<string, unknown>) {
   return ThreadStatePayloadSchema.safeParse({
-    customerId: readDotNetField(payload, 'CustomerId', 'customerId'),
+    customerId: optionalId(readDotNetField(payload, 'CustomerId', 'customerId')),
     emailThreadId: readDotNetField(payload, 'EmailThreadId', 'emailThreadId'),
     status: readDotNetField(payload, 'Status', 'status'),
     unreadCount: readDotNetField(payload, 'UnreadCount', 'unreadCount'),
@@ -115,6 +141,39 @@ export function bindCorrespondenceConsumers(
         tenantId: env.tenantId,
         userId,
         event: MailSocketEvents.ThreadState,
+        envelope,
+      });
+    }
+  });
+
+  // Aviso de entrega de un correo enviado desde el CRM: mismo refresco que un entrante (`mail.incoming`), a quienes
+  // ven el buzón de oficina (ven todo) y a quien envió el correo (su buzón personal y sus otras pestañas).
+  register('correspondence.delivery_notice_received.v1', async (env) => {
+    const parsed = parseCorrespondenceDeliveryNoticeReceived(env.payload);
+    if (!parsed.success) return;
+
+    const envelope = {
+      eventId: randomUUID(),
+      correlationId: env.correlationId ?? '',
+      emittedAtUtc: new Date().toISOString(),
+      payload: {
+        customerId: parsed.data.customerId,
+        emailThreadId: parsed.data.emailThreadId,
+        incomingEmailId: '',
+        kind: 'delivery_notice' as const,
+        deliveryNoticeId: parsed.data.deliveryNoticeId,
+        outcome: parsed.data.outcome,
+        category: parsed.data.category,
+      },
+    };
+
+    const recipients = await officeMailReaders(env.tenantId);
+    if (parsed.data.sentByUserId) recipients.add(parsed.data.sentByUserId);
+    for (const userId of recipients) {
+      deps.emitter.emitToUser({
+        tenantId: env.tenantId,
+        userId,
+        event: MailSocketEvents.IncomingEmail,
         envelope,
       });
     }

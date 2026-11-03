@@ -50,7 +50,8 @@ internal sealed class FixedSignatureLimitsResolver(EffectiveSignaturePolicy? pol
             TenantSignatureSettings.DefaultTokenExpirationHours,
             RetentionPolicy.DefaultRetentionYears,
             false,
-            VerificationChannel.Email
+            VerificationChannel.Email,
+            RetentionYearsSource.Signature
         );
 
     public Task<EffectiveSignaturePolicy> ResolveAsync(Guid tenantId, CancellationToken ct = default) =>

@@ -299,6 +299,33 @@ public sealed class TemplateVersionValidatorTests
         }
     }
 
+    // La plantilla del WISP pasa el mismo validador que aplica Scribe al publicar (variables declaradas, HTML seguro).
+    [Fact]
+    public async Task ValidateAsync_accepts_the_seeded_wisp_review_template()
+    {
+        var seed = TaxVision.Scribe.Application.Templates.Seed.NotificationTemplateSeedSource.All.Single(s =>
+            s.EventKey == "tenant.wisp_review_due.v1"
+        );
+        var version = BuildVersion(
+            seed.Subject,
+            seed.Html,
+            null,
+            TaxVision.Scribe.Application.Templates.Seed.NotificationTemplateSeedSource.VariablesWithPreheader(seed)
+        );
+
+        var result = await TemplateVersionValidator.ValidateAsync(
+            version,
+            TemplateChannel.Email,
+            null,
+            _storage,
+            _htmlSafetyValidator,
+            default
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.IsValid, string.Join(", ", result.Value.Errors.Select(e => e.Code)));
+    }
+
     private async Task<TemplateValidationOutcome> ValidatePushAsync(EmailTemplateVersion version)
     {
         var result = await TemplateVersionValidator.ValidateAsync(

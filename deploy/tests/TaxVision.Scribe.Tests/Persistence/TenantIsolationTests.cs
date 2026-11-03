@@ -168,7 +168,16 @@ public sealed class TenantIsolationTests
     // ---------- ITenantOwned normal (TenantLogoRef/TenantLogoMissingNotification) ----------
 
     private static TenantLogoRef CreateLogoRef(Guid tenantId) =>
-        TenantLogoRef.Create(tenantId, Guid.NewGuid(), "image/png", 1024, 64, 64, DateTime.UtcNow);
+        TenantLogoRef.Create(
+            tenantId,
+            TenantLogoSurface.Crm,
+            Guid.NewGuid(),
+            "image/png",
+            1024,
+            64,
+            64,
+            DateTime.UtcNow
+        );
 
     [Fact]
     public async Task TenantFilter_isolates_tenant_A_from_tenant_B_logo_refs()

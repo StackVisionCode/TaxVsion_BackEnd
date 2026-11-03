@@ -167,7 +167,12 @@ public sealed class MessagesController(
 
         var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<AttachmentSummary>>>(
-            new ListMessageAttachmentsQuery(tenantId, id, visible),
+            new ListMessageAttachmentsQuery(
+                tenantId,
+                id,
+                visible,
+                await customerAccess.ResolveRestrictedUserIdAsync(User, ct)
+            ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

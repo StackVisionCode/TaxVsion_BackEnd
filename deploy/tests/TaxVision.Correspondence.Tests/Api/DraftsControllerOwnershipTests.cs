@@ -177,9 +177,9 @@ public sealed class DraftsControllerOwnershipTests
 
         var results = new[]
         {
-            await controller.List(parsed, unlinked, null, 1, 20, CancellationToken.None),
-            await controller.ListSent(parsed, unlinked, null, 1, 20, CancellationToken.None),
-            await controller.ListTrash(parsed, unlinked, null, 1, 20, CancellationToken.None),
+            await controller.List(parsed, unlinked, null, null, false, null, null, 1, 20, CancellationToken.None),
+            await controller.ListSent(parsed, unlinked, null, null, false, null, null, 1, 20, CancellationToken.None),
+            await controller.ListTrash(parsed, unlinked, null, null, false, null, null, 1, 20, CancellationToken.None),
         };
 
         Assert.All(
@@ -194,6 +194,33 @@ public sealed class DraftsControllerOwnershipTests
     }
 
     [Fact]
+    public async Task The_folder_listings_pass_the_trimmed_search_term()
+    {
+        var (controller, bus) = BuildListController();
+        bus.NextResult =
+            new BuildingBlocks.Common.PagedResult<TaxVision.Correspondence.Application.Compose.SentMessageListItem>(
+                [],
+                1,
+                20,
+                0
+            );
+        await controller.ListSent(null, false, "all", "  maria  ", false, null, null, 1, 20, CancellationToken.None);
+        var sent = Assert.IsType<TaxVision.Correspondence.Application.Compose.ListSentMessagesQuery>(bus.LastInvoked);
+
+        bus.NextResult = new BuildingBlocks.Common.PagedResult<TaxVision.Correspondence.Application.Trash.TrashItem>(
+            [],
+            1,
+            20,
+            0
+        );
+        await controller.ListTrash(null, false, "all", "   ", false, null, null, 1, 20, CancellationToken.None);
+        var trash = Assert.IsType<TaxVision.Correspondence.Application.Trash.ListTrashQuery>(bus.LastInvoked);
+
+        Assert.Equal("maria", sent.Filter!.Search);
+        Assert.Null(trash.Filter!.Search);
+    }
+
+    [Fact]
     public async Task ListSent_with_unlinked_queries_mail_without_customer()
     {
         var (controller, bus) = BuildListController();
@@ -205,7 +232,18 @@ public sealed class DraftsControllerOwnershipTests
                 0
             );
 
-        var result = await controller.ListSent(null, true, null, 1, 20, CancellationToken.None);
+        var result = await controller.ListSent(
+            null,
+            true,
+            null,
+            null,
+            false,
+            null,
+            null,
+            1,
+            20,
+            CancellationToken.None
+        );
 
         Assert.IsType<OkObjectResult>(result);
         var query = Assert.IsType<TaxVision.Correspondence.Application.Compose.ListSentMessagesQuery>(bus.LastInvoked);
@@ -225,7 +263,7 @@ public sealed class DraftsControllerOwnershipTests
                 0
             );
 
-        await controller.ListSent(customerId, false, null, 1, 20, CancellationToken.None);
+        await controller.ListSent(customerId, false, null, null, false, null, null, 1, 20, CancellationToken.None);
 
         var query = Assert.IsType<TaxVision.Correspondence.Application.Compose.ListSentMessagesQuery>(bus.LastInvoked);
         Assert.Equal(customerId, query.Customer.CustomerId);
@@ -244,7 +282,18 @@ public sealed class DraftsControllerOwnershipTests
                 0
             );
 
-        var result = await controller.ListSent(null, false, "all", 1, 20, CancellationToken.None);
+        var result = await controller.ListSent(
+            null,
+            false,
+            "all",
+            null,
+            false,
+            null,
+            null,
+            1,
+            20,
+            CancellationToken.None
+        );
 
         Assert.IsType<OkObjectResult>(result);
         var query = Assert.IsType<TaxVision.Correspondence.Application.Compose.ListSentMessagesQuery>(bus.LastInvoked);
@@ -265,6 +314,10 @@ public sealed class DraftsControllerOwnershipTests
             customerId is null ? null : Guid.Parse(customerId),
             unlinked,
             scopeName,
+            null,
+            false,
+            null,
+            null,
             1,
             20,
             CancellationToken.None

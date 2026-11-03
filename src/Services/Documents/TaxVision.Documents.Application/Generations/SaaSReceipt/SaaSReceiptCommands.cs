@@ -18,7 +18,12 @@ public sealed record SaaSReceiptPayload(
     /// <summary>Línea secundaria debajo del concepto (p.ej. "Additional seats for your subscription",
     /// "Prepaid wallet credit"). Cuando viene vacía, la plantilla cae a "{issuer.name} subscription"
     /// — el comportamiento legacy, válido para renovaciones y planes.</summary>
-    string? SecondaryDescription = null
+    string? SecondaryDescription = null,
+    /// <summary>"Billed to" del perfil de la oficina. Opcionales al final: un comando durable viejo, sin
+    /// estos campos, sigue deserializando y el recibo muestra solo <see cref="OfficeName"/>.</summary>
+    string? BilledToLegalName = null,
+    string? BilledToEin = null,
+    string? BilledToAddress = null
 );
 
 /// <summary>Registra la generación del recibo de una compra SaaS. Responde 202: el PDF se produce después.</summary>

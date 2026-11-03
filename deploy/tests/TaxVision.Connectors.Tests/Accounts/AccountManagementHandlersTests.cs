@@ -75,12 +75,50 @@ public class AccountManagementHandlersTests
         var accounts = await ListTenantEmailAccountsHandler.Handle(
             new ListTenantEmailAccountsQuery(tenantId, Guid.NewGuid()),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
         // Ambas son de oficina (sin dueño) → la del tenant llamante se ve, la de otro tenant no.
         var dto = Assert.Single(accounts);
         Assert.Equal("mine@gmail.com", dto.EmailAddress);
+    }
+
+    [Fact]
+    public async Task ListTenantEmailAccounts_ReportsScopesTheActiveConnectionHasNotGranted()
+    {
+        var repository = new FakeTenantEmailAccountRepository();
+        var tenantId = Guid.NewGuid();
+        var account = TenantEmailAccount
+            .Create(tenantId, "office@outlook.com", ProviderCode.Graph, Guid.NewGuid(), Now)
+            .Value;
+        repository.Accounts.Add(account);
+        var connections = new FakeOAuthConnectionRepository();
+        var connection = OAuthConnection
+            .Create(account.Id, ProviderCode.Graph, "client", "Mail.Read Mail.Send", Now)
+            .Value;
+        var protector = new FakeEncryptedSecretProtector();
+        connection.AttachToken(
+            OAuthToken
+                .Create(connection.Id, protector.Protect("at"), protector.Protect("rt"), Now.AddHours(1), Now)
+                .Value
+        );
+        connections.Connections.Add(connection);
+        var client = new FakeOAuthProviderClient(ProviderCode.Graph)
+        {
+            ConfiguredScope = "Mail.Read Mail.ReadWrite Mail.Send",
+        };
+
+        var accounts = await ListTenantEmailAccountsHandler.Handle(
+            new ListTenantEmailAccountsQuery(tenantId, Guid.NewGuid()),
+            repository,
+            connections,
+            new FakeOAuthProviderClientFactory(client),
+            CancellationToken.None
+        );
+
+        Assert.Equal(["Mail.ReadWrite"], Assert.Single(accounts).MissingScopes);
     }
 
     [Fact]
@@ -95,6 +133,8 @@ public class AccountManagementHandlersTests
         var result = await GetTenantEmailAccountHandler.Handle(
             new GetTenantEmailAccountQuery(Guid.NewGuid(), account.Id, Guid.NewGuid()),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
@@ -116,6 +156,8 @@ public class AccountManagementHandlersTests
         var result = await GetTenantEmailAccountHandler.Handle(
             new GetTenantEmailAccountQuery(tenantId, personal.Id, Guid.NewGuid()), // otro usuario
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
@@ -151,6 +193,8 @@ public class AccountManagementHandlersTests
         var accounts = await ListTenantEmailAccountsHandler.Handle(
             new ListTenantEmailAccountsQuery(tenantId, me),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
@@ -177,6 +221,8 @@ public class AccountManagementHandlersTests
         var accounts = await ListTenantEmailAccountsHandler.Handle(
             new ListTenantEmailAccountsQuery(tenantId, me, CanSeeOffice: false),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
@@ -199,6 +245,8 @@ public class AccountManagementHandlersTests
         var denied = await GetTenantEmailAccountHandler.Handle(
             new GetTenantEmailAccountQuery(tenantId, office.Id, Guid.NewGuid(), CanSeeOffice: false),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
         Assert.True(denied.IsFailure);
@@ -208,6 +256,8 @@ public class AccountManagementHandlersTests
         var allowed = await GetTenantEmailAccountHandler.Handle(
             new GetTenantEmailAccountQuery(tenantId, office.Id, Guid.NewGuid(), CanSeeOffice: true),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
         Assert.True(allowed.IsSuccess);

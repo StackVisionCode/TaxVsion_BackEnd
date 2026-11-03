@@ -1,0 +1,82 @@
+Return-Path: <>
+Received: by 2002:a05:6512:3d8f:b0:52c::; Tue, 21 Oct 2026 09:14:03 -0700 (PDT)
+From: Mail Delivery Subsystem <mailer-daemon@googlemail.com>
+To: office@gmail.com
+Auto-Submitted: auto-replied
+Subject: Delivery Status Notification (Failure)
+Message-ID: <6716f0db.050a0220.1c2f3.abcd.GMR@mx.google.com>
+Date: Tue, 21 Oct 2026 09:14:03 -0700 (PDT)
+References: <pm.0f8fad5bd9cb469fa16570867728950e@gmail.com>
+In-Reply-To: <pm.0f8fad5bd9cb469fa16570867728950e@gmail.com>
+X-Failed-Recipients: nobody@example.com
+MIME-Version: 1.0
+Content-Type: multipart/report; boundary="000000000000a1b2c3d4e5f60708"; report-type=delivery-status
+
+--000000000000a1b2c3d4e5f60708
+Content-Type: multipart/related; boundary="000000000000a1b2c3d4e5f60709"
+
+--000000000000a1b2c3d4e5f60709
+Content-Type: multipart/alternative; boundary="000000000000a1b2c3d4e5f6070a"
+
+--000000000000a1b2c3d4e5f6070a
+Content-Type: text/plain; charset="UTF-8"
+
+
+** Address not found **
+
+Your message wasn't delivered to nobody@example.com because the address couldn't be found, or is unable to receive mail.
+
+Learn more here: https://support.google.com/mail/?p=NoSuchUser
+
+The response was:
+
+550 5.1.1 The email account that you tried to reach does not exist. Please try double-checking the recipient's email address for typos or unnecessary spaces. For more information, go to https://support.google.com/mail/?p=NoSuchUser
+
+--000000000000a1b2c3d4e5f6070a
+Content-Type: text/html; charset="UTF-8"
+
+<html><head><style>* { font-family: Roboto, sans-serif; }</style></head><body>
+<p><b>Address not found</b></p>
+<p>Your message wasn't delivered to <a style='color:#212121;text-decoration:none'><b>nobody@example.com</b></a> because the address couldn't be found, or is unable to receive mail.</p>
+<p>The response was:</p>
+<p>550 5.1.1 The email account that you tried to reach does not exist.</p>
+</body></html>
+
+--000000000000a1b2c3d4e5f6070a--
+--000000000000a1b2c3d4e5f60709
+Content-Type: image/png; name="icon.png"
+Content-Disposition: attachment; filename="icon.png"
+Content-Transfer-Encoding: base64
+Content-ID: <icon.png>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==
+--000000000000a1b2c3d4e5f60709--
+--000000000000a1b2c3d4e5f60708
+Content-Type: message/delivery-status
+
+Reporting-MTA: dns; googlemail.com
+Received-From-MTA: dns; office@gmail.com
+Arrival-Date: Tue, 21 Oct 2026 09:14:02 -0700 (PDT)
+X-Original-Message-ID: <pm.0f8fad5bd9cb469fa16570867728950e@gmail.com>
+
+Final-Recipient: rfc822; nobody@example.com
+Action: failed
+Status: 5.1.1
+Remote-MTA: dns; mx.example.com. (192.0.2.25, the server for the domain example.com.)
+Diagnostic-Code: smtp; 550 5.1.1 The email account that you tried to reach does not exist.
+Last-Attempt-Date: Tue, 21 Oct 2026 09:14:03 -0700 (PDT)
+
+--000000000000a1b2c3d4e5f60708
+Content-Type: message/rfc822
+
+From: Office <office@gmail.com>
+To: nobody@example.com
+Subject: Your 2025 tax documents
+Message-ID: <pm.0f8fad5bd9cb469fa16570867728950e@gmail.com>
+Date: Tue, 21 Oct 2026 09:14:01 -0700
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+CONFIDENTIAL-ORIGINAL-BODY: your SSN ends in 1234 and your refund is $5,000.
+
+--000000000000a1b2c3d4e5f60708--

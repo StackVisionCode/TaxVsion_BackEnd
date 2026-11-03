@@ -4,5 +4,11 @@ namespace TaxVision.Scribe.Application.Rendering;
 
 public interface ILogoResolver
 {
-    Task<LogoAsset> ResolveAsync(LogoScope logoScope, Guid? tenantId, CancellationToken ct = default);
+    /// <summary><paramref name="audience"/> elige el logo de la oficina: Staff = CRM, Client = Portal → CRM.</summary>
+    Task<LogoAsset> ResolveAsync(
+        LogoScope logoScope,
+        Guid? tenantId,
+        RenderAudience audience = RenderAudience.Staff,
+        CancellationToken ct = default
+    );
 }

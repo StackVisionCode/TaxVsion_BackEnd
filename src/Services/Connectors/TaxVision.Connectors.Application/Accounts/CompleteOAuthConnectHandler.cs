@@ -95,6 +95,8 @@ public static class CompleteOAuthConnectHandler
 
         TenantEmailAccount account;
         OAuthConnection? existingConnection = null;
+        // Reautorizar una conexión activa solo para ampliar permisos: el watch ya corre, no se rearma.
+        var widensActiveGrant = false;
         if (isNewAccount)
         {
             var createResult = TenantEmailAccount.Create(
@@ -122,7 +124,13 @@ public static class CompleteOAuthConnectHandler
             if (existingConnectionResult.IsSuccess)
             {
                 existingConnection = existingConnectionResult.Value;
-                if (existingConnection.Status is OAuthConnectionStatus.Active or OAuthConnectionStatus.Pending)
+                widensActiveGrant =
+                    existingConnection.Status == OAuthConnectionStatus.Active
+                    && existingConnection.MissingScopes(client.ConfiguredScope).Count > 0;
+                if (
+                    !widensActiveGrant
+                    && existingConnection.Status is OAuthConnectionStatus.Active or OAuthConnectionStatus.Pending
+                )
                     return Result.Failure<CompleteOAuthConnectResult>(
                         new Error(
                             "CompleteOAuthConnectHandler.AlreadyConnected",
@@ -203,6 +211,19 @@ public static class CompleteOAuthConnectHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
+        if (widensActiveGrant && account.Status == TenantEmailAccountStatus.Active)
+        {
+            await AuditAsync(
+                account,
+                $"Updated permissions for {account.EmailAddress} via {cmd.ProviderCode}.",
+                now,
+                auditLogRepository,
+                unitOfWork,
+                ct
+            );
+            return Result.Success(new CompleteOAuthConnectResult(account.Id, account.EmailAddress));
+        }
+
         // WatchActivationService publica ConnectorsTenantEmailAccountConnected al activar (punto único
         // compartido con el reauth), así que acá ya no se publica — se evita el doble evento.
         var watchResult = await WatchActivationService.ActivateAsync(
@@ -219,19 +240,38 @@ public static class CompleteOAuthConnectHandler
         if (watchResult.IsFailure)
             return Result.Failure<CompleteOAuthConnectResult>(watchResult.Error);
 
+        await AuditAsync(
+            account,
+            $"Connected {account.EmailAddress} via {cmd.ProviderCode}.",
+            now,
+            auditLogRepository,
+            unitOfWork,
+            ct
+        );
+
+        return Result.Success(new CompleteOAuthConnectResult(account.Id, account.EmailAddress));
+    }
+
+    private static async Task AuditAsync(
+        TenantEmailAccount account,
+        string detail,
+        DateTime now,
+        IProviderConnectionAuditLogRepository auditLogRepository,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
         var auditResult = ProviderConnectionAuditLog.Create(
             account.Id,
             ProviderConnectionAuditAction.Connect,
-            $"Connected {account.EmailAddress} via {cmd.ProviderCode}.",
+            detail,
             "Success",
             now
         );
-        if (auditResult.IsSuccess)
-        {
-            await auditLogRepository.AddAsync(auditResult.Value, ct);
-            await unitOfWork.SaveChangesAsync(ct);
-        }
+        if (auditResult.IsFailure)
+            return;
 
-        return Result.Success(new CompleteOAuthConnectResult(account.Id, account.EmailAddress));
+        await auditLogRepository.AddAsync(auditResult.Value, ct);
+        await unitOfWork.SaveChangesAsync(ct);
     }
 }

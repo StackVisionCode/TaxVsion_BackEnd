@@ -1,0 +1,20 @@
+From: System Administrator <postmaster@contoso.com>
+To: office@contoso.com
+Date: Thu, 23 Oct 2026 11:00:00 +0000
+Subject: Undeliverable: Engagement letter
+Message-ID: <ndr-legacy-1@EX2010.contoso.local>
+In-Reply-To: <pm.33333333333333333333333333333333@contoso.com>
+References: <pm.33333333333333333333333333333333@contoso.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="us-ascii"
+
+Your message did not reach some or all of the intended recipients.
+
+      Subject:  Engagement letter
+      Sent:     10/23/2026 10:59 AM
+
+The following recipient(s) cannot be reached:
+
+      gone@example.net on 10/23/2026 11:00 AM
+            The e-mail address you entered couldn't be found.
+            <EX2010.contoso.local #5.1.1 smtp;550 5.1.1 <gone@example.net>... User unknown> ##rfc822;gone@example.net

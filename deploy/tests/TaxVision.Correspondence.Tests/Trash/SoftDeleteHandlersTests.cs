@@ -78,6 +78,7 @@ public sealed class SoftDeleteHandlersTests
             new ArchiveThreadCommand(Tenant, thread.Id),
             threads,
             incoming,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             CancellationToken.None

@@ -4,12 +4,20 @@ using TaxVision.Billing.Domain.ValueObjects;
 namespace TaxVision.Billing.Domain.Invoices;
 
 /// <summary>
-/// Perfil del emisor (los datos de la empresa del tenant: nombre, NIF/RUC, dirección, contacto). Uno
-/// por tenant. Se configura una vez y Billing lo congela como <see cref="IssuerSnapshot"/> en cada
-/// factura al crearla — así el PDF sale con los datos de la empresa sin que el caller los reenvíe.
+/// Perfil del emisor (nombre legal, EIN, dirección y contacto de la oficina). Uno por tenant. Desde la F1
+/// es una PROYECCIÓN del perfil de la oficina que vive en Tenant: solo lo escribe
+/// <see cref="ApplyTenantProfile"/> al recibir TenantProfileChanged. Billing lo congela como
+/// <see cref="IssuerSnapshot"/> en cada factura al crearla, así el PDF sale con los datos de la oficina.
 /// </summary>
 public sealed class IssuerProfile : TenantEntity
 {
+    // Largos de las columnas (IssuerProfileConfiguration); un valor más largo se recorta, nunca falla.
+    public const int NameMaxLength = 256;
+    public const int TaxIdMaxLength = 64;
+    public const int PhoneMaxLength = 64;
+    public const int EmailMaxLength = 256;
+    public const int WebsiteMaxLength = 256;
+
     public string Name { get; private set; } = string.Empty;
     public string? TaxId { get; private set; }
     public Address? Address { get; private set; }
@@ -22,6 +30,10 @@ public sealed class IssuerProfile : TenantEntity
     /// formulario; cada factura CONGELA su moneda al crearse, así el histórico nunca cambia aunque esto
     /// cambie luego. "Platform fallback" = si el tenant no la fijó, se usa "USD".</summary>
     public string DefaultCurrency { get; private set; } = "USD";
+
+    /// <summary>Versión del perfil de Tenant ya aplicada (0 = nunca llegó un evento). Un evento con versión
+    /// menor o igual se ignora: así un mensaje viejo o repetido no pisa uno más nuevo.</summary>
+    public long SourceVersion { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
     private IssuerProfile() { }
@@ -33,45 +45,56 @@ public sealed class IssuerProfile : TenantEntity
         return profile;
     }
 
-    public void Update(
-        string name,
-        string? taxId,
-        Address? address,
-        string? phone,
-        string? email,
-        string? website,
-        Guid? logoFileId,
-        string? defaultCurrency,
-        DateTime nowUtc
-    )
+    /// <summary>
+    /// Aplica el perfil de la oficina publicado por Tenant (estado completo). Devuelve false si la versión
+    /// no es más nueva que la aplicada. Nombre = legal, si no el comercial, si no se conserva el actual
+    /// (Billing no conoce otro nombre de la oficina). El resto se copia tal cual, null incluido. Mapeo
+    /// tolerante: Tenant ya validó, y un valor raro solo se recorta al largo de la columna. El logo y la
+    /// moneda no se tocan: no vienen del perfil.
+    /// </summary>
+    public bool ApplyTenantProfile(long version, TenantOfficeProfile source, DateTime nowUtc)
     {
-        Name = name.Trim();
-        TaxId = taxId;
-        Address = address;
-        Phone = phone;
-        Email = email;
-        Website = website;
-        LogoFileId = logoFileId;
-        // Normalizar a ISO-4217 de 3 letras en mayúsculas; vacío → conservar el actual (nunca null).
-        var cur = defaultCurrency?.Trim().ToUpperInvariant();
-        if (!string.IsNullOrEmpty(cur) && cur.Length == 3)
-            DefaultCurrency = cur;
+        if (version <= SourceVersion)
+            return false;
+
+        var name = Fit(source.LegalName, NameMaxLength) ?? Fit(source.DisplayName, NameMaxLength);
+        if (name is not null)
+            Name = name;
+
+        TaxId = Fit(source.TaxId, TaxIdMaxLength);
+        Address = source.Address;
+        Phone = Fit(source.Phone, PhoneMaxLength);
+        Email = Fit(source.Email, EmailMaxLength);
+        Website = Fit(source.Website, WebsiteMaxLength);
+        SourceVersion = version;
         UpdatedAtUtc = nowUtc;
+        return true;
     }
 
     /// <summary>True si hay al menos un nombre — sin eso no vale la pena estamparlo en la factura.</summary>
     public bool IsUsable => !string.IsNullOrWhiteSpace(Name);
 
     /// <summary>Congela el perfil como el emisor de una factura. La dirección es obligatoria en el
-    /// snapshot; si el perfil no tiene una, usa un placeholder para no romper el mapeo.</summary>
+    /// snapshot; si el perfil no tiene una, va vacía y el PDF no imprime línea de dirección.</summary>
     public IssuerSnapshot ToSnapshot() =>
-        new(
-            Name,
-            Address ?? new Address("—", null, string.Empty, string.Empty, string.Empty, "US"),
-            Phone,
-            Email,
-            Website,
-            LogoFileId,
-            TaxId
-        );
+        new(Name, Address ?? Address.Empty(), Phone, Email, Website, LogoFileId, TaxId);
+
+    private static string? Fit(string? value, int maxLength)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
 }
+
+/// <summary>Datos del perfil de la oficina que proyecta Billing, ya mapeados desde el evento de Tenant.</summary>
+public sealed record TenantOfficeProfile(
+    string? LegalName,
+    string? DisplayName,
+    string? TaxId,
+    Address? Address,
+    string? Phone,
+    string? Email,
+    string? Website
+);

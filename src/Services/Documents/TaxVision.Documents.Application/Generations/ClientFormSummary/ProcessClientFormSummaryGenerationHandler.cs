@@ -373,7 +373,8 @@ public static class ProcessClientFormSummaryGenerationHandler
             string? tenantLogo = null;
             try
             {
-                tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(tenantId, ct);
+                // El resumen lo ve el cliente: logo del portal, con el del CRM de respaldo.
+                tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(tenantId, LogoAudience.Client, ct);
             }
             catch (Exception ex)
             {
@@ -384,7 +385,11 @@ public static class ProcessClientFormSummaryGenerationHandler
             {
                 try
                 {
-                    tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(PlatformTenant.Id, ct);
+                    tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(
+                        PlatformTenant.Id,
+                        LogoAudience.Staff,
+                        ct
+                    );
                 }
                 catch (Exception ex)
                 {

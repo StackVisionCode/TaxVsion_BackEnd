@@ -29,10 +29,18 @@ public sealed class ScribeRenderClient(
         Converters = { new JsonStringEnumConverter() },
     };
 
+    public Task<Result<ScribeRenderedEmail>> RenderAsync(
+        string eventKey,
+        Guid tenantId,
+        IReadOnlyDictionary<string, object?> variables,
+        CancellationToken ct = default
+    ) => RenderAsync(eventKey, tenantId, variables, ScribeRenderAudience.Staff, ct);
+
     public async Task<Result<ScribeRenderedEmail>> RenderAsync(
         string eventKey,
         Guid tenantId,
         IReadOnlyDictionary<string, object?> variables,
+        ScribeRenderAudience audience,
         CancellationToken ct = default
     )
     {
@@ -44,7 +52,10 @@ public sealed class ScribeRenderClient(
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "scribe/render");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        request.Content = JsonContent.Create(new RenderRequestDto(eventKey, tenantId, variables), options: Json);
+        request.Content = JsonContent.Create(
+            new RenderRequestDto(eventKey, tenantId, variables, Audience: audience),
+            options: Json
+        );
 
         using var response = await httpClient.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
@@ -113,11 +124,13 @@ public sealed class ScribeRenderClient(
     private static EmailDispatchScope ParseDispatchScope(string? value) =>
         Enum.TryParse<EmailDispatchScope>(value, ignoreCase: true, out var parsed) ? parsed : EmailDispatchScope.System;
 
+    // Audience viaja como texto ("Staff"/"Client") por el JsonStringEnumConverter.
     private sealed record RenderRequestDto(
         string EventKey,
         Guid? TenantId,
         IReadOnlyDictionary<string, object?> Variables,
-        string Channel = "Email"
+        string Channel = "Email",
+        ScribeRenderAudience Audience = ScribeRenderAudience.Staff
     );
 
     /// <summary>

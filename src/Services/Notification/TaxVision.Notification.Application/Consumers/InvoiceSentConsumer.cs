@@ -65,6 +65,7 @@ public static class InvoiceSentConsumer
                             ["payment_link"] = evt.PaymentLink,
                             ["has_pdf"] = evt.PdfFileId is not null,
                         },
+                        ScribeRenderAudience.Client,
                         ct
                     )
                 ).EnsureRendered(EventKey);

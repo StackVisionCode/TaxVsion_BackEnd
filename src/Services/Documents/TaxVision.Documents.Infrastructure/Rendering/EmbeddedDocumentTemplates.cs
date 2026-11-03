@@ -42,6 +42,8 @@ internal static class EmbeddedDocumentTemplates
     }
 
     // Liquid (Fluid). Los datos llegan bajo la variable "invoice" (ver ProcessInvoiceGenerationHandler).
+    // Teléfono/correo/web del emisor y los ajustes de facturación (plazo, instrucciones): el "and" cubre
+    // datos viejos sin la clave (nil), que != "" daría true. Las instrucciones se escapan (texto del tenant).
     // HTML autocontenido, apto para impresión A4; sin recursos externos (CSP del motor: nada de red/FS).
     private const string InvoiceV1 = """
         <!DOCTYPE html>
@@ -71,6 +73,9 @@ internal static class EmbeddedDocumentTemplates
             .totals .grand { border-top: 2px solid var(--brand); margin-top: 6px; padding-top: 8px; font-size: 15px; font-weight: bold; color: var(--brand); }
             .notes { margin-top: 28px; font-size: 11px; color: #6b7280; }
             .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #9ca3af; }
+            .instructions { margin-top: 24px; padding: 12px 16px; border: 1px solid #e5e7eb; border-radius: 8px; }
+            .instructions h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; color: #6b7280; letter-spacing: .5px; }
+            .instructions p { margin: 0; white-space: pre-line; }
             /* Marca de agua: capa detrás del contenido, rotada, semitransparente. Chromium la imprime
                en el PDF tal cual. El color/texto salen del estado que manda Billing. */
             .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg);
@@ -119,6 +124,7 @@ internal static class EmbeddedDocumentTemplates
               <strong>No. {{ invoice.number }}</strong><br />
               Issued: {{ invoice.issueDate }}<br />
               {% if invoice.dueDate != "" %}Due: {{ invoice.dueDate }}<br />{% endif %}
+              {% if invoice.paymentTerms and invoice.paymentTerms != "" %}Terms: {{ invoice.paymentTerms }}<br />{% endif %}
               Tax year: {{ invoice.taxYear }}<br />
               {% if invoice.status == "Paid" %}<span class="badge paid">Paid</span>
               {% elsif invoice.status == "Voided" %}<span class="badge cancelled">Void</span>
@@ -134,6 +140,9 @@ internal static class EmbeddedDocumentTemplates
               <p><strong>{{ invoice.issuer.name }}</strong></p>
               {% if invoice.issuer.taxId != "" %}<p>Tax ID: {{ invoice.issuer.taxId }}</p>{% endif %}
               {% if invoice.issuer.address != "" %}<p>{{ invoice.issuer.address }}</p>{% endif %}
+              {% if invoice.issuer.phone and invoice.issuer.phone != "" %}<p>{{ invoice.issuer.phone }}</p>{% endif %}
+              {% if invoice.issuer.email and invoice.issuer.email != "" %}<p>{{ invoice.issuer.email }}</p>{% endif %}
+              {% if invoice.issuer.website and invoice.issuer.website != "" %}<p>{{ invoice.issuer.website }}</p>{% endif %}
             </div>
             <div class="party">
               <h2>Bill to</h2>
@@ -194,6 +203,13 @@ internal static class EmbeddedDocumentTemplates
               <div class="pay-url">{{ invoice.paymentUrl }}</div>
             </div>
             {% if invoice.paymentQr != "" %}<div class="pay-qr"><img src="{{ invoice.paymentQr }}" alt="Payment QR" /><span>Scan to pay</span></div>{% endif %}
+          </div>
+          {% endif %}
+
+          {% if invoice.paymentInstructions and invoice.paymentInstructions != "" and invoice.status != "Paid" and invoice.status != "Voided" %}
+          <div class="instructions">
+            <h3>Payment instructions</h3>
+            <p>{{ invoice.paymentInstructions | escape }}</p>
           </div>
           {% endif %}
 
@@ -281,8 +297,7 @@ internal static class EmbeddedDocumentTemplates
         <body>
           <div class="top">
             <div class="brand">
-              {% if receipt.issuer.logo != "" %}<img class="logo" src="{{ receipt.issuer.logo }}" alt="{{ receipt.issuer.name }}" />{% endif %}
-              <div class="wordmark">{{ receipt.issuer.name }}</div>
+              {% if receipt.issuer.logo != "" %}<img class="logo" src="{{ receipt.issuer.logo }}" alt="{{ receipt.issuer.name }}" />{% else %}<div class="wordmark">{{ receipt.issuer.name }}</div>{% endif %}
             </div>
             <div class="doc-meta">
               <div class="kicker">Payment receipt</div>
@@ -308,7 +323,14 @@ internal static class EmbeddedDocumentTemplates
           <div class="parties">
             <div class="party">
               <h2>Billed to</h2>
+              {% if receipt.billedTo.legalName != "" %}
+              <div class="name">{{ receipt.billedTo.legalName }}</div>
+              {% if receipt.officeName != "" and receipt.officeName != receipt.billedTo.legalName %}<p>DBA {{ receipt.officeName }}</p>{% endif %}
+              {% else %}
               <div class="name">{{ receipt.officeName }}</div>
+              {% endif %}
+              {% if receipt.billedTo.ein != "" %}<p>EIN {{ receipt.billedTo.ein }}</p>{% endif %}
+              {% if receipt.billedTo.address != "" %}<p>{{ receipt.billedTo.address }}</p>{% endif %}
               <p class="sub">Office</p>
             </div>
             <div class="party">
@@ -565,8 +587,7 @@ internal static class EmbeddedDocumentTemplates
         <body>
           <div class="top">
             <div class="brand">
-              {% if receipt.issuer.logo != "" %}<img class="logo" src="{{ receipt.issuer.logo }}" alt="{{ receipt.issuer.name }}" />{% endif %}
-              <div class="wordmark">{{ receipt.issuer.name }}</div>
+              {% if receipt.issuer.logo != "" %}<img class="logo" src="{{ receipt.issuer.logo }}" alt="{{ receipt.issuer.name }}" />{% else %}<div class="wordmark">{{ receipt.issuer.name }}</div>{% endif %}
             </div>
             <div class="doc-meta">
               <div class="kicker">Payment receipt</div>
@@ -592,7 +613,12 @@ internal static class EmbeddedDocumentTemplates
           <div class="parties">
             <div class="party">
               <h2>Billed to</h2>
+              {% if receipt.officeName and receipt.officeName != "" %}
+              <div class="name">{{ receipt.officeName }}</div>
+              <p>Attn: {{ receipt.payerName }}</p>
+              {% else %}
               <div class="name">{{ receipt.payerName }}</div>
+              {% endif %}
               <p>{{ receipt.payerEmail }}</p>
               <p class="sub">Onboarding customer</p>
             </div>

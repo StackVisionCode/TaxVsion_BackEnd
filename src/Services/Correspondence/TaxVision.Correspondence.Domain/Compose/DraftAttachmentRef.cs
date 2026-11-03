@@ -6,9 +6,9 @@ namespace TaxVision.Correspondence.Domain.Compose;
 /// Referencia a un archivo ya subido a CloudStorage — nunca bytes locales. Mirror 1:1 de
 /// <c>OutboundAttachmentRef</c> (Postmaster, D3 Compose §modelo), incluyendo la ausencia
 /// deliberada de un cap de tamaño: el límite real lo aplica el proveedor resuelto río abajo al
-/// momento de enviar (Gmail 35MB, Graph 3MB, SMTP manual configurable) — nunca esta capa. Igual
-/// que <c>OutboundAttachmentRef</c>, es un valor inmutable sin ciclo de vida propio, por eso se
-/// mapea como columna JSON en <c>Drafts</c> en vez de child table (plan §23).
+/// momento de enviar (Gmail 35MB, Graph 3MB, SMTP manual configurable) — nunca esta capa. Es el
+/// valor validado que entra por <see cref="Draft.AttachFile"/> y el que sale hacia Postmaster; lo
+/// persistido es <see cref="DraftAttachment"/> (tabla <c>DraftAttachments</c>, D-7).
 /// </summary>
 public sealed class DraftAttachmentRef
 {

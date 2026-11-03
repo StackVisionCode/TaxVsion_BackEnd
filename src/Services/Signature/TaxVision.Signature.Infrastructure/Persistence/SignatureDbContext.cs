@@ -98,9 +98,10 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     public DbSet<TenantSignatureLimits> TenantSignatureLimits => Set<TenantSignatureLimits>();
     public DbSet<SignaturePlatformSettings> SignaturePlatformSettings => Set<SignaturePlatformSettings>();
 
-    // Fase 3C (certificado) — nombre + logo de la oficina para el Certificate of Completion, mantenida
-    // por TenantBrandingProjectionConsumer (TenantCreated + TenantLogoUpdated).
+    // Fase 3C (certificado) — nombre de la oficina y su logo por superficie para el Certificate of
+    // Completion, mantenidas por TenantBrandingProjectionConsumer.
     public DbSet<TenantBrandingRef> TenantBrandingRefs => Set<TenantBrandingRef>();
+    public DbSet<TenantLogoRef> TenantLogoRefs => Set<TenantLogoRef>();
 
     // P2 — proyección compartida de asignaciones cliente→staff (kit BuildingBlocks.CustomerVisibility),
     // mantenida por el consumer compartido + la reconciliación. Alimenta el filtro de visibilidad de solicitudes.

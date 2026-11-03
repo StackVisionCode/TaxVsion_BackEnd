@@ -21,6 +21,7 @@ public sealed class ArchiveThreadHandlerTests
             new ArchiveThreadCommand(tenantId, thread.Id, ActorUserId: actor),
             emailThreads,
             new FakeIncomingEmailRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             new FakeUnitOfWork(),
             bus,
             CancellationToken.None
@@ -48,6 +49,7 @@ public sealed class ArchiveThreadHandlerTests
             new ArchiveThreadCommand(tenantId, thread.Id, RestrictToUserId: Guid.NewGuid()),
             emailThreads,
             new FakeIncomingEmailRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             new FakeUnitOfWork(),
             bus,
             CancellationToken.None
@@ -72,6 +74,7 @@ public sealed class ArchiveThreadHandlerTests
             new ArchiveThreadCommand(tenantId, thread.Id),
             emailThreads,
             new FakeIncomingEmailRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
             new FakeMessageBus(),
             CancellationToken.None
@@ -101,6 +104,7 @@ public sealed class ArchiveThreadHandlerTests
             new ArchiveThreadCommand(tenantId, thread.Id),
             emailThreads,
             new FakeIncomingEmailRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
             new FakeMessageBus(),
             CancellationToken.None
@@ -113,6 +117,7 @@ public sealed class ArchiveThreadHandlerTests
             new ArchiveThreadCommand(tenantId, thread.Id),
             emailThreads,
             new FakeIncomingEmailRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
             new FakeMessageBus(),
             CancellationToken.None
@@ -135,6 +140,7 @@ public sealed class ArchiveThreadHandlerTests
             new ArchiveThreadCommand(Guid.NewGuid(), Guid.NewGuid()),
             emailThreads,
             new FakeIncomingEmailRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
             new FakeMessageBus(),
             CancellationToken.None
@@ -157,6 +163,7 @@ public sealed class ArchiveThreadHandlerTests
             new ArchiveThreadCommand(Guid.NewGuid(), thread.Id),
             emailThreads,
             new FakeIncomingEmailRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
             new FakeMessageBus(),
             CancellationToken.None

@@ -146,6 +146,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CorrespondenceCustomerEmailReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CorrespondenceThreadStateChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CorrespondenceDeliveryNoticeReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).

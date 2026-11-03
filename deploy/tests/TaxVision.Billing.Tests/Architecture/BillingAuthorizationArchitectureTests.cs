@@ -34,7 +34,7 @@ public sealed class BillingAuthorizationArchitectureTests
     public void Toda_accion_con_verbo_HTTP_declara_HasPermission()
     {
         var violations = new List<string>();
-        foreach (var controllerType in ControllerTypes())
+        foreach (var controllerType in ControllerTypes().Where(type => !IsServiceOnly(type)))
         {
             var classPermission = controllerType.GetCustomAttribute<HasPermissionAttribute>(inherit: true);
 
@@ -55,6 +55,27 @@ public sealed class BillingAuthorizationArchitectureTests
             "Acciones sin [HasPermission] (nivel método o controller): " + string.Join(", ", violations)
         );
     }
+
+    [Fact]
+    public void Los_controllers_internos_solo_admiten_tokens_de_servicio()
+    {
+        var violations = ControllerTypes()
+            .Where(type => type.GetCustomAttribute<RouteAttribute>()?.Template.StartsWith("internal/") == true)
+            .Where(type =>
+                !IsServiceOnly(type)
+                || type.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()?.Policy
+                    != "ServiceOnly"
+            )
+            .Select(type => type.FullName!)
+            .ToList();
+
+        Assert.True(violations.Count == 0, "Controllers internos sin ServiceOnly: " + string.Join(", ", violations));
+    }
+
+    // Un controller M2M (solo actor Service) no tiene usuario con permisos: lo cubre la policy ServiceOnly.
+    private static bool IsServiceOnly(Type type) =>
+        type.GetCustomAttribute<AllowActorTypesAttribute>(inherit: true)?.ActorTypes is { Count: 1 } actorTypes
+        && actorTypes.Contains(BuildingBlocks.ActorTypeAuthorization.ActorType.Service);
 
     private static IEnumerable<Type> ControllerTypes() =>
         Types.InAssembly(ApiAssembly).That().Inherit(typeof(ControllerBase)).And().AreClasses().GetTypes();

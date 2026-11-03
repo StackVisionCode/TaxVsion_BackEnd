@@ -65,9 +65,11 @@ public sealed class ProcessDeliveryFeedbackHandlerTests
     private static readonly Guid DispatchAttemptId = Guid.NewGuid();
 
     /// <param name="fromNotification">Con log e intento de Notification: a ese correo se le avisan los cambios.</param>
+    /// <param name="correspondenceDraftId">Enviado desde el CRM: los cambios se le avisan a Correspondence.</param>
     private static async Task<Fixture> SentMessageInDatabaseAsync(
         string? providerReference = null,
-        bool fromNotification = false
+        bool fromNotification = false,
+        Guid? correspondenceDraftId = null
     )
     {
         var db = new PostmasterDbContext(
@@ -88,6 +90,7 @@ public sealed class ProcessDeliveryFeedbackHandlerTests
                 null,
                 null,
                 SentAt,
+                correspondenceDraftId: correspondenceDraftId,
                 dispatchAttemptId: fromNotification ? DispatchAttemptId : null
             )
             .Value;
@@ -242,13 +245,20 @@ public sealed class ProcessDeliveryFeedbackHandlerTests
         Assert.Equal("DeliveryFeedback.UnknownSource", result.Error.Code);
     }
 
-    private static TranslatedFeedback OutcomeFor(Fixture fixture, DeliveryOutcome outcome, string eventId) =>
+    private static TranslatedFeedback OutcomeFor(
+        Fixture fixture,
+        DeliveryOutcome outcome,
+        string eventId,
+        string diagnostic = "550"
+    ) =>
         new(
             null,
             fixture.Message.Id.ToString("N"),
             null,
             Recipient,
-            DeliveryFeedback.ForOutcome(outcome, SentAt.AddMinutes(1), FeedbackSource.Smtp2Go, eventId, "550").Value,
+            DeliveryFeedback
+                .ForOutcome(outcome, SentAt.AddMinutes(1), FeedbackSource.Smtp2Go, eventId, diagnostic)
+                .Value,
             "{}"
         );
 
@@ -379,5 +389,144 @@ public sealed class ProcessDeliveryFeedbackHandlerTests
         await fixture.ProcessAsync(OutcomeFor(fixture, DeliveryOutcome.Delivered, "evt-x"));
 
         Assert.Empty(fixture.Bus.Published);
+    }
+
+    [Fact]
+    public async Task Handle_does_not_suppress_a_full_mailbox_even_when_the_server_says_5_2_2()
+    {
+        var fixture = await SentMessageInDatabaseAsync();
+
+        await fixture.ProcessAsync(
+            OutcomeFor(fixture, DeliveryOutcome.HardBounced, "evt-full", "552 5.2.2 mailbox full")
+        );
+
+        Assert.Equal(DeliveryOutcome.SoftBounced, fixture.LoadRecipient().Outcome);
+        Assert.Empty(fixture.Db.SuppressionListEntries);
+    }
+
+    private static readonly Guid DraftId = Guid.NewGuid();
+
+    [Fact]
+    public async Task Handle_tells_Correspondence_when_an_email_from_the_CRM_bounced()
+    {
+        var fixture = await SentMessageInDatabaseAsync(correspondenceDraftId: DraftId);
+
+        await fixture.ProcessAsync(OutcomeFor(fixture, DeliveryOutcome.HardBounced, "evt-b", "550 5.1.1 user unknown"));
+
+        var evt = Assert.IsType<PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent>(
+            Assert.Single(fixture.Bus.Published)
+        );
+        Assert.Equal(fixture.Message.TenantId, evt.TenantId);
+        Assert.Equal(fixture.Message.Id, evt.SentMessageId);
+        Assert.Equal(DraftId, evt.CorrespondenceDraftId);
+        Assert.Equal(Recipient, evt.Recipient);
+        Assert.Equal(CorrespondenceDeliveryOutcomes.NotDelivered, evt.Outcome);
+        Assert.Equal(DeliveryFailureCategories.InvalidAddress, evt.Category);
+        Assert.Equal("5.1.1", evt.StatusCode);
+        Assert.Equal("550 5.1.1 user unknown", evt.DiagnosticSnippet);
+        Assert.True(evt.Suppressed);
+        // Vino por webhook: no hay aviso en un buzón.
+        Assert.Null(evt.ReportAccountId);
+        Assert.Null(evt.ReportProviderMessageId);
+        Assert.Equal(SentAt.AddMinutes(1), evt.EventAtUtc);
+    }
+
+    [Theory]
+    [InlineData(DeliveryOutcome.Delivered, "", CorrespondenceDeliveryOutcomes.Delivered, null)]
+    [InlineData(
+        DeliveryOutcome.Deferred,
+        "451 4.4.1 no answer",
+        CorrespondenceDeliveryOutcomes.Delayed,
+        DeliveryFailureCategories.Delayed
+    )]
+    [InlineData(
+        DeliveryOutcome.HardBounced,
+        "552 5.2.2 mailbox full",
+        CorrespondenceDeliveryOutcomes.NotDelivered,
+        DeliveryFailureCategories.MailboxFull
+    )]
+    [InlineData(
+        DeliveryOutcome.SoftBounced,
+        "552 5.3.4 too big",
+        CorrespondenceDeliveryOutcomes.NotDelivered,
+        DeliveryFailureCategories.TooLarge
+    )]
+    [InlineData(
+        DeliveryOutcome.Rejected,
+        "",
+        CorrespondenceDeliveryOutcomes.NotDelivered,
+        DeliveryFailureCategories.Rejected
+    )]
+    public async Task Handle_maps_the_outcome_for_Correspondence(
+        DeliveryOutcome outcome,
+        string diagnostic,
+        string expectedOutcome,
+        string? expectedCategory
+    )
+    {
+        var fixture = await SentMessageInDatabaseAsync(correspondenceDraftId: DraftId);
+
+        await fixture.ProcessAsync(OutcomeFor(fixture, outcome, "evt-1", diagnostic));
+
+        var evt = Assert.IsType<PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent>(
+            Assert.Single(fixture.Bus.Published)
+        );
+        Assert.Equal(expectedOutcome, evt.Outcome);
+        Assert.Equal(expectedCategory, evt.Category);
+        Assert.False(evt.Suppressed);
+    }
+
+    [Fact]
+    public async Task Handle_does_not_send_a_complaint_or_a_signal_to_Correspondence()
+    {
+        var fixture = await SentMessageInDatabaseAsync(correspondenceDraftId: DraftId);
+
+        await fixture.ProcessAsync(SignalFor(fixture, EngagementSignal.Opened, "open-1"));
+        await fixture.ProcessAsync(OutcomeFor(fixture, DeliveryOutcome.Complained, "evt-c"));
+
+        Assert.Empty(fixture.Bus.Published);
+    }
+
+    [Fact]
+    public async Task Handle_does_not_tell_Correspondence_twice_about_the_same_change()
+    {
+        var fixture = await SentMessageInDatabaseAsync(correspondenceDraftId: DraftId);
+        var bounce = OutcomeFor(fixture, DeliveryOutcome.HardBounced, "evt-1", "550 5.1.1 user unknown");
+
+        await fixture.ProcessAsync(bounce);
+        // El mismo aviso otra vez (reintento) y otra copia con otro id: el estado ya no cambia.
+        await fixture.ProcessAsync(bounce);
+        await fixture.ProcessAsync(OutcomeFor(fixture, DeliveryOutcome.HardBounced, "evt-2", "550 5.1.1 user unknown"));
+
+        Assert.Single(fixture.Bus.Published.OfType<PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Handle_says_not_suppressed_when_the_address_was_already_blocked()
+    {
+        var fixture = await SentMessageInDatabaseAsync(correspondenceDraftId: DraftId);
+        await fixture.Db.SuppressionListEntries.AddAsync(
+            SuppressionListEntry
+                .Create(fixture.Message.TenantId, Recipient, SuppressionReason.Manual, Guid.NewGuid(), null, SentAt)
+                .Value
+        );
+        await fixture.Db.SaveChangesAsync();
+
+        await fixture.ProcessAsync(OutcomeFor(fixture, DeliveryOutcome.HardBounced, "evt-1", "550 5.1.1 user unknown"));
+
+        var evt = Assert.IsType<PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent>(
+            Assert.Single(fixture.Bus.Published)
+        );
+        Assert.False(evt.Suppressed);
+    }
+
+    [Fact]
+    public async Task Handle_does_not_tell_Correspondence_about_emails_Notification_asked_for()
+    {
+        var fixture = await SentMessageInDatabaseAsync(fromNotification: true);
+
+        await fixture.ProcessAsync(OutcomeFor(fixture, DeliveryOutcome.HardBounced, "evt-1", "550 5.1.1"));
+
+        Assert.IsType<PostmasterEmailDeliveryBouncedIntegrationEvent>(Assert.Single(fixture.Bus.Published));
     }
 }

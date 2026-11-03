@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Auth.Domain.Onboarding.ValueObjects;
 
 namespace TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
@@ -84,6 +85,10 @@ public sealed class TenantOnboarding : BaseEntity
 
     public string? OfficeName { get; private set; }
     public string? RequestedSubdomain { get; private set; }
+
+    /// <summary>Zona IANA del navegador al registrarse, ya validada. Opcional: null (ausente o
+    /// inválida) hace que la oficina nazca en UTC; nunca bloquea el registro.</summary>
+    public string? TimeZoneId { get; private set; }
 
     public Guid? TermsVersionId { get; private set; }
     public string? TermsContentHash { get; private set; }
@@ -421,7 +426,8 @@ public sealed class TenantOnboarding : BaseEntity
         string termsContentHash,
         string acceptedFromIp,
         string userAgent,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string? timeZoneId = null
     )
     {
         if (Status != TenantOnboardingStatus.RegistrationPending)
@@ -440,6 +446,8 @@ public sealed class TenantOnboarding : BaseEntity
 
         OfficeName = officeName.Trim();
         RequestedSubdomain = requestedSubdomain.Trim();
+        // Sugerencia del navegador: se guarda solo si es IANA válida; si no, se descarta sin error.
+        TimeZoneId = IanaTimeZone.TryNormalize(timeZoneId, out var normalizedTimeZoneId) ? normalizedTimeZoneId : null;
         TermsVersionId = termsVersionId;
         TermsContentHash = termsContentHash;
         TermsAcceptedAtUtc = nowUtc;

@@ -69,6 +69,7 @@ public static class MeetingCancelledConsumer
                         ["host_name"] = evt.HostDisplayName,
                         ["reason"] = string.IsNullOrWhiteSpace(evt.Reason) ? null : evt.Reason,
                     },
+                    ScribeRenderAudience.Client,
                     ct
                 )
             ).EnsureRendered(EventKey);

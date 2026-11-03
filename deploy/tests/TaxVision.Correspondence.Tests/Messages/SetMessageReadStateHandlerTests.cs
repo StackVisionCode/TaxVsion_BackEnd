@@ -24,7 +24,7 @@ public sealed class SetMessageReadStateHandlerTests
         var email = IncomingEmail
             .Create(
                 tenantId,
-                thread.CustomerId,
+                thread.CustomerId!.Value,
                 thread.Id,
                 Guid.NewGuid(),
                 "gmail",

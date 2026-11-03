@@ -88,12 +88,21 @@ internal sealed class FakeIncomingEmailRepository : IIncomingEmailRepository
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        MailListFilter? filter = null,
         CancellationToken ct = default
     )
     {
         var filtered = _store
             .Where(x => x.TenantId == tenantId && (customerId is null || x.CustomerId == customerId) && x.IsDeleted)
             .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
+            .Where(x =>
+                filter is null
+                || (
+                    (filter.Search is null || x.Subject.Contains(filter.Search, StringComparison.OrdinalIgnoreCase))
+                    && (!filter.HasAttachmentsOnly || x.HasAttachments)
+                    && filter.InRange(x.ReceivedAtUtc)
+                )
+            )
             .OrderByDescending(x => x.DeletedAtUtc)
             .ToList();
         var items = filtered.Skip((page < 1 ? 0 : (page - 1) * size)).Take(size < 1 ? 20 : size).ToList();

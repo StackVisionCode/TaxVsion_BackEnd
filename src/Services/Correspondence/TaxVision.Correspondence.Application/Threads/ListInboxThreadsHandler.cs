@@ -1,5 +1,7 @@
 using BuildingBlocks.Common;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Delivery;
+using TaxVision.Correspondence.Domain.Delivery;
 using TaxVision.Correspondence.Domain.Inbox;
 
 namespace TaxVision.Correspondence.Application.Threads;
@@ -8,7 +10,8 @@ public sealed record ListInboxThreadsQuery(InboxThreadFilter Filter);
 
 /// <summary>
 /// Inbox de la oficina: hilos de todos los clientes visibles (buzón + cliente asignado), más reciente primero.
-/// No leídos, último remitente y adjuntos se calculan solo para la página (consultas agregadas, no N).
+/// No leídos (entrantes + avisos de no entrega), último remitente, adjuntos y último aviso de entrega se calculan
+/// solo para la página (consultas agregadas, no N).
 /// </summary>
 public static class ListInboxThreadsHandler
 {
@@ -16,6 +19,7 @@ public static class ListInboxThreadsHandler
         ListInboxThreadsQuery query,
         IEmailThreadRepository emailThreads,
         IIncomingEmailRepository incomingEmails,
+        IDeliveryNoticeRepository notices,
         CancellationToken ct
     )
     {
@@ -26,6 +30,7 @@ public static class ListInboxThreadsHandler
         var unread = await incomingEmails.GetUnreadCountsByThreadAsync(filter.TenantId, threadIds, ct);
         var latest = await incomingEmails.GetLatestByThreadAsync(filter.TenantId, threadIds, ct);
         var withAttachments = await incomingEmails.GetThreadIdsWithAttachmentsAsync(filter.TenantId, threadIds, ct);
+        var latestNotices = await notices.GetLatestByThreadAsync(filter.TenantId, threadIds, ct);
 
         var items = page
             .Items.Select(thread =>
@@ -33,18 +38,20 @@ public static class ListInboxThreadsHandler
                     thread,
                     unread.GetValueOrDefault(thread.Id, 0),
                     latest.GetValueOrDefault(thread.Id),
-                    withAttachments.Contains(thread.Id)
+                    withAttachments.Contains(thread.Id),
+                    latestNotices.GetValueOrDefault(thread.Id)
                 )
             )
             .ToList();
         return new PagedResult<InboxThreadSummary>(items, page.Page, page.Size, page.TotalCount);
     }
 
-    private static InboxThreadSummary ToSummary(
+    internal static InboxThreadSummary ToSummary(
         EmailThread thread,
         int unreadCount,
         IncomingEmail? latest,
-        bool hasAttachments
+        bool hasAttachments,
+        DeliveryNotice? latestNotice
     ) =>
         new(
             thread.Id,
@@ -58,6 +65,7 @@ public static class ListInboxThreadsHandler
             latest?.From,
             latest?.FromDisplayName,
             latest?.Snippet,
-            hasAttachments
+            hasAttachments,
+            latestNotice is null ? null : DeliveryNoticeSummary.From(latestNotice)
         );
 }

@@ -58,6 +58,7 @@ public static class InvitationCreatedConsumer
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
                         ["is_resend"] = evt.IsResend,
                     },
+                    AuthAccountCopy.Audience(evt.ActorType),
                     ct
                 )
             ).EnsureRendered("auth.invitation_created.v1");
@@ -113,6 +114,7 @@ public static class PasswordResetRequestedConsumer
                             ? platform.Current.BrandName
                             : evt.TenantName,
                     },
+                    AuthAccountCopy.Audience(evt.ActorType),
                     ct
                 )
             ).EnsureRendered("auth.password_reset_requested.v1");
@@ -181,6 +183,7 @@ public static class MfaChallengeRequestedConsumer
         MfaChallengeRequestedIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        ICustomerPortalAccountProjectionRepository portalAccounts,
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
@@ -217,11 +220,16 @@ public static class MfaChallengeRequestedConsumer
                 _ => "continuar",
             };
 
+            // El evento no trae el tipo de actor: el usuario es cliente si es el de una cuenta de portal.
+            var audience = await portalAccounts.GetByUserAsync(evt.TenantId, evt.UserId, ct) is not null
+                ? ScribeRenderAudience.Client
+                : ScribeRenderAudience.Staff;
             var render = (
                 await scribeClient.RenderAsync(
                     "auth.mfa_otp_requested.v1",
                     evt.TenantId,
                     new Dictionary<string, object?> { ["code"] = evt.Code, ["reason"] = reason },
+                    audience,
                     ct
                 )
             ).EnsureRendered("auth.mfa_otp_requested.v1");
@@ -278,6 +286,7 @@ public static class EmailChangeRequestedConsumer
                         ["account_kind"] = AuthAccountCopy.Kind(evt.ActorType),
                         ["office"] = office,
                     },
+                    AuthAccountCopy.Audience(evt.ActorType),
                     ct
                 )
             ).EnsureRendered("auth.email_change_requested.v1");
@@ -305,6 +314,7 @@ public static class EmailChangeRequestedConsumer
                             : $"Someone asked to change the email of your {office} workspace account to {evt.NewEmail}.",
                         ["ip_address"] = null,
                     },
+                    AuthAccountCopy.Audience(evt.ActorType),
                     ct
                 )
             ).EnsureRendered("auth.email_change_security_alert.v1");
@@ -409,6 +419,7 @@ public static class UserRegisteredConsumer
                                 ? TenantEmailLinks.ClientBase(tenantHost, portal.Value)
                                 : TenantEmailLinks.StaffBase(tenantHost, portal.Value),
                     },
+                    AuthAccountCopy.Audience(evt.ActorType),
                     ct
                 )
             ).EnsureRendered("auth.user_registered.v1");

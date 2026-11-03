@@ -109,6 +109,7 @@ public static class SignatureReadyForDownloadConsumer
                             ["document_count"] = evt.SealedFiles.Count,
                             ["language"] = signer.Language,
                         },
+                        ScribeRenderAudience.Client,
                         ct
                     )
                 ).EnsureRendered("sig.request_completed.v1");

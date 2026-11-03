@@ -1,0 +1,35 @@
+Return-Path: <>
+Date: Fri, 24 Oct 2026 09:10:00 -0400 (EDT)
+From: MAILER-DAEMON@relay.office-example.com (Mail Delivery System)
+Subject: Undelivered Mail Returned to Sender
+To: office@office-example.com
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="pfx_text_1"
+Message-Id: <20261024131000.7AbCdEf@relay.office-example.com>
+
+--pfx_text_1
+Content-Type: text/plain; charset=us-ascii
+
+This is the mail system at host relay.office-example.com.
+
+I'm sorry to have to inform you that your message could not
+be delivered to one or more recipients.
+
+                   The mail system
+
+<first@example.com>: host mx.example.com[192.0.2.10] said: 550 5.1.1
+    <first@example.com>: Recipient address rejected: User unknown (in reply to
+    RCPT TO command)
+
+<second@example.org>: host mx.example.org[198.51.100.7] said: 552 5.2.2
+    Mailbox full (in reply to end of DATA command)
+
+--pfx_text_1
+Content-Type: text/rfc822-headers
+
+From: Office <office@office-example.com>
+To: first@example.com, second@example.org
+Subject: Organizer for 2025
+Message-ID: <pm.44444444444444444444444444444444@office-example.com>
+
+--pfx_text_1--

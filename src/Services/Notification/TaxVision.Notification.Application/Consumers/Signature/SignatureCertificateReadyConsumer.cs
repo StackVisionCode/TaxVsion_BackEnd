@@ -91,6 +91,7 @@ public static class SignatureCertificateReadyConsumer
                             ["document_title"] = evt.DocumentTitle,
                             ["language"] = signer.Language,
                         },
+                        ScribeRenderAudience.Client,
                         ct
                     )
                 ).EnsureRendered("sig.certificate_ready.v1");

@@ -673,20 +673,20 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("LogoContentType")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<Guid?>("LogoFileId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<long?>("LogoSizeBytes")
-                        .HasColumnType("bigint");
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("OfficeName")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("OfficeNameAsOfUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("ProfileVersion")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("SubDomain")
                         .IsRequired()
@@ -699,6 +699,33 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.HasKey("TenantId");
 
                     b.ToTable("TenantBrandingRefs", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Projections.TenantLogoRef", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Surface")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("LogoContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid?>("LogoFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("LogoSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId", "Surface");
+
+                    b.ToTable("TenantLogoRefs", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Signature.Domain.RateLimiting.TenantPlanCodeProjection", b =>
@@ -1385,6 +1412,14 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("GenerateCertificateByDefault")
                         .HasColumnType("bit");
+
+                    b.Property<DateTime?>("OfficeRetentionUpdatedAtUtc")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("OfficeRetention_UpdatedAtUtc");
+
+                    b.Property<int?>("OfficeRetentionYears")
+                        .HasColumnType("int")
+                        .HasColumnName("OfficeRetention_Years");
 
                     b.Property<string>("PartialCopyDefaultAudienceKind")
                         .IsRequired()

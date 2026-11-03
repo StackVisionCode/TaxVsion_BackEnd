@@ -130,6 +130,7 @@ public static class MeetingInvitationCreatedConsumer
                         ["meeting_code"] = evt.ShortCode,
                         ["in_progress"] = inProgress,
                     },
+                    AudienceOf(evt.InviteeKind),
                     ct
                 )
             ).EnsureRendered(EventKey);
@@ -187,6 +188,14 @@ public static class MeetingInvitationCreatedConsumer
             context["scheduledForUtc"] = scheduledFor.ToString("O");
         return context;
     }
+
+    // InviteeKind del contrato de Communication: Employee | Customer | External. Solo el empleado es del equipo.
+    private const string EmployeeInviteeKind = "Employee";
+
+    private static ScribeRenderAudience AudienceOf(string? inviteeKind) =>
+        string.Equals(inviteeKind, EmployeeInviteeKind, StringComparison.OrdinalIgnoreCase)
+            ? ScribeRenderAudience.Staff
+            : ScribeRenderAudience.Client;
 }
 
 /// <summary>Ancla de categoría para el <see cref="ILogger{T}"/> del consumer (evita un logger genérico).</summary>

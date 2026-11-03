@@ -201,7 +201,7 @@ public static class NotificationsEmailSendRequestedConsumer
         // From ya es el de la oficina y la consulta sería trabajo tirado en cada envío.
         var onBehalfOf =
             resolveResult.EffectiveScope == ProviderScope.System
-                ? (await tenantDirectory.FindAsync(evt.TenantId, ct))?.Name
+                ? (await tenantDirectory.FindAsync(evt.TenantId, ct))?.SenderName
                 : null;
 
         var message = await QueueAndPersistAsync(evt, resolveResult, onBehalfOf, sentMessages, unitOfWork, ct);
@@ -270,10 +270,10 @@ public static class NotificationsEmailSendRequestedConsumer
         }
 
         // La proyeccion del buzon no guarda nombre, solo la direccion: el From salia pelado. El nombre
-        // de la oficina es el del directorio, el mismo que el carril SMTP ya usa.
+        // de la oficina (comercial si lo tiene) es el del directorio, el mismo que el carril SMTP ya usa.
         var provider = resolveResult.Provider! with
         {
-            FromDisplayName = (await tenantDirectory.FindAsync(evt.TenantId, ct))?.Name,
+            FromDisplayName = (await tenantDirectory.FindAsync(evt.TenantId, ct))?.SenderName,
         };
 
         var message = await QueueAndPersistMailboxAsync(evt, provider, sentMessages, unitOfWork, ct);
@@ -921,7 +921,7 @@ public static class NotificationsEmailSendRequestedConsumer
             return new FallbackResult(false, null);
 
         var system = resolved.Provider!;
-        var onBehalfOf = (await tenantDirectory.FindAsync(evt.TenantId, ct))?.Name;
+        var onBehalfOf = (await tenantDirectory.FindAsync(evt.TenantId, ct))?.SenderName;
         var moved = message.FallBackToSystemProvider(
             mailboxFailureReason,
             system.ProviderCode,

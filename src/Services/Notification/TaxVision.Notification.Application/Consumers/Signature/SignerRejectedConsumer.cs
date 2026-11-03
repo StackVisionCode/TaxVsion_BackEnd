@@ -43,6 +43,7 @@ public static class SignerRejectedConsumer
                             ["full_name"] = signer.FullName,
                             ["language"] = signer.Language,
                         },
+                        ScribeRenderAudience.Client,
                         ct
                     )
                 ).EnsureRendered("sig.signer_rejected.v1");

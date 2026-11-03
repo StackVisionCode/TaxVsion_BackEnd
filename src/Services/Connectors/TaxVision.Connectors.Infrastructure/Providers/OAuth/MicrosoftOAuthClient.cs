@@ -19,7 +19,11 @@ public sealed class MicrosoftOAuthClient(
     public string ConfiguredScope => options.Value.Scope;
     public string RedirectUri => options.Value.RedirectUri;
 
-    public Task<OAuthTokenGrant> RefreshAccessTokenAsync(string refreshToken, CancellationToken ct = default)
+    public Task<OAuthTokenGrant> RefreshAccessTokenAsync(
+        string refreshToken,
+        string grantedScope,
+        CancellationToken ct = default
+    )
     {
         var config = options.Value;
         return SendTokenRequestAsync(
@@ -29,7 +33,7 @@ public sealed class MicrosoftOAuthClient(
                 ["client_secret"] = config.ClientSecret,
                 ["refresh_token"] = refreshToken,
                 ["grant_type"] = "refresh_token",
-                ["scope"] = config.Scope,
+                ["scope"] = grantedScope,
             },
             ct
         );

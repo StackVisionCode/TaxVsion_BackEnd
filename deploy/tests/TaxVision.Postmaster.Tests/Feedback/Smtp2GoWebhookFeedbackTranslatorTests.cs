@@ -67,6 +67,17 @@ public sealed class Smtp2GoWebhookFeedbackTranslatorTests
     }
 
     [Fact]
+    public void Translate_reads_the_status_code_from_the_server_response()
+    {
+        var item = Assert.Single(Translator.Translate(Event("bounce", "hard")).Value);
+
+        Assert.Equal("5.1.1", item.Feedback.StatusCode?.ToString());
+        Assert.Equal(DeliveryFailureCategory.InvalidAddress, item.Feedback.FailureCategory);
+        // El webhook no deja nada en un buzón.
+        Assert.Null(item.Report);
+    }
+
+    [Fact]
     public void Translate_carries_the_three_correlation_ids_and_the_diagnostic()
     {
         var item = Assert.Single(Translator.Translate(Event("bounce", "hard")).Value);

@@ -19,8 +19,8 @@ namespace TaxVision.Tenant.Application.Brands.Consumers;
 /// con ESE FileId (un upload más nuevo no se toca).
 ///
 /// <para>El upload pisó en la misma fila el logo anterior, así que tras soltarlo Tenant queda sin logo
-/// en esa superficie. Si era el logo del CRM se publica TenantLogoRemoved (mismo camino que el delete)
-/// para que Scribe/Documents no sigan mostrando un logo que Tenant ya no tiene.</para>
+/// en esa superficie. Si era un logo (CRM o Portal) se publica TenantLogoRemoved con su superficie
+/// (mismo camino que el delete) para que nadie siga mostrando un logo que Tenant ya no tiene.</para>
 /// </summary>
 public static class TenantBrandAssetSaveRejectedConsumer
 {
@@ -85,6 +85,6 @@ public static class TenantBrandAssetSaveRejectedConsumer
 
         await unitOfWork.SaveChangesAsync(ct);
         await BrandCommandSupport.InvalidateAsync(cache, msg.TenantId, brand.Surface, ct);
-        await BrandLogoEvents.PublishRemovedIfCrmLogoAsync(bus, correlation, msg.TenantId, brand.Surface, key);
+        await BrandLogoEvents.PublishRemovedIfLogoAsync(bus, correlation, msg.TenantId, brand.Surface, key);
     }
 }

@@ -93,7 +93,7 @@ public static class DiscoverLoginHandler
             );
 
         var email = command.Email.Trim().ToLowerInvariant();
-        var matches = await AuthenticateAcrossOfficesAsync(
+        var (matches, platformAdminMatched) = await AuthenticateAcrossOfficesAsync(
             email,
             command.Password,
             command.AccountKind,
@@ -108,9 +108,19 @@ public static class DiscoverLoginHandler
             ct
         );
 
-        // 2. Sin coincidencias: fallo por IP + genérico. No se descuenta lockout por-cuenta (ver helper).
+        // 2. Sin coincidencias: fallo por IP + genérico. No se descuenta lockout por-cuenta (ver helper). Si
+        //    el password solo calzó en una cuenta PlatformAdmin la respuesta es idéntica (no confirma ni la
+        //    cuenta ni la clave); el motivo real queda solo en la auditoría.
         if (matches.Count == 0)
-            return await FailAsync(throttler, audit, request, correlation, unitOfWork, ct);
+            return await FailAsync(
+                throttler,
+                audit,
+                request,
+                correlation,
+                unitOfWork,
+                platformAdminMatched ? "central_platform_admin" : "central_no_match",
+                ct
+            );
 
         // 3. Optimización: una sola oficina que no pide código (sin MFA, o MFA sin método enrolado)
         //    → el vale viaja directo, arrastrando el flag de "debe enrolar" si aplica.
@@ -169,7 +179,7 @@ public static class DiscoverLoginHandler
     /// puede tener distinta clave en cada oficina, hacerlo bloquearía oficinas ajenas al usar la clave
     /// de otra. El freno de fuerza bruta acá es el throttle por IP.
     /// </summary>
-    private static async Task<List<Match>> AuthenticateAcrossOfficesAsync(
+    private static async Task<(List<Match> Matches, bool PlatformAdminMatched)> AuthenticateAcrossOfficesAsync(
         string email,
         string password,
         UserAccountKind? accountKind,
@@ -186,6 +196,7 @@ public static class DiscoverLoginHandler
     {
         var now = DateTime.UtcNow;
         var matches = new List<Match>();
+        var platformAdminMatched = false;
 
         // Dispositivo de confianza: se resuelve UNA vez, no por oficina. El token identifica al
         // aparato y a un usuario concreto, así que solo exime del código a ESE usuario — tener el
@@ -204,6 +215,14 @@ public static class DiscoverLoginHandler
                 continue;
             if (!hasher.Verify(password, user.PasswordHash))
                 continue;
+
+            // El PlatformAdmin no entra por el login central: se descarta ANTES del MFA (antes se le pedía
+            // el código y terminaba dentro del CRM de la oficina de plataforma).
+            if (!CentralLoginActorPolicy.IsAllowed(user, surface))
+            {
+                platformAdminMatched = true;
+                continue;
+            }
 
             var tenant = await tenants.GetByIdAsync(tenantId, ct);
             if (tenant is null || !tenant.IsActive)
@@ -240,7 +259,7 @@ public static class DiscoverLoginHandler
             );
         }
 
-        return matches;
+        return (matches, platformAdminMatched);
     }
 
     private static async Task<Result<DiscoverLoginResponse>> FailAsync(
@@ -249,6 +268,7 @@ public static class DiscoverLoginHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        string reason,
         CancellationToken ct
     )
     {
@@ -262,7 +282,7 @@ public static class DiscoverLoginHandler
                 request.IpAddress,
                 request.UserAgent,
                 correlation.CorrelationId,
-                detailsJson: """{"reason":"central_no_match"}"""
+                detailsJson: $$"""{"reason":"{{reason}}"}"""
             ),
             ct
         );

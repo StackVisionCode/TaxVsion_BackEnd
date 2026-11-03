@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -35,7 +36,7 @@ public sealed class ConnectorsDeliveryReportDetectedConsumerTests
         );
 
     /// <summary>Enviado por el buzón (Graph): el Message-ID que quedó no es el nuestro.</summary>
-    private static async Task<SentMessage> SentThroughMailboxAsync(PostmasterDbContext db)
+    private static async Task<SentMessage> SentThroughMailboxAsync(PostmasterDbContext db, Guid? draftId = null)
     {
         var message = SentMessage
             .Queue(
@@ -51,6 +52,7 @@ public sealed class ConnectorsDeliveryReportDetectedConsumerTests
                 null,
                 null,
                 SentAt,
+                correspondenceDraftId: draftId,
                 deliveryLane: DeliveryLane.TenantMailbox
             )
             .Value;
@@ -63,7 +65,11 @@ public sealed class ConnectorsDeliveryReportDetectedConsumerTests
         return message;
     }
 
-    private static ConnectorsDeliveryReportDetectedIntegrationEvent Report(Guid tenantId) =>
+    private static ConnectorsDeliveryReportDetectedIntegrationEvent Report(
+        Guid tenantId,
+        string statusCode = "5.1.1",
+        string diagnostic = "550 5.1.1 user unknown"
+    ) =>
         new()
         {
             TenantId = tenantId,
@@ -73,12 +79,16 @@ public sealed class ConnectorsDeliveryReportDetectedConsumerTests
             OriginalInternetMessageId = "AM6P@outlook.com",
             Recipient = Recipient,
             Action = "failed",
-            StatusCode = "5.1.1",
-            DiagnosticSnippet = "550 5.1.1 user unknown",
+            StatusCode = statusCode,
+            DiagnosticSnippet = diagnostic,
             ReportedAtUtc = SentAt.AddMinutes(2),
         };
 
-    private static Task HandleAsync(PostmasterDbContext db, ConnectorsDeliveryReportDetectedIntegrationEvent evt) =>
+    private static Task HandleAsync(
+        PostmasterDbContext db,
+        ConnectorsDeliveryReportDetectedIntegrationEvent evt,
+        FakeMessageBus? bus = null
+    ) =>
         ConnectorsDeliveryReportDetectedConsumer.Handle(
             evt,
             new DeliveryFeedbackCapabilities([new DsnFeedbackTranslator()], []),
@@ -87,7 +97,7 @@ public sealed class ConnectorsDeliveryReportDetectedConsumerTests
             new UnmatchedDeliveryFeedbackRepository(db),
             new SuppressionListRepository(db),
             db,
-            new FakeMessageBus(),
+            bus ?? new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
             CancellationToken.None
@@ -135,5 +145,43 @@ public sealed class ConnectorsDeliveryReportDetectedConsumerTests
         Assert.Equal(DeliveryOutcome.Accepted, LoadRecipient(db, message.Id).Outcome);
         Assert.Empty(db.SuppressionListEntries);
         Assert.Single(db.UnmatchedDeliveryFeedback);
+    }
+
+    [Fact]
+    public async Task A_bounce_of_an_email_from_the_CRM_reaches_Correspondence_with_the_report_location()
+    {
+        await using var db = CreateContext();
+        var draftId = Guid.NewGuid();
+        var message = await SentThroughMailboxAsync(db, draftId);
+        var bus = new FakeMessageBus();
+
+        await HandleAsync(db, Report(message.TenantId), bus);
+        // El mismo aviso leído otra vez no se vuelve a publicar.
+        await HandleAsync(db, Report(message.TenantId), bus);
+
+        var evt = Assert.IsType<PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(draftId, evt.CorrespondenceDraftId);
+        Assert.Equal(CorrespondenceDeliveryOutcomes.NotDelivered, evt.Outcome);
+        Assert.Equal(DeliveryFailureCategories.InvalidAddress, evt.Category);
+        Assert.Equal("5.1.1", evt.StatusCode);
+        Assert.True(evt.Suppressed);
+        Assert.Equal(MailboxAccountId, evt.ReportAccountId);
+        Assert.Equal("report-1", evt.ReportProviderMessageId);
+    }
+
+    [Fact]
+    public async Task A_full_mailbox_report_is_temporary_and_does_not_block_the_address()
+    {
+        await using var db = CreateContext();
+        var message = await SentThroughMailboxAsync(db, Guid.NewGuid());
+        var bus = new FakeMessageBus();
+
+        await HandleAsync(db, Report(message.TenantId, "5.2.2", "552 5.2.2 mailbox full"), bus);
+
+        Assert.Equal(DeliveryOutcome.SoftBounced, LoadRecipient(db, message.Id).Outcome);
+        Assert.Empty(db.SuppressionListEntries);
+        var evt = Assert.IsType<PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(DeliveryFailureCategories.MailboxFull, evt.Category);
+        Assert.False(evt.Suppressed);
     }
 }

@@ -4,11 +4,15 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using TaxVision.Scribe.Application.Abstractions;
+using TaxVision.Scribe.Application.Rendering;
 using TaxVision.Scribe.Domain.Projections;
 
 namespace TaxVision.Scribe.Application.Projections;
 
-/// <summary>Soft-delete de TenantLogoRef ante un TenantLogoRemovedIntegrationEvent. Invalida el L1 del logo del tenant.</summary>
+/// <summary>
+/// Soft-delete del TenantLogoRef de UNA superficie ante un TenantLogoRemovedIntegrationEvent; la otra
+/// superficie queda intacta. Un retiro más viejo que el logo proyectado se ignora. Invalida el L1.
+/// </summary>
 public static class TenantLogoRemovedConsumer
 {
     public static async Task Handle(
@@ -24,21 +28,35 @@ public static class TenantLogoRemovedConsumer
         var correlationId = ResolveCorrelationId(evt);
         using (correlation.Push(correlationId))
         {
-            var existing = await repository.GetByTenantIdAsync(evt.TenantId, ct);
-            if (existing is null)
+            if (!TenantLogoSurfaces.TryParse(evt.Surface, out var surface))
             {
-                logger.LogInformation(
-                    "TenantLogoRemoved skipped: no TenantLogoRef for tenant {TenantId}.",
-                    evt.TenantId
+                logger.LogWarning(
+                    "TenantLogoRemoved ignored for tenant {TenantId}: unknown surface '{Surface}'.",
+                    evt.TenantId,
+                    evt.Surface
                 );
                 return;
             }
 
-            existing.MarkRemoved(evt.RemovedAtUtc);
-            await unitOfWork.SaveChangesAsync(ct);
-            l1Cache.Remove($"logo:{evt.TenantId}");
+            var existing = await repository.GetAsync(evt.TenantId, surface, ct);
+            if (existing is null || !existing.MarkRemoved(evt.RemovedAtUtc))
+            {
+                logger.LogInformation(
+                    "TenantLogoRemoved skipped for tenant {TenantId} {Surface}: no logo or a newer one is projected.",
+                    evt.TenantId,
+                    surface
+                );
+                return;
+            }
 
-            logger.LogInformation("TenantLogoRef soft-deleted for tenant {TenantId}.", evt.TenantId);
+            await unitOfWork.SaveChangesAsync(ct);
+            LogoCacheKeys.ForgetTenant(l1Cache, evt.TenantId);
+
+            logger.LogInformation(
+                "TenantLogoRef soft-deleted for tenant {TenantId} surface {Surface}.",
+                evt.TenantId,
+                surface
+            );
         }
     }
 

@@ -3,10 +3,11 @@ using BuildingBlocks.Domain;
 namespace TaxVision.Scribe.Domain.Projections;
 
 /// <summary>
-/// Proyección local del logo de un tenant, alimentada por TenantLogoUpdatedIntegrationEvent /
-/// TenantLogoRemovedIntegrationEvent (Tenant es la fuente de verdad). PK simple TenantId — es
-/// un 1:1, no tiene sentido un Id sintético. Soft-delete vía DeletedAtUtc: se conserva la fila
-/// para no perder historial, LogoResolver la trata como "sin logo" si DeletedAtUtc no es null.
+/// Proyección local del logo de un tenant para UNA superficie (CRM o Portal), alimentada por
+/// TenantLogoUpdatedIntegrationEvent / TenantLogoRemovedIntegrationEvent (Tenant es la fuente de
+/// verdad). PK (TenantId, Surface): el retiro de una superficie no toca la otra. Soft-delete vía
+/// DeletedAtUtc: LogoResolver la trata como "sin logo" si DeletedAtUtc no es null. Un evento más viejo
+/// que lo ya proyectado se ignora (llegan fuera de orden).
 /// </summary>
 public sealed class TenantLogoRef : ITenantOwned
 {
@@ -21,6 +22,7 @@ public sealed class TenantLogoRef : ITenantOwned
     public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     public Guid TenantId { get; private set; }
+    public TenantLogoSurface Surface { get; private set; }
     public Guid CloudStorageFileId { get; private set; }
     public string ContentType { get; private set; } = default!;
     public long SizeBytes { get; private set; }
@@ -31,6 +33,7 @@ public sealed class TenantLogoRef : ITenantOwned
 
     public static TenantLogoRef Create(
         Guid tenantId,
+        TenantLogoSurface surface,
         Guid cloudStorageFileId,
         string contentType,
         long sizeBytes,
@@ -41,6 +44,7 @@ public sealed class TenantLogoRef : ITenantOwned
         new()
         {
             TenantId = tenantId,
+            Surface = surface,
             CloudStorageFileId = cloudStorageFileId,
             ContentType = contentType,
             SizeBytes = sizeBytes,
@@ -49,7 +53,8 @@ public sealed class TenantLogoRef : ITenantOwned
             UpdatedAtUtc = updatedAtUtc,
         };
 
-    public void Update(
+    /// <summary>Aplica el logo confirmado. Devuelve false si el evento es más viejo que lo proyectado.</summary>
+    public bool Update(
         Guid cloudStorageFileId,
         string contentType,
         long sizeBytes,
@@ -58,6 +63,9 @@ public sealed class TenantLogoRef : ITenantOwned
         DateTime updatedAtUtc
     )
     {
+        if (updatedAtUtc < LastChangeUtc)
+            return false;
+
         CloudStorageFileId = cloudStorageFileId;
         ContentType = contentType;
         SizeBytes = sizeBytes;
@@ -65,9 +73,21 @@ public sealed class TenantLogoRef : ITenantOwned
         Height = height;
         UpdatedAtUtc = updatedAtUtc;
         DeletedAtUtc = null;
+        return true;
     }
 
-    public void MarkRemoved(DateTime removedAtUtc) => DeletedAtUtc = removedAtUtc;
+    /// <summary>Marca el logo como retirado. Devuelve false si un logo más nuevo ya lo reemplazó.</summary>
+    public bool MarkRemoved(DateTime removedAtUtc)
+    {
+        if (removedAtUtc < UpdatedAtUtc)
+            return false;
+
+        DeletedAtUtc = removedAtUtc;
+        return true;
+    }
 
     public bool IsActive => DeletedAtUtc is null;
+
+    private DateTime LastChangeUtc =>
+        DeletedAtUtc is { } deletedAt && deletedAt > UpdatedAtUtc ? deletedAt : UpdatedAtUtc;
 }

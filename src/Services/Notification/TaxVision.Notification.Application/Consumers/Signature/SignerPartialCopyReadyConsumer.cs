@@ -59,6 +59,7 @@ public static class SignerPartialCopyReadyConsumer
                         // F7 — si el preparador no manda el sealed, el template no debe prometerlo.
                         ["send_sealed_to_signers"] = evt.SendSealedToSigners,
                     },
+                    ScribeRenderAudience.Client,
                     ct
                 )
             ).EnsureRendered(SignatureTemplateCatalog.PartialCopyKey);

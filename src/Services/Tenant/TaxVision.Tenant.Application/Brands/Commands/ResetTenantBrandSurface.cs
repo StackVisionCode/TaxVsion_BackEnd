@@ -13,7 +13,7 @@ namespace TaxVision.Tenant.Application.Brands.Commands;
 /// <summary>
 /// Mantenimiento completo: vuelve una superficie entera al default del sistema — quita todos los
 /// colores y todos los assets (borrando cada archivo de CloudStorage). Idempotente. Si quita el logo
-/// del CRM, avisa a Scribe (mismo contrato que el modelo viejo).
+/// (CRM o Portal), publica TenantLogoRemoved con su superficie.
 /// </summary>
 public sealed record ResetTenantBrandSurfaceCommand(Guid TenantId, BrandSurface Surface);
 
@@ -51,7 +51,7 @@ public static class ResetTenantBrandSurfaceHandler
         await BrandCommandSupport.InvalidateAsync(cache, cmd.TenantId, cmd.Surface, ct);
 
         foreach (var asset in assets)
-            await BrandLogoEvents.PublishRemovedIfCrmLogoAsync(bus, correlation, cmd.TenantId, cmd.Surface, asset.Key);
+            await BrandLogoEvents.PublishRemovedIfLogoAsync(bus, correlation, cmd.TenantId, cmd.Surface, asset.Key);
 
         return Result.Success();
     }

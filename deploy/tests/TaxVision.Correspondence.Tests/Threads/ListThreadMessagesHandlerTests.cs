@@ -80,6 +80,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -103,6 +104,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -122,6 +124,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -161,6 +164,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -201,6 +205,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -242,6 +247,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -289,6 +295,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
         var page2 = await ListThreadMessagesHandler.Handle(
@@ -296,6 +303,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
         var page3 = await ListThreadMessagesHandler.Handle(
@@ -303,6 +311,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 

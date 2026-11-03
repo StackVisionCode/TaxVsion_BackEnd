@@ -60,7 +60,10 @@ public static class GenerateInvoicePdfHandler
                     ToDollars(a.Amount.AmountCents)
                 ))
                 .ToList(),
-            SettlementType: invoice.SettlementType?.ToString()
+            SettlementType: invoice.SettlementType?.ToString(),
+            PaymentTerms: invoice.PaymentTerms?.Label(),
+            PaymentInstructions: NullIfBlank(invoice.PaymentInstructions),
+            InvoiceFooter: NullIfBlank(invoice.InvoiceFooter)
         );
 
         // Idempotencia versionada (punto 8 del review): incluye el ESTADO, la versión y el payable — así
@@ -90,13 +93,16 @@ public static class GenerateInvoicePdfHandler
     private static InvoiceDocParty MapIssuer(IssuerSnapshot? issuer) =>
         issuer is null
             ? new InvoiceDocParty("—", string.Empty, null)
-            : new InvoiceDocParty(issuer.Name, issuer.TaxId ?? string.Empty, FormatAddress(issuer.Address));
+            : new InvoiceDocParty(
+                issuer.Name,
+                issuer.TaxId ?? string.Empty,
+                FormatAddress(issuer.Address),
+                NullIfBlank(issuer.Phone),
+                NullIfBlank(issuer.Email),
+                NullIfBlank(issuer.Website)
+            );
 
-    private static string? FormatAddress(Address? address)
-    {
-        if (address is null)
-            return null;
-        var line2 = string.IsNullOrWhiteSpace(address.Line2) ? string.Empty : $", {address.Line2}";
-        return $"{address.Line1}{line2}, {address.City}, {address.State} {address.Zip}, {address.Country}";
-    }
+    private static string? FormatAddress(Address? address) => address?.ToSingleLine();
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

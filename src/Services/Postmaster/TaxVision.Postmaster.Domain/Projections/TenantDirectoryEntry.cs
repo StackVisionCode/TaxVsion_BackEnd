@@ -14,9 +14,9 @@
 /// cae, no sale ni un email. El único momento en que Postmaster sí llama a Tenant es el backfill de
 /// arranque (<c>TenantDirectoryBackfillService</c>), fuera del camino de envío.</para>
 ///
-/// <para>No hay forma de renombrar un tenant en el producto (el aggregate solo expone
-/// <c>Suspend</c>/<c>ChangeStatus</c>), así que no se consume ningún evento de actualización: sería
-/// cablear un camino para algo que no puede pasar. El día que exista el renombrado, este es el sitio.</para>
+/// <para>El renombre llega por <c>TenantUpdatedIntegrationEvent</c> (<see cref="ApplyTenantUpdate"/>),
+/// ordenado por el <c>UpdatedAtUtc</c> de Tenant. El nombre comercial llega por
+/// <c>TenantProfileChangedIntegrationEvent</c> (<see cref="ApplyProfile"/>), ordenado por su versión.</para>
 /// </summary>
 public sealed class TenantDirectoryEntry
 {
@@ -28,6 +28,18 @@ public sealed class TenantDirectoryEntry
     public string Name { get; private set; } = default!;
     public string SubDomain { get; private set; } = default!;
     public DateTime UpdatedAtUtc { get; private set; }
+
+    /// <summary>Sello <c>UpdatedAtUtc</c> de Tenant del último renombre aplicado; null = nombre del alta.</summary>
+    public DateTime? SourceUpdatedAtUtc { get; private set; }
+
+    /// <summary>Nombre comercial (DBA) del perfil de la oficina; null = se usa <see cref="Name"/>.</summary>
+    public string? DisplayName { get; private set; }
+
+    /// <summary>Versión del último perfil aplicado; 0 = nunca llegó. Independiente del renombre.</summary>
+    public long ProfileVersion { get; private set; }
+
+    /// <summary>Nombre de la oficina en el From de sus correos: lo que ve el cliente.</summary>
+    public string SenderName => DisplayName ?? Name;
 
     public static TenantDirectoryEntry Create(Guid tenantId, string name, string subDomain, DateTime nowUtc)
     {
@@ -45,13 +57,44 @@ public sealed class TenantDirectoryEntry
         };
     }
 
+    /// <summary>Alta reentregada, backfill o cambio de subdominio. El nombre no pisa un renombre ya
+    /// aplicado por <see cref="ApplyTenantUpdate"/>.</summary>
     public void Rename(string name, string subDomain, DateTime nowUtc)
     {
         if (string.IsNullOrWhiteSpace(name))
             return;
 
-        Name = name.Trim();
+        if (SourceUpdatedAtUtc is null)
+            Name = name.Trim();
         SubDomain = subDomain?.Trim().ToLowerInvariant() ?? SubDomain;
         UpdatedAtUtc = nowUtc;
+    }
+
+    /// <summary>Renombre publicado por Tenant. Ignora un evento más viejo que el aplicado (uno igual se
+    /// reaplica: idempotente). Devuelve <c>true</c> si se aplicó.</summary>
+    public bool ApplyTenantUpdate(string name, DateTime sourceUpdatedAtUtc, DateTime nowUtc)
+    {
+        if (SourceUpdatedAtUtc is { } applied && sourceUpdatedAtUtc < applied)
+            return false;
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        Name = name.Trim();
+        SourceUpdatedAtUtc = sourceUpdatedAtUtc;
+        UpdatedAtUtc = nowUtc;
+        return true;
+    }
+
+    /// <summary>Perfil publicado por Tenant. Ignora una versión menor o igual a la aplicada
+    /// (idempotente). Un nombre vacío queda en null. Devuelve <c>true</c> si se aplicó.</summary>
+    public bool ApplyProfile(long version, string? displayName, DateTime nowUtc)
+    {
+        if (version <= ProfileVersion)
+            return false;
+
+        DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim();
+        ProfileVersion = version;
+        UpdatedAtUtc = nowUtc;
+        return true;
     }
 }

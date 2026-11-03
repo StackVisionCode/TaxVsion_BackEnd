@@ -55,7 +55,8 @@ public sealed class SignatureLimitsResolver(
             false,
             channels.HasFlag(TenantSignatureSettings.DefaultPreselectedChannel)
                 ? TenantSignatureSettings.DefaultPreselectedChannel
-                : (VerificationChannel)((int)channels & -(int)channels) // el canal más bajo habilitado
+                : (VerificationChannel)((int)channels & -(int)channels), // el canal más bajo habilitado
+            RetentionYearsSource.Signature
         );
     }
 }

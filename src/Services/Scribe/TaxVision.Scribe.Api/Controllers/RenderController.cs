@@ -32,7 +32,9 @@ public sealed class RenderController(IMessageBus bus) : ControllerBase
         string? Locale,
         IReadOnlyDictionary<string, object?> Variables,
         LogoScope LogoScope = LogoScope.System,
-        TemplateChannel Channel = TemplateChannel.Email
+        TemplateChannel Channel = TemplateChannel.Email,
+        // Quién lee el correo: Client usa el logo del portal de la oficina. Ausente = Staff.
+        RenderAudience Audience = RenderAudience.Staff
     );
 
     [HttpPost]
@@ -47,7 +49,8 @@ public sealed class RenderController(IMessageBus bus) : ControllerBase
             request.Locale,
             request.Variables,
             request.LogoScope,
-            request.Channel
+            request.Channel,
+            request.Audience
         );
         var result = await bus.InvokeAsync<Result<RenderedContent>>(query, ct);
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

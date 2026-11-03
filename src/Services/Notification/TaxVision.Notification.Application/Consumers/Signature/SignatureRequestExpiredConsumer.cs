@@ -54,6 +54,7 @@ public static class SignatureRequestExpiredConsumer
                             ["expired_at"] = evt.ExpiredAtUtc.ToString("yyyy-MM-dd HH:mm"),
                             ["language"] = signer.Language,
                         },
+                        ScribeRenderAudience.Client,
                         ct
                     )
                 ).EnsureRendered("sig.request_expired.v1");

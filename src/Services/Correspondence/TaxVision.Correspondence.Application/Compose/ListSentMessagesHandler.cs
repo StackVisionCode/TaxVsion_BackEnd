@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Delivery;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
 
@@ -25,6 +26,7 @@ public static class ListSentMessagesHandler
             query.Page,
             query.Size,
             query.VisibleAccountIds,
+            query.Filter,
             ct
         );
 
@@ -44,6 +46,8 @@ public static class ListSentMessagesHandler
             draft.UpdatedAtUtc,
             draft.Attachments.Count > 0,
             draft.Attachments.Count,
-            draft.CustomerId
+            draft.CustomerId,
+            DeliveryStatusSummary.Overall(draft),
+            DeliveryStatusSummary.Recipients(draft)
         );
 }

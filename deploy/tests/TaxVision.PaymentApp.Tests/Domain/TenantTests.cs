@@ -97,6 +97,36 @@ public sealed class TenantTests
         Assert.True(tenant.CanOperate());
     }
 
+    [Fact]
+    public void A_newer_profile_is_applied_trimmed_and_blanks_become_null()
+    {
+        var tenant = CreateCustomerTenant();
+
+        var applied = tenant.ApplyProfile(3, "  Acme Tax LLC ", "   ", " 1 Main St, Miami, FL 33101 ", DateTime.UtcNow);
+
+        Assert.True(applied);
+        Assert.Equal("Acme Tax LLC", tenant.BillingLegalName);
+        Assert.Null(tenant.BillingEin);
+        Assert.Equal("1 Main St, Miami, FL 33101", tenant.BillingAddress);
+        Assert.Equal(3, tenant.ProfileVersion);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void An_older_or_equal_profile_version_is_ignored(long version)
+    {
+        var tenant = CreateCustomerTenant();
+        tenant.ApplyProfile(3, "Acme Tax LLC", "12-3456789", "1 Main St, Miami, FL 33101", DateTime.UtcNow);
+
+        var applied = tenant.ApplyProfile(version, "Other LLC", null, null, DateTime.UtcNow);
+
+        Assert.False(applied);
+        Assert.Equal("Acme Tax LLC", tenant.BillingLegalName);
+        Assert.Equal("12-3456789", tenant.BillingEin);
+        Assert.Equal(3, tenant.ProfileVersion);
+    }
+
     private static Tenant CreateCustomerTenant() =>
         Tenant
             .Register(Guid.NewGuid(), "Acme Tax", "acme", TenantKind.Customer, "America/New_York", DateTime.UtcNow)

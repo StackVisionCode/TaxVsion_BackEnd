@@ -176,6 +176,50 @@ public class CompleteOAuthConnectHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ActiveConnectionMissingNewScopes_WidensGrantWithoutRearmingWatch()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "office@gmail.com";
+        fixture.ProviderClient.ConfiguredScope = "Mail.Read Mail.ReadWrite";
+        // Si se rearmara el watch, fallaría: la cuenta ya está activa y solo se amplían permisos.
+        fixture.WatchClient.ThrowOnSetup = new WatchProviderException("should not be called");
+
+        var account = TenantEmailAccount
+            .Create(tenantId, "office@gmail.com", ProviderCode.Gmail, Guid.NewGuid(), Now)
+            .Value;
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        fixture.AccountRepository.Accounts.Add(account);
+        var connection = OAuthConnection.Create(account.Id, ProviderCode.Gmail, "client-1", "Mail.Read", Now).Value;
+        var protector = new FakeEncryptedSecretProtector();
+        connection.AttachToken(
+            OAuthToken
+                .Create(connection.Id, protector.Protect("at"), protector.Protect("rt"), Now.AddHours(1), Now)
+                .Value
+        );
+        fixture.ConnectionRepository.Connections.Add(connection);
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(
+                tenantId,
+                ProviderCode.Gmail,
+                Guid.NewGuid(),
+                "auth-code",
+                "office@gmail.com"
+            )
+        );
+
+        Assert.True(result.IsSuccess);
+        var updated = Assert.Single(fixture.ConnectionRepository.Connections);
+        Assert.Equal(OAuthConnectionStatus.Active, updated.Status);
+        Assert.Equal("Mail.Read Mail.ReadWrite", updated.Scope);
+        Assert.Empty(updated.MissingScopes(fixture.ProviderClient.ConfiguredScope));
+        Assert.Equal(TenantEmailAccountStatus.Active, account.Status);
+    }
+
+    [Fact]
     public async Task Handle_SameEmailInAnotherTenant_CreatesSeparateAccountForThisTenant()
     {
         // Modelo (TenantId, Email) igual que Auth: la MISMA persona (mismo buzón) puede conectarlo en

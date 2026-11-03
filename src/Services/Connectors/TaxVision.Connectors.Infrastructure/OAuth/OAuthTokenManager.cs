@@ -121,7 +121,11 @@ public sealed class OAuthTokenManager(
                     try
                     {
                         return (
-                            await clientResult.Value.RefreshAccessTokenAsync(refreshTokenPlaintext, token),
+                            await clientResult.Value.RefreshAccessTokenAsync(
+                                refreshTokenPlaintext,
+                                connection.Scope,
+                                token
+                            ),
                             (OAuthProviderException?)null
                         );
                     }

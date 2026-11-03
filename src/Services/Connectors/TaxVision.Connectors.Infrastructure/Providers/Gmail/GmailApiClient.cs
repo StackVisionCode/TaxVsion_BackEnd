@@ -48,6 +48,7 @@ public sealed class GmailApiClient(
         Guid accountId,
         Guid tenantId,
         string? sinceCursor,
+        DateTime? firstSyncFromUtc = null,
         CancellationToken ct = default
     )
     {
@@ -164,7 +165,8 @@ public sealed class GmailApiClient(
             payload.Snippet ?? string.Empty,
             ParseInternalDate(payload.InternalDate),
             attachments,
-            AuthenticationResultsHeaderParser.Parse(Header("Authentication-Results"))
+            AuthenticationResultsHeaderParser.Parse(Header("Authentication-Results")),
+            payload.Payload?.MimeType
         );
     }
 

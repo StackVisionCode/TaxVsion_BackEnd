@@ -170,11 +170,6 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("_attachments")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("AttachmentsJson");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Status", "UpdatedAtUtc")
@@ -193,6 +188,47 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.ToTable("Drafts", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Correspondence.Domain.Compose.DraftAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("DraftId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Filename")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DraftId", "FileId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_DraftAttachments_DraftId_FileId_Unique");
+
+                    b.HasIndex("TenantId", "DraftId")
+                        .HasDatabaseName("IX_DraftAttachments_TenantId_DraftId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "DraftId"), new[] { "Filename" });
+
+                    b.ToTable("DraftAttachments", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Correspondence.Domain.Compose.DraftRecipient", b =>
                 {
                     b.Property<Guid>("Id")
@@ -202,6 +238,17 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("DeliveryCategory")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("DeliveryStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime?>("DeliveryUpdatedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("DisplayName")
                         .HasMaxLength(200)
@@ -225,6 +272,89 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.ToTable("DraftRecipients", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Correspondence.Domain.Delivery.DeliveryNotice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Diagnostic")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("DraftId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("EmailThreadId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime?>("ReadAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Recipient")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<Guid?>("ReportAccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReportProviderMessageId")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("SentMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StatusCode")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<bool>("Suppressed")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "EmailThreadId")
+                        .HasDatabaseName("IX_DeliveryNotices_TenantId_EmailThreadId_Unread")
+                        .HasFilter("[IsRead] = 0");
+
+                    b.HasIndex("TenantId", "EmailThreadId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_DeliveryNotices_TenantId_EmailThreadId_OccurredAtUtc");
+
+                    b.HasIndex("TenantId", "SentMessageId", "Recipient", "Outcome")
+                        .IsUnique()
+                        .HasDatabaseName("IX_DeliveryNotices_TenantId_SentMessageId_Recipient_Outcome_Unique");
+
+                    b.ToTable("DeliveryNotices", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Correspondence.Domain.Inbox.EmailThread", b =>
                 {
                     b.Property<Guid>("Id")
@@ -233,7 +363,7 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ArchivedAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("CustomerId")
+                    b.Property<Guid?>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("FirstMessageAtUtc")
@@ -445,6 +575,11 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_IncomingEmailAttachments_DownloadStatus");
 
                     b.HasIndex("IncomingEmailId");
+
+                    b.HasIndex("TenantId", "IncomingEmailId")
+                        .HasDatabaseName("IX_IncomingEmailAttachments_TenantId_IncomingEmailId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "IncomingEmailId"), new[] { "Filename" });
 
                     b.ToTable("IncomingEmailAttachments", (string)null);
                 });
@@ -686,6 +821,15 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Correspondence.Domain.Compose.DraftAttachment", b =>
+                {
+                    b.HasOne("TaxVision.Correspondence.Domain.Compose.Draft", null)
+                        .WithMany("Attachments")
+                        .HasForeignKey("DraftId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Correspondence.Domain.Compose.DraftRecipient", b =>
                 {
                     b.HasOne("TaxVision.Correspondence.Domain.Compose.Draft", null)
@@ -752,6 +896,8 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Correspondence.Domain.Compose.Draft", b =>
                 {
+                    b.Navigation("Attachments");
+
                     b.Navigation("Recipients");
                 });
 

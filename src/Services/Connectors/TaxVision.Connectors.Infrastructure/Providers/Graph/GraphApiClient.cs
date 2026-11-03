@@ -1,4 +1,5 @@
-﻿using System.Net;
+using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -32,7 +33,7 @@ public sealed class GraphApiClient(
 {
     private const string BaseUrl = "https://graph.microsoft.com/v1.0/me";
 
-    /// <summary>D3 Compose §9/§11.2 — sendMail/reply son atómicos (sin id navegable para adjuntar después vía upload session), así que el total de adjuntos queda topeado acá en vez de migrar a createDraft→createUploadSession→send (fuera de alcance v1).</summary>
+    /// <summary>D3 Compose §9/§11.2 — los adjuntos viajan dentro del JSON del borrador (sin upload session), así que el total queda topeado acá en vez de migrar a createUploadSession (fuera de alcance v1).</summary>
     private const long GraphAttachmentSizeLimitBytes = 3 * 1024 * 1024;
     private const string InboxDeltaBaseUrl =
         BaseUrl
@@ -50,11 +51,13 @@ public sealed class GraphApiClient(
         Guid accountId,
         Guid tenantId,
         string? sinceCursor,
+        DateTime? firstSyncFromUtc = null,
         CancellationToken ct = default
     )
     {
         var messageIds = new List<string>();
-        var url = sinceCursor ?? InboxDeltaBaseUrl;
+        var startUrl = InitialDeltaUrl(firstSyncFromUtc);
+        var url = sinceCursor ?? startUrl;
         string? finalDeltaLink = null;
         var hasMore = false;
 
@@ -66,7 +69,7 @@ public sealed class GraphApiClient(
                 // 410: el estado del delta venció en Microsoft. Se reinicia desde cero; Correspondence
                 // descarta los que ya tenía por InternetMessageId.
                 logger.LogWarning("Graph delta state expired for account {AccountId}; restarting delta.", accountId);
-                url = InboxDeltaBaseUrl;
+                url = startUrl;
                 sinceCursor = null;
                 continue;
             }
@@ -96,6 +99,13 @@ public sealed class GraphApiClient(
         var nextCursor = finalDeltaLink ?? (hasMore ? url : sinceCursor);
         return new HistoryPage(messageIds, nextCursor, hasMore);
     }
+
+    // El filtro queda codificado en los nextLink/deltaLink siguientes (único $filter que admite el delta de mensajes).
+    private static string InitialDeltaUrl(DateTime? firstSyncFromUtc) =>
+        firstSyncFromUtc is { } from
+            // Las fechas del dominio ya son UTC (EF las lee como Unspecified: no convertir de zona).
+            ? $"{InboxDeltaBaseUrl}&$filter=receivedDateTime+ge+{from.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)}"
+            : InboxDeltaBaseUrl;
 
     public async Task<RawMessage> GetMessageAsync(
         Guid accountId,
@@ -225,12 +235,12 @@ public sealed class GraphApiClient(
     }
 
     /// <summary>
-    /// D3 §3.4/§6.2 — reply de un paso (<c>POST /me/messages/{id}/reply</c>, solo requiere
-    /// <c>Mail.Send</c>, Graph arma threading solo) cuando hay <c>ReplyToProviderMessageId</c>, si no
-    /// <c>POST /me/sendMail</c>. Ninguno de los dos devuelve el id del mensaje enviado (202 sin
-    /// cuerpo, D3 §11 — pendiente documentado) — a diferencia de Gmail. Nunca toca
-    /// <c>internetMessageHeaders</c> a mano en el reply: la doc de Microsoft advierte que romper eso
-    /// rompe el threading que <c>reply</c> ya arma.
+    /// Respuesta (hay <c>ReplyToProviderMessageId</c>): <c>createReply</c> → enviar el borrador; Graph arma
+    /// el hilo igual que con <c>/reply</c>. Correo nuevo: <c>POST /me/messages</c> → enviar. En los dos el
+    /// borrador devuelve su <c>internetMessageId</c>, que es el que citan los avisos de no entrega. Si el
+    /// token no tiene Mail.ReadWrite (403 al crear el borrador), envía en un paso (<c>/reply</c> o
+    /// <c>/sendMail</c>) sin id. Nunca toca <c>internetMessageHeaders</c> a mano en la respuesta: la doc
+    /// de Microsoft advierte que eso rompe el threading.
     /// </summary>
     public async Task<SendMessageResult> SendMessageAsync(
         Guid accountId,
@@ -258,37 +268,84 @@ public sealed class GraphApiClient(
             );
         }
 
-        if (!string.IsNullOrWhiteSpace(message.ReplyToProviderMessageId))
+        var isReply = !string.IsNullOrWhiteSpace(message.ReplyToProviderMessageId);
+
+        // Por borrador: es lo único que devuelve el internetMessageId con el que sale.
+        var draftResponse = isReply
+            ? await SendReplyRequestAsync(accountId, tenantId, message, "createReply", ct)
+            : await SendWriteRequestAsync(
+                accountId,
+                tenantId,
+                $"{BaseUrl}/messages",
+                JsonSerializer.Serialize(BuildDraftMessage(message), SendRequestJsonOptions),
+                null,
+                ct
+            );
+
+        if (draftResponse.StatusCode == HttpStatusCode.Forbidden)
         {
-            var (url, requestBody, extraHeaders) = BuildReplyRequest(message);
-            await EnsureSentAsync(await SendWriteRequestAsync(accountId, tenantId, url, requestBody, extraHeaders, ct));
-            ConnectorsMetrics.MessagesSent.Add(1, new KeyValuePair<string, object?>("provider", "Graph"));
-            // El reply de un paso devuelve 202 sin cuerpo: no hay id que leer.
-            return new SendMessageResult(ProviderMessageId: null, ProviderThreadId: null, DateTime.UtcNow);
+            // Crear borradores pide Mail.ReadWrite; un token con solo Mail.Send envía en un paso, sin id.
+            logger.LogWarning(
+                "Graph account {AccountId} cannot create drafts (HTTP 403); sending in one step without internetMessageId.",
+                accountId
+            );
+            return await SendInOneStepAsync(accountId, tenantId, message, isReply, ct);
         }
 
-        return await SendNewThroughDraftAsync(accountId, tenantId, message, ct);
+        return await SendDraftAsync(accountId, tenantId, draftResponse, ct);
     }
 
-    /// <summary>
-    /// sendMail no devuelve nada. Crear el borrador sí devuelve su internetMessageId, y es el que van a
-    /// citar los avisos de no entrega. Después se envía ese borrador.
-    /// </summary>
-    private async Task<SendMessageResult> SendNewThroughDraftAsync(
+    /// <summary><c>/reply</c> o <c>/sendMail</c>: 202 sin cuerpo, no hay id que leer.</summary>
+    private async Task<SendMessageResult> SendInOneStepAsync(
         Guid accountId,
         Guid tenantId,
         OutboundMessage message,
+        bool isReply,
         CancellationToken ct
     )
     {
-        var draftResponse = await SendWriteRequestAsync(
-            accountId,
-            tenantId,
-            $"{BaseUrl}/messages",
-            JsonSerializer.Serialize(BuildDraftMessage(message), SendRequestJsonOptions),
-            null,
-            ct
-        );
+        var response = isReply
+            ? await SendReplyRequestAsync(accountId, tenantId, message, "reply", ct)
+            : await SendWriteRequestAsync(
+                accountId,
+                tenantId,
+                $"{BaseUrl}/sendMail",
+                JsonSerializer.Serialize(
+                    new GraphSendMailRequest(BuildDraftMessage(message), SaveToSentItems: true),
+                    SendRequestJsonOptions
+                ),
+                null,
+                ct
+            );
+        await EnsureSentAsync(response);
+        ConnectorsMetrics.MessagesSent.Add(1, new KeyValuePair<string, object?>("provider", "Graph"));
+        return new SendMessageResult(ProviderMessageId: null, ProviderThreadId: null, DateTime.UtcNow);
+    }
+
+    /// <summary><paramref name="action"/>: "createReply" (borrador) o "reply" (un paso). Mismo cuerpo.</summary>
+    private async Task<HttpResponseMessage> SendReplyRequestAsync(
+        Guid accountId,
+        Guid tenantId,
+        OutboundMessage message,
+        string action,
+        CancellationToken ct
+    )
+    {
+        var (url, requestBody, extraHeaders) = BuildReplyRequest(message, action);
+        return await SendWriteRequestAsync(accountId, tenantId, url, requestBody, extraHeaders, ct);
+    }
+
+    /// <summary>
+    /// Lee el borrador recién creado (id, internetMessageId, conversationId) y lo envía. El
+    /// internetMessageId del borrador es el mismo con el que sale.
+    /// </summary>
+    private async Task<SendMessageResult> SendDraftAsync(
+        Guid accountId,
+        Guid tenantId,
+        HttpResponseMessage draftResponse,
+        CancellationToken ct
+    )
+    {
         await EnsureSentAsync(draftResponse);
         var draft = await draftResponse.Content.ReadFromJsonAsync<GraphCreatedMessage>(cancellationToken: ct);
         if (draft is null || string.IsNullOrWhiteSpace(draft.Id))
@@ -348,7 +405,8 @@ public sealed class GraphApiClient(
         );
 
     private static (string Url, string Body, IReadOnlyDictionary<string, string>? Headers) BuildReplyRequest(
-        OutboundMessage message
+        OutboundMessage message,
+        string action
     )
     {
         var payload = new GraphReplyRequest(
@@ -364,7 +422,7 @@ public sealed class GraphApiClient(
         // necesita renderizarse como HTML.
         var headers = new Dictionary<string, string> { ["Prefer"] = "outlook.body-content-type=\"html\"" };
         return (
-            $"{BaseUrl}/messages/{message.ReplyToProviderMessageId}/reply",
+            $"{BaseUrl}/messages/{message.ReplyToProviderMessageId}/{action}",
             JsonSerializer.Serialize(payload, SendRequestJsonOptions),
             headers
         );
@@ -729,6 +787,11 @@ public sealed class GraphApiClient(
         [property: JsonPropertyName("bccRecipients")] List<GraphRecipientRequest>? BccRecipients,
         [property: JsonPropertyName("replyTo")] List<GraphRecipientRequest>? ReplyTo,
         [property: JsonPropertyName("attachments")] List<GraphFileAttachmentRequest>? Attachments
+    );
+
+    private sealed record GraphSendMailRequest(
+        [property: JsonPropertyName("message")] GraphSendMailMessage Message,
+        [property: JsonPropertyName("saveToSentItems")] bool SaveToSentItems
     );
 
     private sealed record GraphReplyRequest(

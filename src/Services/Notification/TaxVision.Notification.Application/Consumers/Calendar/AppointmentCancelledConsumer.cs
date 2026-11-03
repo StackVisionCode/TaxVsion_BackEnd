@@ -62,33 +62,22 @@ public static class AppointmentCancelledConsumer
                 ct
             );
 
-            var render = (
-                await scribeClient.RenderAsync(
-                    TemplateKey,
-                    evt.TenantId,
-                    new Dictionary<string, object?>
-                    {
-                        ["scope"] = evt.Scope,
-                        ["reason"] = evt.Reason,
-                        ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
-                    },
-                    ct
-                )
-            ).EnsureRendered(TemplateKey);
-
-            foreach (var email in recipients)
-            {
-                await gateway.QueueEmailAsync(
-                    render.ToDispatchRequest(
-                        tenantId: evt.TenantId,
-                        to: email,
-                        templateKey: TemplateKey,
-                        relatedEventId: evt.EventId,
-                        correlationId: correlation.CorrelationId
-                    ),
-                    ct
-                );
-            }
+            await CalendarRecipients.QueueByAudienceAsync(
+                recipients,
+                evt.TenantId,
+                TemplateKey,
+                new Dictionary<string, object?>
+                {
+                    ["scope"] = evt.Scope,
+                    ["reason"] = evt.Reason,
+                    ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
+                },
+                scribeClient,
+                gateway,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
         }
     }
 }

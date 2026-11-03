@@ -173,6 +173,11 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<PostmasterEmailComplainedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<PostmasterEmailEngagementIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
+    // Rebotes y entregas de correos del CRM: Correspondence los muestra en la conversación.
+    options
+        .PublishMessage<PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
     // El consumer de notifications.email_send_requested.v1 se agrega en Fase 5.
     // La cola/binding se declara ya en Fase 1 para que exista en Rabbit desde el arranque.
     options

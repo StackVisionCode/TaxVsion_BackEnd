@@ -15,5 +15,11 @@ public sealed class TenantProfileRefConfiguration : IEntityTypeConfiguration<Ten
         builder.Property(r => r.Name).HasMaxLength(200).IsRequired();
         builder.Property(r => r.SubDomain).HasMaxLength(100).IsRequired();
         builder.Property(r => r.UpdatedAtUtc).IsRequired();
+
+        // Perfil de la oficina. La dirección cabe entera: Tenant no acota estado/ZIP fuera de EE. UU.
+        builder.Property(r => r.DisplayName).HasMaxLength(200);
+        builder.Property(r => r.PostalAddress).HasMaxLength(1000);
+        builder.Property(r => r.ProfileVersion).IsRequired();
+        builder.Ignore(r => r.SignatureName);
     }
 }

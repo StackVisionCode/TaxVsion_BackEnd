@@ -74,6 +74,10 @@ public sealed class ReceiptDocumentClient(
                             paidAtUtc = request.PaidAtUtc,
                             transactionReferenceMask = request.TransactionReferenceMask,
                             paymentMethodMasked = request.PaymentMethodMasked,
+                            // Opcional: Documents cae al nombre del pagador si no viene.
+                            officeName = string.IsNullOrWhiteSpace(request.OfficeName)
+                                ? null
+                                : request.OfficeName.Trim(),
                         },
                     }
                 ),

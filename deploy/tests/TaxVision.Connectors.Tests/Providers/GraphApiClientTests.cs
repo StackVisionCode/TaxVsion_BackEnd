@@ -24,6 +24,60 @@ public class GraphApiClientTests
         );
 
     [Fact]
+    public async Task GetHistoryAsync_FirstSync_StartsFromTheConnectionDateInsteadOfTheWholeInbox()
+    {
+        var handler = new FakeHttpMessageHandler();
+        string? requestedUrl = null;
+        handler.Enqueue(request =>
+        {
+            requestedUrl = request.RequestUri!.ToString();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{ "value": [], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=x" }"""
+                ),
+            };
+        });
+
+        await CreateClient(handler)
+            .GetHistoryAsync(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                null,
+                new DateTime(2026, 11, 3, 2, 18, 5, DateTimeKind.Unspecified)
+            );
+
+        Assert.Contains("$filter=receivedDateTime+ge+2026-11-03T02:18:05Z", Uri.UnescapeDataString(requestedUrl!));
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_WithCursor_IgnoresTheFirstSyncDate()
+    {
+        var handler = new FakeHttpMessageHandler();
+        string? requestedUrl = null;
+        handler.Enqueue(request =>
+        {
+            requestedUrl = request.RequestUri!.ToString();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{ "value": [], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=y" }"""
+                ),
+            };
+        });
+
+        await CreateClient(handler)
+            .GetHistoryAsync(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "https://graph.microsoft.com/v1.0/delta-old",
+                DateTime.UtcNow
+            );
+
+        Assert.DoesNotContain("filter", requestedUrl!);
+    }
+
+    [Fact]
     public async Task GetHistoryAsync_UsesInboxScopedDeltaAndParsesDeltaLink()
     {
         var handler = new FakeHttpMessageHandler();
@@ -303,12 +357,23 @@ public class GraphApiClientTests
     }
 
     [Fact]
-    public async Task SendMessageAsync_Reply_PostsOneStepReplyWithHtmlPreferHeader()
+    public async Task SendMessageAsync_Reply_CreatesAReplyDraftThenSendsItAndReturnsItsInternetMessageId()
     {
         var handler = new FakeHttpMessageHandler();
+        string? capturedBody = null;
+        handler.Enqueue(request =>
+        {
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = new StringContent(
+                    """{ "id": "reply-draft-1", "internetMessageId": "<AM6PREPLY@outlook.com>", "conversationId": "conv-9", "isDraft": true }"""
+                ),
+            };
+        });
         handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.Accepted));
 
-        await CreateClient(handler)
+        var result = await CreateClient(handler)
             .SendMessageAsync(
                 Guid.NewGuid(),
                 Guid.NewGuid(),
@@ -317,8 +382,115 @@ public class GraphApiClientTests
                 NewOutboundMessage("original1")
             );
 
-        Assert.Contains("/messages/original1/reply", handler.Requests[0].RequestUri!.ToString());
+        // El id del borrador es el que van a citar los rebotes de la respuesta.
+        Assert.Equal("<AM6PREPLY@outlook.com>", result.InternetMessageId);
+        Assert.Equal("reply-draft-1", result.ProviderMessageId);
+        Assert.Equal("conv-9", result.ProviderThreadId);
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.EndsWith("/me/messages/original1/createReply", handler.Requests[0].RequestUri!.ToString());
         Assert.Equal("outlook.body-content-type=\"html\"", handler.Requests[0].Headers.GetValues("Prefer").Single());
+        Assert.EndsWith("/me/messages/reply-draft-1/send", handler.Requests[1].RequestUri!.ToString());
+
+        using var payload = JsonDocument.Parse(capturedBody!);
+        Assert.Equal("<p>Html</p>", payload.RootElement.GetProperty("comment").GetString());
+        var toAddress = payload
+            .RootElement.GetProperty("message")
+            .GetProperty("toRecipients")[0]
+            .GetProperty("emailAddress")
+            .GetProperty("address")
+            .GetString();
+        Assert.Equal("to@example.com", toAddress);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Reply_WhenTheDraftCannotBeSent_ThrowsWithTheSendFailure()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            HttpStatusCode.Created,
+            """{ "id": "reply-draft-1", "internetMessageId": "<AM6PREPLY@outlook.com>" }"""
+        );
+        handler.Enqueue(HttpStatusCode.BadRequest, "{}");
+
+        var exception = await Assert.ThrowsAsync<OutboundEmailSendException>(() =>
+            CreateClient(handler)
+                .SendMessageAsync(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    "office@outlook.com",
+                    null,
+                    NewOutboundMessage("original1")
+                )
+        );
+
+        Assert.Equal(SendFailureReason.InvalidRequest, exception.Reason);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Reply_WithoutDraftPermission_FallsBackToOneStepReplyWithoutId()
+    {
+        // Un token con Mail.Send pero sin Mail.ReadWrite no puede crear borradores (403).
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.Forbidden, "{}");
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.Accepted));
+
+        var result = await CreateClient(handler)
+            .SendMessageAsync(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "office@outlook.com",
+                null,
+                NewOutboundMessage("original1")
+            );
+
+        Assert.Null(result.InternetMessageId);
+        Assert.Null(result.ProviderMessageId);
+        Assert.EndsWith("/me/messages/original1/createReply", handler.Requests[0].RequestUri!.ToString());
+        Assert.EndsWith("/me/messages/original1/reply", handler.Requests[1].RequestUri!.ToString());
+        Assert.Equal("outlook.body-content-type=\"html\"", handler.Requests[1].Headers.GetValues("Prefer").Single());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_NewMessage_WithoutDraftPermission_FallsBackToSendMail()
+    {
+        var handler = new FakeHttpMessageHandler();
+        string? capturedBody = null;
+        handler.Enqueue(HttpStatusCode.Forbidden, "{}");
+        handler.Enqueue(request =>
+        {
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.Accepted);
+        });
+
+        var result = await CreateClient(handler)
+            .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@outlook.com", null, NewOutboundMessage());
+
+        Assert.Null(result.InternetMessageId);
+        Assert.EndsWith("/me/sendMail", handler.Requests[1].RequestUri!.ToString());
+        using var payload = JsonDocument.Parse(capturedBody!);
+        Assert.True(payload.RootElement.GetProperty("saveToSentItems").GetBoolean());
+        Assert.Equal("Subject", payload.RootElement.GetProperty("message").GetProperty("subject").GetString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Reply_ForbiddenTwice_ThrowsPermissionDenied()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.Forbidden, "{}");
+        handler.Enqueue(HttpStatusCode.Forbidden, "{}");
+
+        var exception = await Assert.ThrowsAsync<OutboundEmailSendException>(() =>
+            CreateClient(handler)
+                .SendMessageAsync(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    "office@outlook.com",
+                    null,
+                    NewOutboundMessage("original1")
+                )
+        );
+
+        Assert.Equal(SendFailureReason.PermissionDenied, exception.Reason);
     }
 
     [Fact]

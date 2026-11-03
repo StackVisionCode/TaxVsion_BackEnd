@@ -137,4 +137,25 @@ public sealed class ListDraftsHandlerTests
         Assert.Equal(1, result.TotalCount);
         Assert.Equal(mine.Id, result.Items.Single().DraftId);
     }
+
+    [Fact]
+    public async Task Each_row_says_whether_the_draft_has_attachments()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var drafts = new FakeDraftRepository();
+        var withFile = Draft.CreateNew(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        withFile.AttachFile(DraftAttachmentRef.Create(Guid.NewGuid(), "a.pdf", "application/pdf", 1).Value);
+        await drafts.AddAsync(withFile);
+        await drafts.AddAsync(Draft.CreateNew(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid()).Value);
+
+        var result = await ListDraftsHandler.Handle(
+            new ListDraftsQuery(tenantId, customerId, 1, 20),
+            drafts,
+            CancellationToken.None
+        );
+
+        Assert.True(result.Items.Single(i => i.DraftId == withFile.Id).HasAttachments);
+        Assert.False(result.Items.Single(i => i.DraftId != withFile.Id).HasAttachments);
+    }
 }

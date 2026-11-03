@@ -98,12 +98,44 @@ public sealed class GraphWatchClient(
         }
     }
 
+    private static async Task<GraphErrorBody?> TryReadGraphErrorAsync(
+        HttpResponseMessage response,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            return (await response.Content.ReadFromJsonAsync<GraphErrorEnvelope>(ct))?.Error;
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record GraphErrorEnvelope([property: JsonPropertyName("error")] GraphErrorBody? Error);
+
+    private sealed record GraphErrorBody(
+        [property: JsonPropertyName("code")] string? Code,
+        [property: JsonPropertyName("message")] string? Message
+    );
+
     private async Task<GraphSubscriptionResponse> ReadResponseAsync(HttpResponseMessage response, CancellationToken ct)
     {
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning("Graph subscription request returned HTTP {Status}.", (int)response.StatusCode);
-            throw new WatchProviderException($"Graph subscription request returned HTTP {(int)response.StatusCode}.");
+            // Graph explica el rechazo en {error:{code,message}} (p. ej. ValidationError: la notificationUrl no respondió).
+            var error = await TryReadGraphErrorAsync(response, ct);
+            logger.LogWarning(
+                "Graph subscription request returned HTTP {Status} ({Code}: {Message}).",
+                (int)response.StatusCode,
+                error?.Code,
+                error?.Message
+            );
+            var detail = error?.Code is { Length: > 0 } code ? $" ({code})" : string.Empty;
+            throw new WatchProviderException(
+                $"Graph subscription request returned HTTP {(int)response.StatusCode}{detail}."
+            );
         }
 
         try

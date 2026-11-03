@@ -68,6 +68,7 @@ public static class TaskWaitingOnClientConsumer
                             ["tax_year"] = evt.TaxYear,
                             ["portal_link"] = TenantEmailLinks.ClientBase(tenantHost, portal.Value),
                         },
+                        ScribeRenderAudience.Client,
                         ct
                     )
                 ).EnsureRendered(TemplateKey);

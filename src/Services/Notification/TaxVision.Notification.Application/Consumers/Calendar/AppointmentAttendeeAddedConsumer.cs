@@ -70,33 +70,25 @@ public static class AppointmentAttendeeAddedConsumer
                 ct
             );
 
-            var render = (
-                await scribeClient.RenderAsync(
-                    TemplateKey,
-                    evt.TenantId,
-                    new Dictionary<string, object?>
-                    {
-                        ["appointment_title"] = evt.Title,
-                        ["start_local"] = evt.StartUtc is { } start
-                            ? CalendarTimeFormatting.InZone(start, evt.TimeZoneId)
-                            : "según la serie",
-                        ["time_zone"] = evt.TimeZoneId,
-                        ["is_recurring"] = evt.IsRecurring,
-                        ["is_virtual"] = evt.IsVirtual,
-                        ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
-                    },
-                    ct
-                )
-            ).EnsureRendered(TemplateKey);
-
-            await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
-                    tenantId: evt.TenantId,
-                    to: recipients[0],
-                    templateKey: TemplateKey,
-                    relatedEventId: evt.EventId,
-                    correlationId: correlation.CorrelationId
-                ),
+            await CalendarRecipients.QueueByAudienceAsync(
+                recipients,
+                evt.TenantId,
+                TemplateKey,
+                new Dictionary<string, object?>
+                {
+                    ["appointment_title"] = evt.Title,
+                    ["start_local"] = evt.StartUtc is { } start
+                        ? CalendarTimeFormatting.InZone(start, evt.TimeZoneId)
+                        : "según la serie",
+                    ["time_zone"] = evt.TimeZoneId,
+                    ["is_recurring"] = evt.IsRecurring,
+                    ["is_virtual"] = evt.IsVirtual,
+                    ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
+                },
+                scribeClient,
+                gateway,
+                evt.EventId,
+                correlation.CorrelationId,
                 ct
             );
         }

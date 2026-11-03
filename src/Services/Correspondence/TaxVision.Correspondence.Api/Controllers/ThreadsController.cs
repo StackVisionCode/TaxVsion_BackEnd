@@ -6,6 +6,7 @@ using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Correspondence.Api.Requests;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Messages;
 using TaxVision.Correspondence.Application.Threads;
@@ -36,7 +37,9 @@ public sealed class ThreadsController(
     /// <summary>
     /// Inbox de la oficina: hilos de todos los clientes que el usuario puede ver (buzón visible y, sin
     /// <c>customers.view_all</c>, solo clientes asignados). <paramref name="status"/> Active (por defecto), Archived o all;
-    /// <paramref name="customerId"/> filtra a un cliente; <paramref name="q"/> busca en asunto, remitente y vista previa.
+    /// <paramref name="customerId"/> filtra a un cliente y <paramref name="unlinked"/> a las conversaciones sin cliente;
+    /// <paramref name="q"/> busca en asunto, remitente y vista previa; <paramref name="hasAttachments"/> = con adjuntos;
+    /// <paramref name="fromUtc"/>/<paramref name="toUtc"/> = rango inclusivo sobre la última actividad.
     /// </summary>
     [HttpGet("correspondence/threads")]
     [HasPermission(CorrespondencePermissions.Read)]
@@ -46,6 +49,10 @@ public sealed class ThreadsController(
         [FromQuery] Guid? customerId,
         [FromQuery] bool unreadOnly,
         [FromQuery] string? q,
+        [FromQuery] bool unlinked,
+        [FromQuery] bool hasAttachments,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
@@ -55,6 +62,11 @@ public sealed class ThreadsController(
             return Forbid();
         if (!TryParseStatus(status, out var threadStatus))
             return BadRequest(InvalidStatus);
+        var onlyCustomer = customerId is { } id && id != Guid.Empty ? customerId : null;
+        if (unlinked && onlyCustomer is not null)
+            return BadRequest(MailListParams.CustomerFilterConflict);
+        if (!MailListParams.TryDateRange(fromUtc, toUtc, out var from, out var to))
+            return BadRequest(MailListParams.InvalidDateRange);
 
         var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var restrictTo = await customerAccess.ResolveRestrictedUserIdAsync(User, ct);
@@ -63,13 +75,17 @@ public sealed class ThreadsController(
                 new InboxThreadFilter(
                     tenantId,
                     threadStatus,
-                    customerId is { } id && id != Guid.Empty ? id : null,
+                    onlyCustomer,
                     unreadOnly,
-                    string.IsNullOrWhiteSpace(q) ? null : q.Trim()[..Math.Min(q.Trim().Length, MaxSearchLength)],
+                    SearchTerm.Normalize(q),
                     NormalizePage(page),
                     NormalizeSize(size),
                     visible,
-                    restrictTo
+                    restrictTo,
+                    unlinked,
+                    hasAttachments,
+                    from,
+                    to
                 )
             ),
             ct
@@ -93,6 +109,24 @@ public sealed class ThreadsController(
             ct
         );
         return Ok(result);
+    }
+
+    /// <summary>UNA fila del Inbox por id (abrir un resultado de búsqueda o un aviso fuera de la página cargada). 404 si no se ve.</summary>
+    [HttpGet("correspondence/threads/{threadId:guid}")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.thread_read")]
+    public async Task<IActionResult> GetInboxThread(Guid threadId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
+        var restrictTo = await customerAccess.ResolveRestrictedUserIdAsync(User, ct);
+        var result = await bus.InvokeAsync<Result<InboxThreadSummary>>(
+            new GetInboxThreadQuery(tenantId, threadId, visible, restrictTo),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpGet("correspondence/customers/{customerId:guid}/threads")]
@@ -234,8 +268,6 @@ public sealed class ThreadsController(
     // mismo criterio que SignatureRequestReadService); acá solo se evita mandar un page/size
     // negativo o cero explícito desde un query string ausente ([FromQuery] int deja 0 por default).
     private static int NormalizePage(int page) => page < 1 ? 1 : page;
-
-    private const int MaxSearchLength = 200;
 
     private static readonly Error InvalidStatus = new(
         "Correspondence.InvalidThreadStatus",

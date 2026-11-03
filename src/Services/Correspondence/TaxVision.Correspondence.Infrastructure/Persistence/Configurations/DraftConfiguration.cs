@@ -8,18 +8,14 @@ using TaxVision.Correspondence.Domain.Compose;
 namespace TaxVision.Correspondence.Infrastructure.Persistence.Configurations;
 
 /// <summary>
-/// <see cref="Draft.Attachments"/>/<see cref="Draft.ReplyContext"/> van en columnas JSON, no
-/// child tables — mismo patrón que <c>SentMessageConfiguration</c> en Postmaster (D3 Compose),
-/// por consistencia entre los dos servicios para el mismo concepto (plan §23): un
-/// <see cref="DraftAttachmentRef"/>/<see cref="Compose.ReplyContext"/> es un valor inmutable sin
-/// ciclo de vida propio, a diferencia de <see cref="DraftRecipient"/> (child table real, ver
-/// <see cref="DraftRecipientConfiguration"/>) o de <see cref="Inbox.IncomingEmailAttachment"/>
-/// (que sí tiene su propio ciclo de vida de descarga).
+/// <see cref="Draft.ReplyContext"/> va en columna JSON — mismo patrón que <c>SentMessageConfiguration</c>
+/// en Postmaster (plan §23): un valor inmutable sin ciclo de vida propio que nunca se consulta por
+/// contenido. Los adjuntos (<see cref="DraftAttachment"/>) y los destinatarios
+/// (<see cref="DraftRecipient"/>) son tablas hijas: los adjuntos salieron de <c>AttachmentsJson</c>
+/// (D-7) para poder buscarlos por nombre.
 /// </summary>
 internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
 {
-    private sealed record AttachmentDto(Guid FileId, string Filename, string ContentType, long SizeBytes);
-
     private sealed record ReplyContextDto(
         Guid IncomingEmailId,
         Guid EmailThreadId,
@@ -53,29 +49,8 @@ internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
         builder.Property(d => d.UpdatedAtUtc).IsRequired();
         builder.Property(d => d.LastAutoSavedAtUtc);
 
-        // Attachments es una propiedad computada de solo lectura sobre el backing field _attachments
-        // — EF la descubriría por convención como navigation collection si no se ignora
-        // explícitamente (mismo problema que Postmaster ya resolvió en SentMessageConfiguration).
-        builder.Ignore(d => d.Attachments);
-
-        var attachmentsConverter = new ValueConverter<List<DraftAttachmentRef>, string>(
-            attachments => JsonSerializer.Serialize(ToDtos(attachments), (JsonSerializerOptions?)null),
-            json => ParseAttachments(json)
-        );
-        var attachmentsComparer = new ValueComparer<List<DraftAttachmentRef>>(
-            (a, b) => (a ?? new()).Select(x => x.FileId).SequenceEqual((b ?? new()).Select(x => x.FileId)),
-            list => list.Aggregate(0, (hash, attachment) => HashCode.Combine(hash, attachment.FileId)),
-            list => list.ToList()
-        );
-        builder
-            .Property<List<DraftAttachmentRef>>("_attachments")
-            .HasColumnName("AttachmentsJson")
-            .HasConversion(attachmentsConverter)
-            .HasColumnType("nvarchar(max)")
-            .Metadata.SetValueComparer(attachmentsComparer);
-
         // ReplyContext tiene setter privado (no es un wrapper de solo lectura sobre un backing
-        // field, a diferencia de Attachments) — EF puede mapearlo directamente vía Property() +
+        // field) — EF puede mapearlo directamente vía Property() +
         // conversion, sin necesitar el truco del backing field.
         var replyContextConverter = new ValueConverter<ReplyContext?, string?>(
             context => context == null ? null : JsonSerializer.Serialize(ToDto(context), (JsonSerializerOptions?)null),
@@ -100,6 +75,9 @@ internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
 
         builder.HasMany(d => d.Recipients).WithOne().HasForeignKey(r => r.DraftId).OnDelete(DeleteBehavior.Cascade);
         builder.Metadata.FindNavigation(nameof(Draft.Recipients))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(d => d.Attachments).WithOne().HasForeignKey(a => a.DraftId).OnDelete(DeleteBehavior.Cascade);
+        builder.Metadata.FindNavigation(nameof(Draft.Attachments))!.SetPropertyAccessMode(PropertyAccessMode.Field);
 
         // "Retomar borradores" — drafts abiertos de un customer, más reciente primero (plan §24).
         builder
@@ -139,21 +117,6 @@ internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
                 d.Status,
             })
             .HasDatabaseName("IX_Drafts_TenantId_CreatedByUserId_Status");
-    }
-
-    private static List<AttachmentDto> ToDtos(List<DraftAttachmentRef> attachments) =>
-        attachments.Select(a => new AttachmentDto(a.FileId, a.Filename, a.ContentType, a.SizeBytes)).ToList();
-
-    private static List<DraftAttachmentRef> ParseAttachments(string json)
-    {
-        if (string.IsNullOrEmpty(json))
-            return [];
-
-        var dtos = JsonSerializer.Deserialize<List<AttachmentDto>>(json, (JsonSerializerOptions?)null) ?? [];
-        return dtos.Select(dto =>
-                DraftAttachmentRef.Create(dto.FileId, dto.Filename, dto.ContentType, dto.SizeBytes).Value
-            )
-            .ToList();
     }
 
     private static ReplyContextDto ToDto(ReplyContext context) =>

@@ -26,6 +26,7 @@ public static class ListDraftsHandler
             query.Page,
             query.Size,
             query.OwnerUserId,
+            query.Filter,
             ct
         );
 
@@ -41,6 +42,7 @@ public static class ListDraftsHandler
             draft.ReplyContext is not null,
             draft.UpdatedAtUtc,
             draft.LastAutoSavedAtUtc,
-            draft.CustomerId
+            draft.CustomerId,
+            draft.Attachments.Count > 0
         );
 }

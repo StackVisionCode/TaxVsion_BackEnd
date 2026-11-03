@@ -136,7 +136,8 @@ public sealed class OnboardingRegistrationHandlersTests
                 "Ada's Tax Office",
                 "adas-office",
                 true,
-                termsVersion.Id
+                termsVersion.Id,
+                "America/Chicago"
             ),
             onboardings,
             termsVersions,
@@ -154,6 +155,7 @@ public sealed class OnboardingRegistrationHandlersTests
         Assert.True(result.IsSuccess);
         Assert.Equal("Provisioning", result.Value.Status);
         Assert.Equal(TenantOnboardingStatus.Provisioning, onboarding.Status);
+        Assert.Equal("America/Chicago", onboarding.TimeZoneId);
         Assert.NotNull(onboarding.RegistrationTokenUsedAtUtc);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
 

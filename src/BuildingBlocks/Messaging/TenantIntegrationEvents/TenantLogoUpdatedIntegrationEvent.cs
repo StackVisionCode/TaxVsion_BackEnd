@@ -1,9 +1,9 @@
 namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 
 /// <summary>
-/// Publicado por Tenant al subir/reemplazar el logo de un tenant (ver
-/// Tenant_Service_LogoSupport_Plan.md — diseño aprobado, aún no implementado del lado de Tenant).
-/// Scribe consume este evento para alimentar su proyección local TenantLogoRef (Fase 4.5).
+/// Publicado por Tenant cuando se confirma el logo de una superficie (<see cref="Surface"/>: CRM o
+/// Portal). Scribe, Documents y Signature lo proyectan; lo que ve el cliente usa el del Portal y cae
+/// al del CRM si no hay.
 /// </summary>
 public sealed record TenantLogoUpdatedIntegrationEvent : IntegrationEvent
 {
@@ -13,4 +13,7 @@ public sealed record TenantLogoUpdatedIntegrationEvent : IntegrationEvent
     public int? Width { get; init; }
     public int? Height { get; init; }
     public required DateTime UpdatedAtUtc { get; init; }
+
+    // Ausente en mensajes viejos = Crm (antes solo se publicaba el logo del CRM).
+    public string Surface { get; init; } = TenantBrandSurfaces.Crm;
 }

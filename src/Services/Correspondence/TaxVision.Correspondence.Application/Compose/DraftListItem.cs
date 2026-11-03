@@ -14,5 +14,6 @@ public sealed record DraftListItem(
     DateTime UpdatedAtUtc,
     DateTime? LastAutoSavedAtUtc,
     // Cliente del borrador; null = para alguien que no es cliente.
-    Guid? CustomerId
+    Guid? CustomerId,
+    bool HasAttachments = false
 );

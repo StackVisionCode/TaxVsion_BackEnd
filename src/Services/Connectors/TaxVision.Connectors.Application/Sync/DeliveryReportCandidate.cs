@@ -16,6 +16,7 @@ public static class DeliveryReportCandidate
         "mail-daemon",
     ];
 
+    // Frases completas, no palabras sueltas: "entrega" o "delivery" solos agarran correo normal.
     private static readonly string[] SubjectMarkers =
     [
         "undeliverable",
@@ -23,23 +24,46 @@ public static class DeliveryReportCandidate
         "undelivered mail",
         "mail delivery failed",
         "delivery has failed",
+        "delivery failure",
+        "delivery delayed",
         "returned mail",
         "failure notice",
+        // Exchange/Outlook y Gmail en español.
+        "no se puede entregar",
+        "no se pudo entregar",
+        "mensaje no entregado",
+        "correo no entregado",
+        "error de entrega",
+        "entrega retrasada",
+        "notificación de estado de entrega",
+        "notificacion de estado de entrega",
     ];
 
     public static bool IsLikely(RawMessage message)
     {
-        var localPart = LocalPartOf(message.From);
-        foreach (var sender in SystemSenders)
-        {
-            if (localPart.StartsWith(sender, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
+        if (IsSystemSender(message.From))
+            return true;
+
+        // Gmail e IMAP ya traen el tipo raíz; Graph no (queda null y decide el resto).
+        if (string.Equals(message.ContentType, "multipart/report", StringComparison.OrdinalIgnoreCase))
+            return true;
 
         var subject = message.Subject ?? string.Empty;
         foreach (var marker in SubjectMarkers)
         {
             if (subject.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>¿El remitente es un sistema de correo (mailer-daemon, postmaster, Exchange)?</summary>
+    public static bool IsSystemSender(string? address)
+    {
+        var localPart = LocalPartOf(address);
+        foreach (var sender in SystemSenders)
+        {
+            if (localPart.StartsWith(sender, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
         return false;

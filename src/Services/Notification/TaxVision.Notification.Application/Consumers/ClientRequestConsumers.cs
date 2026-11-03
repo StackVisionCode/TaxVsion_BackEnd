@@ -67,6 +67,7 @@ public static class ClientRequestCreatedConsumer
                             ["due_at_utc"] = evt.DueAtUtc,
                             ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
                         },
+                        ScribeRenderAudience.Client,
                         ct
                     )
                 ).EnsureRendered(TemplateKey);
@@ -355,6 +356,7 @@ public static class ClientRequestDocumentRejectedConsumer
                     ["client_message"] = evt.ClientMessage,
                     ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
                 },
+                ScribeRenderAudience.Client,
                 ct
             )
         ).EnsureRendered(TemplateKey);

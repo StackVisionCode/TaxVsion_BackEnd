@@ -25,10 +25,16 @@ public interface IEmailProviderClient
     /// <param name="accountId">Cuenta del provider a consultar.</param>
     /// <param name="tenantId">Rate Limit Fase 0.3 — dueño de <paramref name="accountId"/>, para el cupo per-tenant de <see cref="IProviderRateLimiter"/> (el caller ya lo tiene, cargó la cuenta para verificar tenant).</param>
     /// <param name="sinceCursor">HistoryId (Gmail) o deltaLink (Graph) opaco — null para el primer sync.</param>
+    /// <param name="firstSyncFromUtc">
+    /// Sin cursor (primer sync o estado vencido en el proveedor), solo entra lo recibido desde aquí: el
+    /// buzón se sincroniza desde que se conectó, no su historia (igual que Gmail, que siembra con el
+    /// historyId del watch y lo ignora).
+    /// </param>
     Task<HistoryPage> GetHistoryAsync(
         Guid accountId,
         Guid tenantId,
         string? sinceCursor,
+        DateTime? firstSyncFromUtc = null,
         CancellationToken ct = default
     );
 

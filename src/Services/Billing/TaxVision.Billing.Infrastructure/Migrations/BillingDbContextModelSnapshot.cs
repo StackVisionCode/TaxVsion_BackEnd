@@ -101,6 +101,10 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.Property<DateTime>("DueDateUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("InvoiceFooter")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("InvoiceNumber")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
@@ -130,7 +134,15 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.Property<Guid?>("PaymentId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("PaymentInstructions")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("PaymentMethod")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("PaymentTerms")
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
@@ -335,6 +347,11 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<long>("SourceVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L);
+
                     b.Property<string>("TaxId")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
@@ -494,6 +511,48 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("TenantPlanCodeProjections", "billing");
+                });
+
+            modelBuilder.Entity("TaxVision.Billing.Domain.Settings.TenantBillingSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("InvoiceFooter")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PaymentInstructions")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PaymentTerms")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantBillingSettings", "billing");
                 });
 
             modelBuilder.Entity("TaxVision.Billing.Domain.Invoices.Invoice", b =>

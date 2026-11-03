@@ -9,6 +9,9 @@ namespace TaxVision.Signature.Application.Settings;
 ///
 /// Incluye <see cref="PlanConstraints"/> (techos vigentes: plan + excepción) para que el frontend
 /// deshabilite opciones que los excedan.
+///
+/// <see cref="RetentionYears"/> es la retención efectiva (Cumplimiento ?? Signature, nunca bajo el mínimo del
+/// plan) y <see cref="RetentionYearsSource"/> dice de dónde sale ("Office" | "Signature").
 /// </summary>
 public sealed record TenantSignatureSettingsResponse(
     Guid TenantId,
@@ -36,10 +39,14 @@ public sealed record TenantSignatureSettingsResponse(
     bool RequiresConsentByDefault,
     DeliveryPolicyResponse Delivery,
     bool ShowSignatureFrame,
-    string DateStampFormat
+    string DateStampFormat,
+    string RetentionYearsSource
 )
 {
-    public static TenantSignatureSettingsResponse From(TenantSignatureSettings settings, SignatureLimits ceilings) =>
+    public static TenantSignatureSettingsResponse From(
+        TenantSignatureSettings settings,
+        EffectiveSignaturePolicy policy
+    ) =>
         new(
             settings.TenantId,
             ChannelsAsStrings(settings.AllowedVerificationChannels),
@@ -51,12 +58,12 @@ public sealed record TenantSignatureSettingsResponse(
             settings.AllowEmployeeOwnSignature,
             settings.DocumentLimits.MaxPdfBytes,
             settings.DocumentLimits.MaxPagesPerDocument,
-            settings.Retention.RetentionYears,
+            policy.RetentionYears,
             settings.Retention.AllowPurge,
             settings.AuditKeyVersion,
             settings.CreatedAtUtc,
             settings.UpdatedAtUtc,
-            SignaturePlanConstraintsResponse.From(ceilings),
+            SignaturePlanConstraintsResponse.From(policy.Ceilings),
             settings.SendPartialCopyDefault,
             settings.PartialCopyDefaultAudienceKind.ToString(),
             settings.SendSealedDocumentDefault,
@@ -70,7 +77,8 @@ public sealed record TenantSignatureSettingsResponse(
                 settings.Delivery.MaxAttachmentBytes
             ),
             settings.ShowSignatureFrame,
-            settings.DateStampFormat.ToString()
+            settings.DateStampFormat.ToString(),
+            policy.RetentionSource.ToString()
         );
 
     private static IReadOnlyList<string> ChannelsAsStrings(VerificationChannel mask)

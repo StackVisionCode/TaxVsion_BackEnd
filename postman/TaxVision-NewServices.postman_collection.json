@@ -1298,6 +1298,197 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Get issuer profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/billing/issuer-profile",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "issuer-profile"
+              ]
+            },
+            "description": "Requiere invoicing.view. Solo lectura: desde la F1 el perfil se edita en Tenant (PUT /tenants/current/profile) y Billing lo proyecta desde TenantProfileChanged. Nunca 404: sin fila devuelve name vacío y country US. Incluye line2."
+          },
+          "response": []
+        },
+        {
+          "name": "Get invoice settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/billing/invoice-settings",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoice-settings"
+              ]
+            },
+            "description": "Requiere invoicing.view. Plazo de pago, instrucciones de pago y pie de la factura. Nunca 404: sin fila devuelve paymentTerms DueOnReceipt y textos null."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('paymentTerms', () => pm.expect(pm.response.json().paymentTerms).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update invoice settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/billing/invoice-settings",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoice-settings"
+              ]
+            },
+            "description": "Requiere invoicing.issuer.manage. Estado completo; responde 200 con lo guardado. paymentTerms: DueOnReceipt | Net7 | Net15 | Net30 | Net45. paymentInstructions e invoiceFooter opcionales, ≤ 500 caracteres (vacío → null). Cada factura congela estos valores al crear el borrador; el vencimiento al emitir sale del plazo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentTerms\": \"Net30\",\n  \"paymentInstructions\": \"Zelle to pay@gutierreztax.com or check payable to Gutierrez Tax Office LLC.\",\n  \"invoiceFooter\": \"Thank you for your business!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('saved', () => pm.expect(pm.response.json().paymentTerms).to.eql('Net30'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update invoice settings — plazo inválido (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/billing/invoice-settings",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoice-settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentTerms\": \"Net60\",\n  \"paymentInstructions\": null,\n  \"invoiceFooter\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Billing.InvoiceSettings.PaymentTerms', () => {",
+                  "  pm.expect(pm.response.code).to.eql(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('Billing.InvoiceSettings.PaymentTerms');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Internal - list issuer profiles (M2M, import a Tenant)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{servicePlatformToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingService}}/internal/billing/issuer-profiles?page=1&size=100",
+              "host": [
+                "{{billingService}}"
+              ],
+              "path": [
+                "internal",
+                "billing",
+                "issuer-profiles"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Endpoint interno directo a Billing (no pasa por Gateway). Requiere token de servicio (actor Service) emitido para la PlatformTenant; si no, 403. size 1–200. Respuesta { items: [ { tenantId, name, taxId, line1, line2, city, state, zip, country, phone, email, website, updatedAtUtc } ], page, size, totalCount }. Lo usa POST /platform/tenants/profiles/import-from-billing de Tenant.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('paged', () => pm.expect(pm.response.json()).to.have.property('totalCount'));"
+                ]
+              }
+            }
+          ]
         }
       ],
       "description": "Facturación tenant→cliente. Las líneas pueden referenciar un ítem del catálogo (Fase 8).",
@@ -1364,6 +1555,10 @@
     {
       "key": "invoiceId",
       "value": ""
+    },
+    {
+      "key": "billingService",
+      "value": "http://localhost:5460"
     }
   ]
 }

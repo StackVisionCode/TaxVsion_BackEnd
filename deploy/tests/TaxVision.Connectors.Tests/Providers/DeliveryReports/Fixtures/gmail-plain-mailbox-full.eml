@@ -1,0 +1,30 @@
+From: Mail Delivery Subsystem <mailer-daemon@googlemail.com>
+To: office@gmail.com
+Subject: Delivery Status Notification (Failure)
+Message-ID: <plain-full-1@mx.google.com>
+Date: Sat, 25 Oct 2026 12:00:00 -0700
+In-Reply-To: <pm.55555555555555555555555555555555@gmail.com>
+References: <pm.55555555555555555555555555555555@gmail.com>
+X-Failed-Recipients: full@example.org
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Delivery to the following recipient failed permanently:
+
+     full@example.org
+
+Technical details of permanent failure:
+Google tried to deliver your message, but it was rejected by the server for the recipient domain example.org by mx.example.org. [203.0.113.5].
+
+The error that the other server returned was:
+552 5.2.2 The email account that you tried to reach is over quota. Please direct the recipient to https://support.example.org/quota
+
+----- Original message -----
+
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=gmail.com
+Message-ID: <decoy-inline@gmail.com>
+Subject: CONFIDENTIAL-ORIGINAL-SUBJECT
+From: Office <office@gmail.com>
+To: full@example.org
+
+<decoy@evil-example.com>: host mx.evil-example.com said: 550 5.1.1 quoted in the original body

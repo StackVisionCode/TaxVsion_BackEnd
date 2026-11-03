@@ -11,7 +11,14 @@ namespace TaxVision.Documents.Tests.Unit;
 /// </summary>
 public sealed class SaaSReceiptTemplateRenderingTests
 {
-    private static IReadOnlyDictionary<string, object?> SampleData(string quantity = "3", string unitPrice = "5.00") =>
+    private static IReadOnlyDictionary<string, object?> SampleData(
+        string quantity = "3",
+        string unitPrice = "5.00",
+        string logo = "",
+        string legalName = "",
+        string ein = "",
+        string address = ""
+    ) =>
         new Dictionary<string, object?>
         {
             ["receipt"] = new Dictionary<string, object>
@@ -36,7 +43,13 @@ public sealed class SaaSReceiptTemplateRenderingTests
                     ["phone"] = "+1-555-0100",
                     ["email"] = "billing@taxvision.com",
                     ["website"] = "https://taxvision.com",
-                    ["logo"] = "",
+                    ["logo"] = logo,
+                },
+                ["billedTo"] = new Dictionary<string, object>
+                {
+                    ["legalName"] = legalName,
+                    ["ein"] = ein,
+                    ["address"] = address,
                 },
             },
         };
@@ -75,5 +88,106 @@ public sealed class SaaSReceiptTemplateRenderingTests
         var html = result.Value;
         Assert.Contains(">1</td>", html);
         Assert.Contains("15.00 USD", html);
+    }
+
+    // El logo ya es la marca: el nombre del emisor al lado solo se pinta si no hay logo.
+    [Fact]
+    public async Task Header_shows_only_the_logo_when_there_is_one()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+
+        var result = await renderer.RenderHtmlAsync(
+            "saas.receipt.v1",
+            1,
+            Guid.NewGuid(),
+            SampleData(logo: "data:image/png;base64,AAAA")
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("src=\"data:image/png;base64,AAAA\"", result.Value);
+        Assert.DoesNotContain("<div class=\"wordmark\">", result.Value);
+    }
+
+    [Fact]
+    public async Task Header_falls_back_to_the_issuer_name_without_a_logo()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+
+        var result = await renderer.RenderHtmlAsync("saas.receipt.v1", 1, Guid.NewGuid(), SampleData());
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("<div class=\"wordmark\">TaxVision Inc.</div>", result.Value);
+    }
+
+    // Con perfil: el nombre legal manda, la oficina queda como DBA y el EIN y la dirección en líneas propias.
+    [Fact]
+    public async Task Billed_to_shows_the_legal_name_ein_and_address_with_the_office_as_dba()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+
+        var result = await renderer.RenderHtmlAsync(
+            "saas.receipt.v1",
+            1,
+            Guid.NewGuid(),
+            SampleData(
+                legalName: "Core Tax Professionals LLC",
+                ein: "12-3456789",
+                address: "1600 Main St, Suite 2, Miami, FL 33101"
+            )
+        );
+
+        Assert.True(result.IsSuccess);
+        var billedTo = BilledToBlock(result.Value);
+        Assert.Contains("<div class=\"name\">Core Tax Professionals LLC</div>", billedTo);
+        Assert.Contains("<p>DBA CoreTaxPro</p>", billedTo);
+        Assert.Contains("<p>EIN 12-3456789</p>", billedTo);
+        Assert.Contains("<p>1600 Main St, Suite 2, Miami, FL 33101</p>", billedTo);
+        Assert.Contains("<p class=\"sub\">Office</p>", billedTo);
+    }
+
+    // Nombre legal igual al de la oficina: no se repite como DBA.
+    [Fact]
+    public async Task Billed_to_omits_the_dba_when_the_legal_name_is_the_office_name()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+
+        var result = await renderer.RenderHtmlAsync(
+            "saas.receipt.v1",
+            1,
+            Guid.NewGuid(),
+            SampleData(legalName: "CoreTaxPro", ein: "12-3456789")
+        );
+
+        Assert.True(result.IsSuccess);
+        var billedTo = BilledToBlock(result.Value);
+        Assert.Contains("<div class=\"name\">CoreTaxPro</div>", billedTo);
+        Assert.DoesNotContain("DBA", billedTo);
+        Assert.Contains("<p>EIN 12-3456789</p>", billedTo);
+    }
+
+    // Sin perfil: el recibo sale como antes, solo con el nombre de la oficina.
+    [Fact]
+    public async Task Billed_to_without_a_profile_shows_only_the_office_name()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+
+        var result = await renderer.RenderHtmlAsync("saas.receipt.v1", 1, Guid.NewGuid(), SampleData());
+
+        Assert.True(result.IsSuccess);
+        var billedTo = BilledToBlock(result.Value);
+        Assert.Contains("<div class=\"name\">CoreTaxPro</div>", billedTo);
+        Assert.DoesNotContain("DBA", billedTo);
+        Assert.DoesNotContain("EIN", billedTo);
+        Assert.Single(billedTo.Split("<p").Skip(1));
+        Assert.Contains("<p class=\"sub\">Office</p>", billedTo);
+    }
+
+    // Solo la columna "Billed to", para no confundirla con el bloque del emisor.
+    private static string BilledToBlock(string html)
+    {
+        var start = html.IndexOf("<h2>Billed to</h2>", StringComparison.Ordinal);
+        var end = html.IndexOf("<h2>Issued by</h2>", StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        return html[start..end];
     }
 }

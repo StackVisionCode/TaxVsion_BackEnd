@@ -640,7 +640,11 @@ Todos los campos salvo `name` pueden ser `null` si el tenant nunca configuró su
 
 ---
 
-### 2.7 `PUT billing/issuer-profile`
+### 2.7 `PUT billing/issuer-profile` (retirado en F1)
+
+> **Retirado (F1, 2026-11-03):** el perfil de la oficina se edita en Tenant (`PUT /tenants/current/profile`) y Billing
+> lo proyecta. Lo propio de facturación (plazo, instrucciones de pago, pie) está en `GET/PUT /billing/invoice-settings`
+> (README §53). Se conserva abajo solo como historial.
 
 **Request**: mismo shape que la respuesta de §2.6 sin `name`... en realidad **sí incluye `name`**
 (único campo obligatorio):

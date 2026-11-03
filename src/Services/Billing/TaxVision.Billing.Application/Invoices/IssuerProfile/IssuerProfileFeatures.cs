@@ -1,8 +1,7 @@
-using BuildingBlocks.Persistence;
+using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using TaxVision.Billing.Application.Abstractions;
-using TaxVision.Billing.Domain.ValueObjects;
-using DomainIssuerProfile = TaxVision.Billing.Domain.Invoices.IssuerProfile;
+using DomainAddress = TaxVision.Billing.Domain.ValueObjects.Address;
 
 namespace TaxVision.Billing.Application.Invoices.IssuerProfile;
 
@@ -11,6 +10,7 @@ public sealed record IssuerProfileResponse(
     string Name,
     string? TaxId,
     string? Line1,
+    string? Line2,
     string? City,
     string? State,
     string? Zip,
@@ -21,7 +21,7 @@ public sealed record IssuerProfileResponse(
     string DefaultCurrency
 );
 
-// ---------------- Get ----------------
+// ---------------- Get (solo lectura: el perfil se edita en Tenant) ----------------
 public sealed record GetIssuerProfileQuery(Guid TenantId);
 
 public static class GetIssuerProfileHandler
@@ -35,17 +35,19 @@ public static class GetIssuerProfileHandler
         var p = await profiles.GetByTenantAsync(query.TenantId, ct);
         if (p is null)
             return Result.Success(
-                new IssuerProfileResponse("", null, null, null, null, null, "US", null, null, null, "USD")
+                new IssuerProfileResponse("", null, null, null, null, null, null, "US", null, null, null, "USD")
             );
 
         return Result.Success(
             new IssuerProfileResponse(
                 p.Name,
                 p.TaxId,
-                p.Address?.Line1,
-                p.Address?.City,
-                p.Address?.State,
-                p.Address?.Zip,
+                // Lo guardado se devuelve tal cual, aunque sea de antes de la validación (nunca falla al leer).
+                NullIfBlank(p.Address?.Line1),
+                p.Address?.Line2,
+                NullIfBlank(p.Address?.City),
+                NullIfBlank(p.Address?.State),
+                NullIfBlank(p.Address?.Zip),
                 p.Address?.Country,
                 p.Phone,
                 p.Email,
@@ -54,14 +56,20 @@ public static class GetIssuerProfileHandler
             )
         );
     }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }
 
-// ---------------- Upsert ----------------
-public sealed record UpsertIssuerProfileCommand(
+// ---------------- Listado interno (M2M) para la importación a Tenant ----------------
+
+/// <summary>Un perfil por tenant, plano. Texto vacío → null; una dirección vacía (o el marcador "—" de
+/// antes de F0) sale toda en null.</summary>
+public sealed record IssuerProfileExportItem(
     Guid TenantId,
-    string Name,
+    string? Name,
     string? TaxId,
     string? Line1,
+    string? Line2,
     string? City,
     string? State,
     string? Zip,
@@ -69,56 +77,57 @@ public sealed record UpsertIssuerProfileCommand(
     string? Phone,
     string? Email,
     string? Website,
-    string? DefaultCurrency
+    DateTime UpdatedAtUtc
 );
 
-public static class UpsertIssuerProfileHandler
+public sealed record ListIssuerProfilesQuery(int Page, int Size);
+
+public static class ListIssuerProfilesHandler
 {
-    public static async Task<Result> Handle(
-        UpsertIssuerProfileCommand command,
+    public const int MaxSize = 200;
+
+    private const string LegacyAddressPlaceholder = "—";
+
+    public static async Task<PagedResult<IssuerProfileExportItem>> Handle(
+        ListIssuerProfilesQuery query,
         IIssuerProfileRepository profiles,
-        IUnitOfWork unitOfWork,
-        TimeProvider clock,
         CancellationToken ct
     )
     {
-        if (string.IsNullOrWhiteSpace(command.Name))
-            return Result.Failure(
-                new Error("Billing.IssuerProfile.NameRequired", "El nombre de la empresa es requerido.")
-            );
-
-        var nowUtc = clock.GetUtcNow().UtcDateTime;
-        var profile = await profiles.GetByTenantAsync(command.TenantId, ct);
-        if (profile is null)
-        {
-            profile = DomainIssuerProfile.Create(command.TenantId, nowUtc);
-            await profiles.AddAsync(profile, ct);
-        }
-
-        Address? address =
-            string.IsNullOrWhiteSpace(command.Line1) && string.IsNullOrWhiteSpace(command.City)
-                ? null
-                : new Address(
-                    command.Line1 ?? string.Empty,
-                    null,
-                    command.City ?? string.Empty,
-                    command.State ?? string.Empty,
-                    command.Zip ?? string.Empty,
-                    command.Country ?? "US"
+        var (items, total) = await profiles.ListPageAsync(query.Page, query.Size, ct);
+        var rows = items
+            .Select(p =>
+            {
+                var address = Usable(p.Address);
+                return new IssuerProfileExportItem(
+                    p.TenantId,
+                    NullIfBlank(p.Name),
+                    NullIfBlank(p.TaxId),
+                    NullIfBlank(address?.Line1),
+                    NullIfBlank(address?.Line2),
+                    NullIfBlank(address?.City),
+                    NullIfBlank(address?.State),
+                    NullIfBlank(address?.Zip),
+                    NullIfBlank(address?.Country),
+                    NullIfBlank(p.Phone),
+                    NullIfBlank(p.Email),
+                    NullIfBlank(p.Website),
+                    p.UpdatedAtUtc
                 );
+            })
+            .ToList();
 
-        profile.Update(
-            command.Name,
-            command.TaxId,
-            address,
-            command.Phone,
-            command.Email,
-            command.Website,
-            null,
-            command.DefaultCurrency,
-            nowUtc
-        );
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success();
+        return new PagedResult<IssuerProfileExportItem>(rows, query.Page, query.Size, total);
     }
+
+    // El marcador viejo cuenta como calle vacía; sin nada útil, no hay dirección.
+    private static DomainAddress? Usable(DomainAddress? address)
+    {
+        if (address is null)
+            return null;
+        var cleaned = address.Line1 == LegacyAddressPlaceholder ? address with { Line1 = string.Empty } : address;
+        return cleaned.IsBlank() ? null : cleaned;
+    }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

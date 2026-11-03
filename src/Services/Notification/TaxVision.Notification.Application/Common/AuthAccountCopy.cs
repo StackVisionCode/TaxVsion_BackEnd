@@ -1,3 +1,5 @@
+using TaxVision.Notification.Application.Abstractions;
+
 namespace TaxVision.Notification.Application.Common;
 
 /// <summary>
@@ -12,4 +14,8 @@ public static class AuthAccountCopy
 
     /// <summary>Valor de la variable <c>account_kind</c> de las plantillas: <c>portal</c> o <c>workspace</c>.</summary>
     public static string Kind(string? actorType) => IsPortal(actorType) ? "portal" : "workspace";
+
+    /// <summary>La cuenta de portal es del cliente: su correo lleva el logo del portal.</summary>
+    public static ScribeRenderAudience Audience(string? actorType) =>
+        IsPortal(actorType) ? ScribeRenderAudience.Client : ScribeRenderAudience.Staff;
 }

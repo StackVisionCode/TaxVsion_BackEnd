@@ -121,6 +121,17 @@ public class OAuthTokenManagerTests
     }
 
     [Fact]
+    public async Task GetValidAccessTokenAsync_RefreshesWithTheGrantedScopeNotTheConfiguredOne()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ProviderClient.ConfiguredScope = "gmail.readonly gmail.modify";
+
+        await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.Equal(["gmail.readonly"], fixture.ProviderClient.RefreshScopes);
+    }
+
+    [Fact]
     public async Task GetValidAccessTokenAsync_WithTokenExpiringWithinBuffer_RefreshesProactively()
     {
         // Expira en 5 minutos — dentro del buffer de 10 minutos, debe refrescar ya.

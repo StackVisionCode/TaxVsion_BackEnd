@@ -1,0 +1,45 @@
+From: postmaster@contoso.com
+To: office@contoso.com
+Date: Thu, 23 Oct 2026 10:30:00 +0000
+Subject: Undeliverable: Re: Missing W-2
+Message-ID: <ndr-text-1@EX01.contoso.local>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="ex_text_1"
+
+--ex_text_1
+Content-Type: text/plain; charset="us-ascii"
+
+Delivery has failed to these recipients or groups:
+
+Maria Lopez (maria@client-example.com)<mailto:maria@client-example.com>
+The e-mail address you entered couldn't be found. Please check the recipient's e-mail address and try to resend the message. If the problem continues, please contact your helpdesk.
+
+Diagnostic information for administrators:
+
+Generating server: EX01.contoso.local
+
+maria@client-example.com
+Remote Server returned '550 5.1.1 RESOLVER.ADR.RecipNotFound; not found'
+
+Original message headers:
+
+Received: from EX01.contoso.local ([10.4.5.6]) by EX01.contoso.local ([10.4.5.6]) with mapi id 15.02.1544.004; Thu, 23 Oct 2026 10:29:58 +0000
+From: Office <office@contoso.com>
+To: <decoy@other-example.com>
+Subject: CONFIDENTIAL-ORIGINAL-SUBJECT
+Message-ID: <decoy-inline@contoso.com>
+
+--ex_text_1
+Content-Type: message/rfc822
+Content-Disposition: attachment
+
+From: Office <office@contoso.com>
+To: Maria Lopez <maria@client-example.com>
+Subject: Re: Missing W-2
+Message-ID: <pm.22222222222222222222222222222222@contoso.com>
+In-Reply-To: <client-question-1@client-example.com>
+Content-Type: text/plain; charset="us-ascii"
+
+CONFIDENTIAL-ORIGINAL-BODY
+
+--ex_text_1--

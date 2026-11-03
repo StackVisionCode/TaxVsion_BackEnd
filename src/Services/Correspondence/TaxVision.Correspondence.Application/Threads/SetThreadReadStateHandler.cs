@@ -6,7 +6,7 @@ using Wolverine;
 namespace TaxVision.Correspondence.Application.Threads;
 
 /// <summary>
-/// Marca todos los correos inbound de un hilo como leídos/no-leídos (estado compartido por el
+/// Marca todos los correos inbound (y los avisos de no entrega) de un hilo como leídos/no-leídos (estado compartido por el
 /// tenant) — HTTP-triggered. Confirma primero que el hilo existe y es del tenant (404 si no), mismo
 /// criterio de "confirmar tenencia antes de mutar hijos" que <see cref="ListThreadMessagesHandler"/>.
 /// Solo persiste si algún correo cambió de estado (los <c>MarkRead/Unread</c> son idempotentes).
@@ -17,6 +17,7 @@ public static class SetThreadReadStateHandler
         SetThreadReadStateCommand command,
         IEmailThreadRepository emailThreads,
         IIncomingEmailRepository incomingEmails,
+        IDeliveryNoticeRepository notices,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         CancellationToken ct
@@ -44,6 +45,10 @@ public static class SetThreadReadStateHandler
             var changed = command.IsRead ? email.MarkRead(now) : email.MarkUnread();
             anyChanged |= changed;
         }
+
+        // Los avisos de no entrega cuentan como no leídos del hilo: el mismo "marcar todo" los cubre.
+        foreach (var notice in await notices.ListByThreadForUpdateAsync(command.TenantId, command.ThreadId, ct))
+            anyChanged |= command.IsRead ? notice.MarkRead(now) : notice.MarkUnread();
 
         if (anyChanged)
         {

@@ -67,6 +67,7 @@ public sealed class ListInboxThreadsHandlerTests
             new ListInboxThreadsQuery(Filter()),
             threads,
             emails,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -97,6 +98,7 @@ public sealed class ListInboxThreadsHandlerTests
             new ListInboxThreadsQuery(Filter(restrictTo: preparer)),
             threads,
             new FakeIncomingEmailRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -133,6 +135,7 @@ public sealed class ListInboxThreadsHandlerTests
             threads,
             new FakeIncomingEmailRepository(),
             new FakeDraftRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 

@@ -24,6 +24,7 @@ public static class ListTrashHandler
             1,
             take,
             query.VisibleAccountIds,
+            query.Filter,
             ct
         );
 
@@ -53,6 +54,7 @@ public static class ListTrashHandler
                 1,
                 take,
                 query.VisibleAccountIds,
+                query.Filter,
                 ct
             );
 

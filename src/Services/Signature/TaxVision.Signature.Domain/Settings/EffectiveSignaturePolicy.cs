@@ -8,14 +8,17 @@ namespace TaxVision.Signature.Domain.Settings;
 /// <param name="ForRequests">Lo que aplica el dominio al armar solicitudes: techos de cantidad y horas, tamaño y
 /// páginas de la oficina y los canales de la oficina dentro de los del plan.</param>
 /// <param name="DefaultTokenHours">Vida por defecto del enlace del firmante, dentro del techo.</param>
-/// <param name="RetentionYears">Retención de la oficina, nunca por debajo del mínimo del plan.</param>
+/// <param name="RetentionYears">Retención de la oficina (Cumplimiento ?? Signature ?? 7), nunca por debajo del mínimo
+/// del plan.</param>
 /// <param name="PurgeEnabled">La oficina activó la purga y el plan la permite.</param>
 /// <param name="DefaultChannel">Canal preseleccionado, siempre dentro de los permitidos.</param>
+/// <param name="RetentionSource">De dónde salen los años antes del piso del plan.</param>
 public sealed record EffectiveSignaturePolicy(
     SignatureLimits Ceilings,
     SignatureLimits ForRequests,
     int DefaultTokenHours,
     int RetentionYears,
     bool PurgeEnabled,
-    VerificationChannel DefaultChannel
+    VerificationChannel DefaultChannel,
+    RetentionYearsSource RetentionSource
 );

@@ -1,0 +1,174 @@
+using BuildingBlocks.Common;
+using BuildingBlocks.Results;
+using TaxVision.Billing.Application.Abstractions;
+using TaxVision.Billing.Application.Invoices.GenerateInvoicePdf;
+using TaxVision.Billing.Domain.Invoices;
+using TaxVision.Billing.Domain.ValueObjects;
+using Xunit;
+
+namespace TaxVision.Billing.Tests.Invoices;
+
+/// <summary>El PDF recibe lo mismo que muestra la vista previa del CRM: además de nombre, EIN y
+/// dirección, el teléfono, correo y web del emisor congelados en el snapshot.</summary>
+public sealed class GenerateInvoicePdfHandlerTests
+{
+    private static readonly Guid Tenant = Guid.NewGuid();
+    private static readonly Guid Actor = Guid.NewGuid();
+    private static readonly DateTime Now = DateTime.UtcNow;
+
+    [Fact]
+    public async Task The_issuer_contact_details_reach_documents()
+    {
+        var issuer = new IssuerSnapshot(
+            "Gutierrez Tax Office",
+            new Address("1600 Main St", "Suite 200", "Austin", "TX", "78701", "US"),
+            "(512) 555-0112",
+            "office@gutierreztax.com",
+            "https://gutierreztax.com",
+            null,
+            "12-3456789"
+        );
+
+        var sent = await GenerateAsync(issuer);
+
+        Assert.Equal("Gutierrez Tax Office", sent.Issuer.Name);
+        Assert.Equal("12-3456789", sent.Issuer.TaxId);
+        Assert.Equal("1600 Main St, Suite 200, Austin, TX 78701, US", sent.Issuer.Address);
+        Assert.Equal("(512) 555-0112", sent.Issuer.Phone);
+        Assert.Equal("office@gutierreztax.com", sent.Issuer.Email);
+        Assert.Equal("https://gutierreztax.com", sent.Issuer.Website);
+    }
+
+    [Fact]
+    public async Task An_old_snapshot_without_contact_or_address_still_renders()
+    {
+        // Snapshot de antes de F0: sin contacto y con el guion largo como dirección de relleno.
+        var issuer = new IssuerSnapshot("Old office", new Address("—", null, "", "", "", "US"), null, null, null, null);
+
+        var sent = await GenerateAsync(issuer);
+
+        Assert.Equal("Old office", sent.Issuer.Name);
+        Assert.Null(sent.Issuer.Address);
+        Assert.Null(sent.Issuer.Phone);
+        Assert.Null(sent.Issuer.Email);
+        Assert.Null(sent.Issuer.Website);
+    }
+
+    [Fact]
+    public async Task The_customer_does_not_carry_contact_details_to_the_pdf()
+    {
+        var sent = await GenerateAsync(null);
+
+        Assert.Null(sent.Customer.Phone);
+        Assert.Null(sent.Customer.Email);
+    }
+
+    [Fact]
+    public async Task The_frozen_terms_reach_documents_with_a_readable_label()
+    {
+        var sent = await GenerateAsync(
+            null,
+            new InvoiceTermsSnapshot(PaymentTerms.Net30, "Zelle to pay@office.com", "Thank you!")
+        );
+
+        Assert.Equal("Net 30", sent.PaymentTerms);
+        Assert.Equal("Zelle to pay@office.com", sent.PaymentInstructions);
+        Assert.Equal("Thank you!", sent.InvoiceFooter);
+    }
+
+    [Fact]
+    public async Task An_invoice_from_before_the_settings_sends_no_terms()
+    {
+        var sent = await GenerateAsync(null);
+
+        Assert.Null(sent.PaymentTerms);
+        Assert.Null(sent.PaymentInstructions);
+        Assert.Null(sent.InvoiceFooter);
+    }
+
+    private static async Task<InvoiceDocumentRequest> GenerateAsync(
+        IssuerSnapshot? issuer,
+        InvoiceTermsSnapshot? terms = null
+    )
+    {
+        var draft = Invoice.CreateDraft(
+            Tenant,
+            Actor,
+            new CustomerSnapshot(Guid.NewGuid(), "Client", "client@example.com", "5551234567", null, null),
+            "USD",
+            [new DraftInvoiceLine("Tax prep", 1, 35000, 0)],
+            null,
+            Now,
+            issuer,
+            terms
+        );
+        Assert.True(draft.IsSuccess);
+        var invoice = draft.Value;
+        Assert.True(invoice.Issue("INV-2026-00042", Now, Now.AddDays(30), Actor).IsSuccess);
+
+        var documents = new RecordingDocuments();
+        await GenerateInvoicePdfHandler.Handle(
+            new GenerateInvoicePdfCommand(Tenant, invoice.Id),
+            new SingleInvoice(invoice),
+            documents,
+            new FixedCorrelation(),
+            CancellationToken.None
+        );
+
+        return Assert.IsType<InvoiceDocumentRequest>(documents.Sent);
+    }
+
+    private sealed class RecordingDocuments : IInvoiceDocumentClient
+    {
+        public InvoiceDocumentRequest? Sent { get; private set; }
+
+        public Task<Result> GenerateAsync(
+            InvoiceDocumentRequest request,
+            Guid tenantId,
+            string idempotencyKey,
+            string? correlationId,
+            CancellationToken ct = default
+        )
+        {
+            Sent = request;
+            return Task.FromResult(Result.Success());
+        }
+    }
+
+    private sealed class SingleInvoice(Invoice invoice) : IInvoiceRepository
+    {
+        public Task<Invoice?> GetByIdAsync(
+            Guid tenantId,
+            Guid invoiceId,
+            CancellationToken ct = default,
+            Guid? assignedToUserId = null
+        ) => Task.FromResult<Invoice?>(invoice);
+
+        public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
+            Guid tenantId,
+            int take,
+            CancellationToken ct = default,
+            Guid? assignedToUserId = null,
+            Guid? customerId = null
+        ) => throw new NotSupportedException();
+
+        public Task AddAsync(Invoice invoice, CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    private sealed class FixedCorrelation : ICorrelationContext
+    {
+        public string CorrelationId => "test-correlation";
+
+        public IDisposable Push(string correlationId) => new Noop();
+
+        public void Set(string correlationId) { }
+
+        private sealed class Noop : IDisposable
+        {
+            public void Dispose() { }
+        }
+    }
+}

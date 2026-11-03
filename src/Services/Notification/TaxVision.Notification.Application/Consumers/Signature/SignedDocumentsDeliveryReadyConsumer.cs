@@ -36,7 +36,9 @@ public static class SignedDocumentsDeliveryReadyConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
         using (correlation.Push(correlationId))
         {
             string token;
@@ -130,9 +132,9 @@ public static class SignedDocumentsDeliveryReadyConsumer
                 variables["completed_at"] = evt.CompletedAtUtc.ToString("yyyy-MM-dd HH:mm");
             }
 
-            var render = (await scribeClient.RenderAsync(eventKey, evt.TenantId, variables, ct)).EnsureRendered(
-                eventKey
-            );
+            var render = (
+                await scribeClient.RenderAsync(eventKey, evt.TenantId, variables, ScribeRenderAudience.Client, ct)
+            ).EnsureRendered(eventKey);
 
             await gateway.QueueEmailAsync(
                 render.ToDispatchRequest(

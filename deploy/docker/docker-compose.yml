@@ -376,6 +376,11 @@ services:
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
       # HttpPlanRateLimitReader — mismo caso que auth-api: sin esto cae a localhost:5360 en prod.
       SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # Perfil de la oficina F1: el EFIN se guarda cifrado (misma clave maestra que el resto) y la
+      # importación lee los emisores de Billing por M2M. Sin la clave solo falla Cumplimiento.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
+      BillingClient__BaseUrl: http://billing-api:8080
       # Fase D1 — credenciales MinIO propias para subir el logo (IAM scoped a
       # taxvision-temp/tenant-branding/*, ver deploy/docker/minio/policies/tenant-source.json
       # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.

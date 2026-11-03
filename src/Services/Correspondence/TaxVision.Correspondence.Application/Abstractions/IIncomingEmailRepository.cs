@@ -103,6 +103,8 @@ public interface IIncomingEmailRepository
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        // Texto (asunto, remitente, vista previa), solo con adjuntos y rango de fechas; null = sin filtro.
+        MailListFilter? filter = null,
         CancellationToken ct = default
     );
 

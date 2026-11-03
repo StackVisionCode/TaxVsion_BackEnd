@@ -1,0 +1,22 @@
+From: Mail Delivery Subsystem <mailer-daemon@googlemail.com>
+To: office@gmail.com
+Subject: Delivery Status Notification (Delay)
+Message-ID: <plain-delay-1@mx.google.com>
+Date: Tue, 28 Oct 2026 06:00:00 -0700
+In-Reply-To: <pm.77777777777777777777777777777777@gmail.com>
+References: <client-thread-1@example.com> <pm.77777777777777777777777777777777@gmail.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+** Delivery incomplete **
+
+There was a temporary problem delivering your message to slow@example.com. Gmail will retry for 47 more hours. You'll be notified if the delivery fails permanently.
+
+The response was:
+
+451 4.3.0 Temporary server error. Please try again later
+
+----- Original message -----
+
+Message-ID: <decoy-delay@gmail.com>
+Subject: CONFIDENTIAL-ORIGINAL-SUBJECT

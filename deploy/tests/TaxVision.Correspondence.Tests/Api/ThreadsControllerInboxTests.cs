@@ -47,7 +47,19 @@ public sealed class ThreadsControllerInboxTests
     {
         var (controller, bus) = Build();
 
-        var result = await controller.ListInboxThreads(status, null, false, null, 1, 20, CancellationToken.None);
+        var result = await controller.ListInboxThreads(
+            status,
+            null,
+            false,
+            null,
+            false,
+            false,
+            null,
+            null,
+            1,
+            20,
+            CancellationToken.None
+        );
 
         Assert.IsType<OkObjectResult>(result);
         var query = Assert.IsType<ListInboxThreadsQuery>(bus.LastInvoked);
@@ -59,7 +71,19 @@ public sealed class ThreadsControllerInboxTests
     {
         var (controller, bus) = Build();
 
-        var result = await controller.ListInboxThreads("Deleted", null, false, null, 1, 20, CancellationToken.None);
+        var result = await controller.ListInboxThreads(
+            "Deleted",
+            null,
+            false,
+            null,
+            false,
+            false,
+            null,
+            null,
+            1,
+            20,
+            CancellationToken.None
+        );
 
         var bad = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal("Correspondence.InvalidThreadStatus", Assert.IsType<Error>(bad.Value).Code);
@@ -72,7 +96,19 @@ public sealed class ThreadsControllerInboxTests
         var preparer = Guid.NewGuid();
         var (controller, bus) = Build(preparer);
 
-        await controller.ListInboxThreads(null, null, true, "  w-2  ", 1, 20, CancellationToken.None);
+        await controller.ListInboxThreads(
+            null,
+            null,
+            true,
+            "  w-2  ",
+            false,
+            false,
+            null,
+            null,
+            1,
+            20,
+            CancellationToken.None
+        );
 
         var query = Assert.IsType<ListInboxThreadsQuery>(bus.LastInvoked);
         Assert.Equal(preparer, query.Filter.RestrictToUserId);
@@ -94,5 +130,19 @@ public sealed class ThreadsControllerInboxTests
         Assert.Equal(preparer, command.RestrictToUserId);
         Assert.Equal(UserId, command.ActorUserId);
         Assert.Equal("corr-1", command.CorrelationId);
+    }
+
+    [Fact]
+    public async Task Get_one_thread_passes_both_gates()
+    {
+        var preparer = Guid.NewGuid();
+        var (controller, bus) = Build(preparer);
+        bus.NextResult = Result.Failure<InboxThreadSummary>(new Error("EmailThread.NotFound", "x"));
+
+        var result = await controller.GetInboxThread(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(404, Assert.IsType<ObjectResult>(result).StatusCode);
+        var query = Assert.IsType<GetInboxThreadQuery>(bus.LastInvoked);
+        Assert.Equal(preparer, query.RestrictToUserId);
     }
 }

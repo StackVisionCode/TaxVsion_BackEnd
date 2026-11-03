@@ -15,7 +15,7 @@ public sealed record UpdateSignatureSettingsCommand(
     bool AllowEmployeeOwnSignature,
     long MaxPdfBytes,
     int MaxPagesPerDocument,
-    int RetentionYears,
+    // Los años de retención no van aquí: los fija la oficina en Cumplimiento (Tenant).
     bool AllowPurge,
     // F7 — null = no tocar.
     bool? SendPartialCopyDefault = null,

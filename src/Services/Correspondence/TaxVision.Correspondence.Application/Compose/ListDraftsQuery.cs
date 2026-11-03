@@ -9,5 +9,7 @@ public sealed record ListDraftsQuery(
     DraftCustomerScope Customer,
     int Page,
     int Size,
-    Guid? OwnerUserId = null
+    Guid? OwnerUserId = null,
+    // Texto, solo con adjuntos y rango de fechas; null = sin filtro.
+    MailListFilter? Filter = null
 );

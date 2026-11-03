@@ -93,7 +93,11 @@ internal sealed class FakeEmailThreadRepository : IEmailThreadRepository
             .Where(x => x.TenantId == filter.TenantId)
             .Where(x => filter.Status is null || x.Status == filter.Status)
             .Where(x => filter.CustomerId is null || x.CustomerId == filter.CustomerId)
-            .Where(x => filter.RestrictToUserId is not { } user || Assignments.Contains((user, x.CustomerId)))
+            .Where(x =>
+                filter.RestrictToUserId is not { } user
+                || x.CustomerId is not { } customer
+                || Assignments.Contains((user, customer))
+            )
             .OrderByDescending(x => x.LastMessageAtUtc)
             .ToList();
         var page = filter.Page < 1 ? 1 : filter.Page;

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   bindCorrespondenceConsumers,
   parseCorrespondenceCustomerEmailReceived,
+  parseCorrespondenceDeliveryNoticeReceived,
   parseCorrespondenceThreadStateChanged,
 } from '../../src/application/event-handlers/correspondence-consumers.js';
 import type { IncomingEnvelope } from '../../src/application/ports/event-consumer.js';
@@ -197,9 +198,106 @@ describe('correspondence.thread_state_changed.v1', () => {
     });
   });
 
+  it('passes a thread without client (Guid.Empty or null) as customerId null', () => {
+    for (const customer of ['00000000-0000-0000-0000-000000000000', null]) {
+      const parsed = parseCorrespondenceThreadStateChanged({
+        customerId: customer,
+        emailThreadId: threadId,
+        status: 'Active',
+        unreadCount: 1,
+        messageCount: 0,
+      });
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data.customerId).toBeNull();
+    }
+  });
+
   it('ignores a payload without the thread counters', () => {
     expect(
       parseCorrespondenceThreadStateChanged({ CustomerId: customerId, EmailThreadId: threadId }).success,
     ).toBe(false);
+  });
+});
+
+describe('correspondence.delivery_notice_received.v1', () => {
+  const senderId = 'e5e5e5e5-8888-4888-8888-000000000008';
+  const officeReaderId = 'f6f6f6f6-9999-4999-8999-000000000009';
+  const noticeId = '0a0a0a0a-aaaa-4aaa-8aaa-00000000000a';
+  const noticeEnvelope = (payload: Record<string, unknown>): IncomingEnvelope => ({
+    ...envelope(payload),
+    eventType: 'correspondence.delivery_notice_received.v1',
+  });
+  const noticeHandler = (
+    handlers: Map<string, (env: IncomingEnvelope) => Promise<void>>,
+  ): ((env: IncomingEnvelope) => Promise<void>) => {
+    const handler = handlers.get('correspondence.delivery_notice_received.v1');
+    expect(handler).toBeDefined();
+    return handler as (env: IncomingEnvelope) => Promise<void>;
+  };
+
+  it('emits mail.incoming to office readers and to the sender, once each', async () => {
+    const { handlers, emitter } = setup({
+      'connectors.accounts.office.read': [snapshot(officeReaderId, [])],
+      'connectors.accounts.write': [snapshot(senderId, [])],
+    });
+    await noticeHandler(handlers)(
+      noticeEnvelope({
+        deliveryNoticeId: noticeId,
+        emailThreadId: threadId,
+        draftId: emailId,
+        customerId: null,
+        mailboxAccountId: accountId,
+        sentByUserId: senderId,
+        recipient: 'maria@x.com',
+        outcome: 'NotDelivered',
+        category: 'InvalidAddress',
+      }),
+    );
+
+    const calls = vi.mocked(emitter.emitToUser).mock.calls.map(([input]) => input);
+    expect(calls.map((input) => input.userId).sort()).toEqual([officeReaderId, senderId].sort());
+    expect(calls[0]?.event).toBe(MailSocketEvents.IncomingEmail);
+    expect(calls[0]?.envelope.payload).toEqual({
+      customerId: null,
+      emailThreadId: threadId,
+      incomingEmailId: '',
+      kind: 'delivery_notice',
+      deliveryNoticeId: noticeId,
+      outcome: 'NotDelivered',
+      category: 'InvalidAddress',
+    });
+  });
+
+  it('reaches the sender even when nobody reads the office mailbox', async () => {
+    const { handlers, emitter } = setup();
+
+    await noticeHandler(handlers)(
+      noticeEnvelope({
+        DeliveryNoticeId: noticeId,
+        EmailThreadId: threadId,
+        CustomerId: customerId,
+        SentByUserId: senderId,
+        Outcome: 'Delayed',
+      }),
+    );
+
+    const calls = vi.mocked(emitter.emitToUser).mock.calls.map(([input]) => input);
+    expect(calls.map((input) => input.userId)).toEqual([senderId]);
+    expect(calls[0]?.envelope.payload).toMatchObject({ customerId, outcome: 'Delayed', category: null });
+  });
+
+  it('drops a payload without ids and treats a legacy empty sender as unknown', () => {
+    expect(parseCorrespondenceDeliveryNoticeReceived({ outcome: 'NotDelivered' }).success).toBe(false);
+    const parsed = parseCorrespondenceDeliveryNoticeReceived({
+      deliveryNoticeId: noticeId,
+      emailThreadId: threadId,
+      sentByUserId: '00000000-0000-0000-0000-000000000000',
+      outcome: 'NotDelivered',
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.sentByUserId).toBeNull();
+      expect(parsed.data.customerId).toBeNull();
+    }
   });
 });

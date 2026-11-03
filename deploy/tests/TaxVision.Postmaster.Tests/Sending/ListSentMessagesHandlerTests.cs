@@ -82,7 +82,7 @@ public sealed class ListSentMessagesHandlerTests
         ListSentMessagesHandler.Handle(
             new ListSentMessagesQuery(
                 TenantId,
-                new SentMessageActivityFilter(status, recipient, null, null),
+                SentMessageActivityFilter.Create(status, recipient, null, null).Value,
                 page,
                 size,
                 mask
@@ -181,5 +181,167 @@ public sealed class ListSentMessagesHandlerTests
         );
 
         Assert.Equal("SentMessage.NotFound", detail.Error.Code);
+    }
+
+    /// <summary>Un correo a dos destinatarios: uno entregado y el otro sin noticias.</summary>
+    private static async Task<SentMessage> AddTwoRecipientsAsync(PostmasterDbContext db)
+    {
+        var message = SentMessage
+            .Queue(
+                TenantId,
+                Guid.NewGuid().ToString("N"),
+                "Welcome",
+                "no-reply@taxoffix.com",
+                EmailStream.Transactional,
+                "system-smtp",
+                null,
+                null,
+                null,
+                null,
+                null,
+                T0
+            )
+            .Value;
+        var delivered = message.AddRecipient("delivered@example.com", RecipientType.To, null).Value;
+        message.AddRecipient("waiting@example.com", RecipientType.To, null);
+        message.MarkAsSending();
+        message.MarkAsSent("id", T0);
+        message.ApplyDeliveryFeedback(
+            delivered.Id,
+            DeliveryFeedback
+                .ForOutcome(DeliveryOutcome.Delivered, T0.AddMinutes(1), FeedbackSource.Smtp2Go, "evt-d", null)
+                .Value,
+            null
+        );
+        await db.SentMessages.AddAsync(message);
+        await db.SaveChangesAsync();
+        return message;
+    }
+
+    [Fact]
+    public async Task List_shows_a_mixed_message_only_under_the_tab_of_its_displayed_status()
+    {
+        await using var db = CreateContext();
+        await AddTwoRecipientsAsync(db);
+
+        var all = await ListAsync(db);
+        var sent = await ListAsync(db, status: SentMessageActivityStatus.Sent);
+        var delivered = await ListAsync(db, status: SentMessageActivityStatus.Delivered);
+
+        // Uno sigue sin noticias: la fila dice "Sent" y solo aparece en esa pestaña.
+        Assert.Equal(SentMessageActivityStatus.Sent, Assert.Single(all.Items).Status);
+        Assert.Equal(SentMessageActivityStatus.Sent, Assert.Single(sent.Items).Status);
+        Assert.Empty(delivered.Items);
+    }
+
+    [Fact]
+    public async Task List_shows_a_delayed_message_only_under_Deferred()
+    {
+        await using var db = CreateContext();
+        await AddAsync(db, "late@example.com", DeliveryOutcome.Deferred);
+        await AddAsync(db, "waiting@example.com");
+
+        var deferred = await ListAsync(db, status: SentMessageActivityStatus.Deferred);
+        var sent = await ListAsync(db, status: SentMessageActivityStatus.Sent);
+
+        var row = Assert.Single(deferred.Items);
+        Assert.Equal(SentMessageActivityStatus.Deferred, row.Status);
+        Assert.Equal("late@example.com", Assert.Single(row.Recipients));
+        Assert.Equal("waiting@example.com", Assert.Single(Assert.Single(sent.Items).Recipients));
+    }
+
+    [Theory]
+    [InlineData(SentMessageActivityStatus.Delivered)]
+    [InlineData(SentMessageActivityStatus.Bounced)]
+    [InlineData(SentMessageActivityStatus.Sent)]
+    [InlineData(SentMessageActivityStatus.Deferred)]
+    [InlineData(SentMessageActivityStatus.Complained)]
+    [InlineData(SentMessageActivityStatus.Sending)]
+    [InlineData(SentMessageActivityStatus.Suppressed)]
+    [InlineData(SentMessageActivityStatus.Failed)]
+    public async Task List_every_row_under_a_tab_shows_that_tab(string status)
+    {
+        await using var db = CreateContext();
+        await AddAsync(db, "a@example.com", DeliveryOutcome.Delivered);
+        await AddAsync(db, "b@example.com", DeliveryOutcome.HardBounced);
+        await AddAsync(db, "c@example.com");
+        await AddAsync(db, "d@example.com", DeliveryOutcome.Deferred);
+        await AddAsync(db, "e@example.com", DeliveryOutcome.Complained);
+        await AddTwoRecipientsAsync(db);
+        await AddUnsentAsync(db, "queued@example.com", m => { });
+        await AddUnsentAsync(db, "blocked@example.com", m => m.MarkAsSuppressed("on the list", T0));
+        await AddUnsentAsync(
+            db,
+            "failed@example.com",
+            m =>
+            {
+                m.MarkAsSending();
+                m.MarkAsFailed("smtp down", T0);
+            }
+        );
+
+        var result = await ListAsync(db, status: status);
+
+        Assert.NotEmpty(result.Items);
+        Assert.All(result.Items, row => Assert.Equal(status, row.Status));
+    }
+
+    [Theory]
+    [InlineData(SentMessageActivityStatus.Sending, "queued@example.com")]
+    [InlineData(SentMessageActivityStatus.Suppressed, "blocked@example.com")]
+    public async Task List_filters_messages_that_never_left(string status, string expectedRecipient)
+    {
+        await using var db = CreateContext();
+        await AddAsync(db, "sent@example.com");
+        await AddUnsentAsync(db, "queued@example.com", m => { });
+        await AddUnsentAsync(db, "blocked@example.com", m => m.MarkAsSuppressed("on the list", T0));
+
+        var result = await ListAsync(db, status: status);
+
+        Assert.Equal(expectedRecipient, Assert.Single(Assert.Single(result.Items).Recipients));
+    }
+
+    [Theory]
+    [InlineData("Pending")]
+    [InlineData("3")]
+    [InlineData("Accepted")]
+    public void Filter_rejects_an_unknown_status_instead_of_showing_everything(string status)
+    {
+        var filter = SentMessageActivityFilter.Create(status, null, null, null);
+
+        Assert.Equal("SentMessageActivityFilter.InvalidStatus", filter.Error.Code);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("deferred", SentMessageActivity.Deferred)]
+    public void Filter_accepts_no_status_or_a_known_one(string? status, SentMessageActivity? expected)
+    {
+        Assert.Equal(expected, SentMessageActivityFilter.Create(status, null, null, null).Value.Status);
+    }
+
+    private static async Task AddUnsentAsync(PostmasterDbContext db, string recipient, Action<SentMessage> transition)
+    {
+        var message = SentMessage
+            .Queue(
+                TenantId,
+                Guid.NewGuid().ToString("N"),
+                "Welcome",
+                "no-reply@taxoffix.com",
+                EmailStream.Transactional,
+                "system-smtp",
+                null,
+                null,
+                null,
+                null,
+                null,
+                T0
+            )
+            .Value;
+        message.AddRecipient(recipient, RecipientType.To, null);
+        transition(message);
+        await db.SentMessages.AddAsync(message);
+        await db.SaveChangesAsync();
     }
 }

@@ -3,9 +3,13 @@ using BuildingBlocks.Domain;
 namespace TaxVision.Signature.Domain.Projections;
 
 /// <summary>
-/// Proyección local del tenant: nombre, subdominio y logo. La fuente de verdad es Tenant; esto se
-/// alimenta de <c>TenantCreatedIntegrationEvent</c> y <c>TenantLogoUpdatedIntegrationEvent</c>, y el
-/// backfill de arranque completa las oficinas anteriores a esos consumers.
+/// Proyección local de la identidad de la oficina: nombre y subdominio (los logos viven en
+/// <see cref="TenantLogoRef"/>, uno por superficie). La fuente de verdad es Tenant; esto se alimenta de
+/// <c>TenantCreatedIntegrationEvent</c>, <c>TenantUpdatedIntegrationEvent</c> (renombre) y
+/// <c>TenantSubdomainChangedIntegrationEvent</c>, y el backfill de arranque completa las oficinas
+/// anteriores a esos consumers. <see cref="OfficeNameAsOfUtc"/> ordena los cambios de nombre: uno más
+/// viejo que el aplicado se ignora. El nombre comercial llega por <c>TenantProfileChangedIntegrationEvent</c>
+/// y se ordena aparte con <see cref="ProfileVersion"/>.
 /// </summary>
 public sealed class TenantBrandingRef : ITenantOwned
 {
@@ -17,10 +21,19 @@ public sealed class TenantBrandingRef : ITenantOwned
     public Guid TenantId { get; private set; }
     public string OfficeName { get; private set; } = string.Empty;
     public string SubDomain { get; private set; } = string.Empty;
-    public Guid? LogoFileId { get; private set; }
-    public string? LogoContentType { get; private set; }
-    public long? LogoSizeBytes { get; private set; }
+
+    /// <summary>Fecha de Tenant del nombre aplicado por evento; null = nunca llegó uno con fecha.</summary>
+    public DateTime? OfficeNameAsOfUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    /// <summary>Nombre comercial (DBA) del perfil de la oficina; null = sin dato.</summary>
+    public string? DisplayName { get; private set; }
+
+    /// <summary>Versión del perfil aplicado; 0 = nunca llegó uno.</summary>
+    public long ProfileVersion { get; private set; }
+
+    /// <summary>Nombre que ve el firmante (certificado): el comercial si existe, si no el de la oficina.</summary>
+    public string? IssuerDisplayName => DisplayName ?? (string.IsNullOrWhiteSpace(OfficeName) ? null : OfficeName);
 
     public static TenantBrandingRef Create(Guid tenantId, DateTime updatedAtUtc) =>
         new() { TenantId = tenantId, UpdatedAtUtc = updatedAtUtc };
@@ -29,6 +42,35 @@ public sealed class TenantBrandingRef : ITenantOwned
     {
         OfficeName = officeName?.Trim() ?? string.Empty;
         UpdatedAtUtc = updatedAtUtc;
+    }
+
+    /// <summary>
+    /// Aplica el nombre que trae un evento de Tenant con su fecha. Devuelve false (sin cambios) si ya hay
+    /// un nombre aplicado más nuevo: los eventos pueden llegar fuera de orden.
+    /// </summary>
+    public bool ApplyOfficeName(string officeName, DateTime asOfUtc, DateTime updatedAtUtc)
+    {
+        if (OfficeNameAsOfUtc is { } current && asOfUtc < current)
+            return false;
+
+        SetOfficeName(officeName, updatedAtUtc);
+        OfficeNameAsOfUtc = asOfUtc;
+        return true;
+    }
+
+    /// <summary>
+    /// Aplica el perfil de la oficina. Devuelve false (sin cambios) si la versión no es más nueva que la
+    /// aplicada: el evento puede repetirse o llegar fuera de orden.
+    /// </summary>
+    public bool ApplyProfile(long version, string? displayName, DateTime updatedAtUtc)
+    {
+        if (version <= ProfileVersion)
+            return false;
+
+        DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim();
+        ProfileVersion = version;
+        UpdatedAtUtc = updatedAtUtc;
+        return true;
     }
 
     public void SetSubDomain(string subDomain, DateTime updatedAtUtc)
@@ -59,15 +101,4 @@ public sealed class TenantBrandingRef : ITenantOwned
 
         return changed;
     }
-
-    public void SetLogo(Guid fileId, string contentType, long sizeBytes, DateTime updatedAtUtc)
-    {
-        LogoFileId = fileId;
-        LogoContentType = contentType;
-        LogoSizeBytes = sizeBytes;
-        UpdatedAtUtc = updatedAtUtc;
-    }
-
-    /// <summary><c>true</c> si el tenant tiene un logo propio proyectado.</summary>
-    public bool HasLogo => LogoFileId is not null && LogoFileId != Guid.Empty;
 }

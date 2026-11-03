@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using TaxVision.Connectors.Application.OAuth;
 
 namespace TaxVision.Connectors.Application.Accounts;
 
@@ -7,6 +8,8 @@ public static class GetTenantEmailAccountHandler
     public static async Task<Result<TenantEmailAccountDto>> Handle(
         GetTenantEmailAccountQuery query,
         ITenantEmailAccountRepository accountRepository,
+        IOAuthConnectionRepository connectionRepository,
+        IOAuthProviderClientFactory clientFactory,
         CancellationToken ct
     )
     {
@@ -26,18 +29,7 @@ public static class GetTenantEmailAccountHandler
                 new Error("TenantEmailAccount.NotFound", "The email account was not found.")
             );
 
-        return Result.Success(
-            new TenantEmailAccountDto(
-                account.Id,
-                account.EmailAddress,
-                account.ProviderCode.ToString(),
-                account.DisplayName,
-                account.Status.ToString(),
-                account.ConnectedAtUtc,
-                account.CreatedAtUtc,
-                account.OwnerUserId,
-                account.IsOffice
-            )
-        );
+        var dtos = await TenantEmailAccountDtoFactory.CreateAsync([account], connectionRepository, clientFactory, ct);
+        return Result.Success(dtos[0]);
     }
 }

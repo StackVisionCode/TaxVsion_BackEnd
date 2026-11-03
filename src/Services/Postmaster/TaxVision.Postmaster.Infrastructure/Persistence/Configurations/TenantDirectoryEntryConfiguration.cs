@@ -17,5 +17,10 @@ internal sealed class TenantDirectoryEntryConfiguration : IEntityTypeConfigurati
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
         builder.Property(e => e.SubDomain).IsRequired().HasMaxLength(100);
         builder.Property(e => e.UpdatedAtUtc).IsRequired();
+
+        // Perfil de la oficina: solo el nombre comercial, que va en el From.
+        builder.Property(e => e.DisplayName).HasMaxLength(200);
+        builder.Property(e => e.ProfileVersion).IsRequired();
+        builder.Ignore(e => e.SenderName);
     }
 }

@@ -30,6 +30,8 @@ public sealed class InvoiceSentConsumerTests
 
         Assert.Equal("billing.invoice_sent.v1", render.LastEventKey);
         Assert.Equal("100.00 USD", render.LastVariables["amount_due"]);
+        // La factura la lee el cliente: lleva el logo del portal de la oficina.
+        Assert.Equal(ScribeRenderAudience.Client, render.LastAudience);
 
         var email = Assert.Single(gateway.Queued);
         Assert.Equal("client@example.com", email.To);
@@ -88,15 +90,25 @@ public sealed class InvoiceSentConsumerTests
             new Dictionary<string, object?>();
         public string? LastEventKey { get; private set; }
         public int Calls { get; private set; }
+        public ScribeRenderAudience? LastAudience { get; private set; }
 
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
             string eventKey,
             Guid tenantId,
             IReadOnlyDictionary<string, object?> variables,
             CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ScribeRenderAudience.Staff, ct);
+
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
         )
         {
             Calls++;
+            LastAudience = audience;
             LastEventKey = eventKey;
             LastVariables = variables;
             // Lo que devolveria Scribe para una plantilla sobre tenant-base: el carril viene del render.

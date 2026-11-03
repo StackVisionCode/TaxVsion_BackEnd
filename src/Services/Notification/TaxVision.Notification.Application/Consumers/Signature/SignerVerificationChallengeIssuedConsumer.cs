@@ -103,6 +103,7 @@ public static class SignerVerificationChallengeIssuedConsumer
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
                         ["language"] = evt.SignerLanguage,
                     },
+                    ScribeRenderAudience.Client,
                     ct
                 )
             ).EnsureRendered("sig.verification_challenge_issued.v1");

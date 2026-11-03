@@ -313,16 +313,117 @@ public sealed class CentralLoginHandlersTests
         Assert.Equal("Auth.HandoffInvalid", second.Error.Code);
     }
 
+    // --- PlatformAdmin fuera del login central ---
+
+    [Fact]
+    public async Task Discover_platform_admin_is_refused_before_mfa_exactly_like_a_wrong_password()
+    {
+        // Ni código MFA ni pista: la respuesta (y el freno por IP) es la de credenciales inválidas.
+        var world = new World();
+        world.AddOffice("platform", UserActorType.PlatformAdmin, enrollTotp: true);
+
+        var result = await Discover(world, "user@example.com", GoodPassword);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.Invalid", result.Error.Code);
+        Assert.Null(world.Tickets.LastPayload);
+        Assert.Equal(1, world.Throttler.Failures);
+    }
+
+    [Fact]
+    public async Task Discover_platform_admin_with_a_wrong_password_stays_generic()
+    {
+        var world = new World();
+        world.AddOffice("platform", UserActorType.PlatformAdmin);
+
+        var result = await Discover(world, "user@example.com", "wrong");
+
+        Assert.Equal("Auth.Invalid", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Discover_platform_admin_who_also_works_in_an_office_only_enters_the_office()
+    {
+        var world = new World();
+        world.AddOffice("platform", UserActorType.PlatformAdmin, enrollTotp: true);
+        var officeId = world.AddOffice("acme", UserActorType.TenantEmployee);
+
+        var result = await Discover(world, "user@example.com", GoodPassword);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("acme", result.Value.Subdomain);
+        Assert.Equal(new HandoffTicketPayload(officeId, world.UserIn(officeId)), world.Tickets.LastPayload);
+    }
+
+    [Fact]
+    public async Task Discover_on_the_landing_also_refuses_the_platform_admin()
+    {
+        var world = new World();
+        world.AddOffice("platform", UserActorType.PlatformAdmin);
+
+        var result = await Discover(world, "user@example.com", GoodPassword, surface: SessionSurface.Account);
+
+        Assert.Equal("Auth.Invalid", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Discover_from_the_client_portal_never_considers_staff_accounts()
+    {
+        // El portal pide solo cuentas Portal: el PlatformAdmin (cuenta de personal) ni se evalúa.
+        var world = new World();
+        world.AddOffice("platform", UserActorType.PlatformAdmin);
+
+        var result = await Discover(world, "user@example.com", GoodPassword, accountKind: UserAccountKind.Portal);
+
+        Assert.Equal("Auth.Invalid", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Discover_an_office_account_changed_by_hand_to_platform_admin_is_refused_too()
+    {
+        // Cuenta de oficina con ActorType cambiado a mano en la base (se repara con restore-tenant-admin).
+        var world = new World();
+        var officeId = world.AddOffice("acme", UserActorType.TenantAdmin);
+        var user = world.Users.Get(officeId);
+        typeof(User).GetProperty(nameof(User.ActorType))!.SetValue(user, UserActorType.PlatformAdmin);
+
+        var result = await Discover(world, "user@example.com", GoodPassword);
+
+        Assert.Equal("Auth.Invalid", result.Error.Code);
+        Assert.Null(world.Tickets.LastPayload);
+    }
+
+    [Fact]
+    public async Task FromTicket_of_a_platform_admin_is_refused()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("platform", UserActorType.PlatformAdmin);
+        var ticket = await world.Tickets.IssueAsync(new HandoffTicketPayload(tenantId, world.UserIn(tenantId)));
+
+        var result = await FromTicket(world, ticket);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.HandoffInvalid", result.Error.Code);
+    }
+
     // --- drivers ---
 
     private static Task<BuildingBlocks.Results.Result<DiscoverLoginResponse>> Discover(
         World world,
         string email,
         string password,
-        string? deviceToken = null
+        string? deviceToken = null,
+        UserAccountKind? accountKind = null,
+        SessionSurface surface = SessionSurface.Workspace
     ) =>
         DiscoverLoginHandler.Handle(
-            new DiscoverLoginCommand(email, password, DeviceToken: deviceToken),
+            new DiscoverLoginCommand(
+                email,
+                password,
+                AccountKind: accountKind,
+                DeviceToken: deviceToken,
+                Surface: surface
+            ),
             world.Users,
             world.Tenants,
             world.Hasher,
@@ -406,9 +507,17 @@ public sealed class CentralLoginHandlersTests
             bool enrollTotp = false
         )
         {
-            var tenantId = Guid.NewGuid();
+            // El dominio solo admite al PlatformAdmin en la oficina reservada de plataforma.
+            var isPlatform = actorType == UserActorType.PlatformAdmin;
+            var tenantId = isPlatform ? PlatformTenant.Id : Guid.NewGuid();
             var tenant = Tenant
-                .Register(tenantId, subdomain, subdomain, TenantKind.Customer, "America/Santo_Domingo")
+                .Register(
+                    tenantId,
+                    subdomain,
+                    subdomain,
+                    isPlatform ? TenantKind.Platform : TenantKind.Customer,
+                    "America/Santo_Domingo"
+                )
                 .Value;
             var user = User.Register(tenantId, "Test", "User", email, "hash", actorType).Value;
             Tenants.Add(tenant);

@@ -809,6 +809,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("TermsVersionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<long?>("TotalDiscountCents")
                         .HasColumnType("bigint");
 
@@ -4187,6 +4191,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("SubDomain")
                         .IsRequired()

@@ -1,0 +1,79 @@
+Received: from AM6PR01MB1234.eurprd01.prod.exchangelabs.com ([::1]) by AM6PR01MB1234.eurprd01.prod.exchangelabs.com with mapi; Wed, 22 Oct 2026 14:02:11 +0000
+From: Microsoft Outlook <postmaster@contoso.onmicrosoft.com>
+To: Office <office@contoso.com>
+Date: Wed, 22 Oct 2026 14:02:11 +0000
+Subject: Undeliverable: Your 2025 tax documents
+Message-ID: <0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0@AM6PR01MB1234.eurprd01.prod.exchangelabs.com>
+Auto-Submitted: auto-replied
+X-MS-Exchange-Message-Is-Ndr:
+Content-Language: en-US
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=delivery-status; boundary="ndr_boundary_1"
+
+--ndr_boundary_1
+Content-Type: multipart/alternative; differences=Content-Type; boundary="ndr_boundary_2"
+
+--ndr_boundary_2
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: quoted-printable
+
+Your message to nobody@example.com couldn't be delivered.
+
+nobody wasn't found at example.com.
+
+Office      Office 365      nobody
+Action Required                Recipient
+
+Unknown To address
+
+How to Fix It
+The address may be misspelled or may not exist. Try one or more of the foll=
+owing:
+- Retype the recipient's address, then resend the message.
+
+Was this helpful? Send feedback to Microsoft.
+
+Diagnostic information for administrators:
+
+Generating server: AM6PR01MB1234.eurprd01.prod.exchangelabs.com
+
+nobody@example.com
+Remote Server returned '550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipien=
+t not found by SMTP address lookup'
+
+Original message headers:
+
+Received: from AM6PR01MB1234.eurprd01.prod.exchangelabs.com by AM6PR01MB1234 with HTTPS; Wed, 22 Oct 2026 14:02:10 +0000
+Message-ID: <AM6PR01MB1234ABCDEF0123456789@AM6PR01MB1234.eurprd01.prod.exchangelabs.com>
+Subject: CONFIDENTIAL-ORIGINAL-SUBJECT
+--ndr_boundary_2
+Content-Type: text/html; charset="us-ascii"
+
+<html><head><style>.x{}</style></head><body><p>Your message to nobody@example.com couldn't be delivered.</p><p>Original message headers:</p><pre>Subject: CONFIDENTIAL-ORIGINAL-SUBJECT</pre></body></html>
+--ndr_boundary_2--
+
+--ndr_boundary_1
+Content-Type: message/delivery-status
+
+Reporting-MTA: dns;AM6PR01MB1234.eurprd01.prod.exchangelabs.com
+Received-From-MTA: dns;AM6PR01MB1234.eurprd01.prod.exchangelabs.com
+Arrival-Date: Wed, 22 Oct 2026 14:02:10 +0000
+
+Original-Recipient: rfc822;nobody@example.com
+Final-Recipient: rfc822;nobody@example.com
+Action: failed
+Status: 5.1.10
+Diagnostic-Code: smtp;550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipient not found by SMTP address lookup
+
+--ndr_boundary_1
+Content-Type: text/rfc822-headers
+
+Received: from AM6PR01MB1234.eurprd01.prod.exchangelabs.com by AM6PR01MB1234 with HTTPS; Wed, 22 Oct 2026 14:02:10 +0000
+From: Office <office@contoso.com>
+To: nobody@example.com
+Subject: CONFIDENTIAL-ORIGINAL-SUBJECT
+Date: Wed, 22 Oct 2026 14:02:09 +0000
+Message-ID: <AM6PR01MB1234ABCDEF0123456789@AM6PR01MB1234.eurprd01.prod.exchangelabs.com>
+MIME-Version: 1.0
+
+--ndr_boundary_1--

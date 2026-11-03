@@ -33,13 +33,11 @@ public sealed class TenantBrandingBackfillTests
     }
 
     [Fact]
-    public async Task Completa_nombre_y_subdominio_vacios_sin_tocar_el_logo()
+    public async Task Completa_nombre_y_subdominio_vacios()
     {
-        // CoreTaxPro: fila creada por TenantLogoUpdated, sin nombre ni subdominio.
+        // CoreTaxPro: fila sin nombre ni subdominio (los logos viven aparte, en TenantLogoRef).
         var tenantId = Guid.NewGuid();
-        var logoFileId = Guid.NewGuid();
         var existing = TenantBrandingRef.Create(tenantId, Earlier);
-        existing.SetLogo(logoFileId, "image/png", 65860, Earlier);
         var repository = new FakeBranding(existing);
 
         var outcome = await TenantBrandingBackfillPlan.RunAsync(
@@ -53,7 +51,6 @@ public sealed class TenantBrandingBackfillTests
         Assert.Equal(1, outcome.Completed);
         Assert.Equal("CoreTaxPro", existing.OfficeName);
         Assert.Equal("coretaxpro", existing.SubDomain);
-        Assert.Equal(logoFileId, existing.LogoFileId);
     }
 
     [Fact]
@@ -163,6 +160,17 @@ public sealed class TenantBrandingBackfillTests
 
         public Task<IReadOnlyList<TenantBrandingRef>> ListAllAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<TenantBrandingRef>>([.. Rows.Values]);
+
+        public Task<TenantLogoRef?> GetLogoAsync(
+            Guid tenantId,
+            TenantLogoSurface surface,
+            CancellationToken ct = default
+        ) => Task.FromResult<TenantLogoRef?>(null);
+
+        public Task<IReadOnlyList<TenantLogoRef>> ListLogosAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<TenantLogoRef>>([]);
+
+        public Task AddLogoAsync(TenantLogoRef logo, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class PagedClient(IReadOnlyList<TenantDirectoryItem> all) : ITenantDirectoryClient

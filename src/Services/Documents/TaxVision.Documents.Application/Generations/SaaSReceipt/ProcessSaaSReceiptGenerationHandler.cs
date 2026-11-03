@@ -8,6 +8,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Documents.Application.Abstractions;
 using TaxVision.Documents.Application.Generations.Receipts;
+using TaxVision.Documents.Domain.Branding;
 using TaxVision.Documents.Domain.Generations;
 using TaxVision.Documents.Domain.ValueObjects;
 using Wolverine;
@@ -67,7 +68,7 @@ public static class ProcessSaaSReceiptGenerationHandler
             string? brandLogo = null;
             try
             {
-                brandLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(PlatformTenant.Id, ct);
+                brandLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(PlatformTenant.Id, LogoAudience.Staff, ct);
             }
             catch (Exception ex)
             {
@@ -163,6 +164,13 @@ public static class ProcessSaaSReceiptGenerationHandler
                 // fallback "{{ issuer.name }} subscription" de la plantilla.
                 ["secondaryDescription"] = receipt.SecondaryDescription ?? string.Empty,
                 ["issuer"] = ReceiptRenderData.Issuer(issuer, brandLogoDataUri),
+                // Vacíos cuando la oficina no tiene perfil: la plantilla cae al nombre de la oficina.
+                ["billedTo"] = new Dictionary<string, object>
+                {
+                    ["legalName"] = receipt.BilledToLegalName?.Trim() ?? string.Empty,
+                    ["ein"] = receipt.BilledToEin?.Trim() ?? string.Empty,
+                    ["address"] = receipt.BilledToAddress?.Trim() ?? string.Empty,
+                },
             },
         };
 

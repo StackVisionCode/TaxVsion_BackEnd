@@ -47,6 +47,7 @@ public sealed class SetThreadReadStateHandlerTests
             new SetThreadReadStateCommand(tenantId, thread.Id, IsRead: true),
             emailThreads,
             incomingEmails,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
             new FakeMessageBus(),
             CancellationToken.None
@@ -77,6 +78,7 @@ public sealed class SetThreadReadStateHandlerTests
             new SetThreadReadStateCommand(tenantId, thread.Id, IsRead: false),
             emailThreads,
             incomingEmails,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
             new FakeMessageBus(),
             CancellationToken.None
@@ -106,6 +108,7 @@ public sealed class SetThreadReadStateHandlerTests
             new SetThreadReadStateCommand(tenantId, thread.Id, IsRead: true),
             emailThreads,
             incomingEmails,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
             new FakeMessageBus(),
             CancellationToken.None
@@ -122,6 +125,7 @@ public sealed class SetThreadReadStateHandlerTests
             new SetThreadReadStateCommand(Guid.NewGuid(), Guid.NewGuid(), IsRead: true),
             new FakeEmailThreadRepository(),
             new FakeIncomingEmailRepository(),
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             CancellationToken.None

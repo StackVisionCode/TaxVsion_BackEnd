@@ -69,7 +69,7 @@ public static class GetPaymentLinkByTokenHandler
                 link.Amount.Currency,
                 link.Purpose.Kind.ToString(),
                 link.Purpose.ExternalReferenceId,
-                tenant.Name,
+                tenant.CustomerFacingName,
                 methods,
                 purposeDescription
             )

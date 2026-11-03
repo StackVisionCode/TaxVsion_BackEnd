@@ -137,6 +137,74 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                     b.ToTable("TenantBrandColors", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Compliance.EfinRevealRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RevealedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RevealedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "RevealedAtUtc");
+
+                    b.ToTable("EfinRevealRecords", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Compliance.OfficeCompliance", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IncidentContactEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
+                    b.Property<string>("IncidentContactPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("RetentionYears")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("SecurityCoordinatorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly?>("WispAdoptedOn")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("WispLastReviewedOn")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("WispReminderDueOn")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("WispReminderSentOn")
+                        .IsConcurrencyToken()
+                        .HasColumnType("date");
+
+                    b.Property<string>("WispReminderStage")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("OfficeCompliances", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Tenant.Domain.Permissions.RolePermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -261,6 +329,67 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                     b.ToTable("PlatformSettings", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Profiles.OfficeProfile", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BookingUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("DefaultLanguage")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Ein")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
+                    b.Property<string>("EntityType")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("LegalName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ReviewUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("OfficeProfiles", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Tenant.Domain.RateLimiting.TenantPlanCodeProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -331,6 +460,9 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OnboardingId")
@@ -351,7 +483,8 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                             Kind = "Platform",
                             Name = "Platform",
                             Status = "Active",
-                            SubDomain = "platform-internal"
+                            SubDomain = "platform-internal",
+                            UpdatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });
 
@@ -371,6 +504,145 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .HasForeignKey("TenantBrandId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Compliance.OfficeCompliance", b =>
+                {
+                    b.OwnsOne("TaxVision.Tenant.Domain.ValueObjects.EncryptedEfin", "Efin", b1 =>
+                        {
+                            b1.Property<Guid>("OfficeComplianceTenantId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<byte[]>("Ciphertext")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("varbinary(64)")
+                                .HasColumnName("EfinCiphertext");
+
+                            b1.Property<short>("KeyVersion")
+                                .HasColumnType("smallint")
+                                .HasColumnName("EfinKeyVersion");
+
+                            b1.Property<string>("LastDigits")
+                                .IsRequired()
+                                .HasMaxLength(2)
+                                .HasColumnType("nvarchar(2)")
+                                .HasColumnName("EfinLastDigits");
+
+                            b1.Property<byte[]>("Nonce")
+                                .IsRequired()
+                                .HasMaxLength(12)
+                                .HasColumnType("varbinary(12)")
+                                .HasColumnName("EfinNonce");
+
+                            b1.Property<byte[]>("Tag")
+                                .IsRequired()
+                                .HasMaxLength(16)
+                                .HasColumnType("varbinary(16)")
+                                .HasColumnName("EfinTag");
+
+                            b1.HasKey("OfficeComplianceTenantId");
+
+                            b1.ToTable("OfficeCompliances");
+
+                            b1.WithOwner()
+                                .HasForeignKey("OfficeComplianceTenantId");
+                        });
+
+                    b.Navigation("Efin");
+                });
+
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Profiles.OfficeProfile", b =>
+                {
+                    b.OwnsOne("TaxVision.Tenant.Domain.ValueObjects.OfficeAddress", "MailingAddress", b1 =>
+                        {
+                            b1.Property<Guid>("OfficeProfileTenantId");
+
+                            b1.Property<string>("City");
+
+                            b1.Property<string>("Country")
+                                .IsRequired();
+
+                            b1.Property<string>("Line1");
+
+                            b1.Property<string>("Line2");
+
+                            b1.Property<string>("PostalCode");
+
+                            b1.Property<string>("State");
+
+                            b1.HasKey("OfficeProfileTenantId");
+
+                            b1.ToTable("OfficeProfiles");
+
+                            b1
+                                .ToJson("MailingAddressJson")
+                                .HasColumnType("nvarchar(max)");
+
+                            b1.WithOwner()
+                                .HasForeignKey("OfficeProfileTenantId");
+                        });
+
+                    b.OwnsOne("TaxVision.Tenant.Domain.ValueObjects.OfficeAddress", "PhysicalAddress", b1 =>
+                        {
+                            b1.Property<Guid>("OfficeProfileTenantId");
+
+                            b1.Property<string>("City");
+
+                            b1.Property<string>("Country")
+                                .IsRequired();
+
+                            b1.Property<string>("Line1");
+
+                            b1.Property<string>("Line2");
+
+                            b1.Property<string>("PostalCode");
+
+                            b1.Property<string>("State");
+
+                            b1.HasKey("OfficeProfileTenantId");
+
+                            b1.ToTable("OfficeProfiles");
+
+                            b1
+                                .ToJson("PhysicalAddressJson")
+                                .HasColumnType("nvarchar(max)");
+
+                            b1.WithOwner()
+                                .HasForeignKey("OfficeProfileTenantId");
+                        });
+
+                    b.OwnsMany("TaxVision.Tenant.Domain.ValueObjects.DailyOpeningHours", "BusinessHours", b1 =>
+                        {
+                            b1.Property<Guid>("OfficeProfileTenantId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAddOrUpdate();
+
+                            b1.Property<TimeOnly>("Closes");
+
+                            b1.Property<string>("Day")
+                                .IsRequired();
+
+                            b1.Property<TimeOnly>("Opens");
+
+                            b1.HasKey("OfficeProfileTenantId", "__synthesizedOrdinal");
+
+                            b1.ToTable("OfficeProfiles");
+
+                            b1
+                                .ToJson("BusinessHoursJson")
+                                .HasColumnType("nvarchar(max)");
+
+                            b1.WithOwner()
+                                .HasForeignKey("OfficeProfileTenantId");
+                        });
+
+                    b.Navigation("BusinessHours");
+
+                    b.Navigation("MailingAddress");
+
+                    b.Navigation("PhysicalAddress");
                 });
 
             modelBuilder.Entity("TaxVision.Tenant.Domain.Brands.TenantBrand", b =>

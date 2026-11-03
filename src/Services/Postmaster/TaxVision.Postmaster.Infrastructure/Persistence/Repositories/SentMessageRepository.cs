@@ -69,7 +69,7 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
             : Result.Success(message);
     }
 
-    /// <summary>Los mismos estados que muestra la pantalla (ver SentMessageActivityStatus).</summary>
+    /// <summary>Filtra por <see cref="SentMessage.Activity"/>, el mismo valor que muestra la pantalla.</summary>
     private static IQueryable<SentMessage> ApplyActivityFilter(
         IQueryable<SentMessage> query,
         SentMessageActivityFilter filter
@@ -85,31 +85,8 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
             query = query.Where(m => m.Recipients.Any(r => r.Address.Contains(recipient)));
         }
 
-        return filter.Status switch
-        {
-            SentMessageActivityStatus.Delivered => query.Where(m =>
-                m.Recipients.Any(r => r.Outcome == DeliveryOutcome.Delivered)
-            ),
-            SentMessageActivityStatus.Bounced => query.Where(m =>
-                m.Recipients.Any(r =>
-                    r.Outcome == DeliveryOutcome.HardBounced
-                    || r.Outcome == DeliveryOutcome.SoftBounced
-                    || r.Outcome == DeliveryOutcome.Rejected
-                )
-            ),
-            SentMessageActivityStatus.Complained => query.Where(m =>
-                m.Recipients.Any(r => r.Outcome == DeliveryOutcome.Complained)
-            ),
-            SentMessageActivityStatus.Sent => query.Where(m =>
-                m.Status == SentMessageStatus.Sent
-                && m.Recipients.Any(r => r.Outcome == DeliveryOutcome.Accepted || r.Outcome == DeliveryOutcome.Deferred)
-            ),
-            SentMessageActivityStatus.Failed => query.Where(m =>
-                m.Status == SentMessageStatus.Failed || m.Status == SentMessageStatus.ProviderNotConfigured
-            ),
-            SentMessageActivityStatus.Suppressed => query.Where(m => m.Status == SentMessageStatus.Suppressed),
-            _ => query,
-        };
+        // La misma columna que se muestra en la fila: cada fila de una pestaña dice esa pestaña.
+        return filter.Status is { } status ? query.Where(m => m.Activity == status) : query;
     }
 
     public async Task<Result<SentMessage>> GetByIdForFeedbackAsync(Guid id, CancellationToken ct = default)

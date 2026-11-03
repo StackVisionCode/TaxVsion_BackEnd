@@ -11,8 +11,8 @@ using Wolverine;
 namespace TaxVision.Tenant.Application.Brands.Commands;
 
 /// <summary>Elimina un asset (logo o favicon): borra el archivo de CloudStorage y lo quita de la
-/// marca. Idempotente: sin ese asset, es un no-op exitoso. Si era el logo del CRM, avisa a Scribe
-/// (mismo contrato que el modelo viejo) para que el email deje de mostrarlo.</summary>
+/// marca. Idempotente: sin ese asset, es un no-op exitoso. Si era un logo (CRM o Portal), publica
+/// TenantLogoRemoved con su superficie para que correos, PDF y certificados dejen de mostrarlo.</summary>
 public sealed record RemoveTenantBrandAssetCommand(Guid TenantId, BrandSurface Surface, BrandAssetKey Key);
 
 public static class RemoveTenantBrandAssetHandler
@@ -41,7 +41,7 @@ public static class RemoveTenantBrandAssetHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         await BrandCommandSupport.InvalidateAsync(cache, cmd.TenantId, cmd.Surface, ct);
-        await BrandLogoEvents.PublishRemovedIfCrmLogoAsync(bus, correlation, cmd.TenantId, cmd.Surface, cmd.Key);
+        await BrandLogoEvents.PublishRemovedIfLogoAsync(bus, correlation, cmd.TenantId, cmd.Surface, cmd.Key);
         return Result.Success();
     }
 }

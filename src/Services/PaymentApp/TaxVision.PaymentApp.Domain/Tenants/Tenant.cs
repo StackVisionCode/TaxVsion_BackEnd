@@ -25,6 +25,24 @@ public sealed class Tenant : BaseEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Sello <c>UpdatedAtUtc</c> de Tenant del último renombre / cambio de zona aplicado; null =
+    /// nombre y zona del alta. Ordena los <c>TenantUpdatedIntegrationEvent</c>.</summary>
+    public DateTime? SourceUpdatedAtUtc { get; private set; }
+
+    public const int BillingLegalNameMaxLength = 200;
+    public const int BillingEinMaxLength = 20;
+    public const int BillingAddressMaxLength = 1000;
+
+    /// <summary>"Billed to" del recibo SaaS (perfil de Tenant). Null = sin dato: el recibo muestra el nombre.</summary>
+    public string? BillingLegalName { get; private set; }
+    public string? BillingEin { get; private set; }
+
+    /// <summary>Dirección postal en una línea.</summary>
+    public string? BillingAddress { get; private set; }
+
+    /// <summary>Última versión del perfil aplicada; 0 = nunca llegó. Independiente de <see cref="SourceUpdatedAtUtc"/>.</summary>
+    public long ProfileVersion { get; private set; }
+
     private Tenant() { }
 
     public static Result<Tenant> Register(
@@ -76,6 +94,37 @@ public sealed class Tenant : BaseEntity
         UpdatedAtUtc = nowUtc;
     }
 
+    /// <summary>Renombre / cambio de zona publicado por Tenant (estado completo). Ignora un evento más
+    /// viejo que el aplicado; uno igual se reaplica (idempotente). Devuelve <c>true</c> si se aplicó.</summary>
+    public bool ApplyTenantUpdate(string name, string defaultTimeZoneId, DateTime sourceUpdatedAtUtc, DateTime nowUtc)
+    {
+        if (SourceUpdatedAtUtc is { } applied && sourceUpdatedAtUtc < applied)
+            return false;
+        if (string.IsNullOrWhiteSpace(name) || !IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalized))
+            return false;
+
+        Name = name.Trim();
+        DefaultTimeZoneId = normalized;
+        SourceUpdatedAtUtc = sourceUpdatedAtUtc;
+        UpdatedAtUtc = nowUtc;
+        return true;
+    }
+
+    /// <summary>Perfil de la oficina publicado por Tenant (estado completo). Solo aplica una versión mayor a
+    /// la guardada (igual o menor se ignora: idempotente). Vacíos → null. Devuelve <c>true</c> si se aplicó.</summary>
+    public bool ApplyProfile(long version, string? legalName, string? ein, string? address, DateTime nowUtc)
+    {
+        if (version <= ProfileVersion)
+            return false;
+
+        BillingLegalName = Normalize(legalName);
+        BillingEin = Normalize(ein);
+        BillingAddress = Normalize(address);
+        ProfileVersion = version;
+        UpdatedAtUtc = nowUtc;
+        return true;
+    }
+
     public void ApplyStatusChange(string status, bool isActive, DateTime nowUtc)
     {
         Status = status;
@@ -86,4 +135,6 @@ public sealed class Tenant : BaseEntity
     /// <summary>El Platform tenant (TaxVision interno) nunca es sujeto de cobro — solo un
     /// tenant Customer activo puede pasar el gate de <c>TenantStatusGateMiddleware</c>.</summary>
     public bool CanOperate() => IsActive && Kind == TenantKind.Customer;
+
+    private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

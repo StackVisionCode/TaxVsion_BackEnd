@@ -7,6 +7,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Documents.Application.Abstractions;
+using TaxVision.Documents.Domain.Branding;
 using TaxVision.Documents.Domain.Generations;
 using TaxVision.Documents.Domain.ValueObjects;
 using Wolverine;
@@ -78,7 +79,7 @@ public static class ProcessOnboardingReceiptGenerationHandler
             string? brandLogo = null;
             try
             {
-                brandLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(PlatformTenant.Id, ct);
+                brandLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(PlatformTenant.Id, LogoAudience.Staff, ct);
             }
             catch (Exception ex)
             {
@@ -201,6 +202,8 @@ public static class ProcessOnboardingReceiptGenerationHandler
             {
                 ["payerName"] = $"{receipt.PayerFirstName} {receipt.PayerLastName}".Trim(),
                 ["payerEmail"] = receipt.PayerEmail,
+                // "Billed to" = la oficina (a la atención del pagador) cuando se conoce su nombre.
+                ["officeName"] = receipt.OfficeName?.Trim() ?? string.Empty,
                 ["planName"] = receipt.PlanName,
                 ["price"] = priceFormatted,
                 ["currency"] = receipt.Currency,

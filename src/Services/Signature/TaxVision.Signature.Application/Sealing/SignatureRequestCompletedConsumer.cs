@@ -665,7 +665,7 @@ public static class SignatureRequestCompletedConsumer
                         Label: field.Label,
                         SignerDisplayName: signer.FullName.Value,
                         SignedAtUtc: signedAt,
-                            SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? signerImage : null,
+                        SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? signerImage : null,
                         Value: textValue,
                         FontSizePt: field.FontSizePt
                     )
@@ -746,11 +746,13 @@ public static class SignatureRequestCompletedConsumer
         // Cert con que se sellan los documentos (null si el sellado está degradado) → panel "Digital seal".
         var seal = sealer.DescribeSealCertificate();
 
-        // Logo de la OFICINA: la marca del tenant dueño del request (TenantBrandingRef). Al lado, el logo
-        // del SISTEMA: la marca del tenant plataforma (jturbi), misma fuente. Si la oficina no tiene logo
-        // queda solo el del sistema; si el sistema tampoco, el renderer cae al logo de plataforma embebido.
+        // Logo de la OFICINA: el certificado lo recibe el cliente, así que va el del portal y, si no hay,
+        // el del CRM. Al lado, el logo del SISTEMA: la marca del tenant plataforma (jturbi), misma fuente.
+        // Si la oficina no tiene logo queda solo el del sistema; si el sistema tampoco, el renderer cae al
+        // logo de plataforma embebido.
         var (issuerName, officeLogo) = await ResolveBrandingAsync(
             request.TenantId,
+            TenantLogoSurfaces.ClientPreference,
             brandingRepository,
             storage,
             logger,
@@ -762,6 +764,7 @@ public static class SignatureRequestCompletedConsumer
         {
             var (_, resolvedPlatformLogo) = await ResolveBrandingAsync(
                 PlatformTenant.Id,
+                TenantLogoSurfaces.StaffPreference,
                 brandingRepository,
                 storage,
                 logger,
@@ -819,6 +822,7 @@ public static class SignatureRequestCompletedConsumer
 
     private static async Task<(string? IssuerName, byte[]? TenantLogo)> ResolveBrandingAsync(
         Guid tenantId,
+        IReadOnlyList<TenantLogoSurface> logoPreference,
         ITenantBrandingRefRepository brandingRepository,
         ISignatureCloudStorageClient storage,
         ILogger logger,
@@ -826,25 +830,28 @@ public static class SignatureRequestCompletedConsumer
     )
     {
         var branding = await brandingRepository.GetByTenantIdAsync(tenantId, ct);
-        if (branding is null)
-            return (null, null);
+        var issuerName = branding?.IssuerDisplayName;
 
-        var issuerName = string.IsNullOrWhiteSpace(branding.OfficeName) ? null : branding.OfficeName;
-        if (!branding.HasLogo)
-            return (issuerName, null);
-
-        // Best-effort: un logo que no baja no debe frenar la generación del certificado.
-        var logoResult = await storage.DownloadAsync(tenantId, branding.LogoFileId!.Value, ct);
-        if (logoResult.IsFailure)
+        // Best-effort: un logo que no baja no frena el certificado; se prueba la siguiente superficie.
+        var logos = await brandingRepository.ListLogosAsync(tenantId, ct);
+        foreach (var surface in logoPreference)
         {
+            var logo = logos.FirstOrDefault(l => l.Surface == surface && l.HasLogo);
+            if (logo is null)
+                continue;
+
+            var logoResult = await storage.DownloadAsync(tenantId, logo.LogoFileId!.Value, ct);
+            if (logoResult.IsSuccess)
+                return (issuerName, logoResult.Value);
+
             logger.LogWarning(
-                "Tenant logo download failed for the certificate (tenant {TenantId}); rendering without it.",
+                "Tenant {Surface} logo download failed for the certificate (tenant {TenantId}).",
+                surface,
                 tenantId
             );
-            return (issuerName, null);
         }
 
-        return (issuerName, logoResult.Value);
+        return (issuerName, null);
     }
 
     private static CertificateOfCompletionModel BuildCertificateModel(

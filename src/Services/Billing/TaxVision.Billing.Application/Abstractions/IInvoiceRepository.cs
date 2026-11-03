@@ -1,6 +1,7 @@
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.Numbering;
 using TaxVision.Billing.Domain.Receipts;
+using TaxVision.Billing.Domain.Settings;
 
 namespace TaxVision.Billing.Application.Abstractions;
 
@@ -33,11 +34,26 @@ public interface IInvoiceRepository
     Task AddAsync(Invoice invoice, CancellationToken ct = default);
 }
 
-/// <summary>Perfil del emisor (datos de la empresa) del tenant — uno por tenant.</summary>
+/// <summary>Perfil del emisor (proyección del perfil de la oficina) — uno por tenant.</summary>
 public interface IIssuerProfileRepository
 {
     Task<IssuerProfile?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(IssuerProfile profile, CancellationToken ct = default);
+
+    /// <summary>Página de perfiles de TODOS los tenants (orden estable por tenant), con el total. Solo
+    /// para el listado M2M interno de la importación a Tenant.</summary>
+    Task<(IReadOnlyList<IssuerProfile> Items, int TotalCount)> ListPageAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    );
+}
+
+/// <summary>Ajustes de facturación del tenant (plazo, instrucciones de pago, pie) — uno por tenant.</summary>
+public interface ITenantBillingSettingsRepository
+{
+    Task<TenantBillingSettings?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default);
+    Task AddAsync(TenantBillingSettings settings, CancellationToken ct = default);
 }
 
 /// <summary>Contador de numeración server-side por (tenant, período).</summary>

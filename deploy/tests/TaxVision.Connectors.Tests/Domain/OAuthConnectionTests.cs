@@ -136,4 +136,38 @@ public class OAuthConnectionTests
         Assert.True(result.IsFailure);
         Assert.Equal("OAuthConnection.InvalidTransition", result.Error.Code);
     }
+
+    [Fact]
+    public void MissingScopes_ListsOnlyTheRequiredScopesNotGranted_IgnoringCase()
+    {
+        var connection = CreateValidConnection();
+
+        Assert.Equal(["gmail.send"], connection.MissingScopes("GMAIL.READONLY gmail.modify  gmail.send"));
+        Assert.Empty(connection.MissingScopes("gmail.readonly"));
+    }
+
+    [Fact]
+    public void Reconnect_FromActiveWithNewScopes_WidensTheGrant()
+    {
+        var connection = CreateValidConnection();
+        connection.AttachToken(CreateValidToken(connection.Id));
+
+        var result = connection.Reconnect("client-123", "gmail.readonly gmail.modify gmail.send", Now.AddDays(1));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OAuthConnectionStatus.Active, connection.Status);
+        Assert.Equal("gmail.readonly gmail.modify gmail.send", connection.Scope);
+    }
+
+    [Fact]
+    public void Reconnect_FromActiveWithSameScopes_Fails()
+    {
+        var connection = CreateValidConnection();
+        connection.AttachToken(CreateValidToken(connection.Id));
+
+        var result = connection.Reconnect("client-123", "gmail.modify gmail.readonly", Now.AddDays(1));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("OAuthConnection.InvalidTransition", result.Error.Code);
+    }
 }

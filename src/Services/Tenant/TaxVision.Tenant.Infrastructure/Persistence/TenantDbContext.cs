@@ -7,8 +7,10 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tenant.Domain.Brands;
+using TaxVision.Tenant.Domain.Compliance;
 using TaxVision.Tenant.Domain.Permissions;
 using TaxVision.Tenant.Domain.Platform;
+using TaxVision.Tenant.Domain.Profiles;
 using TaxVision.Tenant.Domain.RateLimiting;
 using DomainTenant = TaxVision.Tenant.Domain.Tenant;
 
@@ -39,6 +41,9 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, I
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
+    public DbSet<OfficeProfile> OfficeProfiles => Set<OfficeProfile>();
+    public DbSet<OfficeCompliance> OfficeCompliances => Set<OfficeCompliance>();
+    public DbSet<EfinRevealRecord> EfinRevealRecords => Set<EfinRevealRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -83,6 +88,15 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, I
             throw new ConflictException(
                 "Persistence.UniqueConstraint",
                 "A record with the same unique values already exists.",
+                ex
+            );
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // Otro guardado ganó la carrera (token de versión): 409 para que el cliente recargue y reintente.
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The record was changed by someone else. Reload it and try again.",
                 ex
             );
         }

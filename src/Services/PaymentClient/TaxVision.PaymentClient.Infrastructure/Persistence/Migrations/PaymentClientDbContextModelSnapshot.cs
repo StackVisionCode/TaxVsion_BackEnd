@@ -891,6 +891,10 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -903,6 +907,12 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<long>("ProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Status")
                         .IsRequired()

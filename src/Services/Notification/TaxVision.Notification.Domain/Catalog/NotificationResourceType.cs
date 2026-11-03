@@ -23,4 +23,5 @@ public enum NotificationResourceType
     Seats,
     Document,
     FormRequest,
+    ComplianceSettings,
 }
