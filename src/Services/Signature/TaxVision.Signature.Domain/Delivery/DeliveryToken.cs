@@ -13,7 +13,11 @@ public sealed record DeliveryToken(string Plain, string Hash)
 
     public static DeliveryToken Generate()
     {
-        var plain = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var plain = Convert
+            .ToBase64String(RandomNumberGenerator.GetBytes(32))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
         return new DeliveryToken(plain, HashOf(plain));
     }
 

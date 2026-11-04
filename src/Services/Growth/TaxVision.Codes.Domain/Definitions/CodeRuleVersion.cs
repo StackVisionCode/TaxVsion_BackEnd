@@ -12,6 +12,8 @@ public sealed class CodeRuleVersion : TenantEntity
     public Money? MinimumPurchase { get; private set; }
     public bool AllowStacking { get; private set; }
     public DateTime PublishedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid PublishedBy { get; private set; }
 
     private CodeRuleVersion() { }

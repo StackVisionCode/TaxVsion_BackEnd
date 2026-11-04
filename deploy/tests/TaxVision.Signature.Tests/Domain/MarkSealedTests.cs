@@ -98,12 +98,28 @@ public sealed class MarkSealedTests
     private static SignatureRequest NewInProgressRequest()
     {
         var request = SignatureRequest
-            .CreateDraft(TestSignatureLimits.Default, Guid.NewGuid(), Guid.NewGuid(), "Test sealed", null, "Fiscal", 72, false, false, true)
+            .CreateDraft(
+                TestSignatureLimits.Default,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Test sealed",
+                null,
+                "Fiscal",
+                72,
+                false,
+                false,
+                true
+            )
             .Value;
         request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Primary document");
 
         var signer = request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Some Name").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Some Name").Value,
+                null
+            )
             .Value;
         request.PlaceField(
             TestSignatureLimits.MaxFieldsPerSigner,

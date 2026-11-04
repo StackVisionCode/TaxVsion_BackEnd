@@ -135,6 +135,9 @@ builder.Services.Configure<TaxVision.Auth.Application.Onboarding.OnboardingOrpha
 );
 builder.Services.AddHostedService<OnboardingOrphanDetectorJob>();
 
+// Retiro con acuse por servicio: marca "Incomplete" lo que pasa del plazo y avisa (opciones en Infrastructure).
+builder.Services.AddHostedService<OffboardingRunsSweepJob>();
+
 // Contexto de request (IP/user-agent) para auditoría y sesiones.
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IRequestContext, RequestContext>();
@@ -519,6 +522,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<UserDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserReactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserOffboardedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Retiro con pasos sin acuse vencido el plazo: Notification avisa a quienes gestionan usuarios.
+    options.PublishMessage<UserOffboardingIncompleteIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserSlotGatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserSlotUnlockedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserSlotPriorityOverriddenIntegrationEvent>().ToRabbitExchange("taxvision-events");

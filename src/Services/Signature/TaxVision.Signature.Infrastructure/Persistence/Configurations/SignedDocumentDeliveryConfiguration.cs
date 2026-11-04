@@ -14,7 +14,10 @@ public sealed class SignedDocumentDeliveryConfiguration : IEntityTypeConfigurati
 
         builder.Property(delivery => delivery.SignatureRequestId).IsRequired();
         builder.Property(delivery => delivery.SignerId).IsRequired();
-        builder.Property(delivery => delivery.RecipientEmail).HasMaxLength(SignedDocumentDelivery.MaxEmailLength).IsRequired();
+        builder
+            .Property(delivery => delivery.RecipientEmail)
+            .HasMaxLength(SignedDocumentDelivery.MaxEmailLength)
+            .IsRequired();
         builder.Property(delivery => delivery.Purpose).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(delivery => delivery.TokenHash).HasMaxLength(DeliveryToken.HashLength).IsRequired();
         builder.Property(delivery => delivery.ExpiresAtUtc).IsRequired();
@@ -28,12 +31,23 @@ public sealed class SignedDocumentDeliveryConfiguration : IEntityTypeConfigurati
         builder.HasIndex(delivery => new { delivery.TenantId, delivery.SignatureRequestId });
         // Una sola entrega final por firmante: dos FileAvailable concurrentes no duplican el correo.
         builder
-            .HasIndex(delivery => new { delivery.SignatureRequestId, delivery.SignerId, delivery.Purpose })
+            .HasIndex(delivery => new
+            {
+                delivery.SignatureRequestId,
+                delivery.SignerId,
+                delivery.Purpose,
+            })
             .IsUnique()
             .HasFilter("[Purpose] = 'Completed'");
 
-        builder.HasMany(delivery => delivery.Items).WithOne().HasForeignKey(item => item.DeliveryId).OnDelete(DeleteBehavior.Cascade);
-        builder.Metadata.FindNavigation(nameof(SignedDocumentDelivery.Items))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+        builder
+            .HasMany(delivery => delivery.Items)
+            .WithOne()
+            .HasForeignKey(item => item.DeliveryId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder
+            .Metadata.FindNavigation(nameof(SignedDocumentDelivery.Items))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
     }
 }
 

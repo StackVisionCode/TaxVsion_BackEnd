@@ -22,6 +22,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
     public string Name { get; private set; } = default!;
     public string? Description { get; private set; }
     public EmailContentStatus Status { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }
@@ -32,6 +34,7 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
     /// </summary>
     public string? DispatchScopeOverride { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? DispatchScopeOverrideByUserId { get; private set; }
     public DateTime? DispatchScopeOverrideAtUtc { get; private set; }
 

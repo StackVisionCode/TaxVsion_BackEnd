@@ -294,6 +294,23 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
             )
         );
 
+    public Task<IReadOnlyList<TaskItem>> ListWithRunningTimersOfAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<TaskItem>>([
+            .. _tasks.Where(t => t.TenantId == tenantId && t.Timers.Any(x => x.UserId == userId && x.IsRunning)),
+        ]);
+
+    public Task<int> CountRunningTimersOfAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(
+            _tasks
+                .Where(t => t.TenantId == tenantId)
+                .SelectMany(t => t.Timers)
+                .Count(x => x.UserId == userId && x.IsRunning)
+        );
+
     public Task<PagedResult<TaskItem>> ListByCustomerAsync(
         Guid tenantId,
         Guid customerId,

@@ -124,7 +124,10 @@ public sealed record SignatureRequestResponse(
     DateTime? PreparerSignedAtUtc,
     Guid? PreparerSignatureFileId,
     IReadOnlyList<PreparerFieldResponse> PreparerFields,
-    IReadOnlyList<SignerResponse> Signers
+    IReadOnlyList<SignerResponse> Signers,
+    // Quién es el preparador (sin PTIN): la vista de staff lo muestra y ofrece cambiarlo si no firmó.
+    Guid? PreparerUserId = null,
+    string? PreparerDisplayName = null
 )
 {
     public static SignatureRequestResponse From(SignatureRequest request) =>
@@ -136,7 +139,10 @@ public sealed record SignatureRequestResponse(
             request.Description,
             request.Category,
             request.Status,
-            request.Documents.OrderBy(document => document.Order).Select(SignatureRequestDocumentResponse.From).ToList(),
+            request
+                .Documents.OrderBy(document => document.Order)
+                .Select(SignatureRequestDocumentResponse.From)
+                .ToList(),
             request.CertificateFileId,
             request.RequiresSequentialSigning,
             request.RequiresConsent,
@@ -166,7 +172,9 @@ public sealed record SignatureRequestResponse(
             request.PreparerSignedAtUtc,
             request.PreparerSignatureFileId,
             request.PreparerFields.Select(MapPreparerField).ToList(),
-            request.Signers.Select(MapSigner).ToList()
+            request.Signers.Select(MapSigner).ToList(),
+            request.Preparer?.UserId,
+            request.Preparer?.DisplayName
         );
 
     private static PreparerFieldResponse MapPreparerField(PreparerField field) =>

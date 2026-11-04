@@ -23,6 +23,11 @@ public sealed class UserEmailDirectoryEntry : TenantEntity
 {
     private UserEmailDirectoryEntry() { }
 
+    [UserReference(
+        UserReferenceKind.Projection,
+        HandledBy = "UserEmailDirectoryOffboardingConsumer",
+        Note = "Inactivo = el despachador corta correo, SMS, push e in-app."
+    )]
     public Guid UserId { get; private set; }
     public string Email { get; private set; } = string.Empty;
 

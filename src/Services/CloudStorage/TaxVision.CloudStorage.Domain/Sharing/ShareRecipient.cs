@@ -21,6 +21,12 @@ public sealed class ShareRecipient : BaseEntity
 
     public Guid ShareLinkId { get; private set; }
     public ShareRecipientKind Kind { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "CloudStorageUserOffboardedConsumer",
+        Note = "Sale de los links activos donde era destinatario."
+    )]
     public Guid? RecipientUserId { get; private set; }
     public Guid? RecipientCustomerId { get; private set; }
     public string? RecipientEmail { get; private set; }

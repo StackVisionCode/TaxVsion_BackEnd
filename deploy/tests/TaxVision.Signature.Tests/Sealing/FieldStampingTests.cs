@@ -58,7 +58,9 @@ public sealed class FieldStampingTests
     public void Long_text_wraps_and_shrinks_to_fit_the_box_height()
     {
         var text = string.Join(' ', Enumerable.Repeat("additional income from rental property", 6));
-        var stamped = Stamp(Field(SignatureFieldKind.Text, height: 40.0 / 792, width: 0.3, fontSizePt: 14, value: text));
+        var stamped = Stamp(
+            Field(SignatureFieldKind.Text, height: 40.0 / 792, width: 0.3, fontSizePt: 14, value: text)
+        );
 
         Assert.All(stamped.FontSizes.Where(size => size != FooterFontSize), size => Assert.True(size < 14));
         Assert.Equal(0, stamped.Shapes);
@@ -125,10 +127,7 @@ public sealed class FieldStampingTests
         var withField = Operators(Seal([field], showFrame));
         int Added(string op) => withField.Count(o => o.Name == op) - baseline.Count(o => o.Name == op);
 
-        var fontSizes = withField
-            .Where(o => o.Name == "Tf")
-            .Select(o => SizeOf(o.Operands[1]))
-            .ToList();
+        var fontSizes = withField.Where(o => o.Name == "Tf").Select(o => SizeOf(o.Operands[1])).ToList();
         // Sacar los del pie (presentes también en la línea base).
         foreach (var footer in baseline.Where(o => o.Name == "Tf").Select(o => SizeOf(o.Operands[1])))
             fontSizes.Remove(footer);
@@ -141,7 +140,9 @@ public sealed class FieldStampingTests
     {
         var engine = new PdfSharpSealingEngine(new FixedPlatformSettings());
         var style = new StampStyle(showFrame, "MM/dd/yyyy", AutoFontMinPt: 6, AutoFontMaxPt: 12);
-        return engine.Seal(new SealingRequest(BlankLetterPage(), fields, new string('a', 64), "footer", style)).SealedPdfBytes;
+        return engine
+            .Seal(new SealingRequest(BlankLetterPage(), fields, new string('a', 64), "footer", style))
+            .SealedPdfBytes;
     }
 
     private static byte[] BlankLetterPage()
@@ -162,8 +163,10 @@ public sealed class FieldStampingTests
         var fonts = document.Pages[0].Resources.Elements.GetDictionary("/Font");
         return fonts is null
             ? []
-            : fonts.Elements.Values
-                .Select(item => (item as PdfSharp.Pdf.Advanced.PdfReference)?.Value as PdfDictionary ?? item as PdfDictionary)
+            : fonts
+                .Elements.Values.Select(item =>
+                    (item as PdfSharp.Pdf.Advanced.PdfReference)?.Value as PdfDictionary ?? item as PdfDictionary
+                )
                 .Select(font => font?.Elements.GetName("/BaseFont") ?? string.Empty)
                 .ToList();
     }
@@ -199,6 +202,14 @@ public sealed class FieldStampingTests
     private sealed class FixedPlatformSettings : IPlatformSettings
     {
         public PlatformSettingsSnapshot Current { get; } =
-            new(1, "TaxOffix", "TaxOffix LLC", "taxoffix.io", "api.taxoffix.io", "support@taxoffix.io", "billing@taxoffix.io");
+            new(
+                1,
+                "TaxOffix",
+                "TaxOffix LLC",
+                "taxoffix.io",
+                "api.taxoffix.io",
+                "support@taxoffix.io",
+                "billing@taxoffix.io"
+            );
     }
 }

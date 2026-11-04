@@ -2,7 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
   checkPermission,
   permissionCheckHttpStatus,
-  type CommunicationPermission,
+  type RequiredPermission,
 } from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
@@ -20,7 +20,7 @@ import type { AppContainer } from '../../../infrastructure/container.js';
  * forma de fallo mas comun de este patron: comprobar y olvidar el `return`, que deja el handler
  * ejecutandose igual despues de haber escrito un 403.
  */
-export function requirePermission(container: AppContainer, permission: CommunicationPermission) {
+export function requirePermission(container: AppContainer, permission: RequiredPermission) {
   return async function requirePermissionPreHandler(
     request: FastifyRequest,
     reply: FastifyReply,

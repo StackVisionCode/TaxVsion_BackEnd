@@ -17,6 +17,11 @@ public sealed class SignatureProfile : TenantEntity
     private SignatureProfile() { }
 
     /// <summary>Dueño de la firma: un usuario (firma personal) o <c>null</c> = firma de oficina del tenant.</summary>
+    [UserReference(
+        UserReferenceKind.Private,
+        HandledBy = "SignatureUserOffboardedConsumer",
+        Note = "Perfiles personales: se archivan."
+    )]
     public Guid? OwnerUserId { get; private set; }
 
     /// <summary>Etiqueta legible que el usuario le da a esta firma (p. ej. "Firma azul").</summary>
@@ -32,6 +37,7 @@ public sealed class SignatureProfile : TenantEntity
     public bool IsDefault { get; private set; }
     public bool IsArchived { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }

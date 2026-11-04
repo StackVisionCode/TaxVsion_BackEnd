@@ -101,7 +101,14 @@ public sealed class PractitionerPinTests
         var request = NewInProgressWithField();
         var signer = request.Signers.Single();
 
-        var result = request.VerifySignerWithPin(signer.Id, isMatch: true, DateTime.UtcNow, null, null, TestSignatureLimits.Verification);
+        var result = request.VerifySignerWithPin(
+            signer.Id,
+            isMatch: true,
+            DateTime.UtcNow,
+            null,
+            null,
+            TestSignatureLimits.Verification
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Request.PinNotConfigured", result.Error.Code);
@@ -113,7 +120,14 @@ public sealed class PractitionerPinTests
         var request = NewInProgressWithPin();
         var signer = request.Signers.Single();
 
-        var result = request.VerifySignerWithPin(signer.Id, isMatch: true, DateTime.UtcNow, "1.2.3.4", "ua/1.0", TestSignatureLimits.Verification);
+        var result = request.VerifySignerWithPin(
+            signer.Id,
+            isMatch: true,
+            DateTime.UtcNow,
+            "1.2.3.4",
+            "ua/1.0",
+            TestSignatureLimits.Verification
+        );
 
         Assert.True(result.IsSuccess);
         Assert.True(signer.IsPinVerified);
@@ -126,8 +140,22 @@ public sealed class PractitionerPinTests
         var request = NewInProgressWithPin();
         var signer = request.Signers.Single();
 
-        request.VerifySignerWithPin(signer.Id, isMatch: false, DateTime.UtcNow, null, null, TestSignatureLimits.Verification);
-        request.VerifySignerWithPin(signer.Id, isMatch: false, DateTime.UtcNow, null, null, TestSignatureLimits.Verification);
+        request.VerifySignerWithPin(
+            signer.Id,
+            isMatch: false,
+            DateTime.UtcNow,
+            null,
+            null,
+            TestSignatureLimits.Verification
+        );
+        request.VerifySignerWithPin(
+            signer.Id,
+            isMatch: false,
+            DateTime.UtcNow,
+            null,
+            null,
+            TestSignatureLimits.Verification
+        );
 
         Assert.Equal(2, signer.PinFailedAttempts);
         Assert.False(signer.IsPinVerified);
@@ -158,7 +186,14 @@ public sealed class PractitionerPinTests
         for (var i = 0; i < TestSignatureLimits.Verification.MaxAttempts; i++)
             request.VerifySignerWithPin(signer.Id, isMatch: false, now, null, null, TestSignatureLimits.Verification);
 
-        var duringLock = request.VerifySignerWithPin(signer.Id, isMatch: true, now.AddMinutes(1), null, null, TestSignatureLimits.Verification);
+        var duringLock = request.VerifySignerWithPin(
+            signer.Id,
+            isMatch: true,
+            now.AddMinutes(1),
+            null,
+            null,
+            TestSignatureLimits.Verification
+        );
 
         Assert.True(duringLock.IsFailure);
         Assert.Equal("Signature.Signer.PinLocked", duringLock.Error.Code);
@@ -174,7 +209,14 @@ public sealed class PractitionerPinTests
             request.VerifySignerWithPin(signer.Id, isMatch: false, now, null, null, TestSignatureLimits.Verification);
 
         var afterLock = now.Add(TestSignatureLimits.Verification.LockDuration).AddMinutes(1);
-        var success = request.VerifySignerWithPin(signer.Id, isMatch: true, afterLock, null, null, TestSignatureLimits.Verification);
+        var success = request.VerifySignerWithPin(
+            signer.Id,
+            isMatch: true,
+            afterLock,
+            null,
+            null,
+            TestSignatureLimits.Verification
+        );
 
         Assert.True(success.IsSuccess);
         Assert.True(signer.IsPinVerified);
@@ -185,10 +227,24 @@ public sealed class PractitionerPinTests
     {
         var request = NewInProgressWithPin();
         var signer = request.Signers.Single();
-        request.VerifySignerWithPin(signer.Id, isMatch: true, DateTime.UtcNow, null, null, TestSignatureLimits.Verification);
+        request.VerifySignerWithPin(
+            signer.Id,
+            isMatch: true,
+            DateTime.UtcNow,
+            null,
+            null,
+            TestSignatureLimits.Verification
+        );
         var verifiedAt = signer.PinVerifiedAtUtc;
 
-        var second = request.VerifySignerWithPin(signer.Id, isMatch: true, DateTime.UtcNow.AddMinutes(5), null, null, TestSignatureLimits.Verification);
+        var second = request.VerifySignerWithPin(
+            signer.Id,
+            isMatch: true,
+            DateTime.UtcNow.AddMinutes(5),
+            null,
+            null,
+            TestSignatureLimits.Verification
+        );
 
         Assert.True(second.IsSuccess);
         Assert.Equal(verifiedAt, signer.PinVerifiedAtUtc);
@@ -213,7 +269,14 @@ public sealed class PractitionerPinTests
     {
         var request = NewInProgressWithPin();
         var signer = request.Signers.Single();
-        request.VerifySignerWithPin(signer.Id, isMatch: true, DateTime.UtcNow, null, null, TestSignatureLimits.Verification);
+        request.VerifySignerWithPin(
+            signer.Id,
+            isMatch: true,
+            DateTime.UtcNow,
+            null,
+            null,
+            TestSignatureLimits.Verification
+        );
 
         var result = request.MarkSignerSigned(signer.Id, DateTime.UtcNow, null, null);
 
@@ -244,11 +307,26 @@ public sealed class PractitionerPinTests
     {
         var draft = NewDraft();
         var signer = draft
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("signer@example.com").Value, SignerFullName.Create("The Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("signer@example.com").Value,
+                SignerFullName.Create("The Signer").Value,
+                null
+            )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -257,12 +335,27 @@ public sealed class PractitionerPinTests
     {
         var draft = NewDraft();
         var signer = draft
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("signer@example.com").Value, SignerFullName.Create("The Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("signer@example.com").Value,
+                SignerFullName.Create("The Signer").Value,
+                null
+            )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
         draft.SetPractitionerPin("stored-hash", Guid.NewGuid(), DateTime.UtcNow);
-        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }

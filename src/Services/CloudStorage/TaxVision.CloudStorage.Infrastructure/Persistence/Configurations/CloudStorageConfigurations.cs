@@ -101,7 +101,9 @@ public sealed class TenantStorageLimitConfiguration : IEntityTypeConfiguration<T
         builder.Property(limit => limit.MaxShareLifetimeDays).HasDefaultValue(30);
         builder.Property(limit => limit.DefaultShareLifetimeDays).HasDefaultValue(7);
         builder.Property(limit => limit.MinSharePasswordLength).HasDefaultValue(8);
-        builder.Property(limit => limit.MaxSharePasswordAttempts).HasDefaultValue(TenantStorageLimit.DefaultMaxSharePasswordAttempts);
+        builder
+            .Property(limit => limit.MaxSharePasswordAttempts)
+            .HasDefaultValue(TenantStorageLimit.DefaultMaxSharePasswordAttempts);
         // Grupos de tipos del plan (entitlement); el default cubre las filas existentes hasta el próximo evento.
         builder
             .Property(limit => limit.PlanFileTypeGroups)
@@ -124,6 +126,10 @@ public sealed class TenantCloudConnectionConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.Provider).HasMaxLength(32).IsRequired();
         builder.Property(x => x.AccountEmail).HasMaxLength(320).IsRequired();
         builder.Property(x => x.ProtectedRefreshToken).HasMaxLength(4096).IsRequired();
+        builder.Property(x => x.ConnectedByUserId);
+        builder.Property(x => x.ReviewRequiredAtUtc);
+        builder.Property(x => x.ReviewReason).HasMaxLength(TenantCloudConnection.ReviewReasonMaxLength);
+        builder.Ignore(x => x.NeedsReview);
         builder.HasIndex(x => new { x.TenantId, x.Provider }).IsUnique();
     }
 }

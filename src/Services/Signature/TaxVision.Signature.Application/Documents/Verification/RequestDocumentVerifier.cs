@@ -175,9 +175,10 @@ public sealed class RequestDocumentVerifier(
     )
     {
         var outcome = DocumentAcceptancePolicy.Combine(inspection, limits);
-        var fileName = document.Title.Length > DocumentValidationRecord.MaxFileNameLength
-            ? document.Title[..DocumentValidationRecord.MaxFileNameLength]
-            : document.Title;
+        var fileName =
+            document.Title.Length > DocumentValidationRecord.MaxFileNameLength
+                ? document.Title[..DocumentValidationRecord.MaxFileNameLength]
+                : document.Title;
         var first = outcome.Issues.Count > 0 ? outcome.Issues[0] : null;
 
         var record = first is null

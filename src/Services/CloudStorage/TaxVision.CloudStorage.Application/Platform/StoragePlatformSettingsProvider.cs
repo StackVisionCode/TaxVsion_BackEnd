@@ -134,7 +134,10 @@ public static class StoragePlatformSettingsHandler
         var settings = await repository.GetForUpdateAsync(ct);
         if (settings is null)
             return Result.Failure<StoragePlatformSettingsResponse>(
-                new Error("StoragePlatformSettings.Missing", "Platform settings are not provisioned; apply the migrations.")
+                new Error(
+                    "StoragePlatformSettings.Missing",
+                    "Platform settings are not provisioned; apply the migrations."
+                )
             );
 
         var before = JsonSerializer.Serialize(StoragePlatformSettingsResponse.From(settings));
@@ -154,7 +157,16 @@ public static class StoragePlatformSettingsHandler
             return Result.Failure<StoragePlatformSettingsResponse>(updated.Error);
 
         var response = StoragePlatformSettingsResponse.From(settings);
-        audits.AddAudit(FilePolicyAudit.Record(AuditKind, "storage", before, JsonSerializer.Serialize(response), command.ActorUserId, clock.UtcNow));
+        audits.AddAudit(
+            FilePolicyAudit.Record(
+                AuditKind,
+                "storage",
+                before,
+                JsonSerializer.Serialize(response),
+                command.ActorUserId,
+                clock.UtcNow
+            )
+        );
         await unitOfWork.SaveChangesAsync(ct);
         provider.Invalidate();
         return Result.Success(response);

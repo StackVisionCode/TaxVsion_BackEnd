@@ -91,7 +91,8 @@ public sealed class ReadyReconciliationScheduler(
                 .Documents.Where(document => document.VerificationStatus == DocumentVerificationStatus.Pending)
                 .ToList();
             foreach (var document in pending)
-                touched |= (await verifier.VerifyAsync(request, document.Id, ct)).Kind != DocumentVerificationKind.Deferred;
+                touched |=
+                    (await verifier.VerifyAsync(request, document.Id, ct)).Kind != DocumentVerificationKind.Deferred;
 
             if (request.Documents.Any(document => document.DocumentHashPre is null))
                 continue;

@@ -48,7 +48,11 @@ public sealed class PublicDeliveryController(IMessageBus bus) : ControllerBase
     [EnableRateLimiting("public-signature-document")]
     [ProducesResponseType<DeliveryFileLink>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> DownloadUrl([FromRoute] string token, [FromRoute] Guid itemId, CancellationToken ct)
+    public async Task<IActionResult> DownloadUrl(
+        [FromRoute] string token,
+        [FromRoute] Guid itemId,
+        CancellationToken ct
+    )
     {
         var result = await bus.InvokeAsync<Result<DeliveryFileLink>>(
             new OpenDeliveryFileCommand(token, itemId, HostTenantId()),

@@ -32,4 +32,10 @@ public sealed class DeliveryItem : BaseEntity
 }
 
 /// <summary>Lo que se quiere entregar; <see cref="SizeBytes"/> sirve para decidir si cabe como adjunto.</summary>
-public sealed record DeliveryItemSpec(Guid FileId, DeliveryItemKind Kind, Guid? DocumentId, string Title, long SizeBytes);
+public sealed record DeliveryItemSpec(
+    Guid FileId,
+    DeliveryItemKind Kind,
+    Guid? DocumentId,
+    string Title,
+    long SizeBytes
+);

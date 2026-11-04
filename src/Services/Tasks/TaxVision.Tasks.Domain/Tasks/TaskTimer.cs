@@ -1,3 +1,5 @@
+using BuildingBlocks.Domain;
+
 namespace TaxVision.Tasks.Domain.Tasks;
 
 /// <summary>
@@ -12,6 +14,12 @@ public sealed class TaskTimer
 {
     public Guid Id { get; }
     public Guid TaskId { get; }
+
+    [UserReference(
+        UserReferenceKind.Private,
+        HandledBy = "TaskTimersUserOffboardedConsumer",
+        Note = "El sistema cierra sus timers en marcha."
+    )]
     public Guid UserId { get; }
     public DateTime StartedAtUtc { get; }
     public DateTime? StoppedAtUtc { get; private set; }

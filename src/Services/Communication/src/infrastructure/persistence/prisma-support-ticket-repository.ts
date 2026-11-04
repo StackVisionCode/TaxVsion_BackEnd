@@ -32,6 +32,8 @@ export class PrismaSupportTicketRepository implements SupportTicketRepository {
         UpdatedAtUtc: s.updatedAtUtc,
       },
       update: {
+        // El retiro de quien lo abrió lo pasa a otro staff (transferOwnershipBySystem).
+        OpenedByUserId: s.openedByUserId,
         AssignedAgentId: s.assignedAgentId,
         Status: s.status,
         Priority: s.priority,

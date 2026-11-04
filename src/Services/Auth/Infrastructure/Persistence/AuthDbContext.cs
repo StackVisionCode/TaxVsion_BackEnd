@@ -11,6 +11,7 @@ using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Mfa;
+using TaxVision.Auth.Domain.Offboarding;
 using TaxVision.Auth.Domain.Onboarding.EmailVerification;
 using TaxVision.Auth.Domain.Onboarding.SubdomainReservations;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
@@ -74,6 +75,10 @@ public sealed class AuthDbContext(
 
     // RateLimit Fase 2 — proyección local de PlanCode por tenant (ver TaxVision.Auth.Domain.RateLimiting).
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
+
+    // Acuse por servicio del retiro: avance de cada retiro y sus pasos esperados.
+    public DbSet<OffboardingRun> OffboardingRuns => Set<OffboardingRun>();
+    public DbSet<OffboardingRunStep> OffboardingRunSteps => Set<OffboardingRunStep>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

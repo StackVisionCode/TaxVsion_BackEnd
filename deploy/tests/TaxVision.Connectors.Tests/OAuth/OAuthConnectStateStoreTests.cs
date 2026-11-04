@@ -43,6 +43,24 @@ public class OAuthConnectStateStoreTests
     }
 
     [Fact]
+    public async Task CreateAndConsume_RoundTripsThePlatformAdminFlag()
+    {
+        var store = new InMemoryOAuthConnectStateStore();
+
+        var admin = await store.CreateAsync(
+            Guid.NewGuid(),
+            ProviderCode.Gmail,
+            Guid.NewGuid(),
+            asOffice: true,
+            initiatorIsPlatformAdmin: true
+        );
+        var employee = await store.CreateAsync(Guid.NewGuid(), ProviderCode.Gmail, Guid.NewGuid());
+
+        Assert.True((await store.ConsumeAsync(admin))!.InitiatorIsPlatformAdmin);
+        Assert.False((await store.ConsumeAsync(employee))!.InitiatorIsPlatformAdmin);
+    }
+
+    [Fact]
     public async Task Consume_CanOnlyBeCalledOnce()
     {
         var store = new InMemoryOAuthConnectStateStore();

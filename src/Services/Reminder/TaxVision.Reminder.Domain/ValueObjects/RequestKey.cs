@@ -10,8 +10,8 @@ namespace TaxVision.Reminder.Domain.ValueObjects;
 /// del handler.
 ///
 /// <para>
-/// El soporte físico es el índice único <c>(TenantId, RequestKey)</c> de la Fase 2 — el VO solo
-/// garantiza que la clave existe y tiene forma; la unicidad la garantiza la base de datos.
+/// El soporte físico es el índice único <c>(TenantId, UserId, RequestKey)</c> — el VO solo garantiza
+/// que la clave existe y tiene forma; la unicidad (por destinatario) la garantiza la base de datos.
 /// </para>
 /// </summary>
 public sealed record RequestKey

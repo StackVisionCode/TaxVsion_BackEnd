@@ -18,18 +18,20 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     SignatureRequestId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     CountedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SignatureAnalyticsSealedRequests", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SignatureAnalyticsSealedRequests_TenantId_SignatureRequestId",
                 table: "SignatureAnalyticsSealedRequests",
                 columns: new[] { "TenantId", "SignatureRequestId" },
-                unique: true);
+                unique: true
+            );
 
             // Las solicitudes ya selladas por completo ya sumaron en RequestsSealed: un re-sellado no debe volver a contarlas.
             migrationBuilder.Sql(
@@ -45,8 +47,7 @@ WHERE r.[Status] = 'Completed'
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "SignatureAnalyticsSealedRequests");
+            migrationBuilder.DropTable(name: "SignatureAnalyticsSealedRequests");
         }
     }
 }

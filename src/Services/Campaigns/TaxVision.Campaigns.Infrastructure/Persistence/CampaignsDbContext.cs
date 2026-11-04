@@ -35,6 +35,7 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
     public DbSet<SenderProfile> SenderProfiles => Set<SenderProfile>();
     public DbSet<CampaignTemplate> CampaignTemplates => Set<CampaignTemplate>();
     public DbSet<CampaignSchedule> CampaignSchedules => Set<CampaignSchedule>();
+    public DbSet<CampaignScheduleHandover> CampaignScheduleHandovers => Set<CampaignScheduleHandover>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();

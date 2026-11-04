@@ -30,6 +30,11 @@ export interface RecordingSessionRepository {
    * unica vez por proceso, no por tenant. `scope` opcional para filtrar calls con su timeout.
    */
   listStaleRequesting(olderThanUtc: Date, scope?: RecordingScope): Promise<RecordingSession[]>;
+  /**
+   * Retiro: grabaciones con captura en el navegador (Client) que pidio el usuario y siguen capturando
+   * (Requesting/Recording/Stopping). Sin su navegador nadie las sube: el sistema las cierra.
+   */
+  listCaptureActiveClientByRequester(tenantId: string, requestedByUserId: string): Promise<RecordingSession[]>;
   /** F7: la sesion cuyo archivo de grabacion (compuesto o subido por el cliente) es `fileId`. */
   findByRecordingFileId(tenantId: string, fileId: string): Promise<RecordingSession | null>;
   /** F7 (T-35, cross-tenant): sesiones grabando con limite, para avisar y cortar. */

@@ -23,6 +23,8 @@ public sealed class PayoutSchedule : TenantEntity
     public string Currency { get; private set; } = default!;
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
 
     public IReadOnlyCollection<PayoutScheduleItem> Items => _items;

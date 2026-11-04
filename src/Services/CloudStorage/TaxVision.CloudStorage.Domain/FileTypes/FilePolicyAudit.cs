@@ -17,10 +17,19 @@ public sealed class FilePolicyAudit : BaseEntity
 
     public string? Before { get; private set; }
     public string After { get; private set; } = default!;
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ActorUserId { get; private set; }
     public DateTime AtUtc { get; private set; }
 
-    public static FilePolicyAudit Record(string kind, string key, string? before, string after, Guid actorUserId, DateTime nowUtc) =>
+    public static FilePolicyAudit Record(
+        string kind,
+        string key,
+        string? before,
+        string after,
+        Guid actorUserId,
+        DateTime nowUtc
+    ) =>
         new()
         {
             Id = Guid.NewGuid(),

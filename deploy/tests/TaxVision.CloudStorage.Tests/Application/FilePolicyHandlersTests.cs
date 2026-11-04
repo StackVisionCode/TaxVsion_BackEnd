@@ -23,12 +23,15 @@ public sealed class FilePolicyHandlersTests
     {
         var limits = new FakeStorageLimitRepository();
 
-        await Project(limits, new Dictionary<string, string>
-        {
-            ["storage.max_bytes"] = (50L * 1024 * Mb).ToString(),
-            ["storage.max_file_bytes"] = (25 * Mb).ToString(),
-            ["storage.file_type_groups"] = "documents,archives",
-        });
+        await Project(
+            limits,
+            new Dictionary<string, string>
+            {
+                ["storage.max_bytes"] = (50L * 1024 * Mb).ToString(),
+                ["storage.max_file_bytes"] = (25 * Mb).ToString(),
+                ["storage.file_type_groups"] = "documents,archives",
+            }
+        );
 
         var allowance = (await limits.GetAsync(Tenant, default))!.PlanAllowance();
         Assert.Equal(25 * Mb, allowance.MaxFileBytes);
@@ -154,7 +157,9 @@ public sealed class FilePolicyHandlersTests
             Task.FromResult(TestFilePolicyCatalog.FileTypes());
 
         public Task<FileTypeDefinition?> GetFileTypeAsync(string extension, CancellationToken ct) =>
-            Task.FromResult(TestFilePolicyCatalog.FileTypes().SingleOrDefault(definition => definition.Extension == extension));
+            Task.FromResult(
+                TestFilePolicyCatalog.FileTypes().SingleOrDefault(definition => definition.Extension == extension)
+            );
 
         public void AddFileType(FileTypeDefinition definition) => Added.Add(definition);
 

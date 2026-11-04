@@ -3,6 +3,7 @@ using BuildingBlocks.Results;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
+using TaxVision.Tasks.ClientForms.Domain.Audit;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 
 namespace TaxVision.Tasks.ClientForms.Application.Requests.Commands;
@@ -19,8 +20,6 @@ public sealed record ReassignFormRequestResponsibleCommand(
 
 public static class ReassignFormRequestResponsibleHandler
 {
-    private const string ReviewPermission = "tasks.form_requests.review";
-
     public static async Task<Result<FormRequestResponse>> Handle(
         ReassignFormRequestResponsibleCommand command,
         IFormRequestRepository requests,
@@ -48,7 +47,7 @@ public static class ReassignFormRequestResponsibleHandler
         return await ReviewSupport.Save(
             found.Value.AssignResponsible(command.UserId, command.NowUtc),
             found.Value,
-            "request.responsible_changed",
+            FormAuditAction.RequestResponsibleChanged,
             command.ByUserId,
             audit,
             unitOfWork,
@@ -65,13 +64,8 @@ public static class ReassignFormRequestResponsibleHandler
     {
         if (!FormRequestApplicationSupport.RowVersionMatches(request, command.RowVersion))
             return Result.Failure(FormRequestErrors.ConcurrencyConflict);
-        var active = await responsibleUsers.IsActiveAsync(command.TenantId, command.UserId, ct);
-        var allowed = await responsibleUsers.HasPermissionsAsync(
-            command.TenantId,
-            command.UserId,
-            [ReviewPermission],
-            ct
-        );
-        return active && allowed ? Result.Success() : Result.Failure(FormRequestErrors.ResponsibleNotAuthorized);
+        return await FormRequestResponsibleRules.IsEligibleAsync(command.TenantId, command.UserId, responsibleUsers, ct)
+            ? Result.Success()
+            : Result.Failure(FormRequestErrors.ResponsibleNotAuthorized);
     }
 }

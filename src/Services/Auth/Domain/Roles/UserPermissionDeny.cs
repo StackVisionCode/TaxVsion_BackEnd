@@ -1,3 +1,5 @@
+using BuildingBlocks.Domain;
+
 namespace TaxVision.Auth.Domain.Roles;
 
 /// <summary>
@@ -15,9 +17,16 @@ public sealed class UserPermissionDeny
 
     private UserPermissionDeny() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Se conserva; el estado terminal corta todo acceso."
+    )]
     public Guid UserId { get; private set; }
     public Guid PermissionId { get; private set; }
     public DateTime DeniedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? DeniedByUserId { get; private set; }
 
     /// <summary>Por qué se denegó, para el registro de auditoría y para que la UI lo muestre. Opcional.</summary>

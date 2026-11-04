@@ -378,3 +378,75 @@ describe('Message.editText / softDelete', () => {
     expect(attempt.isSuccess).toBe(true);
   });
 });
+
+describe('Conversation — Direct cuyo otro participante se retiró (solo lectura)', () => {
+  function staffDirect() {
+    const [admin, leaver] = [u(), u()];
+    const r = Conversation.startDirect({
+      tenantId: u(),
+      initiator: { userId: admin, displayName: 'Admin', actorType: 'TenantAdmin' },
+      recipient: { userId: leaver, displayName: 'Lena', actorType: 'TenantEmployee' },
+    });
+    if (!r.isSuccess) throw new Error(r.error.code);
+    return { conversation: r.value, admin, leaver };
+  }
+
+  it('abierto mientras siguen los dos', () => {
+    const { conversation } = staffDirect();
+    expect(conversation.closedReason).toBeNull();
+    expect(conversation.isClosedForWriting).toBe(false);
+    expect(conversation.departedParticipant()).toBeNull();
+  });
+
+  it('tras el retiro nadie escribe ni sube adjuntos; el que sigue continúa participando (lee y marca leído)', () => {
+    const { conversation, admin, leaver } = staffDirect();
+    const sent = conversation.sendText({ senderId: admin, body: 'Hi' });
+    if (!sent.isSuccess) throw new Error(sent.error.code);
+    conversation.retireParticipantBySystem(leaver);
+
+    expect(conversation.closedReason).toBe('ParticipantLeft');
+    expect(conversation.isClosedForWriting).toBe(true);
+    expect(conversation.departedParticipant()).toMatchObject({ userId: leaver, displayName: 'Lena', actorType: 'TenantEmployee' });
+    const text = conversation.sendText({ senderId: admin, body: 'Still there?' });
+    expect(text.isSuccess ? null : text.error).toEqual({ code: 'Chat.Conversation.ParticipantLeft', message: 'Lena is no longer with the office.' });
+    const file = conversation.sendAttachment({ senderId: admin, attachmentFileId: u() });
+    expect(file.isSuccess ? null : file.error.code).toBe('Chat.Conversation.ParticipantLeft');
+    expect(conversation.ensureCanWrite(admin).isSuccess).toBe(false);
+    expect(conversation.isParticipant(admin)).toBe(true);
+    expect(conversation.markRead({ participantUserId: admin, lastReadMessageId: sent.value.id }).isSuccess).toBe(true);
+  });
+
+  it('archivado pesa más que la salida del otro', () => {
+    const { conversation, leaver } = staffDirect();
+    conversation.retireParticipantBySystem(leaver);
+    conversation.archive();
+    expect(conversation.closedReason).toBe('Archived');
+  });
+
+  it('el mensaje de sistema guarda su origen (Notice por defecto)', () => {
+    const { conversation } = staffDirect();
+    const call = conversation.appendSystemMessage({ body: 'Missed call', systemKind: 'Call' });
+    const notice = conversation.appendSystemMessage({ body: 'Something' });
+    expect(call.isSuccess && call.value.toSnapshot().systemKind).toBe('Call');
+    expect(notice.isSuccess && notice.value.toSnapshot().systemKind).toBe('Notice');
+  });
+
+  it('un grupo no queda en solo lectura cuando sale un miembro', () => {
+    const [owner, member, leaver] = [u(), u(), u()];
+    const r = Conversation.startGroup({
+      tenantId: u(),
+      groupId: u(),
+      title: 'Team',
+      creator: { userId: owner, displayName: 'Owner', actorType: 'TenantAdmin' },
+      members: [
+        { userId: member, displayName: 'M', actorType: 'TenantEmployee' },
+        { userId: leaver, displayName: 'L', actorType: 'TenantEmployee' },
+      ],
+    });
+    if (!r.isSuccess) throw new Error(r.error.code);
+    r.value.removeForDeactivation(leaver);
+    expect(r.value.closedReason).toBeNull();
+    expect(r.value.departedParticipant()).toBeNull();
+    expect(r.value.sendText({ senderId: member, body: 'ok' }).isSuccess).toBe(true);
+  });
+});

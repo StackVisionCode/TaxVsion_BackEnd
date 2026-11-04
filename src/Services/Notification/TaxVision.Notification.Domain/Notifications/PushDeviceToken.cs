@@ -21,6 +21,7 @@ public sealed class PushDeviceToken : TenantEntity
 {
     private PushDeviceToken() { }
 
+    [UserReference(UserReferenceKind.Credential, HandledBy = "UserLifecyclePushDeviceConsumer")]
     public Guid UserId { get; private set; }
     public PushPlatform Platform { get; private set; }
     public string Token { get; private set; } = default!;

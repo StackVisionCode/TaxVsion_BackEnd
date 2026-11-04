@@ -15,7 +15,13 @@ namespace TaxVision.Signature.Tests.Delivery;
 /// </summary>
 public sealed class SignedDocumentDeliveryTests
 {
-    private static readonly DeliveryItemSpec AnyItem = new(Guid.NewGuid(), DeliveryItemKind.SignedDocument, null, "Return", 10);
+    private static readonly DeliveryItemSpec AnyItem = new(
+        Guid.NewGuid(),
+        DeliveryItemKind.SignedDocument,
+        null,
+        "Return",
+        10
+    );
 
     // ------------------------------- Dominio -------------------------------
 
@@ -72,7 +78,11 @@ public sealed class SignedDocumentDeliveryTests
 
         Assert.Equal(2, issued.Count);
         Assert.All(issued, delivery => Assert.Equal(2, delivery.Delivery.Items.Count));
-        Assert.All(issued, delivery => Assert.All(delivery.Delivery.Items, item => Assert.Equal(DeliveryItemKind.SignedDocument, item.Kind)));
+        Assert.All(
+            issued,
+            delivery =>
+                Assert.All(delivery.Delivery.Items, item => Assert.Equal(DeliveryItemKind.SignedDocument, item.Kind))
+        );
         Assert.Equal(2, kit.Audit.Kinds.Count(kind => kind == SignatureAuditEventKind.DeliveryIssued));
     }
 
@@ -105,7 +115,9 @@ public sealed class SignedDocumentDeliveryTests
     [Fact]
     public async Task The_event_carries_the_encrypted_token_and_the_office_lifetime()
     {
-        var policy = DeliveryPolicy.Create(10, allowPublicReissue: false, attachDocuments: false, DeliveryPolicy.DefaultMaxAttachmentBytes).Value;
+        var policy = DeliveryPolicy
+            .Create(10, allowPublicReissue: false, attachDocuments: false, DeliveryPolicy.DefaultMaxAttachmentBytes)
+            .Value;
         var kit = new DeliveryTestKit(policy: policy).Seal();
         var issuer = kit.Issuer();
         var issued = await issuer.PrepareCompletedAsync(kit.Request, CancellationToken.None);
@@ -130,7 +142,10 @@ public sealed class SignedDocumentDeliveryTests
     [Theory]
     [InlineData(1024, 1)]
     [InlineData(2L * 1024 * 1024, 0)]
-    public async Task Files_are_attached_only_when_the_office_wants_it_and_they_fit(long sizeBytes, int expectedPerSigner)
+    public async Task Files_are_attached_only_when_the_office_wants_it_and_they_fit(
+        long sizeBytes,
+        int expectedPerSigner
+    )
     {
         var policy = DeliveryPolicy.Create(30, true, attachDocuments: true, maxAttachmentBytes: 3L * 1024 * 1024).Value;
         var kit = new DeliveryTestKit(policy: policy).Seal(sizeBytes);
@@ -262,7 +277,12 @@ public sealed class SignedDocumentDeliveryTests
     {
         var (kit, token, delivery) = await IssuedFirstDelivery();
 
-        var view = await GetPublicDeliveryHandler.Handle(new GetPublicDeliveryQuery(token), kit.Deliveries, kit.Settings, CancellationToken.None);
+        var view = await GetPublicDeliveryHandler.Handle(
+            new GetPublicDeliveryQuery(token),
+            kit.Deliveries,
+            kit.Settings,
+            CancellationToken.None
+        );
         Assert.Equal("Active", view.Value.Status);
         Assert.Equal("a***a@example.com", view.Value.MaskedEmail);
         Assert.Equal(2, view.Value.Items.Count);
@@ -311,7 +331,12 @@ public sealed class SignedDocumentDeliveryTests
         var (kit, token, delivery) = await IssuedFirstDelivery();
         delivery.Revoke(Guid.NewGuid(), DateTime.UtcNow);
 
-        var view = await GetPublicDeliveryHandler.Handle(new GetPublicDeliveryQuery(token), kit.Deliveries, kit.Settings, CancellationToken.None);
+        var view = await GetPublicDeliveryHandler.Handle(
+            new GetPublicDeliveryQuery(token),
+            kit.Deliveries,
+            kit.Settings,
+            CancellationToken.None
+        );
         var reissue = await Reissue(kit, token);
 
         Assert.Equal("Revoked", view.Value.Status);
@@ -324,7 +349,17 @@ public sealed class SignedDocumentDeliveryTests
 
     private static SignedDocumentDelivery Issue(DeliveryToken token, TimeSpan lifetime, DateTime now) =>
         SignedDocumentDelivery
-            .Issue(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "ana@example.com", DeliveryPurpose.Completed, [AnyItem], token, lifetime, now)
+            .Issue(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "ana@example.com",
+                DeliveryPurpose.Completed,
+                [AnyItem],
+                token,
+                lifetime,
+                now
+            )
             .Value;
 
     private static Task HandleAvailable(DeliveryTestKit kit, Guid fileId) =>
@@ -349,7 +384,9 @@ public sealed class SignedDocumentDeliveryTests
             CancellationToken.None
         );
 
-    private static Task<BuildingBlocks.Results.Result<IReadOnlyList<SignedDocumentDeliveryResponse>>> Issue(DeliveryTestKit kit) =>
+    private static Task<BuildingBlocks.Results.Result<IReadOnlyList<SignedDocumentDeliveryResponse>>> Issue(
+        DeliveryTestKit kit
+    ) =>
         IssueDeliveriesHandler.Handle(
             new IssueDeliveriesCommand(kit.Request.TenantId, kit.Request.Id, Guid.NewGuid()),
             new SingleRequestRepository(kit.Request),
@@ -360,7 +397,11 @@ public sealed class SignedDocumentDeliveryTests
             CancellationToken.None
         );
 
-    private static async Task<(DeliveryTestKit Kit, string Token, SignedDocumentDelivery Delivery)> IssuedFirstDelivery()
+    private static async Task<(
+        DeliveryTestKit Kit,
+        string Token,
+        SignedDocumentDelivery Delivery
+    )> IssuedFirstDelivery()
     {
         var kit = new DeliveryTestKit().Seal();
         var issued = await kit.Issuer().PrepareCompletedAsync(kit.Request, CancellationToken.None);

@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
 using TaxVision.Tasks.Application.Hierarchy.Abstractions;
+using TaxVision.Tasks.Application.Permissions.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 using Wolverine;
@@ -14,7 +15,8 @@ public sealed record ReopenTaskCommand(Guid TenantId, Guid TaskId, Guid ByUserId
 
 /// <summary>
 /// Deshace las dos cascadas del cierre. Sin esto el motor se desincroniza en silencio: las sucesoras
-/// quedarían ejecutables aunque su predecesora volvió a estar abierta.
+/// quedarían ejecutables aunque su predecesora volvió a estar abierta. Si el asignado ya no está activo
+/// (suspendido o retirado) la tarea vuelve sin asignar, para que la oficina la retome.
 /// </summary>
 public static class ReopenTaskHandler
 {
@@ -23,6 +25,7 @@ public static class ReopenTaskHandler
         ITaskRepository tasks,
         ITaskUnblockingService unblocking,
         ITaskHierarchyService hierarchy,
+        IUserPermissionsProjectionRepository users,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -42,12 +45,28 @@ public static class ReopenTaskHandler
         if (reopened.IsFailure)
             return Result.Failure<TaskResponse>(reopened.Error);
 
+        await DropInactiveAssigneeAsync(task, users, command.ByUserId, nowUtc, ct);
         await unblocking.ApplyPredecessorReopenedAsync(command.TenantId, task.Id, ct);
         await hierarchy.ApplyChildReopenedAsync(command.TenantId, task.ParentTaskId, ct);
         await bus.PublishAsync(BuildEvent(task, command.ByUserId, nowUtc, correlation.CorrelationId));
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(TaskResponse.From(task));
+    }
+
+    // Sin proyección no se sabe: se conserva el asignado (mismo comportamiento que antes).
+    private static async Task DropInactiveAssigneeAsync(
+        TaskItem task,
+        IUserPermissionsProjectionRepository users,
+        Guid byUserId,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        if (task.AssigneeUserId is not { } assignee)
+            return;
+        if (await users.GetAsync(task.TenantId, assignee, ct) is { IsActive: false })
+            task.Unassign(byUserId, nowUtc);
     }
 
     private static TaskReopenedIntegrationEvent BuildEvent(

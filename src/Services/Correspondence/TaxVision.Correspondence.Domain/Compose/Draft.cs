@@ -50,6 +50,11 @@ public sealed class Draft : IHasOwner, ITenantOwned
     /// ownership check falla-cerrado para esos drafts legacy en vez de asumir un dueño que no se
     /// conoce (ver migración additive que agrega esta columna con ese default).
     /// </summary>
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "CorrespondenceUserOffboardedConsumer",
+        Note = "Abiertos: al sucesor o se descartan; lo enviado no se toca."
+    )]
     public Guid CreatedByUserId { get; private set; }
 
     /// <summary>Referencia opaca al <c>TenantEmailAccount</c> de Connectors desde la que se enviará — sin FK ni navegación, mismo tratamiento que <see cref="Inbox.IncomingEmail.AccountId"/>.</summary>
@@ -339,6 +344,26 @@ public sealed class Draft : IHasOwner, ITenantOwned
             return Result.Failure(new Error("Draft.CreatedByUserIdRequired", "CreatedByUserId is required."));
 
         CreatedByUserId = newUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Cambia el buzón desde el que saldrá un borrador ABIERTO (al retirar a su autor, si salía de un buzón
+    /// personal suyo que Connectors desconecta y purga). Lo enviado no se toca.
+    /// </summary>
+    public Result MoveToAccount(Guid accountId)
+    {
+        if (Status != DraftStatus.Draft)
+            return Result.Failure(InvalidTransition(nameof(MoveToAccount)));
+
+        if (accountId == Guid.Empty)
+            return Result.Failure(new Error("Draft.AccountIdRequired", "AccountId is required."));
+
+        if (AccountId == accountId)
+            return Result.Success();
+
+        AccountId = accountId;
         UpdatedAtUtc = DateTime.UtcNow;
         return Result.Success();
     }

@@ -7,8 +7,13 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Repositories;
 public sealed class StoragePlatformSettingsRepository(CloudStorageDbContext db) : IStoragePlatformSettingsRepository
 {
     public Task<StoragePlatformSettings?> GetAsync(CancellationToken ct) =>
-        db.StoragePlatformSettings.AsNoTracking().SingleOrDefaultAsync(settings => settings.Id == StoragePlatformSettings.SingletonId, ct);
+        db
+            .StoragePlatformSettings.AsNoTracking()
+            .SingleOrDefaultAsync(settings => settings.Id == StoragePlatformSettings.SingletonId, ct);
 
     public Task<StoragePlatformSettings?> GetForUpdateAsync(CancellationToken ct) =>
-        db.StoragePlatformSettings.SingleOrDefaultAsync(settings => settings.Id == StoragePlatformSettings.SingletonId, ct);
+        db.StoragePlatformSettings.SingleOrDefaultAsync(
+            settings => settings.Id == StoragePlatformSettings.SingletonId,
+            ct
+        );
 }

@@ -15,36 +15,33 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                 name: "WispReminderDueOn",
                 table: "OfficeCompliances",
                 type: "date",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<DateOnly>(
                 name: "WispReminderSentOn",
                 table: "OfficeCompliances",
                 type: "date",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "WispReminderStage",
                 table: "OfficeCompliances",
                 type: "nvarchar(16)",
                 maxLength: 16,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "WispReminderDueOn",
-                table: "OfficeCompliances");
+            migrationBuilder.DropColumn(name: "WispReminderDueOn", table: "OfficeCompliances");
 
-            migrationBuilder.DropColumn(
-                name: "WispReminderSentOn",
-                table: "OfficeCompliances");
+            migrationBuilder.DropColumn(name: "WispReminderSentOn", table: "OfficeCompliances");
 
-            migrationBuilder.DropColumn(
-                name: "WispReminderStage",
-                table: "OfficeCompliances");
+            migrationBuilder.DropColumn(name: "WispReminderStage", table: "OfficeCompliances");
         }
     }
 }

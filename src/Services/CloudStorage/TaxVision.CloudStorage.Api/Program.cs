@@ -286,6 +286,7 @@ builder.Host.UseWolverine(options =>
     // X-5 — salto de borrado (dueño/carpeta/tenant no coinciden, legal hold o inexistente).
     options.PublishMessage<FileDeletionSkippedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileSaveRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CloudConnectionReviewRequiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // X-5 — cola de comandos punto a punto: el job de retención de Tasks pide borrar archivos de Client Forms.
     options.ListenToRabbitQueue("cloudstorage-file-deletions").UseDurableInbox();

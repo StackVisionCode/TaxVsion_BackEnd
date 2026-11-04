@@ -17,6 +17,8 @@ public sealed class CustomerDocumentAccessRule : TenantEntity
     public AccessResourceType ResourceType { get; private set; }
     public Guid ResourceId { get; private set; }
     public AccessCapability Capability { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid SetByUserId { get; private set; }
     public DateTime SetAtUtc { get; private set; }
     public string? Reason { get; private set; }

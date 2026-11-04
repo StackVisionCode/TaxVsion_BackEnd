@@ -17,6 +17,13 @@ public sealed class CustomerFileCopyConfiguration : IEntityTypeConfiguration<Cus
         builder.Property(copy => copy.CreatedAtUtc).IsRequired();
 
         // Una sola copia por (archivo, cliente): dos entregas concurrentes no duplican.
-        builder.HasIndex(copy => new { copy.SignatureRequestId, copy.SourceFileId, copy.CustomerId }).IsUnique();
+        builder
+            .HasIndex(copy => new
+            {
+                copy.SignatureRequestId,
+                copy.SourceFileId,
+                copy.CustomerId,
+            })
+            .IsUnique();
     }
 }

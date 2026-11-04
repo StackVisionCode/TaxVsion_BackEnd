@@ -39,6 +39,12 @@ public sealed class ShareLink : TenantEntity, IHasOwner
     /// <summary>Fase C4 — si el link cubre automaticamente lo agregado despues de crearlo (true) o solo lo que ya existia (false). Siempre false en un link de File.</summary>
     public bool AppliesToFutureItems { get; private set; }
     public ShareStatus Status { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "CloudStorageUserOffboardedConsumer",
+        Note = "Sus links activos se revocan."
+    )]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? RevokedAtUtc { get; private set; }
@@ -203,4 +209,11 @@ public sealed class ShareLink : TenantEntity, IHasOwner
         );
 
     public bool HasAnyRecipient => _recipients.Count > 0;
+
+    /// <summary>Visibilidades que sin destinatarios no sirven a nadie.</summary>
+    public bool RequiresRecipients => Visibility is ShareVisibility.SpecificUsers or ShareVisibility.ExternalRecipients;
+
+    /// <summary>Quita a un usuario de los destinatarios (retiro). True si estaba.</summary>
+    public bool RemoveUserRecipient(Guid userId) =>
+        _recipients.RemoveAll(r => r.Kind == ShareRecipientKind.User && r.RecipientUserId == userId) > 0;
 }

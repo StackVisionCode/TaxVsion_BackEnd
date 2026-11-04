@@ -27,7 +27,12 @@ public sealed class FilePolicyController(IMessageBus bus) : ControllerBase
     // ---------- GET /storage/upload-policy?folderType=Documents ----------
     [HttpGet("upload-policy")]
     [HasPermission(CloudStoragePermissions.FileUpload)]
-    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin, ActorType.CustomerPortal)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [RateLimit("cloudstorage.f.file_get")]
     [ProducesResponseType<UploadPolicyResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUploadPolicy([FromQuery] string folderType, CancellationToken ct)
@@ -37,7 +42,10 @@ public sealed class FilePolicyController(IMessageBus bus) : ControllerBase
         if (!Enum.TryParse<FolderType>(folderType, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
             return BadRequest(UploadSizePolicyErrors.InvalidFolderType);
 
-        var result = await bus.InvokeAsync<Result<UploadPolicyResponse>>(new GetUploadPolicyQuery(tenantId, scope, parsed), ct);
+        var result = await bus.InvokeAsync<Result<UploadPolicyResponse>>(
+            new GetUploadPolicyQuery(tenantId, scope, parsed),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -52,7 +60,10 @@ public sealed class FilePolicyController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<PortalUploadSettingsResponse>>(new GetPortalUploadSettingsQuery(tenantId), ct);
+        var result = await bus.InvokeAsync<Result<PortalUploadSettingsResponse>>(
+            new GetPortalUploadSettingsQuery(tenantId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -108,7 +119,11 @@ public sealed class FilePolicyAdminController(IMessageBus bus) : ControllerBase
     [HttpPut("file-types/{extension}")]
     [RateLimit("cloudstorage.g.settings_manage")]
     [ProducesResponseType<FileTypeView>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> UpsertFileType(string extension, UpsertFileTypeRequest request, CancellationToken ct)
+    public async Task<IActionResult> UpsertFileType(
+        string extension,
+        UpsertFileTypeRequest request,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetUserId(out var actorId))
             return Unauthorized();
@@ -124,7 +139,11 @@ public sealed class FilePolicyAdminController(IMessageBus bus) : ControllerBase
     [HttpPut("folders/{folderType}")]
     [RateLimit("cloudstorage.g.settings_manage")]
     [ProducesResponseType<FolderPolicyView>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> UpdateFolderPolicy(string folderType, UpdateFolderPolicyRequest request, CancellationToken ct)
+    public async Task<IActionResult> UpdateFolderPolicy(
+        string folderType,
+        UpdateFolderPolicyRequest request,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetUserId(out var actorId))
             return Unauthorized();

@@ -30,6 +30,8 @@ public sealed class EmailTemplateVersion : BaseEntity
     public Guid? LayoutId { get; private set; }
     public int? LayoutVersionNumber { get; private set; }
     public DateTime? PublishedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? PublishedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 

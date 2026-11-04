@@ -16,8 +16,12 @@ public sealed class UploadPolicyResolverTests
     private static readonly Guid Actor = Guid.NewGuid();
     private static readonly DateTime Now = new(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc);
 
-    private static TenantStorageLimit Limit(Guid tenantId, string planCode = "starter", long maxFileBytes = 10 * MB, string? groups = null) =>
-        TenantStorageLimit.Create(tenantId, planCode, 10L * 1024 * MB, maxFileBytes, groups);
+    private static TenantStorageLimit Limit(
+        Guid tenantId,
+        string planCode = "starter",
+        long maxFileBytes = 10 * MB,
+        string? groups = null
+    ) => TenantStorageLimit.Create(tenantId, planCode, 10L * 1024 * MB, maxFileBytes, groups);
 
     private static UploadPolicyResolver Resolver(
         FakeUploadSizePolicyRepository repository,
@@ -58,7 +62,8 @@ public sealed class UploadPolicyResolverTests
         var repository = new FakeUploadSizePolicyRepository();
         repository.Seed(Global(FolderType.Recordings, 2048 * MB));
 
-        var policy = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
+        var policy = await Resolver(repository)
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
 
         Assert.Equal(2048 * MB, policy.MaxFileSizeBytes);
     }
@@ -70,21 +75,28 @@ public sealed class UploadPolicyResolverTests
         repository.Seed(Global(FolderType.Recordings, 1000 * MB));
         repository.Seed(Plan("starter", FolderType.Recordings, 700 * MB));
 
-        var withPlan = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
+        var withPlan = await Resolver(repository)
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
         Assert.Equal(700 * MB, withPlan.MaxFileSizeBytes);
 
         repository.Seed(TenantRow(Tenant, FolderType.Recordings, 300 * MB));
-        var withTenant = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
+        var withTenant = await Resolver(repository)
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
         Assert.Equal(300 * MB, withTenant.MaxFileSizeBytes);
 
         var other = Guid.NewGuid();
         Assert.Equal(
             700 * MB,
-            (await Resolver(repository).ResolveAsync(other, Limit(other), FolderType.Recordings, false, default)).MaxFileSizeBytes
+            (
+                await Resolver(repository).ResolveAsync(other, Limit(other), FolderType.Recordings, false, default)
+            ).MaxFileSizeBytes
         );
         Assert.Equal(
             1000 * MB,
-            (await Resolver(repository).ResolveAsync(other, Limit(other, "enterprise"), FolderType.Recordings, false, default)).MaxFileSizeBytes
+            (
+                await Resolver(repository)
+                    .ResolveAsync(other, Limit(other, "enterprise"), FolderType.Recordings, false, default)
+            ).MaxFileSizeBytes
         );
     }
 
@@ -94,7 +106,8 @@ public sealed class UploadPolicyResolverTests
         var repository = new FakeUploadSizePolicyRepository();
         repository.Seed(Global(FolderType.Recordings, 2048 * MB));
 
-        var documents = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Documents, false, default);
+        var documents = await Resolver(repository)
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Documents, false, default);
 
         Assert.Equal(10 * MB, documents.MaxFileSizeBytes);
     }
@@ -103,10 +116,12 @@ public sealed class UploadPolicyResolverTests
     public async Task Size_overrides_never_touch_the_allowed_types()
     {
         var repository = new FakeUploadSizePolicyRepository();
-        var before = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
+        var before = await Resolver(repository)
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
         repository.Seed(Global(FolderType.Recordings, 2048 * MB));
 
-        var after = await Resolver(repository).ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
+        var after = await Resolver(repository)
+            .ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
 
         Assert.Equal(before.AllowedExtensions, after.AllowedExtensions);
         Assert.Equal(before.AllowedContentTypes, after.AllowedContentTypes);
@@ -120,7 +135,12 @@ public sealed class UploadPolicyResolverTests
         var pro = await Resolver(new FakeUploadSizePolicyRepository())
             .ResolveAsync(
                 Tenant,
-                Limit(Tenant, "pro", 25 * MB, "documents,spreadsheets,images,data,media,presentations,rich_text,web_images,archives,xml"),
+                Limit(
+                    Tenant,
+                    "pro",
+                    25 * MB,
+                    "documents,spreadsheets,images,data,media,presentations,rich_text,web_images,archives,xml"
+                ),
                 FolderType.Documents,
                 false,
                 default
@@ -191,7 +211,11 @@ public sealed class UploadPolicyResolverTests
         );
         Assert.Equal(2, repository.ApplicableReads);
 
-        var later = Resolver(repository, cache: cache, now: Now + UploadPolicyCache.TimeToLive + TimeSpan.FromSeconds(1));
+        var later = Resolver(
+            repository,
+            cache: cache,
+            now: Now + UploadPolicyCache.TimeToLive + TimeSpan.FromSeconds(1)
+        );
         await later.ResolveAsync(Tenant, Limit(Tenant), FolderType.Recordings, false, default);
         Assert.Equal(3, repository.ApplicableReads);
     }
@@ -223,7 +247,9 @@ public sealed class UploadPolicyResolverTests
         }
 
         public Task<FileTypeDefinition?> GetFileTypeAsync(string extension, CancellationToken ct) =>
-            Task.FromResult(TestFilePolicyCatalog.FileTypes().SingleOrDefault(definition => definition.Extension == extension));
+            Task.FromResult(
+                TestFilePolicyCatalog.FileTypes().SingleOrDefault(definition => definition.Extension == extension)
+            );
 
         public void AddFileType(FileTypeDefinition definition) { }
 

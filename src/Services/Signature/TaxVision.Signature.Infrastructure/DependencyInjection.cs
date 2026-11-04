@@ -13,14 +13,15 @@ using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Delivery;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Categories;
-using TaxVision.Signature.Application.Documents;
 using TaxVision.Signature.Application.Delivery;
+using TaxVision.Signature.Application.Documents;
 using TaxVision.Signature.Application.Documents.Verification;
 using TaxVision.Signature.Application.Limits;
-using TaxVision.Signature.Application.Profiles.EffectiveSignature;
-using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Platform;
+using TaxVision.Signature.Application.Profiles.EffectiveSignature;
 using TaxVision.Signature.Application.RateLimiting.Abstractions;
+using TaxVision.Signature.Application.Requests.Preparer;
+using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
 using TaxVision.Signature.Infrastructure.Locking;
@@ -78,6 +79,9 @@ public static class DependencyInjection
         services.AddScoped<ISignatureCategoryResolver, SignatureCategoryResolver>();
         services.AddScoped<ISignatureProfileRepository, SignatureProfileRepository>();
         services.AddScoped<IEffectiveSignatureResolver, EffectiveSignatureResolver>();
+        // Retiro y cambio de preparador: trabajo del empleado en las solicitudes + reasignación auditada.
+        services.AddScoped<ISignatureRequestStaffWorkRepository, SignatureRequestStaffWorkRepository>();
+        services.AddScoped<PreparerReassigner>();
         services.AddScoped<ISignatureTemplateReadService, SignatureTemplateReadService>();
         services.AddScoped<ISignatureAnalyticsRepository, SignatureAnalyticsRepository>();
         services.AddScoped<ISignatureAnalyticsReadService, SignatureAnalyticsReadService>();

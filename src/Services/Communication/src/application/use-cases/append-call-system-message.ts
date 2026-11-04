@@ -4,6 +4,7 @@ import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { SocketEnvelope } from '../../contracts/socket/socket-envelope.js';
 import { ChatSocketEvents } from '../../contracts/socket/chat-socket-events.js';
 import type { CallKind } from '../../domain/calls/call-kind.js';
+import { SystemMessageKind } from '../../domain/conversations/message-kind.js';
 import { messageSnapshotToDto } from './chat-mappers.js';
 import type { AttachmentTrackingRepository } from '../ports/attachment-tracking-repository.js';
 import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
@@ -30,6 +31,7 @@ export async function appendCallSystemMessage(
   const messageResult = conversation.appendSystemMessage({
     body: input.body,
     attachmentFileId: input.attachmentFileId ?? null,
+    systemKind: SystemMessageKind.Call,
     ...(input.now ? { now: input.now } : {}),
   });
   if (!messageResult.isSuccess) return;

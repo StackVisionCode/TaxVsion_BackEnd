@@ -127,6 +127,13 @@ public sealed class AppointmentVisibilityFilterTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
 
+        public Task<IReadOnlyList<Appointment>> ListFutureByStaffAttendeeAsync(
+            Guid tenantId,
+            Guid userId,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
+
         public void Add(Appointment appointment) { }
 
         public void Remove(Appointment appointment) { }

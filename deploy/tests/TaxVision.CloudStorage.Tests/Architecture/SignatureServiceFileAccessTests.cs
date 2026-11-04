@@ -20,7 +20,10 @@ public sealed class SignatureServiceFileAccessTests
     [Fact]
     public void Only_people_can_create_share_links()
     {
-        Assert.DoesNotContain(ActorType.Service, ActorTypesOf(typeof(ShareLinksController), nameof(ShareLinksController.Create)));
+        Assert.DoesNotContain(
+            ActorType.Service,
+            ActorTypesOf(typeof(ShareLinksController), nameof(ShareLinksController.Create))
+        );
     }
 
     private static IReadOnlyCollection<ActorType> ActorTypesOf(Type controller, string action) =>

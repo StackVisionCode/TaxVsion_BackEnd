@@ -1,11 +1,14 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Accounts.Consumers;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
+using TaxVision.Connectors.Domain.Watch;
 using TaxVision.Connectors.Tests.OAuth;
 using TaxVision.Connectors.Tests.Providers;
+using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.Accounts;
 
@@ -23,6 +26,7 @@ public sealed class ConnectorsUserOffboardedConsumerTests
         public FakeOAuthConnectionRepository OAuth { get; } = new();
         public FakeImapCredentialsRepository Imap { get; } = new();
         public FakeSmtpCredentialsRepository Smtp { get; } = new();
+        public FakeProviderWatchSubscriptionRepository Watches { get; } = new();
         public FakeOAuthProviderClient ProviderClient { get; } = new(ProviderCode.Gmail);
         public FakeEncryptedSecretProtector Protector { get; } = new();
         public FakeProviderConnectionAuditLogRepository Audit { get; } = new();
@@ -43,6 +47,7 @@ public sealed class ConnectorsUserOffboardedConsumerTests
                 OAuth,
                 Imap,
                 Smtp,
+                Watches,
                 new FakeOAuthProviderClientFactory(ProviderClient),
                 Protector,
                 Audit,
@@ -109,6 +114,27 @@ public sealed class ConnectorsUserOffboardedConsumerTests
     }
 
     [Fact]
+    public async Task The_purge_is_saved_before_the_disconnected_events_are_published()
+    {
+        // Si el guardado fallara y Wolverine reintentara, publicar antes dejaría salir el aviso dos veces.
+        var tenantId = Guid.NewGuid();
+        var leaver = Guid.NewGuid();
+        var harness = new Harness();
+        harness.SeedConnectedMailbox(tenantId, leaver, "leaver@gmail.com");
+        harness.SeedConnectedMailbox(tenantId, leaver, "leaver@outlook.com");
+        var savesSeenAtPublish = new List<int>();
+        harness.Bus.OnPublish = _ => savesSeenAtPublish.Add(harness.UnitOfWork.SaveChangesCallCount);
+
+        await harness.Run(tenantId, leaver);
+
+        Assert.Equal([1, 1], savesSeenAtPublish);
+        Assert.Equal(
+            2,
+            harness.Bus.Published.OfType<ConnectorsTenantEmailAccountDisconnectedIntegrationEvent>().Count()
+        );
+    }
+
+    [Fact]
     public async Task Office_and_other_users_mailboxes_are_left_untouched()
     {
         var tenantId = Guid.NewGuid();
@@ -156,5 +182,40 @@ public sealed class ConnectorsUserOffboardedConsumerTests
         );
 
         Assert.Equal(2, result.PersonalMailboxes);
+    }
+
+    [Fact]
+    public async Task A_failing_provider_revocation_does_not_stop_the_purge()
+    {
+        var tenantId = Guid.NewGuid();
+        var leaver = Guid.NewGuid();
+        var harness = new Harness();
+        harness.ProviderClient.ThrowOnRevoke = new TaskCanceledException("provider timeout");
+        var account = harness.SeedConnectedMailbox(tenantId, leaver, "leaver@gmail.com");
+
+        await harness.Run(tenantId, leaver);
+
+        Assert.Equal(TenantEmailAccountStatus.Disconnected, account.Status);
+        Assert.Empty(harness.OAuth.Connections);
+        Assert.Empty(harness.Imap.Credentials);
+        Assert.Equal(1, harness.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task The_inbound_push_of_a_purged_mailbox_stops_renewing()
+    {
+        var tenantId = Guid.NewGuid();
+        var leaver = Guid.NewGuid();
+        var harness = new Harness();
+        var account = harness.SeedConnectedMailbox(tenantId, leaver, "leaver@gmail.com");
+        var watch = ProviderWatchSubscription
+            .Create(account.Id, ProviderCode.Gmail, "history-1", "topic", DateTime.UtcNow.AddDays(3), DateTime.UtcNow)
+            .Value;
+        harness.Watches.Subscriptions.Add(watch);
+
+        await harness.Run(tenantId, leaver);
+
+        Assert.Equal(ProviderWatchStatus.Removed, watch.Status);
+        Assert.Empty(await harness.Watches.ListExpiringBeforeAsync(DateTime.UtcNow.AddDays(30)));
     }
 }

@@ -14,6 +14,11 @@ public sealed class UserNotificationPreference : TenantEntity
 {
     private UserNotificationPreference() { }
 
+    [UserReference(
+        UserReferenceKind.Private,
+        HandledBy = "UserEmailDirectoryOffboardingConsumer",
+        Note = "Se conserva; queda inerte porque el directorio inactivo corta toda entrega."
+    )]
     public Guid UserId { get; private set; }
     public NotificationCategory Category { get; private set; }
     public NotificationChannel Channel { get; private set; }

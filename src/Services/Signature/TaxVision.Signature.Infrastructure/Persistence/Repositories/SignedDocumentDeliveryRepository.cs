@@ -11,12 +11,14 @@ public sealed class SignedDocumentDeliveryRepository(SignatureDbContext db) : IS
         await db.SignedDocumentDeliveries.AddAsync(delivery, ct);
 
     public Task<SignedDocumentDelivery?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
-        db.SignedDocumentDeliveries.IgnoreQueryFilters()
+        db
+            .SignedDocumentDeliveries.IgnoreQueryFilters()
             .Include(delivery => delivery.Items)
             .FirstOrDefaultAsync(delivery => delivery.TokenHash == tokenHash, ct);
 
     public Task<SignedDocumentDelivery?> GetByIdAsync(Guid tenantId, Guid deliveryId, CancellationToken ct = default) =>
-        db.SignedDocumentDeliveries.IgnoreQueryFilters()
+        db
+            .SignedDocumentDeliveries.IgnoreQueryFilters()
             .Include(delivery => delivery.Items)
             .FirstOrDefaultAsync(delivery => delivery.TenantId == tenantId && delivery.Id == deliveryId, ct);
 
@@ -37,7 +39,8 @@ public sealed class SignedDocumentDeliveryRepository(SignatureDbContext db) : IS
         Guid signerId,
         CancellationToken ct = default
     ) =>
-        db.SignedDocumentDeliveries.IgnoreQueryFilters()
+        db
+            .SignedDocumentDeliveries.IgnoreQueryFilters()
             .AnyAsync(
                 delivery =>
                     delivery.TenantId == tenantId

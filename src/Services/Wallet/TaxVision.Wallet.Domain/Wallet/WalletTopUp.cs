@@ -31,6 +31,11 @@ public sealed class WalletTopUp : TenantEntity
     public string Currency { get; private set; } = Wallet.DefaultCurrency;
     public WalletTopUpStatus Status { get; private set; } = WalletTopUpStatus.Pending;
     public string IdempotencyKey { get; private set; } = string.Empty;
+
+    [UserReference(
+        UserReferenceKind.Provenance,
+        Note = "Quién pidió la recarga; el cobro es de la oficina y sigue igual."
+    )]
     public Guid RequestedByUserId { get; private set; }
     public Guid? SaaSPaymentId { get; private set; }
     public string? FailureReason { get; private set; }

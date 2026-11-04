@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { Meeting, type MeetingSnapshot } from '../../src/domain/meetings/meeting.js';
-import type { MeetingInvitation } from '../../src/domain/meetings/meeting-invitation.js';
+import { MeetingInvitation } from '../../src/domain/meetings/meeting-invitation.js';
 import type { MeetingRepository } from '../../src/application/ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../../src/application/ports/integration-event-publisher.js';
 import type { IntegrationEvent } from '../../src/contracts/events/integration-event.js';
@@ -41,6 +41,30 @@ class FakeMeetingRepository implements MeetingRepository {
   async countActiveHostedBy(tenantId: string, hostUserId: string): Promise<number> {
     return (await this.listActiveHostedBy(tenantId, hostUserId)).length;
   }
+  async listScheduledWithParticipant(tenantId: string, userId: string): Promise<Meeting[]> {
+    return [...this.meetings.values()].filter(
+      (m) =>
+        m.tenantId === tenantId &&
+        m.status === 'Scheduled' &&
+        m.hostUserId !== userId &&
+        m.toSnapshot().participants.some((p) => p.userId === userId && p.status !== 'Removed'),
+    );
+  }
+  async countScheduledWithParticipant(tenantId: string, userId: string): Promise<number> {
+    return (await this.listScheduledWithParticipant(tenantId, userId)).length;
+  }
+  readonly invitations = new Map<string, MeetingInvitation>();
+  async listOpenInvitationsForInvitee(tenantId: string, inviteeUserId: string): Promise<MeetingInvitation[]> {
+    return [...this.invitations.values()].filter((i) => {
+      const s = i.toSnapshot();
+      return (
+        s.tenantId === tenantId &&
+        s.inviteeUserId === inviteeUserId &&
+        s.revokedAtUtc === null &&
+        s.closedAtUtc === null
+      );
+    });
+  }
   async findById(): Promise<Meeting | null> {
     return null;
   }
@@ -53,15 +77,17 @@ class FakeMeetingRepository implements MeetingRepository {
   async findByIdAnyTenant(): Promise<null> {
     return null;
   }
-  async saveInvitation(): Promise<void> {}
+  async saveInvitation(invitation: MeetingInvitation): Promise<void> {
+    this.invitations.set(invitation.id, invitation);
+  }
   async findInvitationByHash(): Promise<null> {
     return null;
   }
   async findInvitationById(): Promise<null> {
     return null;
   }
-  async listInvitationsByMeeting(): Promise<MeetingInvitation[]> {
-    return [];
+  async listInvitationsByMeeting(_tenantId: string, meetingId: string): Promise<MeetingInvitation[]> {
+    return [...this.invitations.values()].filter((i) => i.toSnapshot().meetingId === meetingId);
   }
   async listLive(): Promise<Meeting[]> {
     return [];
@@ -280,5 +306,102 @@ describe('offboarding consumer — auth.user.offboarded.v1', () => {
     );
 
     expect(ctx.meetings.get(meeting.id)?.status).toBe('Cancelled');
+  });
+
+  it('#4: leaves scheduled meetings of other hosts and its open invitations are revoked', async () => {
+    const leaver = u();
+    const ctx = setup(null);
+    const other = scheduledMeeting(u());
+    // Queda como participante (p.ej. host viejo degradado a Attendee) de una reunión de otro.
+    other.reassignHostBySystem({ newHostUserId: leaver, newHostDisplayName: 'Leaver' });
+    other.reassignHostBySystem({ newHostUserId: u(), newHostDisplayName: 'Other host' });
+    await ctx.meetings.save(other);
+    const issued = MeetingInvitation.issue({
+      meetingId: other.id,
+      tenantId: TENANT,
+      inviteeKind: 'Employee',
+      inviteeUserId: leaver,
+      ttlSeconds: 3600,
+      now: new Date(),
+    });
+    if (!issued.isSuccess) throw new Error('issue failed');
+    await ctx.meetings.saveInvitation(issued.value.invitation);
+
+    await ctx.handlers.get('auth.user.offboarded.v1')!(offboardEnvelope({ userId: leaver }));
+
+    const saved = ctx.meetings.get(other.id)!;
+    expect(saved.status).toBe('Scheduled');
+    expect(saved.notifiableUserIds()).not.toContain(leaver);
+    expect(saved.toSnapshot().participants.find((p) => p.userId === leaver)?.status).toBe('Removed');
+    expect(
+      ctx.meetings.invitations.get(issued.value.invitation.id)?.toSnapshot().revokedAtUtc,
+    ).not.toBeNull();
+  });
+
+  it('#4: the reassigned meeting no longer notifies the old host', async () => {
+    const leaver = u();
+    const successor = u();
+    const ctx = setup(eligibleSuccessor(successor));
+    const meeting = scheduledMeeting(leaver);
+    await ctx.meetings.save(meeting);
+
+    await ctx.handlers.get('auth.user.offboarded.v1')!(
+      offboardEnvelope({ userId: leaver, successorUserId: successor }),
+    );
+
+    const saved = ctx.meetings.get(meeting.id)!;
+    expect(saved.hostUserId).toBe(successor);
+    expect(saved.notifiableUserIds()).toEqual([successor]);
+  });
+
+  it('#4: the cancellation notice of its own meetings does not go to the leaver', async () => {
+    const leaver = u();
+    const ctx = setup(null);
+    await ctx.meetings.save(scheduledMeeting(leaver));
+
+    await ctx.handlers.get('auth.user.offboarded.v1')!(offboardEnvelope({ userId: leaver }));
+
+    const cancelled = ctx.publisher.events.find(
+      (e) => e.eventType === 'communication.meeting.cancelled.v1',
+    ) as unknown as {
+      participantUserIds: string[];
+    };
+    expect(cancelled.participantUserIds).not.toContain(leaver);
+  });
+
+  it('acknowledges the step to Auth last, with the registry service and step names', async () => {
+    const leaver = u();
+    const ctx = setup(null);
+    await ctx.meetings.save(scheduledMeeting(leaver));
+    const envelope = offboardEnvelope({ userId: leaver });
+
+    await ctx.handlers.get('auth.user.offboarded.v1')?.(envelope);
+
+    const last = ctx.publisher.events.at(-1) as unknown as Record<string, unknown>;
+    expect(last).toMatchObject({
+      eventType: 'auth.user.offboarding_step_completed.v1',
+      tenantId: TENANT,
+      correlationId: envelope.correlationId,
+      userId: leaver,
+      service: 'Communication',
+      step: 'offboarding-consumers',
+    });
+    expect(typeof last['completedAtUtc']).toBe('string');
+  });
+
+  it('does not acknowledge when a step fails (the retry acknowledges later)', async () => {
+    const leaver = u();
+    const ctx = setup(null);
+    ctx.meetings.listActiveHostedBy = async () => {
+      throw new Error('db down');
+    };
+
+    await expect(
+      ctx.handlers.get('auth.user.offboarded.v1')?.(offboardEnvelope({ userId: leaver })),
+    ).rejects.toThrow('db down');
+
+    expect(ctx.publisher.events.some((e) => e.eventType === 'auth.user.offboarding_step_completed.v1')).toBe(
+      false,
+    );
   });
 });

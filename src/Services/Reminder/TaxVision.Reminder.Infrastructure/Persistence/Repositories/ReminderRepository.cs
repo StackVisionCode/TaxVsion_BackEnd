@@ -109,12 +109,13 @@ public sealed class ReminderRepository(ReminderDbContext context) : IReminderRep
 
     public Task<ReminderAggregate?> FindByRequestKeyAsync(
         Guid tenantId,
+        Guid userId,
         RequestKey requestKey,
         CancellationToken ct = default
     ) =>
         context
             .Reminders.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.RequestKey == requestKey, ct);
+            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.UserId == userId && r.RequestKey == requestKey, ct);
 
     public async Task<IReadOnlyList<ReminderAggregate>> ListPendingByTargetAsync(
         Guid tenantId,
@@ -132,19 +133,14 @@ public sealed class ReminderRepository(ReminderDbContext context) : IReminderRep
             )
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<ReminderAggregate>> ListPendingGeneralByUserAsync(
+    public async Task<IReadOnlyList<ReminderAggregate>> ListPendingByUserAsync(
         Guid tenantId,
         Guid userId,
         CancellationToken ct = default
     ) =>
         await context
             .Reminders.IgnoreQueryFilters()
-            .Where(r =>
-                r.TenantId == tenantId
-                && r.UserId == userId
-                && r.Target.Category == ReminderCategory.General
-                && PendingStatuses.Contains(r.Status)
-            )
+            .Where(r => r.TenantId == tenantId && r.UserId == userId && PendingStatuses.Contains(r.Status))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<ReminderAggregate>> ListScheduledWithinHorizonAsync(

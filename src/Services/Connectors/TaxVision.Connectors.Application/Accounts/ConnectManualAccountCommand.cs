@@ -20,5 +20,7 @@ public sealed record ConnectManualAccountCommand(
     string SmtpPassword,
     // true = buzón de oficina (compartido; el email puede diferir del login → guard NO aplica);
     // false = personal (el email debe ser el del login). Default false.
-    bool AsOffice = false
+    bool AsOffice = false,
+    // PlatformAdmin no tiene proyección de permisos en el tenant: no pasa por el guard de iniciador activo.
+    bool InitiatorIsPlatformAdmin = false
 );

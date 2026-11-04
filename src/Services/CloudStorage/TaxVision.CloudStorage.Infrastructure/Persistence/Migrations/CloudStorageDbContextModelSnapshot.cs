@@ -798,6 +798,9 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ConnectedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("ConnectedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ProtectedRefreshToken")
                         .IsRequired()
                         .HasMaxLength(4096)
@@ -807,6 +810,13 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ReviewReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ReviewRequiredAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");

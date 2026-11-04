@@ -15,6 +15,7 @@ public sealed class NotificationRecipientPermissionsProjection : TenantEntity
 {
     private NotificationRecipientPermissionsProjection() { }
 
+    [UserReference(UserReferenceKind.Projection, HandledBy = "UserOffboardedPermissionsProjectionConsumer")]
     public Guid UserId { get; private set; }
     public int PermissionsVersion { get; private set; }
     public string PermissionCodesJson { get; private set; } = "[]";

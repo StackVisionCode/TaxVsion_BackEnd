@@ -37,6 +37,21 @@ public sealed class ImportFileScanResultConsumerTests
     }
 
     [Fact]
+    public async Task The_failure_notice_goes_to_the_follow_up_user_when_the_creator_was_offboarded()
+    {
+        var attempt = NewAttempt();
+        var admin = Guid.NewGuid();
+        attempt.HandOverFollowUp(admin);
+        var bus = new FakeMessageBus();
+
+        await RejectAsync(Rejected(attempt.Id), new InMemoryImports(attempt), bus, new RecordingUnitOfWork(bus));
+
+        var failed = Assert.IsType<CustomerImportFailedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(UserId, failed.CreatedByUserId);
+        Assert.Equal(admin, failed.NotifyUserId);
+    }
+
+    [Fact]
     public async Task Rejection_while_canceling_confirms_the_cancel_without_a_failure()
     {
         var attempt = NewAttempt();

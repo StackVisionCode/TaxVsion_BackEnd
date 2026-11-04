@@ -1,3 +1,4 @@
+import { SystemMessageKind } from '../../domain/conversations/message-kind.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import { ConversationKind } from '../../domain/conversations/conversation-kind.js';
@@ -111,6 +112,7 @@ export async function addGroupParticipant(
   await commitGroupChange(
     conversation,
     {
+      systemKind: SystemMessageKind.Membership,
       systemText: `${command.actor.displayName} added ${member.displayName}`,
       audit: [{ action: 'MemberAdded', actorUserId: command.actor.userId, targetUserId: member.userId, metadata: { actorType: member.actorType } }],
     },

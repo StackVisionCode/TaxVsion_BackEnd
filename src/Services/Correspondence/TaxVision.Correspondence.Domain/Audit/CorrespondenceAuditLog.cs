@@ -29,6 +29,7 @@ public sealed class CorrespondenceAuditLog : ITenantOwned
     public Guid TargetId { get; private set; }
 
     /// <summary>Null solo para acciones disparadas por un proceso de sistema, no por un usuario — Fase 14 siempre la llena (el envío es siempre HTTP-triggered por un usuario autenticado).</summary>
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? UserId { get; private set; }
     public string CorrelationId { get; private set; } = default!;
     public string Detail { get; private set; } = default!;

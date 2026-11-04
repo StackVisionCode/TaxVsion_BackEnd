@@ -15,26 +15,24 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 table: "TenantBrandingRefs",
                 type: "nvarchar(200)",
                 maxLength: 200,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "ProfileVersion",
                 table: "TenantBrandingRefs",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 0L
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "DisplayName",
-                table: "TenantBrandingRefs");
+            migrationBuilder.DropColumn(name: "DisplayName", table: "TenantBrandingRefs");
 
-            migrationBuilder.DropColumn(
-                name: "ProfileVersion",
-                table: "TenantBrandingRefs");
+            migrationBuilder.DropColumn(name: "ProfileVersion", table: "TenantBrandingRefs");
         }
     }
 }

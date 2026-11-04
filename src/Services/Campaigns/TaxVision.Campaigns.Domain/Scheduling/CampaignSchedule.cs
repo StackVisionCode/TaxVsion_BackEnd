@@ -86,9 +86,29 @@ public sealed class CampaignSchedule : TenantEntity
     /// hay forma de saber qué veía su creador, y asumir lo contrario cambiaría a quién se le envía un
     /// correo ya agendado (§R.7 del plan).
     /// </para>
+    /// <para>
+    /// Si quien dispara es retirado, el agendado pasa al sucesor (<see cref="RunAsUserId"/>) y
+    /// <c>CreatorCanViewAllCustomers</c> pasa a ser la visibilidad del sucesor. <c>CreatedByUserId</c> no
+    /// cambia nunca: es la procedencia.
+    /// </para>
     /// </summary>
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "CampaignSchedulesUserOffboardedConsumer",
+        Note = "No se reescribe: el retiro fija RunAsUserId."
+    )]
     public Guid? CreatedByUserId { get; private set; }
     public bool CreatorCanViewAllCustomers { get; private set; } = true;
+
+    /// <summary>
+    /// Sucesor que heredó el agendado al retirarse quien disparaba, o quien lo reanudó cuando el anterior ya
+    /// no podía enviar. Null = dispara el creador.
+    /// </summary>
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "CampaignSchedulesUserOffboardedConsumer")]
+    public Guid? RunAsUserId { get; private set; }
+
+    /// <summary>En nombre de quién (y con su visibilidad) dispara el scheduler.</summary>
+    public Guid? EffectiveRunAsUserId => RunAsUserId ?? CreatedByUserId;
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
@@ -200,6 +220,24 @@ public sealed class CampaignSchedule : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>
+    /// Reanuda en nombre de quien reanuda porque el ejecutor actual ya no puede enviar (retirado o sin
+    /// permiso): de acá en más dispara como el actor y con SU visibilidad de clientes, igual que al agendar.
+    /// </summary>
+    public Result ResumeTakingOver(Guid actorUserId, bool actorCanViewAllCustomers)
+    {
+        if (actorUserId == Guid.Empty)
+            return Result.Failure(CampaignScheduleErrors.SuccessorRequired);
+        if (Status != ScheduleStatus.Paused)
+            return Result.Failure(CampaignScheduleErrors.NotPaused);
+
+        RunAsUserId = actorUserId;
+        CreatorCanViewAllCustomers = actorCanViewAllCustomers;
+        Status = ScheduleStatus.Active;
+        Touch();
+        return Result.Success();
+    }
+
     public Result Cancel()
     {
         if (Status is ScheduleStatus.Cancelled or ScheduleStatus.Completed)
@@ -210,6 +248,42 @@ public sealed class CampaignSchedule : TenantEntity
         Touch();
         return Result.Success();
     }
+
+    /// <summary>
+    /// Quien disparaba fue retirado y hay sucesor elegible: de acá en más dispara en nombre del sucesor y
+    /// con SU visibilidad de clientes. Solo agendados vivos (Active/Paused); el estado no cambia.
+    /// </summary>
+    public Result HandOverOnOffboarding(Guid successorUserId, bool successorCanViewAllCustomers)
+    {
+        if (successorUserId == Guid.Empty)
+            return Result.Failure(CampaignScheduleErrors.SuccessorRequired);
+        if (!IsOpen)
+            return Result.Failure(CampaignScheduleErrors.InvalidTransition);
+
+        RunAsUserId = successorUserId;
+        CreatorCanViewAllCustomers = successorCanViewAllCustomers;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Quien disparaba fue retirado y no hay sucesor elegible: se pausa para que no siga disparando en su
+    /// nombre ni gastando saldo; un admin decide si lo reanuda. Uno ya pausado queda igual.
+    /// </summary>
+    public Result PauseOnOffboarding()
+    {
+        if (!IsOpen)
+            return Result.Failure(CampaignScheduleErrors.InvalidTransition);
+        if (Status == ScheduleStatus.Paused)
+            return Result.Success();
+
+        Status = ScheduleStatus.Paused;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>Vivo: todavía puede disparar (Active) o reanudarse (Paused).</summary>
+    public bool IsOpen => Status is ScheduleStatus.Active or ScheduleStatus.Paused;
 
     /// <summary>
     /// Registra un disparo: guarda el run activo (guard de solape) y avanza. OneTime → Completed; Recurring

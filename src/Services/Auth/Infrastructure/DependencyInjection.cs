@@ -16,6 +16,7 @@ using StackExchange.Redis;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Invitations.Commands;
+using TaxVision.Auth.Application.Offboarding;
 using TaxVision.Auth.Application.Onboarding;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Application.Onboarding.Sagas.Services;
@@ -98,6 +99,16 @@ public static class DependencyInjection
         services.AddScoped<ITenantResolver, TenantResolver>();
         services.AddScoped<ITenantDomainRebaser, TenantDomainRebaser>();
         services.AddScoped<ITenantTermsAcceptanceRepository, TenantTermsAcceptanceRepository>();
+
+        // Acuse por servicio del retiro: corridas, try-lock del barrido y opciones validadas al arrancar.
+        services.AddScoped<IOffboardingRunRepository, OffboardingRunRepository>();
+        services.AddScoped<IOffboardingSweepLock, SqlOffboardingSweepLock>();
+        services.AddScoped<OffboardingRunSweeper>();
+        services
+            .AddOptions<OffboardingTrackingOptions>()
+            .Bind(configuration.GetSection(OffboardingTrackingOptions.SectionName))
+            .Validate(o => !o.Errors().Any(), "Offboarding:Tracking is invalid (see OffboardingTrackingOptions).")
+            .ValidateOnStart();
         services.AddScoped<IEmailVerificationChallengeRepository, EmailVerificationChallengeRepository>();
         services.AddScoped<ITermsVersionRepository, TermsVersionRepository>();
         services.AddScoped<ITenantOnboardingRepository, TenantOnboardingRepository>();

@@ -21,6 +21,8 @@ public sealed class FormTemplateVersion : AggregateRoot
     public string ActionSetJson { get; private set; } = "[]";
     public int TargetCatalogVersion { get; private set; }
     public DateTime PublishedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid PublishedByUserId { get; private set; }
 
     internal static FormTemplateVersion Create(

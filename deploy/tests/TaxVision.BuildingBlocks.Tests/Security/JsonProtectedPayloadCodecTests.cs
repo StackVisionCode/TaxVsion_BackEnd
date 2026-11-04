@@ -206,7 +206,11 @@ public sealed class JsonProtectedPayloadCodecTests
         var deliveryId = Guid.NewGuid();
         var binding = SignatureDeliveryPayloadSchemas.BindingFor(tenantId, deliveryId);
 
-        var protectedPayload = codec.Protect(SignatureDeliveryPayloadSchemas.DeliveryLink, binding, new Content("link", 1));
+        var protectedPayload = codec.Protect(
+            SignatureDeliveryPayloadSchemas.DeliveryLink,
+            binding,
+            new Content("link", 1)
+        );
 
         Assert.Equal(
             new Content("link", 1),

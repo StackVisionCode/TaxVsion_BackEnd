@@ -122,6 +122,67 @@ public sealed class CustomerUserOffboardedConsumerTests
         Assert.Single(bus.Published.OfType<CustomerAssignmentsChangedIntegrationEvent>());
     }
 
+    /// <summary>
+    /// Un cliente archivado no se trabaja, pero al reactivarlo no debe volver con un preparador retirado: el
+    /// retiro lo suelta (sin asignar al sucesor: un archivado no admite preparador nuevo) y avisa a las
+    /// proyecciones. La oficina elige preparador al reactivarlo.
+    /// </summary>
+    [Fact]
+    public async Task Archived_clients_release_the_leaver_without_handing_over_to_the_successor()
+    {
+        var directory = new FakeDirectory();
+        directory.Seed(Leaver, TenantId, "TenantEmployee", isActive: true);
+        directory.Seed(Successor, TenantId, "TenantEmployee", isActive: true);
+        var customers = new FakeCustomers();
+        customers.SeedAssigned(TenantId, Leaver, count: 1);
+        var archived = customers.All[0];
+        archived.Archive(Admin);
+        var bus = new FakeMessageBus();
+
+        await Consume(directory, customers, bus, successorUserId: Successor);
+
+        Assert.Equal(CustomerStatus.Archived, archived.Status);
+        Assert.Null(archived.AssignedPreparerUserId);
+        Assert.Empty(archived.Assignments);
+        Assert.Empty(bus.Published.OfType<CustomerPreparerAssignedIntegrationEvent>());
+        Assert.Single(bus.Published.OfType<CustomerPreparerUnassignedIntegrationEvent>());
+        Assert.Single(bus.Published.OfType<CustomerAssignmentsChangedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Archived_clients_drop_the_leavers_extra_access_and_keep_the_primary()
+    {
+        var directory = new FakeDirectory();
+        directory.Seed(Leaver, TenantId, "TenantEmployee", isActive: true);
+        var customers = new FakeCustomers();
+        var shared = customers.SeedWithExtraAccess(TenantId, primaryUserId: Admin, extraUserId: Leaver);
+        shared.Archive(Admin);
+        var bus = new FakeMessageBus();
+
+        await Consume(directory, customers, bus, successorUserId: null);
+
+        Assert.DoesNotContain(shared.Assignments, a => a.UserId == Leaver);
+        Assert.Equal(Admin, shared.AssignedPreparerUserId);
+        Assert.Empty(bus.Published.OfType<CustomerPreparerUnassignedIntegrationEvent>());
+        Assert.Single(bus.Published.OfType<CustomerAssignmentsChangedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Redelivery_after_the_archived_sweep_changes_nothing()
+    {
+        var directory = new FakeDirectory();
+        directory.Seed(Leaver, TenantId, "TenantEmployee", isActive: true);
+        var customers = new FakeCustomers();
+        customers.SeedAssigned(TenantId, Leaver, count: 1);
+        customers.All[0].Archive(Admin);
+        await Consume(directory, customers, new FakeMessageBus(), successorUserId: null);
+        var bus = new FakeMessageBus();
+
+        await Consume(directory, customers, bus, successorUserId: null);
+
+        Assert.Empty(bus.Published);
+    }
+
     private static Task Consume(
         FakeDirectory directory,
         FakeCustomers customers,
@@ -224,7 +285,12 @@ public sealed class CustomerUserOffboardedConsumerTests
             CancellationToken ct
         ) =>
             Task.FromResult<IReadOnlyList<DomainCustomer>>(
-                All.FindAll(c => c.TenantId == tenantId && c.AssignedPreparerUserId == preparerUserId && c.Id > afterId)
+                All.FindAll(c =>
+                        c.TenantId == tenantId
+                        && c.Status != CustomerStatus.Archived
+                        && c.AssignedPreparerUserId == preparerUserId
+                        && c.Id > afterId
+                    )
                     .OrderBy(c => c.Id)
                     .Take(batchSize)
                     .ToList()
@@ -240,8 +306,28 @@ public sealed class CustomerUserOffboardedConsumerTests
             Task.FromResult<IReadOnlyList<DomainCustomer>>(
                 All.FindAll(c =>
                         c.TenantId == tenantId
+                        && c.Status != CustomerStatus.Archived
                         && c.Id > afterId
                         && c.Assignments.Any(a => a.UserId == userId && !a.IsPrimary)
+                    )
+                    .OrderBy(c => c.Id)
+                    .Take(batchSize)
+                    .ToList()
+            );
+
+        public Task<IReadOnlyList<DomainCustomer>> ListArchivedAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) =>
+            Task.FromResult<IReadOnlyList<DomainCustomer>>(
+                All.FindAll(c =>
+                        c.TenantId == tenantId
+                        && c.Status == CustomerStatus.Archived
+                        && c.Id > afterId
+                        && (c.AssignedPreparerUserId == userId || c.Assignments.Any(a => a.UserId == userId))
                     )
                     .OrderBy(c => c.Id)
                     .Take(batchSize)

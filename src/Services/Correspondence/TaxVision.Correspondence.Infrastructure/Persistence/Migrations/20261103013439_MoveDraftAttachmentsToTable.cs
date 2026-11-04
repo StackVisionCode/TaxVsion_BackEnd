@@ -21,7 +21,7 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     FileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Filename = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     ContentType = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    SizeBytes = table.Column<long>(type: "bigint", nullable: false)
+                    SizeBytes = table.Column<long>(type: "bigint", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -31,25 +31,32 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                         column: x => x.DraftId,
                         principalTable: "Drafts",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
-            migrationBuilder.CreateIndex(
-                name: "IX_IncomingEmailAttachments_TenantId_IncomingEmailId",
-                table: "IncomingEmailAttachments",
-                columns: new[] { "TenantId", "IncomingEmailId" })
+            migrationBuilder
+                .CreateIndex(
+                    name: "IX_IncomingEmailAttachments_TenantId_IncomingEmailId",
+                    table: "IncomingEmailAttachments",
+                    columns: new[] { "TenantId", "IncomingEmailId" }
+                )
                 .Annotation("SqlServer:Include", new[] { "Filename" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_DraftAttachments_DraftId_FileId_Unique",
                 table: "DraftAttachments",
                 columns: new[] { "DraftId", "FileId" },
-                unique: true);
+                unique: true
+            );
 
-            migrationBuilder.CreateIndex(
-                name: "IX_DraftAttachments_TenantId_DraftId",
-                table: "DraftAttachments",
-                columns: new[] { "TenantId", "DraftId" })
+            migrationBuilder
+                .CreateIndex(
+                    name: "IX_DraftAttachments_TenantId_DraftId",
+                    table: "DraftAttachments",
+                    columns: new[] { "TenantId", "DraftId" }
+                )
                 .Annotation("SqlServer:Include", new[] { "Filename" });
 
             // Relleno desde el JSON (D-7) ANTES de soltar la columna. sp_executesql: la sentencia se
@@ -86,7 +93,8 @@ WHERE x.[Rn] = 1;'"
                 table: "Drafts",
                 type: "nvarchar(max)",
                 nullable: false,
-                defaultValue: "[]");
+                defaultValue: "[]"
+            );
 
             // Vuelta atrás sin perder adjuntos: la tabla se serializa al mismo JSON que leía la versión anterior.
             migrationBuilder.Sql(
@@ -98,12 +106,12 @@ UPDATE d SET [AttachmentsJson] = ISNULL((
 FROM [Drafts] d;'"
             );
 
-            migrationBuilder.DropTable(
-                name: "DraftAttachments");
+            migrationBuilder.DropTable(name: "DraftAttachments");
 
             migrationBuilder.DropIndex(
                 name: "IX_IncomingEmailAttachments_TenantId_IncomingEmailId",
-                table: "IncomingEmailAttachments");
+                table: "IncomingEmailAttachments"
+            );
         }
     }
 }

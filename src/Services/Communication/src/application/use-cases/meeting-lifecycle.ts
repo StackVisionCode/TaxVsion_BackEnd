@@ -78,7 +78,7 @@ export async function startMeeting(
       .map((inv) => inv.toSnapshot())
       .filter((s) => s.revokedAtUtc === null && s.inviteeUserId !== null)
       .map((s) => s.inviteeUserId!);
-    const targets = new Set<string>([...inviteeUserIds, ...snapshot.participants.map((p) => p.userId)]);
+    const targets = new Set<string>([...inviteeUserIds, ...meeting.notifiableUserIds()]);
     targets.delete(cmd.hostUserId);
     const dto: MeetingListChangedDto = { meetingId: cmd.meetingId };
     for (const userId of targets) {

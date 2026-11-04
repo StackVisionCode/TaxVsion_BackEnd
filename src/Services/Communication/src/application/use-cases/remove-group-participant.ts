@@ -1,3 +1,4 @@
+import { SystemMessageKind } from '../../domain/conversations/message-kind.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
@@ -104,6 +105,7 @@ export async function removeGroupParticipant(
     await commitGroupChange(
       conversation,
       {
+        systemKind: SystemMessageKind.Membership,
         systemText: [text, succession.extraText].filter(Boolean).join('. '),
         audit: [
           {

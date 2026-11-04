@@ -266,8 +266,10 @@ public sealed class CreateMultiDocumentRequestTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
-        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,
@@ -356,9 +358,13 @@ public sealed class CreateMultiDocumentRequestTests
             CancellationToken ct = default
         ) => throw new InvalidOperationException("Create must not upload files.");
 
-        public Task<Result<Guid>> CopyToCustomerAsync(Guid tenantId, Guid sourceFileId, Guid customerId, int taxYear, CancellationToken ct = default) =>
-            throw new NotSupportedException();
-
+        public Task<Result<Guid>> CopyToCustomerAsync(
+            Guid tenantId,
+            Guid sourceFileId,
+            Guid customerId,
+            int taxYear,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             throw new NotImplementedException();

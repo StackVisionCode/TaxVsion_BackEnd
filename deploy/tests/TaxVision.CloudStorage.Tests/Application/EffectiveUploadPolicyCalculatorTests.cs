@@ -18,7 +18,9 @@ public sealed class EffectiveUploadPolicyCalculatorTests
     );
 
     private static readonly PlanFileAllowance Pro = new(
-        PlanFileAllowanceDefaults.ParseGroups("documents,spreadsheets,images,data,media,presentations,rich_text,web_images,archives,xml"),
+        PlanFileAllowanceDefaults.ParseGroups(
+            "documents,spreadsheets,images,data,media,presentations,rich_text,web_images,archives,xml"
+        ),
         25 * Mb
     );
 
@@ -27,7 +29,14 @@ public sealed class EffectiveUploadPolicyCalculatorTests
         PlanFileAllowance plan,
         long? sizeOverride = null,
         PortalUploadRestriction? portal = null
-    ) => EffectiveUploadPolicyCalculator.Calculate(TestFilePolicyCatalog.Folder(folderType), TestFilePolicyCatalog.FileTypes(), plan, sizeOverride, portal);
+    ) =>
+        EffectiveUploadPolicyCalculator.Calculate(
+            TestFilePolicyCatalog.Folder(folderType),
+            TestFilePolicyCatalog.FileTypes(),
+            plan,
+            sizeOverride,
+            portal
+        );
 
     [Fact]
     public void An_extension_the_plan_sells_but_the_folder_does_not_list_is_rejected()
@@ -42,8 +51,16 @@ public sealed class EffectiveUploadPolicyCalculatorTests
     public void A_dangerous_extension_never_gets_through_even_if_someone_lists_it()
     {
         // La propia política de carpeta rechaza darla de alta; el catálogo tampoco la admite.
-        Assert.True(FolderFilePolicy.Create(FolderType.Backups, Mb, [".zip", ".exe"], true, true, Guid.Empty, DateTime.UtcNow).IsFailure);
-        Assert.True(FileTypeDefinition.Create(".exe", "documents", ["application/x-msdownload"], Guid.Empty, DateTime.UtcNow).IsFailure);
+        Assert.True(
+            FolderFilePolicy
+                .Create(FolderType.Backups, Mb, [".zip", ".exe"], true, true, Guid.Empty, DateTime.UtcNow)
+                .IsFailure
+        );
+        Assert.True(
+            FileTypeDefinition
+                .Create(".exe", "documents", ["application/x-msdownload"], Guid.Empty, DateTime.UtcNow)
+                .IsFailure
+        );
     }
 
     [Fact]
@@ -161,7 +178,13 @@ public sealed class EffectiveUploadPolicyCalculatorTests
         var pdf = catalog.Single(definition => definition.Extension == ".pdf");
         pdf.Update(pdf.Group, pdf.ContentTypeList.ToList(), enabled: false, Guid.Empty, DateTime.UtcNow);
 
-        var policy = EffectiveUploadPolicyCalculator.Calculate(TestFilePolicyCatalog.Folder(FolderType.Documents), catalog, Pro, null, null);
+        var policy = EffectiveUploadPolicyCalculator.Calculate(
+            TestFilePolicyCatalog.Folder(FolderType.Documents),
+            catalog,
+            Pro,
+            null,
+            null
+        );
 
         Assert.DoesNotContain(".pdf", policy.AllowedExtensions);
         Assert.DoesNotContain("application/pdf", policy.AllowedContentTypes);
@@ -171,7 +194,9 @@ public sealed class EffectiveUploadPolicyCalculatorTests
     public void Voice_notes_is_a_navigable_system_folder()
     {
         Assert.True(TaxVision.CloudStorage.Application.Folders.SystemFolderCatalog.IsNavigable(FolderType.VoiceNotes));
-        Assert.True(TaxVision.CloudStorage.Application.Folders.SystemFolderCatalog.TryGet(FolderType.VoiceNotes, out var spec));
+        Assert.True(
+            TaxVision.CloudStorage.Application.Folders.SystemFolderCatalog.TryGet(FolderType.VoiceNotes, out var spec)
+        );
         Assert.Equal("Voice Notes", spec.Name);
         Assert.Equal("sys.voicenotes", spec.Category);
     }

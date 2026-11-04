@@ -13,12 +13,13 @@ using Microsoft.Extensions.Options;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Audit;
-using TaxVision.Signature.Application.Requests;
 using TaxVision.Signature.Application.Delivery;
+using TaxVision.Signature.Application.Requests;
 using TaxVision.Signature.Application.Requests.Commands.AddDocument;
 using TaxVision.Signature.Application.Requests.Commands.AddSigner;
 using TaxVision.Signature.Application.Requests.Commands.Cancel;
 using TaxVision.Signature.Application.Requests.Commands.CancelSchedule;
+using TaxVision.Signature.Application.Requests.Commands.ChangePreparer;
 using TaxVision.Signature.Application.Requests.Commands.ClearPractitionerPin;
 using TaxVision.Signature.Application.Requests.Commands.ClearPreparer;
 using TaxVision.Signature.Application.Requests.Commands.Create;
@@ -43,6 +44,7 @@ using TaxVision.Signature.Application.Requests.Commands.Update;
 using TaxVision.Signature.Application.Requests.Commands.UpsertDraft;
 using TaxVision.Signature.Application.Requests.Queries.GetById;
 using TaxVision.Signature.Application.Requests.Queries.List;
+using TaxVision.Signature.Application.Requests.Queries.PreparerCandidates;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using Wolverine;
@@ -1144,9 +1146,15 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
-        if (forbidden is not null)
-            return forbidden;
+        // El preparador asignado firma aunque no sea el autor (p. ej. sucesor de un retirado): el dominio
+        // ya exige que sea él. El resto sigue pasando por el chequeo de ownership.
+        var existing = await signatureRequests.GetByIdAsync(tenantId, id, ct);
+        if (existing?.Preparer?.UserId != userId)
+        {
+            var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+            if (forbidden is not null)
+                return forbidden;
+        }
 
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = Request.Headers.UserAgent.ToString();
@@ -1155,5 +1163,47 @@ public sealed class SignatureRequestsController(
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- POST /signature/requests/{id}/preparer/change ----------
+    // D-2 del retiro: un admin pasa el preparador de una solicitud enviada a otro empleado mientras el
+    // preparador no haya firmado. Auditado en la cadena HMAC; la identidad sale del perfil del nuevo.
+    [HttpPost("{id:guid}/preparer/change")]
+    [HasPermission(SignaturePermissions.RequestManage)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ChangePreparer(
+        [FromRoute] Guid id,
+        [FromBody] ChangePreparerBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new ChangePreparerCommand(tenantId, id, body.NewPreparerUserId, userId),
+            ct
+        );
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- GET /signature/requests/preparer-candidates ----------
+    // A quién se puede pasar el preparador: empleados activos con su identidad 8879 declarada.
+    [HttpGet("preparer-candidates")]
+    [HasPermission(SignaturePermissions.RequestManage)]
+    [RateLimit("signature.f.request_read")]
+    [ProducesResponseType<IReadOnlyList<PreparerCandidateResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> PreparerCandidates(CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<IReadOnlyList<PreparerCandidateResponse>>(
+            new ListPreparerCandidatesQuery(tenantId),
+            ct
+        );
+        return Ok(result);
     }
 }

@@ -98,6 +98,8 @@ public sealed class TenantOnboarding : BaseEntity
 
     /// <summary>Referencia de negocio al Tenant creado por la Saga — NO el discriminador multi-tenant.</summary>
     public Guid? TenantId { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? UserId { get; private set; }
     public Guid? SubscriptionId { get; private set; }
 

@@ -133,7 +133,9 @@ public sealed class UpsertSignatureDraftHandlerTests
         var newFileId = Guid.NewGuid();
         var command = NewCommand(draft) with
         {
-            Documents = NewCommand(draft).Documents.Append(new DraftDocumentSpec("doc-2", null, newFileId, "Letter", null)).ToList(),
+            Documents = NewCommand(draft)
+                .Documents.Append(new DraftDocumentSpec("doc-2", null, newFileId, "Letter", null))
+                .ToList(),
             Signers = new[]
             {
                 new DraftSignerSpec(null, "a@example.com", "Alice A", null, "En", null),
@@ -152,7 +154,10 @@ public sealed class UpsertSignatureDraftHandlerTests
             new[] { "a@example.com", "b@example.com" },
             response.SignerIds.Select(id => draft.Signers.Single(s => s.Id == id).Email.Value)
         );
-        Assert.Equal(draft.Signers.Single(s => s.Email.Value == "b@example.com").Fields.Single().Id, response.FieldIds[0]);
+        Assert.Equal(
+            draft.Signers.Single(s => s.Email.Value == "b@example.com").Fields.Single().Id,
+            response.FieldIds[0]
+        );
     }
 
     [Fact]
@@ -163,7 +168,9 @@ public sealed class UpsertSignatureDraftHandlerTests
         var newFileId = Guid.NewGuid();
         var body = NewCommand(draft) with
         {
-            Documents = NewCommand(draft).Documents.Append(new DraftDocumentSpec("doc-2", null, newFileId, "Letter", null)).ToList(),
+            Documents = NewCommand(draft)
+                .Documents.Append(new DraftDocumentSpec("doc-2", null, newFileId, "Letter", null))
+                .ToList(),
             Signers = new[] { new DraftSignerSpec(null, "a@example.com", "Alice A", null, "En", null) },
             Fields = new[] { SignatureField(signerIndex: 0, "doc-2") },
         };
@@ -241,7 +248,12 @@ public sealed class UpsertSignatureDraftHandlerTests
     private static SignatureRequest NewDraftWithOneSigner()
     {
         var draft = NewDraft();
-        draft.AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam").Value, null);
+        draft.AddSigner(
+            TestSignatureLimits.Default,
+            SignerEmail.Create("s@example.com").Value,
+            SignerFullName.Create("Sam").Value,
+            null
+        );
         return draft;
     }
 
@@ -347,8 +359,10 @@ public sealed class UpsertSignatureDraftHandlerTests
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
-        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,

@@ -242,7 +242,18 @@ public sealed class SignatureRequestFromFormConsumerTests
         var fileId = Guid.NewGuid();
         var command = BuildCommand(tenantId, fileId, customerId: null, autoSend: false);
         var existing = SignatureRequest
-            .CreateDraft(TestSignatureLimits.Default, tenantId, Guid.NewGuid(), "Existing", null, "Client form", 72, false, true, true)
+            .CreateDraft(
+                TestSignatureLimits.Default,
+                tenantId,
+                Guid.NewGuid(),
+                "Existing",
+                null,
+                "Client form",
+                72,
+                false,
+                true,
+                true
+            )
             .Value;
         var repo = new CapturingRepository { Existing = existing };
         var bus = new CapturingBus();
@@ -416,9 +427,13 @@ public sealed class SignatureRequestFromFormConsumerTests
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
-        public Task<Result<Guid>> CopyToCustomerAsync(Guid tenantId, Guid sourceFileId, Guid customerId, int taxYear, CancellationToken ct = default) =>
-            throw new NotSupportedException();
-
+        public Task<Result<Guid>> CopyToCustomerAsync(
+            Guid tenantId,
+            Guid sourceFileId,
+            Guid customerId,
+            int taxYear,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             throw new NotImplementedException();
@@ -501,8 +516,10 @@ public sealed class SignatureRequestFromFormConsumerTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
-        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,

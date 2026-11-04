@@ -19,11 +19,7 @@ public sealed record DocumentLimits
     private DocumentLimits() { }
 
     public static DocumentLimits Default() =>
-        new()
-        {
-            MaxPdfBytes = DefaultMaxPdfBytes,
-            MaxPagesPerDocument = DefaultMaxPagesPerDocument,
-        };
+        new() { MaxPdfBytes = DefaultMaxPdfBytes, MaxPagesPerDocument = DefaultMaxPagesPerDocument };
 
     public Result<DocumentLimits> WithMaxPdfBytes(long value)
     {

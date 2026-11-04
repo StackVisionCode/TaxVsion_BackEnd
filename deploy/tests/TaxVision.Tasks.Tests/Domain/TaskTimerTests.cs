@@ -108,6 +108,24 @@ public sealed class TaskTimerTests
         Assert.Equal(0.5m, task.ActualHours);
     }
 
+    /// <summary>Cierre por sistema (retiro): solo los de esa persona, imputando igual que un stop manual.</summary>
+    [Fact]
+    public void Stopping_someones_running_timers_by_the_system_adds_their_hours()
+    {
+        var task = NewTask();
+        var anas = task.StartTimer(Ana, isBillable: true, Now).Value;
+        var betos = task.StartTimer(Beto, isBillable: true, Now).Value;
+
+        var stopped = task.StopRunningTimersOf(Ana, Now.AddMinutes(45));
+        var again = task.StopRunningTimersOf(Ana, Now.AddMinutes(90));
+
+        Assert.Equal(1, stopped);
+        Assert.Equal(0, again);
+        Assert.False(anas.IsRunning);
+        Assert.True(betos.IsRunning);
+        Assert.Equal(0.75m, task.ActualHours);
+    }
+
     private static TaskItem NewTask() =>
         TaskItem
             .Create(

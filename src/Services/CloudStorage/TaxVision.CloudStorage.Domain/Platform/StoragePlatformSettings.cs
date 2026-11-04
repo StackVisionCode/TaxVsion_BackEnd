@@ -30,6 +30,8 @@ public sealed class StoragePlatformSettings : BaseEntity
     public int MaxZipFolders { get; private set; }
     public long MaxZipAggregateBytes { get; private set; }
     public int SharePasswordLockMinutes { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 

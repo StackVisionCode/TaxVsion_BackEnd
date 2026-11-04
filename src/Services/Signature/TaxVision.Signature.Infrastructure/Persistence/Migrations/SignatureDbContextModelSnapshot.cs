@@ -2021,6 +2021,10 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                             b1.HasKey("SignatureRequestId");
 
+                            b1.HasIndex("UserId")
+                                .HasDatabaseName("IX_SignatureRequests_Preparer_UserId")
+                                .HasFilter("[Preparer_UserId] IS NOT NULL");
+
                             b1.ToTable("SignatureRequests");
 
                             b1.WithOwner()

@@ -22,6 +22,8 @@ public static class CustomerImportFailedConsumer
             if (!inAppSource.PublishesInApp(InAppSourceGroup.CustomerImport))
                 return;
 
+            // El creador, salvo que Customer haya pasado el aviso a otro (creador retirado).
+            var recipient = evt.NotifyUserId ?? evt.CreatedByUserId;
             var title = "Importación masiva fallida";
             var body = string.IsNullOrWhiteSpace(evt.Reason)
                 ? "La importación no pudo completarse."
@@ -29,16 +31,16 @@ public static class CustomerImportFailedConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.CreatedByUserId:N}",
+                $"user:{recipient:N}",
                 title,
                 NotificationCategory.Collaboration,
                 "customer.import_failed",
                 evt.EventId,
                 correlation.CorrelationId,
-                recipientUserId: evt.CreatedByUserId,
+                recipientUserId: recipient,
                 inApp: new InAppNotificationRequest(
                     NotificationKinds.CustomerImportFailed,
-                    evt.CreatedByUserId,
+                    recipient,
                     evt.EventId,
                     "customer.import_failed.v1",
                     evt.FailedAtUtc,

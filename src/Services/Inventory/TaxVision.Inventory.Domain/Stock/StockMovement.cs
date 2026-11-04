@@ -13,6 +13,8 @@ public sealed class StockMovement : TenantEntity
     public int NewQuantity { get; private set; }
     public string? Reference { get; private set; }
     public string? Notes { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid MovedByUserId { get; private set; }
     public DateTime MovedAtUtc { get; private set; }
 

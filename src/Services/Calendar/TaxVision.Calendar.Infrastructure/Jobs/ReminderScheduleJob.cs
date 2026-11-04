@@ -1,12 +1,11 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
-using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TaxVision.Calendar.Application.Appointments;
 using TaxVision.Calendar.Domain.Appointments;
-using TaxVision.Calendar.Domain.Scheduling;
 using TaxVision.Calendar.Infrastructure.Persistence;
 using Wolverine;
 
@@ -17,13 +16,15 @@ namespace TaxVision.Calendar.Infrastructure.Jobs;
 ///
 /// <para>
 /// Reminder identifica su objetivo con un solo id y una serie tiene N ocurrencias, así que un
-/// recordatorio por serie dispararía una vez y ya. Este job recorre las ocurrencias de los próximos
-/// 60 días y pide una por una, con un id derivado de la cita y del inicio original.
+/// recordatorio por serie dispararía una vez y ya. Este job recorre las ocurrencias del horizonte
+/// (<see cref="AppointmentReminderRequests.HorizonDays"/>) y pide una por una, con un id derivado de la
+/// cita y del inicio original.
 /// </para>
 ///
 /// <para>
-/// Republicar es gratis: Reminder deduplica por <c>RequestKey</c>. Por eso el job puede correr a
-/// diario sin llevar cuenta de lo que ya pidió.
+/// Republicar es gratis: Reminder deduplica por (destinatario, <c>RequestKey</c>). Por eso el job puede
+/// correr a diario sin llevar cuenta de lo que ya pidió, y si el organizador cambió, el pedido crea el
+/// aviso del nuevo. El armado vive en <see cref="AppointmentReminderRequests"/>.
 /// </para>
 ///
 /// <para>
@@ -34,7 +35,6 @@ namespace TaxVision.Calendar.Infrastructure.Jobs;
 internal sealed class ReminderScheduleJob(IServiceScopeFactory scopeFactory, ILogger<ReminderScheduleJob> logger)
     : BackgroundService
 {
-    private const int HorizonDays = 60;
     private static readonly TimeSpan Interval = TimeSpan.FromHours(12);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -76,13 +76,12 @@ internal sealed class ReminderScheduleJob(IServiceScopeFactory scopeFactory, ILo
         using var correlationScope = correlation.Push(Guid.NewGuid().ToString("N"));
 
         var now = DateTime.UtcNow;
-        var horizon = now.AddDays(HorizonDays);
 
         var appointments = await Candidates(context).ToListAsync(ct);
 
         var requested = 0;
         foreach (var appointment in appointments)
-            requested += await RequestForAsync(appointment, now, horizon, bus, correlation);
+            requested += await RequestForAsync(appointment, now, bus, correlation);
 
         if (requested > 0)
             logger.LogInformation("ReminderScheduleJob requested {Count} occurrence reminder(s).", requested);
@@ -102,36 +101,14 @@ internal sealed class ReminderScheduleJob(IServiceScopeFactory scopeFactory, ILo
     private static async Task<int> RequestForAsync(
         Appointment appointment,
         DateTime now,
-        DateTime horizon,
         IMessageBus bus,
         ICorrelationContext correlation
     )
     {
-        var occurrences = OccurrenceExpander.Expand(appointment, now, horizon);
-        if (occurrences.IsFailure)
-            return 0;
+        var requests = AppointmentReminderRequests.For(appointment, now, correlation.CorrelationId);
+        foreach (var request in requests)
+            await bus.PublishAsync(request);
 
-        foreach (var occurrence in occurrences.Value)
-        {
-            var targetId = OccurrenceTargetId.For(appointment.Id, occurrence.OriginalStartUtc);
-
-            await bus.PublishAsync(
-                new ReminderRequestedIntegrationEvent
-                {
-                    TenantId = appointment.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    UserId = appointment.OrganizerUserId,
-                    Category = "Calendar",
-                    TargetId = targetId,
-                    Title = occurrence.Title,
-                    TimeZoneId = appointment.Timing.TimeZone.Id,
-                    AnchorAtUtc = occurrence.StartUtc,
-                    LeadMinutes = appointment.ReminderLeadMinutes,
-                    RequestKey = $"calendar:{targetId:N}",
-                }
-            );
-        }
-
-        return occurrences.Value.Count;
+        return requests.Count;
     }
 }

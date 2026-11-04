@@ -16,7 +16,9 @@ public sealed class DocumentVerificationTests
         var document = request.Documents.Single();
         request.RejectDocument(
             document.Id,
-            DocumentRejection.Create("Signature.DocumentValidation.AlreadySigned", "PDF already contains signatures.").Value
+            DocumentRejection
+                .Create("Signature.DocumentValidation.AlreadySigned", "PDF already contains signatures.")
+                .Value
         );
 
         var result = request.Send(DateTime.UtcNow);
@@ -46,7 +48,10 @@ public sealed class DocumentVerificationTests
     {
         var request = Draft(clientPageCount: null);
         var document = request.Documents.Single();
-        request.RejectDocument(document.Id, DocumentRejection.Create("Signature.DocumentValidation.MimeType", "Only PDF.").Value);
+        request.RejectDocument(
+            document.Id,
+            DocumentRejection.Create("Signature.DocumentValidation.MimeType", "Only PDF.").Value
+        );
 
         request.ReplaceDocumentFile(document.Id, Guid.NewGuid(), null);
 
@@ -94,7 +99,12 @@ public sealed class DocumentVerificationTests
     {
         var request = Draft(clientPageCount: null);
         var signer = request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("client@example.com").Value, SignerFullName.Create("Client One").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("client@example.com").Value,
+                SignerFullName.Create("Client One").Value,
+                null
+            )
             .Value;
         request.PlaceField(
             TestSignatureLimits.MaxFieldsPerSigner,
@@ -111,7 +121,18 @@ public sealed class DocumentVerificationTests
     private static SignatureRequest Draft(int? clientPageCount)
     {
         var request = SignatureRequest
-            .CreateDraft(TestSignatureLimits.Default, Guid.NewGuid(), Guid.NewGuid(), "Engagement letter", null, "Fiscal", 72, false, false, true)
+            .CreateDraft(
+                TestSignatureLimits.Default,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Engagement letter",
+                null,
+                "Fiscal",
+                72,
+                false,
+                false,
+                true
+            )
             .Value;
         request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Engagement letter", null, clientPageCount);
         return request;

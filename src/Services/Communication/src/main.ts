@@ -313,14 +313,12 @@ async function main(): Promise<void> {
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
     emitter,
-    conversations: container.conversations,
-    conversationAudit: container.conversationAudit,
   });
   bindTenantHostConsumers(consumers.register.bind(consumers), {
     hostCache: container.tenantHostCache,
     platformSettings,
   });
-  // Offboarding (retiro terminal): baja las proyecciones + reasigna/cancela reuniones del host retirado.
+  // Offboarding (retiro terminal): proyecciones, reuniones, grupos, chats Direct, soporte y grabaciones (offboarding-consumers.ts).
   bindOffboardingConsumers(consumers.register.bind(consumers), {
     userPermissions: container.userPermissions,
     userDirectory: container.userDirectory,
@@ -330,6 +328,9 @@ async function main(): Promise<void> {
     emitter,
     conversations: container.conversations,
     conversationAudit: container.conversationAudit,
+    supportTickets: container.supportTickets,
+    settings: container.settings,
+    recordingLifecycle,
   });
   bindSubscriptionConsumers(consumers.register.bind(consumers), {
     limits: container.limits,

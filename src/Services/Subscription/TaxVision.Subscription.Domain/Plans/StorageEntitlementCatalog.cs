@@ -32,7 +32,14 @@ public static class StorageEntitlementCatalog
 
     public static IReadOnlyList<string> Keys { get; } = [MaxFileBytes, FileTypeGroups];
 
-    private static readonly string[] BaseGroups = [Groups.Documents, Groups.Spreadsheets, Groups.Images, Groups.Data, Groups.Media];
+    private static readonly string[] BaseGroups =
+    [
+        Groups.Documents,
+        Groups.Spreadsheets,
+        Groups.Images,
+        Groups.Data,
+        Groups.Media,
+    ];
 
     private static readonly string[] ExtendedGroups =
     [

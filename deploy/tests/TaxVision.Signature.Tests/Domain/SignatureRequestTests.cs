@@ -76,8 +76,18 @@ public sealed class SignatureRequestTests
     public void AddSigner_dedups_by_email()
     {
         var request = NewDraft().Value;
-        var first = request.AddSigner(TestSignatureLimits.Default, NewEmail("dup@example.com"), NewName("Alice A"), mappedCustomerId: null);
-        var second = request.AddSigner(TestSignatureLimits.Default, NewEmail("DUP@Example.com"), NewName("Bob B"), mappedCustomerId: null);
+        var first = request.AddSigner(
+            TestSignatureLimits.Default,
+            NewEmail("dup@example.com"),
+            NewName("Alice A"),
+            mappedCustomerId: null
+        );
+        var second = request.AddSigner(
+            TestSignatureLimits.Default,
+            NewEmail("DUP@Example.com"),
+            NewName("Bob B"),
+            mappedCustomerId: null
+        );
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsFailure);
@@ -110,7 +120,9 @@ public sealed class SignatureRequestTests
     {
         var request = NewDraft().Value;
 
-        var signer = request.AddSigner(TestSignatureLimits.Default, NewEmail("x@example.com"), NewName("Xy Zz"), null, language: input).Value;
+        var signer = request
+            .AddSigner(TestSignatureLimits.Default, NewEmail("x@example.com"), NewName("Xy Zz"), null, language: input)
+            .Value;
 
         Assert.Equal(expected, signer.Language);
     }
@@ -119,7 +131,9 @@ public sealed class SignatureRequestTests
     public void PlaceField_defaults_signature_kind_to_required()
     {
         var request = NewDraft().Value;
-        var signer = request.AddSigner(TestSignatureLimits.Default, NewEmail("s@example.com"), NewName("Sam"), null).Value;
+        var signer = request
+            .AddSigner(TestSignatureLimits.Default, NewEmail("s@example.com"), NewName("Sam"), null)
+            .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
 
         var placement = request.PlaceField(
@@ -141,7 +155,14 @@ public sealed class SignatureRequestTests
         var request = NewDraft().Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
 
-        var placement = request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, Guid.NewGuid(), SignatureFieldKind.Signature, pos, null, false);
+        var placement = request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            Guid.NewGuid(),
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
 
         Assert.True(placement.IsFailure);
         Assert.Equal("Signature.Request.SignerMissing", placement.Error.Code);
@@ -279,7 +300,13 @@ public sealed class SignatureRequestTests
     {
         var request = NewDraft().Value;
 
-        var result = request.UpdateMetadata(TestSignatureLimits.Default, "Renamed request 2026", "Updated notes", "ConsentToDisclose", 120);
+        var result = request.UpdateMetadata(
+            TestSignatureLimits.Default,
+            "Renamed request 2026",
+            "Updated notes",
+            "ConsentToDisclose",
+            120
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Renamed request 2026", request.Title);
@@ -293,7 +320,10 @@ public sealed class SignatureRequestTests
     {
         var request = NewDraft().Value;
 
-        Assert.Equal("Signature.Request.Title", request.UpdateMetadata(TestSignatureLimits.Default, "ab", null, "Fiscal", 72).Error.Code);
+        Assert.Equal(
+            "Signature.Request.Title",
+            request.UpdateMetadata(TestSignatureLimits.Default, "ab", null, "Fiscal", 72).Error.Code
+        );
         Assert.Equal(
             "Signature.Request.TokenExpiration",
             request.UpdateMetadata(TestSignatureLimits.Default, "A valid title", null, "Fiscal", 1000).Error.Code
@@ -332,9 +362,18 @@ public sealed class SignatureRequestTests
     public void MarkSignerSigned_stays_in_progress_while_others_pending()
     {
         var request = NewReadyDraftWithSignatureField("first@example.com");
-        var second = request.AddSigner(TestSignatureLimits.Default, NewEmail("second@example.com"), NewName("Second"), null).Value;
+        var second = request
+            .AddSigner(TestSignatureLimits.Default, NewEmail("second@example.com"), NewName("Second"), null)
+            .Value;
         var pos = FieldPosition.Create(1, 0.5, 0.5, 0.1, 0.05).Value;
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, second.Id, SignatureFieldKind.Signature, pos, null, false);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            second.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
         request.Send(DateTime.UtcNow);
 
         var first = request.Signers.First(s => s.Email.Value == "first@example.com");
@@ -376,9 +415,18 @@ public sealed class SignatureRequestTests
     public void MarkExpired_expires_all_pending_signers()
     {
         var request = NewReadyDraftWithSignatureField("s1@example.com");
-        var second = request.AddSigner(TestSignatureLimits.Default, NewEmail("s2@example.com"), NewName("Second"), null).Value;
+        var second = request
+            .AddSigner(TestSignatureLimits.Default, NewEmail("s2@example.com"), NewName("Second"), null)
+            .Value;
         var pos = FieldPosition.Create(1, 0.5, 0.5, 0.1, 0.05).Value;
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, second.Id, SignatureFieldKind.Signature, pos, null, false);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            second.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
         request.Send(DateTime.UtcNow);
 
         var result = request.MarkExpired(DateTime.UtcNow);
@@ -394,7 +442,12 @@ public sealed class SignatureRequestTests
         var request = NewReadyDraftWithSignatureField("s@example.com");
         request.Send(DateTime.UtcNow);
 
-        var result = request.AddSigner(TestSignatureLimits.Default, NewEmail("late@example.com"), NewName("Late"), null);
+        var result = request.AddSigner(
+            TestSignatureLimits.Default,
+            NewEmail("late@example.com"),
+            NewName("Late"),
+            null
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Request.NotEditable", result.Error.Code);
@@ -436,7 +489,14 @@ public sealed class SignatureRequestTests
     {
         var signer = request.AddSigner(TestSignatureLimits.Default, NewEmail(email), NewName("Some Name"), null).Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
     }
 
     private static SignerEmail NewEmail(string raw) => SignerEmail.Create(raw).Value;

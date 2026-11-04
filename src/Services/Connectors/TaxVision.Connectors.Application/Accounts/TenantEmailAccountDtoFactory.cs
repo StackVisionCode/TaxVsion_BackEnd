@@ -48,6 +48,9 @@ internal static class TenantEmailAccountDtoFactory
             a.CreatedAtUtc,
             a.OwnerUserId,
             a.IsOffice,
-            missingScopes
+            missingScopes,
+            a.NeedsReview,
+            a.ReviewReason,
+            a.ReviewRequiredAtUtc
         );
 }

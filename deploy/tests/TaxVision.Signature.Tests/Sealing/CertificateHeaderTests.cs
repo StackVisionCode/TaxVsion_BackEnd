@@ -25,17 +25,19 @@ public sealed class CertificateHeaderTests
     [Fact]
     public void The_title_starts_below_the_logo_with_clear_space()
     {
-        var pdf = new PdfSharpCertificateRenderer(new FixedPlatformSettings()).Render(
-            new CertificateOfCompletionModel(
-                Guid.NewGuid(),
-                "F8 header",
-                "Fiscal",
-                DateTime.UtcNow.AddHours(-1),
-                DateTime.UtcNow,
-                [],
-                []
+        var pdf = new PdfSharpCertificateRenderer(new FixedPlatformSettings())
+            .Render(
+                new CertificateOfCompletionModel(
+                    Guid.NewGuid(),
+                    "F8 header",
+                    "Fiscal",
+                    DateTime.UtcNow.AddHours(-1),
+                    DateTime.UtcNow,
+                    [],
+                    []
+                )
             )
-        ).CertificatePdfBytes;
+            .CertificatePdfBytes;
 
         var operators = Operators(pdf);
         // PDF: origen abajo; la imagen se dibuja con "cm" [w 0 0 h x y] → su borde inferior es y.
@@ -111,6 +113,14 @@ public sealed class CertificateHeaderTests
     private sealed class FixedPlatformSettings : IPlatformSettings
     {
         public PlatformSettingsSnapshot Current { get; } =
-            new(1, "TaxOffix", "TaxOffix LLC", "taxoffix.io", "api.taxoffix.io", "support@taxoffix.io", "billing@taxoffix.io");
+            new(
+                1,
+                "TaxOffix",
+                "TaxOffix LLC",
+                "taxoffix.io",
+                "api.taxoffix.io",
+                "support@taxoffix.io",
+                "billing@taxoffix.io"
+            );
     }
 }

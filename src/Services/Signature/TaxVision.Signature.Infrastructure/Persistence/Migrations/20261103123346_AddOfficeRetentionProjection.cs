@@ -15,25 +15,23 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 name: "OfficeRetention_UpdatedAtUtc",
                 table: "TenantSignatureSettings",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<int>(
                 name: "OfficeRetention_Years",
                 table: "TenantSignatureSettings",
                 type: "int",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "OfficeRetention_UpdatedAtUtc",
-                table: "TenantSignatureSettings");
+            migrationBuilder.DropColumn(name: "OfficeRetention_UpdatedAtUtc", table: "TenantSignatureSettings");
 
-            migrationBuilder.DropColumn(
-                name: "OfficeRetention_Years",
-                table: "TenantSignatureSettings");
+            migrationBuilder.DropColumn(name: "OfficeRetention_Years", table: "TenantSignatureSettings");
         }
     }
 }

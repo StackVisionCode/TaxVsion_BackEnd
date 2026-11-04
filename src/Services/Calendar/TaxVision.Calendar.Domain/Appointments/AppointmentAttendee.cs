@@ -13,6 +13,11 @@ public sealed class AppointmentAttendee : BaseEntity
 
     public AttendeeKind Kind { get; private set; }
 
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "CalendarUserOffboardedConsumer",
+        Note = "Asistente interno; sale de las citas vigentes."
+    )]
     public Guid? UserId { get; private set; }
 
     public Guid? CustomerId { get; private set; }

@@ -50,7 +50,10 @@ public static class EffectiveUploadPolicyCalculator
         return new EffectiveUploadPolicy(
             maxBytes,
             allowed.Select(definition => definition.Extension).ToArray(),
-            allowed.SelectMany(definition => definition.ContentTypeList).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            allowed
+                .SelectMany(definition => definition.ContentTypeList)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
         );
     }
 }

@@ -301,6 +301,8 @@ public static class ErrorHttpMapping
             or "Tenant.Inactive"
             or "TenantPaymentConfig.NotActive"
             or "Invitation.Forbidden"
+            // Reanudar un agendado de Campaigns exige poder enviar campañas (lo toma a su nombre).
+            or "CampaignSchedule.ResumeTakeoverNotAllowed"
             or "Session.Forbidden"
             or "Mfa.RequiredByPolicy"
             or "Auth.StepUpRequired"

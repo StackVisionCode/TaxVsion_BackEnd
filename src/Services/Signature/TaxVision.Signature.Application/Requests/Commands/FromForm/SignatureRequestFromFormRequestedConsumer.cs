@@ -157,7 +157,9 @@ public static class SignatureRequestFromFormRequestedConsumer
                     return;
                 }
 
-                validated.Add((doc, new VerifiableFile(meta.ChecksumSha256!, meta.ContentType ?? string.Empty, meta.SizeBytes)));
+                validated.Add(
+                    (doc, new VerifiableFile(meta.ChecksumSha256!, meta.ContentType ?? string.Empty, meta.SizeBytes))
+                );
             }
 
             // 3) Resolver firmantes: un request dirigido a un cliente llega sin email (Tasks no lo guarda);
@@ -208,10 +210,15 @@ public static class SignatureRequestFromFormRequestedConsumer
             var rejectedOrDeferred = await VerifyDocumentsAsync(request, validated, verifier, ct);
             if (rejectedOrDeferred == DocumentVerificationKind.Deferred)
                 // No se pudo descargar todavía: reintentar por el inbox durable.
-                throw new InvalidOperationException($"Signature copy for {command.RequestId} could not be verified yet; retrying.");
+                throw new InvalidOperationException(
+                    $"Signature copy for {command.RequestId} could not be verified yet; retrying."
+                );
             if (rejectedOrDeferred == DocumentVerificationKind.Rejected)
             {
-                logger.LogWarning("Signature request from form {RequestId}: a document was rejected.", command.RequestId);
+                logger.LogWarning(
+                    "Signature request from form {RequestId}: a document was rejected.",
+                    command.RequestId
+                );
                 await PublishFailedAsync(command, SignatureRequestFromFormOutcomes.DocumentRejected, correlation, bus);
                 return;
             }

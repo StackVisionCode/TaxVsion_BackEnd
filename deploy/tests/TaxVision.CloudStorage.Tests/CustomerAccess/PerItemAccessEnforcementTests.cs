@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using BuildingBlocks.Authorization;
-using BuildingBlocks.Results;
 using BuildingBlocks.CustomerVisibility;
+using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Api.Common;
@@ -351,7 +351,10 @@ public sealed class PerItemAccessEnforcementTests
         files.Seed(file);
         var storage = new FakeObjectStorage();
         // "Preview-only" = deny Download + Upload a nivel de cliente (preset tenant-scope).
-        var scope = PortalScopeWith(TenantScopeRule(AccessCapability.Download), TenantScopeRule(AccessCapability.Upload));
+        var scope = PortalScopeWith(
+            TenantScopeRule(AccessCapability.Download),
+            TenantScopeRule(AccessCapability.Upload)
+        );
 
         var preview = await IssueUrl(file, scope, files, storage, forPreview: true);
         var download = await IssueUrl(file, scope, files, storage, forPreview: false);

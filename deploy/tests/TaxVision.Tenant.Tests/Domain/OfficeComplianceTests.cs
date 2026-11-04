@@ -137,6 +137,37 @@ public sealed class OfficeComplianceTests
     }
 
     [Fact]
+    public void Offboarding_the_coordinator_vacates_the_designation_and_stamps_who()
+    {
+        var compliance = OfficeCompliance.CreateEmpty(TenantId);
+        var coordinator = Guid.NewGuid();
+        compliance.Update(EmptyDraft with { SecurityCoordinatorUserId = coordinator }, EfinChange.Keep, ActorId, Now);
+        var offboardedBy = Guid.NewGuid();
+        var later = Now.AddDays(1);
+
+        Assert.True(compliance.VacateSecurityCoordinatorOnOffboarding(coordinator, offboardedBy, later));
+
+        Assert.Null(compliance.SecurityCoordinatorUserId);
+        Assert.Equal(later, compliance.UpdatedAtUtc);
+        Assert.Equal(offboardedBy, compliance.UpdatedByUserId);
+        Assert.False(compliance.VacateSecurityCoordinatorOnOffboarding(coordinator, offboardedBy, later));
+    }
+
+    [Fact]
+    public void Offboarding_someone_else_leaves_the_coordinator_untouched()
+    {
+        var compliance = OfficeCompliance.CreateEmpty(TenantId);
+        var coordinator = Guid.NewGuid();
+        compliance.Update(EmptyDraft with { SecurityCoordinatorUserId = coordinator }, EfinChange.Keep, ActorId, Now);
+
+        Assert.False(compliance.VacateSecurityCoordinatorOnOffboarding(Guid.NewGuid(), ActorId, Now.AddDays(1)));
+        Assert.False(compliance.VacateSecurityCoordinatorOnOffboarding(Guid.Empty, ActorId, Now.AddDays(1)));
+
+        Assert.Equal(coordinator, compliance.SecurityCoordinatorUserId);
+        Assert.Equal(Now, compliance.UpdatedAtUtc);
+    }
+
+    [Fact]
     public void Revealing_needs_an_efin_and_records_who_and_when()
     {
         var compliance = OfficeCompliance.CreateEmpty(TenantId);

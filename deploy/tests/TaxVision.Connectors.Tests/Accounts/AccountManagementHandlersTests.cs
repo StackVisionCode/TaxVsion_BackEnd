@@ -1,8 +1,10 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Infrastructure.OAuth;
 using TaxVision.Connectors.Tests.OAuth;
+using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.Accounts;
 
@@ -300,12 +302,14 @@ public class AccountManagementHandlersTests
             new DisconnectAccountCommand(tenantId, account.Id),
             accountRepository,
             connectionRepository,
+            new FakeProviderWatchSubscriptionRepository(),
             new FakeOAuthProviderClientFactory(providerClient),
             protector,
             auditLogRepository,
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
+            NullLogger<DisconnectAccountCommand>.Instance,
             CancellationToken.None
         );
 
@@ -315,5 +319,62 @@ public class AccountManagementHandlersTests
         Assert.Contains("refresh-token", providerClient.RevokedRefreshTokens);
         Assert.Single(auditLogRepository.Entries);
         Assert.Single(bus.Published);
+    }
+
+    [Fact]
+    public async Task DisconnectAccount_StopsTheInboundPush_AndSurvivesAFailingRevocation()
+    {
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        var connectionRepository = new FakeOAuthConnectionRepository();
+        var watchRepository = new FakeProviderWatchSubscriptionRepository();
+        var providerClient = new FakeOAuthProviderClient(ProviderCode.Gmail)
+        {
+            ThrowOnRevoke = new HttpRequestException("provider down"),
+        };
+        var protector = new FakeEncryptedSecretProtector();
+        var tenantId = Guid.NewGuid();
+        var account = TenantEmailAccount
+            .Create(tenantId, "office@gmail.com", ProviderCode.Gmail, Guid.NewGuid(), Now)
+            .Value;
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        accountRepository.Accounts.Add(account);
+        var connection = OAuthConnection.Create(account.Id, ProviderCode.Gmail, "client-1", "scope", Now).Value;
+        connection.AttachToken(
+            OAuthToken
+                .Create(connection.Id, protector.Protect("access"), protector.Protect("refresh"), Now.AddHours(1), Now)
+                .Value
+        );
+        connectionRepository.Connections.Add(connection);
+        var watch = TaxVision
+            .Connectors.Domain.Watch.ProviderWatchSubscription.Create(
+                account.Id,
+                ProviderCode.Gmail,
+                "history-1",
+                "topic",
+                DateTime.UtcNow.AddDays(3),
+                DateTime.UtcNow
+            )
+            .Value;
+        watchRepository.Subscriptions.Add(watch);
+
+        var result = await DisconnectAccountHandler.Handle(
+            new DisconnectAccountCommand(tenantId, account.Id),
+            accountRepository,
+            connectionRepository,
+            watchRepository,
+            new FakeOAuthProviderClientFactory(providerClient),
+            protector,
+            new FakeProviderConnectionAuditLogRepository(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            NullLogger<DisconnectAccountCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantEmailAccountStatus.Disconnected, account.Status);
+        Assert.Equal(TaxVision.Connectors.Domain.Watch.ProviderWatchStatus.Removed, watch.Status);
     }
 }

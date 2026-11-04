@@ -139,7 +139,10 @@ public static class SignaturePlatformSettingsHandler
         var settings = await repository.GetForUpdateAsync(ct);
         if (settings is null)
             return Result.Failure<SignaturePlatformSettingsResponse>(
-                new Error("SignaturePlatformSettings.Missing", "Platform settings are not provisioned; apply the migrations.")
+                new Error(
+                    "SignaturePlatformSettings.Missing",
+                    "Platform settings are not provisioned; apply the migrations."
+                )
             );
 
         var before = SignaturePlatformSettingsResponse.From(settings);

@@ -89,6 +89,18 @@ export class InMemoryRecordingSessionRepository implements RecordingSessionRepos
     });
   }
 
+  async listCaptureActiveClientByRequester(tenantId: string, requestedByUserId: string): Promise<RecordingSession[]> {
+    return this.all().filter((session) => {
+      const s = session.toSnapshot();
+      return (
+        s.tenantId === tenantId &&
+        s.requestedByUserId === requestedByUserId &&
+        s.captureMode === 'Client' &&
+        (s.state === 'Requesting' || s.state === 'Recording' || s.state === 'Stopping')
+      );
+    });
+  }
+
   async findByRecordingFileId(tenantId: string, fileId: string): Promise<RecordingSession | null> {
     return this.all().find((session) => {
       const s = session.toSnapshot();

@@ -2,8 +2,10 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.OAuth;
+using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Audit;
 using TaxVision.Connectors.Domain.Shared;
 using Wolverine;
@@ -16,12 +18,14 @@ public static class DisconnectAccountHandler
         DisconnectAccountCommand cmd,
         ITenantEmailAccountRepository accountRepository,
         IOAuthConnectionRepository connectionRepository,
+        IProviderWatchSubscriptionRepository watchSubscriptionRepository,
         IOAuthProviderClientFactory clientFactory,
         IEncryptedSecretProtector protector,
         IProviderConnectionAuditLogRepository auditLogRepository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ILogger<DisconnectAccountCommand> logger,
         CancellationToken ct
     )
     {
@@ -48,13 +52,13 @@ public static class DisconnectAccountHandler
 
             // Best-effort: revoca el grant del lado del proveedor (solo Gmail lo soporta de verdad,
             // ver IOAuthProviderClient.RevokeAsync). Nunca bloquea la desconexión local si falla.
-            var clientResult = clientFactory.Resolve(account.ProviderCode);
-            if (clientResult.IsSuccess && connection.Token is not null)
-            {
-                var refreshToken = protector.Unprotect(connection.Token.RefreshTokenCipher);
-                await clientResult.Value.RevokeAsync(refreshToken, ct);
-            }
+            await ProviderGrantRevocation.TryRevokeAsync(account, connection, clientFactory, protector, logger, ct);
         }
+
+        // El push de entrada deja de renovarse; si no, la renovación fallaba y pasaba la cuenta a Error.
+        var watchResult = await watchSubscriptionRepository.GetByAccountIdAsync(account.Id, ct);
+        if (watchResult.IsSuccess)
+            watchResult.Value.MarkRemoved();
 
         await unitOfWork.SaveChangesAsync(ct);
 

@@ -396,3 +396,26 @@ public sealed record FileDeletionSkippedIntegrationEvent : IntegrationEvent
     public required Guid FileId { get; init; }
     public required string Reason { get; init; }
 }
+
+/// <summary>
+/// Una conexión de nube de la oficina (Drive/OneDrive/Dropbox) quedó ligada a un empleado retirado (su
+/// cuenta, o la autorizó él). CloudStorage NO la revoca: la marca para revisión y deja el canal al
+/// consumidor, que avisa a quienes tengan <see cref="AudiencePermission"/>. Resolverla = reconectar con
+/// una cuenta de la oficina o desconectarla.
+/// </summary>
+public sealed record CloudConnectionReviewRequiredIntegrationEvent : IntegrationEvent
+{
+    public required Guid ConnectionId { get; init; }
+
+    /// <summary>"google-drive", "onedrive" o "dropbox".</summary>
+    public required string Provider { get; init; }
+    public required string AccountEmail { get; init; }
+
+    /// <summary>"AccountOfOffboardedUser" o "ConnectedByOffboardedUser".</summary>
+    public required string Reason { get; init; }
+    public required Guid OffboardedUserId { get; init; }
+
+    /// <summary>Permiso de la audiencia a avisar (administración del almacenamiento).</summary>
+    public required string AudiencePermission { get; init; }
+    public required DateTime FlaggedAtUtc { get; init; }
+}

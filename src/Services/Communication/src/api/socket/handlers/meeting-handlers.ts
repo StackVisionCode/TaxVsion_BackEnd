@@ -1453,6 +1453,10 @@ function wireMeetingSocket(
     // de meeting en vez de un permiso Auth separado.
     const meeting = await container.meetings.findById(tenantId, parsed.data.meetingId);
     const canModerate = meeting ? meeting.hostUserId === userId || meeting.isCohost(userId) : false;
+    // Con el meeting terminado (chat archivado) solo borra quien tiene `chat.moderate`.
+    const hasModeratePermission = (
+      await checkPermission(principal, CommunicationPermissions.ChatModerate, container.userPermissions)
+    ).allowed;
     const result = await deleteMessage(
       {
         tenantId,
@@ -1461,6 +1465,7 @@ function wireMeetingSocket(
         messageId: parsed.data.messageId,
         actorUserId: userId,
         actorCanModerate: canModerate,
+        actorHasModeratePermission: hasModeratePermission,
       },
       container,
     );

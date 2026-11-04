@@ -438,4 +438,19 @@ public sealed class DraftTests
 
         throw new InvalidOperationException($"Unsupported status for this helper: {status}.");
     }
+
+    [Fact]
+    public void MoveToAccount_ChangesTheMailboxOfAnOpenDraftOnly()
+    {
+        var draft = Draft.CreateNew(Guid.NewGuid(), null, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var office = Guid.NewGuid();
+
+        Assert.True(draft.MoveToAccount(office).IsSuccess);
+        Assert.Equal(office, draft.AccountId);
+        Assert.True(draft.MoveToAccount(Guid.Empty).IsFailure);
+
+        draft.Discard();
+        Assert.True(draft.MoveToAccount(Guid.NewGuid()).IsFailure);
+        Assert.Equal(office, draft.AccountId);
+    }
 }

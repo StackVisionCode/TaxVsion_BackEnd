@@ -91,6 +91,18 @@ public sealed class UpdateOfficeComplianceHandlerTests
     }
 
     [Fact]
+    public async Task A_suspended_or_offboarded_user_cannot_be_designated()
+    {
+        var leaver = Guid.NewGuid();
+        _users.Seed(_tenantId, leaver).MarkInactive();
+
+        var result = await HandleAsync(null, EmptyDraft with { SecurityCoordinatorUserId = leaver });
+
+        Assert.Equal(OfficeComplianceErrors.SecurityCoordinator, result.Error);
+        Assert.Empty(_compliances.Compliances);
+    }
+
+    [Fact]
     public async Task An_unchanged_empty_save_stores_nothing()
     {
         var result = await HandleAsync(null, EmptyDraft);

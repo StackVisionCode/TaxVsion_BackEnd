@@ -19,6 +19,8 @@ public sealed class CustomerRelationFiscalProfile : TenantEntity
     public bool QualifiesAsDependent { get; private set; }
     public bool LivedWithTaxpayer { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
 
     internal static Result<CustomerRelationFiscalProfile> Create(

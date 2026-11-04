@@ -41,10 +41,33 @@ internal static class TestFilePolicyCatalog
 
     private static readonly string[] Office =
     [
-        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv", ".rtf", ".xml", ".json", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".zip",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".ppt",
+        ".pptx",
+        ".txt",
+        ".csv",
+        ".rtf",
+        ".xml",
+        ".json",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".tif",
+        ".tiff",
+        ".zip",
     ];
 
-    private static readonly (FolderType Folder, long Max, string[] Extensions, bool PlanTypes, bool PlanSize)[] Folders =
+    private static readonly (
+        FolderType Folder,
+        long Max,
+        string[] Extensions,
+        bool PlanTypes,
+        bool PlanSize
+    )[] Folders =
     [
         (FolderType.Documents, 25 * Mb, Office, true, true),
         (FolderType.Receipts, 25 * Mb, Office, true, true),
@@ -61,19 +84,48 @@ internal static class TestFilePolicyCatalog
         (FolderType.Templates, 5 * Mb, [".html", ".txt", ".json", ".png"], true, true),
         (FolderType.Branding, 500 * 1024, [".png", ".jpg", ".jpeg", ".svg"], false, false),
         (FolderType.SaaSReceipts, 5 * Mb, [".pdf"], false, false),
-        (FolderType.ClientForms, 25 * Mb, [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".xlsx", ".csv", ".txt"], true, true),
+        (
+            FolderType.ClientForms,
+            25 * Mb,
+            [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".xlsx", ".csv", ".txt"],
+            true,
+            true
+        ),
         (FolderType.Backups, 200 * Mb, [".zip", ".json", ".csv"], true, true),
         (FolderType.VoiceNotes, 50 * Mb, [".webm", ".mp4"], false, false),
-        (FolderType.Other, 25 * Mb, [".pdf", ".docx", ".xlsx", ".jpg", ".jpeg", ".png", ".txt", ".csv", ".zip", ".json"], true, true),
+        (
+            FolderType.Other,
+            25 * Mb,
+            [".pdf", ".docx", ".xlsx", ".jpg", ".jpeg", ".png", ".txt", ".csv", ".zip", ".json"],
+            true,
+            true
+        ),
     ];
 
     public static IReadOnlyList<FileTypeDefinition> FileTypes() =>
-        Types.Select(type => FileTypeDefinition.Create(type.Extension, type.Group, type.ContentTypes, Guid.Empty, DateTime.UtcNow).Value).ToList();
+        Types
+            .Select(type =>
+                FileTypeDefinition
+                    .Create(type.Extension, type.Group, type.ContentTypes, Guid.Empty, DateTime.UtcNow)
+                    .Value
+            )
+            .ToList();
 
     public static IReadOnlyDictionary<FolderType, FolderFilePolicy> FolderPolicies() =>
         Folders.ToDictionary(
             folder => folder.Folder,
-            folder => FolderFilePolicy.Create(folder.Folder, folder.Max, folder.Extensions, folder.PlanTypes, folder.PlanSize, Guid.Empty, DateTime.UtcNow).Value
+            folder =>
+                FolderFilePolicy
+                    .Create(
+                        folder.Folder,
+                        folder.Max,
+                        folder.Extensions,
+                        folder.PlanTypes,
+                        folder.PlanSize,
+                        Guid.Empty,
+                        DateTime.UtcNow
+                    )
+                    .Value
         );
 
     public static FolderFilePolicy Folder(FolderType folderType) => FolderPolicies()[folderType];

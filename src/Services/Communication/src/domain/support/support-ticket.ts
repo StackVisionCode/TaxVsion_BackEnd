@@ -206,6 +206,40 @@ export class SupportTicket {
     return Result.okVoid();
   }
 
+  // ------------------------------------------------------------------
+  // Retiro (offboarding) por SISTEMA: sin actor, lo dispara el consumer de `auth.user.offboarded.v1`.
+  // ------------------------------------------------------------------
+
+  /** Un ticket abierto pasa a otro staff de la misma oficina (sucesor o admin). Solo no terminales. */
+  transferOwnershipBySystem(input: { newOpenerUserId: string; now?: Date }): Result<{ previousOpenerUserId: string }> {
+    if (isTerminalSupport(this.state.status)) {
+      return Result.fail(makeError('Support.Terminal', 'Ticket is terminal.'));
+    }
+    const previousOpenerUserId = this.state.openedByUserId;
+    if (previousOpenerUserId === input.newOpenerUserId) {
+      return Result.fail(makeError('Support.NoOp', 'Ticket already belongs to that user.'));
+    }
+    this.state = { ...this.state, openedByUserId: input.newOpenerUserId, updatedAtUtc: input.now ?? new Date() };
+    return Result.ok({ previousOpenerUserId });
+  }
+
+  /** El agente asignado se retiro: el ticket vuelve a la cola (Open, sin agente). Solo no terminales. */
+  releaseAgentBySystem(input: { now?: Date } = {}): Result<{ previousAgentId: string }> {
+    const previousAgentId = this.state.assignedAgentId;
+    if (!previousAgentId) return Result.fail(makeError('Support.NotAssigned', 'Ticket has no assigned agent.'));
+    if (isTerminalSupport(this.state.status)) {
+      return Result.fail(makeError('Support.Terminal', 'Ticket is terminal.'));
+    }
+    this.state = {
+      ...this.state,
+      assignedAgentId: null,
+      status: SupportStatus.Open,
+      claimedAtUtc: null,
+      updatedAtUtc: input.now ?? new Date(),
+    };
+    return Result.ok({ previousAgentId });
+  }
+
   toSnapshot(): SupportTicketSnapshot {
     return this.state;
   }

@@ -127,14 +127,21 @@ internal sealed class SignatureCloudStorageClient(
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"storage/files/{sourceFileId}/copies")
         {
-            Content = JsonContent.Create(new CopyFileRequestDto("Customer", customerId, "Signatures", taxYear), options: Json),
+            Content = JsonContent.Create(
+                new CopyFileRequestDto("Customer", customerId, "Signatures", taxYear),
+                options: Json
+            ),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokenResult.Value);
 
         using var response = await httpClient.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning("CloudStorage copy of {FileId} failed ({Status}).", sourceFileId, (int)response.StatusCode);
+            logger.LogWarning(
+                "CloudStorage copy of {FileId} failed ({Status}).",
+                sourceFileId,
+                (int)response.StatusCode
+            );
             return Result.Failure<Guid>(new Error("Signature.Storage.Copy", "CloudStorage copy request failed."));
         }
         var payload = await response.Content.ReadFromJsonAsync<CopiedFileResponseDto>(Json, ct);

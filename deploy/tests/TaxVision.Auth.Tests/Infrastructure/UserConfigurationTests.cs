@@ -26,7 +26,11 @@ public sealed class UserConfigurationTests
         Assert.Equal(2, emailIndexes.Count);
         Assert.All(emailIndexes, index => Assert.True(index.IsUnique));
         Assert.Contains(emailIndexes, index => index.GetFilter() == "[ActorType] = N'CustomerPortal'");
-        Assert.Contains(emailIndexes, index => index.GetFilter() == "[ActorType] <> N'CustomerPortal'");
+        // D-8: el staff retirado no ocupa el email (su fila es histórica; la persona puede volver).
+        Assert.Contains(
+            emailIndexes,
+            index => index.GetFilter() == "[ActorType] <> N'CustomerPortal' AND [Status] <> N'Offboarded'"
+        );
     }
 
     private sealed class NoTenant : ITenantContext

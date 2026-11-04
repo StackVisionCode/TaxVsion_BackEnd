@@ -8,12 +8,14 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Tasks.Api.Requests;
+using TaxVision.Tasks.Api.Responses;
 using TaxVision.Tasks.Application.Dependencies.Commands;
 using TaxVision.Tasks.Application.Dependencies.Queries;
 using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Commands;
 using TaxVision.Tasks.Application.Tasks.Queries;
+using TaxVision.Tasks.ClientForms.Application.Offboarding;
 using TaxVision.Tasks.Domain.Tasks;
 using Wolverine;
 
@@ -114,19 +116,31 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     }
 
     // ---------- GET /tasks/offboarding-impact/{userId} ----------
-    // Pre-flight (punto 3.2): cuántas tareas abiertas hay que reasignar antes de retirar a este empleado.
+    // Pre-flight (punto 3.2): lo que se reasigna o cierra en Tasks y Client Forms al retirar a este empleado.
     [HttpGet("offboarding-impact/{userId:guid}")]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [HasPermission(UserManagementPermissions.UsersManage)]
     [RateLimit("task.f.read")]
-    [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<TasksOffboardingImpactResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<OffboardingImpactResponse>(new OffboardingImpactQuery(tenantId, userId), ct);
-        return Ok(result);
+        var tasks = await bus.InvokeAsync<OffboardingImpactResponse>(new OffboardingImpactQuery(tenantId, userId), ct);
+        var forms = await bus.InvokeAsync<ClientFormsOffboardingImpactResponse>(
+            new ClientFormsOffboardingImpactQuery(tenantId, userId),
+            ct
+        );
+        return Ok(
+            new TasksOffboardingImpactResponse(
+                tasks.OpenTasks,
+                tasks.OpenClientRequests,
+                tasks.RunningTimers,
+                forms.IntakeLinks,
+                forms.OpenFormRequests
+            )
+        );
     }
 
     [HttpGet("{id:guid}/subtasks")]

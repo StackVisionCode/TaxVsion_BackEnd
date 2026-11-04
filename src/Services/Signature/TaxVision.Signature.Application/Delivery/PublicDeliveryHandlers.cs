@@ -45,7 +45,10 @@ public static class DeliveryErrors
         "This link has expired or was revoked."
     );
 
-    public static readonly Error ItemNotFound = new("Signature.Delivery.ItemNotFound", "This file is not part of the delivery.");
+    public static readonly Error ItemNotFound = new(
+        "Signature.Delivery.ItemNotFound",
+        "This file is not part of the delivery."
+    );
 
     public static readonly Error FileUnavailable = new(
         "Signature.Delivery.FileUnavailable",
@@ -92,7 +95,10 @@ public static class GetPublicDeliveryHandler
                 PublicDelivery.MaskEmail(delivery.RecipientEmail),
                 delivery.ExpiresAtUtc,
                 status == DeliveryStatus.Active
-                    ? delivery.Items.OrderBy(item => item.Order).Select(item => new PublicDeliveryItemView(item.Id, item.Title, item.Kind.ToString())).ToList()
+                    ? delivery
+                        .Items.OrderBy(item => item.Order)
+                        .Select(item => new PublicDeliveryItemView(item.Id, item.Title, item.Kind.ToString()))
+                        .ToList()
                     : [],
                 status == DeliveryStatus.Expired && policy.AllowPublicReissue
             )

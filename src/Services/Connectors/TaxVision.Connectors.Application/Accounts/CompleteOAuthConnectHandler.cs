@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Audit;
@@ -44,12 +45,25 @@ public static class CompleteOAuthConnectHandler
         ISmtpCredentialsRepository smtpCredentialsRepository,
         IImapCredentialsRepository imapCredentialsRepository,
         IProviderSyncCursorRepository providerSyncCursorRepository,
+        IUserPermissionsProjectionReader initiatorProjections,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        // El state dura ~10 min y no se busca por usuario: si lo retiraron o suspendieron entretanto,
+        // no se canjea el código ni se toca nada (va antes de cualquier efecto).
+        var initiatorCheck = await ConnectInitiatorGuard.EnsureActiveAsync(
+            cmd.TenantId,
+            cmd.InitiatedByUserId,
+            cmd.InitiatorIsPlatformAdmin,
+            initiatorProjections,
+            ct
+        );
+        if (initiatorCheck.IsFailure)
+            return Result.Failure<CompleteOAuthConnectResult>(initiatorCheck.Error);
+
         var clientResult = clientFactory.Resolve(cmd.ProviderCode);
         if (clientResult.IsFailure)
             return Result.Failure<CompleteOAuthConnectResult>(clientResult.Error);
@@ -140,6 +154,10 @@ public static class CompleteOAuthConnectHandler
             }
         }
 
+        // Fila desconectada que era personal de otra persona (p. ej. un retirado re-invitado): pasa a quien conecta.
+        if (!isNewAccount)
+            account.ReassignOwnerOnReconnect(cmd.AsOffice ? null : cmd.InitiatedByUserId);
+
         if (existingConnection is not null)
         {
             var reconnectResult = existingConnection.Reconnect(client.ClientId, client.ConfiguredScope, now);
@@ -208,6 +226,9 @@ public static class CompleteOAuthConnectHandler
             if (staleCursor.IsSuccess)
                 providerSyncCursorRepository.Remove(staleCursor.Value);
         }
+
+        // Un grant nuevo prueba que alguien vigente tiene acceso: se cierra una revisión pendiente.
+        account.ClearReview();
 
         await unitOfWork.SaveChangesAsync(ct);
 

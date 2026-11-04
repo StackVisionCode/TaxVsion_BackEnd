@@ -32,7 +32,11 @@ public sealed class SubscriptionSeat : TenantEntity
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
 
     public IReadOnlyCollection<SubscriptionSeatRenewal> Renewals => _renewals;

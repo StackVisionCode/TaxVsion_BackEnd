@@ -150,7 +150,9 @@ public static class UpsertSignatureDraftHandler
         // F7 — expiración opcional: ON exige horas, OFF borra el reloj.
         if (cmd.ExpirationEnabled is { } expOn)
         {
-            var applied = expOn ? request.EnableExpiration(policy, cmd.TokenExpirationHours) : request.DisableExpiration();
+            var applied = expOn
+                ? request.EnableExpiration(policy, cmd.TokenExpirationHours)
+                : request.DisableExpiration();
             if (applied.IsFailure)
                 return applied;
         }

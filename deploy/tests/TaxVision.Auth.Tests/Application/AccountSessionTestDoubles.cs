@@ -1,6 +1,7 @@
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Invitations;
+using TaxVision.Auth.Domain.Mfa;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Sessions;
@@ -93,7 +94,8 @@ internal sealed class InMemoryUserRepository : IUserRepository
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_users.GetValueOrDefault(id));
 
-    // Misma semántica que el repositorio real: el email es único por oficina dentro de cada tipo de cuenta.
+    // Misma semántica que el repositorio real: el email es único por oficina dentro de cada tipo de cuenta,
+    // salvo los retirados (fila histórica): con dos filas gana la no retirada.
     public Task<User?> GetByEmailAsync(
         Guid tenantId,
         string email,
@@ -101,9 +103,11 @@ internal sealed class InMemoryUserRepository : IUserRepository
         CancellationToken ct = default
     ) =>
         Task.FromResult(
-            _users.Values.FirstOrDefault(user =>
-                user.TenantId == tenantId && user.Email == email && user.AccountKind == kind
-            )
+            _users
+                .Values.Where(user => user.TenantId == tenantId && user.Email == email && user.AccountKind == kind)
+                .OrderBy(user => user.Status == UserStatus.Offboarded ? 1 : 0)
+                .ThenByDescending(user => user.CreatedAtUtc)
+                .FirstOrDefault()
         );
 
     public Task<bool> EmailExistsAsync(
@@ -113,7 +117,12 @@ internal sealed class InMemoryUserRepository : IUserRepository
         CancellationToken ct = default
     ) =>
         Task.FromResult(
-            _users.Values.Any(user => user.TenantId == tenantId && user.Email == email && user.AccountKind == kind)
+            _users.Values.Any(user =>
+                user.TenantId == tenantId
+                && user.Email == email
+                && user.AccountKind == kind
+                && user.Status != UserStatus.Offboarded
+            )
         );
 
     public Task<User?> GetPortalUserByCustomerAsync(Guid tenantId, Guid customerId, CancellationToken ct = default) =>
@@ -141,7 +150,11 @@ internal sealed class InMemoryUserRepository : IUserRepository
                 .ToList()
         );
 
-    public Task AddAsync(User user, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task AddAsync(User user, CancellationToken ct = default)
+    {
+        Add(user);
+        return Task.CompletedTask;
+    }
 
     public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) =>
         throw new NotSupportedException();
@@ -420,6 +433,23 @@ internal sealed class InMemoryInvitationRepository : IInvitationRepository
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<Invitation>> ListPendingStaffSentByAsync(
+        Guid tenantId,
+        Guid invitedByUserId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<Invitation>>(
+            Invitations
+                .Where(invitation =>
+                    invitation.TenantId == tenantId
+                    && invitation.InvitedByUserId == invitedByUserId
+                    && invitation.AccountKind == UserAccountKind.Staff
+                    && invitation.Status == InvitationStatus.Pending
+                    && invitation.ExpiresAtUtc > DateTime.UtcNow
+                )
+                .ToList()
+        );
+
     public Task<int> CountPendingAsync(Guid tenantId, CancellationToken ct = default) =>
         throw new NotSupportedException();
 
@@ -650,4 +680,82 @@ internal sealed class InMemoryHandoffTicketStore : IHandoffTicketStore
 
     public Task<HandoffTicketPayload?> ConsumeAsync(Guid ticket, CancellationToken ct = default) =>
         Task.FromResult(Tickets.Remove(ticket, out var payload) ? payload : null);
+}
+
+/// <summary>MFA en memoria con lo justo para enrolar, consultar y quitar factores.</summary>
+internal sealed class InMemoryMfaRepository : IMfaRepository
+{
+    public List<MfaMethod> Methods { get; } = [];
+    public List<RecoveryCode> Codes { get; } = [];
+    public List<TrustedDevice> Devices { get; } = [];
+    public TenantMfaPolicy? Policy { get; set; }
+
+    public void Enroll(User user)
+    {
+        var method = MfaMethod.Create(user.TenantId, user.Id, MfaMethodType.Totp, "cipher", null).Value;
+        method.Confirm();
+        Methods.Add(method);
+        Codes.Add(RecoveryCode.Create(user.TenantId, user.Id, "hash-1"));
+        Devices.Add(TrustedDevice.Create(user.TenantId, user.Id, "device-hash", "Chrome", TimeSpan.FromDays(30)));
+        user.EnableMfa();
+    }
+
+    public Task<IReadOnlyList<MfaMethod>> GetMethodsAsync(Guid userId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<MfaMethod>>(Methods.Where(m => m.UserId == userId).ToList());
+
+    public Task<MfaMethod?> GetMethodAsync(Guid userId, MfaMethodType type, CancellationToken ct = default) =>
+        Task.FromResult(Methods.FirstOrDefault(m => m.UserId == userId && m.Type == type));
+
+    public Task<MfaMethod?> GetMethodByIdAsync(Guid methodId, CancellationToken ct = default) =>
+        Task.FromResult(Methods.FirstOrDefault(m => m.Id == methodId));
+
+    public Task AddMethodAsync(MfaMethod method, CancellationToken ct = default)
+    {
+        Methods.Add(method);
+        return Task.CompletedTask;
+    }
+
+    public void RemoveMethod(MfaMethod method) => Methods.Remove(method);
+
+    public Task AddChallengeAsync(MfaChallenge challenge, CancellationToken ct = default) =>
+        throw new NotSupportedException();
+
+    public Task<MfaChallenge?> GetChallengeByTicketHashAsync(string ticketHash, CancellationToken ct = default) =>
+        throw new NotSupportedException();
+
+    public Task<IReadOnlyList<RecoveryCode>> GetRecoveryCodesAsync(Guid userId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<RecoveryCode>>(Codes.Where(c => c.UserId == userId).ToList());
+
+    public Task AddRecoveryCodesAsync(IEnumerable<RecoveryCode> codes, CancellationToken ct = default)
+    {
+        Codes.AddRange(codes);
+        return Task.CompletedTask;
+    }
+
+    public void RemoveRecoveryCodes(IEnumerable<RecoveryCode> codes)
+    {
+        foreach (var code in codes.ToList())
+            Codes.Remove(code);
+    }
+
+    public Task<TrustedDevice?> GetTrustedDeviceByHashAsync(string deviceTokenHash, CancellationToken ct = default) =>
+        throw new NotSupportedException();
+
+    public Task<IReadOnlyList<TrustedDevice>> GetTrustedDevicesAsync(Guid userId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<TrustedDevice>>(Devices.Where(d => d.UserId == userId).ToList());
+
+    public Task AddTrustedDeviceAsync(TrustedDevice device, CancellationToken ct = default)
+    {
+        Devices.Add(device);
+        return Task.CompletedTask;
+    }
+
+    public Task<TenantMfaPolicy?> GetPolicyAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult(Policy);
+
+    public Task AddPolicyAsync(TenantMfaPolicy policy, CancellationToken ct = default)
+    {
+        Policy = policy;
+        return Task.CompletedTask;
+    }
 }

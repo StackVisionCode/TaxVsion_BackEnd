@@ -111,7 +111,15 @@ public static class ResolvePublicShareHandler
             return ShareAccessResult.Denied();
         }
 
-        var password = await SharePasswordGuard.CheckAsync(link, query.Password, passwordHasher, limits, platform, now, ct);
+        var password = await SharePasswordGuard.CheckAsync(
+            link,
+            query.Password,
+            passwordHasher,
+            limits,
+            platform,
+            now,
+            ct
+        );
         if (password == SharePasswordOutcome.Missing)
             return ShareAccessResult.NeedsPassword();
         if (password is SharePasswordOutcome.Wrong or SharePasswordOutcome.Locked)

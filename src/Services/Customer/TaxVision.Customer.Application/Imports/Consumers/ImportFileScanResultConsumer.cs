@@ -105,6 +105,7 @@ public static class ImportFileScanResultConsumer
                 CorrelationId = msg.CorrelationId,
                 ImportJobId = attempt.Id,
                 CreatedByUserId = attempt.CreatedByUserId,
+                NotifyUserId = attempt.NotifyUserId,
                 Reason = attempt.FailureReason ?? "Uploaded file failed the security scan.",
                 FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
             }
@@ -150,6 +151,7 @@ public static class ImportFileScanResultConsumer
                 CorrelationId = msg.CorrelationId,
                 ImportJobId = attempt.Id,
                 CreatedByUserId = attempt.CreatedByUserId,
+                NotifyUserId = attempt.NotifyUserId,
                 Reason = attempt.FailureReason ?? "Uploaded file was blocked by content policy.",
                 FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
             }
@@ -216,6 +218,7 @@ public static class ImportFileScanResultConsumer
                 CorrelationId = msg.CorrelationId,
                 ImportJobId = attempt.Id,
                 CreatedByUserId = attempt.CreatedByUserId,
+                NotifyUserId = attempt.NotifyUserId,
                 Reason = attempt.FailureReason ?? reason,
                 FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
             }

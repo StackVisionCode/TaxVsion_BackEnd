@@ -19,7 +19,11 @@ public sealed class ReferralRewardAttempt : TenantEntity
     public string? CompletionPayloadFingerprint { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? CompletedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
 
     private ReferralRewardAttempt() { }

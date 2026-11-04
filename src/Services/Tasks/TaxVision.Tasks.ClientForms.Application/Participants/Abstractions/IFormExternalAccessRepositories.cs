@@ -21,6 +21,19 @@ public interface IFormIntakeLinkRepository
     Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
     Task<FormIntakeLink?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default);
     Task<IReadOnlyList<FormIntakeLink>> ListAsync(Guid tenantId, CancellationToken ct = default);
+
+    // Enlaces no revocados de este responsable, rastreados: el retiro del empleado los reasigna o pausa.
+    Task<IReadOnlyList<FormIntakeLink>> ListNotRevokedByResponsibleAsync(
+        Guid tenantId,
+        Guid responsibleUserId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<FormIntakeLink>>([]);
+
+    Task<int> CountNotRevokedByResponsibleAsync(
+        Guid tenantId,
+        Guid responsibleUserId,
+        CancellationToken ct = default
+    ) => Task.FromResult(0);
     void Add(FormIntakeLink link);
 }
 

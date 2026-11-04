@@ -42,6 +42,8 @@ export async function unpinMessage(
   if (!conversation.isParticipant(cmd.actorUserId)) {
     return Result.fail(makeError('Chat.Conversation.NotParticipant', 'User is not a participant.'));
   }
+  const open = conversation.ensureOpen();
+  if (!open.isSuccess) return Result.fail(open.error);
 
   // F8b (D-22): en su grupo, Owner/Admin fijan sin el permiso global de moderación.
   const isGroupAdmin = conversation.kind === 'Group' && isGroupAdminRole(conversation.roleOf(cmd.actorUserId));

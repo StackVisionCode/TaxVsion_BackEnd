@@ -18,9 +18,13 @@ public sealed class TenantSignatureLimitsRepository(SignatureDbContext db) : ITe
 public sealed class SignaturePlatformSettingsRepository(SignatureDbContext db) : ISignaturePlatformSettingsRepository
 {
     public Task<SignaturePlatformSettings?> GetAsync(CancellationToken ct) =>
-        db.SignaturePlatformSettings.AsNoTracking()
+        db
+            .SignaturePlatformSettings.AsNoTracking()
             .SingleOrDefaultAsync(settings => settings.Id == SignaturePlatformSettings.SingletonId, ct);
 
     public Task<SignaturePlatformSettings?> GetForUpdateAsync(CancellationToken ct) =>
-        db.SignaturePlatformSettings.SingleOrDefaultAsync(settings => settings.Id == SignaturePlatformSettings.SingletonId, ct);
+        db.SignaturePlatformSettings.SingleOrDefaultAsync(
+            settings => settings.Id == SignaturePlatformSettings.SingletonId,
+            ct
+        );
 }

@@ -98,6 +98,9 @@ public sealed record SetPractitionerPinBody(string Pin);
 
 public sealed record SetPreparerBody(string PtinOrEfin, string DisplayName, string? TitleLabel);
 
+/// <summary>Nuevo preparador de una solicitud enviada (su identidad 8879 sale de su propio perfil).</summary>
+public sealed record ChangePreparerBody(Guid NewPreparerUserId);
+
 public sealed record PlacePreparerFieldBody(
     Guid DocumentId,
     SignatureFieldKind Kind,

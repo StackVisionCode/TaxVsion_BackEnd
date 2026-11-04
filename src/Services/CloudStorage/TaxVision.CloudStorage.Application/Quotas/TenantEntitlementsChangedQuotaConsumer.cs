@@ -32,11 +32,16 @@ public static class TenantEntitlementsChangedQuotaConsumer
 
         var storageQuotaBytes = GetLong(message.EntitlementValues, "storage.max_bytes", fallback: 0);
         // Lo que vende el plan en archivos (Subscription StorageEntitlementCatalog). Sin la clave = tier mínimo.
-        var maxFileBytes = GetLong(message.EntitlementValues, "storage.max_file_bytes", PlanFileAllowanceDefaults.MaxFileBytes);
-        var fileTypeGroups = message.EntitlementValues.TryGetValue("storage.file_type_groups", out var groups)
+        var maxFileBytes = GetLong(
+            message.EntitlementValues,
+            "storage.max_file_bytes",
+            PlanFileAllowanceDefaults.MaxFileBytes
+        );
+        var fileTypeGroups =
+            message.EntitlementValues.TryGetValue("storage.file_type_groups", out var groups)
             && !string.IsNullOrWhiteSpace(groups)
-            ? groups
-            : PlanFileAllowanceDefaults.FileTypeGroups;
+                ? groups
+                : PlanFileAllowanceDefaults.FileTypeGroups;
         var isSuspended = message.SubscriptionStatus == "Suspended";
 
         await ApplyAsync(

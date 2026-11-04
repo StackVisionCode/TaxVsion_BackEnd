@@ -29,6 +29,10 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
     // cualquier tenant. El tenantId de cada Where() ya viene validado por otra vía en cada
     // llamador (Host resolution en Login, el propio invitation token en otros flujos) — mismo
     // criterio que ya usan los background jobs de Fase 5 (ver AuthMaintenanceService).
+    //
+    // D-8: un retirado conserva su fila (y su email) como registro histórico, y la persona puede volver con una
+    // cuenta nueva y el mismo email. Con dos filas siempre gana la que no está retirada; la retirada solo
+    // aparece si es la única (su login sigue fallando por inactiva, como antes).
     public Task<User?> GetByEmailAsync(
         Guid tenantId,
         string email,
@@ -38,8 +42,12 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         db
             .Users.IgnoreQueryFilters()
             .Where(OfKind(kind))
-            .FirstOrDefaultAsync(user => user.TenantId == tenantId && user.Email == email, ct);
+            .Where(user => user.TenantId == tenantId && user.Email == email)
+            .OrderBy(user => user.Status == UserStatus.Offboarded ? 1 : 0)
+            .ThenByDescending(user => user.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
 
+    // El email de un retirado no ocupa el lugar (mismo criterio que el índice único filtrado).
     public Task<bool> EmailExistsAsync(
         Guid tenantId,
         string email,
@@ -49,7 +57,10 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         db
             .Users.IgnoreQueryFilters()
             .Where(OfKind(kind))
-            .AnyAsync(user => user.TenantId == tenantId && user.Email == email, ct);
+            .AnyAsync(
+                user => user.TenantId == tenantId && user.Email == email && user.Status != UserStatus.Offboarded,
+                ct
+            );
 
     // IgnoreQueryFilters(): lo invoca el endpoint M2M de invitación al portal, sin ITenantContext.
     public Task<User?> GetPortalUserByCustomerAsync(Guid tenantId, Guid customerId, CancellationToken ct = default) =>

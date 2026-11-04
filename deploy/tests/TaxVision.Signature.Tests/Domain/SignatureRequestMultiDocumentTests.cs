@@ -209,7 +209,14 @@ public sealed class SignatureRequestMultiDocumentTests
     }
 
     private static Signer AddSigner(SignatureRequest request, string email, string name) =>
-        request.AddSigner(TestSignatureLimits.Default, SignerEmail.Create(email).Value, SignerFullName.Create(name).Value, null).Value;
+        request
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create(email).Value,
+                SignerFullName.Create(name).Value,
+                null
+            )
+            .Value;
 
     private static void PlaceSignature(SignatureRequest request, Guid signerId, Guid documentId) =>
         request.PlaceField(

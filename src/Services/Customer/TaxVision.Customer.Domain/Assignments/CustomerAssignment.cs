@@ -13,8 +13,12 @@ public sealed class CustomerAssignment : TenantEntity
     private CustomerAssignment() { }
 
     public Guid CustomerId { get; private set; }
+
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "CustomerUserOffboardedConsumer")]
     public Guid UserId { get; private set; }
     public bool IsPrimary { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid AssignedByUserId { get; private set; }
     public DateTime AssignedAtUtc { get; private set; }
 

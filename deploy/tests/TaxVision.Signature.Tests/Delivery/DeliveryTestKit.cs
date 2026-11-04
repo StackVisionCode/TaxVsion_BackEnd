@@ -69,10 +69,20 @@ internal sealed class DeliveryTestKit
             );
 
         FirstSigner = request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("ana@example.com").Value, SignerFullName.Create("Ana Perez").Value, firstSignerCustomerId)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("ana@example.com").Value,
+                SignerFullName.Create("Ana Perez").Value,
+                firstSignerCustomerId
+            )
             .Value;
         SecondSigner = request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("luis@example.com").Value, SignerFullName.Create("Luis Gomez").Value, secondSignerCustomerId)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("luis@example.com").Value,
+                SignerFullName.Create("Luis Gomez").Value,
+                secondSignerCustomerId
+            )
             .Value;
         Place(request, FirstSigner, request.Documents[0]);
         Place(request, SecondSigner, request.Documents[1]);
@@ -89,7 +99,14 @@ internal sealed class DeliveryTestKit
         {
             var sealedId = Guid.NewGuid();
             Assert.True(
-                Request.MarkDocumentSealed(document.Id, sealedId, DocumentHash.Create(new string('b', 64)).Value, DateTime.UtcNow).IsSuccess
+                Request
+                    .MarkDocumentSealed(
+                        document.Id,
+                        sealedId,
+                        DocumentHash.Create(new string('b', 64)).Value,
+                        DateTime.UtcNow
+                    )
+                    .IsSuccess
             );
             Files.Available(Request.TenantId, sealedId, sizeBytes);
         }
@@ -158,7 +175,8 @@ internal sealed class InMemoryDeliveries : ISignedDocumentDeliveryRepository
         CancellationToken ct = default
     ) =>
         Task.FromResult<IReadOnlyList<SignedDocumentDelivery>>(
-            All.Where(delivery => delivery.TenantId == tenantId && delivery.SignatureRequestId == signatureRequestId).ToList()
+            All.Where(delivery => delivery.TenantId == tenantId && delivery.SignatureRequestId == signatureRequestId)
+                .ToList()
         );
 
     public Task<bool> HasCompletedDeliveryAsync(
@@ -182,7 +200,16 @@ internal sealed class InMemoryFiles : IFileMetadataRefRepository
     private readonly List<FileMetadataRef> _files = [];
 
     public void Available(Guid tenantId, Guid fileId, long sizeBytes) =>
-        _files.Add(FileMetadataRef.ForAvailable(tenantId, fileId, $"k/{fileId}", "application/pdf", sizeBytes, new string('c', 64)));
+        _files.Add(
+            FileMetadataRef.ForAvailable(
+                tenantId,
+                fileId,
+                $"k/{fileId}",
+                "application/pdf",
+                sizeBytes,
+                new string('c', 64)
+            )
+        );
 
     public Task<FileMetadataRef?> GetByFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
         Task.FromResult(_files.SingleOrDefault(file => file.TenantId == tenantId && file.FileId == fileId));
@@ -231,7 +258,8 @@ internal sealed class ReadableCodec : IProtectedPayloadCodec
     public ProtectedPayload Protect<T>(string schema, ProtectedPayloadBinding binding, T content) =>
         new()
         {
-            Cipher = $"{binding.TenantId:N}|{binding.IdempotencyKey}|{System.Text.Json.JsonSerializer.Serialize(content)}",
+            Cipher =
+                $"{binding.TenantId:N}|{binding.IdempotencyKey}|{System.Text.Json.JsonSerializer.Serialize(content)}",
             KeyVersion = 1,
             Schema = schema,
         };
@@ -239,7 +267,11 @@ internal sealed class ReadableCodec : IProtectedPayloadCodec
     public T Unprotect<T>(ProtectedPayload payload, string expectedSchema, ProtectedPayloadBinding expectedBinding)
     {
         var parts = payload.Cipher.Split('|', 3);
-        if (payload.Schema != expectedSchema || parts[0] != expectedBinding.TenantId.ToString("N") || parts[1] != expectedBinding.IdempotencyKey)
+        if (
+            payload.Schema != expectedSchema
+            || parts[0] != expectedBinding.TenantId.ToString("N")
+            || parts[1] != expectedBinding.IdempotencyKey
+        )
             throw new InvalidOperationException("binding mismatch");
         return System.Text.Json.JsonSerializer.Deserialize<T>(parts[2])!;
     }
@@ -251,14 +283,19 @@ internal sealed class RecordingStorage : ISignatureCloudStorageClient
     public List<(Guid Source, Guid Customer)> Copies { get; } = [];
     public HashSet<Guid> FailCopiesOf { get; } = [];
 
-    public Task<Result<Guid>> CopyToCustomerAsync(Guid tenantId, Guid sourceFileId, Guid customerId, int taxYear, CancellationToken ct = default)
+    public Task<Result<Guid>> CopyToCustomerAsync(
+        Guid tenantId,
+        Guid sourceFileId,
+        Guid customerId,
+        int taxYear,
+        CancellationToken ct = default
+    )
     {
         if (FailCopiesOf.Contains(sourceFileId))
             return Task.FromResult(Result.Failure<Guid>(new Error("Storage.Copy", "copy failed")));
         Copies.Add((sourceFileId, customerId));
         return Task.FromResult(Result.Success(Guid.NewGuid()));
     }
-
 
     public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default)
     {
@@ -275,7 +312,11 @@ internal sealed class RecordingStorage : ISignatureCloudStorageClient
     /// <summary>Estado de cada archivo en CloudStorage (la fuente); los que no estén aquí no existen.</summary>
     public Dictionary<Guid, string> RemoteStatuses { get; } = [];
 
-    public Task<Result<SignatureFileMetadata>> GetFileAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+    public Task<Result<SignatureFileMetadata>> GetFileAsync(
+        Guid tenantId,
+        Guid fileId,
+        CancellationToken ct = default
+    ) =>
         Task.FromResult(
             RemoteStatuses.TryGetValue(fileId, out var status)
                 ? Result.Success(new SignatureFileMetadata(fileId, status, null, "application/pdf", 1024, null))
@@ -325,26 +366,47 @@ internal sealed class CapturingBus : IMessageBus
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
         throw new NotSupportedException();
 
-    public Task InvokeAsync(object message, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotSupportedException();
+    public Task InvokeAsync(
+        object message,
+        DeliveryOptions options,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => throw new NotSupportedException();
 
     public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
         throw new NotSupportedException();
 
-    public Task<T> InvokeAsync<T>(object message, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotSupportedException();
+    public Task<T> InvokeAsync<T>(
+        object message,
+        DeliveryOptions options,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => throw new NotSupportedException();
 
-    public Task InvokeForTenantAsync(string tenantId, object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotSupportedException();
+    public Task InvokeForTenantAsync(
+        string tenantId,
+        object message,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => throw new NotSupportedException();
 
-    public Task<T> InvokeForTenantAsync<T>(string tenantId, object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotSupportedException();
+    public Task<T> InvokeForTenantAsync<T>(
+        string tenantId,
+        object message,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => throw new NotSupportedException();
 
-    public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(object message, CancellationToken cancellation = default) =>
-        throw new NotSupportedException();
+    public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(
+        object message,
+        CancellationToken cancellation = default
+    ) => throw new NotSupportedException();
 
-    public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(object message, DeliveryOptions options, CancellationToken cancellation = default) =>
-        throw new NotSupportedException();
+    public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(
+        object message,
+        DeliveryOptions options,
+        CancellationToken cancellation = default
+    ) => throw new NotSupportedException();
 }
 
 /// <summary>Repositorio con una sola solicitud (copiado del de los tests de sellado).</summary>
@@ -425,8 +487,10 @@ internal sealed class SingleRequestRepository(SignatureRequest request) : ISigna
         CancellationToken ct = default
     ) => Empty();
 
-    public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(Guid tenantId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<SignatureRequest>>(request.TenantId == tenantId ? [request] : []);
+    public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<SignatureRequest>>(request.TenantId == tenantId ? [request] : []);
 
     public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
         Guid tenantId,

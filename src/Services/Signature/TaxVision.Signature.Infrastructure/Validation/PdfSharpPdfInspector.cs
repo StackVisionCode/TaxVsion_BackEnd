@@ -25,7 +25,9 @@ public sealed class PdfSharpPdfInspector : IPdfInspector
 
         var issues = new List<DocumentValidationIssue>();
         var probe =
-            CheckMime(declaredContentType, issues) && CheckNotEmpty(content, issues) && CheckMagicHeader(content, issues)
+            CheckMime(declaredContentType, issues)
+            && CheckNotEmpty(content, issues)
+            && CheckMagicHeader(content, issues)
                 ? TryProbePdf(content, issues)
                 : null;
 

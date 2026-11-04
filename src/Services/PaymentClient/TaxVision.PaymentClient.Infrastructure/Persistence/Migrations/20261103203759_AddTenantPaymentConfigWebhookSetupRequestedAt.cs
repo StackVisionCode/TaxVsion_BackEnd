@@ -15,13 +15,15 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 name: "WebhookSetupRequestedAtUtc",
                 table: "TenantPaymentConfigs",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantPaymentConfigs_PendingWebhookSetup",
                 table: "TenantPaymentConfigs",
                 column: "WebhookSetupRequestedAtUtc",
-                filter: "[WebhookSetup] = 'Pending'");
+                filter: "[WebhookSetup] = 'Pending'"
+            );
         }
 
         /// <inheritdoc />
@@ -29,11 +31,10 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "IX_TenantPaymentConfigs_PendingWebhookSetup",
-                table: "TenantPaymentConfigs");
+                table: "TenantPaymentConfigs"
+            );
 
-            migrationBuilder.DropColumn(
-                name: "WebhookSetupRequestedAtUtc",
-                table: "TenantPaymentConfigs");
+            migrationBuilder.DropColumn(name: "WebhookSetupRequestedAtUtc", table: "TenantPaymentConfigs");
         }
     }
 }

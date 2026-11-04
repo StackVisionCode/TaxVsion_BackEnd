@@ -162,6 +162,13 @@ public sealed class SeriesEventsReachTheirAudienceTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
 
+        public Task<IReadOnlyList<Appointment>> ListFutureByStaffAttendeeAsync(
+            Guid tenantId,
+            Guid userId,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
+
         public Task<Result<Appointment>> GetByIdAsync(
             Guid tenantId,
             Guid appointmentId,

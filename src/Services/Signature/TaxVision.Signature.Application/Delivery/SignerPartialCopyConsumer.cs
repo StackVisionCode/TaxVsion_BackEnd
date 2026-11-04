@@ -237,7 +237,8 @@ public static class SignerPartialCopyConsumer
                 )
             );
 
-            var fileName = $"{DocumentFileName.Base(document.Title)}_{DocumentFileName.Base(signer.FullName.Value)}_InProgress.pdf";
+            var fileName =
+                $"{DocumentFileName.Base(document.Title)}_{DocumentFileName.Base(signer.FullName.Value)}_InProgress.pdf";
             var (ownerType, ownerId) = SealedDocumentOwner.Resolve(new[] { signer.MappedCustomerId }, request.Id);
             var upload = await storage.UploadAsync(
                 request.TenantId,
@@ -442,7 +443,6 @@ public static class SignerPartialCopyConsumer
         );
         await unitOfWork.SaveChangesAsync(ct);
     }
-
 }
 
 internal static class SignerChannelExtensions

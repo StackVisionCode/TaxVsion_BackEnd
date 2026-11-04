@@ -101,6 +101,71 @@ public sealed class CloudStorageUserOffboardedConsumerTests
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
+    private static ShareLink SharedWith(params Guid[] users)
+    {
+        var link = ShareLink
+            .Create(
+                Guid.NewGuid(),
+                Tenant,
+                Guid.NewGuid(),
+                ShareResourceType.File,
+                ShareVisibility.SpecificUsers,
+                SharePermission.View,
+                null,
+                Now.AddDays(7),
+                null,
+                Guid.NewGuid(),
+                Now
+            )
+            .Value.Link;
+        foreach (var user in users)
+            link.AddUserRecipient(user);
+        return link;
+    }
+
+    [Fact]
+    public async Task The_leaver_is_removed_from_links_of_others_that_keep_working_for_the_rest()
+    {
+        var leaver = Guid.NewGuid();
+        var colleague = Guid.NewGuid();
+        var link = SharedWith(leaver, colleague);
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+        var audit = new FakeStorageAuditRepository();
+        var bus = new FakeMessageBus();
+        var unitOfWork = new FakeUnitOfWork();
+
+        await Run(shares, audit, bus, unitOfWork, leaver);
+
+        Assert.Equal(ShareStatus.Active, link.Status);
+        Assert.False(link.HasUserRecipient(leaver));
+        Assert.True(link.HasUserRecipient(colleague));
+        Assert.Empty(bus.Published);
+        Assert.Equal("share.recipient.remove", Assert.Single(audit.Logs).Action);
+        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task A_link_left_without_recipients_is_revoked_after_saving()
+    {
+        var leaver = Guid.NewGuid();
+        var link = SharedWith(leaver);
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+        var audit = new FakeStorageAuditRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var savesWhenPublished = new List<int>();
+        var bus = new FakeMessageBus { OnPublish = _ => savesWhenPublished.Add(unitOfWork.SaveChangesCallCount) };
+
+        await Run(shares, audit, bus, unitOfWork, leaver);
+        await Run(shares, audit, bus, unitOfWork, leaver);
+
+        Assert.Equal(ShareStatus.Revoked, link.Status);
+        Assert.Single(bus.Published.OfType<ShareLinkRevokedIntegrationEvent>());
+        Assert.Equal([1], savesWhenPublished);
+        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
     [Fact]
     public async Task Offboarding_impact_counts_active_links_created_by_the_employee()
     {
@@ -113,10 +178,12 @@ public sealed class CloudStorageUserOffboardedConsumerTests
         var result = await OffboardingImpactHandler.Handle(
             new OffboardingImpactQuery(Tenant, leaver),
             shares,
+            new FakeTenantCloudConnectionRepository(),
             CancellationToken.None
         );
 
         Assert.Equal(2, result.ActiveShareLinks);
+        Assert.Equal(0, result.OfficeCloudConnections);
     }
 
     private sealed class FakeCorrelationContext : ICorrelationContext

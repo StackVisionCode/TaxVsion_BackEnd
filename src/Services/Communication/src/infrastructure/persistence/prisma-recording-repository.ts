@@ -107,6 +107,18 @@ export class PrismaRecordingSessionRepository implements RecordingSessionReposit
     return rows.map(toDomainRecordingSession);
   }
 
+  async listCaptureActiveClientByRequester(tenantId: string, requestedByUserId: string): Promise<RecordingSession[]> {
+    const rows = await this.prisma.recordingSession.findMany({
+      where: {
+        TenantId: tenantId,
+        RequestedByUserId: requestedByUserId,
+        CaptureMode: 'Client',
+        State: { in: ['Requesting', 'Recording', 'Stopping'] },
+      },
+    });
+    return rows.map(toDomainRecordingSession);
+  }
+
   async findByRecordingFileId(tenantId: string, fileId: string): Promise<RecordingSession | null> {
     const row = await this.prisma.recordingSession.findFirst({
       where: { TenantId: tenantId, OR: [{ ComposedFileId: fileId }, { RecordingFileId: fileId }] },

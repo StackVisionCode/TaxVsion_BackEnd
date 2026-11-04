@@ -98,7 +98,9 @@ public sealed class PurgeScheduler(
     private async Task PurgeTenantAsync(Guid tenantId, int batchSize, CancellationToken ct)
     {
         using var scope = serviceProvider.CreateScope();
-        var policy = await scope.ServiceProvider.GetRequiredService<ISignatureLimitsResolver>().ResolveAsync(tenantId, ct);
+        var policy = await scope
+            .ServiceProvider.GetRequiredService<ISignatureLimitsResolver>()
+            .ResolveAsync(tenantId, ct);
         if (!policy.PurgeEnabled)
             return;
 

@@ -20,17 +20,24 @@ public sealed class SignatureLimitsResolverTests
     {
         var limits = new InMemoryLimits();
 
-        await Project(limits, 1, new Dictionary<string, string>
-        {
-            ["signature.max_documents_per_request"] = "40",
-            ["signature.channels"] = "Email,Sms,WhatsApp",
-            ["signature.purge_allowed"] = "True",
-        });
+        await Project(
+            limits,
+            1,
+            new Dictionary<string, string>
+            {
+                ["signature.max_documents_per_request"] = "40",
+                ["signature.channels"] = "Email,Sms,WhatsApp",
+                ["signature.purge_allowed"] = "True",
+            }
+        );
 
         var plan = (await limits.GetByTenantIdAsync(Tenant))!.ToLimits();
         Assert.Equal(40, plan.MaxDocumentsPerRequest);
         Assert.Equal(TenantSignatureLimits.FallbackMaxSignersPerRequest, plan.MaxSignersPerRequest);
-        Assert.Equal(VerificationChannel.Email | VerificationChannel.Sms | VerificationChannel.WhatsApp, plan.AllowedChannels);
+        Assert.Equal(
+            VerificationChannel.Email | VerificationChannel.Sms | VerificationChannel.WhatsApp,
+            plan.AllowedChannels
+        );
         Assert.True(plan.PurgeAllowed);
     }
 
@@ -63,7 +70,9 @@ public sealed class SignatureLimitsResolverTests
         var limits = new InMemoryLimits();
         await Project(limits, 1, new Dictionary<string, string> { ["signature.max_documents_per_request"] = "20" });
         var settings = TenantSignatureSettings.CreateForNewTenant(Tenant, "secret").Value;
-        settings.ApplyPlanConstraints(SignaturePlanConstraints.Create(60, null, null, null, null, null, null, null).Value);
+        settings.ApplyPlanConstraints(
+            SignaturePlanConstraints.Create(60, null, null, null, null, null, null, null).Value
+        );
         var resolver = new SignatureLimitsResolver(limits, new InMemorySettings(settings));
 
         var policy = await resolver.ResolveAsync(Tenant);

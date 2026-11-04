@@ -29,6 +29,8 @@ export function messageSnapshotToDto(m: MessageSnapshot): MessageDto {
     senderId: m.senderId,
     senderDisplayName: m.senderDisplayName,
     kind: m.kind,
+    // Solo los System llevan origen (ícono del hilo); el resto no cambia de forma.
+    ...(m.kind === 'System' ? { systemKind: m.systemKind ?? null } : {}),
     body: m.body,
     attachmentFileId: m.attachmentFileId,
     replyToMessageId: m.replyToMessageId,

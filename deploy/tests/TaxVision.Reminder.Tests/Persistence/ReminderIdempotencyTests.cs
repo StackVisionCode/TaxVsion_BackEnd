@@ -42,13 +42,13 @@ public sealed class ReminderIdempotencyTests
             new NoTenantContext()
         );
 
-    private static ReminderAggregate NewReminder(Guid tenantId, string requestKey)
+    private static ReminderAggregate NewReminder(Guid tenantId, string requestKey, Guid? userId = null)
     {
         var nowUtc = DateTime.UtcNow;
         return ReminderAggregate
             .Create(
                 tenantId,
-                Guid.NewGuid(),
+                userId ?? Guid.NewGuid(),
                 ReminderSubject.Create("Idempotency probe", null).Value,
                 ReminderTarget.Create(ReminderCategory.General, null).Value,
                 ReminderSchedule.Absolute(nowUtc.AddDays(1), nowUtc).Value,
@@ -60,23 +60,24 @@ public sealed class ReminderIdempotencyTests
     }
 
     [Fact]
-    public async Task Two_reminders_with_the_same_tenant_and_request_key_cannot_both_be_stored()
+    public async Task Two_reminders_with_the_same_tenant_user_and_request_key_cannot_both_be_stored()
     {
         // Tenant sintético propio de esta ejecución: aísla el test de cualquier dato real de la
         // base local y hace que el cleanup del final no pueda borrar nada ajeno.
         var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
         var requestKey = $"idempotency-probe-{Guid.NewGuid():N}";
 
         try
         {
             await using (var firstDb = CreateContext())
             {
-                firstDb.Reminders.Add(NewReminder(tenantId, requestKey));
+                firstDb.Reminders.Add(NewReminder(tenantId, requestKey, userId));
                 await firstDb.SaveChangesAsync();
             }
 
             await using var secondDb = CreateContext();
-            secondDb.Reminders.Add(NewReminder(tenantId, requestKey));
+            secondDb.Reminders.Add(NewReminder(tenantId, requestKey, userId));
 
             var conflict = await Assert.ThrowsAsync<ConflictException>(() => secondDb.SaveChangesAsync());
             Assert.Equal("Persistence.UniqueConstraint", conflict.Code);
@@ -87,6 +88,30 @@ public sealed class ReminderIdempotencyTests
                 .Reminders.IgnoreQueryFilters()
                 .CountAsync(r => r.TenantId == tenantId && r.RequestKey == RequestKey.Create(requestKey).Value);
             Assert.Equal(1, stored);
+        }
+        finally
+        {
+            await using var cleanupDb = CreateContext();
+            await cleanupDb.Reminders.IgnoreQueryFilters().Where(r => r.TenantId == tenantId).ExecuteDeleteAsync();
+        }
+    }
+
+    [Fact]
+    public async Task The_same_request_key_is_allowed_for_a_different_user_of_the_same_tenant()
+    {
+        // Objetivo reasignado (organizador nuevo de una cita): misma clave, otro destinatario.
+        var tenantId = Guid.NewGuid();
+        var requestKey = $"idempotency-probe-{Guid.NewGuid():N}";
+
+        try
+        {
+            await using var db = CreateContext();
+            db.Reminders.Add(NewReminder(tenantId, requestKey));
+            db.Reminders.Add(NewReminder(tenantId, requestKey));
+            await db.SaveChangesAsync();
+
+            await using var verifyDb = CreateContext();
+            Assert.Equal(2, await verifyDb.Reminders.IgnoreQueryFilters().CountAsync(r => r.TenantId == tenantId));
         }
         finally
         {
@@ -108,8 +133,8 @@ public sealed class ReminderIdempotencyTests
             db.Reminders.Add(NewReminder(firstTenantId, requestKey));
             db.Reminders.Add(NewReminder(secondTenantId, requestKey));
 
-            // El índice es (TenantId, RequestKey), no (RequestKey): dos tenants distintos pueden
-            // reusar la misma clave sin pisarse.
+            // El índice es (TenantId, UserId, RequestKey), no (RequestKey): dos tenants distintos
+            // pueden reusar la misma clave sin pisarse.
             await db.SaveChangesAsync();
 
             await using var verifyDb = CreateContext();

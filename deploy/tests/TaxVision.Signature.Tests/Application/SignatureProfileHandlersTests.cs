@@ -515,9 +515,13 @@ public sealed class SignatureProfileHandlersTests
             return Task.FromResult(Result.Success(Guid.NewGuid()));
         }
 
-        public Task<Result<Guid>> CopyToCustomerAsync(Guid tenantId, Guid sourceFileId, Guid customerId, int taxYear, CancellationToken ct = default) =>
-            throw new NotSupportedException();
-
+        public Task<Result<Guid>> CopyToCustomerAsync(
+            Guid tenantId,
+            Guid sourceFileId,
+            Guid customerId,
+            int taxYear,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             Task.FromResult(Result.Success(new Uri($"https://minio.test/{fileId}")));

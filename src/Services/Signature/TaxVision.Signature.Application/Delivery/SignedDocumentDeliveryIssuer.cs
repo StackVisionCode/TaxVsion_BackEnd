@@ -30,7 +30,10 @@ public sealed class SignedDocumentDeliveryIssuer(
 {
     private const string CertificateTitle = "Certificate of completion";
 
-    public async Task<IReadOnlyList<IssuedDelivery>> PrepareCompletedAsync(SignatureRequest request, CancellationToken ct)
+    public async Task<IReadOnlyList<IssuedDelivery>> PrepareCompletedAsync(
+        SignatureRequest request,
+        CancellationToken ct
+    )
     {
         var policy = await PolicyForAsync(request.TenantId, ct);
         var now = DateTime.UtcNow;
@@ -258,6 +261,5 @@ public sealed class SignedDocumentDeliveryIssuer(
 
     // Todo firmante que es cliente tiene los archivos en su portal: el original si es el único cliente,
     // o su copia (CustomerPortalCopier) si firman varios. La copia en curso siempre queda a su nombre.
-    private static bool IsInClientPortal(Signer signer) =>
-        signer.MappedCustomerId is not null;
+    private static bool IsInClientPortal(Signer signer) => signer.MappedCustomerId is not null;
 }

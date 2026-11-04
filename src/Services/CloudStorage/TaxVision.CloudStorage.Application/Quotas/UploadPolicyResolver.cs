@@ -84,7 +84,12 @@ public sealed class UploadPolicyResolver(
     }
 
     // Excepción de tamaño en BD (D-33): la fila más específica gana. Null = sin excepción (decide carpeta/plan).
-    private async Task<long?> SizeOverrideAsync(Guid tenantId, string planCode, FolderType folderType, CancellationToken ct)
+    private async Task<long?> SizeOverrideAsync(
+        Guid tenantId,
+        string planCode,
+        FolderType folderType,
+        CancellationToken ct
+    )
     {
         var key = UploadPolicyCacheKey.For(folderType, planCode, tenantId);
         if (cache.TryGet(key, clock.UtcNow, out var cached))

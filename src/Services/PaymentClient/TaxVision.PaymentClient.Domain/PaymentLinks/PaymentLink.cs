@@ -25,6 +25,8 @@ public sealed class PaymentLink : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UsedAtUtc { get; private set; }
     public Guid? RelatedTenantPaymentId { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
     public int FailedRedemptionAttempts { get; private set; }
 

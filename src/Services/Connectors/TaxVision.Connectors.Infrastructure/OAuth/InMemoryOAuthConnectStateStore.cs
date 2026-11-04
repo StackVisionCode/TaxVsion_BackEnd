@@ -19,12 +19,21 @@ public sealed class InMemoryOAuthConnectStateStore : IOAuthConnectStateStore
         string? initiatorEmail = null,
         string? returnOrigin = null,
         bool asOffice = false,
+        bool initiatorIsPlatformAdmin = false,
         CancellationToken ct = default
     )
     {
         var state = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         _states[state] = (
-            new OAuthConnectState(tenantId, providerCode, initiatedByUserId, initiatorEmail, returnOrigin, asOffice),
+            new OAuthConnectState(
+                tenantId,
+                providerCode,
+                initiatedByUserId,
+                initiatorEmail,
+                returnOrigin,
+                asOffice,
+                initiatorIsPlatformAdmin
+            ),
             DateTime.UtcNow.Add(Ttl)
         );
         return Task.FromResult(state);

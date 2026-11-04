@@ -47,4 +47,10 @@ public enum SignatureAuditEventKind
 
     /// <summary>La oficina revocó una entrega: su enlace deja de funcionar.</summary>
     DeliveryRevoked,
+
+    /// <summary>
+    /// El preparador de una solicitud enviada pasó a otra persona antes de firmar (retiro del empleado o
+    /// un admin). El payload lleva la identidad anterior y la nueva; los eventos previos no se tocan.
+    /// </summary>
+    PreparerChanged,
 }

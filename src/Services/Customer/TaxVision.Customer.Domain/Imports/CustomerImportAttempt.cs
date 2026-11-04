@@ -21,7 +21,18 @@ public sealed class CustomerImportAttempt : TenantEntity
 
     private CustomerImportAttempt() { }
 
+    [UserReference(UserReferenceKind.Provenance, Note = "Actor de auditoría; el aviso de fin va a NotifyUserId.")]
     public Guid CreatedByUserId { get; private set; }
+
+    /// <summary>
+    /// Quién recibe el aviso de fin cuando no es el creador (p. ej. el creador fue retirado con el import en
+    /// curso). Nulo = el creador. No reemplaza a <see cref="CreatedByUserId"/>, que es procedencia.
+    /// </summary>
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "CustomerImportsUserOffboardedConsumer")]
+    public Guid? FollowUpUserId { get; private set; }
+
+    /// <summary>A quién avisar cuando el import termina (completo, cancelado o fallido).</summary>
+    public Guid NotifyUserId => FollowUpUserId ?? CreatedByUserId;
 
     /// <summary>Key unica por tenant para idempotencia HTTP estilo Stripe.</summary>
     public string IdempotencyKey { get; private set; } = default!;
@@ -44,6 +55,8 @@ public sealed class CustomerImportAttempt : TenantEntity
     public DateTime? StartedAtUtc { get; private set; }
     public DateTime? CompletedAtUtc { get; private set; }
     public DateTime? CanceledAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? CanceledByUserId { get; private set; }
 
     /// <summary>Mensaje de fallo a nivel job (no por fila). Sin PII.</summary>
@@ -209,6 +222,18 @@ public sealed class CustomerImportAttempt : TenantEntity
         Status = ImportStatus.Canceled;
         CanceledAtUtc = DateTime.UtcNow;
         CompletedAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
+    /// <summary>Pasa el aviso de fin a otra persona. Solo imports en curso; idempotente.</summary>
+    public Result HandOverFollowUp(Guid userId)
+    {
+        if (userId == Guid.Empty)
+            return Result.Failure(new Error("Import.User", "Follow-up user is required."));
+        if (IsTerminal)
+            return Result.Failure(new Error("Import.InvalidState", $"Cannot hand over an import in state {Status}."));
+
+        FollowUpUserId = userId == CreatedByUserId ? null : userId;
         return Result.Success();
     }
 

@@ -11,6 +11,7 @@ public sealed class EfinRevealRecord : TenantEntity
 {
     private EfinRevealRecord() { }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid RevealedByUserId { get; private set; }
     public DateTime RevealedAtUtc { get; private set; }
 

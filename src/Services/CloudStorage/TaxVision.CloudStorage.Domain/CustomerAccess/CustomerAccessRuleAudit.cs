@@ -15,6 +15,8 @@ public sealed class CustomerAccessRuleAudit : TenantEntity
     public Guid ResourceId { get; private set; }
     public AccessCapability Capability { get; private set; }
     public AccessRuleAction Action { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ActorUserId { get; private set; }
     public DateTime OccurredAtUtc { get; private set; }
     public string? Reason { get; private set; }

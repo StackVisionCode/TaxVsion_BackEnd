@@ -10,7 +10,12 @@ public sealed class RequestDocumentTests
     {
         var request = NewDraft();
 
-        var result = request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Supporting document", "W-2 2025");
+        var result = request.AddDocument(
+            TestSignatureLimits.Default,
+            Guid.NewGuid(),
+            "Supporting document",
+            "W-2 2025"
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value.Order);
@@ -25,7 +30,15 @@ public sealed class RequestDocumentTests
         var document = request.Documents.Single();
         var signer = AddSigner(request);
         var position = Position();
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, document.Id, SignatureFieldKind.Signature, position, null, true);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            document.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            true
+        );
         request.PlacePreparerField(document.Id, SignatureFieldKind.Signature, position, null);
 
         var result = request.RemoveDocument(document.Id);
@@ -74,7 +87,15 @@ public sealed class RequestDocumentTests
         request.ReplaceDocumentFile(document.Id, Guid.NewGuid(), newPageCount: 5);
         var signer = AddSigner(request);
         var position = Position();
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, document.Id, SignatureFieldKind.Signature, position, null, true);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            document.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            true
+        );
         request.PlacePreparerField(document.Id, SignatureFieldKind.Signature, position, null);
 
         var result = request.ReplaceDocumentFile(document.Id, Guid.NewGuid(), newPageCount: 5);
@@ -95,12 +116,38 @@ public sealed class RequestDocumentTests
         var request = NewDraft();
         var first = request.Documents.Single();
         request.ReplaceDocumentFile(first.Id, Guid.NewGuid(), newPageCount: 3);
-        var second = request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Second", null, pageCount: 2).Value;
+        var second = request
+            .AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Second", null, pageCount: 2)
+            .Value;
         var signer = AddSigner(request);
         var position = Position();
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, first.Id, SignatureFieldKind.Signature, position, null, true);
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, first.Id, SignatureFieldKind.Initials, position, null, true);
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, second.Id, SignatureFieldKind.Signature, position, null, true);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            first.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            true
+        );
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            first.Id,
+            SignatureFieldKind.Initials,
+            position,
+            null,
+            true
+        );
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            second.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            true
+        );
         request.PlacePreparerField(first.Id, SignatureFieldKind.Signature, position, null);
 
         var result = request.ReplaceDocumentFile(first.Id, Guid.NewGuid(), newPageCount: 10);
@@ -124,7 +171,15 @@ public sealed class RequestDocumentTests
         var document = request.Documents.Single();
         var signer = AddSigner(request);
         var position = Position();
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, document.Id, SignatureFieldKind.Signature, position, null, true);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            document.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            true
+        );
 
         // Old PageCount = null (nunca se seteó al crear), new PageCount = 10 → sigue siendo
         // "no comparable" porque old es desconocido.
@@ -158,7 +213,15 @@ public sealed class RequestDocumentTests
         var request = NewDraft();
         var document = request.Documents.Single();
         var signer = AddSigner(request);
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, document.Id, SignatureFieldKind.Signature, Position(), null, true);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            document.Id,
+            SignatureFieldKind.Signature,
+            Position(),
+            null,
+            true
+        );
         request.AttachVerifiedDocument(document.Id, VerifiedDocument.Create(Hash('a'), 50).Value);
         request.Send(DateTime.UtcNow);
 
@@ -199,7 +262,12 @@ public sealed class RequestDocumentTests
 
     private static Signer AddSigner(SignatureRequest request) =>
         request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("signer@example.com").Value, SignerFullName.Create("Signer One").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("signer@example.com").Value,
+                SignerFullName.Create("Signer One").Value,
+                null
+            )
             .Value;
 
     private static FieldPosition Position() => FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;

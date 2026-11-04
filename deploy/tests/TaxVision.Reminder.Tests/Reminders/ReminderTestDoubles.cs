@@ -39,6 +39,7 @@ internal sealed class FakeReminderRepository : IReminderRepository
 
     public Task<ReminderAggregate?> FindByRequestKeyAsync(
         Guid tenantId,
+        Guid userId,
         RequestKey requestKey,
         CancellationToken ct = default
     )
@@ -50,7 +51,9 @@ internal sealed class FakeReminderRepository : IReminderRepository
         }
 
         return Task.FromResult(
-            Stored.FirstOrDefault(r => r.TenantId == tenantId && r.RequestKey.Value == requestKey.Value)
+            Stored.FirstOrDefault(r =>
+                r.TenantId == tenantId && r.UserId == userId && r.RequestKey.Value == requestKey.Value
+            )
         );
     }
 
@@ -96,19 +99,14 @@ internal sealed class FakeReminderRepository : IReminderRepository
                 .ToList()
         );
 
-    public Task<IReadOnlyList<ReminderAggregate>> ListPendingGeneralByUserAsync(
+    public Task<IReadOnlyList<ReminderAggregate>> ListPendingByUserAsync(
         Guid tenantId,
         Guid userId,
         CancellationToken ct = default
     ) =>
         Task.FromResult<IReadOnlyList<ReminderAggregate>>(
             Stored
-                .Where(r =>
-                    r.TenantId == tenantId
-                    && r.UserId == userId
-                    && r.Target.Category == ReminderCategory.General
-                    && PendingStatuses.Contains(r.Status)
-                )
+                .Where(r => r.TenantId == tenantId && r.UserId == userId && PendingStatuses.Contains(r.Status))
                 .ToList()
         );
 
@@ -122,7 +120,9 @@ internal sealed class FakeReminderRepository : IReminderRepository
             return;
 
         var duplicate = Stored.Any(r =>
-            r.TenantId == _pending.TenantId && r.RequestKey.Value == _pending.RequestKey.Value
+            r.TenantId == _pending.TenantId
+            && r.UserId == _pending.UserId
+            && r.RequestKey.Value == _pending.RequestKey.Value
         );
         var pending = _pending;
         _pending = null;

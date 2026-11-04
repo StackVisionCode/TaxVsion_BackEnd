@@ -15,6 +15,7 @@ public sealed class BlockedTime : AggregateRoot
 {
     public const int MaxReasonLength = 200;
 
+    [UserReference(UserReferenceKind.Private, HandledBy = "CalendarUserOffboardedConsumer", Note = "Se borra.")]
     public Guid UserId { get; private set; }
 
     public DateTime StartUtc { get; private set; }

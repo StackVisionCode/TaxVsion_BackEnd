@@ -45,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<IFileObjectRepository, FileObjectRepository>();
         services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
         services.AddScoped<IStoragePolicyRepository, StoragePolicyRepository>();
+        services.AddScoped<ITenantCloudConnectionRepository, TenantCloudConnectionRepository>();
         services.AddScoped<IStorageAuditRepository, StorageAuditRepository>();
         services.AddScoped<IFolderRepository, FolderRepository>();
         services.AddScoped<ISystemFolderProvisioner, SystemFolderProvisioner>();

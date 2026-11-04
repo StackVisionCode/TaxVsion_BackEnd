@@ -44,10 +44,12 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .HasFilter("[PendingAvatarRequestedAtUtc] IS NOT NULL");
         // Email único por oficina dentro de cada tipo de cuenta: la misma persona puede ser empleado y
         // cliente (cuentas Staff y Portal separadas). El filtro repite UserAccountKinds.Of.
+        // D-8: el staff retirado queda fuera del índice — su fila es histórica y la persona puede volver
+        // con una cuenta nueva y el mismo email (a lo sumo una cuenta no retirada por email y oficina).
         builder
             .HasIndex(user => new { user.TenantId, user.Email }, "IX_Users_TenantId_Email_Staff")
             .IsUnique()
-            .HasFilter("[ActorType] <> N'CustomerPortal'");
+            .HasFilter("[ActorType] <> N'CustomerPortal' AND [Status] <> N'Offboarded'");
         builder
             .HasIndex(user => new { user.TenantId, user.Email }, "IX_Users_TenantId_Email_Portal")
             .IsUnique()

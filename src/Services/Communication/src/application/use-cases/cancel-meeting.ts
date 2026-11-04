@@ -50,7 +50,8 @@ export async function cancelMeeting(
   await deps.meetings.save(meeting);
 
   const snapshot = meeting.toSnapshot();
-  const participantUserIds = snapshot.participants.map((p) => p.userId);
+  // Los Removed (p.ej. un empleado retirado) ya no reciben el aviso.
+  const participantUserIds = meeting.notifiableUserIds();
   const invitations = await deps.meetings.listInvitationsByMeeting(cmd.tenantId, cmd.meetingId);
   const invitationSnapshots = invitations.map((inv) => inv.toSnapshot()).filter((s) => s.revokedAtUtc === null);
   // F6: externos sin cuenta por email; los de cuenta reciben in-app (inviteeUserIds).

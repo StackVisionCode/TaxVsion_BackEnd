@@ -1,3 +1,4 @@
+using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -41,6 +42,11 @@ public sealed record PreparerInfo
     /// <c>SignatureRequest.MarkPreparerSigned</c>.
     /// </para>
     /// </summary>
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "SignatureRequestsUserOffboardedConsumer",
+        Note = "Borrador: se limpia; enviada sin firmar: al sucesor."
+    )]
     public Guid? UserId { get; }
 
     private PreparerInfo(string ptinOrEfin, string displayName, string? titleLabel, Guid? userId)

@@ -70,7 +70,8 @@ public sealed class AccountsController(IMessageBus bus, IUserPermissionsSource p
                 userId,
                 initiatorEmail,
                 returnOrigin,
-                body.AsOffice
+                body.AsOffice,
+                User.IsPlatformAdmin()
             ),
             ct
         );
@@ -111,11 +112,19 @@ public sealed class AccountsController(IMessageBus bus, IUserPermissionsSource p
                 body.SmtpUseStartTls,
                 body.SmtpUsername,
                 body.SmtpPassword,
-                body.AsOffice
+                body.AsOffice,
+                User.IsPlatformAdmin()
             ),
             ct
         );
-        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        // Iniciador retirado/suspendido durante la prueba de conexión: es un rechazo de acceso, no un 400.
+        var status =
+            result.Error.Code == ConnectInitiatorGuard.InactiveCode
+                ? StatusCodes.Status403Forbidden
+                : result.Error.ToHttpStatusCode();
+        return StatusCode(status, result.Error);
     }
 
     /// <summary>
@@ -188,20 +197,41 @@ public sealed class AccountsController(IMessageBus bus, IUserPermissionsSource p
     }
 
     // ---------- GET /connectors/offboarding-impact/{userId} ----------
-    // Pre-flight (punto 3.2): cuántos buzones personales hay que desconectar antes de retirar a este empleado.
+    // Pre-flight (punto 3.2): buzones personales a desconectar y buzones de oficina que conectó la persona.
     [HttpGet("offboarding-impact/{userId:guid}")]
     [HasPermission(UserManagementPermissions.UsersManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("connectors.f.accounts_read")]
     [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
+    public Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct) =>
+        OffboardingImpactFor(userId, email: null, ct);
+
+    // ---------- POST /connectors/offboarding-impact/{userId} ----------
+    // Igual, sumando los de oficina con su dirección. El email va en el cuerpo: en la URL quedaría en los logs.
+    [HttpPost("offboarding-impact/{userId:guid}")]
+    [HasPermission(UserManagementPermissions.UsersManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("connectors.f.accounts_read")]
+    [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
+    public Task<IActionResult> OffboardingImpactByEmail(
+        Guid userId,
+        [FromBody] OffboardingImpactRequest body,
+        CancellationToken ct
+    ) => OffboardingImpactFor(userId, body.Email, ct);
+
+    private async Task<IActionResult> OffboardingImpactFor(Guid userId, string? email, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<OffboardingImpactResponse>(new OffboardingImpactQuery(tenantId, userId), ct);
+        var result = await bus.InvokeAsync<OffboardingImpactResponse>(
+            new OffboardingImpactQuery(tenantId, userId, email),
+            ct
+        );
         return Ok(result);
     }
+
+    public sealed record OffboardingImpactRequest(string? Email);
 
     /// <summary>
     /// Desconecta la cuenta (D3 §12.4/12.8). Para Graph esto es solo del lado de TaxVision — el

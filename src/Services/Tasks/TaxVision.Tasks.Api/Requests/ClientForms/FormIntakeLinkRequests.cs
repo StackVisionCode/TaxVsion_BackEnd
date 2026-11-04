@@ -13,3 +13,5 @@ public sealed record CreateFormIntakeLinkRequest(
 public sealed record ChangeFormIntakeLinkRequest(string RowVersion);
 
 public sealed record PinFormIntakeLinkVersionRequest(Guid FormTemplateVersionId, string RowVersion);
+
+public sealed record ChangeFormIntakeLinkResponsibleRequest(Guid ResponsibleUserId, string RowVersion);

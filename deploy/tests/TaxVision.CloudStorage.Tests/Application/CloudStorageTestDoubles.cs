@@ -562,6 +562,19 @@ internal sealed class FakeShareLinkRepository : IShareLinkRepository
                 .ToList()
         );
 
+    public Task<IReadOnlyList<ShareLink>> ListActiveWithUserRecipientAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyList<ShareLink>>(
+            _byId
+                .Values.Where(link =>
+                    link.TenantId == tenantId && link.Status == ShareStatus.Active && link.HasUserRecipient(userId)
+                )
+                .ToList()
+        );
+
     public Task<int> CountActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct) =>
         Task.FromResult(
             _byId.Values.Count(link =>
@@ -917,10 +930,16 @@ internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
 
+    /// <summary>Se llama al publicar (p. ej. para comprobar que ya se guardó).</summary>
+    public Action<object>? OnPublish { get; init; }
+
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
         if (message is not null)
+        {
             Published.Add(message);
+            OnPublish?.Invoke(message);
+        }
         return ValueTask.CompletedTask;
     }
 

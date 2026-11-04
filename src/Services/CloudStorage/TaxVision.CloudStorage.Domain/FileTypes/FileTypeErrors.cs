@@ -29,7 +29,10 @@ public static class FileTypeErrors
         "The folder size limit must be between 1 byte and the 5 GB technical ceiling."
     );
 
-    public static readonly Error UnknownGroup = new("FileType.UnknownGroup", "One or more file type groups don't exist.");
+    public static readonly Error UnknownGroup = new(
+        "FileType.UnknownGroup",
+        "One or more file type groups don't exist."
+    );
 
     public static readonly Error UnknownExtension = new(
         "FileType.UnknownExtension",

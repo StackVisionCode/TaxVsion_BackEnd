@@ -16,7 +16,9 @@ public static class PlanEntitlementCatalogs
     /// <summary>Semillas que la versión todavía no define (las existentes nunca se tocan).</summary>
     public static IReadOnlyCollection<EntitlementSeed> MissingFrom(SubscriptionPlanVersion version, PlanTier tier)
     {
-        var present = version.Entitlements.Select(entitlement => entitlement.Key.Value).ToHashSet(StringComparer.Ordinal);
+        var present = version
+            .Entitlements.Select(entitlement => entitlement.Key.Value)
+            .ToHashSet(StringComparer.Ordinal);
         return SeedsFor(tier).Where(seed => !present.Contains(seed.Key)).ToArray();
     }
 }

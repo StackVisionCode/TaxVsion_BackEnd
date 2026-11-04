@@ -13,11 +13,7 @@ internal sealed class AcceptingDocumentVerifier : IRequestDocumentVerifier
 
     public static readonly AcceptingDocumentVerifier Instance = new();
 
-    public Task<DocumentVerificationResult> VerifyAsync(
-        SignatureRequest request,
-        Guid documentId,
-        CancellationToken ct
-    )
+    public Task<DocumentVerificationResult> VerifyAsync(SignatureRequest request, Guid documentId, CancellationToken ct)
     {
         var fileId = request.Documents.Single(document => document.Id == documentId).OriginalFileId;
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fileId.ToString()))).ToLowerInvariant();

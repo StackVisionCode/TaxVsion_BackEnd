@@ -23,7 +23,7 @@ public interface IOneDriveConnectionService
 {
     Task<string> StartAsync(Guid tenantId, Guid userId, string? returnOrigin, CancellationToken ct);
     Task CompleteAsync(Guid stateId, string code, CancellationToken ct);
-    Task<(bool Connected, string? Email)> GetStatusAsync(Guid tenantId, CancellationToken ct);
+    Task<CloudConnectionStatus> GetStatusAsync(Guid tenantId, CancellationToken ct);
     Task DisconnectAsync(Guid tenantId, CancellationToken ct);
 }
 
@@ -122,17 +122,24 @@ public sealed class OneDriveConnectionService(
             db.CloudConnections.Remove(old);
         var protector = services.GetRequiredService<ISecretProtector>();
         db.CloudConnections.Add(
-            TenantCloudConnection.Connect(state.TenantId, ProviderId, email, protector.Protect(token.RefreshToken))
+            TenantCloudConnection.Connect(
+                state.TenantId,
+                ProviderId,
+                email,
+                protector.Protect(token.RefreshToken),
+                state.InitiatedByUserId
+            )
         );
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<(bool Connected, string? Email)> GetStatusAsync(Guid tenantId, CancellationToken ct)
+    public async Task<CloudConnectionStatus> GetStatusAsync(Guid tenantId, CancellationToken ct)
     {
         var connection = await db
             .CloudConnections.IgnoreQueryFilters()
+            .AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Provider == ProviderId, ct);
-        return (connection is not null, connection?.AccountEmail);
+        return CloudConnectionStatus.From(connection);
     }
 
     // Microsoft does not expose a consumer OAuth token-revocation endpoint. Disconnect removes

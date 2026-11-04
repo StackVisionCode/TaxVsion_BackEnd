@@ -361,7 +361,13 @@ internal static class ShareLinkCreationCore
                 return passwordCheck;
             if (visibility.IsExternal())
             {
-                var externalCheck = limit.CheckNewExternalShare(visibility, password, expiresAtUtc, maxAccessCount, nowUtc);
+                var externalCheck = limit.CheckNewExternalShare(
+                    visibility,
+                    password,
+                    expiresAtUtc,
+                    maxAccessCount,
+                    nowUtc
+                );
                 if (externalCheck.IsFailure)
                     return externalCheck;
             }

@@ -12,6 +12,11 @@ public sealed class MfaChallenge : TenantEntity
 
     private MfaChallenge() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Inerte: verificarlo exige usuario activo."
+    )]
     public Guid UserId { get; private set; }
     public Guid? MfaMethodId { get; private set; }
     public string LoginTicketHash { get; private set; } = default!;

@@ -128,6 +128,10 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CampaignDispatchResultIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CampaignRunStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CampaignRunCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Retiro sin sucesor elegible (D-6): agendados pausados; Notification avisa a los admins.
+    options
+        .PublishMessage<CampaignSchedulesPausedOnOffboardingIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
 
     // Restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine crea por handler.
     options

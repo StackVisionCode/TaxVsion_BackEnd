@@ -15,59 +15,54 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 table: "TenantPayments",
                 type: "nvarchar(30)",
                 maxLength: 30,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "CardLast4",
                 table: "TenantPayments",
                 type: "nvarchar(4)",
                 maxLength: 4,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "PayerEmail",
                 table: "TenantPayments",
                 type: "nvarchar(320)",
                 maxLength: 320,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "PayerName",
                 table: "TenantPayments",
                 type: "nvarchar(200)",
                 maxLength: 200,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "ReceiptEmail",
                 table: "TenantPayments",
                 type: "nvarchar(320)",
                 maxLength: 320,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "CardBrand",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "CardBrand", table: "TenantPayments");
 
-            migrationBuilder.DropColumn(
-                name: "CardLast4",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "CardLast4", table: "TenantPayments");
 
-            migrationBuilder.DropColumn(
-                name: "PayerEmail",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "PayerEmail", table: "TenantPayments");
 
-            migrationBuilder.DropColumn(
-                name: "PayerName",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "PayerName", table: "TenantPayments");
 
-            migrationBuilder.DropColumn(
-                name: "ReceiptEmail",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "ReceiptEmail", table: "TenantPayments");
         }
     }
 }

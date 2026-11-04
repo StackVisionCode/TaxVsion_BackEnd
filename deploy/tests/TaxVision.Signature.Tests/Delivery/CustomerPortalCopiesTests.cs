@@ -25,7 +25,11 @@ public sealed class CustomerPortalCopiesTests
     [Fact]
     public void Each_customer_gets_the_documents_they_signed_and_those_certificates()
     {
-        var kit = new DeliveryTestKit(sendCertificate: true, firstSignerCustomerId: Ana, secondSignerCustomerId: Luis).Seal();
+        var kit = new DeliveryTestKit(
+            sendCertificate: true,
+            firstSignerCustomerId: Ana,
+            secondSignerCustomerId: Luis
+        ).Seal();
         var federal = kit.Request.Documents[0];
         var state = kit.Request.Documents[1];
 
@@ -100,7 +104,12 @@ public sealed class CustomerPortalCopiesTests
     public async Task While_another_node_copies_the_trigger_retries_instead_of_skipping()
     {
         var kit = new DeliveryTestKit(firstSignerCustomerId: Ana, secondSignerCustomerId: Luis).Seal();
-        var copier = new CustomerPortalCopier(kit.Storage, kit.Files, new HeldLock(), NullLogger<CustomerPortalCopier>.Instance);
+        var copier = new CustomerPortalCopier(
+            kit.Storage,
+            kit.Files,
+            new HeldLock(),
+            NullLogger<CustomerPortalCopier>.Instance
+        );
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             copier.CopyAvailableAsync(kit.Request, null, CancellationToken.None)

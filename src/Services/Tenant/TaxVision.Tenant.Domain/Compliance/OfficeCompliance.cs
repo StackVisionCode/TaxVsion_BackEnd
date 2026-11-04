@@ -16,6 +16,12 @@ public sealed class OfficeCompliance : ITenantOwned
 
     public Guid TenantId { get; private set; }
     public EncryptedEfin? Efin { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "SecurityCoordinatorOffboardedConsumer",
+        Note = "Designación legal: se vacía y se avisa a los admins (D-3), no pasa al sucesor."
+    )]
     public Guid? SecurityCoordinatorUserId { get; private set; }
     public DateOnly? WispAdoptedOn { get; private set; }
     public DateOnly? WispLastReviewedOn { get; private set; }
@@ -23,6 +29,8 @@ public sealed class OfficeCompliance : ITenantOwned
     public string? IncidentContactPhone { get; private set; }
     public int? RetentionYears { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? UpdatedByUserId { get; private set; }
 
     // Último recordatorio del WISP avisado: a qué vencimiento correspondía, en qué etapa y qué día (de la oficina).
@@ -70,6 +78,22 @@ public sealed class OfficeCompliance : ITenantOwned
         Efin is null
             ? Result.Failure<EfinRevealRecord>(OfficeComplianceErrors.EfinNotSet)
             : Result.Success(EfinRevealRecord.Create(TenantId, actorId, nowUtc));
+
+    /// <summary>
+    /// El responsable de seguridad fue retirado de la oficina: la designación queda vacante. No pasa al
+    /// sucesor (es una designación legal que hace la oficina). Solo actúa si el responsable sigue siendo
+    /// <paramref name="userId"/>; devuelve <c>true</c> si cambió. <paramref name="actorId"/> null = sistema.
+    /// </summary>
+    public bool VacateSecurityCoordinatorOnOffboarding(Guid userId, Guid? actorId, DateTime nowUtc)
+    {
+        if (userId == Guid.Empty || SecurityCoordinatorUserId != userId)
+            return false;
+
+        SecurityCoordinatorUserId = null;
+        UpdatedAtUtc = nowUtc;
+        UpdatedByUserId = actorId;
+        return true;
+    }
 
     /// <summary>
     /// Decide si hoy (calendario de la oficina) toca avisar la revisión del WISP y, si toca, lo deja anotado.

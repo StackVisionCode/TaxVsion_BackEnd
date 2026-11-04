@@ -26,4 +26,14 @@ public interface IClientRequestRepository
     /// Quien llame compara el tenant del evento contra el dueño real antes de mutar.
     /// </summary>
     Task<ClientRequest?> GetByDocumentFileIdAsync(Guid fileId, CancellationToken ct = default);
+
+    /// <summary>Abiertos (rastreados) cuyos avisos de staff van a este usuario (<c>FollowUpUserId ?? RequestedByUserId</c>).</summary>
+    Task<IReadOnlyList<ClientRequest>> ListOpenForStaffRecipientAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<ClientRequest>>([]);
+
+    Task<int> CountOpenForStaffRecipientAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(0);
 }

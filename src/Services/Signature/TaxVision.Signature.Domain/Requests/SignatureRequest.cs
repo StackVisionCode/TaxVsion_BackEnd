@@ -46,7 +46,6 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public const int MaxReminderIntervalHours = 720; // 30 días
 
     /// <summary>Tope de seguridad de reminders por solicitud (anti-runaway). La expiración los corta antes.</summary>
-
     private readonly List<Signer> _signers = [];
     private readonly List<PreparerField> _preparerFields = [];
     private readonly List<RequestDocument> _documents = [];
@@ -54,6 +53,11 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
 
     private SignatureRequest() { }
 
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "SignatureRequestsUserOffboardedConsumer",
+        Note = "Sin enviar: al sucesor o se descarta; lo enviado conserva el autor."
+    )]
     public Guid CreatedByUserId { get; private set; }
     public string Title { get; private set; } = default!;
     public string? Description { get; private set; }
@@ -104,6 +108,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// El valor en claro nunca vive en el dominio — sólo el hash producido por Infrastructure.
     /// </summary>
     public string? PractitionerPinHash { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? PractitionerPinSetByUserId { get; private set; }
     public DateTime? PractitionerPinSetAtUtc { get; private set; }
 
@@ -117,6 +123,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// vive en un canal paralelo, específico de los formularios que la requieren (Form 8879).
     /// </summary>
     public PreparerInfo? Preparer { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "Firma del preparador: legal, nunca se toca.")]
     public Guid? PreparerSignedByUserId { get; private set; }
     public DateTime? PreparerSignedAtUtc { get; private set; }
     public bool IsPreparerSigned => PreparerSignedByUserId is not null;
@@ -176,8 +184,11 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// <summary>Motivo textual (subpoena #, ticket legal) del hold. Solo se lee por el staff con permiso RequestRead.</summary>
     public string? LegalHoldReason { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? LegalHoldPlacedByUserId { get; private set; }
     public DateTime? LegalHoldPlacedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? LegalHoldLiftedByUserId { get; private set; }
     public DateTime? LegalHoldLiftedAtUtc { get; private set; }
 
@@ -1044,10 +1055,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
 
         if (signer.Fields.Count >= maxFieldsPerSigner)
             return Result.Failure<SignatureField>(
-                new Error(
-                    "Signature.Request.TooManyFields",
-                    $"A signer can have at most {maxFieldsPerSigner} fields."
-                )
+                new Error("Signature.Request.TooManyFields", $"A signer can have at most {maxFieldsPerSigner} fields.")
             );
 
         if (FindDocumentOrNull(documentId) is null)
@@ -1055,7 +1063,16 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 new Error("Signature.Request.DocumentMissing", "Cannot place a field on an unknown document.")
             );
 
-        var fieldResult = SignatureField.Create(Id, signerId, documentId, kind, position, label, isRequired, fontSizePt);
+        var fieldResult = SignatureField.Create(
+            Id,
+            signerId,
+            documentId,
+            kind,
+            position,
+            label,
+            isRequired,
+            fontSizePt
+        );
         if (fieldResult.IsFailure)
             return fieldResult;
 
@@ -1294,6 +1311,121 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         Preparer = null;
         PreparerSignedByUserId = null;
         PreparerSignedAtUtc = null;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Quita la firma reutilizable congelada para el preparador (solo Draft/Ready). Al sellar, sus campos
+    /// caen al sello tipográfico hasta que se elija otra. Lo usa el retiro cuando la imagen era del que se va.
+    /// </summary>
+    public Result ClearPreparerSignature()
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        if (PreparerSignatureFileId is null)
+            return Result.Success();
+
+        PreparerSignatureFileId = null;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Cambia el preparador de una solicitud ya enviada (o programada) mientras el preparador NO haya
+    /// firmado y ningún documento esté sellado. La identidad (PTIN/EFIN, nombre) se re-estampa entera con la
+    /// del nuevo y la firma reutilizable pasa a <paramref name="signatureFileId"/> (null = sello tipográfico):
+    /// nunca se estampa la imagen de una persona bajo el nombre de otra. Mismo usuario → no-op.
+    /// </summary>
+    public Result ChangePreparer(PreparerInfo newPreparer, Guid? signatureFileId)
+    {
+        ArgumentNullException.ThrowIfNull(newPreparer);
+
+        if (newPreparer.UserId is not { } newUserId)
+            return Result.Failure(new Error("Signature.Request.PreparerUser", "PreparerUserId is required."));
+
+        var allowed = CanChangePreparer(newUserId);
+        if (allowed.IsFailure)
+            return allowed;
+
+        if (Preparer!.UserId == newUserId)
+            return Result.Success();
+
+        Preparer = newPreparer;
+        PreparerSignatureFileId = signatureFileId;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Reglas de <see cref="ChangePreparer"/> sin mutar nada: el handler las comprueba ANTES de escribir la
+    /// auditoría, para no dejar un evento de cambio en la cadena si el cambio no procede.
+    /// </summary>
+    public Result CanChangePreparer(Guid newPreparerUserId)
+    {
+        if (newPreparerUserId == Guid.Empty)
+            return Result.Failure(new Error("Signature.Request.PreparerUser", "PreparerUserId is required."));
+
+        if (Status is not (SignatureRequestStatus.InProgress or SignatureRequestStatus.Scheduled))
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.PreparerChangeStatus",
+                    "The preparer can only be changed on a request that was sent and is still waiting for signatures."
+                )
+            );
+
+        if (Preparer is null)
+            return Result.Failure(
+                new Error("Signature.Request.NoPreparer", "This request does not have a preparer assigned.")
+            );
+
+        if (IsPreparerSigned)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.PreparerAlreadySigned",
+                    "The preparer already signed this request, so the preparer can no longer be changed."
+                )
+            );
+
+        // Un documento sellado ya lleva estampado al preparador actual (nombre + firma): cambiarlo dejaría
+        // el sellado y la solicitud contando historias distintas.
+        if (_documents.Any(document => document.SealedFileId is not null))
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.PreparerStampApplied",
+                    "A document of this request was already sealed with the current preparer, so the preparer can no longer be changed."
+                )
+            );
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Pasa la autoría de una solicitud SIN ENVIAR (Draft/Ready/Scheduled) a otro usuario — p. ej. el
+    /// sucesor de un empleado retirado. Lo enviado nunca cambia de autor (procedencia). Mismo usuario → no-op.
+    /// </summary>
+    public Result ReassignAuthor(Guid newUserId)
+    {
+        if (newUserId == Guid.Empty)
+            return Result.Failure(new Error("Signature.Request.CreatedBy", "CreatedByUserId is required."));
+
+        if (
+            Status
+            is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready or SignatureRequestStatus.Scheduled)
+        )
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.AuthorLocked",
+                    "Only an unsent request can change its author; sent requests keep who created them."
+                )
+            );
+
+        if (CreatedByUserId == newUserId)
+            return Result.Success();
+
+        CreatedByUserId = newUserId;
         Touch();
         return Result.Success();
     }
@@ -2125,7 +2257,11 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// </summary>
     public IReadOnlyList<PendingCustomerCopy> PendingCustomerCopies()
     {
-        var customers = _signers.Where(signer => signer.MappedCustomerId is not null).Select(signer => signer.MappedCustomerId!.Value).Distinct().ToList();
+        var customers = _signers
+            .Where(signer => signer.MappedCustomerId is not null)
+            .Select(signer => signer.MappedCustomerId!.Value)
+            .Distinct()
+            .ToList();
         if (customers.Count < 2)
             return [];
 
@@ -2133,7 +2269,9 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         foreach (var document in _documents)
         {
             var signersOfDocument = _signers
-                .Where(signer => signer.MappedCustomerId is not null && signer.Fields.Any(field => field.DocumentId == document.Id))
+                .Where(signer =>
+                    signer.MappedCustomerId is not null && signer.Fields.Any(field => field.DocumentId == document.Id)
+                )
                 .Select(signer => signer.MappedCustomerId!.Value)
                 .Distinct()
                 .ToList();
@@ -2150,7 +2288,11 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
 
         return wanted
             .Distinct()
-            .Where(pending => !_customerCopies.Any(copy => copy.SourceFileId == pending.SourceFileId && copy.CustomerId == pending.CustomerId))
+            .Where(pending =>
+                !_customerCopies.Any(copy =>
+                    copy.SourceFileId == pending.SourceFileId && copy.CustomerId == pending.CustomerId
+                )
+            )
             .ToList();
     }
 
@@ -2158,7 +2300,9 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public Result RecordCustomerCopy(Guid sourceFileId, Guid customerId, Guid copyFileId, DateTime nowUtc)
     {
         if (sourceFileId == Guid.Empty || customerId == Guid.Empty || copyFileId == Guid.Empty)
-            return Result.Failure(new Error("Signature.Request.CustomerCopy", "Source, customer and copy are required."));
+            return Result.Failure(
+                new Error("Signature.Request.CustomerCopy", "Source, customer and copy are required.")
+            );
         if (_customerCopies.Any(copy => copy.SourceFileId == sourceFileId && copy.CustomerId == customerId))
             return Result.Success();
 

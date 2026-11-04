@@ -7,6 +7,7 @@ public sealed class TenantOwnerProjection : TenantEntity
 {
     private TenantOwnerProjection() { }
 
+    [UserReference(UserReferenceKind.Projection, HandledBy = "RecipientProjectionUserOffboardedConsumer")]
     public Guid UserId { get; private set; }
     public DateTime RegisteredAtUtc { get; private set; }
     public bool IsActive { get; private set; }

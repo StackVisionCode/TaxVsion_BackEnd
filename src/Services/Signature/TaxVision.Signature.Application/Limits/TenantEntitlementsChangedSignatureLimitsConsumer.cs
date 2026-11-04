@@ -53,12 +53,14 @@ public static class TenantEntitlementsChangedSignatureLimitsConsumer
     }
 
     private static int Int(IReadOnlyDictionary<string, string> values, string key, int fallback) =>
-        values.TryGetValue(key, out var raw) && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+        values.TryGetValue(key, out var raw)
+        && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
             ? value
             : fallback;
 
     private static long Long(IReadOnlyDictionary<string, string> values, string key, long fallback) =>
-        values.TryGetValue(key, out var raw) && long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+        values.TryGetValue(key, out var raw)
+        && long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
             ? value
             : fallback;
 

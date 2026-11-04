@@ -49,6 +49,7 @@ public static class ShareErrors
         "ShareLink.PasswordRequiredForLinkShare",
         "This tenant requires a password on external share links."
     );
+
     public static Error PasswordTooShort(int minLength) =>
         new("ShareLink.PasswordTooShort", $"Share link passwords must have at least {minLength} characters.");
 

@@ -176,6 +176,21 @@ describe('bindAuthConsumers — contrato de campos con Auth (.NET)', () => {
     expect(customerPortalAccounts.markActiveByUserId).toHaveBeenCalledWith('user-portal-1');
   });
 
+  it('D-7: auth.user.deactivated.v1 solo bloquea el acceso (3 proyecciones), sin salir de grupos ni avisar a salas', async () => {
+    const { handlers, userPermissions, userDirectory, customerPortalAccounts, emitter } = setup();
+
+    await handlers.get('auth.user.deactivated.v1')!({
+      ...envelope({ userId: 'user-suspended' }),
+      eventType: 'auth.user.deactivated.v1',
+    });
+
+    expect(userPermissions.markInactive).toHaveBeenCalledWith('user-suspended', expect.any(Date));
+    expect(userDirectory.markInactive).toHaveBeenCalledWith('user-suspended');
+    expect(customerPortalAccounts.markInactiveByUserId).toHaveBeenCalledWith('user-suspended');
+    // La salida de grupos (mensaje de sistema + aviso a la sala) es solo del retiro.
+    expect(emitter.emitToConversation).not.toHaveBeenCalled();
+  });
+
   it('auth.user.reactivated.v1 sin userId no toca ninguna proyeccion', async () => {
     const { handlers, userPermissions, userDirectory, customerPortalAccounts } = setup();
 

@@ -7,6 +7,7 @@ import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import type { MessageEditPolicy } from '../../domain/conversations/message.js';
 import { editPolicyFor } from './edit-message.js';
+import { canOfficeReadClosedClientChat, type ClosedClientChatAccessDeps } from './closed-client-chat-access.js';
 
 /**
  * Paginacion cursor-based con dos modos mutuamente excluyentes:
@@ -21,6 +22,8 @@ export interface GetMessagesQuery {
   readonly tenantId: string;
   readonly conversationId: string;
   readonly requesterUserId: string;
+  /** D-4: con el tipo de actor, el staff con permiso sobre el cliente lee su chat cerrado por un retiro. */
+  readonly requesterActorType?: string;
   readonly beforeUtc?: string;
   readonly afterUtc?: string;
   readonly take: number;
@@ -54,14 +57,17 @@ export async function getMessages(
     messages: MessageRepository;
     avatars?: AvatarResolver;
     effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'>;
-  },
+  } & ClosedClientChatAccessDeps,
 ): Promise<Result<GetMessagesResult>> {
   const take = Math.min(Math.max(query.take, 1), 100);
   const conversation = await deps.conversations.findById(query.tenantId, query.conversationId, 0);
   if (!conversation) {
     return Result.fail(makeError('Chat.Conversation.NotFound', 'Conversation not found.'));
   }
-  if (!conversation.isParticipant(query.requesterUserId)) {
+  if (
+    !conversation.isParticipant(query.requesterUserId) &&
+    !(await canOfficeReadClosedClientChat(conversation, { userId: query.requesterUserId, actorType: query.requesterActorType }, deps))
+  ) {
     return Result.fail(makeError('Chat.Conversation.NotParticipant', 'User is not a participant.'));
   }
 
@@ -115,6 +121,7 @@ export async function getMessages(
       senderDisplayName: m.senderDisplayName,
       ...(avatars ? { senderAvatarFileId: avatars.of(m.senderId) } : {}),
       kind: m.kind,
+      ...(m.kind === 'System' ? { systemKind: m.systemKind ?? null } : {}),
       body: m.isDeleted ? null : m.body,
       attachmentFileId: m.isDeleted ? null : m.attachmentFileId,
       replyToMessageId: m.replyToMessageId,

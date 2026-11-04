@@ -16,8 +16,12 @@ public sealed partial class ConsentNotice : AggregateRoot
     public ConsentNoticeStatus Status { get; private set; }
     public int LatestVersionNumber { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime? ArchivedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? ArchivedByUserId { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
     public IReadOnlyCollection<ConsentNoticeVersion> Versions => _versions;

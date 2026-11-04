@@ -1,9 +1,9 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.CustomerAccess;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;

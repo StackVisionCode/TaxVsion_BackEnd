@@ -214,6 +214,8 @@ public sealed class FormSubmissionRevision : BaseEntity
     public FormRevisionOutcome Outcome { get; private set; }
     public string? ReviewMessage { get; private set; }
     public DateTime? ReviewedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? ReviewedByUserId { get; private set; }
     public string? CompletionNote { get; private set; }
     public FormRevisionPdfStatus PdfStatus { get; private set; }

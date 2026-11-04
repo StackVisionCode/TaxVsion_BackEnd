@@ -10,7 +10,7 @@ import {
 import type { ConversationParticipantSnapshot, GroupRole } from '../../domain/conversations/conversation-participant.js';
 import type { MessageSnapshot } from '../../domain/conversations/message.js';
 import { isConversationKind } from '../../domain/conversations/conversation-kind.js';
-import { isMessageKind } from '../../domain/conversations/message-kind.js';
+import { isMessageKind, isSystemMessageKind } from '../../domain/conversations/message-kind.js';
 import type { MessageTranscriptState } from '../../domain/conversations/message.js';
 
 /**
@@ -67,6 +67,7 @@ export function toDomainMessage(row: PrismaMessage): MessageSnapshot {
     transcriptState: isMessageTranscriptState(row.TranscriptState) ? row.TranscriptState : null,
     transcriptLanguage: row.TranscriptLanguage,
     editCount: row.EditCount,
+    systemKind: isSystemMessageKind(row.SystemKind) ? row.SystemKind : null,
   };
 }
 

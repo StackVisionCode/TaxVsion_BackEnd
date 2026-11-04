@@ -29,6 +29,7 @@ public sealed class FolderFilePolicy : BaseEntity
     /// <summary>true = el tope es el menor entre esta carpeta y el tamaño por archivo del plan.</summary>
     public bool UsesPlanFileSize { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 

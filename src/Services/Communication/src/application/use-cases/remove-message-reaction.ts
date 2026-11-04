@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { MessageRepository } from '../ports/message-repository.js';
+import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import {
   ChatSocketEvents,
@@ -17,13 +18,14 @@ export interface RemoveMessageReactionCommand {
 
 export interface RemoveMessageReactionDeps {
   readonly messages: MessageRepository;
+  readonly conversations: Pick<ConversationRepository, 'findById'>;
   readonly emitter: RealtimeEmitter;
 }
 
 /**
  * Un usuario solo puede quitar SU propia reaction — el delete lleva su userId
  * en el WHERE, un tercero no puede quitar la reaccion de otro. `wasPresent`
- * false = idempotente (segundo click = no-op silencioso, no emite).
+ * false = idempotente (segundo click = no-op silencioso, no emite). En un chat cerrado no se quita.
  */
 export async function removeMessageReaction(
   cmd: RemoveMessageReactionCommand,
@@ -33,6 +35,11 @@ export async function removeMessageReaction(
   if (!message) return Result.fail(makeError('Chat.Message.NotFound', 'Message not found.'));
 
   const messageSnapshot = message.toSnapshot();
+  const conversation = await deps.conversations.findById(cmd.tenantId, messageSnapshot.conversationId, 0);
+  if (!conversation) return Result.fail(makeError('Chat.Conversation.NotFound', 'Conversation not found.'));
+  const open = conversation.ensureOpen();
+  if (!open.isSuccess) return Result.fail(open.error);
+
   const { wasPresent } = await deps.messages.removeReaction({
     tenantId: cmd.tenantId,
     messageId: cmd.messageId,

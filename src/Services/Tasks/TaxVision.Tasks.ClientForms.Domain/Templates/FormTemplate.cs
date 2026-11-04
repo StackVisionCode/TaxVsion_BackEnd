@@ -22,6 +22,8 @@ public sealed partial class FormTemplate : AggregateRoot
     public FormDefinitionDocument Draft { get; private set; } = default!;
     public ContentHash DraftHash { get; private set; } = default!;
     public DateTime DraftUpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid DraftUpdatedByUserId { get; private set; }
     public int LatestVersionNumber { get; private set; }
     public Guid? LatestVersionId { get; private set; }
@@ -30,8 +32,12 @@ public sealed partial class FormTemplate : AggregateRoot
     public string? LibraryKey { get; private set; }
     public bool IsLibraryListed { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime? ArchivedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? ArchivedByUserId { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 

@@ -5,6 +5,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.OAuth;
+using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Audit;
 using TaxVision.Connectors.Domain.Shared;
@@ -16,8 +17,9 @@ namespace TaxVision.Connectors.Application.Accounts.Consumers;
 /// Al RETIRAR (offboard) a un empleado: sus buzones PERSONALES (OwnerUserId == el que se va) se
 /// desconectan y se PURGAN sus secretos (OAuth token, IMAP/SMTP). NO se reasignan: las credenciales
 /// son de la cuenta de correo personal del empleado, no transferibles a otra persona. Los buzones de
-/// OFICINA (OwnerUserId null) no se tocan. La correspondencia histórica vive en Correspondence y se
-/// conserva. Idempotente (al reprocesar, las filas de credenciales ya no están y se saltan).
+/// OFICINA (OwnerUserId null) no se tocan aquí (ver <see cref="OfficeMailboxesUserOffboardedConsumer"/>).
+/// La correspondencia histórica vive en Correspondence y se conserva. Idempotente (al reprocesar, las
+/// filas de credenciales ya no están y se saltan). La revocación al proveedor es best-effort.
 /// </summary>
 public static class ConnectorsUserOffboardedConsumer
 {
@@ -27,6 +29,7 @@ public static class ConnectorsUserOffboardedConsumer
         IOAuthConnectionRepository oauthConnections,
         IImapCredentialsRepository imapCredentials,
         ISmtpCredentialsRepository smtpCredentials,
+        IProviderWatchSubscriptionRepository watchSubscriptions,
         IOAuthProviderClientFactory clientFactory,
         IEncryptedSecretProtector protector,
         IProviderConnectionAuditLogRepository auditLog,
@@ -58,14 +61,14 @@ public static class ConnectorsUserOffboardedConsumer
             {
                 var connection = connectionResult.Value;
                 connection.Revoke(now);
-                var clientResult = clientFactory.Resolve(account.ProviderCode);
-                if (clientResult.IsSuccess && connection.Token is not null)
-                {
-                    var refreshToken = protector.Unprotect(connection.Token.RefreshTokenCipher);
-                    await clientResult.Value.RevokeAsync(refreshToken, ct);
-                }
+                await ProviderGrantRevocation.TryRevokeAsync(account, connection, clientFactory, protector, logger, ct);
                 oauthConnections.Remove(connection);
             }
+
+            // 2b. Sin token no hay users.stop: el push de entrada se da de baja y deja de renovarse.
+            var watchResult = await watchSubscriptions.GetByAccountIdAsync(account.Id, ct);
+            if (watchResult.IsSuccess)
+                watchResult.Value.MarkRemoved();
 
             // 3. Purgar credenciales IMAP/SMTP guardadas (contraseñas personales del que se va).
             var imapResult = await imapCredentials.GetByAccountIdAsync(account.Id, ct);
@@ -75,18 +78,6 @@ public static class ConnectorsUserOffboardedConsumer
             var smtpResult = await smtpCredentials.GetByAccountIdAsync(account.Id, ct);
             if (smtpResult.IsSuccess)
                 smtpCredentials.Remove(smtpResult.Value);
-
-            await bus.PublishAsync(
-                new ConnectorsTenantEmailAccountDisconnectedIntegrationEvent
-                {
-                    CorrelationId = correlation.CorrelationId,
-                    TenantId = msg.TenantId,
-                    AccountId = account.Id,
-                    EmailAddress = account.EmailAddress,
-                    ProviderCode = account.ProviderCode.ToString(),
-                    DisconnectedAtUtc = now,
-                }
-            );
 
             var audit = ProviderConnectionAuditLog.Create(
                 account.Id,
@@ -99,7 +90,21 @@ public static class ConnectorsUserOffboardedConsumer
                 await auditLog.AddAsync(audit.Value, ct);
         }
 
+        // Guardar antes de publicar: si el guardado falla y se reintenta, el aviso no sale repetido.
         await unitOfWork.SaveChangesAsync(ct);
+
+        foreach (var account in personalMailboxes)
+            await bus.PublishAsync(
+                new ConnectorsTenantEmailAccountDisconnectedIntegrationEvent
+                {
+                    CorrelationId = correlation.CorrelationId,
+                    TenantId = msg.TenantId,
+                    AccountId = account.Id,
+                    EmailAddress = account.EmailAddress,
+                    ProviderCode = account.ProviderCode.ToString(),
+                    DisconnectedAtUtc = now,
+                }
+            );
 
         logger.LogInformation(
             "Offboarded user {UserId}: disconnected and purged {Count} personal mailbox(es) in tenant {TenantId}.",

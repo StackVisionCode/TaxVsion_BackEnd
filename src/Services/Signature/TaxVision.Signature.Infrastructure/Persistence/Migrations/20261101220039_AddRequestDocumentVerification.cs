@@ -15,14 +15,16 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 table: "RequestDocuments",
                 type: "nvarchar(100)",
                 maxLength: 100,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "RejectionReason",
                 table: "RequestDocuments",
                 type: "nvarchar(500)",
                 maxLength: 500,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "VerificationStatus",
@@ -30,7 +32,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 type: "nvarchar(16)",
                 maxLength: 16,
                 nullable: false,
-                defaultValue: "Pending");
+                defaultValue: "Pending"
+            );
 
             // Los documentos que ya tenían hash se adjuntaron antes de existir la verificación del servidor:
             // quedan como verificados para no bloquear borradores ni solicitudes en curso. sp_executesql para
@@ -44,17 +47,11 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "RejectionCode",
-                table: "RequestDocuments");
+            migrationBuilder.DropColumn(name: "RejectionCode", table: "RequestDocuments");
 
-            migrationBuilder.DropColumn(
-                name: "RejectionReason",
-                table: "RequestDocuments");
+            migrationBuilder.DropColumn(name: "RejectionReason", table: "RequestDocuments");
 
-            migrationBuilder.DropColumn(
-                name: "VerificationStatus",
-                table: "RequestDocuments");
+            migrationBuilder.DropColumn(name: "VerificationStatus", table: "RequestDocuments");
         }
     }
 }

@@ -35,6 +35,23 @@ internal sealed class CustomerImportRepository(CustomerDbContext db) : ICustomer
                 ct
             );
 
+    // A lo sumo un import activo por tenant: sin índice dedicado.
+    public async Task<IReadOnlyList<CustomerImportAttempt>> ListInFlightNotifyingAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct
+    ) =>
+        await db
+            .CustomerImportAttempts.IgnoreQueryFilters()
+            .Where(a =>
+                a.TenantId == tenantId
+                && (a.FollowUpUserId == userId || (a.FollowUpUserId == null && a.CreatedByUserId == userId))
+                && a.Status != ImportStatus.Completed
+                && a.Status != ImportStatus.Failed
+                && a.Status != ImportStatus.Canceled
+            )
+            .ToListAsync(ct);
+
     public async Task AddAsync(CustomerImportAttempt attempt, CancellationToken ct)
     {
         await db.CustomerImportAttempts.AddAsync(attempt, ct);

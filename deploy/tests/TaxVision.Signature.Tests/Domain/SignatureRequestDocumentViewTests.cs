@@ -74,11 +74,26 @@ public sealed class SignatureRequestDocumentViewTests
             )
             .Value;
         var signer = request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Sam Signer").Value,
+                null
+            )
             .Value;
         var position = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, position, null, false);
-        request.AttachVerifiedDocument(request.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            false
+        );
+        request.AttachVerifiedDocument(
+            request.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         request.Send(DateTime.UtcNow);
         return (request, signer.Id, request.Documents.Single().Id);
     }

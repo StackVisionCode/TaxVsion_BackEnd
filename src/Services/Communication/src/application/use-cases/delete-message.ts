@@ -15,6 +15,12 @@ export interface DeleteMessageCommand {
   readonly messageId: string;
   readonly actorUserId: string;
   readonly actorCanModerate: boolean;
+  /**
+   * Permiso global `chat.moderate`. Es lo único que deja borrar en un chat cerrado (archivado o con el otro
+   * fuera): retirar contenido indebido de un historial. Ni el autor ni el host/cohost o el Owner/Admin del
+   * grupo (moderación del momento) tocan un historial cerrado.
+   */
+  readonly actorHasModeratePermission?: boolean;
 }
 
 export interface DeleteMessageResult {
@@ -23,22 +29,12 @@ export interface DeleteMessageResult {
 
 export interface DeleteMessageDeps {
   readonly messages: MessageRepository;
-  /** F8b (D-22): Owner/Admin borran mensajes ajenos dentro de su grupo. */
-  readonly conversations?: Pick<ConversationRepository, 'findById'> | undefined;
+  /** F8b (D-22): Owner/Admin borran mensajes ajenos dentro de su grupo; también decide si está cerrada. */
+  readonly conversations: Pick<ConversationRepository, 'findById'>;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
 }
 
-async function isGroupModerator(
-  deps: DeleteMessageDeps,
-  tenantId: string,
-  conversationId: string,
-  userId: string,
-): Promise<boolean> {
-  if (!deps.conversations) return false;
-  const conversation = await deps.conversations.findById(tenantId, conversationId, 0);
-  return conversation?.kind === 'Group' && isGroupAdminRole(conversation.roleOf(userId));
-}
 
 export async function deleteMessage(
   command: DeleteMessageCommand,
@@ -53,29 +49,40 @@ export async function deleteMessage(
   });
   if (reservation.status === 'replay') return Result.ok(reservation.payload);
 
-  const message = await deps.messages.findById(command.tenantId, command.messageId);
-  if (!message) {
-    await deps.idempotency.release({
+  const release = () =>
+    deps.idempotency.release({
       tenantId: command.tenantId,
       userId: command.actorUserId,
       scope: 'chat.message.delete',
       clientKey: command.clientKey,
       token: reservation.token,
     });
+
+  const message = await deps.messages.findById(command.tenantId, command.messageId);
+  if (!message) {
+    await release();
     return Result.fail(makeError('Chat.Message.NotFound', 'Message not found.'));
   }
 
+  const conversation = await deps.conversations.findById(command.tenantId, message.toSnapshot().conversationId, 0);
+  if (!conversation) {
+    await release();
+    return Result.fail(makeError('Chat.Conversation.NotFound', 'Conversation not found.'));
+  }
+  // Chat cerrado: solo `chat.moderate` borra (cumplimiento); el resto recibe el mismo error que al enviar.
+  const open = conversation.ensureOpen();
+  if (!open.isSuccess && !command.actorHasModeratePermission) {
+    await release();
+    return Result.fail(open.error);
+  }
+
   const now = new Date();
-  const canModerate = command.actorCanModerate || (await isGroupModerator(deps, command.tenantId, message.toSnapshot().conversationId, command.actorUserId));
+  const isGroupModerator = conversation.kind === 'Group' && isGroupAdminRole(conversation.roleOf(command.actorUserId));
+  // Abierta: la moderación de siempre. Cerrada: ya se comprobó el permiso global.
+  const canModerate = open.isSuccess ? command.actorCanModerate || isGroupModerator : true;
   const deleteResult = message.softDelete(command.actorUserId, canModerate, now);
   if (!deleteResult.isSuccess) {
-    await deps.idempotency.release({
-      tenantId: command.tenantId,
-      userId: command.actorUserId,
-      scope: 'chat.message.delete',
-      clientKey: command.clientKey,
-      token: reservation.token,
-    });
+    await release();
     return Result.fail(deleteResult.error);
   }
   await deps.messages.update(command.tenantId, message);

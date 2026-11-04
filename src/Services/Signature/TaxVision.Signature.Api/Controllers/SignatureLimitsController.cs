@@ -31,7 +31,9 @@ public sealed class SignatureLimitsController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        return Ok(await bus.InvokeAsync<EffectiveSignatureLimitsResponse>(new GetEffectiveSignatureLimitsQuery(tenantId), ct));
+        return Ok(
+            await bus.InvokeAsync<EffectiveSignatureLimitsResponse>(new GetEffectiveSignatureLimitsQuery(tenantId), ct)
+        );
     }
 }
 

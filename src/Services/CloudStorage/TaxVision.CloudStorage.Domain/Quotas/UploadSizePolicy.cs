@@ -32,6 +32,8 @@ public sealed class UploadSizePolicy : BaseEntity
     public string? PlanCode { get; private set; }
     public Guid? TenantId { get; private set; }
     public long MaxFileSizeBytes { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
@@ -124,6 +126,8 @@ public sealed class UploadSizePolicyAudit : BaseEntity
     public Guid? TenantId { get; private set; }
     public long? OldMaxFileSizeBytes { get; private set; }
     public long? NewMaxFileSizeBytes { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ActorUserId { get; private set; }
     public DateTime OccurredAtUtc { get; private set; }
 

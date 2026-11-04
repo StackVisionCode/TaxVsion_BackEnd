@@ -21,6 +21,8 @@ public sealed class EmailLayout : BaseEntity, INullableTenantOwned
     public string Name { get; private set; } = default!;
     public string? Description { get; private set; }
     public EmailContentStatus Status { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }

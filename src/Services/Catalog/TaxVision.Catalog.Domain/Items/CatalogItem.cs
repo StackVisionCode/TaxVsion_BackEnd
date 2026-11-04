@@ -16,6 +16,7 @@ public sealed class CatalogItem : TenantEntity
 
     private readonly List<CatalogItemAttribute> _attributes = [];
 
+    [UserReference(UserReferenceKind.Provenance, Note = "Creador; no filtra lecturas.")]
     public Guid TaxUserId { get; private set; }
     public string Name { get; private set; } = default!;
     public string? Description { get; private set; }

@@ -93,7 +93,8 @@ public static class GetEffectiveSignatureLimitsHandler
         var settings = await platform.GetAsync(ct);
         var style = await stampStyles.ResolveAsync(query.TenantId, ct);
         var dateFormat =
-            (await officeSettings.GetByTenantIdAsync(query.TenantId, ct))?.DateStampFormat ?? DateStampFormat.MonthDayYear;
+            (await officeSettings.GetByTenantIdAsync(query.TenantId, ct))?.DateStampFormat
+            ?? DateStampFormat.MonthDayYear;
         return new EffectiveSignatureLimitsResponse(
             SignatureCeilingsResponse.From(policy.Ceilings),
             policy.ForRequests.MaxPdfBytes,

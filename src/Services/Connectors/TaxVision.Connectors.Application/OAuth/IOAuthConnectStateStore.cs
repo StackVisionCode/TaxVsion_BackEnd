@@ -16,7 +16,9 @@ public sealed record OAuthConnectState(
     string? ReturnOrigin = null,
     // true = conectar el buzón de OFICINA (compartido, sin restricción de identidad); false = buzón
     // PERSONAL del usuario (el email autorizado debe coincidir con su login). Default false.
-    bool AsOffice = false
+    bool AsOffice = false,
+    // true = lo inició un PlatformAdmin (sin proyección en el tenant; el callback no valida que siga activo).
+    bool InitiatorIsPlatformAdmin = false
 );
 
 /// <summary>
@@ -33,6 +35,7 @@ public interface IOAuthConnectStateStore
         string? initiatorEmail = null,
         string? returnOrigin = null,
         bool asOffice = false,
+        bool initiatorIsPlatformAdmin = false,
         CancellationToken ct = default
     );
 

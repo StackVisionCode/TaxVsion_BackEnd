@@ -31,9 +31,10 @@ public sealed class DeliverableFiles(IFileMetadataRefRepository files, ISignatur
 
         if (request.GenerateCertificate && request.SendCertificateToSigners)
         {
-            var certificates = request.CertificateGenerationMode == CertificateGenerationMode.SingleForRequest
-                ? new[] { request.CertificateFileId }
-                : request.Documents.Select(document => document.CertificateFileId).ToArray();
+            var certificates =
+                request.CertificateGenerationMode == CertificateGenerationMode.SingleForRequest
+                    ? new[] { request.CertificateFileId }
+                    : request.Documents.Select(document => document.CertificateFileId).ToArray();
             if (certificates.Any(certificate => certificate is null))
                 return false; // aún no se registraron
             expected.AddRange(certificates.Select(certificate => certificate!.Value));

@@ -36,6 +36,9 @@ export async function createAttachmentUpload(
 ): Promise<Result<CloudStorageInitiatedUpload>> {
   const authorized = await authorizeConversationParticipant(command, deps);
   if (!authorized.isSuccess) return Result.fail(authorized.error);
+  // No se sube nada que después no se podrá enviar (archivada o el otro participante ya se fue).
+  const canWrite = authorized.value.ensureCanWrite(command.userId);
+  if (!canWrite.isSuccess) return Result.fail(canWrite.error);
 
   const initiated = await deps.cloudStorageUpload.initiate(command.tenantId, {
     originalName: command.originalName,

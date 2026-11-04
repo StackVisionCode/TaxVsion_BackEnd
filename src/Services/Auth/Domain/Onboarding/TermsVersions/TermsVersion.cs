@@ -33,6 +33,8 @@ public sealed class TermsVersion : BaseEntity
     public DateTime? EffectiveUntilUtc { get; private set; }
     public string Locale { get; private set; } = default!;
     public DateTime CreatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
 
     public static Result<TermsVersion> Publish(

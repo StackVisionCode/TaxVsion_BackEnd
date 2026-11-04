@@ -23,6 +23,8 @@ public sealed class CampaignTemplate : TenantEntity
 
     public string Name { get; private set; } = default!;
     public string? Description { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public CampaignChannel Channels { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }

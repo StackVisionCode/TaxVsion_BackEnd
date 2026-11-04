@@ -83,7 +83,12 @@ public sealed class TemplateBaseDocumentTests
         var template = NewDraft();
         template.SetBaseDocument(Guid.NewGuid());
         var slot = template
-            .AddSlot(TestSignatureLimits.Default, TestSignatureLimits.MaxRolesPerTemplate, TaxVision.Signature.Domain.Templates.ValueObjects.TemplateSlotRole.Create("Signer").Value, "En")
+            .AddSlot(
+                TestSignatureLimits.Default,
+                TestSignatureLimits.MaxRolesPerTemplate,
+                TaxVision.Signature.Domain.Templates.ValueObjects.TemplateSlotRole.Create("Signer").Value,
+                "En"
+            )
             .Value;
         var pos = TaxVision.Signature.Domain.Requests.ValueObjects.FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         template.PlaceField(slot.Order, SignatureFieldKind.Signature, pos, null, true);

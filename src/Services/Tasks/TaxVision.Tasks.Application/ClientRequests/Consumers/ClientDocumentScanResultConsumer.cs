@@ -159,6 +159,7 @@ public static class ClientDocumentScanResultConsumer
                     Reason = reason,
                     ClientMessage = ClientMessage,
                     RequestedByUserId = request.RequestedByUserId,
+                    StaffRecipientUserId = request.StaffRecipientUserId,
                 }
             );
             await unitOfWork.SaveChangesAsync(ct);

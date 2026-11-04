@@ -149,11 +149,26 @@ public sealed class UpdateSignatureRequestHandlerTests
     {
         var request = Draft();
         var signer = request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Sam").Value,
+                null
+            )
             .Value;
         var position = FieldPosition.Create(1, 0.5, 0.5, 0.1, 0.05).Value;
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, position, null, false);
-        request.AttachVerifiedDocument(request.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            false
+        );
+        request.AttachVerifiedDocument(
+            request.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         return request;
     }
 
@@ -221,8 +236,10 @@ public sealed class UpdateSignatureRequestHandlerTests
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
-        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,

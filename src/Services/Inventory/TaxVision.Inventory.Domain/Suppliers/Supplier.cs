@@ -8,6 +8,7 @@ public sealed class Supplier : TenantEntity
 {
     public const int NameMax = 200;
 
+    [UserReference(UserReferenceKind.Provenance, Note = "Creador; no filtra lecturas.")]
     public Guid TaxUserId { get; private set; }
     public string Name { get; private set; } = default!;
     public string? ContactName { get; private set; }

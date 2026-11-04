@@ -21,6 +21,8 @@ public sealed class EmailLayoutVersion : BaseEntity
     public string? PreviewImageStorageKey { get; private set; }
     public Guid? PreviewImageFileId { get; private set; }
     public DateTime? PublishedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? PublishedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 

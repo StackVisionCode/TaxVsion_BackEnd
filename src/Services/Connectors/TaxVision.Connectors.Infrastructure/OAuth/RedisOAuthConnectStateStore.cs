@@ -22,14 +22,15 @@ public sealed class RedisOAuthConnectStateStore(IConnectionMultiplexer redis) : 
         string? initiatorEmail = null,
         string? returnOrigin = null,
         bool asOffice = false,
+        bool initiatorIsPlatformAdmin = false,
         CancellationToken ct = default
     )
     {
         var state = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        // 4º campo = email del usuario, 5º = origen de retorno, 6º = buzón de oficina (bool). Ni email
-        // ni una URL de origen contienen '|'; vacíos si no vinieron.
+        // 4º campo = email del usuario, 5º = origen de retorno, 6º = buzón de oficina (bool), 7º = lo
+        // inició un PlatformAdmin (bool). Ni email ni una URL de origen contienen '|'; vacíos si no vinieron.
         var value =
-            $"{tenantId:N}|{providerCode}|{initiatedByUserId:N}|{initiatorEmail}|{returnOrigin}|{(asOffice ? "1" : "0")}";
+            $"{tenantId:N}|{providerCode}|{initiatedByUserId:N}|{initiatorEmail}|{returnOrigin}|{(asOffice ? "1" : "0")}|{(initiatorIsPlatformAdmin ? "1" : "0")}";
         await redis.GetDatabase().StringSetAsync(Key(state), value, Ttl);
         return state;
     }
@@ -53,7 +54,17 @@ public sealed class RedisOAuthConnectStateStore(IConnectionMultiplexer redis) : 
         var initiatorEmail = parts.Length >= 4 && !string.IsNullOrWhiteSpace(parts[3]) ? parts[3] : null;
         var returnOrigin = parts.Length >= 5 && !string.IsNullOrWhiteSpace(parts[4]) ? parts[4] : null;
         var asOffice = parts.Length >= 6 && parts[5] == "1";
-        return new OAuthConnectState(tenantId, providerCode, initiatedByUserId, initiatorEmail, returnOrigin, asOffice);
+        // States viejos (6 campos) = no PlatformAdmin → el callback valida que el iniciador siga activo.
+        var initiatorIsPlatformAdmin = parts.Length >= 7 && parts[6] == "1";
+        return new OAuthConnectState(
+            tenantId,
+            providerCode,
+            initiatedByUserId,
+            initiatorEmail,
+            returnOrigin,
+            asOffice,
+            initiatorIsPlatformAdmin
+        );
     }
 
     private static string Key(string state) => $"connectors:oauth-connect-state:{state}";

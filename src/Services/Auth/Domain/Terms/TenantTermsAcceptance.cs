@@ -18,6 +18,7 @@ public sealed class TenantTermsAcceptance : TenantEntity
 {
     private TenantTermsAcceptance() { }
 
+    [UserReference(UserReferenceKind.Provenance, Note = "Aceptación legal de los términos.")]
     public Guid AcceptedByUserId { get; private set; }
     public string TermsVersion { get; private set; } = default!;
     public Guid TermsVersionId { get; private set; }

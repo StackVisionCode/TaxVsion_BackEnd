@@ -7,6 +7,11 @@ public sealed class EmailVerificationToken : TenantEntity
 {
     private EmailVerificationToken() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Inerte: canjearlo exige usuario activo."
+    )]
     public Guid UserId { get; private set; }
     public string NewEmail { get; private set; } = default!;
     public string TokenHash { get; private set; } = default!;

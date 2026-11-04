@@ -142,4 +142,16 @@ public class ProviderWatchSubscriptionTests
         Assert.Equal(ProviderWatchStatus.Failed, subscription.Status);
         Assert.Equal(3, subscription.FailureCount);
     }
+
+    [Fact]
+    public void MarkRemoved_StopsRenewals_AndRenewReactivates()
+    {
+        var subscription = CreateValidSubscription();
+
+        subscription.MarkRemoved();
+        Assert.Equal(ProviderWatchStatus.Removed, subscription.Status);
+
+        subscription.Renew("new-ref", Now.AddDays(7), Now);
+        Assert.Equal(ProviderWatchStatus.Active, subscription.Status);
+    }
 }

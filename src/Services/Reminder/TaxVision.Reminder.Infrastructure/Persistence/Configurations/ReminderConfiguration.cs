@@ -83,10 +83,16 @@ public sealed class ReminderConfiguration : IEntityTypeConfiguration<ReminderAgg
 
         // Índice 1 de 4 — soporte físico de ADR-R-07. Sin esto la idempotencia es una intención,
         // no una garantía: dos redeliveries concurrentes pasarían los dos el chequeo de lectura.
+        // Por destinatario: la misma clave pedida para otro usuario (objetivo reasignado) es otro aviso.
         builder
-            .HasIndex(r => new { r.TenantId, r.RequestKey })
+            .HasIndex(r => new
+            {
+                r.TenantId,
+                r.UserId,
+                r.RequestKey,
+            })
             .IsUnique()
-            .HasDatabaseName("UX_Reminders_TenantId_RequestKey");
+            .HasDatabaseName("UX_Reminders_TenantId_UserId_RequestKey");
 
         // Índices 2 y 4 NO están aquí: los dos necesitan FireAtUtc, que vive en el owned type
         // Schedule. Medido en EF Core 10 con `HasIndex(r => new { r.TenantId, ..., r.Schedule.FireAtUtc })`:

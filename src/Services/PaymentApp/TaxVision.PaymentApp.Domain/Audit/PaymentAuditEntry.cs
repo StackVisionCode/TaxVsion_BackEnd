@@ -15,6 +15,8 @@ public sealed class PaymentAuditEntry : BaseEntity
     public string AggregateType { get; private set; } = default!;
     public Guid AggregateId { get; private set; }
     public PaymentAuditAction Action { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ActorUserId { get; private set; }
     public string ActorType { get; private set; } = default!;
     public DateTime OccurredAtUtc { get; private set; }

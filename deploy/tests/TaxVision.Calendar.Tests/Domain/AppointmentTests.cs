@@ -205,4 +205,48 @@ public sealed class AppointmentTests
 
         Assert.True(moved.IsFailure);
     }
+
+    [Fact]
+    public void Removing_a_departed_staff_attendee_drops_only_that_user()
+    {
+        var appointment = ScheduledWithAttendee();
+
+        var removed = appointment.RemoveDepartedStaffAttendee(Attendee);
+
+        Assert.True(removed.IsSuccess);
+        Assert.DoesNotContain(appointment.Attendees, a => a.UserId == Attendee);
+    }
+
+    [Fact]
+    public void Removing_a_departed_staff_attendee_again_is_a_no_op_failure()
+    {
+        var appointment = ScheduledWithAttendee();
+        appointment.RemoveDepartedStaffAttendee(Attendee);
+
+        var again = appointment.RemoveDepartedStaffAttendee(Attendee);
+
+        Assert.Equal(AppointmentErrors.AttendeeNotFound, again.Error);
+    }
+
+    [Fact]
+    public void A_cancelled_appointment_keeps_its_attendees_as_history()
+    {
+        var appointment = ScheduledWithAttendee();
+        appointment.Cancel(Organizer, canManageAll: false, reason: null, Now);
+
+        var removed = appointment.RemoveDepartedStaffAttendee(Attendee);
+
+        Assert.Equal(AppointmentErrors.CancelledIsFinal, removed.Error);
+        Assert.Contains(appointment.Attendees, a => a.UserId == Attendee);
+    }
+
+    [Fact]
+    public void The_organizer_is_not_removed_as_a_departed_attendee()
+    {
+        var appointment = Scheduled();
+
+        var removed = appointment.RemoveDepartedStaffAttendee(Organizer);
+
+        Assert.Equal(AppointmentErrors.OrganizerCannotBeRemoved, removed.Error);
+    }
 }

@@ -29,10 +29,25 @@ public sealed class PreparerFieldTests
     {
         var draft = NewDraft();
         var signer = draft
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer One").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Signer One").Value,
+                null
+            )
             .Value;
-        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, Pos(), null, false);
-        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            Pos(),
+            null,
+            false
+        );
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }

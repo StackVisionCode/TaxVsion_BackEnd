@@ -139,17 +139,32 @@ public sealed class SignatureRequestScheduleSendTests
     {
         var request = Draft();
         var signer = request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Sam Signer").Value,
+                null
+            )
             .Value;
         var position = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        request.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, position, null, false);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            false
+        );
         return request;
     }
 
     private static SignatureRequest ReadyDraftWithField()
     {
         var request = DraftWithSignerAndField();
-        request.AttachVerifiedDocument(request.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        request.AttachVerifiedDocument(
+            request.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         return request;
     }
 }

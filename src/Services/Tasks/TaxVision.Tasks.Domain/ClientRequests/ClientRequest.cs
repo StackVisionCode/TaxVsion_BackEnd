@@ -49,10 +49,28 @@ public sealed class ClientRequest : AggregateRoot
 
     public IReadOnlyList<ClientRequestDocument> Documents => _documents.AsReadOnly();
 
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "ClientRequestsUserOffboardedConsumer",
+        Note = "No cambia; si no hay FollowUpUserId recibe los avisos y el retiro fija FollowUpUserId."
+    )]
     public Guid RequestedByUserId { get; private set; }
+
+    /// <summary>
+    /// Staff que sigue el pedido cuando quien lo pidió ya no puede (p. ej. retirado). Nulo = el que lo
+    /// pidió. No reemplaza a <see cref="RequestedByUserId"/>, que es procedencia y no cambia.
+    /// </summary>
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "ClientRequestsUserOffboardedConsumer")]
+    public Guid? FollowUpUserId { get; private set; }
+
+    /// <summary>A quién van los avisos de staff del pedido.</summary>
+    public Guid StaffRecipientUserId => FollowUpUserId ?? RequestedByUserId;
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? SubmittedAtUtc { get; private set; }
     public DateTime? ResolvedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? ResolvedByUserId { get; private set; }
     public string? ResolutionNote { get; private set; }
 
@@ -184,6 +202,19 @@ public sealed class ClientRequest : AggregateRoot
             return Result.Failure(ClientRequestErrors.Closed);
 
         Resolve(ClientRequestStatus.Cancelled, byUserId, note, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Pasa el seguimiento (y los avisos de staff) a otra persona. Solo abiertos; idempotente.</summary>
+    public Result HandOverFollowUp(Guid userId)
+    {
+        if (userId == Guid.Empty)
+            return Result.Failure(TaskErrors.OwnerRequired);
+
+        if (!IsOpen)
+            return Result.Failure(ClientRequestErrors.Closed);
+
+        FollowUpUserId = userId == RequestedByUserId ? null : userId;
         return Result.Success();
     }
 

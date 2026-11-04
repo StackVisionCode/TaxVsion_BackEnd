@@ -13,6 +13,7 @@ public sealed class TenantStorageLimit : TenantEntity
     public long MaxBytes { get; private set; }
     public long UsedBytes { get; private set; }
     public long ReservedBytes { get; private set; }
+
     /// <summary>Tamaño por archivo que vende el plan (<c>storage.max_file_bytes</c>).</summary>
     public long MaxFileSizeBytes { get; private set; }
 
@@ -125,7 +126,10 @@ public sealed class TenantStorageLimit : TenantEntity
         new(PlanFileAllowanceDefaults.ParseGroups(PlanFileTypeGroups), MaxFileSizeBytes);
 
     public PortalUploadRestriction PortalRestriction() =>
-        new(PortalFileTypeGroups is null ? null : PlanFileAllowanceDefaults.ParseGroups(PortalFileTypeGroups), PortalMaxFileBytes);
+        new(
+            PortalFileTypeGroups is null ? null : PlanFileAllowanceDefaults.ParseGroups(PortalFileTypeGroups),
+            PortalMaxFileBytes
+        );
 
     /// <summary>
     /// La oficina acota lo que suben sus clientes. Solo restringe: los grupos deben estar entre los del plan
@@ -180,7 +184,11 @@ public sealed class TenantStorageLimit : TenantEntity
         int? maxDownloads
     )
     {
-        if (maxLifetimeDays is < 1 or > MaxShareLifetimeCeilingDays || defaultLifetimeDays < 1 || defaultLifetimeDays > maxLifetimeDays)
+        if (
+            maxLifetimeDays is < 1 or > MaxShareLifetimeCeilingDays
+            || defaultLifetimeDays < 1
+            || defaultLifetimeDays > maxLifetimeDays
+        )
             return Result.Failure(QuotaErrors.InvalidSharingPolicy);
         if (minPasswordLength is < 4 or > 64 || maxPasswordAttempts is < 3 or > 50 || maxDownloads is < 1 or > 100_000)
             return Result.Failure(QuotaErrors.InvalidSharingPolicy);
@@ -205,7 +213,13 @@ public sealed class TenantStorageLimit : TenantEntity
     /// Reglas de la oficina para un enlace externo nuevo: contraseña obligatoria en los enlaces sin
     /// autenticación (si la oficina la exige), vida máxima y tope de descargas.
     /// </summary>
-    public Result CheckNewExternalShare(ShareVisibility visibility, string? password, DateTime? expiresAtUtc, int? maxAccessCount, DateTime nowUtc)
+    public Result CheckNewExternalShare(
+        ShareVisibility visibility,
+        string? password,
+        DateTime? expiresAtUtc,
+        int? maxAccessCount,
+        DateTime nowUtc
+    )
     {
         if (RequirePasswordOnLinkShares && visibility.IsUnauthenticatedLink() && string.IsNullOrWhiteSpace(password))
             return Result.Failure(ShareErrors.PasswordRequiredForLinkShare);

@@ -21,6 +21,11 @@ namespace BuildingBlocks.Web.Hosting;
 /// </para>
 ///
 /// <para>Uso: <c>options.UseTaxVisionRabbitMq(rabbitUri);</c> en lugar de <c>UseRabbitMq(...).AutoProvision()</c>.</para>
+///
+/// <para>
+/// También enciende el acuse del retiro (<see cref="OffboardingStepAcknowledgements"/>): todo servicio con este
+/// bootstrap acusa sus handlers de <c>UserOffboardedIntegrationEvent</c> sin tocarlos.
+/// </para>
 /// </summary>
 public static class RabbitMqTransportExtensions
 {
@@ -29,6 +34,7 @@ public static class RabbitMqTransportExtensions
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(rabbitUri);
 
+        options.AcknowledgeOffboardingSteps();
         return options
             .UseRabbitMq(rabbitUri)
             .AutoProvision()

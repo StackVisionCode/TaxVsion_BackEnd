@@ -120,6 +120,18 @@ public interface ITaskRepository
         CancellationToken ct = default
     ) => Task.FromResult(0);
 
+    /// <summary>Tareas (rastreadas, con sus timers) donde el usuario tiene un timer en marcha — para cerrarlos
+    /// por sistema al retirarlo. Abiertas o cerradas: un tramo puede seguir corriendo sobre una cerrada.</summary>
+    Task<IReadOnlyList<TaskItem>> ListWithRunningTimersOfAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<TaskItem>>([]);
+
+    /// <summary>Cuántos timers tiene en marcha el usuario en el tenant (pre-flight del retiro).</summary>
+    Task<int> CountRunningTimersOfAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(0);
+
     /// <summary>Tareas de un cliente, opcionalmente acotadas a un año fiscal.</summary>
     Task<PagedResult<TaskItem>> ListByCustomerAsync(
         Guid tenantId,

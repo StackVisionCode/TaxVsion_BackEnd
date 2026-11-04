@@ -16,12 +16,19 @@ public sealed class Folder : TenantEntity
     private Folder() { }
 
     public OwnerType OwnerType { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Provenance,
+        Note = "Dueño polimórfico (OwnerType); con User, el staff con permiso lo sigue viendo: no hay acceso por usuario."
+    )]
     public Guid? OwnerId { get; private set; }
     public Guid? ParentFolderId { get; private set; }
     public string Name { get; private set; } = default!;
 
     /// <summary>Path materializado (ej. "/Clientes/Oficina A/Recibos") para listar/mover sin recorrer el arbol recursivamente.</summary>
     public string RelativePath { get; private set; } = default!;
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 

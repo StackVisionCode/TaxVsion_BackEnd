@@ -1,5 +1,5 @@
 /**
- * F8b (T-22): bitácora de administración de grupos. Cada acción deja una fila con actor, objetivo y detalle,
+ * F8b (T-22): bitácora de administración de grupos (y de los cambios por sistema del retiro). Cada acción deja una fila con actor, objetivo y detalle,
  * consultable por el Tenant Admin (y PlatformAdmin en ADD-08). No se borra con los mensajes.
  */
 export type ConversationAuditAction =
@@ -11,7 +11,12 @@ export type ConversationAuditAction =
   | 'OwnershipTransferred'
   | 'InfoUpdated'
   | 'AdminsOnlyChanged'
-  | 'Archived';
+  | 'Archived'
+  // Retiro de un empleado (por sistema): chat de cliente cerrado, preparador nuevo y tickets de soporte.
+  | 'ClosedByOffboarding'
+  | 'PrimaryPreparerAssigned'
+  | 'SupportTicketTransferred'
+  | 'SupportTicketReleased';
 
 export interface ConversationAuditEntry {
   readonly tenantId: string;

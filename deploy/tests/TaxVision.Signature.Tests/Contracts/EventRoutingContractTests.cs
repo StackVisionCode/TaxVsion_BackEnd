@@ -23,6 +23,20 @@ public sealed class EventRoutingContractTests
         }
     }
 
+    [Theory]
+    [InlineData("SignaturePreparerChangedIntegrationEvent")]
+    [InlineData("SignaturePreparerAttentionRequiredIntegrationEvent")]
+    public void Preparer_offboarding_events_are_routed_to_the_shared_exchange(string eventName)
+    {
+        var programSource = File.ReadAllText(FindSignatureProgram());
+
+        Assert.Contains(
+            $"PublishMessage<{eventName}>().ToRabbitExchange(\"taxvision-events\")",
+            programSource,
+            StringComparison.Ordinal
+        );
+    }
+
     private static string FindSignatureProgram()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

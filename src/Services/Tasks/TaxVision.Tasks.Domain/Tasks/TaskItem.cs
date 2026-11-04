@@ -16,7 +16,10 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
     public TaskItemStatus Status { get; private set; }
     public TaskPriority Priority { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance, Note = "Da visibilidad al creador; no se transfiere.")]
     public Guid CreatedByUserId { get; private set; }
+
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "TasksUserOffboardedConsumer")]
     public Guid? AssigneeUserId { get; private set; }
 
     /// <summary>IDs opacos: Task no valida contra Customer.</summary>
@@ -73,6 +76,11 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
 
     public ClientRequestNote? ExpectedItems { get; private set; }
     public DateTime? ClientDueAtUtc { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Provenance,
+        Note = "Quién pidió al cliente; el aviso va por ClientRequest.FollowUpUserId."
+    )]
     public Guid? ClientRequestedByUserId { get; private set; }
     public DateTime? ClientRequestedAtUtc { get; private set; }
 
@@ -462,6 +470,26 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
 
     // internal: los ve Application (InternalsVisibleTo) pero no Api, así que un controller que
     // intente llamarlos no compila.
+
+    /// <summary>
+    /// Cierre por sistema de los timers en marcha de alguien que ya no puede pararlos (retirado). Imputa
+    /// cada tramo igual que <see cref="StopTimer"/>; devuelve cuántos cerró (0 si no había, idempotente).
+    /// </summary>
+    internal int StopRunningTimersOf(Guid userId, DateTime nowUtc)
+    {
+        var stopped = 0;
+        foreach (var timer in _timers)
+        {
+            if (!timer.IsRunning || timer.UserId != userId)
+                continue;
+
+            timer.Stop(nowUtc);
+            ActualHours += timer.Hours;
+            stopped++;
+        }
+
+        return stopped;
+    }
 
     /// <summary>
     /// Marca la tarea como ocurrencia de una serie. Se hace después de crearla y no dentro de

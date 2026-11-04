@@ -18,13 +18,19 @@ public sealed class ReferralFraudReview : TenantEntity
     public string EvidenceReference { get; private set; } = default!;
     public FraudReviewStatus Status { get; private set; }
     public string? ResolutionReason { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? ResolvedBy { get; private set; }
     public DateTime? ResolvedAtUtc { get; private set; }
     public string IdempotencyKey { get; private set; } = default!;
     public string PayloadFingerprint { get; private set; } = default!;
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 

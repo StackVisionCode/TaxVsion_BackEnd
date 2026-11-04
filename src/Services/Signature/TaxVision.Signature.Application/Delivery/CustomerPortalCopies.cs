@@ -30,18 +30,33 @@ public sealed class CustomerPortalCopier(
             return 0;
 
         // Un archivo se copia una vez por cliente: dos disparadores a la vez se serializan por solicitud.
-        await using var handle = await distributedLock.AcquireAsync($"signature:portal-copies:{request.Id:N}", LockTtl, ct);
+        await using var handle = await distributedLock.AcquireAsync(
+            $"signature:portal-copies:{request.Id:N}",
+            LockTtl,
+            ct
+        );
         if (!handle.IsAcquired)
-            throw new InvalidOperationException($"Portal copies for request {request.Id} are in progress elsewhere; retrying.");
+            throw new InvalidOperationException(
+                $"Portal copies for request {request.Id} are in progress elsewhere; retrying."
+            );
 
         var copied = 0;
         var taxYear = (request.CompletedAtUtc ?? request.CreatedAtUtc).Year;
         foreach (var pending in request.PendingCustomerCopies())
         {
-            if (pending.SourceFileId != availableFileId && !await IsAvailableAsync(request.TenantId, pending.SourceFileId, ct))
+            if (
+                pending.SourceFileId != availableFileId
+                && !await IsAvailableAsync(request.TenantId, pending.SourceFileId, ct)
+            )
                 continue;
 
-            var copy = await storage.CopyToCustomerAsync(request.TenantId, pending.SourceFileId, pending.CustomerId, taxYear, ct);
+            var copy = await storage.CopyToCustomerAsync(
+                request.TenantId,
+                pending.SourceFileId,
+                pending.CustomerId,
+                taxYear,
+                ct
+            );
             if (copy.IsFailure)
             {
                 logger.LogWarning(
@@ -83,7 +98,11 @@ public static class CustomerPortalCopiesConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
         {
             var request =
                 await repository.GetBySealedFileIdAsync(evt.TenantId, evt.FileId, ct)

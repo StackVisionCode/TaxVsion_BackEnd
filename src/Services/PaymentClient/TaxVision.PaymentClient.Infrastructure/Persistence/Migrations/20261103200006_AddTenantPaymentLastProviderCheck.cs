@@ -15,25 +15,23 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 name: "LastProviderCheckAtUtc",
                 table: "TenantPayments",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantPayments_AwaitingProvider",
                 table: "TenantPayments",
                 columns: new[] { "Status", "LastProviderCheckAtUtc", "UpdatedAtUtc" },
-                filter: "[Status] IN ('Processing', 'RequiresAction')");
+                filter: "[Status] IN ('Processing', 'RequiresAction')"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_TenantPayments_AwaitingProvider",
-                table: "TenantPayments");
+            migrationBuilder.DropIndex(name: "IX_TenantPayments_AwaitingProvider", table: "TenantPayments");
 
-            migrationBuilder.DropColumn(
-                name: "LastProviderCheckAtUtc",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "LastProviderCheckAtUtc", table: "TenantPayments");
         }
     }
 }

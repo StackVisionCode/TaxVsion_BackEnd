@@ -102,7 +102,15 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
                     DrawSignatureInk(gfx, field, rect);
                 break;
             case SignatureFieldKind.Initials:
-                DrawSingleLine(gfx, ToInitials(field.SignerDisplayName), rect, field.FontSizePt, style, InitialsFont, center: true);
+                DrawSingleLine(
+                    gfx,
+                    ToInitials(field.SignerDisplayName),
+                    rect,
+                    field.FontSizePt,
+                    style,
+                    InitialsFont,
+                    center: true
+                );
                 break;
             case SignatureFieldKind.Date:
                 var date = field.SignedAtUtc.ToString(style.DatePattern, CultureInfo.InvariantCulture);
@@ -121,7 +129,10 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
     }
 
     // Tipografías: las iniciales imitan una marca manuscrita; fecha y texto, letra de formulario.
-    private static readonly (string Family, XFontStyleEx Style) InitialsFont = ("Times New Roman", XFontStyleEx.BoldItalic);
+    private static readonly (string Family, XFontStyleEx Style) InitialsFont = (
+        "Times New Roman",
+        XFontStyleEx.BoldItalic
+    );
     private static readonly (string Family, XFontStyleEx Style) TextFont = ("Helvetica", XFontStyleEx.Regular);
 
     /// <summary>
@@ -143,8 +154,10 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
 
         var size = FieldTypography.StartingFontSize(fontSizePt, rect.Height, style.AutoFontMinPt, style.AutoFontMaxPt);
         var font = new XFont(typeface.Family, size, typeface.Style);
-        while (size > FieldTypography.MinFontSizePt
-            && (gfx.MeasureString(text, font).Width > rect.Width || font.GetHeight() > rect.Height))
+        while (
+            size > FieldTypography.MinFontSizePt
+            && (gfx.MeasureString(text, font).Width > rect.Width || font.GetHeight() > rect.Height)
+        )
         {
             size -= 0.5;
             font = new XFont(typeface.Family, size, typeface.Style);
@@ -184,7 +197,13 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
         var top = rect.Y + Math.Max(0, (rect.Height - visible * lineHeight) / 2);
         var brush = new XSolidBrush(InkColor);
         for (var i = 0; i < visible; i++)
-            gfx.DrawString(lines[i], font, brush, new XRect(rect.X, top + i * lineHeight, rect.Width, lineHeight), XStringFormats.CenterLeft);
+            gfx.DrawString(
+                lines[i],
+                font,
+                brush,
+                new XRect(rect.X, top + i * lineHeight, rect.Width, lineHeight),
+                XStringFormats.CenterLeft
+            );
     }
 
     /// <summary>Firma sin marco: la tinta ocupa toda la caja (sin deformarse), alineada a la izquierda.</summary>
@@ -199,7 +218,9 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
         // Sin imagen: el nombre en cursiva como respaldo tipográfico, tan grande como permita la caja.
         var size = Math.Max(FieldTypography.MinFontSizePt, area.Height * FieldTypography.AutoHeightRatio);
         var font = new XFont(InitialsFont.Family, size, InitialsFont.Style);
-        while (size > FieldTypography.MinFontSizePt && gfx.MeasureString(field.SignerDisplayName, font).Width > area.Width)
+        while (
+            size > FieldTypography.MinFontSizePt && gfx.MeasureString(field.SignerDisplayName, font).Width > area.Width
+        )
         {
             size -= 0.5;
             font = new XFont(InitialsFont.Family, size, InitialsFont.Style);
@@ -266,7 +287,11 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
         var side = Math.Min(rect.Width, rect.Height) * 0.8;
         var x = rect.X + (rect.Width - side) / 2;
         var y = rect.Y + (rect.Height - side) / 2;
-        var pen = new XPen(InkColor, Math.Max(0.8, side * 0.12)) { LineCap = XLineCap.Round, LineJoin = XLineJoin.Round };
+        var pen = new XPen(InkColor, Math.Max(0.8, side * 0.12))
+        {
+            LineCap = XLineCap.Round,
+            LineJoin = XLineJoin.Round,
+        };
         gfx.DrawLines(
             pen,
             [

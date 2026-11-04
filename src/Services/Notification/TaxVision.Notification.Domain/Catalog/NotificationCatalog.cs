@@ -833,6 +833,85 @@ public static class NotificationCatalog
             NotificationAction.Review,
             InAppEmail
         ),
+        Entry(
+            // Retiro: el coordinador de seguridad quedó vacante. Designación legal: obligatoria como el WISP.
+            NotificationKinds.TenantSecurityCoordinatorVacated,
+            NotificationCatalogCategory.Security,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmailPush,
+            true,
+            "compliance_settings",
+            NotificationAction.Review,
+            InAppEmail
+        ),
+        Entry(
+            // Retiro sin sucesor: agendados pausados; quien administra o envía campañas decide.
+            NotificationKinds.CampaignsSchedulesPausedOnOffboarding,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmailPush,
+            false,
+            "campaign",
+            NotificationAction.Review
+        ),
+        Entry(
+            // Retiro: una solicitud de firma necesita otro preparador (destinatario concreto o admins de firma).
+            NotificationKinds.SignaturePreparerAttentionRequired,
+            NotificationCatalogCategory.Signatures,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmailPush,
+            false,
+            "signature_request",
+            NotificationAction.Review
+        ),
+        Entry(
+            // Nuevo preparador de una solicitud enviada (y su autor).
+            NotificationKinds.SignaturePreparerChanged,
+            NotificationCatalogCategory.Signatures,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            InAppEmailPush,
+            false,
+            "signature_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            // Retiro: conexión de nube de la oficina ligada a quien ya no está.
+            NotificationKinds.CloudStorageConnectionReviewRequired,
+            NotificationCatalogCategory.DocumentsStorage,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmailPush,
+            false,
+            "storage_settings",
+            NotificationAction.Reconnect
+        ),
+        Entry(
+            // Retiro: buzón de oficina ligado a quien ya no está.
+            NotificationKinds.ConnectorsOfficeMailboxReviewRequired,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmailPush,
+            false,
+            "mailbox_settings",
+            NotificationAction.Reconnect
+        ),
+        Entry(
+            // Retiro sin todos los acuses en plazo: quien gestiona usuarios revisa (puede quedar acceso o trabajo vivo).
+            NotificationKinds.AuthOffboardingIncomplete,
+            NotificationCatalogCategory.Security,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmailPush,
+            true,
+            "user_management",
+            NotificationAction.Review,
+            InAppEmail
+        ),
     }.ToFrozenDictionary(entry => entry.Kind, StringComparer.Ordinal);
 
     public static IReadOnlyCollection<NotificationCatalogEntry> All { get; } = Entries.Values.ToArray();

@@ -32,6 +32,8 @@ public sealed class SignedDocumentDelivery : TenantEntity
     public int AccessCount { get; private set; }
     public DateTime? LastAccessedAtUtc { get; private set; }
     public DateTime? RevokedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? RevokedByUserId { get; private set; }
 
     /// <summary>Archivos de la entrega; el orden de presentación es <see cref="DeliveryItem.Order"/>.</summary>
@@ -96,9 +98,7 @@ public sealed class SignedDocumentDelivery : TenantEntity
     {
         ArgumentNullException.ThrowIfNull(token);
         if (RevokedAtUtc is not null)
-            return Result.Failure(
-                new Error("Signature.Delivery.Revoked", "This delivery was revoked by the office.")
-            );
+            return Result.Failure(new Error("Signature.Delivery.Revoked", "This delivery was revoked by the office."));
         if (lifetime <= TimeSpan.Zero)
             return Result.Failure(new Error("Signature.Delivery.Lifetime", "The link lifetime must be positive."));
 

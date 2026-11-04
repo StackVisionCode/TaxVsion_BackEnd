@@ -219,11 +219,7 @@ public sealed class FilesController(
     )]
     [RateLimit("cloudstorage.f.download_url")]
     [ProducesResponseType<DownloadUrlResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> IssueDownloadUrl(
-        Guid fileId,
-        [FromQuery] string? purpose,
-        CancellationToken ct
-    )
+    public async Task<IActionResult> IssueDownloadUrl(Guid fileId, [FromQuery] string? purpose, CancellationToken ct)
     {
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();

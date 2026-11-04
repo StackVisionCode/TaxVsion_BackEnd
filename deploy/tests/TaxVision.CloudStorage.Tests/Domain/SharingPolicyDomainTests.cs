@@ -124,7 +124,18 @@ public sealed class SharingPolicyDomainTests
     {
         var settings = StoragePlatformSettings.Defaults();
 
-        var result = settings.Update(5, 2, reservationHours, recycleBinDays, 500, 50, 2L * 1024 * 1024 * 1024, 15, Guid.NewGuid(), Now);
+        var result = settings.Update(
+            5,
+            2,
+            reservationHours,
+            recycleBinDays,
+            500,
+            50,
+            2L * 1024 * 1024 * 1024,
+            15,
+            Guid.NewGuid(),
+            Now
+        );
 
         Assert.Equal(StoragePlatformSettingsErrors.OutOfRange, result.Error);
     }

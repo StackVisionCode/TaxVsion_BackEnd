@@ -17,6 +17,8 @@ public sealed class SeatPricing : BaseEntity
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
 
     public IReadOnlyCollection<SeatPriceTier> PriceTiers => _priceTiers;

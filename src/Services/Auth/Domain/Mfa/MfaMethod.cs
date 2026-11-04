@@ -14,6 +14,11 @@ public sealed class MfaMethod : TenantEntity
 {
     private MfaMethod() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Se borran (MfaFactors.ClearAsync)."
+    )]
     public Guid UserId { get; private set; }
     public MfaMethodType Type { get; private set; }
 

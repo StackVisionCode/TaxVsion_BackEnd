@@ -90,4 +90,13 @@ public static class NotificationKinds
     public const string BillingInvoiceSentToCustomer = "billing.invoice_sent_to_customer";
     public const string DocumentsGenerationFailed = "documents.generation_failed";
     public const string TenantWispReviewDue = "tenant.wisp_review_due";
+
+    // Avisos del retiro de empleados (offboard).
+    public const string TenantSecurityCoordinatorVacated = "tenant.security_coordinator_vacated";
+    public const string CampaignsSchedulesPausedOnOffboarding = "campaigns.schedules_paused_on_offboarding";
+    public const string SignaturePreparerAttentionRequired = "signature.preparer.attention_required";
+    public const string SignaturePreparerChanged = "signature.preparer.changed";
+    public const string CloudStorageConnectionReviewRequired = "cloudstorage.connection.review_required";
+    public const string ConnectorsOfficeMailboxReviewRequired = "connectors.office_mailbox.review_required";
+    public const string AuthOffboardingIncomplete = "auth.offboarding.incomplete";
 }

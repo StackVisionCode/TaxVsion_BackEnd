@@ -22,6 +22,8 @@ public sealed partial class FileTypeDefinition : BaseEntity
     public string ContentTypes { get; private set; } = default!;
 
     public bool IsEnabled { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -44,7 +46,13 @@ public sealed partial class FileTypeDefinition : BaseEntity
         return updated.IsFailure ? Result.Failure<FileTypeDefinition>(updated.Error) : Result.Success(definition);
     }
 
-    public Result Update(string group, IReadOnlyCollection<string> contentTypes, bool enabled, Guid actorUserId, DateTime nowUtc)
+    public Result Update(
+        string group,
+        IReadOnlyCollection<string> contentTypes,
+        bool enabled,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         var normalizedGroup = group?.Trim().ToLowerInvariant() ?? string.Empty;
         if (!GroupPattern().IsMatch(normalizedGroup))

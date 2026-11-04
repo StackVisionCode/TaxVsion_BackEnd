@@ -108,8 +108,13 @@ public sealed class RequestDocumentVerifierTests
     [Fact]
     public async Task A_corrupted_pdf_is_rejected_with_the_structural_reason()
     {
-        var corrupted = new DocumentValidationIssue("Signature.DocumentValidation.Corrupted", "PDF integrity check failed.");
-        var (verifier, request, document, _, _) = Arrange(inspection: new PdfInspection([corrupted], Sha, 1024, null, false));
+        var corrupted = new DocumentValidationIssue(
+            "Signature.DocumentValidation.Corrupted",
+            "PDF integrity check failed."
+        );
+        var (verifier, request, document, _, _) = Arrange(
+            inspection: new PdfInspection([corrupted], Sha, 1024, null, false)
+        );
 
         var result = await verifier.VerifyAsync(request, document.Id, File(), CancellationToken.None);
 
@@ -162,7 +167,18 @@ public sealed class RequestDocumentVerifierTests
     ) Arrange(DocumentLimits? limits = null, PdfInspection? inspection = null)
     {
         var request = SignatureRequest
-            .CreateDraft(TestSignatureLimits.Default, Guid.NewGuid(), Guid.NewGuid(), "Engagement letter", null, "Fiscal", 72, false, false, true)
+            .CreateDraft(
+                TestSignatureLimits.Default,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Engagement letter",
+                null,
+                "Fiscal",
+                72,
+                false,
+                false,
+                true
+            )
             .Value;
         var document = request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Engagement letter").Value;
         var storage = new CountingStorage();
@@ -183,7 +199,16 @@ public sealed class RequestDocumentVerifierTests
 
     private static DocumentValidationRecord Record(int pageCount) =>
         DocumentValidationRecord
-            .RecordAccepted(Guid.NewGuid(), Guid.NewGuid(), Sha, "letter.pdf", "application/pdf", 1024, pageCount, false)
+            .RecordAccepted(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Sha,
+                "letter.pdf",
+                "application/pdf",
+                1024,
+                pageCount,
+                false
+            )
             .Value;
 
     private sealed class FixedInspector(PdfInspection inspection) : IPdfInspector
@@ -193,7 +218,8 @@ public sealed class RequestDocumentVerifierTests
 
     private sealed class FixedLimits(DocumentLimits limits) : IDocumentLimitsResolver
     {
-        public Task<DocumentLimits> ResolveAsync(Guid tenantId, CancellationToken ct = default) => Task.FromResult(limits);
+        public Task<DocumentLimits> ResolveAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(limits);
     }
 
     private sealed class NoFiles : IFileMetadataRefRepository
@@ -245,17 +271,27 @@ public sealed class RequestDocumentVerifierTests
             );
         }
 
-        public Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<Result<Guid>> UploadAsync(
+            Guid tenantId,
+            SignatureFileUpload upload,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<Result<Guid>> CopyToCustomerAsync(Guid tenantId, Guid sourceFileId, Guid customerId, int taxYear, CancellationToken ct = default) =>
-            throw new NotSupportedException();
-
+        public Task<Result<Guid>> CopyToCustomerAsync(
+            Guid tenantId,
+            Guid sourceFileId,
+            Guid customerId,
+            int taxYear,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<Result<SignatureFileMetadata>> GetFileAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<Result<SignatureFileMetadata>> GetFileAsync(
+            Guid tenantId,
+            Guid fileId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
     }
 }

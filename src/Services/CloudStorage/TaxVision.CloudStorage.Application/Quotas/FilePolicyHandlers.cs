@@ -36,7 +36,13 @@ public static class GetUploadPolicyHandler
         if (limit is null)
             return Result.Failure<UploadPolicyResponse>(QuotaErrors.NotProvisioned);
 
-        var policy = await resolver.ResolveAsync(query.TenantId, limit, query.FolderType, query.Scope.IsCustomerPortal, ct);
+        var policy = await resolver.ResolveAsync(
+            query.TenantId,
+            limit,
+            query.FolderType,
+            query.Scope.IsCustomerPortal,
+            ct
+        );
         return Result.Success(
             new UploadPolicyResponse(
                 query.FolderType,
@@ -65,7 +71,10 @@ public sealed record FolderPolicyView(
     bool UsesPlanFileSize
 );
 
-public sealed record FilePolicyCatalogResponse(IReadOnlyList<FileTypeView> FileTypes, IReadOnlyList<FolderPolicyView> FolderPolicies);
+public sealed record FilePolicyCatalogResponse(
+    IReadOnlyList<FileTypeView> FileTypes,
+    IReadOnlyList<FolderPolicyView> FolderPolicies
+);
 
 public sealed record UpsertFileTypeCommand(
     string Extension,
@@ -121,24 +130,51 @@ public static class FilePolicyCatalogHandler
         FileTypeDefinition definition;
         if (existing is null)
         {
-            var created = FileTypeDefinition.Create(extension.Value, command.Group, command.ContentTypes, command.ActorUserId, clock.UtcNow);
+            var created = FileTypeDefinition.Create(
+                extension.Value,
+                command.Group,
+                command.ContentTypes,
+                command.ActorUserId,
+                clock.UtcNow
+            );
             if (created.IsFailure)
                 return Result.Failure<FileTypeView>(created.Error);
             definition = created.Value;
             if (!command.IsEnabled)
-                definition.Update(definition.Group, definition.ContentTypeList.ToList(), enabled: false, command.ActorUserId, clock.UtcNow);
+                definition.Update(
+                    definition.Group,
+                    definition.ContentTypeList.ToList(),
+                    enabled: false,
+                    command.ActorUserId,
+                    clock.UtcNow
+                );
             repository.AddFileType(definition);
         }
         else
         {
-            var updated = existing.Update(command.Group, command.ContentTypes, command.IsEnabled, command.ActorUserId, clock.UtcNow);
+            var updated = existing.Update(
+                command.Group,
+                command.ContentTypes,
+                command.IsEnabled,
+                command.ActorUserId,
+                clock.UtcNow
+            );
             if (updated.IsFailure)
                 return Result.Failure<FileTypeView>(updated.Error);
             definition = existing;
         }
 
         var view = ToView(definition);
-        repository.AddAudit(FilePolicyAudit.Record(FileTypeKind, definition.Extension, before, Snapshot(view), command.ActorUserId, clock.UtcNow));
+        repository.AddAudit(
+            FilePolicyAudit.Record(
+                FileTypeKind,
+                definition.Extension,
+                before,
+                Snapshot(view),
+                command.ActorUserId,
+                clock.UtcNow
+            )
+        );
         await unitOfWork.SaveChangesAsync(ct);
         cache.Invalidate();
         return Result.Success(view);
@@ -154,7 +190,9 @@ public static class FilePolicyCatalogHandler
     )
     {
         // Cada extensión de una carpeta tiene que existir en el catálogo (de ahí salen sus MIME y su grupo).
-        var known = (await repository.ListFileTypesAsync(ct)).Select(definition => definition.Extension).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var known = (await repository.ListFileTypesAsync(ct))
+            .Select(definition => definition.Extension)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var extension in command.AllowedExtensions)
         {
             var normalized = FileTypeDefinition.NormalizeExtension(extension);
@@ -166,7 +204,9 @@ public static class FilePolicyCatalogHandler
 
         var existing = await repository.GetFolderPolicyAsync(command.FolderType, ct);
         if (existing is null)
-            return Result.Failure<FolderPolicyView>(new Error("FileType.FolderPolicyNotFound", "This folder has no file policy."));
+            return Result.Failure<FolderPolicyView>(
+                new Error("FileType.FolderPolicyNotFound", "This folder has no file policy.")
+            );
 
         var before = Snapshot(ToView(existing));
         var updated = existing.Update(
@@ -181,7 +221,16 @@ public static class FilePolicyCatalogHandler
             return Result.Failure<FolderPolicyView>(updated.Error);
 
         var view = ToView(existing);
-        repository.AddAudit(FilePolicyAudit.Record(FolderPolicyKind, existing.FolderType.ToString(), before, Snapshot(view), command.ActorUserId, clock.UtcNow));
+        repository.AddAudit(
+            FilePolicyAudit.Record(
+                FolderPolicyKind,
+                existing.FolderType.ToString(),
+                before,
+                Snapshot(view),
+                command.ActorUserId,
+                clock.UtcNow
+            )
+        );
         await unitOfWork.SaveChangesAsync(ct);
         cache.Invalidate();
         return Result.Success(view);
@@ -191,7 +240,13 @@ public static class FilePolicyCatalogHandler
         new(definition.Extension, definition.Group, definition.ContentTypeList, definition.IsEnabled);
 
     private static FolderPolicyView ToView(FolderFilePolicy policy) =>
-        new(policy.FolderType, policy.MaxSizeBytes, policy.ExtensionList, policy.UsesPlanFileTypes, policy.UsesPlanFileSize);
+        new(
+            policy.FolderType,
+            policy.MaxSizeBytes,
+            policy.ExtensionList,
+            policy.UsesPlanFileTypes,
+            policy.UsesPlanFileSize
+        );
 
     private static string Snapshot<T>(T value) => JsonSerializer.Serialize(value);
 }
@@ -202,7 +257,11 @@ public static class FilePolicyCatalogHandler
 
 public sealed record GetPortalUploadSettingsQuery(Guid TenantId);
 
-public sealed record UpdatePortalUploadSettingsCommand(Guid TenantId, IReadOnlyList<string>? FileTypeGroups, long? MaxFileBytes);
+public sealed record UpdatePortalUploadSettingsCommand(
+    Guid TenantId,
+    IReadOnlyList<string>? FileTypeGroups,
+    long? MaxFileBytes
+);
 
 /// <summary>
 /// <see cref="PlanFileTypeGroups"/> y <see cref="PlanMaxFileBytes"/> son el techo (lo que vende el plan); las

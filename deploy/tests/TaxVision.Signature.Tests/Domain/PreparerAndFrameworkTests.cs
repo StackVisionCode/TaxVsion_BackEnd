@@ -159,12 +159,27 @@ public sealed class PreparerAndFrameworkTests
     {
         var draft = NewDraft();
         var signer = draft
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer One").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Signer One").Value,
+                null
+            )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
         draft.SetPreparer(PreparerInfo.Create("P12345678", "Jane Doe, EA", "Enrolled Agent", preparerUserId).Value);
-        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -294,7 +309,8 @@ public sealed class PreparerAndFrameworkTests
             isMatch: true,
             DateTime.UtcNow,
             "1.2.3.4",
-            "ua/1.0", TestSignatureLimits.Verification
+            "ua/1.0",
+            TestSignatureLimits.Verification
         );
 
         Assert.True(result.IsSuccess);
@@ -314,7 +330,8 @@ public sealed class PreparerAndFrameworkTests
             isMatch: true,
             DateTime.UtcNow,
             null,
-            null, TestSignatureLimits.Verification
+            null,
+            TestSignatureLimits.Verification
         );
 
         Assert.True(result.IsFailure);
@@ -333,7 +350,8 @@ public sealed class PreparerAndFrameworkTests
             isMatch: true,
             DateTime.UtcNow,
             null,
-            null, TestSignatureLimits.Verification
+            null,
+            TestSignatureLimits.Verification
         );
 
         Assert.True(result.IsFailure);
@@ -363,11 +381,26 @@ public sealed class PreparerAndFrameworkTests
     {
         var draft = NewDraft();
         var signer = draft
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer One").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Signer One").Value,
+                null
+            )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -385,8 +418,18 @@ public sealed class PreparerAndFrameworkTests
             )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -395,12 +438,27 @@ public sealed class PreparerAndFrameworkTests
     {
         var draft = NewDraft();
         var signer = draft
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer One").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Signer One").Value,
+                null
+            )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
         draft.SetPreparer(PreparerInfo.Create("P12345678", "Jane Doe, EA", "Enrolled Agent").Value);
-        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }

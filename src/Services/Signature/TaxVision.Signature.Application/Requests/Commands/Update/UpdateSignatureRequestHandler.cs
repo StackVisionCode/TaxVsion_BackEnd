@@ -82,7 +82,9 @@ public static class UpdateSignatureRequestHandler
 
         if (cmd.ExpirationEnabled is { } expOn)
         {
-            var applied = expOn ? request.EnableExpiration(policy.ForRequests, cmd.TokenExpirationHours) : request.DisableExpiration();
+            var applied = expOn
+                ? request.EnableExpiration(policy.ForRequests, cmd.TokenExpirationHours)
+                : request.DisableExpiration();
             if (applied.IsFailure)
                 return applied;
         }

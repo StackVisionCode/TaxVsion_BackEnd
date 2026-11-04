@@ -40,6 +40,7 @@ public sealed class SignatureTemplate : TenantEntity
 
     private SignatureTemplate() { }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public string Title { get; private set; } = default!;
     public string? Description { get; private set; }

@@ -24,4 +24,6 @@ public enum NotificationResourceType
     Document,
     FormRequest,
     ComplianceSettings,
+    Campaign,
+    UserManagement,
 }

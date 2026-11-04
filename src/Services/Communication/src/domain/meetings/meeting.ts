@@ -656,6 +656,26 @@ export class Meeting {
     return Result.okVoid();
   }
 
+  /**
+   * Retiro de un empleado que figura en una reunion agendada de OTRO host (incluido el host viejo que
+   * `reassignHostBySystem` dejo como Attendee): queda Removed y deja de recibir avisos. El host no se
+   * quita por aca (lo resuelve el handover). Idempotente: `changed=false` si no estaba o ya salio.
+   */
+  removeParticipantBySystem(input: { userId: string; now?: Date }): Result<{ changed: boolean }> {
+    if (this.state.status !== MeetingStatus.Scheduled) {
+      return Result.fail(makeError('Meeting.InvalidTransition', `Cannot remove a participant from ${this.state.status}.`));
+    }
+    if (input.userId === this.state.hostUserId) {
+      return Result.fail(makeError('Meeting.CannotRemoveHost', 'Host cannot be removed. Transfer host first.'));
+    }
+    const target = this.participants.find((p) => p.userId === input.userId);
+    if (!target || target.status === ParticipantStatus.Removed) return Result.ok({ changed: false });
+    const now = input.now ?? new Date();
+    target.remove(now);
+    this.commit(now);
+    return Result.ok({ changed: true });
+  }
+
   /** Termina por sistema una reunion Live con el motivo explícito (tope, sala vacía, offboarding, backfill). */
   endBySystem(input: { reason: Exclude<MeetingEndReason, 'Host'>; now?: Date }): Result<void> {
     if (isTerminalMeetingStatus(this.state.status)) {
@@ -1047,6 +1067,11 @@ export class Meeting {
   /** Participó alguna vez (cualquier estado) o es el host: quién puede leer la ficha/eventos. */
   isKnownParticipant(userId: string): boolean {
     return userId === this.state.hostUserId || this.participants.some((p) => p.userId === userId);
+  }
+
+  /** A quién se avisa de la reunión agendada (recordatorio, cambio, cancelación): todos menos los Removed. */
+  notifiableUserIds(): string[] {
+    return this.participants.filter((p) => p.status !== ParticipantStatus.Removed).map((p) => p.userId);
   }
 
   isCohost(userId: string): boolean {

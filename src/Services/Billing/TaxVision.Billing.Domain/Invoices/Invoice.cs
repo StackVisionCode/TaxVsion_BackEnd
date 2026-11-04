@@ -92,7 +92,11 @@ public sealed class Invoice : AggregateRoot
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? LastModifiedBy { get; private set; }
     public DateTime? DeletedAtUtc { get; private set; }
 

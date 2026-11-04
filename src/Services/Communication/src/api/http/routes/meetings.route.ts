@@ -5,8 +5,10 @@ import {
   checkPermission,
   permissionCheckHttpStatus,
   CommunicationPermissions,
+  AuthPermissions,
   isStaffActor,
 } from '../../../domain/shared/permissions.js';
+import { getOffboardingImpact } from '../../../application/use-cases/offboarding-impact.js';
 import { seesAllCustomers } from '../../../application/use-cases/customer-visibility.js';
 import { scheduleMeeting } from '../../../application/use-cases/schedule-meeting.js';
 import { startMeeting, endMeeting } from '../../../application/use-cases/meeting-lifecycle.js';
@@ -241,17 +243,15 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     },
   );
 
-  // Pre-flight de impacto (punto 3.2): cuántas reuniones activas tiene como host el empleado a retirar.
+  // Pre-flight de impacto (punto 3.2): lo que Communication moverá al retirar al empleado. Mismo permiso que
+  // los demás servicios (users.manage). Aditivo: `activeMeetings` sigue siendo las reuniones activas que hospeda.
   app.get(
     '/communication/offboarding-impact/:userId',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.authenticate, requirePermission(container, AuthPermissions.UsersManage)] },
     async (request, reply) => {
       const params = UserIdParams.parse(request.params);
-      const activeMeetings = await container.meetings.countActiveHostedBy(
-        request.principal!.tenantId,
-        params.userId,
-      );
-      return reply.send({ activeMeetings });
+      const impact = await getOffboardingImpact({ tenantId: request.principal!.tenantId, userId: params.userId }, container);
+      return reply.send(impact);
     },
   );
 

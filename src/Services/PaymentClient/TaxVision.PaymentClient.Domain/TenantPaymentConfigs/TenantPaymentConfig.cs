@@ -45,6 +45,8 @@ public sealed class TenantPaymentConfig : TenantEntity
     public DateTime? SettledAtUtc { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
 
     public IReadOnlyCollection<TenantWebhookEndpoint> WebhookEndpoints => _webhookEndpoints;

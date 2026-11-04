@@ -247,20 +247,41 @@ public sealed class ShareLinksController(
     }
 
     // ---------- GET /storage/offboarding-impact/{userId} ----------
-    // Pre-flight (punto 3.2): cuántos share links activos hay que revocar antes de retirar a este empleado.
+    // Pre-flight (punto 3.2): share links a revocar y conexiones de nube de la oficina que conectó la persona.
     [HttpGet("offboarding-impact/{userId:guid}")]
     [HasPermission(UserManagementPermissions.UsersManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("cloudstorage.f.share_read")]
     [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
+    public Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct) =>
+        OffboardingImpactFor(userId, email: null, ct);
+
+    // ---------- POST /storage/offboarding-impact/{userId} ----------
+    // Igual, sumando las conectadas con su cuenta. El email va en el cuerpo: en la URL quedaría en los logs.
+    [HttpPost("offboarding-impact/{userId:guid}")]
+    [HasPermission(UserManagementPermissions.UsersManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.f.share_read")]
+    [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
+    public Task<IActionResult> OffboardingImpactByEmail(
+        Guid userId,
+        [FromBody] OffboardingImpactRequest body,
+        CancellationToken ct
+    ) => OffboardingImpactFor(userId, body.Email, ct);
+
+    private async Task<IActionResult> OffboardingImpactFor(Guid userId, string? email, CancellationToken ct)
     {
         if (!User.TryGet(out var tenantId, out _, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<OffboardingImpactResponse>(new OffboardingImpactQuery(tenantId, userId), ct);
+        var result = await bus.InvokeAsync<OffboardingImpactResponse>(
+            new OffboardingImpactQuery(tenantId, userId, email),
+            ct
+        );
         return Ok(result);
     }
+
+    public sealed record OffboardingImpactRequest(string? Email);
 
     [HttpDelete("shares/{shareLinkId:guid}")]
     [HasPermission(CloudStoragePermissions.ShareRevoke)]

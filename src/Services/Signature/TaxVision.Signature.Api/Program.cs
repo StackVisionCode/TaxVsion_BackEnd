@@ -32,6 +32,7 @@ using Serilog;
 using StackExchange.Redis;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Requests.Commands.FromForm;
+using TaxVision.Signature.Application.Requests.Preparer;
 using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Settings.IntegrationEvents;
 using TaxVision.Signature.Domain.Requests;
@@ -86,6 +87,11 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // default (Authorization:ResourceOwnership:Enabled). Override: signature.request.manage.
 builder.Services.AddResourceOwnershipOptions(builder.Configuration);
 builder.Services.AddOwnershipAuthorization<SignatureRequest>(SignaturePermissions.RequestManage);
+
+// Cambio de preparador / retiro: los códigos de permiso viven en la capa Api y se pasan a Application.
+builder.Services.AddSingleton(
+    new PreparerPermissionCodes(SignaturePermissions.SignOwn, SignaturePermissions.RequestManage)
+);
 
 // Rate limiter para endpoints públicos: 15 req/min por IP+ruta para desanimar
 // enumeración/fuerza bruta de tokens.
@@ -280,6 +286,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignerVerificationSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerVerificationFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<PreparerSignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignaturePreparerChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignaturePreparerAttentionRequiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestReminderDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Fase D1 — reemplaza el HttpClient a CloudStorage para subir el sellado/certificate.

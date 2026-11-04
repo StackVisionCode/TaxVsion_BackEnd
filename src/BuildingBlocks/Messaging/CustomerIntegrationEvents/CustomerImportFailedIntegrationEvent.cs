@@ -14,6 +14,9 @@ public sealed record CustomerImportFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid ImportJobId { get; init; }
     public required Guid CreatedByUserId { get; init; }
+
+    /// <summary>A quién avisar si no es el creador (p. ej. el creador fue retirado). Nulo = el creador.</summary>
+    public Guid? NotifyUserId { get; init; }
     public required string Reason { get; init; }
     public required DateTime FailedAtUtc { get; init; }
 }

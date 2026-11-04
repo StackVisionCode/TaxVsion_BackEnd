@@ -40,6 +40,8 @@ public sealed class OfficeProfile : ITenantOwned
     /// <summary>0 = nunca guardado; sube en cada cambio real (los consumidores ignoran ≤ lo que tienen).</summary>
     public long Version { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? UpdatedByUserId { get; private set; }
 
     /// <summary>Perfil vacío (versión 0). Solo se persiste si un guardado le cambia algo.</summary>

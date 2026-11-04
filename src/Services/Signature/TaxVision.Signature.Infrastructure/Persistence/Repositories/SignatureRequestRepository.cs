@@ -219,7 +219,9 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             )
             .ToListAsync(ct);
         return candidates
-            .Where(request => request.Signers.Select(signer => signer.MappedCustomerId).OfType<Guid>().Distinct().Count() >= 2)
+            .Where(request =>
+                request.Signers.Select(signer => signer.MappedCustomerId).OfType<Guid>().Distinct().Count() >= 2
+            )
             .ToList();
     }
 

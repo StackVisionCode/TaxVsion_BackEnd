@@ -22,6 +22,8 @@ public static class CustomersBulkImportedConsumer
             if (!inAppSource.PublishesInApp(InAppSourceGroup.CustomerImport))
                 return;
 
+            // El creador, salvo que Customer haya pasado el aviso a otro (creador retirado).
+            var recipient = evt.NotifyUserId ?? evt.CreatedByUserId;
             var title = "Importación masiva completada";
             var body =
                 $"{evt.SuccessCount}/{evt.TotalRows} clientes importados"
@@ -29,16 +31,16 @@ public static class CustomersBulkImportedConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.CreatedByUserId:N}",
+                $"user:{recipient:N}",
                 title,
                 NotificationCategory.Collaboration,
                 "customer.bulk_imported",
                 evt.EventId,
                 correlation.CorrelationId,
-                recipientUserId: evt.CreatedByUserId,
+                recipientUserId: recipient,
                 inApp: new InAppNotificationRequest(
                     NotificationKinds.CustomerBulkImported,
-                    evt.CreatedByUserId,
+                    recipient,
                     evt.EventId,
                     "customer.bulk_imported.v1",
                     evt.CompletedAtUtc,

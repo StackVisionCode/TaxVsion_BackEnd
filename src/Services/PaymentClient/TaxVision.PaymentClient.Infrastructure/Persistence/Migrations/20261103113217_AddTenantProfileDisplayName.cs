@@ -15,26 +15,24 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 table: "Tenants",
                 type: "nvarchar(200)",
                 maxLength: 200,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "ProfileVersion",
                 table: "Tenants",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 0L
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "DisplayName",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "DisplayName", table: "Tenants");
 
-            migrationBuilder.DropColumn(
-                name: "ProfileVersion",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "ProfileVersion", table: "Tenants");
         }
     }
 }

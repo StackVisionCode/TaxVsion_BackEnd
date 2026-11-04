@@ -3,9 +3,9 @@ using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Queries;
-using TaxVision.CloudStorage.Domain.Platform;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
+using TaxVision.CloudStorage.Domain.Platform;
 
 namespace TaxVision.CloudStorage.Tests.Application;
 

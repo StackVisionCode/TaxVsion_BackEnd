@@ -19,6 +19,7 @@ public sealed class ClientRequestConfiguration : IEntityTypeConfiguration<Client
         builder.Property(r => r.Status).HasConversion<int>().IsRequired();
         builder.Property(r => r.DueAtUtc);
         builder.Property(r => r.RequestedByUserId).IsRequired();
+        builder.Property(r => r.FollowUpUserId);
         builder.Property(r => r.CreatedAtUtc).IsRequired();
         builder.Property(r => r.SubmittedAtUtc);
         builder.Property(r => r.ResolvedAtUtc);
@@ -26,6 +27,7 @@ public sealed class ClientRequestConfiguration : IEntityTypeConfiguration<Client
         builder.Property(r => r.ResolutionNote).HasMaxLength(1000);
 
         builder.Ignore(r => r.IsOpen);
+        builder.Ignore(r => r.StaffRecipientUserId);
         builder.Ignore(r => r.DomainEvents);
 
         // El preparador cierra el pedido mientras el cliente sube otro documento: misma fila, dos

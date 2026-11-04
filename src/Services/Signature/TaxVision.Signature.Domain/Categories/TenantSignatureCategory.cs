@@ -22,6 +22,8 @@ public sealed class TenantSignatureCategory : TenantEntity
     public string NormalizedName { get; private set; } = default!;
 
     public bool IsArchived { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }

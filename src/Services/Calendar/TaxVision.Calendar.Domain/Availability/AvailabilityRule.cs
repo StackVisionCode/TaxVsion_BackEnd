@@ -14,6 +14,7 @@ namespace TaxVision.Calendar.Domain.Availability;
 /// </summary>
 public sealed class AvailabilityRule : AggregateRoot
 {
+    [UserReference(UserReferenceKind.Private, HandledBy = "CalendarUserOffboardedConsumer", Note = "Se desactiva.")]
     public Guid UserId { get; private set; }
 
     public CalendarTimeZone TimeZone { get; private set; } = default!;

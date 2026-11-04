@@ -33,6 +33,8 @@ public sealed class SignaturePlatformSettings : BaseEntity
     public int AutoFontMinPt { get; private set; }
 
     public int AutoFontMaxPt { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 

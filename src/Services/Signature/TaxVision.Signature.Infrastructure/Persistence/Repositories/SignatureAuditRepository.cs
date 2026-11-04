@@ -26,16 +26,12 @@ public sealed class SignatureAuditRepository(SignatureDbContext db) : ISignature
         // Eventos agregados en esta misma unidad de trabajo y aún sin guardar: dos appends seguidos
         // se encadenan en vez de leer los dos el mismo tail de la base (misma secuencia → índice único).
         var pending = db
-            .SignatureAuditEvents.Local.Where(e =>
-                e.TenantId == tenantId && e.SignatureRequestId == signatureRequestId
-            )
+            .SignatureAuditEvents.Local.Where(e => e.TenantId == tenantId && e.SignatureRequestId == signatureRequestId)
             .OrderByDescending(e => e.Sequence)
             .Select(e => new AuditChainTail(e.Sequence, e.ChainHash))
             .FirstOrDefault();
 
-        return pending is not null && (saved is null || pending.LastSequence > saved.LastSequence)
-            ? pending
-            : saved;
+        return pending is not null && (saved is null || pending.LastSequence > saved.LastSequence) ? pending : saved;
     }
 
     public async Task AddAsync(SignatureAuditEvent evt, CancellationToken ct = default) =>

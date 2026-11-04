@@ -44,7 +44,8 @@ public sealed class RequiredVerificationMethodTests
             isMatch: true,
             now.AddSeconds(5),
             clientIp: null,
-            userAgent: null, TestSignatureLimits.Verification
+            userAgent: null,
+            TestSignatureLimits.Verification
         );
         Assert.True(verify.IsSuccess);
         Assert.True(signer.HasCompletedVerification(SignerVerificationMethod.EmailOtp));
@@ -91,10 +92,23 @@ public sealed class RequiredVerificationMethodTests
     {
         var draft = NewDraft();
         var signer = draft
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("The Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("The Signer").Value,
+                null
+            )
             .Value;
 
-        Assert.True(draft.SetSignerRequiredVerificationMethod(TestSignatureLimits.Default, signer.Id, SignerVerificationMethod.SmsOtp).IsSuccess);
+        Assert.True(
+            draft
+                .SetSignerRequiredVerificationMethod(
+                    TestSignatureLimits.Default,
+                    signer.Id,
+                    SignerVerificationMethod.SmsOtp
+                )
+                .IsSuccess
+        );
         Assert.Equal(SignerVerificationMethod.SmsOtp, signer.RequiredVerificationMethod);
 
         Assert.True(draft.SetSignerRequiredVerificationMethod(TestSignatureLimits.Default, signer.Id, null).IsSuccess);
@@ -106,10 +120,19 @@ public sealed class RequiredVerificationMethodTests
     {
         var draft = NewDraft();
         var signer = draft
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create("s@example.com").Value, SignerFullName.Create("The Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("The Signer").Value,
+                null
+            )
             .Value;
 
-        var result = draft.SetSignerRequiredVerificationMethod(TestSignatureLimits.Default, signer.Id, SignerVerificationMethod.PractitionerPin);
+        var result = draft.SetSignerRequiredVerificationMethod(
+            TestSignatureLimits.Default,
+            signer.Id,
+            SignerVerificationMethod.PractitionerPin
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Signer.VerificationMethod", result.Error.Code);
@@ -149,8 +172,18 @@ public sealed class RequiredVerificationMethodTests
             )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(TestSignatureLimits.MaxFieldsPerSigner, signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }

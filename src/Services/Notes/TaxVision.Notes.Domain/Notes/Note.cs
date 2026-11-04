@@ -26,6 +26,11 @@ public sealed class Note : TenantEntity, IHasOwner
 
     private Note() { }
 
+    [UserReference(
+        UserReferenceKind.Provenance,
+        HandledBy = "NotesUserOffboardedConsumer",
+        Note = "Autoría inmutable; el retiro habilita que view_all gestione sus notas."
+    )]
     public Guid CreatedByUserId { get; private set; }
     public NoteContent Content { get; private set; } = default!;
     public NoteReference Reference { get; private set; } = default!;

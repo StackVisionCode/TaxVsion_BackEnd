@@ -26,6 +26,7 @@ public sealed class InvoiceStatusChange : BaseEntity
     public string? Reason { get; private set; }
 
     /// <summary>Actor que causó la transición. Guid.Empty en transiciones de sistema (onboarding).</summary>
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ChangedByUserId { get; private set; }
     public DateTime ChangedAtUtc { get; private set; }
 

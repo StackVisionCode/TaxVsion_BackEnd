@@ -17,7 +17,8 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 table: "IssuerProfiles",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 0L
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "InvoiceFooter",
@@ -25,7 +26,8 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 table: "Invoices",
                 type: "nvarchar(500)",
                 maxLength: 500,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "PaymentInstructions",
@@ -33,7 +35,8 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 table: "Invoices",
                 type: "nvarchar(500)",
                 maxLength: 500,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "PaymentTerms",
@@ -41,7 +44,8 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 table: "Invoices",
                 type: "nvarchar(32)",
                 maxLength: 32,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateTable(
                 name: "TenantBillingSettings",
@@ -55,47 +59,35 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_TenantBillingSettings", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantBillingSettings_TenantId",
                 schema: "billing",
                 table: "TenantBillingSettings",
                 column: "TenantId",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "TenantBillingSettings",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "TenantBillingSettings", schema: "billing");
 
-            migrationBuilder.DropColumn(
-                name: "SourceVersion",
-                schema: "billing",
-                table: "IssuerProfiles");
+            migrationBuilder.DropColumn(name: "SourceVersion", schema: "billing", table: "IssuerProfiles");
 
-            migrationBuilder.DropColumn(
-                name: "InvoiceFooter",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "InvoiceFooter", schema: "billing", table: "Invoices");
 
-            migrationBuilder.DropColumn(
-                name: "PaymentInstructions",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "PaymentInstructions", schema: "billing", table: "Invoices");
 
-            migrationBuilder.DropColumn(
-                name: "PaymentTerms",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "PaymentTerms", schema: "billing", table: "Invoices");
         }
     }
 }

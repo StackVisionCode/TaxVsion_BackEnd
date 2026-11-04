@@ -33,9 +33,14 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         Assert.True(email.Confidential);
         Assert.Equal(evt.AttachmentFileIds, email.AttachmentFileIds);
         Assert.Equal("sig.request_completed.v1", scribe.EventKey);
-        var links = Assert.IsAssignableFrom<IEnumerable<Dictionary<string, object?>>>(scribe.Variables["download_links"]).ToList();
+        var links = Assert
+            .IsAssignableFrom<IEnumerable<Dictionary<string, object?>>>(scribe.Variables["download_links"])
+            .ToList();
         Assert.Equal(3, links.Count);
-        Assert.All(links, link => Assert.StartsWith("https://office.taxproffice.com/d/plain-token-123?item=", (string)link["url"]!));
+        Assert.All(
+            links,
+            link => Assert.StartsWith("https://office.taxproffice.com/d/plain-token-123?item=", (string)link["url"]!)
+        );
         Assert.Equal("https://office.taxproffice.com/d/plain-token-123", scribe.Variables["delivery_url"]);
         Assert.Equal(true, scribe.Variables["has_attachments"]);
         Assert.Empty(sms.Sent);
@@ -103,7 +108,10 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
                 preferSms ? "+15550001111" : null,
                 preferSms ? "Sms" : "Email"
             ),
-            Items = Enumerable.Range(1, items).Select(index => new DeliveryItemDescriptor(Guid.NewGuid(), $"Document {index}", "SignedDocument")).ToList(),
+            Items = Enumerable
+                .Range(1, items)
+                .Select(index => new DeliveryItemDescriptor(Guid.NewGuid(), $"Document {index}", "SignedDocument"))
+                .ToList(),
             ExpiresAtUtc = DateTime.UtcNow.AddDays(30),
             ProtectedToken = new Codec().Protect(
                 SignatureDeliveryPayloadSchemas.DeliveryLink,
@@ -115,7 +123,12 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
             TotalSignersCount = 2,
         };
 
-    private static Task Handle(SignedDocumentsDeliveryReadyIntegrationEvent evt, Gateway gateway, Scribe scribe, Sms sms) =>
+    private static Task Handle(
+        SignedDocumentsDeliveryReadyIntegrationEvent evt,
+        Gateway gateway,
+        Scribe scribe,
+        Sms sms
+    ) =>
         SignedDocumentsDeliveryReadyConsumer.Handle(
             evt,
             new Codec(),
@@ -137,7 +150,8 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         public ProtectedPayload Protect<T>(string schema, ProtectedPayloadBinding binding, T content) =>
             new()
             {
-                Cipher = $"{binding.TenantId:N}|{binding.IdempotencyKey}|{System.Text.Json.JsonSerializer.Serialize(content)}",
+                Cipher =
+                    $"{binding.TenantId:N}|{binding.IdempotencyKey}|{System.Text.Json.JsonSerializer.Serialize(content)}",
                 KeyVersion = 1,
                 Schema = schema,
             };
@@ -163,7 +177,13 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         {
             Queued.Add(request);
             return Task.FromResult(
-                new EmailDispatchResult(Guid.NewGuid(), Guid.NewGuid(), NotificationDispatchAttemptStatus.Queued, null, null)
+                new EmailDispatchResult(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    NotificationDispatchAttemptStatus.Queued,
+                    null,
+                    null
+                )
             );
         }
     }
@@ -197,7 +217,13 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
     {
         public List<string> Sent { get; } = [];
 
-        public Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct, string? templateKey, string? idempotencyToken)
+        public Task<Result> SendAsync(
+            string phoneNumber,
+            string text,
+            CancellationToken ct,
+            string? templateKey,
+            string? idempotencyToken
+        )
         {
             Sent.Add(text);
             return Task.FromResult(Result.Success());

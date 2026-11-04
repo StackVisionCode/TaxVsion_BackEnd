@@ -30,6 +30,8 @@ public sealed class EmailTemplateVersion : BaseEntity
     public string? PreviewStorageKey { get; private set; }
     public Guid? PreviewFileId { get; private set; }
     public EmailTemplateVersionStatus Status { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 

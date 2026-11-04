@@ -833,6 +833,7 @@ async function wireSocket(
         messageId: parsed.data.messageId,
         actorUserId: userId,
         actorCanModerate: canModerate,
+        actorHasModeratePermission: canModerate,
       },
       container,
     );

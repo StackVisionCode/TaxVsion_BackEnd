@@ -33,7 +33,13 @@ public sealed record CreateReminderCommand(
 /// <b>Idempotencia (ADR-R-07).</b> Dos capas: la consulta previa por <c>RequestKey</c> resuelve el
 /// reintento normal, y el <c>catch</c> resuelve la carrera real de dos peticiones simultáneas que
 /// pasan la consulta a la vez. La segunda choca contra el índice único
-/// <c>(TenantId, RequestKey)</c> y devuelve el recordatorio que ganó — nunca un 500.
+/// <c>(TenantId, UserId, RequestKey)</c> y devuelve el recordatorio que ganó — nunca un 500.
+/// </para>
+///
+/// <para>
+/// <b>La clave es por destinatario.</b> Si el emisor reasigna el objetivo a otra persona (p. ej. el
+/// organizador de una cita al retirar al anterior) y vuelve a pedir con la misma clave, nace el aviso
+/// del nuevo; el del anterior sigue su propio ciclo (lo cancela su retiro).
 /// </para>
 ///
 /// <para>
@@ -103,7 +109,7 @@ public static class CreateReminderHandler
         if (requestKey.IsFailure)
             return Result.Failure<BuildOutcome>(requestKey.Error);
 
-        var existing = await reminders.FindByRequestKeyAsync(command.TenantId, requestKey.Value, ct);
+        var existing = await reminders.FindByRequestKeyAsync(command.TenantId, command.UserId, requestKey.Value, ct);
         if (existing is not null)
         {
             metrics.RecordDuplicateSuppressed(ReminderDuplicateResolutions.Lookup);
@@ -140,7 +146,7 @@ public static class CreateReminderHandler
         }
         catch (ConflictException)
         {
-            var winner = await reminders.FindByRequestKeyAsync(command.TenantId, built.RequestKey, ct);
+            var winner = await reminders.FindByRequestKeyAsync(command.TenantId, command.UserId, built.RequestKey, ct);
             if (winner is null)
                 return Result.Failure<PersistOutcome>(ReminderErrors.DuplicateRequest);
 

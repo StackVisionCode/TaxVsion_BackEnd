@@ -137,7 +137,8 @@ public static class SharePasswordGuard
         }
 
         var maxAttempts =
-            (await limits.GetAsync(link.TenantId, ct))?.MaxSharePasswordAttempts ?? TenantStorageLimit.DefaultMaxSharePasswordAttempts;
+            (await limits.GetAsync(link.TenantId, ct))?.MaxSharePasswordAttempts
+            ?? TenantStorageLimit.DefaultMaxSharePasswordAttempts;
         var lockMinutes = (await platform.GetAsync(ct)).SharePasswordLockMinutes;
         link.RegisterWrongPassword(maxAttempts, TimeSpan.FromMinutes(lockMinutes), nowUtc);
         return link.IsPasswordLocked(nowUtc) ? SharePasswordOutcome.Locked : SharePasswordOutcome.Wrong;

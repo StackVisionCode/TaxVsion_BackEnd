@@ -31,7 +31,14 @@ public sealed class SharingPolicyHandlerTests
         limit.SetSharingPolicy(true, false, 3, 30, 8, 10, 25);
         var shares = new FakeShareLinkRepository();
 
-        var result = await Create(tenantId, limit, shares, ShareVisibility.ExternalLink, password: null, expiresAtUtc: null);
+        var result = await Create(
+            tenantId,
+            limit,
+            shares,
+            ShareVisibility.ExternalLink,
+            password: null,
+            expiresAtUtc: null
+        );
 
         Assert.True(result.IsSuccess);
         var link = await shares.GetAsync(tenantId, result.Value.Link.Id, default);
@@ -77,7 +84,10 @@ public sealed class SharingPolicyHandlerTests
     [Theory]
     [InlineData(ShareVisibility.Public, true)]
     [InlineData(ShareVisibility.TenantOnly, false)]
-    public async Task Extending_an_external_link_cannot_pass_the_office_maximum(ShareVisibility visibility, bool rejected)
+    public async Task Extending_an_external_link_cannot_pass_the_office_maximum(
+        ShareVisibility visibility,
+        bool rejected
+    )
     {
         var tenantId = Guid.NewGuid();
         var limit = TenantStorageLimit.Create(tenantId, "pro", 1000, 1000);
@@ -122,7 +132,12 @@ public sealed class SharingPolicyHandlerTests
             outcomes.Add((await ResolveFile(token, password, shares, files, limits)).Outcome);
 
         Assert.Equal(
-            [ShareAccessOutcome.Denied, ShareAccessOutcome.Denied, ShareAccessOutcome.PasswordLocked, ShareAccessOutcome.PasswordLocked],
+            [
+                ShareAccessOutcome.Denied,
+                ShareAccessOutcome.Denied,
+                ShareAccessOutcome.PasswordLocked,
+                ShareAccessOutcome.PasswordLocked,
+            ],
             outcomes
         );
     }
@@ -168,7 +183,17 @@ public sealed class SharingPolicyHandlerTests
         var audits = new AuditOnlyCatalog();
 
         var result = await StoragePlatformSettingsHandler.Handle(
-            new UpdateStoragePlatformSettingsCommand(10, 3, 12, 60, 800, 80, 3L * 1024 * 1024 * 1024, 30, Guid.NewGuid()),
+            new UpdateStoragePlatformSettingsCommand(
+                10,
+                3,
+                12,
+                60,
+                800,
+                80,
+                3L * 1024 * 1024 * 1024,
+                30,
+                Guid.NewGuid()
+            ),
             repository,
             provider,
             audits,
@@ -266,12 +291,35 @@ public sealed class SharingPolicyHandlerTests
         );
     }
 
-    private static ShareLink Link(Guid tenantId, Guid resourceId, ShareResourceType type, ShareVisibility visibility, string? passwordHash) =>
+    private static ShareLink Link(
+        Guid tenantId,
+        Guid resourceId,
+        ShareResourceType type,
+        ShareVisibility visibility,
+        string? passwordHash
+    ) =>
         ShareLink
-            .Create(Guid.NewGuid(), tenantId, resourceId, type, visibility, SharePermission.Download, passwordHash, Now.AddDays(7), null, Guid.NewGuid(), Now)
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                resourceId,
+                type,
+                visibility,
+                SharePermission.Download,
+                passwordHash,
+                Now.AddDays(7),
+                null,
+                Guid.NewGuid(),
+                Now
+            )
             .Value.Link;
 
-    private static (ShareLink Link, string Token) LinkWithToken(Guid tenantId, Guid resourceId, ShareResourceType type, string passwordHash) =>
+    private static (ShareLink Link, string Token) LinkWithToken(
+        Guid tenantId,
+        Guid resourceId,
+        ShareResourceType type,
+        string passwordHash
+    ) =>
         ShareLink
             .Create(
                 Guid.NewGuid(),
@@ -314,7 +362,8 @@ public sealed class SharingPolicyHandlerTests
         return file;
     }
 
-    private sealed class SingleSettingsRepository(StoragePlatformSettings? settings) : IStoragePlatformSettingsRepository
+    private sealed class SingleSettingsRepository(StoragePlatformSettings? settings)
+        : IStoragePlatformSettingsRepository
     {
         public Task<StoragePlatformSettings?> GetAsync(CancellationToken ct) => Task.FromResult(settings);
 
@@ -325,19 +374,25 @@ public sealed class SharingPolicyHandlerTests
     {
         public List<TaxVision.CloudStorage.Domain.FileTypes.FilePolicyAudit> Audits { get; } = [];
 
-        public Task<IReadOnlyList<TaxVision.CloudStorage.Domain.FileTypes.FileTypeDefinition>> ListFileTypesAsync(CancellationToken ct) =>
-            Task.FromResult(TestFilePolicyCatalog.FileTypes());
+        public Task<IReadOnlyList<TaxVision.CloudStorage.Domain.FileTypes.FileTypeDefinition>> ListFileTypesAsync(
+            CancellationToken ct
+        ) => Task.FromResult(TestFilePolicyCatalog.FileTypes());
 
-        public Task<TaxVision.CloudStorage.Domain.FileTypes.FileTypeDefinition?> GetFileTypeAsync(string extension, CancellationToken ct) =>
-            Task.FromResult<TaxVision.CloudStorage.Domain.FileTypes.FileTypeDefinition?>(null);
+        public Task<TaxVision.CloudStorage.Domain.FileTypes.FileTypeDefinition?> GetFileTypeAsync(
+            string extension,
+            CancellationToken ct
+        ) => Task.FromResult<TaxVision.CloudStorage.Domain.FileTypes.FileTypeDefinition?>(null);
 
         public void AddFileType(TaxVision.CloudStorage.Domain.FileTypes.FileTypeDefinition definition) { }
 
-        public Task<IReadOnlyList<TaxVision.CloudStorage.Domain.FileTypes.FolderFilePolicy>> ListFolderPoliciesAsync(CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<TaxVision.CloudStorage.Domain.FileTypes.FolderFilePolicy>>([]);
+        public Task<IReadOnlyList<TaxVision.CloudStorage.Domain.FileTypes.FolderFilePolicy>> ListFolderPoliciesAsync(
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<TaxVision.CloudStorage.Domain.FileTypes.FolderFilePolicy>>([]);
 
-        public Task<TaxVision.CloudStorage.Domain.FileTypes.FolderFilePolicy?> GetFolderPolicyAsync(FolderType folderType, CancellationToken ct) =>
-            Task.FromResult<TaxVision.CloudStorage.Domain.FileTypes.FolderFilePolicy?>(null);
+        public Task<TaxVision.CloudStorage.Domain.FileTypes.FolderFilePolicy?> GetFolderPolicyAsync(
+            FolderType folderType,
+            CancellationToken ct
+        ) => Task.FromResult<TaxVision.CloudStorage.Domain.FileTypes.FolderFilePolicy?>(null);
 
         public void AddAudit(TaxVision.CloudStorage.Domain.FileTypes.FilePolicyAudit audit) => Audits.Add(audit);
     }

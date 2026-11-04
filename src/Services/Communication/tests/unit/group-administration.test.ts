@@ -281,7 +281,7 @@ describe('administración de grupos (efectos)', () => {
     expect(h.left).toEqual([owner]);
     expect(row(h, id).participants.find((p) => p.userId === admin)?.role).toBe('Owner');
 
-    await removeUserFromGroups({ tenantId, userId: admin, reason: 'Deactivated' }, h.deps);
+    await removeUserFromGroups({ tenantId, userId: admin, reason: 'Offboarded' }, h.deps);
     expect(row(h, id).isArchived).toBe(true);
     expect(h.events.filter((e) => e.event === ChatSocketEvents.ConversationUpdated).at(-1)?.payload).toMatchObject({ isArchived: true });
     expect(h.conversationAudit.entries.at(-1)).toMatchObject({ action: 'Archived', actorUserId: null });

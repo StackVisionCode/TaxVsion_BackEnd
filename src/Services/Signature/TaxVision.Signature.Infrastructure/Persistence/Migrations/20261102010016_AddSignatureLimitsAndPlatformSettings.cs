@@ -11,13 +11,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "Limits_MaxImageBytes",
-                table: "TenantSignatureSettings");
+            migrationBuilder.DropColumn(name: "Limits_MaxImageBytes", table: "TenantSignatureSettings");
 
-            migrationBuilder.DropColumn(
-                name: "Plan_MaxAllowedImageBytes",
-                table: "TenantSignatureSettings");
+            migrationBuilder.DropColumn(name: "Plan_MaxAllowedImageBytes", table: "TenantSignatureSettings");
 
             migrationBuilder.AlterColumn<bool>(
                 name: "SendSealedDocumentDefault",
@@ -27,7 +23,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 defaultValue: false,
                 oldClrType: typeof(bool),
                 oldType: "bit",
-                oldDefaultValue: true);
+                oldDefaultValue: true
+            );
 
             migrationBuilder.AlterColumn<bool>(
                 name: "Plan_PurgeAllowed",
@@ -36,7 +33,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 nullable: true,
                 oldClrType: typeof(bool),
                 oldType: "bit",
-                oldDefaultValue: false);
+                oldDefaultValue: false
+            );
 
             migrationBuilder.AlterColumn<int>(
                 name: "Plan_MinRetentionYears",
@@ -45,7 +43,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 nullable: true,
                 oldClrType: typeof(int),
                 oldType: "int",
-                oldDefaultValue: 7);
+                oldDefaultValue: 7
+            );
 
             migrationBuilder.AlterColumn<int>(
                 name: "Plan_MaxTokenExpirationHours",
@@ -54,7 +53,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 nullable: true,
                 oldClrType: typeof(int),
                 oldType: "int",
-                oldDefaultValue: 720);
+                oldDefaultValue: 720
+            );
 
             migrationBuilder.AlterColumn<long>(
                 name: "Plan_MaxAllowedPdfBytes",
@@ -63,7 +63,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 nullable: true,
                 oldClrType: typeof(long),
                 oldType: "bigint",
-                oldDefaultValue: 26214400L);
+                oldDefaultValue: 26214400L
+            );
 
             migrationBuilder.AlterColumn<int>(
                 name: "Plan_MaxAllowedPages",
@@ -72,7 +73,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 nullable: true,
                 oldClrType: typeof(int),
                 oldType: "int",
-                oldDefaultValue: 100);
+                oldDefaultValue: 100
+            );
 
             migrationBuilder.AlterColumn<int>(
                 name: "Plan_AllowedChannels",
@@ -81,7 +83,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 nullable: true,
                 oldClrType: typeof(int),
                 oldType: "int",
-                oldDefaultValue: 3);
+                oldDefaultValue: 3
+            );
 
             // Plan_* pasa a ser la excepción del tenant (nulo = hereda del plan). Donde la columna tenía el valor
             // que traía todo tenant por defecto no hay excepción real: queda nula y manda el plan (mismo valor hoy).
@@ -99,13 +102,15 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 name: "Plan_MaxDocumentsPerRequest",
                 table: "TenantSignatureSettings",
                 type: "int",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<int>(
                 name: "Plan_MaxSignersPerRequest",
                 table: "TenantSignatureSettings",
                 type: "int",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateTable(
                 name: "SignaturePlatformSettings",
@@ -123,28 +128,50 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     MaxRemindersPerRequest = table.Column<int>(type: "int", nullable: false),
                     MaxFieldsPerSigner = table.Column<int>(type: "int", nullable: false),
                     UpdatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SignaturePlatformSettings", x => x.Id);
-                });
+                }
+            );
 
             // Los valores que tenía el código (SignaturePlatformSettings.Defaults()): sin cambio al desplegar.
             migrationBuilder.InsertData(
                 table: "SignaturePlatformSettings",
                 columns: new[]
                 {
-                    "Id", "OtpLength", "OtpLifetimeMinutes", "OtpResendCooldownSeconds", "MaxVerificationAttempts",
-                    "VerificationLockMinutes", "MaxSignatureImageBytes", "MaxProfilesPerPreparer", "MaxRolesPerTemplate",
-                    "MaxRemindersPerRequest", "MaxFieldsPerSigner", "UpdatedByUserId", "UpdatedAtUtc",
+                    "Id",
+                    "OtpLength",
+                    "OtpLifetimeMinutes",
+                    "OtpResendCooldownSeconds",
+                    "MaxVerificationAttempts",
+                    "VerificationLockMinutes",
+                    "MaxSignatureImageBytes",
+                    "MaxProfilesPerPreparer",
+                    "MaxRolesPerTemplate",
+                    "MaxRemindersPerRequest",
+                    "MaxFieldsPerSigner",
+                    "UpdatedByUserId",
+                    "UpdatedAtUtc",
                 },
                 values: new object[]
                 {
-                    new Guid("7a2c9e4b-1f3d-4b8a-9c6e-2d5f8a1b3c70"), 6, 10, 30, 5,
-                    30, 1500000, 10, 20,
-                    20, 200, Guid.Empty, new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-                });
+                    new Guid("7a2c9e4b-1f3d-4b8a-9c6e-2d5f8a1b3c70"),
+                    6,
+                    10,
+                    30,
+                    5,
+                    30,
+                    1500000,
+                    10,
+                    20,
+                    20,
+                    200,
+                    Guid.Empty,
+                    new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "TenantSignatureLimits",
@@ -162,18 +189,20 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     PurgeAllowed = table.Column<bool>(type: "bit", nullable: false),
                     AllowedChannels = table.Column<int>(type: "int", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_TenantSignatureLimits", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantSignatureLimits_TenantId",
                 table: "TenantSignatureLimits",
                 column: "TenantId",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
@@ -190,19 +219,13 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     Plan_MaxTokenExpirationHours = ISNULL(Plan_MaxTokenExpirationHours, 720);"
             );
 
-            migrationBuilder.DropTable(
-                name: "SignaturePlatformSettings");
+            migrationBuilder.DropTable(name: "SignaturePlatformSettings");
 
-            migrationBuilder.DropTable(
-                name: "TenantSignatureLimits");
+            migrationBuilder.DropTable(name: "TenantSignatureLimits");
 
-            migrationBuilder.DropColumn(
-                name: "Plan_MaxDocumentsPerRequest",
-                table: "TenantSignatureSettings");
+            migrationBuilder.DropColumn(name: "Plan_MaxDocumentsPerRequest", table: "TenantSignatureSettings");
 
-            migrationBuilder.DropColumn(
-                name: "Plan_MaxSignersPerRequest",
-                table: "TenantSignatureSettings");
+            migrationBuilder.DropColumn(name: "Plan_MaxSignersPerRequest", table: "TenantSignatureSettings");
 
             migrationBuilder.AlterColumn<bool>(
                 name: "SendSealedDocumentDefault",
@@ -212,7 +235,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 defaultValue: true,
                 oldClrType: typeof(bool),
                 oldType: "bit",
-                oldDefaultValue: false);
+                oldDefaultValue: false
+            );
 
             migrationBuilder.AlterColumn<bool>(
                 name: "Plan_PurgeAllowed",
@@ -222,7 +246,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 defaultValue: false,
                 oldClrType: typeof(bool),
                 oldType: "bit",
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AlterColumn<int>(
                 name: "Plan_MinRetentionYears",
@@ -232,7 +257,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 defaultValue: 7,
                 oldClrType: typeof(int),
                 oldType: "int",
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AlterColumn<int>(
                 name: "Plan_MaxTokenExpirationHours",
@@ -242,7 +268,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 defaultValue: 720,
                 oldClrType: typeof(int),
                 oldType: "int",
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AlterColumn<long>(
                 name: "Plan_MaxAllowedPdfBytes",
@@ -252,7 +279,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 defaultValue: 26214400L,
                 oldClrType: typeof(long),
                 oldType: "bigint",
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AlterColumn<int>(
                 name: "Plan_MaxAllowedPages",
@@ -262,7 +290,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 defaultValue: 100,
                 oldClrType: typeof(int),
                 oldType: "int",
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AlterColumn<int>(
                 name: "Plan_AllowedChannels",
@@ -272,21 +301,24 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 defaultValue: 3,
                 oldClrType: typeof(int),
                 oldType: "int",
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "Limits_MaxImageBytes",
                 table: "TenantSignatureSettings",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 0L
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "Plan_MaxAllowedImageBytes",
                 table: "TenantSignatureSettings",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 10485760L);
+                defaultValue: 10485760L
+            );
         }
     }
 }

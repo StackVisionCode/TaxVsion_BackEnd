@@ -48,8 +48,14 @@ public static class TenantEmailLinks
     /// <c>https://{host}/d/{token}</c> (y <c>?item={id}</c> para arrancar la descarga de un archivo). No es
     /// un share de CloudStorage: la página pide en el momento una URL firmada de pocos minutos.
     /// </summary>
-    public static string SignatureDeliveryPage(string? tenantHost, PortalOptions portal, string token, Guid? itemId = null) =>
-        $"{StaffBase(tenantHost, portal)}/d/{Uri.EscapeDataString(token)}" + (itemId is { } item ? $"?item={item:D}" : string.Empty);
+    public static string SignatureDeliveryPage(
+        string? tenantHost,
+        PortalOptions portal,
+        string token,
+        Guid? itemId = null
+    ) =>
+        $"{StaffBase(tenantHost, portal)}/d/{Uri.EscapeDataString(token)}"
+        + (itemId is { } item ? $"?item={item:D}" : string.Empty);
 
     /// <summary>
     /// Link público de descarga (share-link de CloudStorage) bajo el subdominio de la oficina:

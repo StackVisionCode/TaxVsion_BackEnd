@@ -55,7 +55,10 @@ public sealed record SignedDocumentDeliveryResponse(
             delivery.AccessCount,
             delivery.LastAccessedAtUtc,
             delivery.RevokedAtUtc,
-            delivery.Items.OrderBy(item => item.Order).Select(item => new DeliveryItemResponse(item.Id, item.Title, item.Kind.ToString())).ToList()
+            delivery
+                .Items.OrderBy(item => item.Order)
+                .Select(item => new DeliveryItemResponse(item.Id, item.Title, item.Kind.ToString()))
+                .ToList()
         );
 }
 
@@ -170,7 +173,12 @@ public static class RevokeDeliveryHandler
                 delivery.SignatureRequestId,
                 SignatureAuditEventKind.DeliveryRevoked,
                 now,
-                new { deliveryId = delivery.Id, signerId = delivery.SignerId, byUserId = command.ActorUserId },
+                new
+                {
+                    deliveryId = delivery.Id,
+                    signerId = delivery.SignerId,
+                    byUserId = command.ActorUserId,
+                },
                 ct
             );
             await unitOfWork.SaveChangesAsync(ct);

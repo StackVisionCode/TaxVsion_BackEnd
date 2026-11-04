@@ -1,10 +1,11 @@
 namespace TaxVision.Connectors.Application.Accounts;
 
-// Pre-flight de impacto (punto 3.2): cuántos buzones personales tiene este empleado (se desconectan y
-// se purgan sus secretos al retirarlo).
-public sealed record OffboardingImpactQuery(Guid TenantId, Guid UserId);
+// Pre-flight de impacto (punto 3.2): buzones personales del empleado (se desconectan y purgan al retirarlo)
+// y buzones de oficina ligados a él (se marcan para revisión, no se desconectan). El email es opcional:
+// sin él solo cuenta los de oficina que creó/conectó.
+public sealed record OffboardingImpactQuery(Guid TenantId, Guid UserId, string? Email = null);
 
-public sealed record OffboardingImpactResponse(int PersonalMailboxes);
+public sealed record OffboardingImpactResponse(int PersonalMailboxes, int OfficeMailboxes);
 
 public static class OffboardingImpactHandler
 {
@@ -15,6 +16,10 @@ public static class OffboardingImpactHandler
     )
     {
         var personalMailboxes = await accounts.CountByOwnerUserAsync(query.TenantId, query.UserId, ct);
-        return new OffboardingImpactResponse(personalMailboxes);
+        var tenantAccounts = await accounts.ListByTenantAsync(query.TenantId, ct);
+        var officeMailboxes = tenantAccounts.Count(a =>
+            a.OffboardingReviewReasonFor(query.UserId, query.Email) is not null
+        );
+        return new OffboardingImpactResponse(personalMailboxes, officeMailboxes);
     }
 }

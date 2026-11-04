@@ -17,7 +17,13 @@ public sealed class CustomerFileCopy : BaseEntity
     public Guid CopyFileId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 
-    internal static CustomerFileCopy Create(Guid requestId, Guid sourceFileId, Guid customerId, Guid copyFileId, DateTime nowUtc) =>
+    internal static CustomerFileCopy Create(
+        Guid requestId,
+        Guid sourceFileId,
+        Guid customerId,
+        Guid copyFileId,
+        DateTime nowUtc
+    ) =>
         new()
         {
             Id = Guid.NewGuid(),

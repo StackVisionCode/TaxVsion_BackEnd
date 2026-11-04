@@ -31,6 +31,15 @@ class FakeMeetingRepository implements MeetingRepository {
   async countActiveHostedBy(): Promise<number> {
     return 0;
   }
+  async listScheduledWithParticipant(): Promise<Meeting[]> {
+    return [];
+  }
+  async countScheduledWithParticipant(): Promise<number> {
+    return 0;
+  }
+  async listOpenInvitationsForInvitee(): Promise<MeetingInvitation[]> {
+    return [];
+  }
   private readonly store = new Map<string, Meeting>();
   async save(meeting: Meeting): Promise<void> {
     this.store.set(meeting.id, meeting);

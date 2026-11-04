@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Reminder.Application.Reminders.Consumers;
@@ -49,6 +50,58 @@ public sealed class ReminderRequestedConsumerTests
         Assert.Empty(scheduler.Scheduled);
     }
 
+    [Fact]
+    public async Task LaMismaClaveParaOtroDestinatario_CreaSuPropioRecordatorio()
+    {
+        // Cita reasignada: Calendar vuelve a pedir con la misma clave, ahora para el organizador nuevo.
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var successor = Guid.NewGuid();
+        var evt = CalendarOccurrence("calendar:occ-1");
+
+        await Handle(evt, reminders, scheduler);
+        await Handle(evt with { UserId = successor }, reminders, scheduler);
+        await Handle(evt with { UserId = successor }, reminders, scheduler); // reintento del job
+
+        Assert.Equal(2, reminders.Stored.Count);
+        Assert.Single(reminders.Stored, r => r.UserId == UserId);
+        Assert.Single(reminders.Stored, r => r.UserId == successor);
+        Assert.Equal(2, scheduler.Scheduled.Count);
+    }
+
+    [Fact]
+    public async Task RetiroAntesDelPedido_ElSucesorRecibeElAvisoYElDelRetiradoNoRevive()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var successor = Guid.NewGuid();
+        var evt = CalendarOccurrence("calendar:occ-2");
+        await Handle(evt, reminders, scheduler);
+
+        await Offboard(reminders, scheduler, UserId);
+        await Handle(evt, reminders, scheduler); // pasada vieja del job, aún con el retirado
+        await Handle(evt with { UserId = successor }, reminders, scheduler);
+
+        Assert.Equal(ReminderStatus.Cancelled, Assert.Single(reminders.Stored, r => r.UserId == UserId).Status);
+        Assert.Equal(ReminderStatus.Scheduled, Assert.Single(reminders.Stored, r => r.UserId == successor).Status);
+    }
+
+    [Fact]
+    public async Task PedidoAntesDelRetiro_ElRetiroSoloCancelaElDelRetirado()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var successor = Guid.NewGuid();
+        var evt = CalendarOccurrence("calendar:occ-3");
+        await Handle(evt, reminders, scheduler);
+
+        await Handle(evt with { UserId = successor }, reminders, scheduler);
+        await Offboard(reminders, scheduler, UserId);
+
+        Assert.Equal(ReminderStatus.Cancelled, Assert.Single(reminders.Stored, r => r.UserId == UserId).Status);
+        Assert.Equal(ReminderStatus.Scheduled, Assert.Single(reminders.Stored, r => r.UserId == successor).Status);
+    }
+
     private static Task Handle(
         ReminderRequestedIntegrationEvent evt,
         FakeReminderRepository reminders,
@@ -64,6 +117,40 @@ public sealed class ReminderRequestedConsumerTests
             NullLogger<ReminderAggregate>.Instance,
             CancellationToken.None
         );
+
+    private static Task Offboard(FakeReminderRepository reminders, RecordingScheduler scheduler, Guid leaver) =>
+        ReminderUserOffboardedConsumer.Handle(
+            new UserOffboardedIntegrationEvent
+            {
+                TenantId = TenantId,
+                UserId = leaver,
+                Email = "leaver@example.com",
+                ActorType = "TenantEmployee",
+                RemovedAtUtc = DateTime.UtcNow,
+            },
+            reminders,
+            scheduler,
+            new NoOpUnitOfWork(),
+            new FixedCorrelationContext(),
+            new RecordingReminderMetrics(),
+            NullLogger<ReminderAggregate>.Instance,
+            CancellationToken.None
+        );
+
+    /// <summary>Como lo pide el job de Calendar: anclado a la ocurrencia, clave sin el usuario.</summary>
+    private static ReminderRequestedIntegrationEvent CalendarOccurrence(string requestKey) =>
+        new()
+        {
+            TenantId = TenantId,
+            UserId = UserId,
+            Category = nameof(ReminderCategory.Calendar),
+            TargetId = Guid.NewGuid(),
+            Title = "Client review",
+            TimeZoneId = "America/New_York",
+            AnchorAtUtc = DateTime.UtcNow.AddDays(2),
+            LeadMinutes = 30,
+            RequestKey = requestKey,
+        };
 
     private static ReminderRequestedIntegrationEvent Requested(string requestKey) =>
         new()

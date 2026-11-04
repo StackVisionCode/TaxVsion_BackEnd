@@ -253,6 +253,7 @@ model PlatformCommunicationSettings {
   CallsRetentionDays                    Int?
   MeetingsRetentionDays                 Int?
   InvitationsRetentionDays              Int?
+  /// @userReference(Provenance)
   UpdatedByUserId                       String?  @db.UniqueIdentifier
   UpdatedAtUtc                          DateTime @default(now()) @updatedAt @db.DateTime2
 }
@@ -278,6 +279,7 @@ model TenantCommunicationConstraints {
   // D-72: la oficina gestiona su propia retención (null = la global).
   RetentionManagedByTenant     Boolean?
   Notes                        String?  @db.NVarChar(512)
+  /// @userReference(Provenance)
   UpdatedByUserId              String?  @db.UniqueIdentifier
   CreatedAtUtc                 DateTime @default(now()) @db.DateTime2
   UpdatedAtUtc                 DateTime @default(now()) @updatedAt @db.DateTime2
@@ -288,6 +290,7 @@ model TenantCommunicationConstraints {
 // -----------------------------------------------------------------------------
 model UserCommunicationPreferences {
   TenantId             String   @db.UniqueIdentifier
+  /// @userReference(Provenance, note: "Se conserva: el idioma de su voz sigue transcribiendo sus notas y grabaciones ya hechas; sin sesion es inerte")
   UserId               String   @db.UniqueIdentifier
   MeetingSoundsMuted   Boolean  @default(false)
   TranscriptLanguage   String?  @db.NVarChar(16)
@@ -317,6 +320,7 @@ model ConfigurationAudit {
   Key           String   @db.NVarChar(128)
   OldValue      String?  @db.NVarChar(512)
   NewValue      String?  @db.NVarChar(512)
+  /// @userReference(Provenance)
   ActorUserId   String?  @db.UniqueIdentifier
   // "Update" | "AutoCorrect"
   Reason        String   @db.NVarChar(32)
@@ -333,6 +337,7 @@ model ConfigurationAudit {
 // Se usa para autorizar acciones socket sin round-trip a Auth por evento.
 // -----------------------------------------------------------------------------
 model UserPermissionsProjection {
+  /// @userReference(Projection, handledBy: offboarding-consumers, note: "Se marca inactiva")
   UserId       String   @id @db.UniqueIdentifier
   TenantId     String   @db.UniqueIdentifier
   Permissions  String   @db.NVarChar(Max) // JSON array de strings
@@ -377,6 +382,7 @@ model RolePermissionsProjection {
 // UserPermissionsProjection (arriba).
 // -----------------------------------------------------------------------------
 model UserDirectoryEntry {
+  /// @userReference(Projection, handledBy: offboarding-consumers, note: "Se marca inactiva; la fila se conserva para mostrar su nombre")
   UserId       String   @id @db.UniqueIdentifier
   TenantId     String   @db.UniqueIdentifier
   DisplayName  String   @db.NVarChar(200)
@@ -436,6 +442,7 @@ model CustomerDirectoryEntry {
 model CustomerPreparerAssignment {
   CustomerId     String   @id @db.UniqueIdentifier
   TenantId       String   @db.UniqueIdentifier
+  /// @userReference(Projection, handledBy: Customer:CustomerUserOffboardedConsumer, via: customer.preparer_assigned.v1|customer.preparer_unassigned.v1, note: "Copia de Customer: la reescribe su retiro; el primary del chat lo pasa handOverDirectChats")
   PreparerUserId String   @db.UniqueIdentifier
   AssignedAtUtc  DateTime @default(now()) @updatedAt @db.DateTime2
 
@@ -459,6 +466,7 @@ model CustomerAssignmentProjection {
   Id         String   @id @default(uuid()) @db.UniqueIdentifier
   TenantId   String   @db.UniqueIdentifier
   CustomerId String   @db.UniqueIdentifier
+  /// @userReference(Projection, handledBy: Customer:CustomerUserOffboardedConsumer, via: customer.assignments_changed.v1, note: "Copia de Customer: la reescribe su retiro; con el directorio inactivo queda inerte")
   UserId     String   @db.UniqueIdentifier
   Version    DateTime @db.DateTime2
 
@@ -489,6 +497,7 @@ model AttachmentUploadReservation {
   FileId           String   @id @db.UniqueIdentifier
   TenantId         String   @db.UniqueIdentifier
   ConversationId   String   @db.UniqueIdentifier
+  /// @userReference(Provenance, note: "Reserva tecnica: sin sesion no se consume y la purga la retencion")
   UploadedByUserId String   @db.UniqueIdentifier
   CreatedAtUtc     DateTime @default(now()) @db.DateTime2
 
@@ -557,6 +566,7 @@ model OutboxMessage {
 // -----------------------------------------------------------------------------
 model IdempotencyRecord {
   TenantId      String   @db.UniqueIdentifier
+  /// @userReference(Provenance, note: "Registro tecnico de reintentos; lo purga la retencion")
   UserId        String   @db.UniqueIdentifier
   Scope         String   @db.NVarChar(64)
   ClientKey     String   @db.NVarChar(128)
@@ -601,6 +611,7 @@ model Conversation {
   Description      String?   @db.NVarChar(500)
   AvatarFileId     String?   @db.UniqueIdentifier
   AdminsOnlyWrite  Boolean   @default(false)
+  /// @userReference(Provenance, note: "No da permisos: el rol vive en ConversationParticipant")
   CreatedByUserId  String    @db.UniqueIdentifier
   CreatedAtUtc     DateTime  @default(now()) @db.DateTime2
   UpdatedAtUtc     DateTime  @default(now()) @updatedAt @db.DateTime2
@@ -620,6 +631,7 @@ model ConversationParticipant {
   Id                String    @id @default(uuid()) @db.UniqueIdentifier
   ConversationId    String    @db.UniqueIdentifier
   TenantId          String    @db.UniqueIdentifier
+  /// @userReference(ActiveWork, handledBy: offboarding-consumers, note: "Sale de grupos (con sucesion), Direct y soporte")
   UserId            String    @db.UniqueIdentifier
   DisplayName       String    @db.NVarChar(120)
   ActorType         String    @db.NVarChar(32)
@@ -653,8 +665,11 @@ model ConversationAudit {
   TenantId       String   @db.UniqueIdentifier
   ConversationId String   @db.UniqueIdentifier
   // MemberAdded | MemberRemoved | MemberLeft | RoleChanged | OwnershipTransferred | InfoUpdated | AdminsOnlyChanged | Archived
+  // Retiro: ClosedByOffboarding | PrimaryPreparerAssigned | SupportTicketTransferred | SupportTicketReleased
   Action         String   @db.NVarChar(48)
+  /// @userReference(Provenance)
   ActorUserId    String?  @db.UniqueIdentifier
+  /// @userReference(Provenance)
   TargetUserId   String?  @db.UniqueIdentifier
   // JSON corto con el detalle (rol nuevo, nombre anterior, etc.).
   Metadata       String?  @db.NVarChar(2000)
@@ -673,6 +688,7 @@ model Message {
   Id                     String    @id @default(uuid()) @db.UniqueIdentifier
   ConversationId         String    @db.UniqueIdentifier
   TenantId               String    @db.UniqueIdentifier
+  /// @userReference(Provenance)
   SenderId               String    @db.UniqueIdentifier
   // Denormalizacion controlada: nunca perdemos "quien envio" aunque el usuario
   // se dé de baja en Auth (cierre CRIT-17 del legacy).
@@ -698,6 +714,7 @@ model Message {
   // use case, no en el aggregate — depende del ConversationKind).
   IsPinned               Boolean   @default(false)
   PinnedAtUtc            DateTime? @db.DateTime2
+  /// @userReference(Provenance)
   PinnedByUserId         String?   @db.UniqueIdentifier
   DeletedAtUtc           DateTime? @db.DateTime2
   CreatedAtUtc           DateTime  @default(now()) @db.DateTime2
@@ -710,6 +727,8 @@ model Message {
   TranscriptText         String?   @db.NVarChar(4000)
   TranscriptState        String?   @db.NVarChar(16)
   TranscriptLanguage     String?   @db.NVarChar(16)
+  // Solo Kind=System: origen del aviso (Call | Membership | Notice) para el ícono del hilo. Null en el resto.
+  SystemKind             String?   @db.NVarChar(32)
 
   Conversation Conversation      @relation(fields: [ConversationId], references: [Id], onDelete: Cascade)
   Receipts     MessageReceipt[]
@@ -733,6 +752,7 @@ model MessageEdit {
   TenantId       String   @db.UniqueIdentifier
   Revision       Int
   PreviousBody   String   @db.NVarChar(4000)
+  /// @userReference(Provenance)
   EditedByUserId String   @db.UniqueIdentifier
   EditedAtUtc    DateTime @db.DateTime2
 
@@ -755,6 +775,7 @@ model MessageReaction {
   Id           String   @id @default(uuid()) @db.UniqueIdentifier
   MessageId    String   @db.UniqueIdentifier
   TenantId     String   @db.UniqueIdentifier
+  /// @userReference(Provenance)
   UserId       String   @db.UniqueIdentifier
   Emoji        String   @db.NVarChar(16)
   CreatedAtUtc DateTime @default(now()) @db.DateTime2
@@ -770,6 +791,7 @@ model MessageReaction {
 // legacy de N+1: se batchean en la Application layer y no se upsert por mensaje.
 model MessageReceipt {
   MessageId      String    @db.UniqueIdentifier
+  /// @userReference(Provenance)
   UserId         String    @db.UniqueIdentifier
   TenantId       String    @db.UniqueIdentifier
   DeliveredAtUtc DateTime? @db.DateTime2
@@ -796,7 +818,9 @@ model Call {
   Kind                       String    @db.NVarChar(16)
   // "Ringing" | "Accepted" | "Rejected" | "Cancelled" | "MissedCall" | "Active" | "Ended" | "Failed"
   Status                     String    @db.NVarChar(24)
+  /// @userReference(Provenance, note: "Efimera: el corte de sesion lo saca y el barrido cierra la abandonada")
   CallerUserId               String    @db.UniqueIdentifier
+  /// @userReference(Provenance, note: "Efimera: el corte de sesion lo saca y el barrido cierra la abandonada")
   CalleeUserId               String    @db.UniqueIdentifier
   // Referencia opcional a la conversation 1:1 asociada (si vino de un chat).
   ConversationId             String?   @db.UniqueIdentifier
@@ -841,6 +865,7 @@ model CallParticipant {
   Id                      String    @id @default(uuid()) @db.UniqueIdentifier
   CallId                  String    @db.UniqueIdentifier
   TenantId                String    @db.UniqueIdentifier
+  /// @userReference(Provenance, note: "Efimera: el corte de sesion lo saca y el barrido cierra la abandonada")
   UserId                  String    @db.UniqueIdentifier
   DisplayName             String    @db.NVarChar(120)
   // "Caller" | "Callee"
@@ -902,6 +927,7 @@ model Meeting {
   TranscriptFileId           String?   @db.UniqueIdentifier
   // INV-T01 R-7: idioma del transcript de la reunión; null = el de cada participante / la oficina.
   TranscriptLanguage         String?   @db.NVarChar(16)
+  /// @userReference(ActiveWork, handledBy: offboarding-consumers, note: "Activas: al sucesor o se cancelan/terminan")
   HostUserId                 String    @db.UniqueIdentifier
   ScheduledForUtc            DateTime? @db.DateTime2
   StartedAtUtc               DateTime? @db.DateTime2
@@ -919,6 +945,7 @@ model Meeting {
   ContinuationOfMeetingId    String?   @db.UniqueIdentifier
   // F6 (T-64): recordatorio enviado una sola vez.
   ReminderSentAtUtc          DateTime? @db.DateTime2
+  /// @userReference(Provenance)
   CreatedByUserId            String    @db.UniqueIdentifier
   CreatedAtUtc               DateTime  @default(now()) @db.DateTime2
   UpdatedAtUtc               DateTime  @default(now()) @updatedAt @db.DateTime2
@@ -936,6 +963,7 @@ model MeetingParticipant {
   Id                String    @id @default(uuid()) @db.UniqueIdentifier
   MeetingId         String    @db.UniqueIdentifier
   TenantId          String    @db.UniqueIdentifier
+  /// @userReference(ActiveWork, handledBy: offboarding-consumers, note: "Sale de las agendadas de otros; en vivo lo saca el corte de sesion")
   UserId            String    @db.UniqueIdentifier
   DisplayName       String    @db.NVarChar(120)
   // Espejo libre del claim JWT actor_type ("TenantEmployee"|"TenantAdmin"|
@@ -983,7 +1011,9 @@ model MeetingEventLog {
   Seq           Int
   At            DateTime @db.DateTime2
   Type          String   @db.NVarChar(64)
+  /// @userReference(Provenance)
   ActorUserId   String?  @db.UniqueIdentifier
+  /// @userReference(Provenance)
   TargetUserId  String?  @db.UniqueIdentifier
   PayloadJson   String?  @db.NVarChar(Max)
   CorrelationId String?  @db.NVarChar(128)
@@ -1086,8 +1116,10 @@ model SupportTicket {
   // del agente "todos mis tickets" sin cross-tenant scan.
   AgentTenantId   String    @db.UniqueIdentifier
   // Usuario del tenant customer que abrio el ticket.
+  /// @userReference(ActiveWork, handledBy: offboarding-consumers, note: "Abiertos: al sucesor o al admin de la oficina")
   OpenedByUserId  String    @db.UniqueIdentifier
   // Agente asignado (null si aun no reclamado). Vive en AgentTenantId.
+  /// @userReference(ActiveWork, handledBy: offboarding-consumers, note: "Vuelven a la cola")
   AssignedAgentId String?   @db.UniqueIdentifier
   // ID de la Conversation Kind=Support asociada.
   ConversationId  String    @unique @db.UniqueIdentifier
@@ -1119,6 +1151,7 @@ model SupportTicket {
 model NotificationEntry {
   Id                  String    @id @default(uuid()) @db.UniqueIdentifier
   TenantId            String    @db.UniqueIdentifier
+  /// @userReference(Provenance, note: "Registro de lo notificado (sin hard delete, ver NotificationRepository); sin sesion es inerte y lo purga la retencion")
   UserId              String    @db.UniqueIdentifier
   // "signature.reminder_due" | "signature.completed" | "signature.canceled" |
   // "signature.push_challenge" | "customer.bulk_import_completed" | ...
@@ -1127,6 +1160,7 @@ model NotificationEntry {
   Title               String    @db.NVarChar(200)
   Body                String    @db.NVarChar(1000)
   Category            String?   @db.NVarChar(32)
+  /// @userReference(Provenance)
   ActorUserId         String?   @db.UniqueIdentifier
   ActorDisplayName    String?   @db.NVarChar(160)
   // "System" | "TenantEmployee" | "TenantAdmin" | "CustomerPortal" | "External".
@@ -1172,6 +1206,7 @@ model MeetingInvitation {
   InviteeKind          String    @default("External") @db.NVarChar(16)
   // Cuando invitamos por email externo (no user Auth) guardamos el email.
   InviteeEmail         String?   @db.NVarChar(320)
+  /// @userReference(ActiveWork, handledBy: offboarding-consumers, note: "Las abiertas se revocan")
   InviteeUserId        String?   @db.UniqueIdentifier
   // Nombre para mostrar cuando no hay cuenta Auth que lo resuelva (Guest).
   InviteeName          String?   @db.NVarChar(120)
@@ -1192,6 +1227,8 @@ model MeetingInvitation {
 
   @@unique([TokenHash])
   @@index([MeetingId, ExpiresAtUtc])
+  // Retiro de un empleado: sus invitaciones abiertas (revocar) y el pre-flight de impacto.
+  @@index([TenantId, InviteeUserId])
 }
 
 // =============================================================================
@@ -1212,6 +1249,7 @@ model RecordingConsentEvent {
   TenantId       String   @db.UniqueIdentifier
   Scope          String   @db.NVarChar(16) // "Meeting" | "Call"
   ScopeId        String   @db.UniqueIdentifier // meetingId | callId
+  /// @userReference(Provenance, note: "Constancia legal del consentimiento")
   UserId         String   @db.UniqueIdentifier
   Response       String   @db.NVarChar(16) // "Requested" | "Accepted" | "Rejected"
   RespondedAtUtc DateTime @db.DateTime2
@@ -1230,6 +1268,7 @@ model RecordingSession {
   // "Idle"|"Requesting"|"Recording"|"Stopping"|"Processing"|"Ready"|"Failed"
   // ("Idle" nunca se persiste — la ausencia de fila ES Idle.)
   State              String    @db.NVarChar(16)
+  /// @userReference(ActiveWork, handledBy: offboarding-consumers, note: "Las Client que capturaba quedan Failed; las de servidor terminan solas")
   RequestedByUserId  String    @db.UniqueIdentifier
   RequestedAtUtc     DateTime  @db.DateTime2
   StartedAtUtc       DateTime? @db.DateTime2
@@ -1306,6 +1345,7 @@ model TranscriptArtifact {
 model CustomerPortalAccount {
   CustomerId   String   @id @db.UniqueIdentifier
   TenantId     String   @db.UniqueIdentifier
+  /// @userReference(Projection, handledBy: offboarding-consumers, note: "Usuario de portal (cliente), no staff; tambien la inactiva auth-consumers")
   UserId       String   @db.UniqueIdentifier
   IsActive     Boolean  @default(true)
   UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2

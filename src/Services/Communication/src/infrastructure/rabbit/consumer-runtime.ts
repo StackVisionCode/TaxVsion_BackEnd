@@ -5,6 +5,10 @@ import { logger } from '../logger/logger.js';
 import { consumerProjectionFailuresTotal } from '../telemetry/metrics.js';
 import type { ProcessedEventStore } from '../../application/ports/processed-event-store.js';
 import type { ConsumerHandler, IncomingEnvelope } from '../../application/ports/event-consumer.js';
+import {
+  OFFBOARDING_INCOMPLETE_CLR_TYPE,
+  OFFBOARDING_STEP_COMPLETED_TYPE,
+} from '../../contracts/events/offboarding-events.js';
 
 /**
  * Registry sencillo de consumers por `eventType`. Cada handler valida el shape
@@ -242,6 +246,9 @@ const INTENTIONALLY_IGNORED_EVENT_TYPES = new Set([
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormActionFailedIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormCompletedIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormRejectedIntegrationEvent',
+  // Retiro con acuse: los acuses de los servicios .NET y el aviso de retiro incompleto son para Auth/Notification.
+  OFFBOARDING_STEP_COMPLETED_TYPE,
+  OFFBOARDING_INCOMPLETE_CLR_TYPE,
 ]);
 const UNKNOWN_EVENT_LOG_INTERVAL_MS = 60_000;
 

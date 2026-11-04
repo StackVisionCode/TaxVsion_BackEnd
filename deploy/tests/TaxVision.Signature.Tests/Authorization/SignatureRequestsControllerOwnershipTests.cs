@@ -62,8 +62,10 @@ public sealed class SignatureRequestsControllerOwnershipTests
         public Task AddAsync(SignatureRequest request, CancellationToken ct = default) =>
             throw new NotImplementedException();
 
-        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,

@@ -28,6 +28,8 @@ public sealed class ReferralQualification : TenantEntity
     public string IdempotencyKey { get; private set; } = default!;
     public string PayloadFingerprint { get; private set; } = default!;
     public DateTime EvaluatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid EvaluatedBy { get; private set; }
 
     private ReferralQualification() { }

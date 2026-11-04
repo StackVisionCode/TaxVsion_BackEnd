@@ -8,6 +8,7 @@ using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Delivery;
 using TaxVision.Signature.Application.Messaging;
+using TaxVision.Signature.Application.Requests.Preparer;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -970,15 +971,7 @@ public static class SignatureRequestCompletedConsumer
         return new CertificatePreparerEntry(preparer.DisplayName, MaskIdentifier(preparer.PtinOrEfin), at);
     }
 
-    /// <summary>Enmascara un PTIN/EFIN dejando visibles los últimos 4 (p. ej. "P•••••5678").</summary>
-    private static string MaskIdentifier(string identifier)
-    {
-        if (string.IsNullOrEmpty(identifier))
-            return string.Empty;
-        if (identifier.Length <= 4)
-            return new string('•', identifier.Length);
-        return identifier[0] + new string('•', identifier.Length - 5) + identifier[^4..];
-    }
+    private static string MaskIdentifier(string identifier) => PreparerIdentifierMask.Mask(identifier);
 
     // ============== Fase 6: publicar Sealed / Failed ==============
 

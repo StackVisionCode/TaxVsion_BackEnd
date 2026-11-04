@@ -677,4 +677,66 @@ public sealed class AcceptInvitationHandlerTests
         Assert.Contains(systemRole.Id, rolesChanged.RoleIds);
         Assert.Contains(permission.Code, rolesChanged.PermissionCodes);
     }
+
+    /// <summary>
+    /// D-8: alguien que se retiró puede volver a la oficina con el mismo email. La invitación crea una cuenta
+    /// NUEVA (otro Guid); la retirada queda intacta como registro histórico y el login resuelve la nueva.
+    /// </summary>
+    [Fact]
+    public async Task AcceptInvitation_for_an_offboarded_email_creates_a_new_account_and_keeps_the_old_one()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenant = Tenant.Register(tenantId, "Acme", "acme", TenantKind.Customer, "America/Santo_Domingo").Value;
+        var former = User.Register(
+            tenantId,
+            "Ana",
+            "Gomez",
+            "back@example.com",
+            "hashed:old",
+            UserActorType.TenantEmployee
+        ).Value;
+        former.Offboard(DateTime.UtcNow);
+        var users = new InMemoryUserRepository();
+        users.Add(former);
+
+        var systemRole = Role.Create(tenantId, Role.SystemEmployee, null, isSystem: true).Value;
+        var roles = new FakeRoleRepository();
+        roles.Seed(systemRole);
+        var invitation = Invitation
+            .Create(
+                tenantId,
+                "back@example.com",
+                UserActorType.TenantEmployee,
+                customerId: null,
+                invitedByUserId: Guid.NewGuid(),
+                tokenHash: FixedTokenHash,
+                expiresAtUtc: DateTime.UtcNow.AddDays(1)
+            )
+            .Value;
+
+        var result = await AcceptInvitationHandler.Handle(
+            new AcceptInvitationCommand(RawToken, "Ana", "Gomez", "Str0ng-Passw0rd!"),
+            new FakeInvitationRepository(invitation),
+            new FakeInvitationTokenService(),
+            users,
+            new FakeTenantRegistry(tenant),
+            new FakePasswordHasher(),
+            roles,
+            new FakeLoginThrottler(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        var current = await users.GetByEmailAsync(tenantId, "back@example.com", UserAccountKind.Staff);
+        Assert.NotNull(current);
+        Assert.NotEqual(former.Id, current!.Id);
+        Assert.True(current.IsActive);
+        Assert.Equal(UserStatus.Offboarded, former.Status);
+        Assert.Equal("back@example.com", former.Email);
+    }
 }

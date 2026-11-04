@@ -14,6 +14,8 @@ public sealed class SubscriptionAuditLog : BaseEntity
     public string AggregateType { get; private set; } = default!;
     public Guid AggregateId { get; private set; }
     public string Action { get; private set; } = default!;
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ActorUserId { get; private set; }
     public string ActorType { get; private set; } = default!;
     public DateTime OccurredAtUtc { get; private set; }

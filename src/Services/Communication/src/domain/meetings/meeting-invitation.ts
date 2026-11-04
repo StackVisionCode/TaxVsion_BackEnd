@@ -187,6 +187,13 @@ export class MeetingInvitation {
     this.state = { ...this.state, revokedAtUtc: now };
   }
 
+  /** Retiro del invitado: revoca solo si seguia abierta (ni revocada ni cerrada). Devuelve si cambio. */
+  revokeBySystem(now: Date): boolean {
+    if (this.state.revokedAtUtc !== null || this.state.closedAtUtc !== null) return false;
+    this.state = { ...this.state, revokedAtUtc: now };
+    return true;
+  }
+
   /** F6: la reunion termino/se cancelo/expiro; solo cierra las que seguian abiertas. Devuelve si cambio. */
   close(now: Date): boolean {
     if (this.state.closedAtUtc !== null || this.state.revokedAtUtc !== null) return false;

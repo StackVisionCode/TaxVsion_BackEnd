@@ -20,7 +20,11 @@ public sealed class FormIntakeLink : AggregateRoot
     public DateTime? ExpiresAtUtc { get; private set; }
     public int? MaxSubmissions { get; private set; }
     public int SubmissionCount { get; private set; }
+
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "FormIntakeLinksUserOffboardedConsumer")]
     public Guid ResponsibleUserId { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
@@ -117,6 +121,17 @@ public sealed class FormIntakeLink : AggregateRoot
         if (Status == FormIntakeLinkStatus.Revoked)
             return Result.Success();
         Status = FormIntakeLinkStatus.Revoked;
+        return Result.Success();
+    }
+
+    // Cambia quién recibe los leads del enlace; la elegibilidad (activo + permisos) la valida Application.
+    public Result ReassignResponsible(Guid responsibleUserId)
+    {
+        if (responsibleUserId == Guid.Empty)
+            return Result.Failure(FormParticipantErrors.IntakeLinkInvalid);
+        if (Status == FormIntakeLinkStatus.Revoked)
+            return Result.Failure(FormParticipantErrors.IntakeLinkUnavailable);
+        ResponsibleUserId = responsibleUserId;
         return Result.Success();
     }
 

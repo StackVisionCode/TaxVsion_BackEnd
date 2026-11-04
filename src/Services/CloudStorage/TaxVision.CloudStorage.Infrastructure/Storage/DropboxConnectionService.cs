@@ -23,7 +23,7 @@ public interface IDropboxConnectionService
 {
     Task<string> StartAsync(Guid tenantId, Guid userId, string? returnOrigin, CancellationToken ct);
     Task CompleteAsync(Guid stateId, string code, CancellationToken ct);
-    Task<(bool Connected, string? Email)> GetStatusAsync(Guid tenantId, CancellationToken ct);
+    Task<CloudConnectionStatus> GetStatusAsync(Guid tenantId, CancellationToken ct);
     Task DisconnectAsync(Guid tenantId, CancellationToken ct);
 }
 
@@ -116,18 +116,20 @@ public sealed class DropboxConnectionService(
                 state.TenantId,
                 ProviderId,
                 profile.Email,
-                protector.Protect(token.RefreshToken)
+                protector.Protect(token.RefreshToken),
+                state.InitiatedByUserId
             )
         );
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<(bool Connected, string? Email)> GetStatusAsync(Guid tenantId, CancellationToken ct)
+    public async Task<CloudConnectionStatus> GetStatusAsync(Guid tenantId, CancellationToken ct)
     {
         var connection = await db
             .CloudConnections.IgnoreQueryFilters()
+            .AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Provider == ProviderId, ct);
-        return (connection is not null, connection?.AccountEmail);
+        return CloudConnectionStatus.From(connection);
     }
 
     // Dropbox consent is managed in the user's Dropbox account; disconnect removes the

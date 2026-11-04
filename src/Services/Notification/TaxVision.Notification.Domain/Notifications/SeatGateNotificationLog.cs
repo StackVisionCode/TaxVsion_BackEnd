@@ -6,6 +6,7 @@ public sealed class SeatGateNotificationLog : TenantEntity
 {
     private SeatGateNotificationLog() { }
 
+    [UserReference(UserReferenceKind.Provenance, Note = "Registro de deduplicación del aviso de asiento.")]
     public Guid UserId { get; private set; }
     public Guid SourceEventId { get; private set; }
     public DateTime NotifiedAtUtc { get; private set; }

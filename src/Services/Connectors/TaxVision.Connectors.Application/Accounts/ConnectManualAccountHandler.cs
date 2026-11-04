@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Audit;
@@ -38,6 +39,7 @@ public static class ConnectManualAccountHandler
         IProviderConnectionAuditLogRepository auditLogRepository,
         IProviderWatchSubscriptionRepository watchSubscriptionRepository,
         IWatchProviderClientFactory watchClientFactory,
+        IUserPermissionsProjectionReader initiatorProjections,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -64,6 +66,20 @@ public static class ConnectManualAccountHandler
         var connectivityCheck = await ValidateConnectivityAsync(cmd, connectivityValidator, ct);
         if (connectivityCheck.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(connectivityCheck.Error);
+
+        // La prueba IMAP/SMTP tarda segundos: si lo retiraron o suspendieron mientras tanto, no se guarda nada.
+        var initiatorCheck = await ConnectInitiatorGuard.EnsureActiveAsync(
+            cmd.TenantId,
+            cmd.InitiatedByUserId,
+            cmd.InitiatorIsPlatformAdmin,
+            initiatorProjections,
+            ct
+        );
+        if (initiatorCheck.IsFailure)
+            return Result.Failure<ConnectManualAccountResult>(initiatorCheck.Error);
+
+        // Fila desconectada que era personal de otra persona (p. ej. un retirado re-invitado): pasa a quien conecta.
+        existingAccount?.ReassignOwnerOnReconnect(cmd.AsOffice ? null : cmd.InitiatedByUserId);
 
         TenantEmailAccount account;
         if (existingAccount is null)
@@ -266,21 +282,54 @@ public static class ConnectManualAccountHandler
         if (smtpCipher.IsFailure)
             return Result.Failure(smtpCipher.Error);
 
+        // El retiro purga las credenciales del buzón personal: si ya no están, se crean de nuevo.
         var imapResult = await imapCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
-        if (imapResult.IsFailure)
-            return Result.Failure(imapResult.Error);
-        imapResult.Value.UpdateSettings(cmd.ImapHost, cmd.ImapPort, cmd.ImapUseSsl, cmd.ImapUsername, imapCipher.Value);
+        if (imapResult.IsSuccess)
+            imapResult.Value.UpdateSettings(
+                cmd.ImapHost,
+                cmd.ImapPort,
+                cmd.ImapUseSsl,
+                cmd.ImapUsername,
+                imapCipher.Value
+            );
+        else
+        {
+            var created = ImapCredentials.Create(
+                account.Id,
+                cmd.ImapHost,
+                cmd.ImapPort,
+                cmd.ImapUseSsl,
+                cmd.ImapUsername,
+                imapCipher.Value
+            );
+            if (created.IsFailure)
+                return Result.Failure(created.Error);
+            await imapCredentialsRepository.AddAsync(created.Value, ct);
+        }
 
         var smtpResult = await smtpCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
-        if (smtpResult.IsFailure)
-            return Result.Failure(smtpResult.Error);
-        smtpResult.Value.UpdateSettings(
-            cmd.SmtpHost,
-            cmd.SmtpPort,
-            cmd.SmtpUseStartTls,
-            cmd.SmtpUsername,
-            smtpCipher.Value
-        );
+        if (smtpResult.IsSuccess)
+            smtpResult.Value.UpdateSettings(
+                cmd.SmtpHost,
+                cmd.SmtpPort,
+                cmd.SmtpUseStartTls,
+                cmd.SmtpUsername,
+                smtpCipher.Value
+            );
+        else
+        {
+            var created = SmtpCredentials.Create(
+                account.Id,
+                cmd.SmtpHost,
+                cmd.SmtpPort,
+                cmd.SmtpUseStartTls,
+                cmd.SmtpUsername,
+                smtpCipher.Value
+            );
+            if (created.IsFailure)
+                return Result.Failure(created.Error);
+            await smtpCredentialsRepository.AddAsync(created.Value, ct);
+        }
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();

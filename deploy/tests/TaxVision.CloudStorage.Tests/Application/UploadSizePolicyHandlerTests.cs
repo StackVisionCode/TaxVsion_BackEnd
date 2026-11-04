@@ -65,7 +65,13 @@ public sealed class UploadSizePolicyHandlerTests
             );
             var limit = TenantStorageLimit.Create(tenantId, planCode, 10L * 1024 * MB, 10 * MB);
             return (
-                await resolver.ResolveAsync(tenantId, limit, folderType, forCustomerPortal: false, CancellationToken.None)
+                await resolver.ResolveAsync(
+                    tenantId,
+                    limit,
+                    folderType,
+                    forCustomerPortal: false,
+                    CancellationToken.None
+                )
             ).MaxFileSizeBytes;
         }
     }

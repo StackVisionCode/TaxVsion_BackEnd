@@ -2,10 +2,10 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
-using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.CustomerAccess;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
@@ -118,7 +118,10 @@ public static class IssueDownloadUrlHandler
 
         var lifetime = TimeSpan.FromMinutes((await platform.GetAsync(ct)).SignedUrlMinutes);
         // Descarga: adjunto con el nombre real. Visor: inline (lo pinta el navegador, no lo guarda).
-        var disposition = ContentDispositionBuilder.Build(query.ForPreview ? "inline" : "attachment", file.OriginalName);
+        var disposition = ContentDispositionBuilder.Build(
+            query.ForPreview ? "inline" : "attachment",
+            file.OriginalName
+        );
         var action = query.ForPreview ? "preview.url-issued" : "download.url-issued";
         var url = await storage.PresignGetAsync(options.Value.MainBucket, file.ObjectKey, lifetime, disposition, ct);
         audit.Add(

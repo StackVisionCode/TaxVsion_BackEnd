@@ -10,6 +10,8 @@ public sealed class FormLibraryReview : TenantEntity
     public Guid FormTemplateId { get; private set; }
     public int ReviewedVersionNumber { get; private set; }
     public string ReviewerRole { get; private set; } = string.Empty;
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ReviewedByUserId { get; private set; }
     public DateTime ReviewedAtUtc { get; private set; }
     public string? Note { get; private set; }

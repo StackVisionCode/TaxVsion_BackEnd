@@ -657,6 +657,25 @@ public sealed class StoragePolicyRepository(CloudStorageDbContext db) : IStorage
             .ToListAsync(ct);
 }
 
+public sealed class TenantCloudConnectionRepository(CloudStorageDbContext db) : ITenantCloudConnectionRepository
+{
+    public async Task<IReadOnlyList<TenantCloudConnection>> ListByTenantAsync(Guid tenantId, CancellationToken ct) =>
+        await db
+            .CloudConnections.IgnoreQueryFilters()
+            .Where(connection => connection.TenantId == tenantId)
+            .ToListAsync(ct);
+
+    public async Task<int> DiscardOAuthStatesInitiatedByAsync(Guid tenantId, Guid userId, CancellationToken ct)
+    {
+        var states = await db
+            .CloudProviderOAuthStates.IgnoreQueryFilters()
+            .Where(state => state.TenantId == tenantId && state.InitiatedByUserId == userId)
+            .ToListAsync(ct);
+        db.CloudProviderOAuthStates.RemoveRange(states);
+        return states.Count;
+    }
+}
+
 /// <summary>Fase C3 — links de compartir. GetByTokenHashAsync siempre trae los Recipients: la resolucion de acceso los necesita.</summary>
 public sealed class ShareLinkRepository(CloudStorageDbContext db) : IShareLinkRepository
 {
@@ -686,6 +705,22 @@ public sealed class ShareLinkRepository(CloudStorageDbContext db) : IShareLinkRe
                 link.TenantId == tenantId
                 && link.CreatedByUserId == createdByUserId
                 && link.Status == ShareStatus.Active
+            )
+            .ToListAsync(ct);
+
+    // Tracked y con Recipients: el consumer de offboard saca al retirado de los destinatarios.
+    public async Task<IReadOnlyList<ShareLink>> ListActiveWithUserRecipientAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct
+    ) =>
+        await db
+            .ShareLinks.IgnoreQueryFilters()
+            .Include(link => link.Recipients)
+            .Where(link =>
+                link.TenantId == tenantId
+                && link.Status == ShareStatus.Active
+                && link.Recipients.Any(r => r.Kind == ShareRecipientKind.User && r.RecipientUserId == userId)
             )
             .ToListAsync(ct);
 

@@ -11,13 +11,40 @@ public static class DangerousFileTypes
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             // Video pirateable
-            ".mkv", ".avi", ".mov", ".mpg", ".mpeg", ".flv", ".wmv", ".m4v",
+            ".mkv",
+            ".avi",
+            ".mov",
+            ".mpg",
+            ".mpeg",
+            ".flv",
+            ".wmv",
+            ".m4v",
             // Audio pirateable
-            ".mp3", ".flac", ".wav", ".aac", ".ape", ".wma",
+            ".mp3",
+            ".flac",
+            ".wav",
+            ".aac",
+            ".ape",
+            ".wma",
             // Ejecutables
-            ".exe", ".dll", ".msi", ".bat", ".cmd", ".com", ".scr", ".ps1", ".vbs", ".jar", ".apk", ".ipa",
+            ".exe",
+            ".dll",
+            ".msi",
+            ".bat",
+            ".cmd",
+            ".com",
+            ".scr",
+            ".ps1",
+            ".vbs",
+            ".jar",
+            ".apk",
+            ".ipa",
             // Imágenes de disco
-            ".iso", ".img", ".dmg", ".vmdk", ".vhd",
+            ".iso",
+            ".img",
+            ".dmg",
+            ".vmdk",
+            ".vhd",
             // Piracy
             ".torrent",
         };

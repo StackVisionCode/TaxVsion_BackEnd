@@ -38,7 +38,18 @@ public sealed class SignatureLimitsTests
     {
         var limits = Limits(tokenHours: 48);
 
-        var tooLong = SignatureRequest.CreateDraft(limits, Guid.NewGuid(), Guid.NewGuid(), "Engagement", null, "Other", 72, false, false, false);
+        var tooLong = SignatureRequest.CreateDraft(
+            limits,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Engagement",
+            null,
+            "Other",
+            72,
+            false,
+            false,
+            false
+        );
         var request = Draft(limits);
         var update = request.UpdateMetadata(limits, "Engagement", null, "Other", 49);
         var enable = request.EnableExpiration(limits, 100);
@@ -54,8 +65,20 @@ public sealed class SignatureLimitsTests
         var limits = Limits(channels: VerificationChannel.Email);
         var request = Draft(limits);
 
-        var sms = request.AddSigner(limits, Email("a@example.com"), Name("Ann Lee"), null, requiredVerificationMethod: SignerVerificationMethod.SmsOtp);
-        var email = request.AddSigner(limits, Email("b@example.com"), Name("Bob Ray"), null, requiredVerificationMethod: SignerVerificationMethod.EmailOtp);
+        var sms = request.AddSigner(
+            limits,
+            Email("a@example.com"),
+            Name("Ann Lee"),
+            null,
+            requiredVerificationMethod: SignerVerificationMethod.SmsOtp
+        );
+        var email = request.AddSigner(
+            limits,
+            Email("b@example.com"),
+            Name("Bob Ray"),
+            null,
+            requiredVerificationMethod: SignerVerificationMethod.EmailOtp
+        );
 
         Assert.Equal("Signature.Signer.ChannelNotAllowed", sms.Error.Code);
         Assert.True(email.IsSuccess);
@@ -69,8 +92,24 @@ public sealed class SignatureLimitsTests
         var signer = request.AddSigner(limits, Email("a@example.com"), Name("Ann Lee"), null).Value;
         var position = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
 
-        var first = request.PlaceField(1, signer.Id, request.Documents[0].Id, SignatureFieldKind.Signature, position, null, true);
-        var second = request.PlaceField(1, signer.Id, request.Documents[0].Id, SignatureFieldKind.Date, position, null, true);
+        var first = request.PlaceField(
+            1,
+            signer.Id,
+            request.Documents[0].Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            true
+        );
+        var second = request.PlaceField(
+            1,
+            signer.Id,
+            request.Documents[0].Id,
+            SignatureFieldKind.Date,
+            position,
+            null,
+            true
+        );
 
         Assert.True(first.IsSuccess);
         Assert.Equal("Signature.Request.TooManyFields", second.Error.Code);
@@ -124,7 +163,13 @@ public sealed class SignatureLimitsTests
             VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 5).Value
         );
         Assert.True(request.Send(DateTime.UtcNow).IsSuccess);
-        var strict = new VerificationPolicy(6, TimeSpan.FromMinutes(10), TimeSpan.FromSeconds(30), 2, TimeSpan.FromMinutes(5));
+        var strict = new VerificationPolicy(
+            6,
+            TimeSpan.FromMinutes(10),
+            TimeSpan.FromSeconds(30),
+            2,
+            TimeSpan.FromMinutes(5)
+        );
         var now = DateTime.UtcNow;
 
         request.VerifySignerWithPin(signer.Id, false, now, null, null, strict);
@@ -141,7 +186,22 @@ public sealed class SignatureLimitsTests
     {
         var result = SignaturePlatformSettings
             .Defaults()
-            .Update(otpLength, otpLifetimeMinutes, 30, 5, 30, 1_500_000, 10, 20, 20, 200, 6, 12, Guid.NewGuid(), DateTime.UtcNow);
+            .Update(
+                otpLength,
+                otpLifetimeMinutes,
+                30,
+                5,
+                30,
+                1_500_000,
+                10,
+                20,
+                20,
+                200,
+                6,
+                12,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            );
 
         Assert.Equal(SignaturePlatformSettingsErrors.OutOfRange, result.Error);
     }
