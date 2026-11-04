@@ -167,7 +167,12 @@ public sealed class MessagesController(
 
         var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<AttachmentSummary>>>(
-            new ListMessageAttachmentsQuery(tenantId, id, visible),
+            new ListMessageAttachmentsQuery(
+                tenantId,
+                id,
+                visible,
+                await customerAccess.ResolveRestrictedUserIdAsync(User, ct)
+            ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -190,7 +195,10 @@ public sealed class MessagesController(
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Fase 8 — URL presignada de un attachment ya descargado. 409 si todavía no está listo (ver <c>GetAttachmentDownloadUrlHandler</c>).</summary>
+    /// <summary>
+    /// Fase 8 — URL presignada de un attachment ya descargado. 409 si no se pidió o sigue en curso;
+    /// 400 con mensaje seguro si la descarga falló, nunca el motivo crudo (ver <c>GetAttachmentDownloadUrlHandler</c>).
+    /// </summary>
     [HttpGet("{id:guid}/attachments/{attachmentId:guid}/download-url")]
     [HasPermission(CorrespondencePermissions.AttachmentDownload)]
     [RateLimit("correspondence.f.message_read")]

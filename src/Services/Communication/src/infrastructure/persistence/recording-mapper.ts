@@ -47,6 +47,7 @@ export function toDomainRecordingSession(row: PrismaRecordingSession): Recording
     readyAtUtc: row.ReadyAtUtc,
     tracksPurgedAtUtc: row.TracksPurgedAtUtc,
     purgedAtUtc: row.PurgedAtUtc,
+    sequence: row.Sequence,
   };
   return RecordingSession.rehydrate(snapshot);
 }

@@ -214,6 +214,8 @@ public sealed class FormSubmissionRevision : BaseEntity
     public FormRevisionOutcome Outcome { get; private set; }
     public string? ReviewMessage { get; private set; }
     public DateTime? ReviewedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? ReviewedByUserId { get; private set; }
     public string? CompletionNote { get; private set; }
     public FormRevisionPdfStatus PdfStatus { get; private set; }
@@ -332,10 +334,13 @@ public sealed class FormSubmissionRevision : BaseEntity
         }
     }
 
-    internal void MarkSignatureFailed()
+    /// <summary>Solo desde una firma en curso; un fallo repetido no cambia nada (devuelve false).</summary>
+    internal bool MarkSignatureFailed()
     {
-        if (SignatureStatus is FormRevisionSignatureStatus.Requesting or FormRevisionSignatureStatus.Sent)
-            SignatureStatus = FormRevisionSignatureStatus.Failed;
+        if (SignatureStatus is not (FormRevisionSignatureStatus.Requesting or FormRevisionSignatureStatus.Sent))
+            return false;
+        SignatureStatus = FormRevisionSignatureStatus.Failed;
+        return true;
     }
 
     internal void MarkSignatureSigned()

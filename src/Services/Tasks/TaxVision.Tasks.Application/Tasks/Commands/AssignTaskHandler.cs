@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.Application.Reminders;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 using Wolverine;
@@ -46,9 +47,13 @@ public static class AssignTaskHandler
             return Result.Failure<TaskResponse>(assigned.Error);
 
         if (previousAssigneeUserId != command.AssigneeUserId)
+        {
             await bus.PublishAsync(
                 BuildEvent(task, previousAssigneeUserId, command.ByUserId, correlation.CorrelationId)
             );
+            // El recordatorio de vencimiento es por persona: el nuevo asignado pide el suyo (clave idempotente).
+            await TaskDueReminder.PublishIfDueAsync(task, bus, correlation);
+        }
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(TaskResponse.From(task));

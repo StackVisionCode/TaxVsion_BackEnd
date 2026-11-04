@@ -30,7 +30,11 @@ public sealed class AddOnDefinition : BaseEntity
     public string? MutexGroup { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
 
     public IReadOnlyCollection<AddOnFeature> Features => _features;

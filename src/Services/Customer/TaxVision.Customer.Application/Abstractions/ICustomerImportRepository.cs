@@ -13,4 +13,11 @@ public interface ICustomerImportRepository
     Task<int> CountActiveByTenantAsync(Guid tenantId, CancellationToken ct);
 
     Task AddAsync(CustomerImportAttempt attempt, CancellationToken ct);
+
+    /// <summary>Imports en curso (rastreados) cuyo aviso de fin va a <paramref name="userId"/>. Retiro.</summary>
+    Task<IReadOnlyList<CustomerImportAttempt>> ListInFlightNotifyingAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct
+    ) => Task.FromResult<IReadOnlyList<CustomerImportAttempt>>([]);
 }

@@ -22,7 +22,7 @@ async function ensureCapturing(deps: CallCaptureSfuDeps, tenantId: string, callI
   const call = await deps.calls.findById(tenantId, callId);
   if (!call) return Result.fail(makeError('Call.NotFound', 'Call not found.'));
   if (!call.isParticipant(userId)) return Result.fail(makeError('Call.NotParticipant', 'You are not part of this call.'));
-  const session = await deps.recordingSessions.findByScope(tenantId, RecordingScope.Call, callId);
+  const session = await deps.recordingSessions.findLatestByScope(tenantId, RecordingScope.Call, callId);
   const s = session?.toSnapshot();
   if (!s || s.state !== 'Recording' || s.captureMode !== RecordingCaptureMode.Server) {
     return Result.fail(makeError('Call.Recording.NotCapturing', 'This call is not being recorded on the server.'));

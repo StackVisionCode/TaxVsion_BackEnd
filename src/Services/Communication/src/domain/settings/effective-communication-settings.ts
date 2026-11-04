@@ -57,7 +57,6 @@ export interface EffectiveCommunicationSettings {
     readonly guestsAllowed: boolean;
     /** F6: minutos antes del inicio para el recordatorio (0 = apagado) y sala de espera forzada para guests. */
     readonly reminderMinutesBefore: number;
-    readonly guestsWaitingRoom: boolean;
     readonly soundsPolicy: MeetingSoundsPolicy;
     readonly chatAttachmentsPerMinute: number;
     readonly chatAttachmentsPerMeeting: number;
@@ -106,12 +105,8 @@ export interface EffectiveCommunicationSettings {
     readonly edit: ChatEditPolicy;
   };
   readonly support: { readonly enabled: boolean };
-  /** Retención: la de la oficina que fijó PlatformAdmin o, si no hay, la global. La oficina no la edita. */
-  readonly retention: {
-    readonly messageDays: number;
-    readonly recordingDays: number;
-    readonly purgeEnabled: boolean;
-  };
+  /** Retención vigente (D-72): ver `resolveRetention`. */
+  readonly retention: EffectiveRetention;
   readonly invitations: {
     readonly minTtlHours: number;
     readonly expiryGraceHours: number;
@@ -292,6 +287,46 @@ export function resolveMediaPolicy(
   };
 }
 
+interface RetentionValues {
+  readonly messageDays: number;
+  readonly recordingDays: number;
+  readonly purgeEnabled: boolean;
+}
+
+/** D-72: retención vigente, si la oficina la gestiona y lo que rige cuando la oficina no fija un valor. */
+export interface EffectiveRetention extends RetentionValues {
+  readonly managedByTenant: boolean;
+  /** Excepción de PlatformAdmin ?? global: el "default" que ve la oficina. */
+  readonly platformDefault: RetentionValues;
+}
+
+/**
+ * D-72: base = excepción de PlatformAdmin ?? global. Si la oficina gestiona su retención, sus valores
+ * fijados mandan sobre la base; si no, se ignoran (se conservan guardados). Sin purga no se borra nada.
+ */
+export function resolveRetention(input: {
+  platform: PlatformCommunicationSettingsSnapshot;
+  constraints: TenantCommunicationConstraintsSnapshot | null;
+  tenant: TenantCommunicationSettingsSnapshot;
+}): EffectiveRetention {
+  const { platform, constraints, tenant } = input;
+  // `??` por la caché de plataforma anterior a D-72 (snapshot sin el campo).
+  const managedByTenant = constraints?.retentionManagedByTenant ?? platform.retentionManagedByTenant ?? false;
+  const platformDefault: RetentionValues = {
+    messageDays: clampToTechnical('messageRetentionDays', constraints?.messageRetentionDays ?? platform.messageRetentionDays),
+    recordingDays: clampToTechnical('recordingRetentionDays', constraints?.recordingRetentionDays ?? platform.recordingRetentionDays),
+    purgeEnabled: constraints?.purgeEnabled ?? platform.purgeEnabled ?? false,
+  };
+  const office = managedByTenant ? tenant : null;
+  return {
+    messageDays: clampToTechnical('messageRetentionDays', office?.messageRetentionDays ?? platformDefault.messageDays),
+    recordingDays: clampToTechnical('recordingRetentionDays', office?.recordingRetentionDays ?? platformDefault.recordingDays),
+    purgeEnabled: office?.purgeEnabled ?? platformDefault.purgeEnabled,
+    managedByTenant,
+    platformDefault,
+  };
+}
+
 export interface ResolveEffectiveInput {
   readonly platform: PlatformCommunicationSettingsSnapshot;
   readonly limits: TenantCommunicationLimitsSnapshot | null;
@@ -367,11 +402,7 @@ export function resolveCeilings(input: {
 
 export function resolveEffectiveSettings(input: ResolveEffectiveInput): EffectiveCommunicationSettings {
   const { platform, limits, constraints, tenant } = input;
-  const retention = {
-    messageDays: clampToTechnical('messageRetentionDays', constraints?.messageRetentionDays ?? platform.messageRetentionDays),
-    recordingDays: clampToTechnical('recordingRetentionDays', constraints?.recordingRetentionDays ?? platform.recordingRetentionDays),
-    purgeEnabled: constraints?.purgeEnabled ?? platform.purgeEnabled ?? false,
-  };
+  const retention = resolveRetention({ platform, constraints, tenant });
   const preferences = input.preferences ?? null;
   const ceilings = resolveCeilings({ platform, limits, constraints });
 
@@ -408,8 +439,6 @@ export function resolveEffectiveSettings(input: ResolveEffectiveInput): Effectiv
       dominantSpeakerMaxPerSecond: clampToTechnical('dominantSpeakerMaxPerSecond', platform.dominantSpeakerMaxPerSecond),
       guestsAllowed: ceilings.guestsAllowed && tenant.guestsAllowed,
       reminderMinutesBefore: clampToTechnical('meetingReminderMinutesBefore', tenant.meetingReminderMinutesBefore ?? platform.meetingReminderMinutesBefore),
-      // `??` por la cache de plataforma anterior al despliegue de F6.
-      guestsWaitingRoom: tenant.guestsWaitingRoom ?? platform.guestsWaitingRoomDefault ?? true,
       soundsPolicy,
       chatAttachmentsPerMinute: officeValue(
         tenant.meetingChatAttachmentsPerMinute,

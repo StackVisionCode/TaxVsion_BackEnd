@@ -13,6 +13,7 @@ public static class CreateInvoiceDraftHandler
         CreateInvoiceDraftCommand command,
         IInvoiceRepository invoices,
         IIssuerProfileRepository issuerProfiles,
+        ITenantBillingSettingsRepository billingSettings,
         IUnitOfWork unitOfWork,
         TimeProvider clock,
         CancellationToken ct
@@ -58,6 +59,11 @@ public static class CreateInvoiceDraftHandler
             ? profile?.DefaultCurrency ?? "USD"
             : command.Currency;
 
+        // Condiciones de cobro: se congelan los ajustes del tenant de este momento (por defecto, al
+        // recibirla), así cambiarlos luego no altera esta factura.
+        var settings = await billingSettings.GetByTenantAsync(command.TenantId, ct);
+        var terms = settings?.ToSnapshot() ?? InvoiceTermsSnapshot.Default;
+
         var lines = command
             .Lines.Select(l => new DraftInvoiceLine(
                 l.Description,
@@ -76,7 +82,8 @@ public static class CreateInvoiceDraftHandler
             lines,
             command.Notes,
             nowUtc,
-            issuer
+            issuer,
+            terms
         );
         if (result.IsFailure)
             return Result.Failure<CreateInvoiceDraftResult>(result.Error);

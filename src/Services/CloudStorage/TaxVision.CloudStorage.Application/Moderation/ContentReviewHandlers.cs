@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Moderation;
@@ -84,6 +85,7 @@ public static class PreviewContentReviewFileHandler
         IObjectStorage storage,
         IStorageAuditRepository audit,
         IOptions<CloudStorageOptions> options,
+        IStoragePlatformSettingsProvider platform,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -99,7 +101,7 @@ public static class PreviewContentReviewFileHandler
         var bucket = await storage.ExistsAsync(options.Value.QuarantineBucket, file.ObjectKey, ct)
             ? options.Value.QuarantineBucket
             : options.Value.MainBucket;
-        var lifetime = TimeSpan.FromMinutes(options.Value.PresignedUrlMinutes);
+        var lifetime = TimeSpan.FromMinutes((await platform.GetAsync(ct)).SignedUrlMinutes);
         var url = await storage.PresignGetAsync(bucket, file.ObjectKey, lifetime, "inline", ct);
 
         var now = clock.UtcNow;

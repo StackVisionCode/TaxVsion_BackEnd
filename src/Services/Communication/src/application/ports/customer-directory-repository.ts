@@ -32,6 +32,12 @@ export interface CustomerDirectoryRepository {
 
   findByCustomerId(tenantId: string, customerId: string): Promise<CustomerDirectoryEntrySnapshot | null>;
 
+  /**
+   * MNT-01: clientes activos de ESA oficina con ese email. El mismo cliente en otra oficina es otra fila
+   * (otro customerId) y nunca aparece; puede haber varios en la misma oficina (p. ej. una pareja).
+   */
+  findActiveByEmail?(tenantId: string, email: string): Promise<CustomerDirectoryEntrySnapshot[]>;
+
   markInactive(customerId: string): Promise<void>;
 
   /** Archivar borra la foto en Customer: la proyeccion la limpia igual. */

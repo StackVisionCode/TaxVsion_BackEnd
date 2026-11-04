@@ -7,6 +7,8 @@ public sealed class StorageAccessLog : TenantEntity
     private StorageAccessLog() { }
 
     public Guid? FileId { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ActorId { get; private set; }
     public string Action { get; private set; } = default!;
     public string Outcome { get; private set; } = default!;

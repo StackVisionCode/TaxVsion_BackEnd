@@ -1,9 +1,11 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
+using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Calendar.Application.Appointments;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Appointments.Consumers;
 using TaxVision.Calendar.Application.Appointments.Queries;
@@ -18,8 +20,9 @@ using Xunit;
 namespace TaxVision.Calendar.Tests.Application;
 
 /// <summary>
-/// Al retirar (offboard) a un empleado: se revoca su feed token y sus citas vigentes se reasignan al
-/// sucesor, o se cancelan si no hay sucesor. Las de otros organizadores no se tocan.
+/// Al retirar (offboard) a un empleado: se revoca su feed token, sus citas vigentes se reasignan al
+/// sucesor (con su aviso pedido en el acto) o se cancelan si no hay sucesor, y sale como asistente
+/// interno de las citas vigentes. Las de otros organizadores no cambian de dueño.
 /// </summary>
 public sealed class CalendarUserOffboardedConsumerTests
 {
@@ -48,6 +51,22 @@ public sealed class CalendarUserOffboardedConsumerTests
             );
         return appointment;
     }
+
+    private static void InviteStaff(Appointment appointment, Guid userId) =>
+        Assert.True(
+            appointment
+                .AddAttendee(
+                    AttendeeKind.InternalUser,
+                    userId,
+                    null,
+                    AttendeeSnapshot.Create("Staff", $"{userId:N}@firm.test").Value,
+                    isRequired: false,
+                    appointment.OrganizerUserId,
+                    Now,
+                    canManageAll: false
+                )
+                .IsSuccess
+        );
 
     private static Task Run(
         FakeAppointments appointments,
@@ -178,6 +197,115 @@ public sealed class CalendarUserOffboardedConsumerTests
         Assert.DoesNotContain(block, availability.Blocks); // bloqueo borrado
     }
 
+    [Fact]
+    public async Task With_successor_requests_the_reminder_for_the_successor_right_away()
+    {
+        var leaver = Guid.NewGuid();
+        var successor = Guid.NewGuid();
+        var withReminder = FutureAppointment(leaver);
+        withReminder.RequestReminder(30);
+        var withoutReminder = FutureAppointment(leaver);
+        var bus = new FakeMessageBus();
+
+        await Run(
+            new FakeAppointments(withReminder, withoutReminder),
+            new FakeFeedTokens(),
+            new RecordingCache(),
+            bus,
+            leaver,
+            successor
+        );
+
+        // Misma clave que el job (Reminder deduplica por destinatario): es el aviso del sucesor.
+        var request = Assert.Single(bus.Published.OfType<ReminderRequestedIntegrationEvent>());
+        Assert.Equal(successor, request.UserId);
+        Assert.Equal(AppointmentReminderRequests.Category, request.Category);
+        Assert.Equal(AppointmentReminderRequests.RequestKey(request.TargetId!.Value), request.RequestKey);
+        Assert.Equal(30, request.LeadMinutes);
+    }
+
+    [Fact]
+    public async Task Without_successor_requests_no_reminder()
+    {
+        var leaver = Guid.NewGuid();
+        var appt = FutureAppointment(leaver);
+        appt.RequestReminder(30);
+        var bus = new FakeMessageBus();
+
+        await Run(new FakeAppointments(appt), new FakeFeedTokens(), new RecordingCache(), bus, leaver, successor: null);
+
+        Assert.Empty(bus.Published.OfType<ReminderRequestedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Removes_the_leaver_as_staff_attendee_from_future_appointments_only()
+    {
+        var leaver = Guid.NewGuid();
+        var colleague = Guid.NewGuid();
+        var othersMeeting = FutureAppointment(Guid.NewGuid(), withCustomerAttendee: true);
+        InviteStaff(othersMeeting, leaver);
+        InviteStaff(othersMeeting, colleague);
+        var cancelledMeeting = FutureAppointment(Guid.NewGuid());
+        InviteStaff(cancelledMeeting, leaver);
+        cancelledMeeting.Cancel(cancelledMeeting.OrganizerUserId, canManageAll: false, "Moved", Now);
+        var appointments = new FakeAppointments(othersMeeting, cancelledMeeting);
+
+        await Run(
+            appointments,
+            new FakeFeedTokens(),
+            new RecordingCache(),
+            new FakeMessageBus(),
+            leaver,
+            Guid.NewGuid()
+        );
+
+        Assert.DoesNotContain(othersMeeting.Attendees, a => a.UserId == leaver);
+        Assert.Contains(othersMeeting.Attendees, a => a.UserId == colleague); // el resto queda
+        Assert.Contains(othersMeeting.Attendees, a => a.Kind == AttendeeKind.Customer);
+        Assert.Contains(cancelledMeeting.Attendees, a => a.UserId == leaver); // historial intacto
+    }
+
+    [Fact]
+    public async Task Reassigned_appointment_drops_the_leaver_as_attendee_too()
+    {
+        var leaver = Guid.NewGuid();
+        var successor = Guid.NewGuid();
+        var appt = FutureAppointment(leaver);
+        InviteStaff(appt, leaver);
+
+        await Run(
+            new FakeAppointments(appt),
+            new FakeFeedTokens(),
+            new RecordingCache(),
+            new FakeMessageBus(),
+            leaver,
+            successor
+        );
+
+        Assert.Equal(successor, appt.OrganizerUserId);
+        Assert.DoesNotContain(appt.Attendees, a => a.UserId == leaver);
+    }
+
+    [Fact]
+    public async Task Without_successor_keeps_the_leaver_on_the_appointments_it_cancels()
+    {
+        var leaver = Guid.NewGuid();
+        var appt = FutureAppointment(leaver);
+        InviteStaff(appt, leaver);
+
+        await Run(
+            new FakeAppointments(appt),
+            new FakeFeedTokens(),
+            new RecordingCache(),
+            new FakeMessageBus(),
+            leaver,
+            successor: null
+        );
+
+        Assert.Equal(AppointmentStatus.Cancelled, appt.Status);
+        Assert.Contains(appt.Attendees, a => a.UserId == leaver); // cancelada = historial
+    }
+
     private sealed class FakeAvailability(
         IEnumerable<AvailabilityRule>? rules = null,
         IEnumerable<BlockedTime>? blocks = null
@@ -260,6 +388,22 @@ public sealed class CalendarUserOffboardedConsumerTests
                         a.TenantId == tenantId
                         && a.OrganizerUserId == organizerUserId
                         && a.Status != AppointmentStatus.Cancelled
+                        && (a.Recurrence != null || a.Timing.EndUtc > nowUtc)
+                    )
+                    .ToList()
+            );
+
+        public Task<IReadOnlyList<Appointment>> ListFutureByStaffAttendeeAsync(
+            Guid tenantId,
+            Guid userId,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyList<Appointment>>(
+                _all.Where(a =>
+                        a.TenantId == tenantId
+                        && a.Status != AppointmentStatus.Cancelled
+                        && a.Attendees.Any(at => at.UserId == userId)
                         && (a.Recurrence != null || a.Timing.EndUtc > nowUtc)
                     )
                     .ToList()

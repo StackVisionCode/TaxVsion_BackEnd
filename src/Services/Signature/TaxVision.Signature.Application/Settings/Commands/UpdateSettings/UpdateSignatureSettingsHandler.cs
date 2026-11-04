@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Domain.Settings;
 using Wolverine;
 
@@ -13,6 +14,7 @@ public static class UpdateSignatureSettingsHandler
     public static async Task<Result> Handle(
         UpdateSignatureSettingsCommand cmd,
         ITenantSignatureSettingsRepository repository,
+        ISignatureLimitsResolver limits,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -23,8 +25,8 @@ public static class UpdateSignatureSettingsHandler
         if (settings is null)
             return Result.Failure(new Error("Signature.Settings.NotFound", "No settings found for this tenant."));
 
-        // Validar contra restricciones de plan ANTES de aplicar cambios.
-        var plan = settings.PlanConstraints;
+        // Validar contra los techos vigentes (plan + excepción) ANTES de aplicar cambios.
+        var plan = (await limits.ResolveAsync(cmd.TenantId, ct)).Ceilings;
 
         var disallowedChannels = cmd.AllowedChannels & ~plan.AllowedChannels;
         if (disallowedChannels != VerificationChannel.None)
@@ -43,43 +45,27 @@ public static class UpdateSignatureSettingsHandler
                 )
             );
 
-        if (cmd.DefaultTokenExpirationHours > plan.MaxTokenExpirationHours)
+        if (cmd.DefaultTokenExpirationHours > plan.MaxTokenHours)
             return Result.Failure(
                 new Error(
                     "Signature.Settings.TokenExpirationExceedsPlan",
-                    $"Your plan allows a maximum token expiration of {plan.MaxTokenExpirationHours} hours."
+                    $"Your plan allows a maximum token expiration of {plan.MaxTokenHours} hours."
                 )
             );
 
-        if (cmd.MaxPdfBytes > plan.MaxAllowedPdfBytes)
+        if (cmd.MaxPdfBytes > plan.MaxPdfBytes)
             return Result.Failure(
                 new Error(
                     "Signature.Settings.PdfBytesExceedsPlan",
-                    $"Your plan allows a maximum PDF size of {plan.MaxAllowedPdfBytes} bytes."
+                    $"Your plan allows a maximum PDF size of {plan.MaxPdfBytes} bytes."
                 )
             );
 
-        if (cmd.MaxImageBytes > plan.MaxAllowedImageBytes)
-            return Result.Failure(
-                new Error(
-                    "Signature.Settings.ImageBytesExceedsPlan",
-                    $"Your plan allows a maximum image size of {plan.MaxAllowedImageBytes} bytes."
-                )
-            );
-
-        if (cmd.MaxPagesPerDocument > plan.MaxAllowedPages)
+        if (cmd.MaxPagesPerDocument > plan.MaxPagesPerDocument)
             return Result.Failure(
                 new Error(
                     "Signature.Settings.PagesExceedsPlan",
-                    $"Your plan allows a maximum of {plan.MaxAllowedPages} pages per document."
-                )
-            );
-
-        if (cmd.RetentionYears < plan.MinRetentionYears)
-            return Result.Failure(
-                new Error(
-                    "Signature.Settings.RetentionBelowPlan",
-                    $"Your plan requires a minimum retention of {plan.MinRetentionYears} years."
+                    $"Your plan allows a maximum of {plan.MaxPagesPerDocument} pages per document."
                 )
             );
 
@@ -123,7 +109,7 @@ public static class UpdateSignatureSettingsHandler
         }
 
         {
-            var r = settings.ChangeDefaultTokenExpiration(cmd.DefaultTokenExpirationHours);
+            var r = settings.ChangeDefaultTokenExpiration(cmd.DefaultTokenExpirationHours, plan);
             if (r.IsFailure)
                 return r;
         }
@@ -162,16 +148,28 @@ public static class UpdateSignatureSettingsHandler
             settings.SetSendCertificateToSignersDefault(sendCertDefault);
         if (cmd.RequiresConsentByDefault is { } consentDefault)
             settings.SetRequiresConsentByDefault(consentDefault);
+        if (cmd.ShowSignatureFrame is { } showFrame)
+            settings.SetShowSignatureFrame(showFrame);
+        if (cmd.DateStampFormat is { } dateFormat)
+            settings.SetDateStampFormat(dateFormat);
+        if (cmd.Delivery is { } delivery)
+        {
+            var deliveryPolicy = DeliveryPolicy.Create(
+                delivery.LinkLifetimeDays,
+                delivery.AllowPublicReissue,
+                delivery.AttachDocuments,
+                delivery.MaxAttachmentBytes
+            );
+            if (deliveryPolicy.IsFailure)
+                return Result.Failure(deliveryPolicy.Error);
+            settings.ReplaceDeliveryPolicy(deliveryPolicy.Value);
+        }
 
         var pdfResult = DocumentLimits.Default().WithMaxPdfBytes(cmd.MaxPdfBytes);
         if (pdfResult.IsFailure)
             return Result.Failure(pdfResult.Error);
 
-        var imgResult = pdfResult.Value.WithMaxImageBytes(cmd.MaxImageBytes);
-        if (imgResult.IsFailure)
-            return Result.Failure(imgResult.Error);
-
-        var pagesResult = imgResult.Value.WithMaxPages(cmd.MaxPagesPerDocument);
+        var pagesResult = pdfResult.Value.WithMaxPages(cmd.MaxPagesPerDocument);
         if (pagesResult.IsFailure)
             return Result.Failure(pagesResult.Error);
 
@@ -181,19 +179,8 @@ public static class UpdateSignatureSettingsHandler
                 return r;
         }
 
-        var retentionResult = RetentionPolicy.Default().WithYears(cmd.RetentionYears);
-        if (retentionResult.IsFailure)
-            return Result.Failure(retentionResult.Error);
-
-        var policy = cmd.AllowPurge
-            ? retentionResult.Value.WithPurgeAllowed()
-            : retentionResult.Value.WithPurgeBlocked();
-
-        {
-            var r = settings.ReplaceRetentionPolicy(policy);
-            if (r.IsFailure)
-                return r;
-        }
+        // Solo la purga: los años los fija Cumplimiento y el mínimo del plan se aplica al leerlos.
+        settings.SetPurgeAllowed(cmd.AllowPurge);
 
         await unitOfWork.SaveChangesAsync(ct);
 

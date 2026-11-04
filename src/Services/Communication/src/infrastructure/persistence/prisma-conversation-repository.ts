@@ -116,6 +116,7 @@ export class PrismaConversationRepository implements ConversationRepository {
             TranscriptText: m.transcriptText ?? null,
             TranscriptState: m.transcriptState ?? null,
             TranscriptLanguage: m.transcriptLanguage ?? null,
+            SystemKind: m.systemKind ?? null,
           })),
         });
         // F8d (T-16): enlaces de los mensajes de texto nuevos, en la misma transacción.

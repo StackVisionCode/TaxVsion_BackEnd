@@ -46,6 +46,25 @@ public sealed class ReminderCommandHandlerTests
     }
 
     /// <summary>
+    /// La clave es por destinatario: la misma de otro usuario crea un recordatorio propio y nunca
+    /// devuelve el ajeno (un recordatorio es privado de su dueño).
+    /// </summary>
+    [Fact]
+    public async Task Create_ConLaRequestKeyDeOtroUsuario_CreaElSuyoYNoDevuelveElAjeno()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+
+        var mine = await Create(reminders, scheduler);
+        var theirs = await Create(reminders, scheduler, userId: OtherUserId);
+
+        Assert.True(theirs.IsSuccess);
+        Assert.NotEqual(mine.Value.Id, theirs.Value.Id);
+        Assert.Equal(2, reminders.Stored.Count);
+        Assert.Single(reminders.Stored, r => r.UserId == OtherUserId);
+    }
+
+    /// <summary>
     /// Dos peticiones simultáneas pasan la consulta previa a la vez; la segunda choca contra el
     /// índice único. Se atrapa <see cref="ConflictException"/> — <b>no</b> <c>DbUpdateException</c>:
     /// el DbContext ya tradujo el <c>SqlException</c> 2601/2627 y <c>ConflictException</c> no hereda
@@ -140,12 +159,13 @@ public sealed class ReminderCommandHandlerTests
     private static Task<Result<Application.Reminders.ReminderResponse>> Create(
         FakeReminderRepository reminders,
         RecordingScheduler scheduler,
-        RecordingReminderMetrics? metrics = null
+        RecordingReminderMetrics? metrics = null,
+        Guid? userId = null
     ) =>
         CreateReminderHandler.Handle(
             new CreateReminderCommand(
                 TenantId,
-                UserId,
+                userId ?? UserId,
                 "Llamar a Pérez",
                 Body: null,
                 ReminderCategory.General,

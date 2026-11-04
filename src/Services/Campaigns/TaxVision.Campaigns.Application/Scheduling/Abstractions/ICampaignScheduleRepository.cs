@@ -31,4 +31,27 @@ public interface ICampaignScheduleRepository
     );
 
     Task AddAsync(CampaignSchedule schedule, CancellationToken ct = default);
+
+    /// <summary>
+    /// Agendados vivos (Active/Paused) que disparan en nombre de <paramref name="userId"/>: los que heredó
+    /// (<c>RunAsUserId</c>) o los que agendó y nadie heredó. Rastreados, para traspasarlos o pausarlos.
+    /// </summary>
+    Task<IReadOnlyList<CampaignSchedule>> ListOpenRunAsUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Cuántos agendados vivos disparan en nombre de <paramref name="userId"/> (pre-flight del retiro).</summary>
+    Task<int> CountOpenRunAsUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>Agendados que ya quedaron pausados por el retiro de <paramref name="fromUserId"/> (para no repetir).</summary>
+    Task<IReadOnlySet<Guid>> ListPausedOnOffboardingAsync(
+        Guid tenantId,
+        Guid fromUserId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Constancia del traspaso o la pausa por retiro. Solo se agrega.</summary>
+    Task AddHandoverAsync(CampaignScheduleHandover handover, CancellationToken ct = default);
 }

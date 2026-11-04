@@ -28,6 +28,9 @@ public sealed class CampaignScheduleConfiguration : IEntityTypeConfiguration<Cam
         builder.Property(s => s.ActiveRunId);
         builder.Property(s => s.LeaseToken);
         builder.Property(s => s.LeasedUntilUtc);
+        builder.Property(s => s.RunAsUserId);
+        builder.Ignore(s => s.EffectiveRunAsUserId);
+        builder.Ignore(s => s.IsOpen);
         builder.Property(s => s.CreatedAtUtc).IsRequired();
         builder.Property(s => s.UpdatedAtUtc).IsRequired();
 

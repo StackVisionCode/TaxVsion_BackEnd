@@ -20,6 +20,14 @@ public interface IInvitationRepository
     );
     Task AddAsync(Invitation invitation, CancellationToken ct = default);
 
+    /// <summary>Invitaciones de STAFF pendientes y vigentes que envió ese usuario — se cancelan al retirarlo.
+    /// Default vacío para no forzar a los fakes de tests; el repositorio real lo implementa con una query.</summary>
+    Task<IReadOnlyList<Invitation>> ListPendingStaffSentByAsync(
+        Guid tenantId,
+        Guid invitedByUserId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<Invitation>>([]);
+
     /// <summary>Cuenta invitaciones pendientes (no expiradas) que RESERVAN asiento: solo STAFF
     /// (TenantEmployee/TenantAdmin). Las invitaciones de portal (clientes) no cuentan.</summary>
     Task<int> CountPendingAsync(Guid tenantId, CancellationToken ct = default);

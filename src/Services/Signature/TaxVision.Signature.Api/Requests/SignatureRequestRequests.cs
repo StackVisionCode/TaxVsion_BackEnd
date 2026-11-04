@@ -82,7 +82,9 @@ public sealed record PlaceFieldBody(
     double Width,
     double Height,
     string? Label,
-    bool IsRequired
+    bool IsRequired,
+    // Letra del estampado (iniciales/fecha/texto); null = automática según la caja.
+    int? FontSizePt = null
 );
 
 public sealed record CancelSignatureRequestBody(string? Reason);
@@ -95,6 +97,9 @@ public sealed record ExtendExpirationBody(int AdditionalHours);
 public sealed record SetPractitionerPinBody(string Pin);
 
 public sealed record SetPreparerBody(string PtinOrEfin, string DisplayName, string? TitleLabel);
+
+/// <summary>Nuevo preparador de una solicitud enviada (su identidad 8879 sale de su propio perfil).</summary>
+public sealed record ChangePreparerBody(Guid NewPreparerUserId);
 
 public sealed record PlacePreparerFieldBody(
     Guid DocumentId,
@@ -155,5 +160,7 @@ public sealed record UpsertDraftFieldBody(
     double Width,
     double Height,
     string? Label,
-    bool IsRequired
+    bool IsRequired,
+    // Letra del estampado (iniciales/fecha/texto); null = automática según la caja.
+    int? FontSizePt = null
 );

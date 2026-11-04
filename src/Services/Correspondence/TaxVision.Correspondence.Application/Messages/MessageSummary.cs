@@ -38,5 +38,22 @@ public sealed record MessageSummary(
     // (un Draft enviado) siempre va true — no hay nada que "leer", nunca debe pintarse como no-leído.
     bool IsRead,
     // Veredicto de autenticación del remitente (Verified/Unverified/Unknown). Solo inbound; null en outbound.
-    string? SenderTrust
+    string? SenderTrust,
+    // "Email" (correo normal) o "DeliveryNotice" (tarjeta de aviso de entrega, no es un correo más).
+    string Kind = ThreadMessageKinds.Email,
+    // Solo outbound: peor estado de entrega (Delivered/Delayed/NotDelivered; null = sin noticias) y su detalle.
+    string? DeliveryStatus = null,
+    IReadOnlyList<Delivery.RecipientDeliverySummary>? Deliveries = null,
+    // Solo Kind = DeliveryNotice.
+    Delivery.DeliveryNoticeSummary? DeliveryNotice = null,
+    // Solo outbound: copia y copia oculta (la oficina ve el Bcc de lo que ella envió, como en cualquier cliente de correo).
+    IReadOnlyList<string>? CcAddresses = null,
+    IReadOnlyList<string>? BccAddresses = null
 );
+
+/// <summary>Valores de <see cref="MessageSummary.Kind"/> (contrato con el front).</summary>
+public static class ThreadMessageKinds
+{
+    public const string Email = "Email";
+    public const string DeliveryNotice = "DeliveryNotice";
+}

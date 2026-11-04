@@ -14,7 +14,8 @@ internal sealed class EmailThreadConfiguration : IEntityTypeConfiguration<EmailT
         builder.Property(x => x.Id).ValueGeneratedNever();
 
         builder.Property(x => x.TenantId).IsRequired();
-        builder.Property(x => x.CustomerId).IsRequired();
+        // Opcional (D-1): null = conversación con alguien que no es cliente, nacida de un aviso de no entrega.
+        builder.Property(x => x.CustomerId);
         builder.Property(x => x.Subject).IsRequired().HasMaxLength(EmailThread.SubjectMaxLength);
         builder.Property(x => x.ProviderThreadId).HasMaxLength(EmailThread.ProviderThreadIdMaxLength);
         builder.Property(x => x.FirstMessageAtUtc).IsRequired();

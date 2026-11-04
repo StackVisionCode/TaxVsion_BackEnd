@@ -89,6 +89,12 @@ export async function forwardMessage(
     await release();
     return Result.fail(makeError('Chat.Conversation.NotParticipant', 'User is not a participant of the target conversation.'));
   }
+  // Reenviar es escribir en el destino: misma regla que enviar (archivada, el otro se fue, solo admins).
+  const canWrite = targetConversation.ensureCanWrite(cmd.forwarderUserId);
+  if (!canWrite.isSuccess) {
+    await release();
+    return Result.fail(canWrite.error);
+  }
 
   const forwarderDisplayName = await resolveDisplayName(deps.userDirectory, cmd.forwarderUserId);
 

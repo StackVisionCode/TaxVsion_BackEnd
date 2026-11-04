@@ -4,6 +4,7 @@ using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Sharing;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
+using TaxVision.CloudStorage.Domain.Platform;
 using TaxVision.CloudStorage.Domain.Sharing;
 
 namespace TaxVision.CloudStorage.Tests.Application;
@@ -86,12 +87,13 @@ public sealed class PublicFolderShareQueriesTests
             )
             .Value;
 
-    private static IOptions<CloudStorageOptions> Options(
+    private static FakeStoragePlatformSettingsProvider Options(
         int maxFiles = 500,
         long maxAggregateBytes = 2L * 1024 * 1024 * 1024
     ) =>
-        Microsoft.Extensions.Options.Options.Create(
-            new CloudStorageOptions { MaxZipFiles = maxFiles, MaxZipAggregateBytes = maxAggregateBytes }
+        FakeStoragePlatformSettingsProvider.With(
+            (nameof(StoragePlatformSettings.MaxZipFiles), maxFiles),
+            (nameof(StoragePlatformSettings.MaxZipAggregateBytes), maxAggregateBytes)
         );
 
     // ---------- Listado ----------
@@ -120,7 +122,10 @@ public sealed class PublicFolderShareQueriesTests
             files,
             folders,
             new FakeShareLinkPasswordHasher(),
+            new FakeStorageLimitRepository(),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeSystemClock(now),
+            new FakeUnitOfWork(),
             CancellationToken.None
         );
 
@@ -152,7 +157,10 @@ public sealed class PublicFolderShareQueriesTests
             new FakeFileObjectRepository(),
             folders,
             new FakeShareLinkPasswordHasher(),
+            new FakeStorageLimitRepository(),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeSystemClock(now),
+            new FakeUnitOfWork(),
             CancellationToken.None
         );
 
@@ -179,7 +187,10 @@ public sealed class PublicFolderShareQueriesTests
             new FakeFileObjectRepository(),
             folders,
             new FakeShareLinkPasswordHasher(),
+            new FakeStorageLimitRepository(),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeSystemClock(now),
+            new FakeUnitOfWork(),
             CancellationToken.None
         );
 
@@ -195,7 +206,10 @@ public sealed class PublicFolderShareQueriesTests
             new FakeFileObjectRepository(),
             new FakeFolderRepository(),
             new FakeShareLinkPasswordHasher(),
+            new FakeStorageLimitRepository(),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
             CancellationToken.None
         );
 
@@ -228,8 +242,9 @@ public sealed class PublicFolderShareQueriesTests
             files,
             folders,
             new FakeShareLinkPasswordHasher(),
-            new FakeStorageAuditRepository(),
+            new FakeStorageLimitRepository(),
             Options(),
+            new FakeStorageAuditRepository(),
             new FakeSystemClock(now),
             new FakeUnitOfWork(),
             CancellationToken.None
@@ -264,8 +279,9 @@ public sealed class PublicFolderShareQueriesTests
             files,
             folders,
             new FakeShareLinkPasswordHasher(),
-            new FakeStorageAuditRepository(),
+            new FakeStorageLimitRepository(),
             Options(),
+            new FakeStorageAuditRepository(),
             new FakeSystemClock(now),
             new FakeUnitOfWork(),
             CancellationToken.None
@@ -296,8 +312,9 @@ public sealed class PublicFolderShareQueriesTests
             files,
             folders,
             new FakeShareLinkPasswordHasher(),
-            new FakeStorageAuditRepository(),
+            new FakeStorageLimitRepository(),
             Options(maxFiles: 0),
+            new FakeStorageAuditRepository(),
             new FakeSystemClock(now),
             new FakeUnitOfWork(),
             CancellationToken.None
@@ -328,8 +345,10 @@ public sealed class PublicFolderShareQueriesTests
             files,
             folders,
             new FakeShareLinkPasswordHasher(),
+            new FakeStorageLimitRepository(),
+            Options(maxAggregateBytes: 1),
             new FakeStorageAuditRepository(),
-            Options(maxAggregateBytes: 1), // el archivo semilla pesa 10 bytes
+            // el archivo semilla pesa 10 bytes
             new FakeSystemClock(now),
             new FakeUnitOfWork(),
             CancellationToken.None
@@ -360,8 +379,9 @@ public sealed class PublicFolderShareQueriesTests
             files,
             folders,
             new FakeShareLinkPasswordHasher(),
-            new FakeStorageAuditRepository(),
+            new FakeStorageLimitRepository(),
             Options(),
+            new FakeStorageAuditRepository(),
             new FakeSystemClock(now),
             new FakeUnitOfWork(),
             CancellationToken.None

@@ -179,7 +179,12 @@ public static class ProcessClientFormSummaryGenerationHandler
                 {
                     // Sólo se anuncia la copia si quedó subida: así Tasks nunca pide firmar un archivo inexistente.
                     var anchorPage = ResolveAnchorPage(pageCounter, pdf.Value, logger);
-                    generation.AttachSignatureCopy(signatureFileId, anchorPage);
+                    generation.AttachSignatureCopy(
+                        signatureFileId,
+                        anchorPage,
+                        signatureCopy.OwnerType,
+                        signatureCopy.FolderType
+                    );
                     await unitOfWork.SaveChangesAsync(ct);
                 }
                 else
@@ -368,7 +373,8 @@ public static class ProcessClientFormSummaryGenerationHandler
             string? tenantLogo = null;
             try
             {
-                tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(tenantId, ct);
+                // El resumen lo ve el cliente: logo del portal, con el del CRM de respaldo.
+                tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(tenantId, LogoAudience.Client, ct);
             }
             catch (Exception ex)
             {
@@ -379,7 +385,11 @@ public static class ProcessClientFormSummaryGenerationHandler
             {
                 try
                 {
-                    tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(PlatformTenant.Id, ct);
+                    tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(
+                        PlatformTenant.Id,
+                        LogoAudience.Staff,
+                        ct
+                    );
                 }
                 catch (Exception ex)
                 {

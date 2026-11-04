@@ -33,6 +33,8 @@ public sealed partial class PlatformSettings : BaseEntity
     public string BillingEmail { get; private set; } = default!;
     public long Version { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? UpdatedByUserId { get; private set; }
 
     public static Result<PlatformSettings> Create(

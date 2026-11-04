@@ -70,11 +70,13 @@ public interface IReminderRepository
 
     /// <summary>
     /// Soporte de la idempotencia de ADR-R-07: antes de crear, el handler pregunta si esta
-    /// <c>RequestKey</c> ya existe. Devuelve <c>null</c> deliberadamente — «no existe» es el caso
-    /// normal y esperado del alta, no un fallo.
+    /// <c>RequestKey</c> ya existe <b>para este destinatario</b>. Devuelve <c>null</c> deliberadamente —
+    /// «no existe» es el caso normal y esperado del alta, no un fallo. El <c>userId</c> va en el
+    /// predicado: la misma clave de otro usuario es otro recordatorio (y nunca se le devuelve uno ajeno).
     /// </summary>
     Task<ReminderAggregate?> FindByRequestKeyAsync(
         Guid tenantId,
+        Guid userId,
         RequestKey requestKey,
         CancellationToken ct = default
     );
@@ -91,12 +93,10 @@ public interface IReminderRepository
     );
 
     /// <summary>
-    /// Recordatorios PRIVADOS (Category <c>General</c>, sin target — «recordame llamar a Pérez») del
-    /// usuario que aún están pendientes, para cancelarlos y desagendarlos al retirarlo (offboard). Los
-    /// atados a Calendar/Task/Note NO entran: los cierra el cascade de <c>reminder.target_closed.v1</c>
-    /// de su propio servicio. Tracked (se cancelan).
+    /// Todos los recordatorios aún pendientes del usuario (General, Task, Calendar y Note), para
+    /// cancelarlos y desagendarlos al retirarlo (offboard). Tracked (se cancelan).
     /// </summary>
-    Task<IReadOnlyList<ReminderAggregate>> ListPendingGeneralByUserAsync(
+    Task<IReadOnlyList<ReminderAggregate>> ListPendingByUserAsync(
         Guid tenantId,
         Guid userId,
         CancellationToken ct = default

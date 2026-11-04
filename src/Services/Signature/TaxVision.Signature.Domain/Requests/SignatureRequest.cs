@@ -5,7 +5,9 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Signature.Domain.Platform;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
+using TaxVision.Signature.Domain.Settings;
 
 namespace TaxVision.Signature.Domain.Requests;
 
@@ -39,21 +41,23 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// <summary>Máximo del nombre de categoría (sistema o custom del tenant). Guardado como texto congelado.</summary>
     public const int MaxCategoryLength = 64;
     public const int MinSigners = 1;
-    public const int MaxSigners = 50;
-    public const int MaxDocuments = 20;
 
     public const int MinReminderIntervalHours = 1;
     public const int MaxReminderIntervalHours = 720; // 30 días
 
     /// <summary>Tope de seguridad de reminders por solicitud (anti-runaway). La expiración los corta antes.</summary>
-    public const int MaxRemindersPerRequest = 20;
-
     private readonly List<Signer> _signers = [];
     private readonly List<PreparerField> _preparerFields = [];
     private readonly List<RequestDocument> _documents = [];
+    private readonly List<CustomerFileCopy> _customerCopies = [];
 
     private SignatureRequest() { }
 
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "SignatureRequestsUserOffboardedConsumer",
+        Note = "Sin enviar: al sucesor o se descarta; lo enviado conserva el autor."
+    )]
     public Guid CreatedByUserId { get; private set; }
     public string Title { get; private set; } = default!;
     public string? Description { get; private set; }
@@ -104,6 +108,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// El valor en claro nunca vive en el dominio — sólo el hash producido por Infrastructure.
     /// </summary>
     public string? PractitionerPinHash { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? PractitionerPinSetByUserId { get; private set; }
     public DateTime? PractitionerPinSetAtUtc { get; private set; }
 
@@ -117,6 +123,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// vive en un canal paralelo, específico de los formularios que la requieren (Form 8879).
     /// </summary>
     public PreparerInfo? Preparer { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "Firma del preparador: legal, nunca se toca.")]
     public Guid? PreparerSignedByUserId { get; private set; }
     public DateTime? PreparerSignedAtUtc { get; private set; }
     public bool IsPreparerSigned => PreparerSignedByUserId is not null;
@@ -176,13 +184,19 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// <summary>Motivo textual (subpoena #, ticket legal) del hold. Solo se lee por el staff con permiso RequestRead.</summary>
     public string? LegalHoldReason { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? LegalHoldPlacedByUserId { get; private set; }
     public DateTime? LegalHoldPlacedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? LegalHoldLiftedByUserId { get; private set; }
     public DateTime? LegalHoldLiftedAtUtc { get; private set; }
 
     public IReadOnlyList<Signer> Signers => _signers.AsReadOnly();
     public IReadOnlyList<RequestDocument> Documents => _documents.AsReadOnly();
+
+    /// <summary>Copias de los archivos finales en el portal de cada cliente firmante (solo con varios clientes).</summary>
+    public IReadOnlyList<CustomerFileCopy> CustomerCopies => _customerCopies.AsReadOnly();
 
     // Puente de compilación durante la migración F8. No forma parte del modelo EF y se elimina
     // cuando todos los callers de T3-T6 consuman Documents de manera explícita.
@@ -207,6 +221,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     // ------------------------------------------------------------------
 
     public static Result<SignatureRequest> CreateDraft(
+        SignatureLimits limits,
         Guid tenantId,
         Guid createdByUserId,
         string title,
@@ -226,7 +241,14 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         CertificateGenerationMode certificateGenerationMode = CertificateGenerationMode.SingleForRequest
     )
     {
-        var baseValidation = ValidateFactoryInputs(tenantId, createdByUserId, title, description, tokenExpirationHours);
+        var baseValidation = ValidateFactoryInputs(
+            tenantId,
+            createdByUserId,
+            title,
+            description,
+            tokenExpirationHours,
+            limits
+        );
         if (baseValidation.IsFailure)
             return Result.Failure<SignatureRequest>(baseValidation.Error);
 
@@ -283,6 +305,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
 
     [Obsolete("Create the request first and add documents explicitly.")]
     public static Result<SignatureRequest> CreateDraft(
+        SignatureLimits limits,
         Guid tenantId,
         Guid createdByUserId,
         string title,
@@ -309,6 +332,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             );
 
         var requestResult = CreateDraft(
+            limits,
             tenantId,
             createdByUserId,
             title,
@@ -330,7 +354,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         if (requestResult.IsFailure)
             return requestResult;
 
-        var documentResult = requestResult.Value.AddDocument(originalFileId, title);
+        var documentResult = requestResult.Value.AddDocument(limits, originalFileId, title);
         return documentResult.IsFailure ? Result.Failure<SignatureRequest>(documentResult.Error) : requestResult;
     }
 
@@ -338,15 +362,20 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     // Documents
     // ------------------------------------------------------------------
 
-    public Result<RequestDocument> AddDocument(Guid fileId, string title, string? note = null, int? pageCount = null)
+    public Result<RequestDocument> AddDocument(
+        SignatureLimits limits,
+        Guid fileId,
+        string title,
+        string? note = null,
+        int? pageCount = null
+    )
     {
         var editable = EnsureCanBeEdited();
         if (editable.IsFailure)
             return Result.Failure<RequestDocument>(editable.Error);
-        if (_documents.Count >= MaxDocuments)
-            return Result.Failure<RequestDocument>(
-                new Error("Signature.Request.TooManyDocuments", $"Document count cannot exceed {MaxDocuments}.")
-            );
+        var countCheck = limits.CheckDocumentCount(_documents.Count + 1);
+        if (countCheck.IsFailure)
+            return Result.Failure<RequestDocument>(countCheck.Error);
         if (_documents.Any(document => document.OriginalFileId == fileId))
             return Result.Failure<RequestDocument>(
                 new Error("Signature.Request.DuplicateDocument", "This file is already part of the request.")
@@ -498,24 +527,50 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         return result;
     }
 
-    public Result AttachDocumentHash(Guid documentId, DocumentHash hash)
+    /// <summary>
+    /// El servidor revisó el PDF original y lo aceptó: queda con su hash y el número de páginas real. Solo
+    /// así un documento cuenta como listo para enviar.
+    /// </summary>
+    public Result AttachVerifiedDocument(Guid documentId, VerifiedDocument verified)
     {
-        ArgumentNullException.ThrowIfNull(hash);
-        if (Status != SignatureRequestStatus.Draft)
-            return Result.Failure(
-                new Error("Signature.Request.NotDraft", "Only a Draft request can attach a document hash.")
-            );
+        ArgumentNullException.ThrowIfNull(verified);
+        var document = FindDraftDocument(documentId);
+        if (document.IsFailure)
+            return document;
 
-        var document = FindDocumentOrNull(documentId);
-        if (document is null)
-            return Result.Failure(
-                new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
-            );
-
-        var result = document.AttachHashPre(hash);
+        var result = document.Value.MarkVerified(verified);
         if (result.IsSuccess)
             Touch();
         return result;
+    }
+
+    /// <summary>El servidor rechazó el PDF original: no se puede enviar hasta reemplazarlo.</summary>
+    public Result RejectDocument(Guid documentId, DocumentRejection rejection)
+    {
+        ArgumentNullException.ThrowIfNull(rejection);
+        var document = FindDraftDocument(documentId);
+        if (document.IsFailure)
+            return document;
+
+        var result = document.Value.MarkRejected(rejection);
+        if (result.IsSuccess)
+            Touch();
+        return result;
+    }
+
+    private Result<RequestDocument> FindDraftDocument(Guid documentId)
+    {
+        if (Status != SignatureRequestStatus.Draft)
+            return Result.Failure<RequestDocument>(
+                new Error("Signature.Request.NotDraft", "Only a Draft request can verify its documents.")
+            );
+
+        var document = FindDocumentOrNull(documentId);
+        return document is null
+            ? Result.Failure<RequestDocument>(
+                new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
+            )
+            : Result.Success(document);
     }
 
     public Result MarkDocumentSealed(Guid documentId, Guid sealedFileId, DocumentHash hashPost, DateTime nowUtc)
@@ -557,7 +612,13 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// Edita la metadata del borrador: título, descripción, categoría y horas de expiración del token.
     /// Solo en Draft/Ready. Las horas actualizan la expiración provisional; Send la recalcula desde el envío.
     /// </summary>
-    public Result UpdateMetadata(string title, string? description, string category, int tokenExpirationHours)
+    public Result UpdateMetadata(
+        SignatureLimits limits,
+        string title,
+        string? description,
+        string category,
+        int tokenExpirationHours
+    )
     {
         var editable = EnsureCanBeEdited();
         if (editable.IsFailure)
@@ -583,10 +644,9 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 )
             );
 
-        if (tokenExpirationHours is < 1 or > 720)
-            return Result.Failure(
-                new Error("Signature.Request.TokenExpiration", "Token expiration must be between 1 and 720 hours.")
-            );
+        var hoursCheck = limits.CheckTokenHours(tokenExpirationHours);
+        if (hoursCheck.IsFailure)
+            return hoursCheck;
 
         var categoryCheck = ValidateCategory(category);
         if (categoryCheck.IsFailure)
@@ -682,7 +742,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// F7 — activa la expiración del enlace con las horas dadas. Si la request ya está InProgress,
     /// recalcula ExpiresAtUtc desde SentAtUtc. Rechaza horas fuera de rango.
     /// </summary>
-    public Result EnableExpiration(int tokenExpirationHours)
+    public Result EnableExpiration(SignatureLimits limits, int tokenExpirationHours)
     {
         if (
             Status
@@ -695,10 +755,9 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 new Error("Signature.Request.NotEditable", "Expiration cannot change on a finalized request.")
             );
 
-        if (tokenExpirationHours is < 1 or > 720)
-            return Result.Failure(
-                new Error("Signature.Request.TokenExpiration", "Token expiration must be between 1 and 720 hours.")
-            );
+        var hoursCheck = limits.CheckTokenHours(tokenExpirationHours);
+        if (hoursCheck.IsFailure)
+            return hoursCheck;
 
         ExpirationEnabled = true;
         TokenExpirationHours = tokenExpirationHours;
@@ -804,14 +863,14 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// (o desde el envío inicial si aún no hubo ninguno). La regla vive en el dominio para poder testearla;
     /// la query del repositorio la refleja en SQL para no cargar toda la tabla.
     /// </summary>
-    public bool IsReminderDue(DateTime now)
+    public bool IsReminderDue(DateTime now, int maxRemindersPerRequest)
     {
         if (Status != SignatureRequestStatus.InProgress || !AutoRemindersEnabled)
             return false;
         // F7 — sin expiración no hay deadline que recordar.
         if (!ExpirationEnabled || ExpiresAtUtc is not DateTime expiresAt)
             return false;
-        if (now >= expiresAt || RemindersSent >= MaxRemindersPerRequest)
+        if (now >= expiresAt || RemindersSent >= maxRemindersPerRequest)
             return false;
 
         var baseline = LastReminderSentAtUtc ?? SentAtUtc;
@@ -826,6 +885,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     // ------------------------------------------------------------------
 
     public Result<Signer> AddSigner(
+        SignatureLimits limits,
         SignerEmail email,
         SignerFullName fullName,
         Guid? mappedCustomerId,
@@ -838,10 +898,13 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         if (editable.IsFailure)
             return Result.Failure<Signer>(editable.Error);
 
-        if (_signers.Count >= MaxSigners)
-            return Result.Failure<Signer>(
-                new Error("Signature.Request.TooManySigners", $"Signer count cannot exceed {MaxSigners}.")
-            );
+        var countCheck = limits.CheckSignerCount(_signers.Count + 1);
+        if (countCheck.IsFailure)
+            return Result.Failure<Signer>(countCheck.Error);
+
+        var channelCheck = limits.CheckVerificationMethod(requiredVerificationMethod);
+        if (channelCheck.IsFailure)
+            return Result.Failure<Signer>(channelCheck.Error);
 
         if (EmailAlreadyPresent(email))
             return Result.Failure<Signer>(
@@ -888,11 +951,18 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// Fija (o quita con <c>null</c>) el método de verificación de identidad que el firmante
     /// debe completar antes de firmar. Solo permitido en <c>Draft</c>/<c>Ready</c> (antes de Send).
     /// </summary>
-    public Result SetSignerRequiredVerificationMethod(Guid signerId, SignerVerificationMethod? method)
+    public Result SetSignerRequiredVerificationMethod(
+        SignatureLimits limits,
+        Guid signerId,
+        SignerVerificationMethod? method
+    )
     {
         var editable = EnsureCanBeEdited();
         if (editable.IsFailure)
             return editable;
+        var channelCheck = limits.CheckVerificationMethod(method);
+        if (channelCheck.IsFailure)
+            return channelCheck;
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
@@ -963,12 +1033,14 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     // ------------------------------------------------------------------
 
     public Result<SignatureField> PlaceField(
+        int maxFieldsPerSigner,
         Guid signerId,
         Guid documentId,
         SignatureFieldKind kind,
         FieldPosition position,
         string? label,
-        bool isRequired
+        bool isRequired,
+        int? fontSizePt = null
     )
     {
         var editable = EnsureCanBeEdited();
@@ -981,12 +1053,26 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 new Error("Signature.Request.SignerMissing", "Cannot place a field on an unknown signer.")
             );
 
+        if (signer.Fields.Count >= maxFieldsPerSigner)
+            return Result.Failure<SignatureField>(
+                new Error("Signature.Request.TooManyFields", $"A signer can have at most {maxFieldsPerSigner} fields.")
+            );
+
         if (FindDocumentOrNull(documentId) is null)
             return Result.Failure<SignatureField>(
                 new Error("Signature.Request.DocumentMissing", "Cannot place a field on an unknown document.")
             );
 
-        var fieldResult = SignatureField.Create(Id, signerId, documentId, kind, position, label, isRequired);
+        var fieldResult = SignatureField.Create(
+            Id,
+            signerId,
+            documentId,
+            kind,
+            position,
+            label,
+            isRequired,
+            fontSizePt
+        );
         if (fieldResult.IsFailure)
             return fieldResult;
 
@@ -1000,6 +1086,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
 
     [Obsolete("Pass DocumentId explicitly for multi-document requests.")]
     public Result<SignatureField> PlaceField(
+        int maxFieldsPerSigner,
         Guid signerId,
         SignatureFieldKind kind,
         FieldPosition position,
@@ -1007,7 +1094,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         bool isRequired
     ) =>
         _documents.Count == 1
-            ? PlaceField(signerId, _documents[0].Id, kind, position, label, isRequired)
+            ? PlaceField(maxFieldsPerSigner, signerId, _documents[0].Id, kind, position, label, isRequired)
             : Result.Failure<SignatureField>(
                 new Error("Signature.Request.DocumentRequired", "DocumentId is required for multi-document requests.")
             );
@@ -1103,14 +1190,6 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     // ------------------------------------------------------------------
     // Progresión de estado
     // ------------------------------------------------------------------
-
-    [Obsolete("Use AttachDocumentHash with an explicit DocumentId.")]
-    public Result AttachOriginalHash(DocumentHash originalHash) =>
-        _documents.Count == 1
-            ? AttachDocumentHash(_documents[0].Id, originalHash)
-            : Result.Failure(
-                new Error("Signature.Request.DocumentRequired", "DocumentId is required for multi-document requests.")
-            );
 
     /// <summary>Draft con documento, firmantes y al menos un campo de firma. Vive derivado del estado.</summary>
     public bool IsReadyToSend =>
@@ -1237,6 +1316,121 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     }
 
     /// <summary>
+    /// Quita la firma reutilizable congelada para el preparador (solo Draft/Ready). Al sellar, sus campos
+    /// caen al sello tipográfico hasta que se elija otra. Lo usa el retiro cuando la imagen era del que se va.
+    /// </summary>
+    public Result ClearPreparerSignature()
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        if (PreparerSignatureFileId is null)
+            return Result.Success();
+
+        PreparerSignatureFileId = null;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Cambia el preparador de una solicitud ya enviada (o programada) mientras el preparador NO haya
+    /// firmado y ningún documento esté sellado. La identidad (PTIN/EFIN, nombre) se re-estampa entera con la
+    /// del nuevo y la firma reutilizable pasa a <paramref name="signatureFileId"/> (null = sello tipográfico):
+    /// nunca se estampa la imagen de una persona bajo el nombre de otra. Mismo usuario → no-op.
+    /// </summary>
+    public Result ChangePreparer(PreparerInfo newPreparer, Guid? signatureFileId)
+    {
+        ArgumentNullException.ThrowIfNull(newPreparer);
+
+        if (newPreparer.UserId is not { } newUserId)
+            return Result.Failure(new Error("Signature.Request.PreparerUser", "PreparerUserId is required."));
+
+        var allowed = CanChangePreparer(newUserId);
+        if (allowed.IsFailure)
+            return allowed;
+
+        if (Preparer!.UserId == newUserId)
+            return Result.Success();
+
+        Preparer = newPreparer;
+        PreparerSignatureFileId = signatureFileId;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Reglas de <see cref="ChangePreparer"/> sin mutar nada: el handler las comprueba ANTES de escribir la
+    /// auditoría, para no dejar un evento de cambio en la cadena si el cambio no procede.
+    /// </summary>
+    public Result CanChangePreparer(Guid newPreparerUserId)
+    {
+        if (newPreparerUserId == Guid.Empty)
+            return Result.Failure(new Error("Signature.Request.PreparerUser", "PreparerUserId is required."));
+
+        if (Status is not (SignatureRequestStatus.InProgress or SignatureRequestStatus.Scheduled))
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.PreparerChangeStatus",
+                    "The preparer can only be changed on a request that was sent and is still waiting for signatures."
+                )
+            );
+
+        if (Preparer is null)
+            return Result.Failure(
+                new Error("Signature.Request.NoPreparer", "This request does not have a preparer assigned.")
+            );
+
+        if (IsPreparerSigned)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.PreparerAlreadySigned",
+                    "The preparer already signed this request, so the preparer can no longer be changed."
+                )
+            );
+
+        // Un documento sellado ya lleva estampado al preparador actual (nombre + firma): cambiarlo dejaría
+        // el sellado y la solicitud contando historias distintas.
+        if (_documents.Any(document => document.SealedFileId is not null))
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.PreparerStampApplied",
+                    "A document of this request was already sealed with the current preparer, so the preparer can no longer be changed."
+                )
+            );
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Pasa la autoría de una solicitud SIN ENVIAR (Draft/Ready/Scheduled) a otro usuario — p. ej. el
+    /// sucesor de un empleado retirado. Lo enviado nunca cambia de autor (procedencia). Mismo usuario → no-op.
+    /// </summary>
+    public Result ReassignAuthor(Guid newUserId)
+    {
+        if (newUserId == Guid.Empty)
+            return Result.Failure(new Error("Signature.Request.CreatedBy", "CreatedByUserId is required."));
+
+        if (
+            Status
+            is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready or SignatureRequestStatus.Scheduled)
+        )
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.AuthorLocked",
+                    "Only an unsent request can change its author; sent requests keep who created them."
+                )
+            );
+
+        if (CreatedByUserId == newUserId)
+            return Result.Success();
+
+        CreatedByUserId = newUserId;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
     /// Registra la firma interna del preparer con las credenciales del usuario staff
     /// autenticado. No requiere token público. Idempotente cuando ya está firmado por
     /// el mismo usuario. Se permite sólo cuando la solicitud está <c>InProgress</c> o
@@ -1345,7 +1539,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     ///   <item>Falla si el firmante está bloqueado por intentos previos.</item>
     ///   <item>Es idempotente cuando ya está verificado.</item>
     ///   <item>Si <paramref name="isMatch"/> es <c>false</c> incrementa el contador de fallos
-    ///     y — al alcanzar <see cref="Signer.MaxPinAttempts"/> — bloquea al firmante.</item>
+    ///     y — al alcanzar los intentos de <see cref="VerificationPolicy"/> — bloquea al firmante.</item>
     /// </list>
     /// </summary>
     public Result VerifySignerWithPin(
@@ -1353,7 +1547,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         bool isMatch,
         DateTime attemptedAtUtc,
         string? clientIp,
-        string? userAgent
+        string? userAgent,
+        VerificationPolicy policy
     )
     {
         if (Status != SignatureRequestStatus.InProgress)
@@ -1393,7 +1588,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             return Result.Success();
         }
 
-        signer.RecordPinFailedAttempt(attemptedAtUtc, clientIp, userAgent);
+        signer.RecordPinFailedAttempt(attemptedAtUtc, clientIp, userAgent, policy);
         Touch();
         return Result.Failure(new Error("Signature.Signer.PinMismatch", "The PIN provided is incorrect."));
     }
@@ -1410,18 +1605,12 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     /// <paramref name="answerHash"/> lo produce Application con el mismo hasher que el PIN
     /// (PBKDF2). La Application también publica el evento externo con el valor en claro.
     /// </summary>
-    /// <summary>
-    /// Cooldown mínimo entre challenges consecutivos del mismo método — evita spam
-    /// (resend/switch-channel abuse) del endpoint público.
-    /// </summary>
-    public static readonly TimeSpan ChallengeResendCooldown = TimeSpan.FromSeconds(30);
-
     public Result<SignerVerificationChallenge> IssueVerificationChallenge(
         Guid signerId,
         SignerVerificationMethod method,
         string answerHash,
         DateTime issuedAtUtc,
-        TimeSpan lifetime
+        VerificationPolicy policy
     )
     {
         if (Status != SignatureRequestStatus.InProgress)
@@ -1445,11 +1634,10 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 new Error("Signature.Request.SignerMissing", "Signer not found in this request.")
             );
 
-        // Cooldown: rechaza si el firmante pidió otro challenge del MISMO método hace
-        // menos de <c>ChallengeResendCooldown</c>. Cambiar de método NO tiene cooldown
-        // (soporta switch-channel inmediato).
+        // Cooldown (evita spam del endpoint público): rechaza si el firmante pidió otro challenge del MISMO
+        // método hace menos de lo que fija la plataforma. Cambiar de método NO tiene cooldown.
         var recent = signer.CurrentChallengeFor(method, issuedAtUtc);
-        if (recent is not null && (issuedAtUtc - recent.IssuedAtUtc) < ChallengeResendCooldown)
+        if (recent is not null && (issuedAtUtc - recent.IssuedAtUtc) < policy.ResendCooldown)
             return Result.Failure<SignerVerificationChallenge>(
                 new Error("Signature.Signer.ChallengeCooldown", "Please wait before requesting another code.")
             );
@@ -1462,7 +1650,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 )
             );
 
-        var expiresAt = issuedAtUtc.Add(lifetime);
+        var expiresAt = issuedAtUtc.Add(policy.OtpLifetime);
         var challengeResult = SignerVerificationChallenge.Create(signer.Id, method, answerHash, issuedAtUtc, expiresAt);
         if (challengeResult.IsFailure)
             return challengeResult;
@@ -1486,7 +1674,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         bool isMatch,
         DateTime attemptedAtUtc,
         string? clientIp,
-        string? userAgent
+        string? userAgent,
+        VerificationPolicy policy
     )
     {
         if (Status != SignatureRequestStatus.InProgress)
@@ -1526,7 +1715,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             return Result.Success();
         }
 
-        signer.RecordPinFailedAttempt(attemptedAtUtc, clientIp, userAgent);
+        signer.RecordPinFailedAttempt(attemptedAtUtc, clientIp, userAgent, policy);
         Touch();
         return Result.Failure(new Error("Signature.Signer.ChallengeMismatch", "The verification code is incorrect."));
     }
@@ -2002,7 +2191,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
-    public Result ExtendExpiration(int additionalHours)
+    public Result ExtendExpiration(SignatureLimits limits, int additionalHours)
     {
         if (IsTerminal())
             return Result.Failure(new Error("Signature.Request.Terminal", "Cannot extend a terminal request."));
@@ -2013,9 +2202,12 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 new Error("Signature.Request.ExpirationDisabled", "This request has no expiration; nothing to extend.")
             );
 
-        if (additionalHours is < 1 or > 720)
+        if (additionalHours < SignatureLimits.MinTokenHours || additionalHours > limits.MaxTokenHours)
             return Result.Failure(
-                new Error("Signature.Request.ExtendRange", "Additional hours must be between 1 and 720.")
+                new Error(
+                    "Signature.Request.ExtendRange",
+                    $"Additional hours must be between {SignatureLimits.MinTokenHours} and {limits.MaxTokenHours}."
+                )
             );
 
         ExpiresAtUtc = currentExpiresAt.AddHours(additionalHours);
@@ -2056,6 +2248,67 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             : Result.Failure(
                 new Error("Signature.Request.DocumentRequired", "DocumentId is required for multi-document requests.")
             );
+    }
+
+    /// <summary>
+    /// Archivos finales que aún no están en el portal de los clientes firmantes. Con varios clientes, cada
+    /// uno recibe los documentos que firmó y sus certificados; el certificado único de la solicitud va a
+    /// todos. Con un solo cliente no hay copias: el original ya queda en su carpeta.
+    /// </summary>
+    public IReadOnlyList<PendingCustomerCopy> PendingCustomerCopies()
+    {
+        var customers = _signers
+            .Where(signer => signer.MappedCustomerId is not null)
+            .Select(signer => signer.MappedCustomerId!.Value)
+            .Distinct()
+            .ToList();
+        if (customers.Count < 2)
+            return [];
+
+        var wanted = new List<PendingCustomerCopy>();
+        foreach (var document in _documents)
+        {
+            var signersOfDocument = _signers
+                .Where(signer =>
+                    signer.MappedCustomerId is not null && signer.Fields.Any(field => field.DocumentId == document.Id)
+                )
+                .Select(signer => signer.MappedCustomerId!.Value)
+                .Distinct()
+                .ToList();
+            foreach (var customerId in signersOfDocument)
+            {
+                if (document.SealedFileId is { } sealedFileId)
+                    wanted.Add(new PendingCustomerCopy(sealedFileId, customerId));
+                if (document.CertificateFileId is { } documentCertificate)
+                    wanted.Add(new PendingCustomerCopy(documentCertificate, customerId));
+            }
+        }
+        if (CertificateFileId is { } requestCertificate)
+            wanted.AddRange(customers.Select(customerId => new PendingCustomerCopy(requestCertificate, customerId)));
+
+        return wanted
+            .Distinct()
+            .Where(pending =>
+                !_customerCopies.Any(copy =>
+                    copy.SourceFileId == pending.SourceFileId && copy.CustomerId == pending.CustomerId
+                )
+            )
+            .ToList();
+    }
+
+    /// <summary>Idempotente: una sola copia por (archivo, cliente).</summary>
+    public Result RecordCustomerCopy(Guid sourceFileId, Guid customerId, Guid copyFileId, DateTime nowUtc)
+    {
+        if (sourceFileId == Guid.Empty || customerId == Guid.Empty || copyFileId == Guid.Empty)
+            return Result.Failure(
+                new Error("Signature.Request.CustomerCopy", "Source, customer and copy are required.")
+            );
+        if (_customerCopies.Any(copy => copy.SourceFileId == sourceFileId && copy.CustomerId == customerId))
+            return Result.Success();
+
+        _customerCopies.Add(CustomerFileCopy.Create(Id, sourceFileId, customerId, copyFileId, nowUtc));
+        Touch();
+        return Result.Success();
     }
 
     public Result RecordCertificate(Guid certificateFileId)
@@ -2114,6 +2367,48 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 : _documents.Count > 0 && _documents.All(document => document.CertificateFileId is not null)
         );
 
+    /// <summary>
+    /// CloudStorage rechazó guardar un archivo final (<paramref name="fileId"/>): nunca existirá. Suelta la
+    /// referencia solo si sigue apuntando a ese archivo, para que la solicitud no ofrezca una descarga
+    /// inexistente y el pipeline de sellado (re-entrante) pueda regenerarlo. Un sellado rechazado vuelve
+    /// el documento a "por sellar" y suelta también el certificado de la solicitud, que atestigua el hash
+    /// de todos los documentos. Devuelve qué se soltó y los certificados (archivos existentes) que quedaron
+    /// desligados, o <c>null</c> si nada lo referencia (idempotente).
+    /// </summary>
+    public SealingArtifactRelease? ReleaseRejectedArtifact(Guid fileId)
+    {
+        if (fileId == Guid.Empty)
+            return null;
+
+        var sealedDocument = _documents.Find(document => document.SealedFileId == fileId);
+        if (sealedDocument is not null)
+        {
+            Guid?[] detached = [sealedDocument.CertificateFileId, CertificateFileId];
+            sealedDocument.ReleaseSeal();
+            CertificateFileId = null;
+            Touch();
+            return new SealingArtifactRelease(
+                SealingArtifactKind.SealedDocument,
+                detached.Where(id => id is not null).Select(id => id!.Value).Distinct().ToList()
+            );
+        }
+
+        if (CertificateFileId == fileId)
+        {
+            CertificateFileId = null;
+            Touch();
+            return new SealingArtifactRelease(SealingArtifactKind.RequestCertificate, []);
+        }
+
+        var certifiedDocument = _documents.Find(document => document.CertificateFileId == fileId);
+        if (certifiedDocument is null)
+            return null;
+
+        certifiedDocument.ReleaseCertificate();
+        Touch();
+        return new SealingArtifactRelease(SealingArtifactKind.DocumentCertificate, []);
+    }
+
     // ==================================================================
     // Helpers privados — cada uno con propósito único
     // ==================================================================
@@ -2123,7 +2418,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         Guid createdByUserId,
         string title,
         string? description,
-        int tokenExpirationHours
+        int tokenExpirationHours,
+        SignatureLimits limits
     )
     {
         if (tenantId == Guid.Empty)
@@ -2152,10 +2448,9 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 )
             );
 
-        if (tokenExpirationHours is < 1 or > 720)
-            return Result.Failure(
-                new Error("Signature.Request.TokenExpiration", "Token expiration must be between 1 and 720 hours.")
-            );
+        var hoursCheck = limits.CheckTokenHours(tokenExpirationHours);
+        if (hoursCheck.IsFailure)
+            return hoursCheck;
 
         return Result.Success();
     }
@@ -2226,9 +2521,26 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             return Result.Failure(
                 new Error("Signature.Request.NoDocuments", "The request must have at least one document.")
             );
+        var rejected = _documents.Find(document => document.VerificationStatus == DocumentVerificationStatus.Rejected);
+        if (rejected is not null)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.DocumentRejected",
+                    $"'{rejected.Title}' can't be sent: {rejected.RejectionReason} Replace the file and try again."
+                )
+            );
         if (_documents.Any(document => document.DocumentHashPre is null))
             return Result.Failure(
                 new Error("Signature.Request.NoDocumentHash", "Every document must be attached before sending.")
+            );
+        var outOfRange = FirstFieldBeyondLastPage();
+        if (outOfRange is not null)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.FieldOutsideDocument",
+                    $"A field is placed on page {outOfRange.Value.Page}, but '{outOfRange.Value.Title}' has "
+                        + $"{outOfRange.Value.PageCount} page(s). Move or remove it before sending."
+                )
             );
         if (
             _documents.Any(document =>
@@ -2254,6 +2566,22 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 )
             );
         return Result.Success();
+    }
+
+    // Campos de firmantes y del preparador ubicados en una página que el PDF verificado no tiene.
+    private (int Page, string Title, int PageCount)? FirstFieldBeyondLastPage()
+    {
+        var pages = _signers
+            .SelectMany(signer => signer.Fields.Select(field => (field.DocumentId, field.Position.Page)))
+            .Concat(_preparerFields.Select(field => (field.DocumentId, field.Position.Page)));
+
+        foreach (var (documentId, page) in pages)
+        {
+            var document = FindDocumentOrNull(documentId);
+            if (document?.PageCount is { } pageCount && page > pageCount)
+                return (page, document.Title, pageCount);
+        }
+        return null;
     }
 
     private int NextDocumentOrder() => _documents.Count == 0 ? 1 : _documents.Max(document => document.Order) + 1;

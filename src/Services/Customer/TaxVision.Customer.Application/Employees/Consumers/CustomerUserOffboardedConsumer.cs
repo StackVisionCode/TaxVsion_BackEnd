@@ -7,15 +7,17 @@ using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Domain.Employees;
 using Wolverine;
+using CustomerEntity = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Application.Employees.Consumers;
 
 /// <summary>
 /// Al RETIRAR (offboard) a un empleado: (1) marca el directorio como retirado — deja de ser preparador
-/// elegible; (2) traspasa sus clientes PRIMARY al sucesor (o los desasigna si no hay) para que la oficina
-/// siga trabajándolos; y (3) le revoca los accesos ADICIONALES (no-primary): se va, no debe conservar
-/// ningún acceso. Idempotente; por lotes (keyset). Publica por cliente para que Communication (preparador)
-/// y las proyecciones de visibilidad (asignación) reruteen.
+/// elegible; (2) traspasa sus clientes PRIMARY activos al sucesor (o los desasigna si no hay) para que la
+/// oficina siga trabajándolos; (3) le revoca los accesos ADICIONALES (no-primary); y (4) lo suelta de los
+/// clientes ARCHIVADOS, sin asignar a nadie, para que al reactivarlos no vuelvan con un preparador retirado.
+/// Idempotente; por lotes (keyset). Publica por cliente para que Communication (preparador) y las
+/// proyecciones de visibilidad (asignación) reruteen.
 /// </summary>
 public static class CustomerUserOffboardedConsumer
 {
@@ -36,105 +38,172 @@ public static class CustomerUserOffboardedConsumer
             string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
         );
 
-        // 1. Directorio: retirado (terminal) — nunca vuelve a ser preparador elegible.
+        // Directorio: retirado (terminal) — nunca vuelve a ser preparador elegible.
         await directory.MarkOffboardedAsync(msg.UserId, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        // 2. ¿Hay un sucesor que sea preparador elegible en ESTE tenant? La invariante
-        // "el preparador es un empleado activo" la valida el handler, no el aggregate; aqui
-        // se resuelve una sola vez. Si no es elegible (o es el mismo que se retira), se desasigna
-        // en vez de asignar a un preparador invalido — la oficina retoma la cola sin dueño.
-        Guid? successor = null;
-        if (msg.SuccessorUserId is { } candidate && candidate != msg.UserId)
-        {
-            var entry = await directory.GetByUserIdAsync(candidate, ct);
-            if (entry is not null && entry.TenantId == msg.TenantId && entry.IsEligiblePreparer)
-                successor = candidate;
-        }
+        var successor = await ResolveEligibleSuccessorAsync(msg, directory, ct);
+        var correlationId = correlation.CorrelationId;
 
-        // 3. Reasignar (al sucesor) o desasignar (si no hay) sus clientes, por lotes.
-        var actorUserId = msg.OffboardedByUserId ?? Guid.Empty;
-        var afterId = Guid.Empty;
-        var total = 0;
-        while (true)
-        {
-            var batch = await customers.ListByAssignedPreparerAsync(msg.TenantId, msg.UserId, BatchSize, afterId, ct);
-            if (batch.Count == 0)
-                break;
+        var primary = await SweepAsync(
+            afterId => customers.ListByAssignedPreparerAsync(msg.TenantId, msg.UserId, BatchSize, afterId, ct),
+            customer => HandOverOrUnassignAsync(customer, successor, msg, bus, correlationId),
+            unitOfWork,
+            ct
+        );
+        var extra = await SweepAsync(
+            afterId => customers.ListNonPrimaryAssignedAsync(msg.TenantId, msg.UserId, BatchSize, afterId, ct),
+            customer => RevokeExtraAccessAsync(customer, msg, bus, correlationId),
+            unitOfWork,
+            ct
+        );
+        var archived = await SweepAsync(
+            afterId => customers.ListArchivedAssignedAsync(msg.TenantId, msg.UserId, BatchSize, afterId, ct),
+            customer => ReleaseFromArchivedAsync(customer, msg, bus, correlationId),
+            unitOfWork,
+            ct
+        );
 
-            foreach (var customer in batch)
-            {
-                if (successor is { } successorId)
-                {
-                    // Handover: el sucesor queda primary y el saliente pierde la fila (no la conserva degradada).
-                    if (customer.HandOverPreparer(msg.UserId, successorId, actorUserId).IsFailure)
-                        continue;
-                    await bus.PublishAsync(
-                        new CustomerPreparerAssignedIntegrationEvent
-                        {
-                            TenantId = msg.TenantId,
-                            CorrelationId = correlation.CorrelationId,
-                            CustomerId = customer.Id,
-                            PreparerUserId = successorId,
-                            AssignedByUserId = actorUserId,
-                        }
-                    );
-                }
-                else
-                {
-                    if (customer.UnassignPreparer(actorUserId).IsFailure)
-                        continue;
-                    await bus.PublishAsync(
-                        new CustomerPreparerUnassignedIntegrationEvent
-                        {
-                            TenantId = msg.TenantId,
-                            CorrelationId = correlation.CorrelationId,
-                            CustomerId = customer.Id,
-                            UnassignedByUserId = actorUserId,
-                        }
-                    );
-                }
-                await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlation.CorrelationId));
-                total++;
-            }
-
-            await unitOfWork.SaveChangesAsync(ct);
-            afterId = batch[^1].Id; // keyset avanza siempre → sin bucle infinito aunque algún handover falle.
-            if (batch.Count < BatchSize)
-                break;
-        }
-
-        // 4. Revocar los accesos ADICIONALES (no-primary) del saliente: se va, no conserva ningún acceso.
-        var revokedExtra = 0;
-        afterId = Guid.Empty;
-        while (true)
-        {
-            var batch = await customers.ListNonPrimaryAssignedAsync(msg.TenantId, msg.UserId, BatchSize, afterId, ct);
-            if (batch.Count == 0)
-                break;
-
-            foreach (var customer in batch)
-            {
-                if (customer.RevokeAccess(msg.UserId, actorUserId).IsFailure)
-                    continue;
-                await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlation.CorrelationId));
-                revokedExtra++;
-            }
-
-            await unitOfWork.SaveChangesAsync(ct);
-            afterId = batch[^1].Id; // keyset avanza siempre; las filas revocadas ya no matchean.
-            if (batch.Count < BatchSize)
-                break;
-        }
-
-        if (total > 0 || revokedExtra > 0)
+        if (primary > 0 || extra > 0 || archived > 0)
             logger.LogInformation(
                 "Offboarded {UserId} in tenant {TenantId}: {Primary} primary client(s) handed over/unassigned, "
-                    + "{Extra} extra access(es) revoked.",
+                    + "{Extra} extra access(es) revoked, {Archived} archived client(s) released.",
                 msg.UserId,
                 msg.TenantId,
-                total,
-                revokedExtra
+                primary,
+                extra,
+                archived
             );
     }
+
+    // La invariante "el preparador es un empleado activo" la valida el handler, no el aggregate: se resuelve
+    // una sola vez. Si no es elegible (o es el mismo que se retira), se desasigna en vez de asignar a un
+    // preparador inválido — la oficina retoma la cola sin dueño.
+    private static async Task<Guid?> ResolveEligibleSuccessorAsync(
+        UserOffboardedIntegrationEvent msg,
+        ITenantEmployeeDirectoryRepository directory,
+        CancellationToken ct
+    )
+    {
+        if (msg.SuccessorUserId is not { } candidate || candidate == msg.UserId)
+            return null;
+
+        var entry = await directory.GetByUserIdAsync(candidate, ct);
+        return entry is not null && entry.TenantId == msg.TenantId && entry.IsEligiblePreparer ? candidate : null;
+    }
+
+    // Keyset por Id que avanza siempre (sin bucle infinito aunque un paso falle); guarda por lote.
+    private static async Task<int> SweepAsync(
+        Func<Guid, Task<IReadOnlyList<CustomerEntity>>> loadBatch,
+        Func<CustomerEntity, Task<bool>> apply,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var afterId = Guid.Empty;
+        var changed = 0;
+        while (true)
+        {
+            var batch = await loadBatch(afterId);
+            if (batch.Count == 0)
+                break;
+
+            foreach (var customer in batch)
+            {
+                if (await apply(customer))
+                    changed++;
+            }
+
+            await unitOfWork.SaveChangesAsync(ct);
+            afterId = batch[^1].Id;
+            if (batch.Count < BatchSize)
+                break;
+        }
+
+        return changed;
+    }
+
+    // Handover: el sucesor queda primary y el saliente pierde la fila (no la conserva degradada).
+    private static async Task<bool> HandOverOrUnassignAsync(
+        CustomerEntity customer,
+        Guid? successor,
+        UserOffboardedIntegrationEvent msg,
+        IMessageBus bus,
+        string correlationId
+    )
+    {
+        var actorUserId = ActorOf(msg);
+        if (successor is { } successorId)
+        {
+            if (customer.HandOverPreparer(msg.UserId, successorId, actorUserId).IsFailure)
+                return false;
+            await bus.PublishAsync(
+                new CustomerPreparerAssignedIntegrationEvent
+                {
+                    TenantId = msg.TenantId,
+                    CorrelationId = correlationId,
+                    CustomerId = customer.Id,
+                    PreparerUserId = successorId,
+                    AssignedByUserId = actorUserId,
+                }
+            );
+        }
+        else
+        {
+            if (customer.UnassignPreparer(actorUserId).IsFailure)
+                return false;
+            await PublishUnassignedAsync(customer, msg, bus, correlationId);
+        }
+
+        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlationId));
+        return true;
+    }
+
+    private static async Task<bool> RevokeExtraAccessAsync(
+        CustomerEntity customer,
+        UserOffboardedIntegrationEvent msg,
+        IMessageBus bus,
+        string correlationId
+    )
+    {
+        if (customer.RevokeAccess(msg.UserId, ActorOf(msg)).IsFailure)
+            return false;
+        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlationId));
+        return true;
+    }
+
+    // Archivado: no recibe sucesor (un archivado no admite preparador nuevo); solo se suelta al que se va.
+    private static async Task<bool> ReleaseFromArchivedAsync(
+        CustomerEntity customer,
+        UserOffboardedIntegrationEvent msg,
+        IMessageBus bus,
+        string correlationId
+    )
+    {
+        var released = customer.ReleaseOffboardedStaff(msg.UserId, ActorOf(msg));
+        if (released.IsFailure)
+            return false;
+        if (released.Value)
+            await PublishUnassignedAsync(customer, msg, bus, correlationId);
+        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlationId));
+        return true;
+    }
+
+    private static ValueTask PublishUnassignedAsync(
+        CustomerEntity customer,
+        UserOffboardedIntegrationEvent msg,
+        IMessageBus bus,
+        string correlationId
+    ) =>
+        bus.PublishAsync(
+            new CustomerPreparerUnassignedIntegrationEvent
+            {
+                TenantId = msg.TenantId,
+                CorrelationId = correlationId,
+                CustomerId = customer.Id,
+                UnassignedByUserId = ActorOf(msg),
+            }
+        );
+
+    private static Guid ActorOf(UserOffboardedIntegrationEvent msg) => msg.OffboardedByUserId ?? Guid.Empty;
 }

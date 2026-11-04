@@ -29,9 +29,14 @@ public sealed class RequestDocument : BaseEntity
     /// <summary>
     /// F9 — número de páginas del PDF cargado. Se usa al reemplazar el documento para decidir si
     /// las coordenadas normalizadas de los campos siguen siendo válidas. `null` para registros
-    /// anteriores a F9 que no reportaron el conteo.
+    /// anteriores a F9 que no reportaron el conteo. Al verificarse lo reemplaza el conteo del servidor.
     /// </summary>
     public int? PageCount { get; private set; }
+
+    /// <summary>Revisión del PDF en el servidor; solo <see cref="DocumentVerificationStatus.Verified"/> se envía.</summary>
+    public DocumentVerificationStatus VerificationStatus { get; private set; }
+    public string? RejectionCode { get; private set; }
+    public string? RejectionReason { get; private set; }
 
     internal static Result<RequestDocument> Create(
         Guid tenantId,
@@ -87,10 +92,24 @@ public sealed class RequestDocument : BaseEntity
         );
     }
 
-    internal Result AttachHashPre(DocumentHash hash)
+    internal Result MarkVerified(VerifiedDocument verified)
     {
-        ArgumentNullException.ThrowIfNull(hash);
-        DocumentHashPre = hash;
+        ArgumentNullException.ThrowIfNull(verified);
+        DocumentHashPre = verified.Hash;
+        PageCount = verified.PageCount;
+        VerificationStatus = DocumentVerificationStatus.Verified;
+        RejectionCode = null;
+        RejectionReason = null;
+        return Result.Success();
+    }
+
+    internal Result MarkRejected(DocumentRejection rejection)
+    {
+        ArgumentNullException.ThrowIfNull(rejection);
+        DocumentHashPre = null;
+        VerificationStatus = DocumentVerificationStatus.Rejected;
+        RejectionCode = rejection.Code;
+        RejectionReason = rejection.Reason;
         return Result.Success();
     }
 
@@ -123,6 +142,18 @@ public sealed class RequestDocument : BaseEntity
         return Result.Success();
     }
 
+    // El sellado nunca llegó a CloudStorage: el documento vuelve a "por sellar". Su certificado atestigua
+    // el hash de ese sellado, así que también cae (RecordCertificate exige documento sellado).
+    internal void ReleaseSeal()
+    {
+        SealedFileId = null;
+        DocumentHashPost = null;
+        SealedAtUtc = null;
+        CertificateFileId = null;
+    }
+
+    internal void ReleaseCertificate() => CertificateFileId = null;
+
     internal Result ReplaceOriginalFile(Guid newFileId, int? newPageCount)
     {
         if (newFileId == Guid.Empty)
@@ -135,6 +166,9 @@ public sealed class RequestDocument : BaseEntity
         OriginalFileId = newFileId;
         PageCount = newPageCount;
         DocumentHashPre = null;
+        VerificationStatus = DocumentVerificationStatus.Pending;
+        RejectionCode = null;
+        RejectionReason = null;
         SealedFileId = null;
         CertificateFileId = null;
         DocumentHashPost = null;

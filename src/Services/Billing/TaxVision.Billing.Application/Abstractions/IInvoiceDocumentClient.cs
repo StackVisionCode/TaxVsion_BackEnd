@@ -42,10 +42,23 @@ public sealed record InvoiceDocumentRequest(
     // SettlementType distingue "Paid" / "Mixed" / "FullyCoveredByCode" (total $0). Retrocompatible.
     decimal Discount = 0m,
     IReadOnlyList<InvoiceDocAdjustment>? Adjustments = null,
-    string? SettlementType = null
+    string? SettlementType = null,
+    // Condiciones congeladas en la factura (ajustes de facturación). Null en facturas de antes de la F1.
+    string? PaymentTerms = null,
+    string? PaymentInstructions = null,
+    string? InvoiceFooter = null
 );
 
-public sealed record InvoiceDocParty(string Name, string TaxId, string? Address);
+/// <summary>Parte de la factura para el PDF. Teléfono, correo y web son opcionales: solo el emisor los
+/// manda, y una factura vieja sin ellos en el snapshot sale igual.</summary>
+public sealed record InvoiceDocParty(
+    string Name,
+    string TaxId,
+    string? Address,
+    string? Phone = null,
+    string? Email = null,
+    string? Website = null
+);
 
 public sealed record InvoiceDocLine(string Description, decimal Quantity, decimal UnitPrice, decimal Amount);
 

@@ -157,6 +157,12 @@ public sealed record ClientRequestFulfilledIntegrationEvent : IntegrationEvent
     public required string Title { get; init; }
     public required Guid RequestedByUserId { get; init; }
     public required int DocumentCount { get; init; }
+
+    /// <summary>
+    /// A quién avisar del lado del staff. Difiere de <see cref="RequestedByUserId"/> si el seguimiento pasó
+    /// a otra persona (p. ej. el que lo pidió fue retirado). Nulo en mensajes antiguos: usar RequestedByUserId.
+    /// </summary>
+    public Guid? StaffRecipientUserId { get; init; }
 }
 
 /// <summary>
@@ -178,6 +184,12 @@ public sealed record ClientRequestDocumentRejectedIntegrationEvent : Integration
     public required string Reason { get; init; }
     public required string ClientMessage { get; init; }
     public required Guid RequestedByUserId { get; init; }
+
+    /// <summary>
+    /// A quién avisar del lado del staff (ver <see cref="ClientRequestFulfilledIntegrationEvent.StaffRecipientUserId"/>).
+    /// Nulo en mensajes antiguos: usar RequestedByUserId.
+    /// </summary>
+    public Guid? StaffRecipientUserId { get; init; }
 }
 
 /// <summary>

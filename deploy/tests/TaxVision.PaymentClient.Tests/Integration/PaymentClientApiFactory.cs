@@ -32,6 +32,8 @@ public sealed class PaymentClientApiFactory : WebApplicationFactory<Program>
                         ["Jwt:PublicKeyPath"] = string.Empty,
                         ["Jwt:PublicKeyPem"] = string.Empty,
                         ["Jwt:Secret"] = JwtSecret,
+                        // Sin consultas reales a Stripe/PayPal desde el host de test.
+                        ["PaymentClient:StuckPaymentReconciliation:Enabled"] = "false",
                     }
                 )
         );

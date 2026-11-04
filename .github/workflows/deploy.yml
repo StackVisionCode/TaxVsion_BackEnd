@@ -413,6 +413,10 @@ jobs:
           # Pagina de checkout (frontend) para el fallback sin-subdominio; con subdominio se usa
           # TenantBaseDomain. app.<dominio> sirve la misma SPA que los hosts de oficina.
           PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL=https://app.${{ secrets.TAXVISION_BASE_DOMAIN }}
+          # Registro automático del webhook de cada oficina (crea endpoints en SUS cuentas de Stripe/PayPal).
+          # Encendido: host de la API, mismo que PAYMENTCLIENT_PUBLIC_BASE_URL (Caddy -> Gateway ->
+          # /payments-client/webhooks/*). Vacío = apagado.
+          PAYMENTCLIENT_WEBHOOKS_PUBLIC_BASE_URL=https://${{ secrets.TAXVISION_DOMAIN }}
 
           # ---------- Communication (TURN, CORS, plataforma, SFU opcional) ----------
           # TURN corre nativo en el server (fuera de este compose) — solo la URL/secreto
@@ -687,6 +691,23 @@ jobs:
           # T-20: clave compartida CloudStorage -> content-scanner (red interna). Requerida con :? por ambos.
           CONTENT_SCANNER_API_KEY=${{ secrets.CONTENT_SCANNER_API_KEY }}
           EOF
+
+      # Clave RSA de los enlaces de firma (Signature__SignerJwt__PrivateKeyPem). Vive en
+      # production-extra, así que solo este job puede escribirla. Sin ella Signature no arranca
+      # fuera de Development: se corta aquí con un error claro en vez de un contenedor caído.
+      - name: Write Signature signer key
+        env:
+          SIGNATURE_SIGNER_JWT_PEM_B64: ${{ secrets.SIGNATURE_SIGNER_JWT_PEM_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SIGNATURE_SIGNER_JWT_PEM_B64" ]; then
+            echo "::error::Falta el secret SIGNATURE_SIGNER_JWT_PEM_B64 en el environment production-extra."
+            exit 1
+          fi
+          mkdir -p "$TAXVISION_SECRETS_DIR"
+          chmod 700 "$TAXVISION_SECRETS_DIR"
+          echo "$SIGNATURE_SIGNER_JWT_PEM_B64" | base64 -d > "$TAXVISION_SECRETS_DIR/signature-signer-jwt.pem"
+          chmod 600 "$TAXVISION_SECRETS_DIR/signature-signer-jwt.pem"
 
       # SIN --profile tools acá, "migrations" (profiles: [tools]) queda excluido de este
       # build por completo (Compose ignora servicios cuyo profile no está activo, en

@@ -21,6 +21,12 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(tenant => tenant.Status).HasMaxLength(30).IsRequired();
         builder.Property(tenant => tenant.IsActive).IsRequired();
 
+        // "Billed to" del recibo SaaS (perfil de Tenant).
+        builder.Property(tenant => tenant.BillingLegalName).HasMaxLength(Tenant.BillingLegalNameMaxLength);
+        builder.Property(tenant => tenant.BillingEin).HasMaxLength(Tenant.BillingEinMaxLength);
+        builder.Property(tenant => tenant.BillingAddress).HasMaxLength(Tenant.BillingAddressMaxLength);
+        builder.Property(tenant => tenant.ProfileVersion).IsRequired();
+
         builder.HasIndex(tenant => tenant.SubDomain).IsUnique().HasDatabaseName("UX_Tenants_SubDomain");
     }
 }

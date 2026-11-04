@@ -19,11 +19,17 @@ public sealed class DmcaNotice : TenantEntity
     public string CopyrightedWorkDescription { get; private set; } = default!;
     public string InfringingMaterialDescription { get; private set; } = default!;
     public DmcaNoticeStatus Status { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "Registro legal DMCA.")]
     public Guid RegisteredByActorId { get; private set; }
     public DateTime RegisteredAtUtc { get; private set; }
     public string? CounterNoticeText { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "Registro legal DMCA.")]
     public Guid? CounterNoticeSubmittedByActorId { get; private set; }
     public DateTime? CounterNoticeSubmittedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "Registro legal DMCA.")]
     public Guid? ResolvedByActorId { get; private set; }
     public DateTime? ResolvedAtUtc { get; private set; }
     public string? ResolutionNotes { get; private set; }

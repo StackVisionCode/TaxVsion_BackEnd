@@ -19,7 +19,8 @@ public sealed class NotificationDispatcherHarness
         IPushDeviceTokenRepository? pushDeviceTokens = null,
         INotificationLogRepository? logs = null,
         IUserNotificationPreferenceRepository? preferences = null,
-        INotificationDispatchMetrics? metrics = null
+        INotificationDispatchMetrics? metrics = null,
+        IUserEmailDirectoryRepository? userDirectory = null
     )
     {
         Dispatcher = new NotificationDispatcher(
@@ -28,6 +29,7 @@ public sealed class NotificationDispatcherHarness
             pushDeviceTokens ?? new NoOpPushDeviceTokenRepository(),
             logs ?? new NoOpNotificationLogRepository(),
             preferences ?? new AlwaysEnabledPreferences(),
+            userDirectory ?? new InMemoryUserEmailDirectoryRepository(),
             Publisher,
             new NoOpUnitOfWork(),
             metrics ?? new NoOpNotificationDispatchMetrics(),

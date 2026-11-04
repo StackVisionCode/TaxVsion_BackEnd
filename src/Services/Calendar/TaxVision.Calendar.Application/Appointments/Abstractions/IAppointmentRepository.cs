@@ -72,6 +72,18 @@ public interface IAppointmentRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Citas ACTIVAS y vigentes (mismo corte que <see cref="ListFutureByOrganizerAsync"/>) donde
+    /// <paramref name="userId"/> figura como asistente interno, para sacarlo al retirarlo (offboard).
+    /// Tracked (se mutan). Index-backed por (UserId, AppointmentId) de los asistentes.
+    /// </summary>
+    Task<IReadOnlyList<Appointment>> ListFutureByStaffAttendeeAsync(
+        Guid tenantId,
+        Guid userId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    );
+
     /// <summary>Cuántas citas vigentes organiza (mismo filtro que ListFutureByOrganizerAsync, sin
     /// materializar) — pre-flight de impacto al retirarlo. Default 0 para no romper los fakes; el repo
     /// real lo implementa con COUNT.</summary>

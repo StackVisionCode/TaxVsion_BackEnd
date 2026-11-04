@@ -169,6 +169,15 @@ builder.Host.UseWolverine(options =>
 
     options.PublishMessage<TenantCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantStatusChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Renombre / cambio de zona horaria (PUT tenants/current): estado completo para las proyecciones.
+    options.PublishMessage<TenantUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Perfil público de la oficina (PUT tenants/current/profile + importación desde Billing).
+    options.PublishMessage<TenantProfileChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Cumplimiento (F4): años de retención (PUT tenants/current/compliance) y aviso anual del WISP (job diario).
+    options.PublishMessage<TenantRecordRetentionChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OfficeWispReviewDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Retiro del responsable de seguridad (D-3): la designación queda vacante y se avisa a los admins.
+    options.PublishMessage<OfficeSecurityCoordinatorVacatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoRemovedIntegrationEvent>().ToRabbitExchange("taxvision-events");

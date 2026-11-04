@@ -11,6 +11,7 @@ using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.Numbering;
 using TaxVision.Billing.Domain.Permissions;
 using TaxVision.Billing.Domain.RateLimiting;
+using TaxVision.Billing.Domain.Settings;
 
 namespace TaxVision.Billing.Infrastructure.Persistence;
 
@@ -31,6 +32,7 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options,
     public DbSet<IssuerProfile> IssuerProfiles => Set<IssuerProfile>();
     public DbSet<InvoicePaymentLink> InvoicePaymentLinks => Set<InvoicePaymentLink>();
     public DbSet<InvoiceNumberSequence> InvoiceNumberSequences => Set<InvoiceNumberSequence>();
+    public DbSet<TenantBillingSettings> TenantBillingSettings => Set<TenantBillingSettings>();
 
     // RateLimit Fase 2 — proyección local de PlanCode por tenant, mantenida por
     // TenantPlanCodeProjectionConsumer.

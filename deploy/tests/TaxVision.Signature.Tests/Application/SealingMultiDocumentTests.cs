@@ -119,32 +119,89 @@ public sealed class SealingMultiDocumentTests
             storage.Uploads.Skip(2).Select(item => item.Upload.FileName)
         );
 
+        // Qué certificado recibe cada firmante lo cubre SignedDocumentDeliveryIssuerTests.
+    }
+
+    [Fact]
+    public async Task A_redelivered_seal_publishes_nothing_new_and_a_reseal_after_release_gets_a_new_key()
+    {
+        var request = NewRequest(out var firstSigner, out var secondSigner);
         var firstDocument = request.Documents[0];
-        await SignatureCertificateReadyConsumer.Handle(
-            new FileAvailableIntegrationEvent
-            {
-                TenantId = request.TenantId,
-                CorrelationId = "certificate-ready",
-                FileId = firstDocument.CertificateFileId!.Value,
-                ObjectKey = "certificates/federal-return.pdf",
-                ContentType = "application/pdf",
-                SizeBytes = 3,
-                ChecksumSha256 = new string('f', 64),
-                CreatedBy = request.CreatedByUserId,
-            },
+        var repository = new StoredRequestRepository(request);
+        var storage = new MemoryStorage(request.Documents.Select(document => document.OriginalFileId));
+        var bus = new SealingMessageBus();
+        var unitOfWork = new CountingUnitOfWork();
+        var correlation = new FixedCorrelationContext("reseal");
+        var signedAt = DateTime.UtcNow;
+        await SubmitAndSeal(
+            request,
+            firstSigner,
+            firstDocument.Id,
+            signedAt,
             repository,
             storage,
+            unitOfWork,
+            bus,
+            correlation
+        );
+        await SubmitAndSeal(
+            request,
+            secondSigner,
+            request.Documents[1].Id,
+            signedAt.AddMinutes(1),
+            repository,
+            storage,
+            unitOfWork,
+            bus,
+            correlation
+        );
+        var readyEvent = bus.Messages.OfType<SignatureDocumentsReadyForSealingIntegrationEvent>().First();
+        var firstSeal = bus.Messages.OfType<SignatureDocumentSealedIntegrationEvent>().First();
+
+        // Redelivery del mismo sellado: el pipeline lo salta, no hay un segundo hecho.
+        await Seal(readyEvent, repository, storage, unitOfWork, bus, correlation);
+        Assert.Equal(2, bus.Messages.OfType<SignatureDocumentSealedIntegrationEvent>().Count());
+
+        // CloudStorage rechazó el sellado: al volver a sellar es otro archivo y otra clave.
+        Assert.Equal(SealingArtifactKind.SealedDocument, request.ReleaseRejectedArtifact(firstSeal.SealedFileId)?.Kind);
+        await Seal(readyEvent, repository, storage, unitOfWork, bus, correlation);
+
+        var reseal = bus.Messages.OfType<SignatureDocumentSealedIntegrationEvent>().Last();
+        Assert.Equal(firstDocument.Id, reseal.DocumentId);
+        Assert.NotEqual(firstSeal.SealedFileId, reseal.SealedFileId);
+        Assert.NotEqual(firstSeal.IdempotencyKey, reseal.IdempotencyKey);
+        Assert.Equal(
+            SignatureSealingIdempotencyKeys.DocumentSealed(request.Id, firstDocument.Id, reseal.SealedFileId),
+            reseal.IdempotencyKey
+        );
+        Assert.Equal(request.CertificateFileId, reseal.CertificateFileId);
+        Assert.True(request.AllDocumentsSealed());
+    }
+
+    private static Task Seal(
+        SignatureDocumentsReadyForSealingIntegrationEvent readyEvent,
+        ISignatureRequestRepository repository,
+        ISignatureCloudStorageClient storage,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation
+    ) =>
+        SignatureRequestCompletedConsumer.Handle(
+            readyEvent,
+            repository,
+            storage,
+            new EmptyFileMetadataRepository(),
+            new EmptyBrandingRepository(),
+            new DeterministicSealer(),
+            new FixedStampStyle(),
+            new DeterministicCertificateRenderer(),
+            new AcquiredDistributedLock(),
+            unitOfWork,
             bus,
             correlation,
             NullLogger<SignatureRequest>.Instance,
             CancellationToken.None
         );
-
-        var ready = Assert.Single(bus.Messages.OfType<SignatureCertificateReadyForDownloadIntegrationEvent>());
-        Assert.Equal(firstDocument.Id, ready.DocumentId);
-        Assert.Equal(firstDocument.Title, ready.DocumentTitle);
-        Assert.Equal(firstSigner.Id, Assert.Single(ready.Signers).SignerId);
-    }
 
     private static async Task SubmitAndSeal(
         SignatureRequest request,
@@ -190,6 +247,7 @@ public sealed class SealingMultiDocumentTests
             new EmptyFileMetadataRepository(),
             new EmptyBrandingRepository(),
             new DeterministicSealer(),
+            new FixedStampStyle(),
             new DeterministicCertificateRenderer(),
             new AcquiredDistributedLock(),
             unitOfWork,
@@ -207,15 +265,32 @@ public sealed class SealingMultiDocumentTests
     )
     {
         var request = SignatureRequest
-            .CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "Two-document package", null, "Fiscal", 72, false, false, true)
+            .CreateDraft(
+                TestSignatureLimits.Default,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Two-document package",
+                null,
+                "Fiscal",
+                72,
+                false,
+                false,
+                true
+            )
             .Value;
-        request.AddDocument(Guid.NewGuid(), "Federal return");
-        request.AddDocument(Guid.NewGuid(), "State return");
+        request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Federal return");
+        request.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "State return");
         firstSigner = request
-            .AddSigner(SignerEmail.Create("first@example.com").Value, SignerFullName.Create("First Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("first@example.com").Value,
+                SignerFullName.Create("First Signer").Value,
+                null
+            )
             .Value;
         secondSigner = request
             .AddSigner(
+                TestSignatureLimits.Default,
                 SignerEmail.Create("second@example.com").Value,
                 SignerFullName.Create("Second Signer").Value,
                 null
@@ -223,8 +298,8 @@ public sealed class SealingMultiDocumentTests
             .Value;
         PlaceSignature(request, firstSigner.Id, request.Documents[0].Id);
         PlaceSignature(request, secondSigner.Id, request.Documents[1].Id);
-        request.AttachDocumentHash(request.Documents[0].Id, Hash('a'));
-        request.AttachDocumentHash(request.Documents[1].Id, Hash('b'));
+        request.AttachVerifiedDocument(request.Documents[0].Id, VerifiedDocument.Create(Hash('a'), 50).Value);
+        request.AttachVerifiedDocument(request.Documents[1].Id, VerifiedDocument.Create(Hash('b'), 50).Value);
         if (perDocumentCertificates)
         {
             Assert.True(request.SetCertificateGenerationMode(CertificateGenerationMode.PerDocument).IsSuccess);
@@ -269,6 +344,7 @@ public sealed class SealingMultiDocumentTests
         Assert.True(
             request
                 .PlaceField(
+                    TestSignatureLimits.MaxFieldsPerSigner,
                     signerId,
                     documentId,
                     SignatureFieldKind.Signature,
@@ -342,14 +418,21 @@ public sealed class SealingMultiDocumentTests
 
         public Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
             DateTime nowUtc,
+            int maxRemindersPerRequest,
             CancellationToken ct = default
         ) => Empty();
 
         public Task<IReadOnlyList<SignatureRequest>> ListPurgeCandidatesAsync(
+            Guid tenantId,
             DateTime olderThanUtc,
             int batchSize,
             CancellationToken ct = default
         ) => Empty();
+
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,
@@ -385,13 +468,16 @@ public sealed class SealingMultiDocumentTests
             return Task.FromResult(Result.Success(fileId));
         }
 
-        public Task<Result<string>> CreateDownloadShareLinkAsync(
+        public Task<Result<Guid>> CopyToCustomerAsync(
             Guid tenantId,
-            Guid fileId,
-            IReadOnlyList<string> recipientEmails,
-            DateTime expiresAtUtc,
+            Guid sourceFileId,
+            Guid customerId,
+            int taxYear,
             CancellationToken ct = default
-        ) => Task.FromResult(Result.Success("download-token"));
+        ) => throw new NotSupportedException();
+
+        public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult(Result.Success(new Uri($"https://minio.test/{fileId}")));
 
         public Task<Result<SignatureFileMetadata>> GetFileAsync(
             Guid tenantId,
@@ -417,6 +503,17 @@ public sealed class SealingMultiDocumentTests
 
         public Task<IReadOnlyList<TenantBrandingRef>> ListAllAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<TenantBrandingRef>>([]);
+
+        public Task<TenantLogoRef?> GetLogoAsync(
+            Guid tenantId,
+            TenantLogoSurface surface,
+            CancellationToken ct = default
+        ) => Task.FromResult<TenantLogoRef?>(null);
+
+        public Task<IReadOnlyList<TenantLogoRef>> ListLogosAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<TenantLogoRef>>([]);
+
+        public Task AddLogoAsync(TenantLogoRef logo, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class DeterministicSealer : IDocumentSealingEngine

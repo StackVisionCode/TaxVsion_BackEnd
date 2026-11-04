@@ -1,3 +1,4 @@
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using CustomerEntity = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Application.Abstractions;
@@ -105,6 +106,22 @@ public interface ICustomerRepository
     /// con COUNT.</summary>
     Task<int> CountActiveByAssignedPreparerAsync(Guid tenantId, Guid preparerUserId, CancellationToken ct) =>
         Task.FromResult(0);
+
+    /// <summary>Clientes ARCHIVADOS donde el usuario es primary o tiene cualquier fila de asignación, por lotes
+    /// (keyset por Id) — para soltarlo al retirarlo y que no vuelvan con él al reactivarlos. Tracked +
+    /// Include(Assignments). Default vacío para no romper los fakes.</summary>
+    Task<IReadOnlyList<CustomerEntity>> ListArchivedAssignedAsync(
+        Guid tenantId,
+        Guid userId,
+        int batchSize,
+        Guid afterId,
+        CancellationToken ct
+    ) => Task.FromResult<IReadOnlyList<CustomerEntity>>([]);
+
+    /// <summary>Desglose del pre-flight de impacto al retirar: primary vs accesos adicionales (activos) y
+    /// archivados que se sueltan. Default en cero para no romper los fakes.</summary>
+    Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
+        Task.FromResult(OffboardingClientCounts.None);
 
     Task AddAsync(CustomerEntity customer, CancellationToken ct);
 

@@ -213,23 +213,26 @@ internal static class ShareLinkCreationCore
         bool suppressRecipientEmails = false
     )
     {
-        var policyResult = await ValidatePolicy(
+        var limit = await limits.GetAsync(tenantId, ct);
+        var policyResult = ValidatePolicy(
             actorHasManagePermission,
             permission,
             visibility,
-            tenantId,
             recipientUserIds,
             recipientCustomerIds,
             recipientEmails,
             password,
             expiresAtUtc,
+            maxAccessCount,
             clock.UtcNow,
             enforceLinkGuardrails: true,
-            limits,
-            ct
+            limit
         );
         if (policyResult.IsFailure)
             return Result.Failure<CreatedShareLinkResponse>(policyResult.Error);
+
+        // Sin fecha ni tope elegidos: los valores por defecto de la oficina (el tope solo en enlaces externos).
+        var effectiveMaxAccessCount = maxAccessCount ?? (visibility.IsExternal() ? limit?.MaxShareDownloads : null);
 
         var created = ShareLink.Create(
             Guid.NewGuid(),
@@ -240,11 +243,12 @@ internal static class ShareLinkCreationCore
             permission,
             string.IsNullOrWhiteSpace(password) ? null : passwordHasher.Hash(password),
             expiresAtUtc,
-            maxAccessCount,
+            effectiveMaxAccessCount,
             actorId,
             clock.UtcNow,
             isRecursive,
-            appliesToFutureItems
+            appliesToFutureItems,
+            limit?.DefaultShareLifetimeDays ?? ShareLink.DefaultLifetimeDays
         );
         if (created.IsFailure)
             return Result.Failure<CreatedShareLinkResponse>(created.Error);
@@ -321,20 +325,19 @@ internal static class ShareLinkCreationCore
         );
     }
 
-    internal static async Task<Result> ValidatePolicy(
+    internal static Result ValidatePolicy(
         bool actorHasManagePermission,
         SharePermission permission,
         ShareVisibility visibility,
-        Guid tenantId,
         IReadOnlyList<Guid> recipientUserIds,
         IReadOnlyList<Guid> recipientCustomerIds,
         IReadOnlyList<string> recipientEmails,
         string? password,
         DateTime? expiresAtUtc,
+        int? maxAccessCount,
         DateTime nowUtc,
         bool enforceLinkGuardrails,
-        IStorageLimitRepository limits,
-        CancellationToken ct
+        TenantStorageLimit? limit
     )
     {
         if (permission is SharePermission.Upload or SharePermission.EditMetadata && !actorHasManagePermission)
@@ -342,28 +345,31 @@ internal static class ShareLinkCreationCore
 
         // §20.4 del plan: un link sin autenticación (Public o ExternalLink) nunca puede otorgar
         // Upload/EditMetadata (sería escritura anónima).
-        var isUnauthenticatedLink = visibility is ShareVisibility.Public or ShareVisibility.ExternalLink;
-        if (isUnauthenticatedLink && permission is SharePermission.Upload or SharePermission.EditMetadata)
+        if (visibility.IsUnauthenticatedLink() && permission is SharePermission.Upload or SharePermission.EditMetadata)
             return Result.Failure(ShareErrors.ElevatedPermissionNotAllowedOnPublicLink);
 
-        if (visibility == ShareVisibility.Public)
+        if (visibility == ShareVisibility.Public && limit is not { AllowPublicShareLinks: true })
+            return Result.Failure(ShareErrors.PublicSharingDisabled);
+        if (visibility == ShareVisibility.ExternalLink && limit is not { AllowLinkOnlyExternalShares: true })
+            return Result.Failure(ShareErrors.LinkSharingDisabled);
+
+        // Reglas de la oficina solo al crear (no al cambiar el permiso de un enlace ya existente).
+        if (enforceLinkGuardrails && limit is not null)
         {
-            var limit = await limits.GetAsync(tenantId, ct);
-            if (limit is null || !limit.AllowPublicShareLinks)
-                return Result.Failure(ShareErrors.PublicSharingDisabled);
-        }
-        else if (visibility == ShareVisibility.ExternalLink)
-        {
-            var limit = await limits.GetAsync(tenantId, ct);
-            if (limit is null || !limit.AllowLinkOnlyExternalShares)
-                return Result.Failure(ShareErrors.LinkSharingDisabled);
-            // Guardrails solo al crear (no al cambiar permiso de un link ya existente).
-            if (enforceLinkGuardrails)
+            var passwordCheck = limit.CheckSharePassword(password);
+            if (passwordCheck.IsFailure)
+                return passwordCheck;
+            if (visibility.IsExternal())
             {
-                if (limit.RequirePasswordOnLinkShares && string.IsNullOrWhiteSpace(password))
-                    return Result.Failure(ShareErrors.PasswordRequiredForLinkShare);
-                if (expiresAtUtc is { } exp && exp > nowUtc.AddDays(limit.MaxShareLifetimeDays))
-                    return Result.Failure(ShareErrors.ShareLifetimeExceedsMax);
+                var externalCheck = limit.CheckNewExternalShare(
+                    visibility,
+                    password,
+                    expiresAtUtc,
+                    maxAccessCount,
+                    nowUtc
+                );
+                if (externalCheck.IsFailure)
+                    return externalCheck;
             }
         }
 
@@ -436,6 +442,7 @@ public static class UpdateShareExpirationHandler
     public static async Task<Result<ShareLinkResponse>> Handle(
         UpdateShareExpirationCommand command,
         IShareLinkRepository shares,
+        IStorageLimitRepository limits,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -444,6 +451,14 @@ public static class UpdateShareExpirationHandler
         var link = await shares.GetAsync(command.TenantId, command.ShareLinkId, ct);
         if (link is null)
             return Result.Failure<ShareLinkResponse>(ShareErrors.NotFound);
+
+        // Extender un enlace externo no puede saltarse la vida máxima de la oficina.
+        if (link.Visibility.IsExternal() && await limits.GetAsync(command.TenantId, ct) is { } limit)
+        {
+            var allowed = limit.CheckExternalExpiration(command.NewExpiresAtUtc, clock.UtcNow);
+            if (allowed.IsFailure)
+                return Result.Failure<ShareLinkResponse>(allowed.Error);
+        }
 
         var updated = link.UpdateExpiration(command.NewExpiresAtUtc, clock.UtcNow);
         if (updated.IsFailure)
@@ -486,20 +501,19 @@ public static class ChangeSharePermissionHandler
         if (link is null)
             return Result.Failure<ShareLinkResponse>(ShareErrors.NotFound);
 
-        var policyResult = await ShareLinkCreationCore.ValidatePolicy(
+        var policyResult = ShareLinkCreationCore.ValidatePolicy(
             command.ActorHasManagePermission,
             command.NewPermission,
             link.Visibility,
-            command.TenantId,
             recipientUserIds: [],
             recipientCustomerIds: [],
             recipientEmails: [],
             password: null,
             expiresAtUtc: null,
+            maxAccessCount: null,
             clock.UtcNow,
             enforceLinkGuardrails: false,
-            limits,
-            ct
+            await limits.GetAsync(command.TenantId, ct)
         );
         if (policyResult.IsFailure)
             return Result.Failure<ShareLinkResponse>(policyResult.Error);

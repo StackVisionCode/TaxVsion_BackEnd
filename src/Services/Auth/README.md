@@ -18,3 +18,15 @@ Ambos endpoints:
 - no se exponen por Gateway.
 
 En desarrollo local, Auth escucha en `http://localhost:5124`. La coleccion `postman/TaxVision-NewServices.postman_collection.json` incluye el token de plataforma y las dos llamadas directas.
+
+## Nombre y zona horaria de la oficina
+
+La proyeccion local `Tenants` (alimenta `/auth/me` y la zona por defecto de los usuarios sin zona propia) consume `TenantUpdatedIntegrationEvent` (Tenant, `PUT /tenants/current`):
+
+- copia `Name` y `DefaultTimeZoneId` (estado completo);
+- ordena por `UpdatedAtUtc` de Tenant, guardado en `Tenants.SourceUpdatedAtUtc`: un evento mas viejo que el aplicado se ignora, uno igual se reaplica;
+- un `TenantCreatedIntegrationEvent` reentregado despues de un renombre no pisa el nombre ni la zona.
+
+## Zona horaria en el registro (onboarding)
+
+`POST /onboarding/register/complete` acepta `timeZoneId` opcional (la landing envia `Intl.DateTimeFormat().resolvedOptions().timeZone`). Se guarda en `TenantOnboardings.TimeZoneId` solo si es IANA valida; si falta o es invalida queda en null y el registro sigue igual. El paso Tenant de la saga lo lee del registro y lo envia como `defaultTimeZoneId` a `POST internal/tenants/from-onboarding`; Tenant lo usa o cae a `Etc/UTC`. Los onboardings en vuelo sin el dato nacen en UTC.

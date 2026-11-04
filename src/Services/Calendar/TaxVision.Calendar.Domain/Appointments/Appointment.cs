@@ -30,6 +30,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     public Guid AppointmentTypeId { get; private set; }
 
     /// <summary>Organizador. Unico que mueve o cancela.</summary>
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "CalendarUserOffboardedConsumer")]
     public Guid OrganizerUserId { get; private set; }
 
     public EventTiming Timing { get; private set; } = default!;
@@ -187,6 +188,25 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
         OrganizerUserId = newOrganizerUserId;
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Saca a un usuario interno de los asistentes al RETIRARLO (offboard). Acción de sistema: no pasa
+    /// por <see cref="EnsureOrganizer"/>. Las canceladas no se tocan (historial) y el organizador no se
+    /// saca (antes hay que reasignarlo). Sin él en la lista devuelve <c>AttendeeNotFound</c>: así un
+    /// reintento es un no-op.
+    /// </summary>
+    public Result RemoveDepartedStaffAttendee(Guid userId)
+    {
+        if (Status == AppointmentStatus.Cancelled)
+            return Result.Failure(AppointmentErrors.CancelledIsFinal);
+
+        if (userId == OrganizerUserId)
+            return Result.Failure(AppointmentErrors.OrganizerCannotBeRemoved);
+
+        return _attendees.RemoveAll(a => a.UserId == userId) > 0
+            ? Result.Success()
+            : Result.Failure(AppointmentErrors.AttendeeNotFound);
     }
 
     public Result ChangeTitle(AppointmentTitle title, Guid actingUserId, bool canManageAll)

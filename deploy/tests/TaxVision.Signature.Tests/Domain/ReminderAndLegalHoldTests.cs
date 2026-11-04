@@ -82,6 +82,7 @@ public sealed class ReminderAndLegalHoldTests
     private static SignatureRequest NewDraft() =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Test",
@@ -99,11 +100,26 @@ public sealed class ReminderAndLegalHoldTests
     {
         var draft = NewDraft();
         var signer = draft
-            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Signer").Value,
+                null
+            )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }

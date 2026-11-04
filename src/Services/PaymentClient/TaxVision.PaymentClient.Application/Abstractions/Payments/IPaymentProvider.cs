@@ -20,6 +20,9 @@ public interface IPaymentProvider
 {
     PaymentProviderCode Code { get; }
 
+    /// <summary>Qué credenciales pide este proveedor (catálogo del CRM y reglas de activación).</summary>
+    PaymentProviderDescriptor Descriptor { get; }
+
     Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
         TenantProviderCredentials credentials,
         ChargeAuthorizationRequest request,
@@ -34,10 +37,14 @@ public interface IPaymentProvider
         CancellationToken ct
     );
 
+    /// <summary>Verifica que el webhook venga del proveedor. Cada adaptador lee los encabezados que usa
+    /// (Stripe: <c>Stripe-Signature</c>; PayPal: los <c>PAYPAL-*</c>) y las credenciales de la oficina
+    /// (<see cref="TenantProviderCredentials.WebhookSecret"/> y, si verifica contra su API, las claves).
+    /// <paramref name="headers"/> no distingue mayúsculas.</summary>
     Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
         string rawPayload,
-        string signatureHeader,
-        string webhookSecret,
+        IReadOnlyDictionary<string, string> headers,
+        TenantProviderCredentials credentials,
         CancellationToken ct
     );
 
@@ -45,4 +52,13 @@ public interface IPaymentProvider
     /// datos canónicos que <c>TenantPayment</c> puede aplicar. Solo el adapter conoce el
     /// formato del payload — Application nunca deserializa JSON de provider.</summary>
     Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(string rawPayload, string eventType, CancellationToken ct);
+
+    /// <summary>Estado actual del cargo según el proveedor, para resolver pagos atascados sin webhook.
+    /// Devuelve el mismo payload canónico que el webhook para aplicarlo por el mismo camino; un cargo
+    /// que el proveedor aún no resolvió vuelve como <c>Processing</c>/<c>RequiresAction</c>.</summary>
+    Task<Result<WebhookEventPayload>> GetChargeStatusAsync(
+        TenantProviderCredentials credentials,
+        ChargeStatusLookup lookup,
+        CancellationToken ct
+    );
 }

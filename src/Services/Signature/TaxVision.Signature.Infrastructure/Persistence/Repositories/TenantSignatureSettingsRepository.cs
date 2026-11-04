@@ -16,4 +16,11 @@ public sealed class TenantSignatureSettingsRepository(SignatureDbContext db) : I
 
     public async Task AddAsync(TenantSignatureSettings settings, CancellationToken ct = default) =>
         await db.TenantSignatureSettings.AddAsync(settings, ct);
+
+    public async Task<IReadOnlyList<Guid>> ListTenantIdsWithPurgeEnabledAsync(CancellationToken ct = default) =>
+        await db
+            .TenantSignatureSettings.IgnoreQueryFilters()
+            .Where(settings => settings.Retention.AllowPurge)
+            .Select(settings => settings.TenantId)
+            .ToListAsync(ct);
 }

@@ -447,4 +447,245 @@ public sealed class NotificationTemplateSeedSourceTests
         Assert.Contains("document_title", seed.Html);
         Assert.True(seed.ContentVersion >= 17);
     }
+
+    // ---------- F4 Cumplimiento: revisión anual del WISP ----------
+
+    [Fact]
+    public void Wisp_review_template_declares_every_variable_it_uses_and_carries_version_23()
+    {
+        var seed = WispSeed();
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+
+        Assert.Empty(used.Except(declared));
+        Assert.Equal("tenant.wisp_review_due.v1", seed.TemplateKey);
+        Assert.Equal("system-base", seed.LayoutKey);
+        Assert.Equal(TemplateChannel.Email, seed.Channel);
+        // Versión propia por encima del default (22): sin eso el seeder no la publicaría sobre una guardada.
+        Assert.True(seed.ContentVersion >= 23, $"ContentVersion {seed.ContentVersion} < 23");
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+    }
+
+    [Theory]
+    [InlineData(false, "Your security plan review is due November 30, 2026", "is due on")]
+    [InlineData(true, "Your security plan review is overdue", "was due on")]
+    public void Wisp_review_template_renders_both_stages(bool isOverdue, string subject, string bodyFragment)
+    {
+        var seed = WispSeed();
+        var context = new TemplateContext();
+        context.SetValue("is_overdue", isOverdue);
+        context.SetValue("due_date", "November 30, 2026");
+        context.SetValue("settings_url", "https://manfer.taxoffix.io/company/settings#compliance");
+        context.SetValue("product_name", "TaxOffix");
+
+        var renderedSubject = Parser.Parse(seed.Subject).Render(context);
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Equal(subject, renderedSubject);
+        Assert.Contains(bodyFragment, html);
+        Assert.Contains("<strong style=\"color:#23384B;\">November 30, 2026</strong>", html);
+        Assert.Contains("FTC Safeguards Rule", html);
+        Assert.Contains("at least once a year", html);
+        Assert.Contains("Office settings &rarr; Compliance", html);
+        Assert.Contains("href=\"https://manfer.taxoffix.io/company/settings#compliance\"", html);
+    }
+
+    // ---------- Avisos del retiro de empleados (offboard) ----------
+
+    public static TheoryData<string> OffboardingNoticeKeys =>
+        new()
+        {
+            "tenant.security_coordinator_vacated.v1",
+            "campaign.schedules_paused_on_offboarding.v1",
+            "sig.preparer_attention_required.v1",
+            "sig.preparer_changed.v1",
+            "storage.cloud_connection_review_required.v1",
+            "connectors.office_mailbox_review_required.v1",
+        };
+
+    [Theory]
+    [MemberData(nameof(OffboardingNoticeKeys))]
+    public void Offboarding_templates_declare_every_variable_and_carry_their_own_version(string key)
+    {
+        var seed = Seed(key);
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+
+        Assert.Empty(used.Except(declared));
+        Assert.Equal(key, seed.TemplateKey);
+        Assert.Equal("system-base", seed.LayoutKey);
+        Assert.Equal(TemplateChannel.Email, seed.Channel);
+        // Versión explícita por encima del default (22) y del WISP (23): sin eso el seeder no la publica.
+        Assert.Equal(24, seed.ContentVersion);
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+        // Copy para la oficina: sin "tenant" ni códigos de permisos.
+        Assert.DoesNotContain("tenant", seed.Html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".manage", seed.Html);
+    }
+
+    [Theory]
+    [InlineData(1, "A scheduled campaign was paused", "we paused it:")]
+    [InlineData(2, "2 scheduled campaigns were paused", "we paused them:")]
+    public void Campaign_pause_template_lists_the_campaigns(int count, string subject, string fragment)
+    {
+        var seed = Seed("campaign.schedules_paused_on_offboarding.v1");
+        var context = new TemplateContext();
+        context.SetValue("campaign_count", count);
+        context.SetValue(
+            "campaign_names",
+            count == 1 ? new[] { "Spring promo" } : new[] { "Spring promo", "Tax tips" }
+        );
+        context.SetValue("campaigns_url", "https://manfer.taxoffix.io/campaigns");
+        context.SetValue("product_name", "TaxOffix");
+
+        Assert.Equal(subject, Parser.Parse(seed.Subject).Render(context));
+        var html = Parser.Parse(seed.Html).Render(context);
+        Assert.Contains(fragment, html);
+        Assert.Contains(count == 1 ? "Spring promo<" : "Spring promo, Tax tips<", html);
+        Assert.Contains("href=\"https://manfer.taxoffix.io/campaigns\"", html);
+    }
+
+    [Theory]
+    [InlineData(
+        "PreparerCleared",
+        "Choose a new preparer for “Smith 1040”",
+        "Choose a new preparer before you send it."
+    )]
+    [InlineData(
+        "PreparerChangeBlocked",
+        "“Smith 1040” needs a new preparer",
+        "Change the preparer so the return can be signed."
+    )]
+    [InlineData("UnsentRequestKept", "Review the unsent request “Smith 1040”", "hasn't been sent")]
+    [InlineData("Other", "“Smith 1040” needs your attention", "Open it to see what needs to change.")]
+    public void Preparer_attention_template_follows_the_reason(string reason, string subject, string fragment)
+    {
+        var seed = Seed("sig.preparer_attention_required.v1");
+        var context = new TemplateContext();
+        context.SetValue("reason", reason);
+        context.SetValue("request_title", "Smith 1040");
+        context.SetValue("request_url", "https://manfer.taxoffix.io/signature/requests/1");
+        context.SetValue("product_name", "TaxOffix");
+
+        Assert.Equal(subject, Parser.Parse(seed.Subject).Render(context));
+        Assert.Contains(fragment, Parser.Parse(seed.Html).Render(context));
+    }
+
+    [Theory]
+    [InlineData(true, "You're now the preparer for “Smith 1040”", "You'll sign this return as its preparer.")]
+    [InlineData(
+        false,
+        "New preparer for “Smith 1040”",
+        "<strong style=\"color:#23384B;\">Dana Preparer</strong> is now the preparer"
+    )]
+    public void Preparer_changed_template_speaks_to_the_preparer_or_the_author(
+        bool isNewPreparer,
+        string subject,
+        string fragment
+    )
+    {
+        var seed = Seed("sig.preparer_changed.v1");
+        var context = new TemplateContext();
+        context.SetValue("is_new_preparer", isNewPreparer);
+        context.SetValue("is_offboarding", true);
+        context.SetValue("request_title", "Smith 1040");
+        context.SetValue("preparer_name", "Dana Preparer");
+        context.SetValue("request_url", "https://manfer.taxoffix.io/signature/requests/1");
+        context.SetValue("product_name", "TaxOffix");
+
+        Assert.Equal(subject, Parser.Parse(seed.Subject).Render(context));
+        var html = Parser.Parse(seed.Html).Render(context);
+        Assert.Contains("is no longer with your office.", html);
+        Assert.Contains(fragment, html);
+    }
+
+    [Fact]
+    public void Cloud_and_mailbox_templates_say_why_and_link_to_the_fix()
+    {
+        var cloud = new TemplateContext();
+        cloud.SetValue("provider_name", "Google Drive");
+        cloud.SetValue("account_email", "docs@office.test");
+        cloud.SetValue("reason", "AccountOfOffboardedUser");
+        cloud.SetValue("storage_url", "https://manfer.taxoffix.io/storage");
+        var cloudSeed = Seed("storage.cloud_connection_review_required.v1");
+        Assert.Equal("Reconnect your office's Google Drive connection", Parser.Parse(cloudSeed.Subject).Render(cloud));
+        var cloudHtml = Parser.Parse(cloudSeed.Html).Render(cloud);
+        Assert.Contains("which belongs to someone who's no longer with your office", cloudHtml);
+        Assert.Contains("href=\"https://manfer.taxoffix.io/storage\"", cloudHtml);
+
+        var mailbox = new TemplateContext();
+        mailbox.SetValue("mailbox_email", "front@office.test");
+        mailbox.SetValue("reason", "ConnectedByOffboardedUser");
+        mailbox.SetValue("mailbox_url", "https://manfer.taxoffix.io/email?accountId=1");
+        var mailboxSeed = Seed("connectors.office_mailbox_review_required.v1");
+        Assert.Equal(
+            "Reconnect the office mailbox front@office.test",
+            Parser.Parse(mailboxSeed.Subject).Render(mailbox)
+        );
+        var mailboxHtml = Parser.Parse(mailboxSeed.Html).Render(mailbox);
+        Assert.Contains("was connected by someone who's no longer with your office", mailboxHtml);
+        Assert.Contains("href=\"https://manfer.taxoffix.io/email?accountId=1\"", mailboxHtml);
+    }
+
+    [Fact]
+    public void Offboarding_incomplete_template_lists_the_pending_areas_and_carries_its_own_version()
+    {
+        var seed = Seed("auth.user_offboarding_incomplete.v1");
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+        Assert.Empty(used.Except(declared));
+        // Plantilla nueva: versión explícita por encima de las del retiro (24), si no el seeder no la publica.
+        Assert.Equal(25, seed.ContentVersion);
+        Assert.Equal("system-base", seed.LayoutKey);
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+
+        var context = new TemplateContext();
+        context.SetValue("user_name", "Andres Hernandez");
+        context.SetValue("pending_modules", new[] { "Calendar", "Chat and meetings" });
+        context.SetValue("users_url", "https://manfer.taxoffix.io/company/users");
+        context.SetValue("product_name", "TaxOffix");
+
+        Assert.Equal("Andres Hernandez's offboarding didn't finish", Parser.Parse(seed.Subject).Render(context));
+        var html = Parser.Parse(seed.Html).Render(context);
+        Assert.Contains("these areas haven't", html);
+        Assert.Contains("Calendar, Chat and meetings", html);
+        Assert.Contains("href=\"https://manfer.taxoffix.io/company/users\"", html);
+        // Copy para la oficina: sin nombres internos.
+        Assert.DoesNotContain("tenant", seed.Html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Consumer", seed.Html);
+
+        context.SetValue("pending_modules", new[] { "Calendar" });
+        Assert.Contains("this area hasn't", Parser.Parse(seed.Html).Render(context));
+    }
+
+    [Fact]
+    public void Security_coordinator_template_points_to_Compliance()
+    {
+        var context = new TemplateContext();
+        context.SetValue("settings_url", "https://manfer.taxoffix.io/company/settings#compliance");
+        context.SetValue("product_name", "TaxOffix");
+        var seed = Seed("tenant.security_coordinator_vacated.v1");
+
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Equal("Your office needs a new security coordinator", seed.Subject);
+        Assert.Contains("FTC Safeguards Rule", html);
+        Assert.Contains("Office settings &rarr; Compliance", html);
+        Assert.Contains("href=\"https://manfer.taxoffix.io/company/settings#compliance\"", html);
+    }
+
+    private static NotificationTemplateSeed Seed(string key) =>
+        Assert.Single(NotificationTemplateSeedSource.All, item => item.EventKey == key);
+
+    private static NotificationTemplateSeed WispSeed() =>
+        Assert.Single(NotificationTemplateSeedSource.All, item => item.EventKey == "tenant.wisp_review_due.v1");
 }

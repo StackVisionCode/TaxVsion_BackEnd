@@ -35,6 +35,9 @@ public static class NotificationContractNames
         [NotificationResourceType.Seats] = "seats",
         [NotificationResourceType.Document] = "document",
         [NotificationResourceType.FormRequest] = "form_request",
+        [NotificationResourceType.ComplianceSettings] = "compliance_settings",
+        [NotificationResourceType.Campaign] = "campaign",
+        [NotificationResourceType.UserManagement] = "user_management",
     }.ToFrozenDictionary();
 
     public static string For(NotificationResourceType resourceType) => ResourceTypes[resourceType];

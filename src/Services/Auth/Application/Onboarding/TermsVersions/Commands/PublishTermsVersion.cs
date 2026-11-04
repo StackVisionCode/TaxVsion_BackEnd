@@ -1,8 +1,10 @@
 using System.Security.Cryptography;
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Domain.Onboarding.TermsVersions;
+using Wolverine;
 
 namespace TaxVision.Auth.Application.Onboarding.TermsVersions.Commands;
 
@@ -40,10 +42,15 @@ public sealed record TermsVersionResponse(
 /// localmente (nunca confía en un hash de terceros — mismo principio que antes con
 /// ITermsDocumentHasher, sólo que ahora no hace falta un round-trip HTTP para conseguir los
 /// bytes) y los sube a CloudStorage vía ITermsContentStorageClient (patrón D0/D1). Valida
-/// tamaño/tipo ANTES de subir: el consumer de CloudStorage (SaveFileFromSourceHandler) descarta
-/// en silencio (log + return, sin señal de vuelta) cualquier archivo que viole la política del
-/// FolderType — sin este chequeo temprano, un archivo inválido crearía una TermsVersion cuyo
-/// contenido nunca llega a existir.
+/// tamaño/tipo ANTES de subir: CloudStorage (SaveFileFromSourceHandler) rechaza cualquier archivo
+/// que viole la política del FolderType — sin este chequeo temprano, un archivo inválido crearía
+/// una TermsVersion cuyo contenido nunca llega a existir. Si igual lo rechaza (cuota, registro),
+/// TermsContentSaveRejectedConsumer retira la versión.
+/// <para>
+/// Orden: armar la versión (valida antes de subir nada), PUT a MinIO (si falla no se guarda nada),
+/// guardar y recién después pedir el catálogo a CloudStorage por el bus del handler. Guardar antes de
+/// publicar: un rechazo de CloudStorage siempre encuentra la fila.
+/// </para>
 /// </summary>
 public static class PublishTermsVersionHandler
 {
@@ -55,6 +62,8 @@ public static class PublishTermsVersionHandler
         ITermsVersionRepository repository,
         ITermsContentStorageClient storageClient,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -80,17 +89,6 @@ public static class PublishTermsVersionHandler
         var contentHash = Convert.ToHexString(SHA256.HashData(command.Content)).ToLowerInvariant();
         var fileId = Guid.NewGuid();
 
-        var uploadResult = await storageClient.UploadAsync(
-            fileId,
-            command.Content,
-            command.FileName,
-            command.ContentType,
-            command.CreatedByUserId,
-            ct
-        );
-        if (uploadResult.IsFailure)
-            return Result.Failure<TermsVersionResponse>(uploadResult.Error);
-
         var nowUtc = DateTime.UtcNow;
         var result = TermsVersion.Publish(
             command.Kind,
@@ -110,8 +108,28 @@ public static class PublishTermsVersionHandler
         if (contentUriResult.IsFailure)
             return Result.Failure<TermsVersionResponse>(contentUriResult.Error);
 
+        var stored = await storageClient.UploadAsync(
+            fileId,
+            command.Content,
+            command.FileName,
+            command.ContentType,
+            ct
+        );
+        if (stored.IsFailure)
+            return Result.Failure<TermsVersionResponse>(stored.Error);
+
         await repository.AddAsync(version, ct);
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            TermsContentFile.SaveFileRequested(
+                stored.Value,
+                command.FileName,
+                command.ContentType,
+                command.Content.LongLength,
+                command.CreatedByUserId,
+                correlation.CorrelationId
+            )
+        );
 
         return Result.Success(
             new TermsVersionResponse(

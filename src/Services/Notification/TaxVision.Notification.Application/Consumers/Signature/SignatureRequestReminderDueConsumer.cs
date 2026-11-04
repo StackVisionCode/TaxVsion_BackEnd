@@ -92,6 +92,7 @@ public static class SignatureRequestReminderDueConsumer
                         ["reminders_sent"] = evt.RemindersSent,
                         ["language"] = evt.Language,
                     },
+                    ScribeRenderAudience.Client,
                     ct
                 )
             ).EnsureRendered("sig.request_reminder_due.v1");

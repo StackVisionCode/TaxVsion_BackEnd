@@ -24,8 +24,9 @@ public static class ApplyPlanConstraintsHandler
             return Result.Failure(new Error("Signature.Settings.NotFound", "No settings found for this tenant."));
 
         var constraintsResult = SignaturePlanConstraints.Create(
+            cmd.MaxDocumentsPerRequest,
+            cmd.MaxSignersPerRequest,
             cmd.MaxAllowedPdfBytes,
-            cmd.MaxAllowedImageBytes,
             cmd.MaxAllowedPages,
             cmd.MinRetentionYears,
             cmd.PurgeAllowed,
@@ -36,11 +37,8 @@ public static class ApplyPlanConstraintsHandler
         if (constraintsResult.IsFailure)
             return Result.Failure(constraintsResult.Error);
 
-        // Aplica las nuevas restricciones y auto-corrige la configuración del tenant
-        // para que no exceda los nuevos techos.
-        var applyResult = settings.ApplyPlanConstraints(constraintsResult.Value);
-        if (applyResult.IsFailure)
-            return applyResult;
+        // Lo que eligió la oficina no se reescribe: se acota a los techos nuevos al leerlo.
+        settings.ApplyPlanConstraints(constraintsResult.Value);
 
         await unitOfWork.SaveChangesAsync(ct);
 

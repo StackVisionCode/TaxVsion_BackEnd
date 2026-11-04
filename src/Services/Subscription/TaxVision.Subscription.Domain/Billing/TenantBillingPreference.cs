@@ -17,6 +17,8 @@ public sealed class TenantBillingPreference : TenantEntity
 
     public BillingMode Mode { get; private set; }
     public DateTime ChosenAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ChosenByUserId { get; private set; }
 
     /// <summary>Null cuando el modo es Manual; "stripe"/"paypal"/... cuando es Automatic.</summary>

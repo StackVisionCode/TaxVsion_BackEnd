@@ -23,7 +23,10 @@ public sealed record RequestOnboardingReceiptCommand(
     // Referencia cruda del proveedor de pago; el handler la enmascara (últimos 4). Null en el carril $0.
     string? ProviderPaymentReference,
     string? PaymentMethodMasked,
-    string CorrelationId
+    string CorrelationId,
+    // Nombre de la oficina del registro. El recibo del pago se pide antes del registro (null); un
+    // reenvío posterior ya lo conoce.
+    string? OfficeName = null
 );
 
 public static class RequestOnboardingReceiptHandler
@@ -52,7 +55,8 @@ public static class RequestOnboardingReceiptHandler
                 mask,
                 command.PaymentMethodMasked,
                 IdempotencyKey: $"onb-receipt:{command.OnboardingId:N}",
-                command.CorrelationId
+                command.CorrelationId,
+                command.OfficeName
             ),
             ct
         );

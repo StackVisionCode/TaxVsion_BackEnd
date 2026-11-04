@@ -1,3 +1,4 @@
+using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Postmaster.Domain.Suppression;
@@ -24,6 +25,8 @@ public sealed class SuppressionListEntry
     public string EmailAddress { get; private set; } = default!;
     public SuppressionReason Reason { get; private set; }
     public DateTime AddedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? AddedByUserId { get; private set; }
     public string? Notes { get; private set; }
 

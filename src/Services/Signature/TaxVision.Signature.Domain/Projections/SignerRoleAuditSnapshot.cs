@@ -26,6 +26,7 @@ public sealed class SignerRoleAuditSnapshot : TenantEntity
 
     private SignerRoleAuditSnapshot() { }
 
+    [UserReference(UserReferenceKind.Provenance, Note = "Snapshot de roles para auditoría; no autoriza nada.")]
     public Guid UserId { get; private set; }
     public int PermissionsVersion { get; private set; }
 

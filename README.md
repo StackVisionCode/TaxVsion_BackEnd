@@ -5946,8 +5946,11 @@ como blobs en CloudStorage (`HtmlStorageKey`+`HtmlFileId`, etc.) via `ITemplateS
 ## 36.2 Endpoints
 
 - `POST /scribe/render` (permiso `scribe.render`) — HTTP. Recibe
-  `{ eventKey, tenantId?, locale?, variables, logoScope? }`, devuelve
-  `{ subject, html, text?, inlineAssets[] }`. Es el unico camino de render, usado por
+  `{ eventKey, tenantId?, locale?, variables, logoScope?, channel?, audience? }`, devuelve
+  `{ subject, html, text?, inlineAssets[], dispatchScope }`. `audience` es `Staff` (default) o `Client`:
+  con `Client` el logo de la oficina es el del Portal, con el del CRM de respaldo (la cache L1 del logo
+  lleva la audiencia en la clave). Notification manda `Client` cuando escribe a un cliente, cuenta de
+  portal, firmante o invitado externo. Es el unico camino de render, usado por
   Notification (36.3/36.4) y por Postmaster para el path de correspondencia. Hasta la
   Fase 8 del hardening existio ademas un gRPC `scribe.TemplateService/Render`
   (`Protos/render.proto`) con el mismo query interno pero deadline duro de 200ms —
@@ -6604,6 +6607,17 @@ endpoints — `GET` lista, `GET/{surface}`, `PUT/DELETE {surface}/colors`, `PUT/
 **`PlatformBrandingController`** (`/platform/branding/{surface}`): `[AllowActorTypes(PlatformAdmin)]` a nivel
 clase + `[HasPermission(TenantBrandingPermissions.Platform)]`. Reusa los comandos con `PlatformTenant.Id`.
 **Solo PlatformAdmin** toca la marca del sistema; un TenantAdmin recibe **403** (test E2E obligatorio).
+`POST /platform/branding/logos/republish` (mismo permiso) vuelve a publicar `TenantLogoUpdatedIntegrationEvent`
+para el logo confirmado de CRM y Portal de **todos** los tenants (con su fecha de confirmación original) y
+devuelve `{ published }`. Es idempotente: Scribe, Documents y Signature hacen upsert por (tenant, superficie) e
+ignoran eventos más viejos. Se corre una vez por entorno **después** de desplegar los consumidores por
+superficie (relleno del logo del portal, que antes nunca salía del servicio) y cuando se pierde una proyección.
+
+**Eventos de logo por superficie.** Al confirmar o quitar el logo del CRM o del Portal, Tenant publica
+`TenantLogoUpdated`/`TenantLogoRemoved` con `Surface = Crm | Portal` (el favicon no sale). Un mensaje viejo sin
+`Surface` se lee como `Crm`. Lo que ve el cliente (correos con audiencia `Client`, factura y resumen de
+formulario en Documents, certificado de Signature) usa el logo del Portal y cae al del CRM; lo del equipo usa
+el del CRM.
 
 **`PublicBrandingController`** (`/tenants/branding`, `[AllowAnonymous]`, para pre-login):
 - `GET assets/{token}` (`{token}`=fileId) → valida `Confirmed` → **302 a la presigned de CloudStorage**.
@@ -8895,3 +8909,133 @@ Ademas de las comunes (Domain sin EF ni Application, controllers solo contra App
   error entra el dia que alguien «arregla» el NULL con un UPDATE.
 - **Solo `MeetingLinkedConsumer` conoce los contratos de Communication** - en cuanto los conozca un
   segundo tipo, la frontera se disuelve sin que nadie decida disolverla.
+
+# 52. Perfil de la oficina — F0 (Billing IssuerProfile, PDF de factura, recibo de onboarding)
+
+Análisis en `Implementaciones/Tenant/Analisis_Perfil_Oficina.md` (§1). F0 arregla los errores sin mover
+el dueño de los datos: el perfil legal sigue en Billing (`IssuerProfile`) hasta F1.
+
+## 52.1 `GET/PUT /billing/issuer-profile`
+
+> **Superado en F1 (§53):** el `PUT` y la validación de esta tabla se retiraron; el perfil se edita en
+> Tenant y Billing lo proyecta. Queda el `GET` (misma forma) y lo dicho sobre `line2`, el logo y la dirección.
+
+- Request y response exponen **`line2`** (suite / unidad), que ya existía en el VO `Address`.
+- Guardar **ya no borra `LogoFileId`**: `IssuerProfile.Update` no recibe el logo.
+- La dirección guarda **cada parte por separado**: sin calle ni ciudad se conservan estado y ZIP. Sin
+  ninguna parte → `Address = null`. El snapshot de la factura usa una dirección vacía (antes "—") y el PDF
+  no imprime línea de dirección; las facturas viejas con "—" se leen igual (`Address.ToSingleLine`).
+- Todo es **opcional**: vacío es válido; un formato inválido responde **400** con el código del campo y
+  no guarda nada. Leer nunca valida: una fila vieja mal formada se devuelve tal cual.
+
+| Campo | Regla (VO en `Billing.Domain/ValueObjects`) | Se guarda como | Código 400 |
+|---|---|---|---|
+| EIN (`taxId`) | 9 dígitos, con o sin guion | `NN-NNNNNNN` | `Billing.TaxId.Invalid` |
+| Correo | `local@dominio.tld`, ≤ 254 | recortado | `Billing.Email.Invalid` |
+| Web | URL absoluta http(s); sin esquema se antepone `https://` | con esquema | `Billing.Website.Invalid` |
+| Teléfono | 10–15 dígitos tras quitar `( ) - . espacio`; `+` solo al inicio | EE. UU. (10 dígitos, u 11 con 1) `(555) 123-4567`; otro `+<dígitos>` | `Billing.Phone.Invalid` |
+| Estado (país US) | código USPS de 2 letras (estados, DC, territorios, militares) | mayúsculas | `Billing.Address.InvalidState` |
+| ZIP (país US) | `12345` o `12345-6789` (9 dígitos sin guion se aceptan) | `12345[-6789]` | `Billing.Address.InvalidZip` |
+| País | `US`, `USA`, `United States`… → `US`; vacío → `US` | mayúsculas | — |
+| Nombre legal | obligatorio, ≤ 256 | recortado | `Billing.IssuerProfile.NameRequired` / `NameTooLong` |
+
+Sin migración: las columnas y la forma del JSON de `Address` no cambian.
+
+## 52.2 Teléfono, correo y web en el PDF de la factura
+
+El `IssuerSnapshot` ya los congelaba al crear el borrador; se perdían en `GenerateInvoicePdfHandler`. Ahora
+viajan en `InvoiceDocParty` → `invoice.issuer.{phone,email,website}` del contrato de Documents
+(`POST internal/document-generations/invoices`, campos opcionales) y `billing.invoice.v1` los imprime
+bajo "From" solo si vienen. Un payload o snapshot viejo sin ellos sale igual. El cliente no manda su
+contacto al PDF.
+
+## 52.3 Recibo de onboarding: "Billed to" con la oficina
+
+`OnboardingReceiptPayload.officeName` (opcional). Con valor, `onboarding.receipt.v1` muestra la oficina,
+"Attn: <pagador>" y el correo; sin valor, como antes (pagador + correo). Auth lo manda desde
+`RequestOnboardingReceiptCommand.OfficeName`.
+
+**Límite conocido:** el recibo se pide al confirmarse el pago, **antes** del paso de registro donde se
+escribe el nombre de la oficina; por eso el recibo del pago sale sin él. El reenvío del admin
+(`ResendOnboardingReceiptAdminCommand`) ya pasa `onboarding.OfficeName`, pero Documents deduplica por
+`Idempotency-Key` (`onb-receipt:{id}`) y solo regenera si la generación anterior falló. Que el primer
+recibo lleve la oficina exige decidir entre reemitirlo tras el registro o pedir el nombre antes del pago.
+
+## 52.4 `DocumentBranding`
+
+El CRM ya no lo escribe (se borró el código muerto `company-billing-page` / `company-branding-form` y
+`BillingStore.saveCompany`). El endpoint `PUT /documents/branding` sigue existiendo y el PDF de factura
+todavía lo lee (`ResolveBranding`); el CRM solo lo lee para la vista previa del formulario de factura.
+
+# 53. Perfil de la oficina — F1 en Billing (proyección, listado interno, ajustes de facturación)
+
+Contrato en `Implementaciones/Tenant/Contrato_F1_OfficeProfile.md` ("Billing después de la F1"). Tenant
+es el dueño del perfil; Billing deja de editarlo y se queda solo con lo propio de facturación.
+
+## 53.1 `IssuerProfile` = proyección de `TenantProfileChanged`
+
+- `TenantProfileChangedConsumer` (cola `billing-events`) hace upsert del `IssuerProfile` de
+  `ProfileTenantId`: **Name** = `LegalName` ?? `DisplayName` ?? el nombre que ya tenía (Billing no
+  conoce otro nombre de la oficina; sin ninguno la fila queda no usable, como antes); **TaxId** = `Ein`;
+  **Address** = `PhysicalAddress` (con `Line2`; la postal no se imprime); **Phone/Email/Website** copiados.
+  Estado completo: un null borra el valor anterior.
+- **Idempotente por versión:** columna `SourceVersion` (0 en filas de antes de F1); un evento con
+  `Version` ≤ la guardada se ignora sin guardar.
+- **Mapeo tolerante:** no valida (Tenant ya validó); recorta espacios y corta al largo de la columna;
+  nunca lanza por un valor viejo raro (`Address.FromParts` reemplaza al antiguo `CreateOptional`).
+- **No toca** `LogoFileId` ni `DefaultCurrency`. `CreateInvoiceDraftHandler` sigue congelando el emisor
+  en el borrador: cambiar el perfil no altera facturas creadas.
+- **Retirado:** `PUT /billing/issuer-profile`, `UpsertIssuerProfileCommand/Handler`, `IssuerProfile.Update`,
+  `IssuerAddressInput` y los VO de validación que solo usaba ese comando (`EmployerIdentificationNumber`,
+  `ContactEmail`, `ContactPhone`, `WebsiteUrl`, `UsStateCodes`, `Address.InvalidState/InvalidZip`).
+  `GET /billing/issuer-profile` sigue igual (solo lectura, `invoicing.view`).
+
+## 53.2 `GET internal/billing/issuer-profiles?page=&size=` (M2M)
+
+Para la importación única de Tenant (`POST /platform/tenants/profiles/import-from-billing`).
+
+- `[Authorize(Policy = "ServiceOnly")]` (`actor_type=Service`) + `[AllowActorTypes(Service)]` + el token
+  debe ser de la **PlatformTenant** (si no, 403). Cross-tenant con `IgnoreQueryFilters`, orden por
+  `TenantId`. `page` ≥ 1, `size` 1–200 (por defecto 100); fuera de rango → 400. `[RateLimitExempt]`.
+- No pasa por el Gateway (la ruta no empieza por `/billing`).
+- Respuesta (`PagedResult`): `{ items: [ { tenantId, name, taxId, line1, line2, city, state, zip,
+  country, phone, email, website, updatedAtUtc } ], page, size, totalCount }`. Texto vacío → `null`;
+  una dirección vacía o el marcador "—" de antes de F0 sale toda en `null`.
+- **M2M:** Billing acepta las audiencias `TaxVision.Services` y `taxvision-billing` y no exige scopes ni
+  permisos en este endpoint. El cliente de Tenant (`tenant-worker`, audiencia por defecto
+  `TaxVision.Services`) ya sirve: solo tiene que pedir el token para `PlatformTenant.Id` y conocer la URL
+  base de Billing. No hace falta tocar `ServiceAuth:Clients` de Auth.
+
+## 53.3 `GET/PUT /billing/invoice-settings`
+
+`{ "paymentTerms": "DueOnReceipt|Net7|Net15|Net30|Net45", "paymentInstructions": "…", "invoiceFooter": "…" }`
+
+- `GET` (`invoicing.view`): sin fila guardada devuelve `DueOnReceipt` y textos `null`, nunca 404.
+- `PUT` (`invoicing.issuer.manage`): estado completo; responde 200 con lo guardado. Textos recortados,
+  vacío → `null`, ≤ 500 caracteres. 400: `Billing.InvoiceSettings.PaymentTerms` (nombre fuera de la
+  lista; no acepta números), `Billing.InvoiceSettings.PaymentInstructions`, `Billing.InvoiceSettings.InvoiceFooter`.
+- Cuotas: reutiliza `billing.f.issuer_profile_read` / `billing.g.issuer_profile_manage` (el catálogo vive
+  en BuildingBlocks).
+- Persistencia: `billing.TenantBillingSettings` (una fila por tenant, `RowVersion`). Reutiliza el
+  scaffold `TenantBillingSettings` sin usar, recortado a estos campos (el emisor por defecto duplicaba
+  `IssuerProfile`; plantilla, página y numeración no tenían consumidor; se borró `NumberResetPolicy`).
+
+**Congelado en la factura:** `CreateInvoiceDraftHandler` copia plazo, instrucciones y pie a
+`Invoices.PaymentTerms/PaymentInstructions/InvoiceFooter` al crear el borrador; la reemisión copia los de
+la original. Al emitir, `DueDateUtc` = emisión + días del plazo congelado (`DueOnReceipt` = mismo día);
+una factura sin plazo congelado (anterior a F1) conserva los 30 días de siempre. El detalle de la factura
+expone los tres campos.
+
+## 53.4 PDF (`billing.invoice.v1`)
+
+`InvoicePayload` gana `paymentTerms` (texto legible, p. ej. "Net 30"), `paymentInstructions` e
+`invoiceFooter`, opcionales. La plantilla imprime "Terms: …" bajo la fecha de vencimiento y un bloque
+"Payment instructions" (escapado, respeta saltos de línea; oculto si la factura está pagada o anulada).
+**Pie:** el de los ajustes de facturación gana (codificado, saltos → `<br />`); si no, `DocumentBranding.FooterText`;
+si no, la línea de siempre "Document generated by …". Un payload viejo sin estas claves sale igual.
+
+## 53.5 Migración
+
+`20261103052742_OfficeProfileProjectionAndInvoiceSettings`: `IssuerProfiles.SourceVersion` (bigint, 0),
+`Invoices.PaymentTerms/PaymentInstructions/InvoiceFooter` (nullable) y la tabla `TenantBillingSettings`.
+Orden de despliegue: Billing (consumidor + interno) → Tenant → `import-from-billing` → CRM.

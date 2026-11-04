@@ -2,7 +2,9 @@ namespace TaxVision.PaymentClient.Application.TenantPaymentConfigs.Queries;
 
 /// <summary>Nunca incluye los secretos cifrados ni su plaintext — solo si están cargados
 /// (<see cref="HasSecretKey"/>/<see cref="HasWebhookSecret"/>), para que el frontend sepa qué
-/// falta sin exponer nada sensible.</summary>
+/// falta sin exponer nada sensible. <see cref="HasPayments"/>: ya cobró con este proveedor; entonces no se
+/// puede borrar (409 <c>TenantPaymentConfig.HasPayments</c>), solo desactivar. <see cref="WebhookSetup"/>:
+/// <c>Automatic</c> | <c>Manual</c> | <c>Pending</c> | <c>Failed</c> | null (nunca intentado y sin manual).</summary>
 public sealed record TenantPaymentConfigResponse(
     Guid Id,
     string ProviderCode,
@@ -13,5 +15,7 @@ public sealed record TenantPaymentConfigResponse(
     string StatementDescriptor,
     bool IsActive,
     DateTime? SettledAtUtc,
-    string? ApiBaseUrl
+    string? ApiBaseUrl,
+    bool HasPayments,
+    string? WebhookSetup
 );

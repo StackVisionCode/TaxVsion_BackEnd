@@ -6,6 +6,11 @@ public sealed class RefreshToken : TenantEntity
 {
     private RefreshToken() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Se revocan al instante (SessionAccessCutoff)."
+    )]
     public Guid UserId { get; private set; }
 
     /// <summary>Sesión (familia de rotación) a la que pertenece el token. Null solo para tokens heredados pre-sesiones, que se consideran inválidos.</summary>

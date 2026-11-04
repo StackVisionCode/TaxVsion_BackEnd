@@ -14,6 +14,11 @@ public sealed class OffboardedStaffProjection : TenantEntity
 {
     private OffboardedStaffProjection() { }
 
+    [UserReference(
+        UserReferenceKind.Projection,
+        HandledBy = "NotesUserOffboardedConsumer",
+        Note = "La alimenta el retiro."
+    )]
     public Guid UserId { get; private set; }
     public DateTime OffboardedAtUtc { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }

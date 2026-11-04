@@ -5,14 +5,23 @@ import {
   checkPermission,
   permissionCheckHttpStatus,
   CommunicationPermissions,
+  AuthPermissions,
   isStaffActor,
 } from '../../../domain/shared/permissions.js';
+import { getOffboardingImpact } from '../../../application/use-cases/offboarding-impact.js';
 import { seesAllCustomers } from '../../../application/use-cases/customer-visibility.js';
 import { scheduleMeeting } from '../../../application/use-cases/schedule-meeting.js';
 import { startMeeting, endMeeting } from '../../../application/use-cases/meeting-lifecycle.js';
 import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js';
 import { rescheduleMeeting } from '../../../application/use-cases/reschedule-meeting.js';
 import { setMeetingTranscriptLanguage } from '../../../application/use-cases/set-meeting-transcript-language.js';
+import { resolveMeetingCodeForMember } from '../../../application/use-cases/resolve-meeting-code-for-member.js';
+import {
+  disableMeetingGuestLink,
+  enableMeetingGuestLink,
+  getMeetingGuestAccess,
+  setMeetingGuestAccess,
+} from '../../../application/use-cases/meeting-guest-access.js';
 import { continueMeeting } from '../../../application/use-cases/continue-meeting.js';
 import { listMeetingEvents } from '../../../application/use-cases/meeting-events-query.js';
 import { getMeetingSummary } from '../../../application/use-cases/get-meeting-summary.js';
@@ -34,6 +43,8 @@ const CreateMeetingBody = z.object({
   recordingRequested: z.boolean().optional(),
   // INV-T01 R-7: null/ausente = automático; el dominio valida el código.
   transcriptLanguage: z.string().min(2).max(16).nullable().optional(),
+  // D-69: ausente = lo que permita la oficina.
+  guestsAllowed: z.boolean().optional(),
 });
 
 const IdParams = z.object({ id: z.string().uuid() });
@@ -44,6 +55,9 @@ const StartMeetingBody = z.object({
 const CancelMeetingBody = z.object({ reason: z.string().max(500).optional() });
 const RescheduleMeetingBody = z.object({ newScheduledForUtc: z.string().datetime().nullable() });
 const TranscriptLanguageBody = z.object({ transcriptLanguage: z.string().min(2).max(16).nullable() });
+const GuestAccessBody = z.object({ allowed: z.boolean() });
+const MemberShortCodeParams = z.object({ shortCode: z.string().min(1).max(32) });
+const GuestLinkBody = z.object({ rotate: z.boolean().optional() }).optional();
 const EventsQuery = z.object({
   after: z.coerce.number().int().min(0).optional(),
   take: z.coerce.number().int().min(1).max(500).default(200),
@@ -107,6 +121,7 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
         ...(body.scheduledDurationMinutes !== undefined ? { scheduledDurationMinutes: body.scheduledDurationMinutes } : {}),
         ...(body.recordingRequested !== undefined ? { recordingRequested: body.recordingRequested } : {}),
         ...(body.transcriptLanguage !== undefined ? { transcriptLanguage: body.transcriptLanguage } : {}),
+        ...(body.guestsAllowed !== undefined ? { guestsAllowed: body.guestsAllowed } : {}),
       },
       container,
     );
@@ -228,17 +243,29 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     },
   );
 
-  // Pre-flight de impacto (punto 3.2): cuántas reuniones activas tiene como host el empleado a retirar.
+  // Pre-flight de impacto (punto 3.2): lo que Communication moverá al retirar al empleado. Mismo permiso que
+  // los demás servicios (users.manage). Aditivo: `activeMeetings` sigue siendo las reuniones activas que hospeda.
   app.get(
     '/communication/offboarding-impact/:userId',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.authenticate, requirePermission(container, AuthPermissions.UsersManage)] },
     async (request, reply) => {
       const params = UserIdParams.parse(request.params);
-      const activeMeetings = await container.meetings.countActiveHostedBy(
-        request.principal!.tenantId,
-        params.userId,
-      );
-      return reply.send({ activeMeetings });
+      const impact = await getOffboardingImpact({ tenantId: request.principal!.tenantId, userId: params.userId }, container);
+      return reply.send(impact);
+    },
+  );
+
+  // MNT-01: "Join with code" del CRM — solo la oficina de quien pregunta, devuelve el id real.
+  app.get(
+    '/communication/meetings/code/:shortCode',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingJoin)],
+    },
+    async (request, reply) => {
+      const { shortCode } = MemberShortCodeParams.parse(request.params);
+      const result = await resolveMeetingCodeForMember({ tenantId: request.principal!.tenantId, shortCode }, container);
+      if (!result.isSuccess) return reply.code(404).send({ code: result.error.code, message: result.error.message });
+      return reply.send(result.value);
     },
   );
 
@@ -450,6 +477,41 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
       return reply.send(result.value);
     },
   );
+
+  // D-69/D-68: acceso de externos de la reunión y su enlace (host/cohost; el token del enlace se deriva).
+  const guestAccessStatus = (code: string): number =>
+    code === 'Meeting.NotFound' ? 404 : code === 'Meeting.HostOnly' ? 403 : code === 'Meeting.NotJoinable' ? 409 : 400;
+  const guestAccessCommand = (request: { principal?: { tenantId: string; userId: string } | null; id: string; params: unknown }) => {
+    const principal = request.principal!;
+    return { tenantId: principal.tenantId, correlationId: request.id, meetingId: IdParams.parse(request.params).id, actorUserId: principal.userId };
+  };
+  const hostOnly = { preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingHost)] };
+
+  app.get('/communication/meetings/:id/guest-access', hostOnly, async (request, reply) => {
+    const result = await getMeetingGuestAccess(guestAccessCommand(request), container);
+    if (!result.isSuccess) return reply.code(guestAccessStatus(result.error.code)).send({ code: result.error.code, message: result.error.message });
+    return reply.send(result.value);
+  });
+
+  app.put('/communication/meetings/:id/guest-access', hostOnly, async (request, reply) => {
+    const body = GuestAccessBody.parse(request.body);
+    const result = await setMeetingGuestAccess({ ...guestAccessCommand(request), allowed: body.allowed }, container);
+    if (!result.isSuccess) return reply.code(guestAccessStatus(result.error.code)).send({ code: result.error.code, message: result.error.message });
+    return reply.send(result.value);
+  });
+
+  app.post('/communication/meetings/:id/guest-link', hostOnly, async (request, reply) => {
+    const body = GuestLinkBody.parse(request.body);
+    const result = await enableMeetingGuestLink({ ...guestAccessCommand(request), rotate: body?.rotate === true }, container);
+    if (!result.isSuccess) return reply.code(guestAccessStatus(result.error.code)).send({ code: result.error.code, message: result.error.message });
+    return reply.send(result.value);
+  });
+
+  app.delete('/communication/meetings/:id/guest-link', hostOnly, async (request, reply) => {
+    const result = await disableMeetingGuestLink(guestAccessCommand(request), container);
+    if (!result.isSuccess) return reply.code(guestAccessStatus(result.error.code)).send({ code: result.error.code, message: result.error.message });
+    return reply.send(result.value);
+  });
 
   // End explícito de host/cohost (D-07): el cierre ordenado (grabación, SFU, "busy", avisos) es el
   // mismo que usan el scheduler y la sucesión; el endpoint ya no lo repite a mano.

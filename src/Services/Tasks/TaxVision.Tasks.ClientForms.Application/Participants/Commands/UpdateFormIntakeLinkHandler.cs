@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.ClientForms.Application.Actions.Abstractions;
@@ -36,10 +37,11 @@ public static class UpdateFormIntakeLinkHandler
             return Failure(FormParticipantErrors.IntakeLinkConcurrency);
 
         var token = command.Action == FormIntakeLinkAction.RegenerateToken ? security.GenerateProtectedToken() : null;
+        var previousResponsible = link.ResponsibleUserId;
         var changed = await ApplyAsync(link, command, token, new(versions, responsibleUsers, authorizer), ct);
         if (changed.IsFailure)
             return Failure(changed.Error);
-        audit.Record(command.TenantId, link.FormTemplateId, null, FormAuditAction.IntakeLinkUpdated, command.ByUserId);
+        RecordAudit(audit, command, link, previousResponsible);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(new FormIntakeLinkTokenResponse(FormIntakeLinkResponse.From(link), token?.RawToken));
     }
@@ -48,42 +50,117 @@ public static class UpdateFormIntakeLinkHandler
     private static bool RequiresAvailability(FormIntakeLinkAction action) =>
         action is not (FormIntakeLinkAction.Pause or FormIntakeLinkAction.Revoke);
 
-    private static async Task<Result> ApplyAsync(
+    private static void RecordAudit(
+        IFormAuditLog audit,
+        UpdateFormIntakeLinkCommand command,
+        FormIntakeLink link,
+        Guid previousResponsible
+    )
+    {
+        if (command.Action != FormIntakeLinkAction.ChangeResponsible)
+        {
+            audit.Record(
+                command.TenantId,
+                link.FormTemplateId,
+                null,
+                FormAuditAction.IntakeLinkUpdated,
+                command.ByUserId
+            );
+            return;
+        }
+        var details = JsonSerializer.Serialize(
+            new
+            {
+                linkId = link.Id,
+                previousResponsibleUserId = previousResponsible,
+                link.ResponsibleUserId,
+            }
+        );
+        audit.Record(
+            command.TenantId,
+            link.FormTemplateId,
+            null,
+            FormAuditAction.IntakeLinkResponsibleChanged,
+            command.ByUserId,
+            details
+        );
+    }
+
+    private static Task<Result> ApplyAsync(
         FormIntakeLink link,
         UpdateFormIntakeLinkCommand command,
         FormProtectedToken? token,
         PinSources sources,
         CancellationToken ct
+    ) =>
+        command.Action switch
+        {
+            FormIntakeLinkAction.PinVersion => ApplyPinAsync(link, command, sources, ct),
+            FormIntakeLinkAction.ChangeResponsible => ApplyResponsibleAsync(link, command, sources, ct),
+            FormIntakeLinkAction.Resume => ApplyResumeAsync(link, command, sources, ct),
+            _ => Task.FromResult(ApplySimple(link, command, token)),
+        };
+
+    // Reanudar con un responsable inactivo (p. ej. retirado) haría fallar cada lead: primero hay que reasignarlo.
+    private static async Task<Result> ApplyResumeAsync(
+        FormIntakeLink link,
+        UpdateFormIntakeLinkCommand command,
+        PinSources sources,
+        CancellationToken ct
+    ) =>
+        await sources.ResponsibleUsers.IsActiveAsync(link.TenantId, link.ResponsibleUserId, ct)
+            ? link.Resume(command.NowUtc)
+            : Result.Failure(FormParticipantErrors.IntakeResponsibleUnavailable);
+
+    private static async Task<Result> ApplyPinAsync(
+        FormIntakeLink link,
+        UpdateFormIntakeLinkCommand command,
+        PinSources sources,
+        CancellationToken ct
     )
     {
-        if (command.Action != FormIntakeLinkAction.PinVersion)
-            return ApplySimple(link, command, token);
         if (!command.FormTemplateVersionId.HasValue)
             return Result.Failure(FormParticipantErrors.IntakeLinkInvalid);
         var version = await sources.Versions.GetByIdAsync(command.TenantId, command.FormTemplateVersionId.Value, ct);
         if (version.IsFailure || version.Value.FormTemplateId != link.FormTemplateId)
             return Result.Failure(FormParticipantErrors.IntakeLinkInvalid);
-        var responsible = await EnsureResponsibleAsync(link, version.Value, sources, ct);
+        // La versión nueva puede traer acciones que el responsable actual no puede ejecutar.
+        var responsible = await EnsureResponsibleAsync(link, link.ResponsibleUserId, version.Value, sources, ct);
         return responsible.IsFailure ? responsible : link.PinVersion(version.Value.Id);
     }
 
-    // Igual que al crear el enlace: la versión nueva puede traer acciones que el responsable no puede ejecutar.
-    private static async Task<Result> EnsureResponsibleAsync(
+    // El nuevo responsable debe poder ejecutar las acciones de la versión fijada en el enlace.
+    private static async Task<Result> ApplyResponsibleAsync(
         FormIntakeLink link,
-        FormTemplateVersion version,
+        UpdateFormIntakeLinkCommand command,
         PinSources sources,
         CancellationToken ct
     )
     {
-        if (!await sources.ResponsibleUsers.IsActiveAsync(link.TenantId, link.ResponsibleUserId, ct))
-            return Result.Failure(FormParticipantErrors.IntakeResponsibleUnavailable);
-        return await sources.Authorizer.EnsureResponsibleCanRunAsync(
+        if (command.ResponsibleUserId is not { } responsibleUserId || responsibleUserId == Guid.Empty)
+            return Result.Failure(FormParticipantErrors.IntakeLinkInvalid);
+        var version = await sources.Versions.GetByIdAsync(command.TenantId, link.FormTemplateVersionId, ct);
+        if (version.IsFailure)
+            return Result.Failure(FormParticipantErrors.IntakeLinkInvalid);
+        var responsible = await EnsureResponsibleAsync(link, responsibleUserId, version.Value, sources, ct);
+        return responsible.IsFailure ? responsible : link.ReassignResponsible(responsibleUserId);
+    }
+
+    private static Task<Result> EnsureResponsibleAsync(
+        FormIntakeLink link,
+        Guid responsibleUserId,
+        FormTemplateVersion version,
+        PinSources sources,
+        CancellationToken ct
+    ) =>
+        FormIntakeLinkResponsibleRules.EnsureEligibleAsync(
             link.TenantId,
-            link.ResponsibleUserId,
+            responsibleUserId,
             version,
+            sources.ResponsibleUsers,
+            sources.Authorizer,
             ct
         );
-    }
 
     private sealed record PinSources(
         IFormTemplateVersionRepository Versions,

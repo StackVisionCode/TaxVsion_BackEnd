@@ -21,6 +21,7 @@ export class PrismaTenantCommunicationConstraintsRepository implements TenantCom
       messageRetentionDays: row.MessageRetentionDays,
       recordingRetentionDays: row.RecordingRetentionDays,
       purgeEnabled: row.PurgeEnabled,
+      retentionManagedByTenant: row.RetentionManagedByTenant,
       notes: row.Notes,
       updatedByUserId: row.UpdatedByUserId,
       createdAtUtc: row.CreatedAtUtc,
@@ -42,6 +43,7 @@ export class PrismaTenantCommunicationConstraintsRepository implements TenantCom
       MessageRetentionDays: s.messageRetentionDays,
       RecordingRetentionDays: s.recordingRetentionDays,
       PurgeEnabled: s.purgeEnabled,
+      RetentionManagedByTenant: s.retentionManagedByTenant,
       Notes: s.notes,
       UpdatedByUserId: s.updatedByUserId,
     };

@@ -7,8 +7,11 @@ namespace TaxVision.Signature.Application.Settings;
 /// deliberadamente el secreto HMAC del audit trail (nunca se expone en respuestas ni
 /// en logs, incluso cifrado).
 ///
-/// Incluye <see cref="PlanConstraints"/> para que el frontend pueda mostrar al tenant
-/// admin los techos de su plan y deshabilitar opciones que excedan esos límites.
+/// Incluye <see cref="PlanConstraints"/> (techos vigentes: plan + excepción) para que el frontend
+/// deshabilite opciones que los excedan.
+///
+/// <see cref="RetentionYears"/> es la retención efectiva (Cumplimiento ?? Signature, nunca bajo el mínimo del
+/// plan) y <see cref="RetentionYearsSource"/> dice de dónde sale ("Office" | "Signature").
 /// </summary>
 public sealed record TenantSignatureSettingsResponse(
     Guid TenantId,
@@ -20,7 +23,6 @@ public sealed record TenantSignatureSettingsResponse(
     bool GenerateCertificateByDefault,
     bool AllowEmployeeOwnSignature,
     long MaxPdfBytes,
-    long MaxImageBytes,
     int MaxPagesPerDocument,
     int RetentionYears,
     bool AllowPurge,
@@ -34,10 +36,17 @@ public sealed record TenantSignatureSettingsResponse(
     bool SendSealedDocumentDefault,
     bool ExpirationEnabledByDefault,
     bool SendCertificateToSignersDefault,
-    bool RequiresConsentByDefault
+    bool RequiresConsentByDefault,
+    DeliveryPolicyResponse Delivery,
+    bool ShowSignatureFrame,
+    string DateStampFormat,
+    string RetentionYearsSource
 )
 {
-    public static TenantSignatureSettingsResponse From(TenantSignatureSettings settings) =>
+    public static TenantSignatureSettingsResponse From(
+        TenantSignatureSettings settings,
+        EffectiveSignaturePolicy policy
+    ) =>
         new(
             settings.TenantId,
             ChannelsAsStrings(settings.AllowedVerificationChannels),
@@ -48,20 +57,28 @@ public sealed record TenantSignatureSettingsResponse(
             settings.GenerateCertificateByDefault,
             settings.AllowEmployeeOwnSignature,
             settings.DocumentLimits.MaxPdfBytes,
-            settings.DocumentLimits.MaxImageBytes,
             settings.DocumentLimits.MaxPagesPerDocument,
-            settings.Retention.RetentionYears,
+            policy.RetentionYears,
             settings.Retention.AllowPurge,
             settings.AuditKeyVersion,
             settings.CreatedAtUtc,
             settings.UpdatedAtUtc,
-            SignaturePlanConstraintsResponse.From(settings.PlanConstraints),
+            SignaturePlanConstraintsResponse.From(policy.Ceilings),
             settings.SendPartialCopyDefault,
             settings.PartialCopyDefaultAudienceKind.ToString(),
             settings.SendSealedDocumentDefault,
             settings.ExpirationEnabledByDefault,
             settings.SendCertificateToSignersDefault,
-            settings.RequiresConsentByDefault
+            settings.RequiresConsentByDefault,
+            new DeliveryPolicyResponse(
+                settings.Delivery.LinkLifetimeDays,
+                settings.Delivery.AllowPublicReissue,
+                settings.Delivery.AttachDocuments,
+                settings.Delivery.MaxAttachmentBytes
+            ),
+            settings.ShowSignatureFrame,
+            settings.DateStampFormat.ToString(),
+            policy.RetentionSource.ToString()
         );
 
     private static IReadOnlyList<string> ChannelsAsStrings(VerificationChannel mask)

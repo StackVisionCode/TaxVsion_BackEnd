@@ -8,8 +8,11 @@ namespace TaxVision.Documents.Infrastructure.Persistence.Repositories;
 /// explícito sin IgnoreQueryFilters — seguro desde consumers/generación (scope Wolverine sin tenant).</summary>
 public sealed class TenantLogoRefRepository(DocumentsDbContext db) : ITenantLogoRefRepository
 {
-    public Task<TenantLogoRef?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        db.TenantLogoRefs.FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
+    public Task<TenantLogoRef?> GetAsync(Guid tenantId, TenantLogoSurface surface, CancellationToken ct = default) =>
+        db.TenantLogoRefs.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Surface == surface, ct);
+
+    public async Task<IReadOnlyList<TenantLogoRef>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
+        await db.TenantLogoRefs.Where(x => x.TenantId == tenantId).ToListAsync(ct);
 
     public async Task AddAsync(TenantLogoRef logoRef, CancellationToken ct = default) =>
         await db.TenantLogoRefs.AddAsync(logoRef, ct);

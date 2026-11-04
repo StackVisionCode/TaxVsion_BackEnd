@@ -182,6 +182,9 @@ builder.Host.UseWolverine(options =>
         .ToRabbitExchange("taxvision-events");
     options.PublishMessage<ConnectorsOAuthRefreshFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ConnectorsWatchExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<ConnectorsOfficeMailboxReviewRequiredIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
     options.PublishMessage<ConnectorsRawMessageReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ConnectorsMessageBodyFetchedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 

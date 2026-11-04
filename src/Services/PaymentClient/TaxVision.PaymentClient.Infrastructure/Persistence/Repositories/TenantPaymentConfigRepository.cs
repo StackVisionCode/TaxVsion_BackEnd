@@ -51,6 +51,21 @@ public sealed class TenantPaymentConfigRepository(PaymentClientDbContext db) : I
 
     public void Remove(TenantPaymentConfig config) => db.TenantPaymentConfigs.Remove(config);
 
+    // Cross-tenant: lo llama el job de pendientes, nunca una request autenticada.
+    public async Task<IReadOnlyList<TenantPaymentConfig>> GetStalePendingWebhookSetupsAsync(
+        DateTime requestedBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await WithEndpoints(db.TenantPaymentConfigs)
+            .Where(config =>
+                config.WebhookSetup == WebhookSetupStatus.Pending
+                && (config.WebhookSetupRequestedAtUtc == null || config.WebhookSetupRequestedAtUtc < requestedBeforeUtc)
+            )
+            .OrderBy(config => config.WebhookSetupRequestedAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     // IgnoreQueryFilters: los 3 métodos de arriba corren dentro de un handler de Wolverine
     // (bus.InvokeAsync), en un scope de DI distinto al de la request HTTP que pobló
     // ITenantContext vía JwtTenantContextMiddleware; el HasQueryFilter ambiental de

@@ -46,8 +46,10 @@ public sealed class DsnFeedbackTranslator : IDeliveryFeedbackTranslator
             return null;
 
         var reportedAt = report["ReportedAtUtc"]?.GetValue<DateTime>() ?? DateTime.UtcNow;
+        var accountId = Text(report, "AccountId");
+        var reportMessageId = Text(report, "ReportProviderMessageId");
         var eventId = DeliveryFeedbackEventId.Derive(
-            $"{Text(report, "AccountId")}|{Text(report, "ReportProviderMessageId")}",
+            $"{accountId}|{reportMessageId}",
             recipient,
             $"{action}:{status}",
             reportedAt
@@ -57,13 +59,30 @@ public sealed class DsnFeedbackTranslator : IDeliveryFeedbackTranslator
             reportedAt,
             Source,
             eventId,
-            Text(report, "DiagnosticSnippet") ?? status
+            Text(report, "DiagnosticSnippet") ?? status,
+            status
         );
 
-        return new TranslatedFeedback(originalMessageId, null, null, recipient, feedback.Value, rawPayload);
+        return new TranslatedFeedback(
+            originalMessageId,
+            null,
+            null,
+            recipient,
+            feedback.Value,
+            rawPayload,
+            ReportRefOf(accountId, reportMessageId)
+        );
     }
 
-    /// <summary>Un "failed" sin código se toma como temporal: un rebote duro suprime la dirección.</summary>
+    private static DeliveryReportRef? ReportRefOf(string? accountId, string? reportMessageId) =>
+        Guid.TryParse(accountId, out var account) && account != Guid.Empty && reportMessageId is not null
+            ? new DeliveryReportRef(account, reportMessageId)
+            : null;
+
+    /// <summary>
+    /// Un "failed" sin código se toma como temporal: un rebote duro suprime la dirección. Buzón lleno
+    /// (5.2.2) también queda blando, pero eso lo decide el dominio.
+    /// </summary>
     private static DeliveryOutcome? OutcomeOf(string? action, string? status) =>
         action switch
         {

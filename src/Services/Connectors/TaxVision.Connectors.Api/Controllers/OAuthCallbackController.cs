@@ -105,7 +105,8 @@ public sealed class OAuthCallbackController(
                 connectState.InitiatedByUserId,
                 code,
                 connectState.InitiatorEmail,
-                connectState.AsOffice
+                connectState.AsOffice,
+                connectState.InitiatorIsPlatformAdmin
             ),
             ct
         );
@@ -168,6 +169,7 @@ public sealed class OAuthCallbackController(
             "Connectors.EmailIdentity.MissingInitiator" => "identity_unknown",
             "CompleteOAuthConnectHandler.AlreadyConnected" => "already_connected",
             "CompleteOAuthConnectHandler.MissingRefreshToken" => "consent_incomplete",
+            ConnectInitiatorGuard.InactiveCode => "initiator_inactive",
             _ => "exchange_failed",
         };
 }

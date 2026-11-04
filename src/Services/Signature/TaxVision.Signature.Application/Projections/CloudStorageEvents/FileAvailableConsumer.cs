@@ -15,8 +15,8 @@ namespace TaxVision.Signature.Application.Projections.CloudStorageEvents;
 
 /// <summary>
 /// El archivo pasó el scan y está disponible. Actualiza la proyección local y, si hay
-/// <c>SignatureRequest</c>s en Draft esperando por este archivo, les adjunta el hash
-/// original. El Status sigue en Draft hasta que el preparador envíe.
+/// <c>SignatureRequest</c>s en Draft esperando por este archivo, lo revisa en el servidor y
+/// lo marca verificado o rechazado. El Status sigue en Draft hasta que el preparador envíe.
 /// </summary>
 public static class FileAvailableConsumer
 {
@@ -24,6 +24,7 @@ public static class FileAvailableConsumer
         FileAvailableIntegrationEvent evt,
         IFileMetadataRefRepository projectionRepo,
         ISignatureRequestRepository requestRepo,
+        IRequestDocumentVerifier verifier,
         IUnitOfWork unitOfWork,
         IMessageBus messageBus,
         ICorrelationContext correlation,
@@ -35,7 +36,7 @@ public static class FileAvailableConsumer
         using (correlation.Push(correlationId))
         {
             await UpsertProjection(evt, projectionRepo, ct);
-            var withHash = await AttachHashToWaitingDrafts(evt, requestRepo, logger, ct);
+            var withHash = await VerifyWaitingDrafts(evt, requestRepo, verifier, logger, ct);
             await unitOfWork.SaveChangesAsync(ct);
             await PublishReadyEvents(withHash, correlationId, messageBus);
         }
@@ -69,9 +70,10 @@ public static class FileAvailableConsumer
         }
     }
 
-    private static async Task<List<SignatureRequest>> AttachHashToWaitingDrafts(
+    private static async Task<List<SignatureRequest>> VerifyWaitingDrafts(
         FileAvailableIntegrationEvent evt,
         ISignatureRequestRepository repo,
+        IRequestDocumentVerifier verifier,
         ILogger logger,
         CancellationToken ct
     )
@@ -80,47 +82,30 @@ public static class FileAvailableConsumer
         if (drafts.Count == 0)
             return new List<SignatureRequest>(0);
 
-        var hashResult = DocumentHash.Create(evt.ChecksumSha256);
-        if (hashResult.IsFailure)
-        {
-            logger.LogWarning(
-                "FileAvailable {FileId} carries an invalid checksum; hash will not be attached to drafts: {Error}",
-                evt.FileId,
-                hashResult.Error.Message
-            );
-            return new List<SignatureRequest>(0);
-        }
-
-        var attached = new List<SignatureRequest>(drafts.Count);
+        var file = new VerifiableFile(evt.ChecksumSha256, evt.ContentType, evt.SizeBytes);
+        var ready = new List<SignatureRequest>(drafts.Count);
         foreach (var draft in drafts)
         {
             var document = draft.Documents.SingleOrDefault(candidate => candidate.OriginalFileId == evt.FileId);
             if (document is null)
                 continue;
 
-            var result = draft.AttachDocumentHash(document.Id, hashResult.Value);
-            if (result.IsSuccess)
-            {
-                if (draft.Documents.Count > 0 && draft.Documents.All(item => item.DocumentHashPre is not null))
-                    attached.Add(draft);
-                logger.LogInformation(
-                    "SignatureRequest {RequestId} document {DocumentId} hash attached by FileAvailable {FileId}.",
-                    draft.Id,
-                    document.Id,
-                    evt.FileId
-                );
-            }
-            else
-            {
-                logger.LogWarning(
-                    "SignatureRequest {RequestId} failed to attach original hash: {Error}",
-                    draft.Id,
-                    result.Error.Message
-                );
-            }
+            var verification = await verifier.VerifyAsync(draft, document.Id, file, ct);
+            logger.LogInformation(
+                "SignatureRequest {RequestId} document {DocumentId} verification by FileAvailable {FileId}: {Outcome}.",
+                draft.Id,
+                document.Id,
+                evt.FileId,
+                verification.Kind
+            );
+            if (
+                verification.Kind == DocumentVerificationKind.Verified
+                && draft.Documents.All(item => item.DocumentHashPre is not null)
+            )
+                ready.Add(draft);
         }
 
-        return attached;
+        return ready;
     }
 
     private static Task PublishReadyEvents(

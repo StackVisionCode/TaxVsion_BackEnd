@@ -72,6 +72,10 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Surface")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<string>("LogoContentType")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -82,7 +86,7 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.HasKey("TenantId");
+                    b.HasKey("TenantId", "Surface");
 
                     b.ToTable("TenantLogoRefs", (string)null);
                 });
@@ -170,6 +174,14 @@ namespace TaxVision.Documents.Infrastructure.Migrations
 
                     b.Property<Guid?>("SignatureCopyFileId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SignatureCopyFolderType")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("SignatureCopyOwnerType")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
 
                     b.Property<string>("SourceService")
                         .IsRequired()

@@ -20,6 +20,13 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Avisos de no entrega de muestra; la procedencia de cada uno está en Rfc3464DeliveryReportParserTests. -->
+    <EmbeddedResource
+      Include="Providers\DeliveryReports\Fixtures\*.eml"
+      LogicalName="DeliveryReports.%(Filename)%(Extension)"
+    />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Connectors\TaxVision.Connectors.Domain\TaxVision.Connectors.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Connectors\TaxVision.Connectors.Application\TaxVision.Connectors.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Connectors\TaxVision.Connectors.Infrastructure\TaxVision.Connectors.Infrastructure.csproj" />

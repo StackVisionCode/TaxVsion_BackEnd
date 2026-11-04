@@ -7,6 +7,7 @@ using TaxVision.Signature.Application.Profiles.Commands.Delete;
 using TaxVision.Signature.Application.Profiles.Commands.Rename;
 using TaxVision.Signature.Application.Profiles.Commands.SetDefault;
 using TaxVision.Signature.Application.Profiles.Queries.List;
+using TaxVision.Signature.Domain.Platform;
 using TaxVision.Signature.Domain.Profiles;
 using TaxVision.Signature.Domain.Settings;
 using Xunit;
@@ -67,6 +68,7 @@ public sealed class SignatureProfileHandlersTests
             repo,
             Settings(),
             storage,
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -96,6 +98,7 @@ public sealed class SignatureProfileHandlersTests
             repo,
             Settings(),
             new FakeCloudStorage(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -108,7 +111,7 @@ public sealed class SignatureProfileHandlersTests
     public async Task Create_rejects_when_the_scope_is_at_the_limit()
     {
         var repo = new FakeRepository();
-        for (var i = 0; i < SignatureProfile.MaxActiveProfilesPerScope; i++)
+        for (var i = 0; i < SignaturePlatformSettings.Defaults().MaxProfilesPerPreparer; i++)
             repo.Seed(MakeProfile(User, isDefault: i == 0));
 
         var result = await CreateSignatureProfileHandler.Handle(
@@ -124,6 +127,7 @@ public sealed class SignatureProfileHandlersTests
             repo,
             Settings(),
             new FakeCloudStorage(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -148,6 +152,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeRepository(),
             Settings(),
             new FakeCloudStorage(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -172,6 +177,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeRepository(),
             Settings(),
             new FakeCloudStorage(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -267,6 +273,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeRepository(),
             Settings(allowOwn: false),
             new FakeCloudStorage(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -293,6 +300,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeRepository(),
             Settings(allowOwn: false),
             new FakeCloudStorage(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -319,6 +327,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeRepository(),
             Settings(allowOwn: true),
             new FakeCloudStorage(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -424,6 +433,9 @@ public sealed class SignatureProfileHandlersTests
             Task.FromResult<TenantSignatureSettings?>(settings);
 
         public Task AddAsync(TenantSignatureSettings s, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<Guid>> ListTenantIdsWithPurgeEnabledAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
     private sealed class FakeRepository : ISignatureProfileRepository
@@ -435,6 +447,9 @@ public sealed class SignatureProfileHandlersTests
 
         public Task<SignatureProfile?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
             Task.FromResult(store.FirstOrDefault(p => p.TenantId == tenantId && p.Id == id));
+
+        public Task<SignatureProfile?> GetByFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult(store.FirstOrDefault(p => p.TenantId == tenantId && p.FileId == fileId));
 
         public Task<IReadOnlyList<SignatureProfile>> ListVisibleAsync(
             Guid tenantId,
@@ -500,13 +515,16 @@ public sealed class SignatureProfileHandlersTests
             return Task.FromResult(Result.Success(Guid.NewGuid()));
         }
 
-        public Task<Result<string>> CreateDownloadShareLinkAsync(
+        public Task<Result<Guid>> CopyToCustomerAsync(
             Guid tenantId,
-            Guid fileId,
-            IReadOnlyList<string> recipientEmails,
-            DateTime expiresAtUtc,
+            Guid sourceFileId,
+            Guid customerId,
+            int taxYear,
             CancellationToken ct = default
-        ) => Task.FromResult(Result.Success(string.Empty));
+        ) => throw new NotSupportedException();
+
+        public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult(Result.Success(new Uri($"https://minio.test/{fileId}")));
 
         public Task<Result<SignatureFileMetadata>> GetFileAsync(
             Guid tenantId,

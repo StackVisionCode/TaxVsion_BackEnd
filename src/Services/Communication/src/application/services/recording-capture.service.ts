@@ -206,8 +206,8 @@ export class RecordingCaptureService {
   private async recover(event: SfuProducerLifecycle): Promise<ActiveCapture | null> {
     if (!event.tenantId || !this.available) return null;
     const session =
-      (await this.deps.recordingSessions.findByScope(event.tenantId, 'Meeting', event.meetingId)) ??
-      (await this.deps.recordingSessions.findByScope(event.tenantId, 'Call', event.meetingId));
+      (await this.deps.recordingSessions.findLatestByScope(event.tenantId, 'Meeting', event.meetingId)) ??
+      (await this.deps.recordingSessions.findLatestByScope(event.tenantId, 'Call', event.meetingId));
     if (!session || session.sessionState !== 'Recording' || session.captureMode !== 'Server') return null;
     const begun = await this.begin(session);
     return begun.isSuccess ? (this.active.get(event.meetingId) ?? null) : null;

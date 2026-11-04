@@ -163,6 +163,7 @@ public static class DependencyInjection
         services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
         services.AddScoped<NotificationDispatcher>();
         services.AddScoped<ClientFormNotificationSender>();
+        services.AddScoped<OffboardingNoticeSender>();
 
         // Postmaster es el ÚNICO transporte de salida. Hasta 2026-10-02 esto colgaba del flag
         // Notification:UsePostmasterDispatch, cuya rama `false` resolvía contra

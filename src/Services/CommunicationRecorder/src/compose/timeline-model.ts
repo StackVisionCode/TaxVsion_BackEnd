@@ -139,6 +139,8 @@ export function buildTimelineModel(input: ModelInput): TimelineModel {
   const nameOf = (id: string) => names.get(id) ?? 'Participant';
 
   const lowerAllAt = timed.filter((e) => e.event.type === 'hand.lowered_all').map((e) => e.t);
+  // Reunion: hay filas de presencia; quien no tiene ninguna (p. ej. rechazado en la sala de espera) no estuvo.
+  const scopeHasPresence = timed.some((e) => JOIN.has(e.event.type) || LEAVE.has(e.event.type));
 
   const users = universe.map((userId, index) => {
     const own = timed.filter((e) => e.subject === userId);
@@ -151,8 +153,8 @@ export function buildTimelineModel(input: ModelInput): TimelineModel {
       .map((e) => ({ at: e.t, value: JOIN.has(e.event.type) }));
     const leaves = presenceToggles.filter((p) => !p.value).map((p) => p.at);
     const firstPresence = presenceToggles[0];
-    // Sin filas de presencia (p. ej. llamadas): presente toda la ventana.
-    const presenceInitial = firstPresence ? !firstPresence.value : true;
+    // Sin filas de presencia en todo el scope (llamadas): presente toda la ventana.
+    const presenceInitial = firstPresence ? !firstPresence.value : !scopeHasPresence;
     const presence = union(
       intervalsFromToggles(presenceToggles, presenceInitial, W),
       clip(trackSpans(() => true), 0, W),

@@ -62,6 +62,11 @@ public sealed class SignatureRequestsControllerOwnershipTests
         public Task AddAsync(SignatureRequest request, CancellationToken ct = default) =>
             throw new NotImplementedException();
 
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
+
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,
             CancellationToken ct = default
@@ -93,10 +98,12 @@ public sealed class SignatureRequestsControllerOwnershipTests
 
         public Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
             DateTime nowUtc,
+            int maxRemindersPerRequest,
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
         public Task<IReadOnlyList<SignatureRequest>> ListPurgeCandidatesAsync(
+            Guid tenantId,
             DateTime cutoffUtc,
             int batchSize,
             CancellationToken ct = default
@@ -273,12 +280,13 @@ public sealed class SignatureRequestsControllerOwnershipTests
     private static SignatureRequest NewSignatureRequest(Guid tenantId, Guid createdByUserId) =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 tenantId,
                 createdByUserId,
                 "Test request",
                 description: null,
-                "Other",
-                Guid.NewGuid(),
+                category: "Other",
+                originalFileId: Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,
                 requiresConsent: false,

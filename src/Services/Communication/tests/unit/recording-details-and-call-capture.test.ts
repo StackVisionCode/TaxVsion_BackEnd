@@ -33,7 +33,7 @@ class InMemoryCalls {
   }
 }
 
-function session(input: { tenantId: string; scope: RecordingScope; scopeId: string; state: RecordingSessionState; fileId?: string | null; captureMode?: RecordingCaptureMode }) {
+function session(input: { tenantId: string; scope: RecordingScope; scopeId: string; state: RecordingSessionState; fileId?: string | null; captureMode?: RecordingCaptureMode; sequence?: number }) {
   return RecordingSession.rehydrate({
     id: u(),
     tenantId: input.tenantId,
@@ -51,6 +51,7 @@ function session(input: { tenantId: string; scope: RecordingScope; scopeId: stri
     captureMode: input.captureMode ?? RecordingCaptureMode.Server,
     composedFormat: 'mp4',
     composedSizeBytes: 1000,
+    sequence: input.sequence ?? 1,
   });
 }
 
@@ -69,6 +70,8 @@ function detailsRuntime(platformPatch: Record<string, unknown> = {}) {
         transcripts.set(a.toSnapshot().scopeId, a);
       },
       findByScope: async (_t, _s, scopeId) => transcripts.get(scopeId) ?? null,
+      findByRecordingSession: async (_t, sessionId) =>
+        [...transcripts.values()].find((a) => a.toSnapshot().recordingSessionId === sessionId) ?? null,
     },
     cloudStorageDownload: {
       getDownloadUrl: async (_tenantId: string, fileId: string) => {
@@ -105,13 +108,42 @@ function activeCall() {
 }
 
 describe('getRecordingDetails', () => {
+  it('D-71: lists every recording of the meeting, each with its own transcript, latest on top', async () => {
+    const rt = detailsRuntime();
+    const { meeting, host } = endedMeeting();
+    await rt.meetings.save(meeting);
+    const firstFile = u();
+    const secondFile = u();
+    const first = session({ tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, state: RecordingSessionState.Ready, fileId: firstFile });
+    const second = session({ tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, state: RecordingSessionState.Ready, fileId: secondFile, sequence: 2 });
+    await rt.recordingSessions.save(first);
+    await rt.recordingSessions.save(second);
+    const firstTranscript = TranscriptArtifact.start({ tenantId: meeting.tenantId, scope: 'Meeting', scopeId: meeting.id, recordingSessionId: first.id });
+    firstTranscript.complete({ txtFileId: u(), jsonFileId: null, language: 'es', speakerCount: 1, wordCount: 10, durationSeconds: 30 } as never);
+    rt.transcripts.set(first.id, firstTranscript);
+
+    const r = await getRecordingDetails(
+      { viewer: { tenantId: meeting.tenantId, userId: host.userId, actorType: 'TenantEmployee', holdsRecordPermission: false }, scope: RecordingScope.Meeting, scopeId: meeting.id },
+      rt.deps,
+    );
+
+    expect(r.isSuccess).toBe(true);
+    if (!r.isSuccess) return;
+    expect(r.value.recordings.map((x) => x.sequence)).toEqual([1, 2]);
+    expect(r.value.recordingId).toBe(second.id);
+    expect(r.value.playback?.url).toBe(`https://files.local/${secondFile}`);
+    expect(r.value.recordings[0]?.transcript?.language).toBe('es');
+    expect(r.value.recordings[1]?.transcript).toBeNull();
+  });
+
   it('gives the host the playback URL and the transcript when everything is Ready', async () => {
     const rt = detailsRuntime();
     const { meeting, host } = endedMeeting();
     await rt.meetings.save(meeting);
     const fileId = u();
-    await rt.recordingSessions.save(session({ tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, state: RecordingSessionState.Ready, fileId }));
-    const artifact = TranscriptArtifact.start({ tenantId: meeting.tenantId, scope: 'Meeting', scopeId: meeting.id, recordingSessionId: u() });
+    const recorded = session({ tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, state: RecordingSessionState.Ready, fileId });
+    await rt.recordingSessions.save(recorded);
+    const artifact = TranscriptArtifact.start({ tenantId: meeting.tenantId, scope: 'Meeting', scopeId: meeting.id, recordingSessionId: recorded.id });
     const txt = u();
     const json = u();
     artifact.complete({ txtFileId: txt, jsonFileId: json, language: 'en', speakerCount: 2, wordCount: 120, durationSeconds: 60 } as never);

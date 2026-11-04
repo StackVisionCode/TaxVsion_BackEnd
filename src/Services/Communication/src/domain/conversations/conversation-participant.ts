@@ -144,4 +144,7 @@ export class ConversationParticipant {
   get isRemoved(): boolean {
     return this.state.isRemoved;
   }
+  get isPrimaryPreparer(): boolean {
+    return this.state.isPrimaryPreparer;
+  }
 }

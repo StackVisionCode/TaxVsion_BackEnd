@@ -113,12 +113,22 @@ public sealed class FormIntakeLinksController(IMessageBus bus) : ControllerBase
     public Task<IActionResult> PinVersion(Guid id, PinFormIntakeLinkVersionRequest request, CancellationToken ct) =>
         Change(id, FormIntakeLinkAction.PinVersion, request.FormTemplateVersionId, request.RowVersion, ct);
 
+    // Cambia quién recibe los leads (p. ej. tras retirar al responsable); misma validación que al crear.
+    [HttpPost("{id:guid}/responsible")]
+    [RateLimit("task.h.form_requests_write")]
+    public Task<IActionResult> ChangeResponsible(
+        Guid id,
+        ChangeFormIntakeLinkResponsibleRequest request,
+        CancellationToken ct
+    ) => Change(id, FormIntakeLinkAction.ChangeResponsible, null, request.RowVersion, ct, request.ResponsibleUserId);
+
     private async Task<IActionResult> Change(
         Guid id,
         FormIntakeLinkAction action,
         Guid? versionId,
         string rowVersion,
-        CancellationToken ct
+        CancellationToken ct,
+        Guid? responsibleUserId = null
     )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
@@ -127,7 +137,16 @@ public sealed class FormIntakeLinksController(IMessageBus bus) : ControllerBase
             return BadRequest(new Error("FormIntakeLink.InvalidRowVersion", "The row version is invalid."));
         return ToActionResult(
             await bus.InvokeAsync<Result<FormIntakeLinkTokenResponse>>(
-                new UpdateFormIntakeLinkCommand(tenantId, userId, id, action, versionId, decoded, DateTime.UtcNow),
+                new UpdateFormIntakeLinkCommand(
+                    tenantId,
+                    userId,
+                    id,
+                    action,
+                    versionId,
+                    decoded,
+                    DateTime.UtcNow,
+                    responsibleUserId
+                ),
                 ct
             )
         );

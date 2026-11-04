@@ -352,7 +352,10 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
         return Ok(result);
     }
 
-    /// <summary>Pausa / reanuda / cancela un agendado. <paramref name="scheduleAction"/> ∈ {pause, resume, cancel}.</summary>
+    /// <summary>
+    /// Pausa / reanuda / cancela un agendado. <paramref name="scheduleAction"/> ∈ {pause, resume, cancel}. Al
+    /// reanudar uno cuyo ejecutor ya no puede enviar, pasa a dispararse en nombre de quien lo reanuda.
+    /// </summary>
     [HttpPost("schedules/{scheduleId:guid}/{scheduleAction}")]
     [HasPermission(CampaignsPermissions.Send)]
     [RateLimit("campaigns.g.create")]
@@ -363,7 +366,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
         CancellationToken ct
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         if (!Enum.TryParse<ScheduleAction>(scheduleAction, ignoreCase: true, out var parsed))
@@ -372,10 +375,29 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
             );
 
         var result = await bus.InvokeAsync<Result<CampaignScheduleResponse>>(
-            new SetScheduleStateCommand(tenantId, scheduleId, parsed),
+            new SetScheduleStateCommand(tenantId, scheduleId, parsed, userId),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- GET /campaigns/offboarding-impact/{userId} ----------
+    // Pre-flight del retiro (mismo patrón que /customers/offboarding-impact): agendados que pasan al sucesor.
+    [HttpGet("offboarding-impact/{userId:guid}")]
+    [HasPermission(UserManagementPermissions.UsersManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("campaigns.f.get")]
+    [ProducesResponseType<CampaignsOffboardingImpactResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<CampaignsOffboardingImpactResponse>(
+            new GetCampaignsOffboardingImpactQuery(tenantId, userId),
+            ct
+        );
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}/runs")]

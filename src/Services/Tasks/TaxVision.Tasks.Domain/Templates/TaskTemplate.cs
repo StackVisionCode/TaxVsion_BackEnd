@@ -45,6 +45,7 @@ public sealed class TaskTemplate : BaseEntity, ITenantOwned
 
     public bool IsRecurring => Recurrence is not null;
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }

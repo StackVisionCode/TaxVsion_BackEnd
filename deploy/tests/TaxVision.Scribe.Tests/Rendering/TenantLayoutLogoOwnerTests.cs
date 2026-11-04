@@ -58,6 +58,31 @@ public sealed class TenantLayoutLogoOwnerTests
     }
 
     [Theory]
+    [InlineData(null, RenderAudience.Staff)]
+    [InlineData(RenderAudience.Client, RenderAudience.Client)]
+    public async Task RenderAsync_passes_the_requested_audience_to_the_logo_resolver(
+        RenderAudience? requested,
+        RenderAudience expected
+    )
+    {
+        var resolver = new RecordingLogoResolver(Logo);
+        var renderer = BuildRenderer("tenant-base", resolver);
+        var request = new RenderRequest(
+            EventKeyValue,
+            Guid.NewGuid(),
+            Locale: null,
+            Variables: new Dictionary<string, object?> { ["invoice_number"] = "INV-1" }
+        );
+
+        var result = await renderer.RenderAsync(
+            requested is { } audience ? request with { Audience = audience } : request
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, resolver.LastAudience);
+    }
+
+    [Theory]
     [InlineData("tenant-base", DispatchScopes.TenantPreferred)]
     [InlineData("system-base", DispatchScopes.System)]
     public async Task The_layout_also_decides_the_dispatch_lane(string layoutKey, string expectedScope)
@@ -197,11 +222,18 @@ public sealed class TenantLayoutLogoOwnerTests
     {
         public LogoScope? LastScope { get; private set; }
         public Guid? LastTenantId { get; private set; }
+        public RenderAudience? LastAudience { get; private set; }
 
-        public Task<LogoAsset> ResolveAsync(LogoScope logoScope, Guid? tenantId, CancellationToken ct = default)
+        public Task<LogoAsset> ResolveAsync(
+            LogoScope logoScope,
+            Guid? tenantId,
+            RenderAudience audience = RenderAudience.Staff,
+            CancellationToken ct = default
+        )
         {
             LastScope = logoScope;
             LastTenantId = tenantId;
+            LastAudience = audience;
             return Task.FromResult(asset);
         }
     }

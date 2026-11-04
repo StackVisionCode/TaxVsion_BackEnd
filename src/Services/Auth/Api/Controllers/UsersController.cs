@@ -8,11 +8,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Offboarding;
 using TaxVision.Auth.Application.Permissions.Commands;
 using TaxVision.Auth.Application.Permissions.Queries;
 using TaxVision.Auth.Application.Tenants.Queries;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.Queries;
+using TaxVision.Auth.Domain.Offboarding;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
@@ -97,7 +99,12 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    public sealed record OffboardUserRequest(Guid? SuccessorUserId);
+    /// <summary><c>Reason</c> y <c>ReasonNote</c> son opcionales (motivo de la salida, solo lo ven los admins).</summary>
+    public sealed record OffboardUserRequest(
+        Guid? SuccessorUserId,
+        OffboardingReason? Reason = null,
+        string? ReasonNote = null
+    );
 
     // Retirar del tenant (offboard): terminal. Más estricto que deactivate — solo admins.
     [HttpPost("{userId:guid}/offboard")]
@@ -115,11 +122,38 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new OffboardUserCommand(tenantId, userId, requesterId, request?.SuccessorUserId),
+            new OffboardUserCommand(
+                tenantId,
+                userId,
+                requesterId,
+                request?.SuccessorUserId,
+                request?.Reason,
+                request?.ReasonNote
+            ),
             ct
         );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // Avance del retiro con acuse por servicio ("completado en N/N pasos"). Mismos actores que el retiro.
+    [HttpGet("{userId:guid}/offboarding-status")]
+    [HasPermission(PermissionCatalog.UsersManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.f.user_read")]
+    [ProducesResponseType<OffboardingStatusResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> OffboardingStatus(Guid userId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<OffboardingStatusResponse>>(
+            new GetOffboardingStatusQuery(tenantId, userId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record AssignRolesRequest(IReadOnlyList<Guid> RoleIds);

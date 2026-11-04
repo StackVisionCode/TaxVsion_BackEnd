@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Postmaster.Application.Feedback;
+using TaxVision.Postmaster.Domain.Sending;
 using TaxVision.Postmaster.Domain.ValueObjects;
 
 namespace TaxVision.Postmaster.Infrastructure.Feedback.Smtp2Go;
@@ -67,12 +68,21 @@ public sealed class Smtp2GoWebhookFeedbackTranslator(ILogger<Smtp2GoWebhookFeedb
         var correlationHeader = Smtp2GoJson.Field(evt, CorrelationHeader);
         var occurredAt = Smtp2GoJson.Time(evt, "time");
         // Sin hora, el id del aviso no puede depender de "ahora": un reintento daría otro id y se aplicaría dos veces.
-        var eventId = DeliveryFeedbackEventId.Derive(
-            emailId ?? messageId ?? correlationHeader ?? string.Empty,
-            recipient,
-            $"{eventName}:{bounceKind}",
-            occurredAt ?? DateTime.MinValue
-        );
+        // Resultados, aperturas y clics usan el id canónico: las consultas de respaldo los releen y deben dar
+        // el mismo recibo. La baja (unsubscribe) solo llega por webhook.
+        var reference = emailId ?? messageId ?? correlationHeader ?? string.Empty;
+        var at = occurredAt ?? DateTime.MinValue;
+        var eventId = (outcome, signal) switch
+        {
+            ({ } reported, _) => DeliveryFeedbackEventId.ForOutcome(reference, recipient, reported, at),
+            (_, EngagementSignal.Opened or EngagementSignal.Clicked) => DeliveryFeedbackEventId.ForEngagement(
+                reference,
+                recipient,
+                signal.Value,
+                at
+            ),
+            _ => DeliveryFeedbackEventId.Derive(reference, recipient, $"{eventName}:{bounceKind}", at),
+        };
 
         var feedback = outcome is { } value
             ? DeliveryFeedback.ForOutcome(value, occurredAt ?? DateTime.UtcNow, Source, eventId, Diagnostic(evt))

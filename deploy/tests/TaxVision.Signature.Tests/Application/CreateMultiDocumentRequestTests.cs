@@ -51,12 +51,14 @@ public sealed class CreateMultiDocumentRequestTests
             repository,
             files,
             new EmptySettings(),
+            new FixedSignatureLimitsResolver(),
             new CountingUnitOfWork(),
             bus,
             new FixedCorrelationContext("create-multi-document"),
             new NoOpCache(),
             new PassingCategoryResolver(),
             new UnexpectedStorage(),
+            AcceptingDocumentVerifier.Instance,
             NullLogger<CreateSignatureRequestCommand>.Instance,
             CancellationToken.None
         );
@@ -83,7 +85,7 @@ public sealed class CreateMultiDocumentRequestTests
 
         // Tenant con defaults distintos del hard-default para demostrar que se usan los del tenant.
         var settings = TenantSignatureSettings.CreateForNewTenant(tenantId, "audit-secret").Value;
-        settings.ChangeDefaultTokenExpiration(240);
+        settings.ChangeDefaultTokenExpiration(240, TestSignatureLimits.Default);
         settings.DisableCertificateOfCompletion();
         settings.SetRequiresConsentByDefault(false);
 
@@ -94,12 +96,14 @@ public sealed class CreateMultiDocumentRequestTests
             repository,
             new AvailableFiles(tenantId, (fileId, new string('a', 64))),
             new ConfiguredSettings(settings),
+            new FixedSignatureLimitsResolver(settings.EffectiveWithin(TestSignatureLimits.Default)),
             new CountingUnitOfWork(),
             new CapturingMessageBus(),
             new FixedCorrelationContext("seed-from-tenant"),
             new NoOpCache(),
             new PassingCategoryResolver(),
             new UnexpectedStorage(),
+            AcceptingDocumentVerifier.Instance,
             NullLogger<CreateSignatureRequestCommand>.Instance,
             CancellationToken.None
         );
@@ -127,12 +131,14 @@ public sealed class CreateMultiDocumentRequestTests
             repository,
             new AvailableFiles(tenantId, (fileId, new string('b', 64))),
             new EmptySettings(),
+            new FixedSignatureLimitsResolver(),
             new CountingUnitOfWork(),
             new CapturingMessageBus(),
             new FixedCorrelationContext("seed-hard-default"),
             new NoOpCache(),
             new PassingCategoryResolver(),
             new UnexpectedStorage(),
+            AcceptingDocumentVerifier.Instance,
             NullLogger<CreateSignatureRequestCommand>.Instance,
             CancellationToken.None
         );
@@ -161,12 +167,14 @@ public sealed class CreateMultiDocumentRequestTests
             repository,
             new AvailableFiles(tenantId, (fileId, new string('c', 64))),
             new ConfiguredSettings(settings),
+            new FixedSignatureLimitsResolver(settings.EffectiveWithin(TestSignatureLimits.Default)),
             new CountingUnitOfWork(),
             new CapturingMessageBus(),
             new FixedCorrelationContext("seed-send-certificate"),
             new NoOpCache(),
             new PassingCategoryResolver(),
             new UnexpectedStorage(),
+            AcceptingDocumentVerifier.Instance,
             NullLogger<CreateSignatureRequestCommand>.Instance,
             CancellationToken.None
         );
@@ -247,12 +255,19 @@ public sealed class CreateMultiDocumentRequestTests
 
         public Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
             DateTime nowUtc,
+            int maxRemindersPerRequest,
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListPurgeCandidatesAsync(
+            Guid tenantId,
             DateTime olderThanUtc,
             int batchSize,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
+
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
@@ -300,6 +315,9 @@ public sealed class CreateMultiDocumentRequestTests
             Task.FromResult<TenantSignatureSettings?>(null);
 
         public Task AddAsync(TenantSignatureSettings settings, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<Guid>> ListTenantIdsWithPurgeEnabledAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
     private sealed class ConfiguredSettings(TenantSignatureSettings settings) : ITenantSignatureSettingsRepository
@@ -308,6 +326,9 @@ public sealed class CreateMultiDocumentRequestTests
             Task.FromResult<TenantSignatureSettings?>(settings);
 
         public Task AddAsync(TenantSignatureSettings toAdd, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<Guid>> ListTenantIdsWithPurgeEnabledAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
     private sealed class CountingUnitOfWork : IUnitOfWork
@@ -337,13 +358,16 @@ public sealed class CreateMultiDocumentRequestTests
             CancellationToken ct = default
         ) => throw new InvalidOperationException("Create must not upload files.");
 
-        public Task<Result<string>> CreateDownloadShareLinkAsync(
+        public Task<Result<Guid>> CopyToCustomerAsync(
             Guid tenantId,
-            Guid fileId,
-            IReadOnlyList<string> recipientEmails,
-            DateTime expiresAtUtc,
+            Guid sourceFileId,
+            Guid customerId,
+            int taxYear,
             CancellationToken ct = default
-        ) => throw new NotImplementedException();
+        ) => throw new NotSupportedException();
+
+        public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            throw new NotImplementedException();
 
         public Task<Result<SignatureFileMetadata>> GetFileAsync(
             Guid tenantId,

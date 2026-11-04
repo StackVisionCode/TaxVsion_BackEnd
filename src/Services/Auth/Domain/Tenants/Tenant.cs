@@ -25,6 +25,10 @@ public sealed class Tenant : BaseEntity
 
     public DateTime CreatedAtUtc { get; private set; }
 
+    /// <summary>Sello <c>UpdatedAtUtc</c> de Tenant del último renombre / cambio de zona aplicado. Null =
+    /// nunca llegó un <c>TenantUpdatedIntegrationEvent</c> (nombre y zona son los del alta).</summary>
+    public DateTime? SourceUpdatedAtUtc { get; private set; }
+
     public static Result<Tenant> Register(
         Guid id,
         string name,
@@ -78,9 +82,6 @@ public sealed class Tenant : BaseEntity
 
     public void UpdateFromCreatedEvent(string name, string subDomain, TenantKind kind, string defaultTimeZoneId)
     {
-        Name = name.Trim();
-        SubDomain = subDomain.Trim().ToLowerInvariant();
-        Kind = kind;
         if (!IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalizedTimeZoneId))
         {
             throw new ArgumentException(
@@ -89,8 +90,34 @@ public sealed class Tenant : BaseEntity
             );
         }
 
-        DefaultTimeZoneId = normalizedTimeZoneId;
+        SubDomain = subDomain.Trim().ToLowerInvariant();
+        Kind = kind;
         IsActive = true;
+
+        // Un alta reentregada después de un renombre no pisa el nombre ni la zona más nuevos.
+        if (SourceUpdatedAtUtc is not null)
+            return;
+
+        Name = name.Trim();
+        DefaultTimeZoneId = normalizedTimeZoneId;
+    }
+
+    /// <summary>
+    /// Renombre / cambio de zona publicado por Tenant (estado completo). Descarta un evento más viejo
+    /// que el ya aplicado; uno igual se reaplica (idempotente). Devuelve <c>true</c> si se aplicó.
+    /// </summary>
+    public bool ApplyTenantUpdate(string name, string defaultTimeZoneId, DateTime sourceUpdatedAtUtc)
+    {
+        if (SourceUpdatedAtUtc is { } applied && sourceUpdatedAtUtc < applied)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(name) || !IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalized))
+            return false;
+
+        Name = name.Trim();
+        DefaultTimeZoneId = normalized;
+        SourceUpdatedAtUtc = sourceUpdatedAtUtc;
+        return true;
     }
 
     public void Deactivate() => IsActive = false;

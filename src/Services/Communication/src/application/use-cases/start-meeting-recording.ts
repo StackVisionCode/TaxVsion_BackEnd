@@ -50,7 +50,7 @@ export async function startMeetingRecording(
   const meeting = await deps.meetings.findById(command.tenantId, command.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
 
-  const session = await deps.recordingSessions.findByScope(command.tenantId, RecordingScope.Meeting, command.meetingId);
+  const session = await deps.recordingSessions.findLatestByScope(command.tenantId, RecordingScope.Meeting, command.meetingId);
   if (!session) return Result.fail(makeError('RecordingSession.NotFound', 'No recording session for this meeting.'));
   if (session.sessionState !== 'Requesting') {
     return Result.fail(
@@ -66,9 +66,12 @@ export async function startMeetingRecording(
   // quedamos con la mas reciente por userId (listByScope ya ordena asc por
   // RecordedAtUtc, asi que la ultima iteracion gana), ignorando filas 'Requested'.
   const latestByUser = new Map<string, RecordingConsentSnapshotEntry>();
+  const requestedAtMs = session.toSnapshot().requestedAtUtc.getTime();
   for (const entry of allEntries) {
     const snap = entry.toSnapshot();
     if (snap.response === 'Requested') continue;
+    // D-71: solo cuentan las respuestas a ESTE pedido, no a una grabacion anterior de la reunion.
+    if (snap.respondedAtUtc.getTime() < requestedAtMs) continue;
     latestByUser.set(snap.userId, {
       userId: snap.userId,
       response: snap.response,

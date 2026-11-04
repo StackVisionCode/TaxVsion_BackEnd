@@ -18,6 +18,10 @@ public sealed record SaaSPaymentSucceededIntegrationEvent : IntegrationEvent
     /// de tenants: así Documents no necesita una propia solo para el recibo.</summary>
     public required string OfficeName { get; init; }
 
+    /// <summary>Datos de facturación de la oficina (perfil de Tenant proyectado en PaymentApp). Null o
+    /// campos vacíos = el recibo muestra solo <see cref="OfficeName"/>, como antes.</summary>
+    public SaaSBilledToData? BilledTo { get; init; }
+
     /// <summary>Tipo de cobro (<c>SaaSPaymentType</c> como string): de ahí sale el concepto del recibo.</summary>
     public required string PaymentType { get; init; }
     public required long AmountPaidCents { get; init; }
@@ -40,3 +44,6 @@ public sealed record SaaSPaymentSucceededIntegrationEvent : IntegrationEvent
     public string? ConceptCode { get; init; }
     public string? ConceptDisplayName { get; init; }
 }
+
+/// <summary>"Billed to" del recibo: nombre legal, EIN y dirección postal en una línea. Todo opcional.</summary>
+public sealed record SaaSBilledToData(string? LegalName, string? Ein, string? Address);

@@ -7,6 +7,8 @@ public sealed class TenantSeatSlotProjection : ITenantOwned
     private TenantSeatSlotProjection() { }
 
     public Guid TenantId { get; private set; }
+
+    [UserReference(UserReferenceKind.Projection, HandledBy = "RecomputeTenantSeatSlotsConsumer")]
     public Guid UserId { get; private set; }
     public int SlotIndex { get; private set; }
     public int EffectiveCap { get; private set; }

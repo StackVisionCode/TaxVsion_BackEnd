@@ -27,6 +27,7 @@ public class CompleteOAuthConnectHandlerTests
         FakeSmtpCredentialsRepository SmtpCredentials,
         FakeImapCredentialsRepository ImapCredentials,
         FakeProviderSyncCursorRepository SyncCursors,
+        FakeUserPermissionsProjectionReader Projections,
         FakeUnitOfWork UnitOfWork,
         FakeMessageBus Bus
     );
@@ -45,6 +46,7 @@ public class CompleteOAuthConnectHandlerTests
             new FakeSmtpCredentialsRepository(),
             new FakeImapCredentialsRepository(),
             new FakeProviderSyncCursorRepository(),
+            new FakeUserPermissionsProjectionReader(),
             new FakeUnitOfWork(),
             new FakeMessageBus()
         );
@@ -66,6 +68,7 @@ public class CompleteOAuthConnectHandlerTests
             fixture.SmtpCredentials,
             fixture.ImapCredentials,
             fixture.SyncCursors,
+            fixture.Projections,
             fixture.UnitOfWork,
             fixture.Bus,
             new FakeCorrelationContext(),
@@ -173,6 +176,50 @@ public class CompleteOAuthConnectHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("CompleteOAuthConnectHandler.AlreadyConnected", result.Error.Code);
         Assert.Single(fixture.ConnectionRepository.Connections);
+    }
+
+    [Fact]
+    public async Task Handle_ActiveConnectionMissingNewScopes_WidensGrantWithoutRearmingWatch()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "office@gmail.com";
+        fixture.ProviderClient.ConfiguredScope = "Mail.Read Mail.ReadWrite";
+        // Si se rearmara el watch, fallaría: la cuenta ya está activa y solo se amplían permisos.
+        fixture.WatchClient.ThrowOnSetup = new WatchProviderException("should not be called");
+
+        var account = TenantEmailAccount
+            .Create(tenantId, "office@gmail.com", ProviderCode.Gmail, Guid.NewGuid(), Now)
+            .Value;
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        fixture.AccountRepository.Accounts.Add(account);
+        var connection = OAuthConnection.Create(account.Id, ProviderCode.Gmail, "client-1", "Mail.Read", Now).Value;
+        var protector = new FakeEncryptedSecretProtector();
+        connection.AttachToken(
+            OAuthToken
+                .Create(connection.Id, protector.Protect("at"), protector.Protect("rt"), Now.AddHours(1), Now)
+                .Value
+        );
+        fixture.ConnectionRepository.Connections.Add(connection);
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(
+                tenantId,
+                ProviderCode.Gmail,
+                Guid.NewGuid(),
+                "auth-code",
+                "office@gmail.com"
+            )
+        );
+
+        Assert.True(result.IsSuccess);
+        var updated = Assert.Single(fixture.ConnectionRepository.Connections);
+        Assert.Equal(OAuthConnectionStatus.Active, updated.Status);
+        Assert.Equal("Mail.Read Mail.ReadWrite", updated.Scope);
+        Assert.Empty(updated.MissingScopes(fixture.ProviderClient.ConfiguredScope));
+        Assert.Equal(TenantEmailAccountStatus.Active, account.Status);
     }
 
     [Fact]
@@ -293,6 +340,39 @@ public class CompleteOAuthConnectHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ReinvitedOffboardedUser_ReconnectingTheirMailbox_TakesOverTheDisconnectedRow()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var formerUserId = Guid.NewGuid();
+        var newUserId = Guid.NewGuid();
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "jane@gmail.com";
+
+        // Buzón personal del retirado: desconectado y purgado (sin OAuthConnection) por el retiro.
+        var account = TenantEmailAccount
+            .Create(tenantId, "jane@gmail.com", ProviderCode.Gmail, formerUserId, Now, ownerUserId: formerUserId)
+            .Value;
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        account.Disconnect(Now);
+        fixture.AccountRepository.Accounts.Add(account);
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, newUserId, "auth-code", "jane@gmail.com")
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(account.Id, result.Value.AccountId);
+        Assert.Single(fixture.AccountRepository.Accounts);
+        Assert.Equal(newUserId, account.OwnerUserId);
+        Assert.Equal(formerUserId, account.CreatedByUserId);
+        Assert.Equal(TenantEmailAccountStatus.Active, account.Status);
+        var visible = await fixture.AccountRepository.ListVisibleAsync(tenantId, newUserId, includeOffice: false);
+        Assert.Contains(visible, a => a.Id == account.Id);
+    }
+
+    [Fact]
     public async Task Handle_ReconnectingAccountWithRevokedConnection_ReusesTheSameConnectionAndTokenRows()
     {
         var fixture = CreateFixture();
@@ -398,5 +478,70 @@ public class CompleteOAuthConnectHandlerTests
             .Bus.Published.OfType<ConnectorsTenantEmailAccountConnectedIntegrationEvent>()
             .Single();
         Assert.Equal(ProviderCode.Gmail.ToString(), publishedConnected.ProviderCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Handle_InitiatorNoLongerActive_FailsClosedWithoutExchangingOrPersisting(bool asOffice)
+    {
+        // Retirado/suspendido (o sin proyección) entre el inicio y el callback: ni personal ni de oficina.
+        var fixture = CreateFixture();
+        var userId = Guid.NewGuid();
+        fixture.Projections.WithoutActiveProjection.Add(userId);
+        var exchanged = false;
+        fixture.ProviderClient.OnExchange = (_, _) =>
+        {
+            exchanged = true;
+            return new OAuthTokenGrant("access-token", "refresh-token", 3600);
+        };
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "leaver@gmail.com";
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(
+                Guid.NewGuid(),
+                ProviderCode.Gmail,
+                userId,
+                "auth-code",
+                "leaver@gmail.com",
+                AsOffice: asOffice
+            )
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ConnectInitiatorGuard.InactiveCode, result.Error.Code);
+        Assert.False(exchanged);
+        Assert.Empty(fixture.AccountRepository.Accounts);
+        Assert.Empty(fixture.ConnectionRepository.Connections);
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Empty(fixture.AuditLogRepository.Entries);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Handle_PlatformAdminInitiator_SkipsTheProjectionCheck()
+    {
+        // PlatformAdmin no tiene proyección en el tenant (la autorización normal también se la salta).
+        var fixture = CreateFixture();
+        var userId = Guid.NewGuid();
+        fixture.Projections.WithoutActiveProjection.Add(userId);
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "office@firm.com";
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(
+                Guid.NewGuid(),
+                ProviderCode.Gmail,
+                userId,
+                "auth-code",
+                AsOffice: true,
+                InitiatorIsPlatformAdmin: true
+            )
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, fixture.Projections.Calls);
+        Assert.Single(fixture.AccountRepository.Accounts);
     }
 }

@@ -65,14 +65,18 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
         return results;
     }
 
+    public List<DateTime?> ReceivedFirstSyncFrom { get; } = [];
+
     public Task<HistoryPage> GetHistoryAsync(
         Guid accountId,
         Guid tenantId,
         string? sinceCursor,
+        DateTime? firstSyncFromUtc = null,
         CancellationToken ct = default
     )
     {
         ReceivedCursors.Add(sinceCursor);
+        ReceivedFirstSyncFrom.Add(firstSyncFromUtc);
         if (ThrowOnGetHistory is not null)
             throw ThrowOnGetHistory;
 

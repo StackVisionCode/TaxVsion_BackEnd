@@ -71,6 +71,11 @@ import {
   markRecordingFileAvailable,
   markRecordingFileRejected,
 } from './application/use-cases/recording-lifecycle.js';
+import {
+  markTranscriptFileAvailable,
+  releaseRejectedTranscriptFile,
+  type TranscriptFileStatusDeps,
+} from './application/use-cases/transcript-file-status.js';
 import type { RecordingCaptureService } from './application/services/recording-capture.service.js';
 
 /**
@@ -277,6 +282,12 @@ async function main(): Promise<void> {
   // F7: ciclo de vida de grabaciones del sistema (recorder, CloudStorage, transcript, limite, retencion).
   const recordingLifecycle = lifecycleFrom({ ...container, emitter });
   if (!recordingLifecycle) throw new Error('Recording lifecycle dependencies are incomplete.');
+  // MNT-01 (E-292): confirmacion o rechazo del .txt de un transcript en CloudStorage.
+  const transcriptFileStatus: TranscriptFileStatusDeps = {
+    transcripts: container.transcripts,
+    meetings: container.meetings,
+    calls: container.calls,
+  };
   bindInAppNotificationConsumers(consumers.register.bind(consumers), {
     notifications: container.inAppNotifications,
     emitter,
@@ -302,14 +313,12 @@ async function main(): Promise<void> {
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
     emitter,
-    conversations: container.conversations,
-    conversationAudit: container.conversationAudit,
   });
   bindTenantHostConsumers(consumers.register.bind(consumers), {
     hostCache: container.tenantHostCache,
     platformSettings,
   });
-  // Offboarding (retiro terminal): baja las proyecciones + reasigna/cancela reuniones del host retirado.
+  // Offboarding (retiro terminal): proyecciones, reuniones, grupos, chats Direct, soporte y grabaciones (offboarding-consumers.ts).
   bindOffboardingConsumers(consumers.register.bind(consumers), {
     userPermissions: container.userPermissions,
     userDirectory: container.userDirectory,
@@ -319,6 +328,9 @@ async function main(): Promise<void> {
     emitter,
     conversations: container.conversations,
     conversationAudit: container.conversationAudit,
+    supportTickets: container.supportTickets,
+    settings: container.settings,
+    recordingLifecycle,
   });
   bindSubscriptionConsumers(consumers.register.bind(consumers), {
     limits: container.limits,
@@ -386,6 +398,14 @@ async function main(): Promise<void> {
         markRecordingFileAvailable({ tenantId, fileId, correlationId }, recordingLifecycle),
       onRejected: (tenantId, fileId, reason, correlationId) =>
         markRecordingFileRejected({ tenantId, fileId, reason, correlationId }, recordingLifecycle),
+    },
+    transcriptFiles: {
+      onAvailable: async (tenantId, fileId) => {
+        await markTranscriptFileAvailable({ tenantId, fileId }, transcriptFileStatus);
+      },
+      onRejected: async (tenantId, fileId, reason) => {
+        await releaseRejectedTranscriptFile({ tenantId, fileId, reason }, transcriptFileStatus);
+      },
     },
   });
   bindCloudStorageNotificationConsumers(consumers.register.bind(consumers), {

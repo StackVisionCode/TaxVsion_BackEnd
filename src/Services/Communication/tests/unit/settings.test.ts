@@ -14,8 +14,9 @@ describe('TenantCommunicationSettings.defaults', () => {
     expect(s.maxMeetingParticipants).toBeNull();
     expect(s.employeeToEmployeeChatEnabled).toBe(false);
     expect(s.defaultCameraOff).toBe(true);
-    // La retención ya no es de la oficina: la fija la plataforma (global o excepción por oficina).
-    expect('messageRetentionDays' in s).toBe(false);
+    // D-72: la oficina nace sin retención propia (null = plataforma) y sin la opción muerta persistChatOnEnd.
+    expect(s.messageRetentionDays).toBeNull();
+    expect('persistChatOnEnd' in s).toBe(false);
   });
 });
 

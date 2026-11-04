@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.CustomerVisibility;
+using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Api.Common;
@@ -298,6 +299,7 @@ public sealed class PerItemAccessEnforcementTests
             new FakeStorageAuditRepository(),
             new FakeObjectStorage(),
             Options.Create(new TaxVision.CloudStorage.Application.Configuration.CloudStorageOptions()),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeSystemClock(DateTime.UtcNow),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
@@ -329,6 +331,7 @@ public sealed class PerItemAccessEnforcementTests
             new FakeStorageAuditRepository(),
             new FakeObjectStorage(),
             Options.Create(new TaxVision.CloudStorage.Application.Configuration.CloudStorageOptions()),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeSystemClock(DateTime.UtcNow),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
@@ -339,6 +342,80 @@ public sealed class PerItemAccessEnforcementTests
         Assert.Equal("cloudstorage.customer_access.denied", result.Error.Code);
         Assert.Equal(CustomerAccessDenied.Error.Message, result.Error.Message);
     }
+
+    [Fact]
+    public async Task Preview_only_preset_lets_the_viewer_open_the_file_inline_but_still_blocks_the_download()
+    {
+        var file = AvailableCustomerFile();
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var storage = new FakeObjectStorage();
+        // "Preview-only" = deny Download + Upload a nivel de cliente (preset tenant-scope).
+        var scope = PortalScopeWith(
+            TenantScopeRule(AccessCapability.Download),
+            TenantScopeRule(AccessCapability.Upload)
+        );
+
+        var preview = await IssueUrl(file, scope, files, storage, forPreview: true);
+        var download = await IssueUrl(file, scope, files, storage, forPreview: false);
+
+        Assert.True(preview.IsSuccess);
+        Assert.StartsWith("inline;", Assert.Single(storage.PresignedWithDisposition).ContentDisposition);
+        Assert.True(download.IsFailure);
+        Assert.Equal("cloudstorage.customer_access.denied", download.Error.Code);
+    }
+
+    [Fact]
+    public async Task A_preview_deny_gives_the_viewer_no_url()
+    {
+        // Un deny de Preview oculta el archivo al cliente: ni siquiera existe para él.
+        var file = AvailableCustomerFile();
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var storage = new FakeObjectStorage();
+        var scope = PortalScopeWith(Rule(AccessResourceType.File, file.Id, AccessCapability.Preview));
+
+        var preview = await IssueUrl(file, scope, files, storage, forPreview: true);
+
+        Assert.True(preview.IsFailure);
+        Assert.Empty(storage.PresignedWithDisposition);
+    }
+
+    private static FileObject AvailableCustomerFile()
+    {
+        var file = CustomerFile();
+        file.MarkPendingScan();
+        file.MarkScanning();
+        file.MarkAvailable(ChecksumSha256.Create(new string('a', 64)).Value, "application/pdf", DateTime.UtcNow);
+        return file;
+    }
+
+    private static Task<Result<DownloadUrlResponse>> IssueUrl(
+        FileObject file,
+        StorageActorScope scope,
+        FakeFileObjectRepository files,
+        FakeObjectStorage storage,
+        bool forPreview
+    ) =>
+        IssueDownloadUrlHandler.Handle(
+            new IssueDownloadUrlQuery(
+                Tenant,
+                Actor,
+                scope,
+                file.Id,
+                new RequestAuditContext(null, null, Guid.NewGuid().ToString()),
+                forPreview
+            ),
+            files,
+            new FakeStorageAuditRepository(),
+            storage,
+            Options.Create(new TaxVision.CloudStorage.Application.Configuration.CloudStorageOptions()),
+            new FakeStoragePlatformSettingsProvider(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
 
     // ------------------------- Effective capabilities -------------------------
 
@@ -628,6 +705,7 @@ public sealed class PerItemAccessEnforcementTests
             new SystemFolderProvisioner(folders),
             new FakeMultipartUploadStorage(),
             Options.Create(new CloudStorageOptions { MultipartPartSizeBytes = 5L * 1024 * 1024 }),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeUploadPolicyResolver(),
             new FakeSystemClock(DateTime.UtcNow),
             new FakeUnitOfWork(),
@@ -678,6 +756,7 @@ public sealed class PerItemAccessEnforcementTests
             new SystemFolderProvisioner(folders),
             new FakeMultipartUploadStorage(),
             Options.Create(new CloudStorageOptions { MultipartPartSizeBytes = 5L * 1024 * 1024 }),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeUploadPolicyResolver(),
             new FakeSystemClock(DateTime.UtcNow),
             new FakeUnitOfWork(),

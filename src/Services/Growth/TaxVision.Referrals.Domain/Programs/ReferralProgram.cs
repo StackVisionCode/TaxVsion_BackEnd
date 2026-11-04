@@ -21,7 +21,11 @@ public sealed class ReferralProgram : TenantEntity
     public string PayloadFingerprint { get; private set; } = default!;
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 

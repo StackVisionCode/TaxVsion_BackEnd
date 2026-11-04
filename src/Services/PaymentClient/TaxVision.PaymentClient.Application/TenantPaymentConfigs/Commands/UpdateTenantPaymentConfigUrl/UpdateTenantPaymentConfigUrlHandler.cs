@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.PaymentClient.Application.Abstractions;
+using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Application.Common;
 using TaxVision.PaymentClient.Domain.Audit;
 using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
@@ -13,12 +14,17 @@ public static class UpdateTenantPaymentConfigUrlHandler
     public static async Task<Result> Handle(
         UpdateTenantPaymentConfigUrlCommand command,
         ITenantPaymentConfigRepository configs,
+        IPaymentAdapterFactory adapters,
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        var supported = adapters.RequireSupported(command.ProviderCode);
+        if (supported.IsFailure)
+            return Result.Failure(supported.Error);
+
         var config = await configs.GetByTenantAndProviderAsync(command.TenantId, command.ProviderCode, ct);
         if (config is null)
             return Result.Failure(new Error("TenantPaymentConfig.NotFound", "TenantPaymentConfig does not exist."));

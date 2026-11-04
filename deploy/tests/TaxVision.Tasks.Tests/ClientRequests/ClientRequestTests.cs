@@ -173,6 +173,30 @@ public sealed class ClientRequestTests
         Assert.Equal(ClientRequestErrors.CustomerRequired, orphan.Error);
     }
 
+    /// <summary>El seguimiento cambia a quién avisar, nunca quién lo pidió (procedencia).</summary>
+    [Fact]
+    public void Handing_over_the_follow_up_redirects_staff_notices_but_keeps_the_requester()
+    {
+        var request = NewRequest();
+        var successor = Guid.NewGuid();
+
+        var result = request.HandOverFollowUp(successor);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(successor, request.StaffRecipientUserId);
+        Assert.Equal(PreparerId, request.RequestedByUserId);
+    }
+
+    [Fact]
+    public void A_closed_request_cannot_be_handed_over()
+    {
+        var request = NewRequest();
+        request.Cancel(PreparerId, null, Now);
+
+        Assert.Equal(ClientRequestErrors.Closed, request.HandOverFollowUp(Guid.NewGuid()).Error);
+        Assert.Equal(PreparerId, request.StaffRecipientUserId);
+    }
+
     private static ClientRequest NewRequest() =>
         ClientRequest
             .Create(TenantId, CustomerId, PreparerId, Guid.NewGuid(), "W-2 y 1099 de 2025", null, null, Now)

@@ -13,8 +13,6 @@ namespace TaxVision.Billing.Application.Invoices.IssueInvoice;
 
 public static class IssueInvoiceHandler
 {
-    private const int DefaultNetDays = 30;
-
     public static async Task<Result<IssueInvoiceResult>> Handle(
         IssueInvoiceCommand command,
         IInvoiceRepository invoices,
@@ -57,7 +55,8 @@ public static class IssueInvoiceHandler
         var number = sequence.Allocate();
         var invoiceNumber = $"INV-{periodKey}-{number:D5}";
 
-        var issueResult = invoice.Issue(invoiceNumber, nowUtc, nowUtc.AddDays(DefaultNetDays), command.ActorUserId);
+        // El vencimiento sale del plazo congelado en la factura (sin plazo: el histórico de 30 días).
+        var issueResult = invoice.Issue(invoiceNumber, nowUtc, invoice.DueDateFor(nowUtc), command.ActorUserId);
         if (issueResult.IsFailure)
             return Result.Failure<IssueInvoiceResult>(issueResult.Error);
 

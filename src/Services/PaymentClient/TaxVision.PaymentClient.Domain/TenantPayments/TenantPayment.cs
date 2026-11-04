@@ -42,9 +42,20 @@ public sealed class TenantPayment : TenantEntity
     public DateTime? PaidAtUtc { get; private set; }
     public DateTime? ChargedBackAtUtc { get; private set; }
     public bool IsLegalHeld { get; private set; }
+
+    /// <summary>Datos del pagador (email del recibo + lo que devuelve el proveedor). PII.</summary>
+    public PayerDetails Payer { get; private set; } = PayerDetails.None();
+
+    /// <summary>Última vez que la revisión de atascados le preguntó al proveedor por este pago.</summary>
+    public DateTime? LastProviderCheckAtUtc { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
@@ -62,7 +73,8 @@ public sealed class TenantPayment : TenantEntity
         PaymentProviderCode provider,
         StatementDescriptor descriptor,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string? receiptEmail = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -86,6 +98,7 @@ public sealed class TenantPayment : TenantEntity
             UpdatedAtUtc = nowUtc,
             CreatedBy = actorUserId,
             UpdatedBy = actorUserId,
+            Payer = PayerDetails.FromReceiptEmail(receiptEmail),
         };
         payment.SetTenant(tenantId);
         return Result.Success(payment);
@@ -107,7 +120,8 @@ public sealed class TenantPayment : TenantEntity
         PaymentProviderCode provider,
         StatementDescriptor descriptor,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string? receiptEmail = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -135,6 +149,7 @@ public sealed class TenantPayment : TenantEntity
             UpdatedAtUtc = nowUtc,
             CreatedBy = actorUserId,
             UpdatedBy = actorUserId,
+            Payer = PayerDetails.FromReceiptEmail(receiptEmail),
         };
         payment.SetTenant(tenantId);
         return Result.Success(payment);
@@ -386,6 +401,22 @@ public sealed class TenantPayment : TenantEntity
         Touch(actorUserId, chargedBackAtUtc);
         return Result.Success();
     }
+
+    /// <summary>Registra lo que el proveedor devolvió del pagador tras el cobro. Nunca falla: un
+    /// dato inválido se descarta y se conserva el anterior.</summary>
+    public void RecordProviderPayerDetails(
+        string? payerName,
+        string? payerEmail,
+        string? cardBrand,
+        string? cardLast4
+    ) => Payer = Payer.WithProviderData(payerName, payerEmail, cardBrand, cardLast4);
+
+    /// <summary>Anota que se consultó al proveedor (resuelva o no). No toca <see cref="UpdatedAtUtc"/>:
+    /// el pago sigue igual de atascado; solo rota la cola de la revisión.</summary>
+    public void RecordProviderCheck(DateTime checkedAtUtc) => LastProviderCheckAtUtc = checkedAtUtc;
+
+    /// <summary>Aún esperando que el proveedor confirme (lo que revisa el job de atascados).</summary>
+    public bool IsAwaitingProviderConfirmation => Status is PaymentStatus.Processing or PaymentStatus.RequiresAction;
 
     public Result SetLegalHold(bool isLegalHeld, Guid actorUserId, DateTime nowUtc)
     {

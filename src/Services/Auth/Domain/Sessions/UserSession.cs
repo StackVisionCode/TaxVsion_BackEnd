@@ -6,6 +6,11 @@ public sealed class UserSession : TenantEntity
 {
     private UserSession() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Denylist y revocación al instante (SessionAccessCutoff)."
+    )]
     public Guid UserId { get; private set; }
     public string? DeviceName { get; private set; }
     public string? UserAgent { get; private set; }

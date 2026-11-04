@@ -87,7 +87,7 @@ internal sealed class TenantBrandingCloudStorageClient(
             {
                 TenantId = tenantId,
                 FileId = stored.FileId,
-                RequestingService = "tenant",
+                RequestingService = TenantCloudStorageRequests.RequestingService,
                 SourceBucket = options.TempBucket,
                 SourceObjectKey = stored.SourceObjectKey,
                 ActorId = upload.ActorId,

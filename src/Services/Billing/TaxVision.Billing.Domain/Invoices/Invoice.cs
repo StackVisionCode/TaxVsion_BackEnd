@@ -75,6 +75,12 @@ public sealed class Invoice : AggregateRoot
     public string? Notes { get; private set; }
     public PaymentMethod? PaymentMethod { get; private set; }
 
+    /// <summary>Condiciones de cobro congeladas al crear el borrador (ajustes del tenant en ese momento).
+    /// Null en facturas de antes de la F1 y en las de onboarding: el vencimiento usa el plazo histórico.</summary>
+    public PaymentTerms? PaymentTerms { get; private set; }
+    public string? PaymentInstructions { get; private set; }
+    public string? InvoiceFooter { get; private set; }
+
     public Guid? PdfFileId { get; private set; }
     public Guid? PaidPdfFileId { get; private set; }
 
@@ -86,7 +92,11 @@ public sealed class Invoice : AggregateRoot
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? LastModifiedBy { get; private set; }
     public DateTime? DeletedAtUtc { get; private set; }
 
@@ -131,7 +141,8 @@ public sealed class Invoice : AggregateRoot
         IReadOnlyList<DraftInvoiceLine> lines,
         string? notes,
         DateTime nowUtc,
-        IssuerSnapshot? issuer = null
+        IssuerSnapshot? issuer = null,
+        InvoiceTermsSnapshot? terms = null
     )
     {
         if (customer is null)
@@ -151,6 +162,9 @@ public sealed class Invoice : AggregateRoot
             Customer = customer,
             Issuer = issuer,
             Notes = notes,
+            PaymentTerms = terms?.PaymentTerms,
+            PaymentInstructions = terms?.PaymentInstructions,
+            InvoiceFooter = terms?.InvoiceFooter,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
             CreatedBy = actorUserId,
@@ -479,6 +493,18 @@ public sealed class Invoice : AggregateRoot
         UpdatedAtUtc = nowUtc;
         return Result.Success();
     }
+
+    /// <summary>Condiciones congeladas en la factura; null si es anterior a la F1 o de onboarding.</summary>
+    public InvoiceTermsSnapshot? GetTermsSnapshot() =>
+        PaymentTerms is { } terms ? new InvoiceTermsSnapshot(terms, PaymentInstructions, InvoiceFooter) : null;
+
+    /// <summary>Vencimiento para una emisión en <paramref name="issueDateUtc"/>: según el plazo congelado
+    /// (al recibirla = mismo día); sin plazo congelado, el histórico de <see cref="LegacyNetDays"/> días.</summary>
+    public DateTime DueDateFor(DateTime issueDateUtc) =>
+        issueDateUtc.AddDays(PaymentTerms is { } terms ? terms.NetDays() : LegacyNetDays);
+
+    /// <summary>Plazo fijo que usaba la emisión antes de los ajustes de facturación.</summary>
+    public const int LegacyNetDays = 30;
 
     /// <summary>Emite el borrador: le asigna el número server-side y las fechas, y lo mueve a Issued.
     /// A partir de acá la factura es inmutable en montos.</summary>

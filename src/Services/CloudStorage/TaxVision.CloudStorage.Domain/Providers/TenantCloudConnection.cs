@@ -7,10 +7,28 @@ public sealed class TenantCloudConnection : TenantEntity
 {
     private TenantCloudConnection() { }
 
+    public const int ReviewReasonMaxLength = 64;
+
     public string Provider { get; private set; } = "google-drive";
     public string AccountEmail { get; private set; } = string.Empty;
     public string ProtectedRefreshToken { get; private set; } = string.Empty;
     public DateTime ConnectedAtUtc { get; private set; }
+
+    /// <summary>Quién autorizó la conexión (null en las anteriores a guardarlo). Solo informativo: la conexión es de la oficina.</summary>
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "CloudConnectionsUserOffboardedConsumer",
+        Note = "No se revoca: se marca para revisión y se avisa."
+    )]
+    public Guid? ConnectedByUserId { get; private set; }
+
+    /// <summary>Desde cuándo la oficina debe revisarla (p. ej. la conectó alguien que ya no está). Reconectar crea otra fila y la limpia.</summary>
+    public DateTime? ReviewRequiredAtUtc { get; private set; }
+
+    /// <summary>Motivo de la revisión; ver <see cref="CloudConnectionReviewReasons"/>.</summary>
+    public string? ReviewReason { get; private set; }
+
+    public bool NeedsReview => ReviewRequiredAtUtc is not null;
 
     public void UpdateProtectedRefreshToken(string protectedRefreshToken) =>
         ProtectedRefreshToken = protectedRefreshToken;
@@ -22,7 +40,8 @@ public sealed class TenantCloudConnection : TenantEntity
         Guid tenantId,
         string provider,
         string email,
-        string protectedRefreshToken
+        string protectedRefreshToken,
+        Guid? connectedByUserId = null
     )
     {
         var connection = new TenantCloudConnection
@@ -34,10 +53,47 @@ public sealed class TenantCloudConnection : TenantEntity
             AccountEmail = email,
             ProtectedRefreshToken = protectedRefreshToken,
             ConnectedAtUtc = DateTime.UtcNow,
+            ConnectedByUserId = connectedByUserId is { } userId && userId != Guid.Empty ? userId : null,
         };
         connection.SetTenant(tenantId);
         return connection;
     }
+
+    /// <summary>
+    /// Por qué esta conexión queda ligada a una persona que se retira: la cuenta es la suya (mismo email,
+    /// sin distinguir mayúsculas) o fue quien la autorizó. Null = no está ligada.
+    /// </summary>
+    public string? LinkedReasonFor(Guid userId, string? email)
+    {
+        if (
+            !string.IsNullOrWhiteSpace(email)
+            && string.Equals(AccountEmail, email.Trim(), StringComparison.OrdinalIgnoreCase)
+        )
+            return CloudConnectionReviewReasons.AccountOfOffboardedUser;
+        return userId != Guid.Empty && ConnectedByUserId == userId
+            ? CloudConnectionReviewReasons.ConnectedByOffboardedUser
+            : null;
+    }
+
+    /// <summary>Marca la conexión para revisión. Idempotente: si ya estaba marcada no cambia nada y devuelve false.</summary>
+    public bool RequireReview(string reason, DateTime nowUtc)
+    {
+        if (ReviewRequiredAtUtc is not null)
+            return false;
+        ReviewRequiredAtUtc = nowUtc;
+        ReviewReason = reason.Length > ReviewReasonMaxLength ? reason[..ReviewReasonMaxLength] : reason;
+        return true;
+    }
+}
+
+/// <summary>Motivos de <see cref="TenantCloudConnection.ReviewReason"/>.</summary>
+public static class CloudConnectionReviewReasons
+{
+    /// <summary>La cuenta conectada es la de un empleado retirado (mismo email).</summary>
+    public const string AccountOfOffboardedUser = "AccountOfOffboardedUser";
+
+    /// <summary>La autorizó un empleado retirado con una cuenta distinta a la suya.</summary>
+    public const string ConnectedByOffboardedUser = "ConnectedByOffboardedUser";
 }
 
 /// <summary>Nonce OAuth de un solo uso; tenant/usuario nunca se aceptan desde el callback.</summary>
@@ -47,6 +103,11 @@ public sealed class CloudProviderOAuthState : TenantEntity
 
     public const int ReturnOriginMaxLength = 255;
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "CloudConnectionsUserOffboardedConsumer",
+        Note = "Los intentos de conexión pendientes se descartan."
+    )]
     public Guid InitiatedByUserId { get; private set; }
     public DateTime ExpiresAtUtc { get; private set; }
 

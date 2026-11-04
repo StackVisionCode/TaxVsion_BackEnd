@@ -12,7 +12,8 @@ public sealed class RequestOnboardingReceiptHandlerTests
     private static RequestOnboardingReceiptCommand Command(
         Guid onboardingId,
         string? providerReference,
-        long pricePaidCents = 4900
+        long pricePaidCents = 4900,
+        string? officeName = null
     ) =>
         new(
             onboardingId,
@@ -25,7 +26,8 @@ public sealed class RequestOnboardingReceiptHandlerTests
             DateTime.UtcNow,
             providerReference,
             "Visa •••• 4242",
-            "corr-1"
+            "corr-1",
+            officeName
         );
 
     [Fact]
@@ -52,6 +54,37 @@ public sealed class RequestOnboardingReceiptHandlerTests
         Assert.Equal("ABCD", req.TransactionReferenceMask);
         Assert.Equal("Visa •••• 4242", req.PaymentMethodMasked);
         Assert.Equal($"onb-receipt:{onboardingId:N}", req.IdempotencyKey);
+    }
+
+    [Fact]
+    public async Task Passes_the_office_name_through_when_it_is_known()
+    {
+        var client = new FakeReceiptDocumentClient(Result.Success());
+
+        await RequestOnboardingReceiptHandler.Handle(
+            Command(Guid.NewGuid(), "pi_test_ABCD", officeName: "Gutierrez Tax Office"),
+            client,
+            NullLogger<RequestOnboardingReceiptCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal("Gutierrez Tax Office", client.LastRequest!.OfficeName);
+    }
+
+    [Fact]
+    public async Task Without_an_office_name_the_receipt_falls_back_to_the_payer()
+    {
+        // El recibo del pago se pide antes del registro: todavía no hay nombre de oficina.
+        var client = new FakeReceiptDocumentClient(Result.Success());
+
+        await RequestOnboardingReceiptHandler.Handle(
+            Command(Guid.NewGuid(), "pi_test_ABCD"),
+            client,
+            NullLogger<RequestOnboardingReceiptCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Null(client.LastRequest!.OfficeName);
     }
 
     [Fact]

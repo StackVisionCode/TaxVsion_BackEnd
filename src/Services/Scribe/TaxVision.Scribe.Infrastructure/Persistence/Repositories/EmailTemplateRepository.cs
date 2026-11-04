@@ -130,4 +130,23 @@ public sealed class EmailTemplateRepository(ScribeDbContext dbContext) : IEmailT
             .Where(t => t.Versions.Any(v => v.Status == EmailVersionStatus.Archived && v.CreatedAtUtc < cutoffUtc))
             .Take(batchSize)
             .ToListAsync(ct);
+
+    // IgnoreQueryFilters: consumer de FileSaveRejected — el FileId es único y el evento puede venir
+    // con PlatformTenant.Id (contenido System), que no coincide con ningún TenantId de fila.
+    public async Task<IReadOnlyList<EmailTemplate>> GetReferencingFileAsync(
+        Guid fileId,
+        CancellationToken ct = default
+    ) =>
+        await dbContext
+            .EmailTemplates.IgnoreQueryFilters()
+            .Include(t => t.Versions)
+            .Where(t =>
+                t.Versions.Any(v =>
+                    v.HtmlFileId == fileId
+                    || v.TextFileId == fileId
+                    || v.DesignJsonFileId == fileId
+                    || v.PreviewImageFileId == fileId
+                )
+            )
+            .ToListAsync(ct);
 }

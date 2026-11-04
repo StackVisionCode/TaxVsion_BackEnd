@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.CustomerVisibility;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Inbox;
@@ -121,7 +120,23 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
             .Select(x => x.EmailThreadId)
             .Distinct()
             .ToListAsync(ct);
-        return ids.ToHashSet();
+
+        // También cuentan los adjuntos de lo enviado en el hilo (la fila y el filtro "Has attachments" coinciden).
+        var sent = await db
+            .Drafts.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(d =>
+                d.TenantId == tenantId
+                && d.Status == Domain.Compose.DraftStatus.Sent
+                && d.DeletedAtUtc == null
+                && d.EmailThreadId != null
+                && emailThreadIds.Contains(d.EmailThreadId.Value)
+                && d.Attachments.Any()
+            )
+            .Select(d => d.EmailThreadId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+        return ids.Concat(sent).ToHashSet();
     }
 
     public async Task<IReadOnlyDictionary<Guid, int>> GetUnreadCountsByThreadAsync(
@@ -147,7 +162,18 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
             .Select(g => new { EmailThreadId = g.Key, Count = g.Count() })
             .ToListAsync(ct);
 
-        return counts.ToDictionary(x => x.EmailThreadId, x => x.Count);
+        // No leídos del HILO: también cuentan los avisos de no entrega sin leer (D-4: los Delayed nacen leídos).
+        var notices = await MailVisibilityQueries
+            .UnreadNotices(db, tenantId)
+            .Where(n => emailThreadIds.Contains(n.EmailThreadId))
+            .GroupBy(n => n.EmailThreadId)
+            .Select(g => new { EmailThreadId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var result = counts.ToDictionary(x => x.EmailThreadId, x => x.Count);
+        foreach (var notice in notices)
+            result[notice.EmailThreadId] = result.GetValueOrDefault(notice.EmailThreadId) + notice.Count;
+        return result;
     }
 
     // TRACKED a propósito (sin AsNoTracking): el caller muta IsRead y persiste. Sin Include de
@@ -170,6 +196,7 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        MailListFilter? filter = null,
         CancellationToken ct = default
     )
     {
@@ -182,18 +209,16 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
             .Where(x => x.TenantId == tenantId && x.DeletedAtUtc != null);
         if (customerId is { } id)
             query = query.Where(x => x.CustomerId == id);
-        if (restrictToUserId is { } user)
-            query = query.Where(x =>
-                db.Set<CustomerAssignmentProjection>()
-                    .Any(a => a.TenantId == tenantId && a.CustomerId == x.CustomerId && a.UserId == user)
-            );
 
-        // Gate de buzón de oficina: oculta entrantes borrados de buzones no visibles.
-        if (visibleAccountIds is not null)
-        {
-            var ids = visibleAccountIds as Guid[] ?? visibleAccountIds.ToArray();
-            query = query.Where(x => ids.Contains(x.AccountId));
-        }
+        // Cliente asignado + gate de buzón de oficina: oculta entrantes borrados de buzones no visibles.
+        query = MailVisibilityQueries.IncomingOfVisibleCustomers(
+            db,
+            query,
+            tenantId,
+            restrictToUserId,
+            visibleAccountIds
+        );
+        query = MailVisibilityQueries.FilterIncoming(query, filter);
 
         var totalCount = await query.CountAsync(ct);
 

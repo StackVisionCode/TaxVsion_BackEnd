@@ -1,3 +1,4 @@
+using TaxVision.Correspondence.Domain.Delivery;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Domain.ValueObjects;
 
@@ -16,6 +17,30 @@ public sealed class DraftRecipient
     public string Address { get; private set; } = default!;
     public EmailRecipientType Type { get; private set; }
     public string? DisplayName { get; private set; }
+
+    /// <summary>Último resultado de entrega conocido (Postmaster); null = enviado, sin noticias todavía.</summary>
+    public DeliveryOutcome? DeliveryStatus { get; private set; }
+
+    /// <summary>Categoría del motivo cuando no se entregó o se demoró (ver <c>DeliveryFailureCategories</c>).</summary>
+    public string? DeliveryCategory { get; private set; }
+    public DateTime? DeliveryUpdatedAtUtc { get; private set; }
+
+    /// <summary>
+    /// Aplica un resultado. Un evento más viejo que el último aplicado se ignora (llegan fuera de orden). Devuelve
+    /// <c>true</c> si cambió algo.
+    /// </summary>
+    internal bool RecordDelivery(DeliveryOutcome outcome, string? category, DateTime occurredAtUtc)
+    {
+        if (DeliveryUpdatedAtUtc is { } last && occurredAtUtc < last)
+            return false;
+        if (DeliveryStatus == outcome && DeliveryCategory == category && DeliveryUpdatedAtUtc == occurredAtUtc)
+            return false;
+
+        DeliveryStatus = outcome;
+        DeliveryCategory = outcome == DeliveryOutcome.Delivered ? null : category;
+        DeliveryUpdatedAtUtc = occurredAtUtc;
+        return true;
+    }
 
     /// <summary>Solo <see cref="Draft.AutoSave"/> construye instancias — un recipient no tiene sentido de negocio fuera de un draft.</summary>
     internal static DraftRecipient Create(

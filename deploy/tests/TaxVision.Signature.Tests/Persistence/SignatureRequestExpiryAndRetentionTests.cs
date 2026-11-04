@@ -78,6 +78,7 @@ public sealed class SignatureRequestExpiryAndRetentionTests
     private static SignatureRequest Draft() =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Tenant,
                 Guid.NewGuid(),
                 "Consent 2026",
@@ -95,11 +96,26 @@ public sealed class SignatureRequestExpiryAndRetentionTests
     {
         var request = Draft();
         var signer = request
-            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Sam Signer").Value,
+                null
+            )
             .Value;
         var position = FieldPosition.Create(1, 0.5, 0.5, 0.1, 0.05).Value;
-        request.PlaceField(signer.Id, SignatureFieldKind.Signature, position, null, false);
-        request.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            false
+        );
+        request.AttachVerifiedDocument(
+            request.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         return request;
     }
 

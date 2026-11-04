@@ -187,8 +187,9 @@ file sealed class FakeTenantPaymentRepository : ITenantPaymentRepository
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
-    public Task<IReadOnlyList<TenantPayment>> GetStuckProcessingAsync(
-        DateTime cutoffUtc,
+    public Task<IReadOnlyList<AwaitingProviderPayment>> GetAwaitingProviderConfirmationAsync(
+        DateTime stuckBeforeUtc,
+        DateTime createdAfterUtc,
         int batchSize,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
@@ -206,6 +207,14 @@ file sealed class FakeTenantPaymentRepository : ITenantPaymentRepository
         DateTime? to,
         int page,
         int pageSize,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
+    public Task<bool> AnyForProviderAsync(Guid tenantId, PaymentProviderCode code, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlySet<PaymentProviderCode>> GetConfiguredProvidersWithPaymentsAsync(
+        Guid tenantId,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
@@ -243,6 +252,12 @@ file sealed class FakeTenantPaymentConfigRepository(TenantPaymentConfig config) 
     public Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) =>
         throw new NotImplementedException();
 
+    public Task<IReadOnlyList<TenantPaymentConfig>> GetStalePendingWebhookSetupsAsync(
+        DateTime requestedBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
     public void Remove(TenantPaymentConfig config) => throw new NotImplementedException();
 }
 
@@ -270,6 +285,10 @@ file sealed class ThrowingPaymentAdapterFactory : IPaymentAdapterFactory
 
     public bool IsRegistered(PaymentProviderCode code) =>
         throw new InvalidOperationException("A zero-amount charge must never check a payment provider adapter.");
+
+    public IReadOnlyList<PaymentProviderDescriptor> GetAvailableProviders() => throw new NotSupportedException();
+
+    public PaymentProviderDescriptor? FindDescriptor(PaymentProviderCode code) => throw new NotSupportedException();
 }
 
 file sealed class ThrowingSecretProtector : ISecretProtector

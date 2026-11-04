@@ -30,6 +30,9 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Requests.Commands.FromForm;
+using TaxVision.Signature.Application.Requests.Preparer;
 using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Settings.IntegrationEvents;
 using TaxVision.Signature.Domain.Requests;
@@ -84,6 +87,11 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // default (Authorization:ResourceOwnership:Enabled). Override: signature.request.manage.
 builder.Services.AddResourceOwnershipOptions(builder.Configuration);
 builder.Services.AddOwnershipAuthorization<SignatureRequest>(SignaturePermissions.RequestManage);
+
+// Cambio de preparador / retiro: los códigos de permiso viven en la capa Api y se pasan a Application.
+builder.Services.AddSingleton(
+    new PreparerPermissionCodes(SignaturePermissions.SignOwn, SignaturePermissions.RequestManage)
+);
 
 // Rate limiter para endpoints públicos: 15 req/min por IP+ruta para desanimar
 // enumeración/fuerza bruta de tokens.
@@ -265,14 +273,12 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<DocumentSignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // F7 — copia inmediata al firmar.
     options.PublishMessage<SignerPartialCopyRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignerPartialCopyReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignedDocumentsDeliveryReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureDocumentsReadyForSealingIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureDocumentSealedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealingCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignatureReadyForDownloadIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignatureCertificateReadyForDownloadIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealingFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinVerifiedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -280,11 +286,15 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignerVerificationSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerVerificationFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<PreparerSignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignaturePreparerChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignaturePreparerAttentionRequiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestReminderDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Fase D1 — reemplaza el HttpClient a CloudStorage para subir el sellado/certificate.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ReassignFileOwnerRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Certificados que quedaron atestiguando un sellado rechazado: borrado verificado, punto a punto como Auth/Customer/Tasks.
+    options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
     options.PublishMessage<SignatureSettingsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignaturePlanConstraintsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // P-18 — resultados de la creación de firma desde un formulario (hechos al fan-out, los consume Tasks).
@@ -307,6 +317,12 @@ builder.Host.UseWolverine(options =>
             TimeSpan.FromSeconds(60)
         );
 
+    // Copia de un formulario aún en vuelo: el consumer cuenta los intentos con este mismo arreglo y, en el
+    // último, publica SignatureRequestFromFormFailed en vez de dejar el mensaje en la cola de errores.
+    options
+        .Policies.OnException<SignatureCopyNotReadyException>()
+        .RetryWithCooldown(SignatureRequestFromFormRequestedConsumer.CopyWaitCooldowns);
+
     options.ApplyStandardFailurePolicies();
 });
 
@@ -314,6 +330,10 @@ builder.Host.UseWolverine(options =>
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
 
 var app = builder.Build();
+
+// La clave de los enlaces de firma se carga ya: si falta o es inválida, el contenedor no arranca (y el deploy
+// lo muestra) en vez de fallar con el primer enlace que se abra.
+app.Services.GetRequiredService<IRsaKeyProvider>();
 
 // Reescribe RemoteIpAddress con la IP real del cliente (CF-Connecting-IP) ANTES de todo lo que la lea
 // (logging, rate limiter, host-guard, controllers, certificado de firma).

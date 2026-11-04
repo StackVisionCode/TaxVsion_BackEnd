@@ -65,7 +65,18 @@ public sealed class LogoResolverTests
     {
         var tenantId = Guid.NewGuid();
         var logoRefs = new FakeTenantLogoRefRepository();
-        logoRefs.Seed(TenantLogoRef.Create(tenantId, Guid.NewGuid(), "image/jpeg", 512, 180, 60, DateTime.UtcNow));
+        logoRefs.Seed(
+            TenantLogoRef.Create(
+                tenantId,
+                TenantLogoSurface.Crm,
+                Guid.NewGuid(),
+                "image/jpeg",
+                512,
+                180,
+                60,
+                DateTime.UtcNow
+            )
+        );
         var notifications = new FakeTenantLogoMissingNotificationRepository();
         var resolver = BuildResolver(logoRefs, notifications);
 
@@ -85,7 +96,18 @@ public sealed class LogoResolverTests
         // tiene logo, solo incompatible con email → no registra la nota interna.
         var tenantId = Guid.NewGuid();
         var logoRefs = new FakeTenantLogoRefRepository();
-        logoRefs.Seed(TenantLogoRef.Create(tenantId, Guid.NewGuid(), "image/svg+xml", 512, 180, 60, DateTime.UtcNow));
+        logoRefs.Seed(
+            TenantLogoRef.Create(
+                tenantId,
+                TenantLogoSurface.Crm,
+                Guid.NewGuid(),
+                "image/svg+xml",
+                512,
+                180,
+                60,
+                DateTime.UtcNow
+            )
+        );
         var notifications = new FakeTenantLogoMissingNotificationRepository();
         var resolver = BuildResolver(logoRefs, notifications);
 
@@ -123,5 +145,88 @@ public sealed class LogoResolverTests
 
         Assert.True(result.IsFallback);
         Assert.NotNull(await notifications.GetByTenantIdAsync(tenantId));
+    }
+
+    private static TenantLogoRef Logo(Guid tenantId, TenantLogoSurface surface, string contentType = "image/png") =>
+        TenantLogoRef.Create(tenantId, surface, Guid.NewGuid(), contentType, 512, 180, 60, DateTime.UtcNow);
+
+    [Fact]
+    public async Task ResolveAsync_client_audience_prefers_the_portal_logo()
+    {
+        var tenantId = Guid.NewGuid();
+        var logoRefs = new FakeTenantLogoRefRepository();
+        var crm = Logo(tenantId, TenantLogoSurface.Crm);
+        var portal = Logo(tenantId, TenantLogoSurface.Portal);
+        logoRefs.Seed(crm);
+        logoRefs.Seed(portal);
+        var resolver = BuildResolver(logoRefs, new FakeTenantLogoMissingNotificationRepository());
+
+        var client = await resolver.ResolveAsync(LogoScope.Tenant, tenantId, RenderAudience.Client);
+        var staff = await resolver.ResolveAsync(LogoScope.Tenant, tenantId, RenderAudience.Staff);
+
+        // Misma instancia de resolver (mismo L1): la clave incluye la audiencia.
+        Assert.Equal(portal.CloudStorageFileId, client.CloudStorageFileId);
+        Assert.Equal(crm.CloudStorageFileId, staff.CloudStorageFileId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_client_audience_falls_back_to_the_crm_logo_without_a_portal_one()
+    {
+        var tenantId = Guid.NewGuid();
+        var logoRefs = new FakeTenantLogoRefRepository();
+        var crm = Logo(tenantId, TenantLogoSurface.Crm);
+        logoRefs.Seed(crm);
+        var notifications = new FakeTenantLogoMissingNotificationRepository();
+        var resolver = BuildResolver(logoRefs, notifications);
+
+        var result = await resolver.ResolveAsync(LogoScope.Tenant, tenantId, RenderAudience.Client);
+
+        Assert.False(result.IsFallback);
+        Assert.Equal(crm.CloudStorageFileId, result.CloudStorageFileId);
+        Assert.Null(await notifications.GetByTenantIdAsync(tenantId));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_client_audience_skips_an_svg_portal_logo()
+    {
+        var tenantId = Guid.NewGuid();
+        var logoRefs = new FakeTenantLogoRefRepository();
+        var crm = Logo(tenantId, TenantLogoSurface.Crm);
+        logoRefs.Seed(crm);
+        logoRefs.Seed(Logo(tenantId, TenantLogoSurface.Portal, "image/svg+xml"));
+        var resolver = BuildResolver(logoRefs, new FakeTenantLogoMissingNotificationRepository());
+
+        var result = await resolver.ResolveAsync(LogoScope.Tenant, tenantId, RenderAudience.Client);
+
+        Assert.Equal(crm.CloudStorageFileId, result.CloudStorageFileId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_staff_audience_ignores_the_portal_logo()
+    {
+        var tenantId = Guid.NewGuid();
+        var logoRefs = new FakeTenantLogoRefRepository();
+        logoRefs.Seed(Logo(tenantId, TenantLogoSurface.Portal));
+        var resolver = BuildResolver(logoRefs, new FakeTenantLogoMissingNotificationRepository());
+
+        var result = await resolver.ResolveAsync(LogoScope.Tenant, tenantId, RenderAudience.Staff);
+
+        Assert.True(result.IsFallback);
+        Assert.Equal(SystemLogo.CloudStorageFileId, result.CloudStorageFileId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_client_audience_without_any_logo_falls_back_to_the_platform_logo()
+    {
+        var tenantId = Guid.NewGuid();
+        var resolver = BuildResolver(
+            new FakeTenantLogoRefRepository(),
+            new FakeTenantLogoMissingNotificationRepository()
+        );
+
+        var result = await resolver.ResolveAsync(LogoScope.Tenant, tenantId, RenderAudience.Client);
+
+        Assert.True(result.IsFallback);
+        Assert.Equal(SystemLogo.CloudStorageFileId, result.CloudStorageFileId);
     }
 }

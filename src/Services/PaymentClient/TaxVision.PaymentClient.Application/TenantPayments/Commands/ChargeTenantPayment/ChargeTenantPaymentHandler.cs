@@ -295,7 +295,8 @@ public static class ChargeTenantPaymentHandler
                 command.ProviderCode,
                 descriptor,
                 command.ActorUserId,
-                nowUtc
+                nowUtc,
+                command.ReceiptEmail
             )
             : TenantPayment.Create(
                 command.TenantId,
@@ -306,7 +307,8 @@ public static class ChargeTenantPaymentHandler
                 command.ProviderCode,
                 descriptor,
                 command.ActorUserId,
-                nowUtc
+                nowUtc,
+                command.ReceiptEmail
             );
     }
 }

@@ -43,6 +43,9 @@ export interface UserDirectoryRepository {
 
   findByUserId(userId: string): Promise<UserDirectoryEntrySnapshot | null>;
 
+  /** MNT-01: staff activo de ESA oficina con ese email (exacto, sin distinguir mayusculas). */
+  findActiveStaffByEmail?(tenantId: string, email: string): Promise<UserDirectoryEntrySnapshot | null>;
+
   /**
    * Batch read for hot paths that render lists. Callers must still apply their
    * own tenant/permission gates before asking for display data.

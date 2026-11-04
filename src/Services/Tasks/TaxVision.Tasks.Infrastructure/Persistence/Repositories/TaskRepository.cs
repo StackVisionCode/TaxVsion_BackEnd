@@ -275,6 +275,25 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         return query.CountAsync(ct);
     }
 
+    public async Task<IReadOnlyList<TaskItem>> ListWithRunningTimersOfAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) =>
+        await context
+            .Tasks.IgnoreQueryFilters()
+            .Include(t => t.Timers)
+            .Where(t => t.TenantId == tenantId && t.Timers.Any(x => x.UserId == userId && x.StoppedAtUtc == null))
+            .ToListAsync(ct);
+
+    // El timer no lleva tenant: se acota por la tarea dueña.
+    public Task<int> CountRunningTimersOfAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        context
+            .Tasks.IgnoreQueryFilters()
+            .Where(t => t.TenantId == tenantId)
+            .SelectMany(t => t.Timers)
+            .CountAsync(x => x.UserId == userId && x.StoppedAtUtc == null, ct);
+
     public async Task<PagedResult<TaskItem>> ListByCustomerAsync(
         Guid tenantId,
         Guid customerId,

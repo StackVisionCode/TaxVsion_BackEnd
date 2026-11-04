@@ -7,6 +7,11 @@ public sealed class TrustedDevice : TenantEntity
 {
     private TrustedDevice() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Se revocan (MfaFactors.ClearAsync)."
+    )]
     public Guid UserId { get; private set; }
     public string DeviceTokenHash { get; private set; } = default!;
     public string? UserAgent { get; private set; }

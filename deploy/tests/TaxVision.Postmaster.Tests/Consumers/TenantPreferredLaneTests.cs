@@ -134,6 +134,34 @@ public sealed class TenantPreferredLaneTests
     }
 
     [Fact]
+    public async Task Falling_back_to_system_signs_with_the_business_name()
+    {
+        var sender = new FakeEmailSender();
+        var harness = new Harness(Resolved(ProviderScope.System)) { Sender = sender };
+        var evt = CreateEvent();
+        harness.TenantDirectory.Names[evt.TenantId] = "Manfer Tax Office";
+        harness.TenantDirectory.DisplayNames[evt.TenantId] = "Manfer Taxes DBA";
+
+        await harness.HandleAsync(evt);
+
+        Assert.Equal("Manfer Taxes DBA (via TaxVision)", sender.LastMessage!.FromDisplayName);
+    }
+
+    [Fact]
+    public async Task A_blank_business_name_falls_back_to_the_office_name_in_From()
+    {
+        var sender = new FakeEmailSender();
+        var harness = new Harness(Resolved(ProviderScope.System)) { Sender = sender };
+        var evt = CreateEvent();
+        harness.TenantDirectory.Names[evt.TenantId] = "Manfer Tax Office";
+        harness.TenantDirectory.DisplayNames[evt.TenantId] = "  ";
+
+        await harness.HandleAsync(evt);
+
+        Assert.Equal("Manfer Tax Office (via TaxVision)", sender.LastMessage!.FromDisplayName);
+    }
+
+    [Fact]
     public async Task Going_out_through_the_tenant_provider_adds_no_ReplyTo()
     {
         // El From ya es el de la oficina: un Reply-To a la misma dirección sería ruido, y anunciarla

@@ -361,7 +361,63 @@ internal sealed class ConnectorsClient(
         );
     }
 
+    public async Task<Result<IReadOnlyList<MailboxAddress>>> GetMailboxAddressesAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    )
+    {
+        var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
+        if (string.IsNullOrEmpty(token))
+            return Result.Failure<IReadOnlyList<MailboxAddress>>(
+                new Error(
+                    "ConnectorsClient.ServiceAuthUnavailable",
+                    "Could not acquire a service token to call Connectors."
+                )
+            );
+
+        // Mismo criterio que visible-ids: 1 reintento ante red/5xx; un 4xx no se reintenta.
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, "internal/accounts/addresses")
+                {
+                    Content = JsonContent.Create(new { tenantId }, options: Json),
+                };
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                using var response = await httpClient.SendAsync(request, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var dto = await response.Content.ReadFromJsonAsync<MailboxAddressesDto>(Json, ct);
+                    IReadOnlyList<MailboxAddress> accounts = dto?.Accounts ?? [];
+                    return Result.Success(accounts);
+                }
+                if ((int)response.StatusCode < 500)
+                    return Result.Failure<IReadOnlyList<MailboxAddress>>(
+                        new Error(
+                            "ConnectorsClient.UnexpectedStatus",
+                            $"Connectors returned HTTP {(int)response.StatusCode}."
+                        )
+                    );
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                logger.LogWarning(ex, "Connectors mailbox addresses fetch threw (attempt {Attempt}).", attempt);
+            }
+
+            if (attempt == 1)
+                await Task.Delay(RetryBackoff, ct);
+        }
+
+        return Result.Failure<IReadOnlyList<MailboxAddress>>(
+            new Error("ConnectorsClient.Unavailable", "Connectors did not respond after retrying.")
+        );
+    }
+
     private sealed record VisibleAccountIdsDto(IReadOnlyCollection<Guid>? AccountIds);
+
+    private sealed record MailboxAddressesDto(IReadOnlyList<MailboxAddress>? Accounts);
 
     private readonly record struct Attempt(bool IsTransient, Result<MessageBodyResponse> Result);
 

@@ -19,13 +19,17 @@ namespace TaxVision.Postmaster.Api.Controllers;
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class MessagesController(IMessageBus bus) : ControllerBase
 {
-    /// <summary>"Email activity": historial de envíos del tenant con su estado real de entrega.</summary>
+    /// <summary>
+    /// "Email activity": historial de envíos del tenant con su estado real de entrega.
+    /// <c>engagement</c> = Opened o Clicked (algún destinatario abrió / hizo clic); combinable con el resto.
+    /// </summary>
     [HttpGet]
     [HasPermission(PostmasterPermissions.MessagesRead)]
     [RateLimit("postmaster.f.messages_read")]
     public async Task<IActionResult> List(
         [FromQuery] string? status,
         [FromQuery] string? recipient,
+        [FromQuery] string? engagement,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
         [FromQuery] int page,
@@ -36,14 +40,12 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
+        var filter = SentMessageActivityFilter.Create(status, recipient, from, to, engagement);
+        if (filter.IsFailure)
+            return BadRequest(filter.Error);
+
         var result = await bus.InvokeAsync<PagedResult<SentMessageSummaryDto>>(
-            new ListSentMessagesQuery(
-                tenantId,
-                new SentMessageActivityFilter(status, recipient, from, to),
-                page,
-                size,
-                MaskRecipients()
-            ),
+            new ListSentMessagesQuery(tenantId, filter.Value, page, size, MaskRecipients()),
             ct
         );
         return Ok(result);

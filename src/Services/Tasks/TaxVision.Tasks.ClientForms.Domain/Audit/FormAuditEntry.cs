@@ -10,6 +10,8 @@ public sealed class FormAuditEntry : TenantEntity
     public Guid? FormRequestId { get; private set; }
     public string Action { get; private set; } = string.Empty;
     public string Outcome { get; private set; } = string.Empty;
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? ActorUserId { get; private set; }
     public string ActorType { get; private set; } = string.Empty;
     public Guid? ActorParticipantId { get; private set; }

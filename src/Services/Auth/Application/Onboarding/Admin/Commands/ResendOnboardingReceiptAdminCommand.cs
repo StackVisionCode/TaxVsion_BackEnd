@@ -49,7 +49,8 @@ public static class ResendOnboardingReceiptAdminHandler
                 // El método de pago enmascarado no se persiste en el onboarding (venía del evento de pago);
                 // el recibo re-generado no lo muestra, lo demás queda idéntico.
                 null,
-                $"resend-receipt:{onboarding.Id:N}"
+                $"resend-receipt:{onboarding.Id:N}",
+                onboarding.OfficeName
             )
         );
 

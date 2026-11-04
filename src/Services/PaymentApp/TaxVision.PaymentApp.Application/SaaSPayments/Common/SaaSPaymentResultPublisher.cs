@@ -6,6 +6,7 @@ using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhoo
 using TaxVision.PaymentApp.Application.SeatsCheckouts;
 using TaxVision.PaymentApp.Application.SubscriptionRenewalCheckouts;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
+using TaxVision.PaymentApp.Domain.Tenants;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using Wolverine;
 
@@ -48,14 +49,15 @@ public static class SaaSPaymentResultPublisher
             return;
 
         // Sin registro de tenants el recibo igual sale: el importe y el emisor son lo que lo hacen válido.
-        var officeName = tenants is null ? null : (await tenants.GetByIdAsync(payment.TenantId, ct))?.Name;
+        var tenant = tenants is null ? null : await tenants.GetByIdAsync(payment.TenantId, ct);
 
         await bus.PublishAsync(
             new SaaSPaymentSucceededIntegrationEvent
             {
                 TenantId = payment.TenantId,
                 SaaSPaymentId = payment.Id,
-                OfficeName = officeName ?? string.Empty,
+                OfficeName = tenant?.Name ?? string.Empty,
+                BilledTo = BilledToOf(tenant),
                 PaymentType = payment.Type.ToString(),
                 AmountPaidCents = payment.Amount.AmountCents,
                 Currency = payment.Amount.Currency,
@@ -69,6 +71,13 @@ public static class SaaSPaymentResultPublisher
             }
         );
     }
+
+    // Sin ningún dato del perfil viaja null y el recibo muestra solo el nombre de la oficina.
+    private static SaaSBilledToData? BilledToOf(Tenant? tenant) =>
+        tenant is null
+        || (tenant.BillingLegalName is null && tenant.BillingEin is null && tenant.BillingAddress is null)
+            ? null
+            : new SaaSBilledToData(tenant.BillingLegalName, tenant.BillingEin, tenant.BillingAddress);
 
     /// <summary>Nunca la referencia completa: solo lo justo para reconocerla en el extracto.</summary>
     private static string Mask(string? reference) =>

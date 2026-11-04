@@ -13,16 +13,16 @@ using Wolverine;
 namespace TaxVision.Signature.Infrastructure.Scheduling;
 
 /// <summary>
-/// Red de seguridad para adjuntar el hash original a borradores atascados. Lo normal es que
-/// el hash se adjunte al crear la solicitud (si el archivo ya está disponible) o al recibir
+/// Red de seguridad para verificar el documento original de borradores atascados. Lo normal es que
+/// se verifique al crear la solicitud (si el archivo ya está disponible) o al recibir
 /// <c>FileAvailable</c>. Pero hay una CARRERA cuando el escaneo es muy rápido: el evento llega
 /// buscando borradores que aún no existen y el <c>create</c> lee la proyección justo cuando el
 /// consumer la actualiza → el borrador queda sin hash para siempre.
 ///
 /// <para>
 /// Este job barre periódicamente los borradores con cierta antigüedad (el corte evita pisar
-/// creaciones en vuelo) cuyo archivo YA está <c>Available</c> en la proyección local y les
-/// adjunta el hash. Idempotente y cross-tenant. El Status NO cambia: la solicitud sigue en
+/// creaciones en vuelo) con documentos pendientes cuyo archivo YA está <c>Available</c> en la
+/// proyección local y los revisa en el servidor (verificado o rechazado). Idempotente y cross-tenant. El Status NO cambia: la solicitud sigue en
 /// Draft hasta que el preparador decida enviar. Mismo patrón que <see cref="ExpirationScheduler"/>.
 /// </para>
 /// </summary>
@@ -71,7 +71,7 @@ public sealed class ReadyReconciliationScheduler(
     {
         using var scope = serviceProvider.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<ISignatureRequestRepository>();
-        var fileRepository = scope.ServiceProvider.GetRequiredService<IFileMetadataRefRepository>();
+        var verifier = scope.ServiceProvider.GetRequiredService<IRequestDocumentVerifier>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
 
@@ -81,25 +81,18 @@ public sealed class ReadyReconciliationScheduler(
             return;
 
         var eventsToPublish = new List<SignatureRequestReadyForSendingIntegrationEvent>();
+        var touched = false;
         foreach (var request in drafts)
         {
             if (request.Documents.Count == 0)
                 continue;
 
-            foreach (var document in request.Documents.Where(document => document.DocumentHashPre is null))
-            {
-                var file = await fileRepository.GetByFileIdAsync(request.TenantId, document.OriginalFileId, ct);
-                if (
-                    file is null
-                    || file.Status != FileScanStatus.Available
-                    || string.IsNullOrEmpty(file.ChecksumSha256)
-                )
-                    continue;
-
-                var hashResult = DocumentHash.Create(file.ChecksumSha256);
-                if (hashResult.IsSuccess)
-                    request.AttachDocumentHash(document.Id, hashResult.Value);
-            }
+            var pending = request
+                .Documents.Where(document => document.VerificationStatus == DocumentVerificationStatus.Pending)
+                .ToList();
+            foreach (var document in pending)
+                touched |=
+                    (await verifier.VerifyAsync(request, document.Id, ct)).Kind != DocumentVerificationKind.Deferred;
 
             if (request.Documents.Any(document => document.DocumentHashPre is null))
                 continue;
@@ -123,15 +116,16 @@ public sealed class ReadyReconciliationScheduler(
             );
         }
 
-        if (eventsToPublish.Count == 0)
+        if (!touched)
             return;
 
+        // También persiste los rechazos, para que el borrador deje de figurar como pendiente.
         await unitOfWork.SaveChangesAsync(ct);
         foreach (var evt in eventsToPublish)
             await bus.PublishAsync(evt);
 
         logger.LogInformation(
-            "ReadyReconciliationScheduler completed document hashes for {Count} stranded Draft requests.",
+            "ReadyReconciliationScheduler verified the documents of {Count} stranded Draft requests.",
             eventsToPublish.Count
         );
     }

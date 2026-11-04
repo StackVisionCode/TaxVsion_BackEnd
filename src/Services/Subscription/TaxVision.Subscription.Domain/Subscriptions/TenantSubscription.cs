@@ -43,7 +43,11 @@ public sealed class TenantSubscription : TenantEntity
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
 
     /// <summary>Token de concurrencia optimista (rowversion SQL Server). Sin esto, dos

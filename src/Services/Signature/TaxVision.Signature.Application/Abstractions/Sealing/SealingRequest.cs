@@ -8,7 +8,8 @@ public sealed record SealingRequest(
     byte[] OriginalPdfBytes,
     IReadOnlyList<SealedFieldRender> Fields,
     string DocumentHashPre,
-    string AuditFooter
+    string AuditFooter,
+    StampStyle Style
 );
 
 /// <summary>Salida del sellado: PDF resultante + su hash SHA-256 en hex-lowercase.</summary>

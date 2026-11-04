@@ -32,6 +32,8 @@ public sealed class EmailTemplate : BaseEntity
 
     public EmailTemplateStatus Status { get; private set; }
     public Guid? CurrentVersionId { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }

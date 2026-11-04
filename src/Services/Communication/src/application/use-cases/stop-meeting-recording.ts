@@ -58,7 +58,7 @@ export async function stopMeetingRecording(
     return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
   }
 
-  const session = await deps.recordingSessions.findByScope(command.tenantId, RecordingScope.Meeting, command.meetingId);
+  const session = await deps.recordingSessions.findLatestByScope(command.tenantId, RecordingScope.Meeting, command.meetingId);
   if (!session) {
     await release();
     return Result.fail(makeError('RecordingSession.NotFound', 'No recording session for this meeting.'));

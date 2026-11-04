@@ -1,3 +1,5 @@
+using BuildingBlocks.Domain;
+
 namespace TaxVision.Customer.Domain.Employees;
 
 /// <summary>
@@ -15,6 +17,7 @@ public sealed class TenantEmployeeDirectoryEntry
     private TenantEmployeeDirectoryEntry() { }
 
     /// <summary>Id de Auth — es la clave primaria (una fila por usuario, no por tenant+usuario).</summary>
+    [UserReference(UserReferenceKind.Projection, HandledBy = "CustomerUserOffboardedConsumer")]
     public Guid UserId { get; private set; }
     public Guid TenantId { get; private set; }
     public string ActorType { get; private set; } = default!;

@@ -1,5 +1,7 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Results;
+using Microsoft.AspNetCore.Http;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Messages;
 using TaxVision.Correspondence.Domain.Inbox;
@@ -288,5 +290,90 @@ public sealed class DownloadAttachmentHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("IncomingEmailAttachment.NotFound", result.Error.Code);
+    }
+
+    // Rechazo permanente de storage: no se vuelve a bajar ni copiar, se devuelve el mismo mensaje.
+    [Theory]
+    [InlineData("EmptyFile", "This attachment is empty and can't be saved.")]
+    [InlineData("InvalidOwnerOrFolder", "This attachment couldn't be saved to storage.")]
+    public async Task Handle_AfterPermanentStorageRejection_ReturnsUserSafeErrorWithoutRetrying(
+        string rejection,
+        string expectedMessage
+    )
+    {
+        var tenantId = Guid.NewGuid();
+        var (email, repo, threads, connectors, uploader, bus, correlation, uow) = await SetupAsync(
+            tenantId,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            DateTime.UtcNow
+        );
+        var attachment = email.Attachments.Single();
+        var fileId = Guid.NewGuid();
+        attachment.MarkInProgress();
+        attachment.MarkDownloaded(fileId);
+        attachment.ReleaseRejectedFile(fileId, rejection);
+
+        var result = await DownloadAttachmentHandler.Handle(
+            new DownloadAttachmentCommand(tenantId, email.Id, attachment.Id, Guid.NewGuid()),
+            repo,
+            threads,
+            connectors,
+            uploader,
+            bus,
+            correlation,
+            uow,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(AttachmentFailureErrors.StorageRejectedCode, result.Error.Code);
+        Assert.Equal(expectedMessage, result.Error.Message);
+        Assert.NotEqual(StatusCodes.Status409Conflict, result.Error.ToHttpStatusCode());
+        Assert.Empty(connectors.AttachmentCalls);
+        Assert.Empty(uploader.Calls);
+        Assert.Empty(bus.Published);
+        Assert.Equal(0, uow.SaveChangesCallCount);
+        Assert.Equal(AttachmentDownloadStatus.Failed, attachment.DownloadStatus);
+    }
+
+    // Cuota, suspensión o política de subida pueden liberarse: el reintento vuelve a bajar y a pedir la copia.
+    [Theory]
+    [InlineData("StorageQuota.Exceeded")]
+    [InlineData("StorageQuota.Suspended")]
+    [InlineData("UploadPolicy")]
+    public async Task Handle_AfterTransientStorageRejection_RetriesTheDownload(string rejection)
+    {
+        var tenantId = Guid.NewGuid();
+        var (email, repo, threads, connectors, uploader, bus, correlation, uow) = await SetupAsync(
+            tenantId,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            DateTime.UtcNow
+        );
+        var attachment = email.Attachments.Single();
+        var rejectedFileId = Guid.NewGuid();
+        attachment.MarkInProgress();
+        attachment.MarkDownloaded(rejectedFileId);
+        attachment.ReleaseRejectedFile(rejectedFileId, rejection);
+
+        var result = await DownloadAttachmentHandler.Handle(
+            new DownloadAttachmentCommand(tenantId, email.Id, attachment.Id, Guid.NewGuid()),
+            repo,
+            threads,
+            connectors,
+            uploader,
+            bus,
+            correlation,
+            uow,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(connectors.AttachmentCalls);
+        var evt = Assert.IsType<SaveFileRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.NotEqual(rejectedFileId, evt.FileId);
+        Assert.Equal(AttachmentDownloadStatus.Downloaded, attachment.DownloadStatus);
+        Assert.Null(attachment.StorageRejectionReason);
     }
 }

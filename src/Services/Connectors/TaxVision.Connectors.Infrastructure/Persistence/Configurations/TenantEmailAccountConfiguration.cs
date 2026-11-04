@@ -21,6 +21,9 @@ public sealed class TenantEmailAccountConfiguration : IEntityTypeConfiguration<T
         builder.Property(a => a.CreatedAtUtc).IsRequired();
         // null = buzón de oficina (compartido); con valor = personal de ese usuario.
         builder.Property(a => a.OwnerUserId);
+        builder.Property(a => a.ReviewRequiredAtUtc);
+        builder.Property(a => a.ReviewReason).HasMaxLength(TenantEmailAccount.ReviewReasonMaxLength);
+        builder.Ignore(a => a.NeedsReview);
 
         builder.HasIndex(a => new { a.TenantId, a.EmailAddress }).IsUnique();
         // Listar los buzones visibles para un usuario (oficina + los suyos).

@@ -18,6 +18,7 @@ public static class ArchiveThreadHandler
         ArchiveThreadCommand command,
         IEmailThreadRepository emailThreads,
         IIncomingEmailRepository incomingEmails,
+        IDeliveryNoticeRepository notices,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         CancellationToken ct
@@ -43,6 +44,8 @@ public static class ArchiveThreadHandler
         var emails = await incomingEmails.ListByThreadForUpdateAsync(command.TenantId, command.ThreadId, ct);
         foreach (var email in emails)
             email.MarkRead(now);
+        foreach (var notice in await notices.ListByThreadForUpdateAsync(command.TenantId, command.ThreadId, ct))
+            notice.MarkRead(now);
 
         await unitOfWork.SaveChangesAsync(ct);
         await ThreadStateNotifier.PublishAsync(

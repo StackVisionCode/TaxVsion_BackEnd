@@ -1674,6 +1674,9 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DueAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("FollowUpUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2020,6 +2023,9 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.Property<Guid?>("OpenInstanceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OwnerUserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<byte[]>("RowVersion")

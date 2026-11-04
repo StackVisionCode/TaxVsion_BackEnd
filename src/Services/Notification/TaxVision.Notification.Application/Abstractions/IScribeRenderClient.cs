@@ -38,6 +38,17 @@ public sealed record ScribeRenderedEmail(
 public sealed record ScribeRenderedText(string Subject, string Text);
 
 /// <summary>
+/// Quién lee el correo. Lo decide el consumer, que es el que sabe a quién le escribe: un usuario del
+/// equipo (Staff) o un cliente, cuenta de portal, firmante o invitado externo (Client). Viaja a Scribe
+/// como texto y elige el logo de la oficina (CRM o Portal).
+/// </summary>
+public enum ScribeRenderAudience
+{
+    Staff,
+    Client,
+}
+
+/// <summary>
 /// Cliente del microservicio Scribe (HTTP a POST /scribe/render) — Fase 8: reemplaza los catálogos
 /// locales <c>EmailTemplates</c>/<c>SignatureTemplateCatalog</c>. Los consumers de Notification
 /// corren siempre en contexto background (Wolverine), así que autentica exclusivamente con un token
@@ -46,12 +57,25 @@ public sealed record ScribeRenderedText(string Subject, string Text);
 /// </summary>
 public interface IScribeRenderClient
 {
+    /// <summary>Render para el equipo de la oficina (<see cref="ScribeRenderAudience.Staff"/>).</summary>
     Task<Result<ScribeRenderedEmail>> RenderAsync(
         string eventKey,
         Guid tenantId,
         IReadOnlyDictionary<string, object?> variables,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Render para una audiencia: <see cref="ScribeRenderAudience.Client"/> lleva el logo del portal de
+    /// la oficina. Default de interfaz = render de siempre, para los dobles que no lo implementan.
+    /// </summary>
+    Task<Result<ScribeRenderedEmail>> RenderAsync(
+        string eventKey,
+        Guid tenantId,
+        IReadOnlyDictionary<string, object?> variables,
+        ScribeRenderAudience audience,
+        CancellationToken ct = default
+    ) => RenderAsync(eventKey, tenantId, variables, ct);
 
     Task<Result<ScribeRenderedText>> RenderTextAsync(
         string eventKey,

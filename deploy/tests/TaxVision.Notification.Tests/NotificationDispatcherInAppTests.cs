@@ -175,6 +175,7 @@ public sealed class NotificationDispatcherInAppTests
             EmptyPushDeviceTokenRepository.Instance,
             logs,
             preferences ?? AlwaysEnabledPreferences.Instance,
+            new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
             publisher,
             uow,
             new NoOpNotificationDispatchMetrics(),

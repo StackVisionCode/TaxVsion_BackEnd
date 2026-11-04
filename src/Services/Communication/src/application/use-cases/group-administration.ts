@@ -3,6 +3,7 @@ import { Result, makeError } from '../../domain/shared/result.js';
 import type { Conversation, GroupRemovalOutcome } from '../../domain/conversations/conversation.js';
 import type { GroupRole } from '../../domain/conversations/conversation-participant.js';
 import { ConversationKind } from '../../domain/conversations/conversation-kind.js';
+import { SystemMessageKind } from '../../domain/conversations/message-kind.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { ConversationAuditEntry, ConversationAuditRepository } from '../ports/conversation-audit-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
@@ -18,6 +19,7 @@ import type { SocketEnvelope } from '../../contracts/socket/socket-envelope.js';
 import { messageSnapshotToDto } from './chat-mappers.js';
 import { pushAndEmitNotification } from './push-notification.js';
 import { isTenantAdminActor } from './group-membership-policy.js';
+import { listUserConversations } from './user-conversations.js';
 import { logger } from '../../infrastructure/logger/logger.js';
 
 /**
@@ -50,6 +52,8 @@ type AuditDraft = Omit<ConversationAuditEntry, 'tenantId' | 'conversationId' | '
 
 export interface GroupChange {
   readonly systemText?: string | null;
+  /** Origen del aviso (ícono del hilo); sin dato es un Notice. */
+  readonly systemKind?: SystemMessageKind;
   readonly audit: readonly AuditDraft[];
   readonly updated?: Omit<ConversationUpdatedDto, 'conversationId' | 'kind'> | null;
   readonly roleChanges?: ReadonlyArray<{ userId: string; role: GroupRole }>;
@@ -67,7 +71,9 @@ export async function commitGroupChange(
   deps: GroupAdminDeps,
   now: Date = new Date(),
 ): Promise<void> {
-  const system = change.systemText ? conversation.appendSystemMessage({ body: change.systemText, now }) : null;
+  const system = change.systemText
+    ? conversation.appendSystemMessage({ body: change.systemText, ...(change.systemKind ? { systemKind: change.systemKind } : {}), now })
+    : null;
   await deps.conversations.save(conversation);
 
   if (deps.conversationAudit && change.audit.length > 0) {
@@ -180,6 +186,7 @@ export async function setGroupMemberRole(
   await commitGroupChange(
     conversation,
     {
+      systemKind: SystemMessageKind.Membership,
       systemText: cmd.role === 'Admin' ? `${cmd.actor.displayName} made ${target} an admin` : `${cmd.actor.displayName} removed ${target} as admin`,
       audit: [{ action: 'RoleChanged', actorUserId: cmd.actor.userId, targetUserId: cmd.targetUserId, metadata: { from: before, to: cmd.role } }],
       roleChanges: [{ userId: cmd.targetUserId, role: cmd.role }],
@@ -213,6 +220,7 @@ export async function transferGroupOwnership(
   await commitGroupChange(
     conversation,
     {
+      systemKind: SystemMessageKind.Membership,
       systemText: `${cmd.actor.displayName} made ${nameOf(conversation, cmd.targetUserId)} the group owner`,
       audit: [{ action: 'OwnershipTransferred', actorUserId: cmd.actor.userId, targetUserId: cmd.targetUserId, metadata: { previousOwnerUserId: previous } }],
       roleChanges: [
@@ -321,23 +329,22 @@ export async function setConversationMuted(
 }
 
 /**
- * T-19: una cuenta dada de baja (desactivada u offboarding) sale de todos sus grupos sin actor, con la misma
- * sucesión y archivado que una salida normal; sus sockets dejan las salas.
+ * T-19 + D-7: el RETIRO (no la suspensión) saca a la cuenta de todos sus grupos, archivados incluidos, sin
+ * actor y con la misma sucesión y archivado que una salida normal; sus sockets dejan las salas.
  */
 export async function removeUserFromGroups(
-  cmd: { tenantId: string; userId: string; reason: 'Deactivated' | 'Offboarded' },
+  cmd: { tenantId: string; userId: string; reason: 'Offboarded' },
   deps: GroupAdminDeps,
 ): Promise<number> {
-  const snapshots = await deps.conversations.listForUser({
+  const groups = await listUserConversations(deps.conversations, {
     tenantId: cmd.tenantId,
     userId: cmd.userId,
-    take: 500,
-    skip: 0,
     kinds: [ConversationKind.Group],
+    includeArchived: true,
   });
   let removed = 0;
-  for (const snapshot of snapshots) {
-    const conversation = await deps.conversations.findById(cmd.tenantId, snapshot.id, 0);
+  for (const group of groups) {
+    const conversation = await deps.conversations.findById(cmd.tenantId, group.id, 0);
     if (!conversation) continue;
     const name = nameOf(conversation, cmd.userId);
     const now = new Date();
@@ -347,6 +354,7 @@ export async function removeUserFromGroups(
     await commitGroupChange(
       conversation,
       {
+        systemKind: SystemMessageKind.Membership,
         systemText: [`${name} is no longer with the office`, succession.extraText].filter(Boolean).join('. '),
         audit: [{ action: 'MemberRemoved', actorUserId: null, targetUserId: cmd.userId, metadata: { reason: cmd.reason } }, ...succession.audit],
         roleChanges: succession.roleChanges ?? [],

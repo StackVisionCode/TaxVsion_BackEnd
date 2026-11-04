@@ -18,7 +18,8 @@ public sealed record RenderEmailQuery(
     string? Locale,
     IReadOnlyDictionary<string, object?> Variables,
     LogoScope LogoScope = LogoScope.System,
-    TemplateChannel Channel = TemplateChannel.Email
+    TemplateChannel Channel = TemplateChannel.Email,
+    RenderAudience Audience = RenderAudience.Staff
 );
 
 public static class RenderEmailHandler
@@ -48,7 +49,8 @@ public static class RenderEmailHandler
             locale,
             query.Variables,
             query.LogoScope,
-            query.Channel
+            query.Channel,
+            query.Audience
         );
         return await renderer.RenderAsync(request, ct);
     }

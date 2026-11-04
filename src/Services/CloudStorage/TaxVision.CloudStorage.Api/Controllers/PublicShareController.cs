@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Sharing;
+using TaxVision.CloudStorage.Domain.Sharing;
 using Wolverine;
 
 namespace TaxVision.CloudStorage.Api.Controllers;
@@ -53,6 +54,7 @@ public sealed class PublicShareController(
                 StatusCodes.Status401Unauthorized,
                 new { requiresPassword = true }
             ),
+            ShareAccessOutcome.PasswordLocked => PasswordLocked(),
             _ => NotFound(),
         };
     }
@@ -128,6 +130,7 @@ public sealed class PublicShareController(
                 StatusCodes.Status401Unauthorized,
                 new { requiresPassword = true }
             ),
+            PublicFolderOutcome.PasswordLocked => PasswordLocked(),
             _ => NotFound(),
         };
     }
@@ -159,6 +162,8 @@ public sealed class PublicShareController(
         {
             case PublicZipOutcome.PasswordRequired:
                 return StatusCode(StatusCodes.Status401Unauthorized, new { requiresPassword = true });
+            case PublicZipOutcome.PasswordLocked:
+                return PasswordLocked();
             case PublicZipOutcome.TooLarge:
                 return StatusCode(
                     StatusCodes.Status413PayloadTooLarge,
@@ -196,4 +201,11 @@ public sealed class PublicShareController(
     private string? RemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString();
 
     private string? UserAgent() => Request.Headers.UserAgent.ToString();
+
+    /// <summary>Enlace bloqueado por contraseñas fallidas: 429 para que la página pida esperar, no otra contraseña.</summary>
+    private ObjectResult PasswordLocked() =>
+        StatusCode(
+            StatusCodes.Status429TooManyRequests,
+            new { code = ShareErrors.PasswordLocked.Code, message = ShareErrors.PasswordLocked.Message }
+        );
 }

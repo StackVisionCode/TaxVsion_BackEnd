@@ -8,6 +8,7 @@ public static class GetTenantPaymentConfigHandler
     public static async Task<Result<TenantPaymentConfigResponse>> Handle(
         GetTenantPaymentConfigQuery query,
         ITenantPaymentConfigRepository configs,
+        ITenantPaymentRepository payments,
         CancellationToken ct
     )
     {
@@ -16,6 +17,8 @@ public static class GetTenantPaymentConfigHandler
             return Result.Failure<TenantPaymentConfigResponse>(
                 new Error("TenantPaymentConfig.NotFound", "TenantPaymentConfig does not exist.")
             );
+
+        var hasPayments = await payments.AnyForProviderAsync(query.TenantId, query.ProviderCode, ct);
 
         return Result.Success(
             new TenantPaymentConfigResponse(
@@ -28,7 +31,9 @@ public static class GetTenantPaymentConfigHandler
                 config.StatementDescriptor.Value,
                 config.IsActive,
                 config.SettledAtUtc,
-                config.ApiBaseUrl
+                config.ApiBaseUrl,
+                hasPayments,
+                config.WebhookSetup?.ToString()
             )
         );
     }

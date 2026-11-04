@@ -1,8 +1,10 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Delivery;
 using TaxVision.Correspondence.Application.Messages;
 using TaxVision.Correspondence.Domain.Compose;
+using TaxVision.Correspondence.Domain.Delivery;
 using TaxVision.Correspondence.Domain.Inbox;
 
 namespace TaxVision.Correspondence.Application.Threads;
@@ -36,6 +38,7 @@ public static class ListThreadMessagesHandler
         IEmailThreadRepository emailThreads,
         IIncomingEmailRepository incomingEmails,
         IDraftRepository drafts,
+        IDeliveryNoticeRepository notices,
         CancellationToken ct
     )
     {
@@ -55,19 +58,27 @@ public static class ListThreadMessagesHandler
 
         var inbound = await incomingEmails.ListAllByThreadAsync(query.TenantId, thread.Id, ct);
         var outbound = await drafts.ListSentByThreadAsync(query.TenantId, thread.Id, ct);
+        var deliveryNotices = await notices.ListByThreadAsync(query.TenantId, thread.Id, ct);
 
-        var merged = MergeChronologically(inbound, outbound);
+        var merged = MergeChronologically(thread, inbound, outbound, deliveryNotices);
         return Result.Success(Paginate(merged, query.Page, query.Size));
     }
 
+    // Los avisos de entrega van intercalados por fecha como su propio tipo (tarjeta, no un correo más).
     private static List<MessageSummary> MergeChronologically(
+        EmailThread thread,
         IReadOnlyList<IncomingEmail> inbound,
-        IReadOnlyList<Draft> outbound
+        IReadOnlyList<Draft> outbound,
+        IReadOnlyList<DeliveryNotice> deliveryNotices
     )
     {
-        var items = new List<MessageSummary>(inbound.Count + outbound.Count);
+        var subjects = outbound.ToDictionary(d => d.Id, d => d.Subject);
+        var items = new List<MessageSummary>(inbound.Count + outbound.Count + deliveryNotices.Count);
         items.AddRange(inbound.Select(GetMessageMetadataHandler.ToSummary));
         items.AddRange(outbound.Select(ToOutboundSummary));
+        items.AddRange(
+            deliveryNotices.Select(n => ToNoticeSummary(n, subjects.GetValueOrDefault(n.DraftId) ?? thread.Subject))
+        );
         items.Sort((a, b) => a.OccurredAtUtc.CompareTo(b.OccurredAtUtc));
         return items;
     }
@@ -100,7 +111,7 @@ public static class ListThreadMessagesHandler
             FromDisplayName: null,
             draft.Subject,
             Snippet: null,
-            ToAddresses: draft.Recipients.Where(r => r.Type == EmailRecipientType.To).Select(r => r.Address).ToList(),
+            ToAddresses: draft.AddressesOf(EmailRecipientType.To),
             // Ver el WHY-comment de Draft.MarkSent: UpdatedAtUtc ES el instante de envío, ningún
             // otro método del aggregate lo vuelve a tocar una vez Sent.
             OccurredAtUtc: draft.UpdatedAtUtc,
@@ -109,6 +120,29 @@ public static class ListThreadMessagesHandler
             BodyStatus: null,
             // Un draft enviado no tiene estado de lectura — siempre "leído" para que nunca cuente como no-leído.
             IsRead: true,
-            SenderTrust: null
+            SenderTrust: null,
+            DeliveryStatus: DeliveryStatusSummary.Overall(draft),
+            Deliveries: DeliveryStatusSummary.Recipients(draft),
+            CcAddresses: draft.AddressesOf(EmailRecipientType.Cc),
+            BccAddresses: draft.AddressesOf(EmailRecipientType.Bcc)
+        );
+
+    private static MessageSummary ToNoticeSummary(DeliveryNotice notice, string subject) =>
+        new(
+            notice.Id,
+            MessageDirection.Inbound,
+            From: null,
+            FromDisplayName: null,
+            subject,
+            Snippet: null,
+            ToAddresses: [notice.Recipient],
+            OccurredAtUtc: notice.OccurredAtUtc,
+            HasAttachments: false,
+            AttachmentCount: 0,
+            BodyStatus: null,
+            IsRead: notice.IsRead,
+            SenderTrust: null,
+            Kind: ThreadMessageKinds.DeliveryNotice,
+            DeliveryNotice: DeliveryNoticeSummary.From(notice)
         );
 }

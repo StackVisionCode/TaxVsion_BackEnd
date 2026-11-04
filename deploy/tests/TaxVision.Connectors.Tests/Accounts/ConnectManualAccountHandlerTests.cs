@@ -25,6 +25,7 @@ public class ConnectManualAccountHandlerTests
         FakeProviderConnectionAuditLogRepository AuditLogRepository,
         FakeProviderWatchSubscriptionRepository WatchSubscriptionRepository,
         FakeWatchProviderClientFactory WatchClientFactory,
+        FakeUserPermissionsProjectionReader Projections,
         FakeUnitOfWork UnitOfWork,
         FakeMessageBus Bus
     );
@@ -43,6 +44,7 @@ public class ConnectManualAccountHandlerTests
             // ProviderCode.Imap nunca llega a resolver un watch client (ver WatchActivationService),
             // así que client: null es correcto acá — nunca se invoca.
             new FakeWatchProviderClientFactory(client: null),
+            new FakeUserPermissionsProjectionReader(),
             new FakeUnitOfWork(),
             new FakeMessageBus()
         );
@@ -82,6 +84,7 @@ public class ConnectManualAccountHandlerTests
             fixture.AuditLogRepository,
             fixture.WatchSubscriptionRepository,
             fixture.WatchClientFactory,
+            fixture.Projections,
             fixture.UnitOfWork,
             fixture.Bus,
             new FakeCorrelationContext(),
@@ -214,6 +217,32 @@ public class ConnectManualAccountHandlerTests
         Assert.Equal("smtp-user", smtp.Username);
     }
 
+    [Fact]
+    public async Task Handle_ReinvitedOffboardedUser_ReconnectsThePurgedMailbox_AndBecomesItsOwner()
+    {
+        // El retiro desconectó el buzón personal y purgó sus credenciales; la persona vuelve con un Guid nuevo.
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var formerUserId = Guid.NewGuid();
+        var newUserId = Guid.NewGuid();
+        var existing = TenantEmailAccount
+            .Create(tenantId, "office@example.com", ProviderCode.Imap, formerUserId, Now, ownerUserId: formerUserId)
+            .Value;
+        existing.Disconnect(Now);
+        fixture.AccountRepository.Accounts.Add(existing);
+
+        var result = await HandleAsync(fixture, ValidCommand(tenantId, newUserId));
+
+        Assert.True(result.IsSuccess);
+        var account = Assert.Single(fixture.AccountRepository.Accounts);
+        Assert.Equal(existing.Id, account.Id);
+        Assert.Equal(newUserId, account.OwnerUserId);
+        Assert.Equal(formerUserId, account.CreatedByUserId);
+        Assert.Equal(TenantEmailAccountStatus.Active, account.Status);
+        Assert.Single(fixture.ImapCredentialsRepository.Credentials);
+        Assert.Single(fixture.SmtpCredentialsRepository.Credentials);
+    }
+
     private static EncryptedSecret Cipher(Fixture fixture, string plaintext) =>
         EncryptedSecret.Create(plaintext, fixture.Protector).Value;
 
@@ -284,5 +313,43 @@ public class ConnectManualAccountHandlerTests
         var account = Assert.Single(fixture.AccountRepository.Accounts);
         Assert.False(account.IsOffice);
         Assert.Equal(userId, account.OwnerUserId);
+    }
+
+    [Fact]
+    public async Task Handle_InitiatorNoLongerActive_FailsClosedWithoutPersisting()
+    {
+        // Retirado/suspendido durante la prueba IMAP/SMTP: no queda buzón ni credenciales.
+        var fixture = CreateFixture();
+        var userId = Guid.NewGuid();
+        fixture.Projections.WithoutActiveProjection.Add(userId);
+
+        var result = await HandleAsync(fixture, ValidCommand(Guid.NewGuid(), userId));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ConnectInitiatorGuard.InactiveCode, result.Error.Code);
+        Assert.Empty(fixture.AccountRepository.Accounts);
+        Assert.Empty(fixture.ImapCredentialsRepository.Credentials);
+        Assert.Empty(fixture.SmtpCredentialsRepository.Credentials);
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Handle_PlatformAdminInitiator_SkipsTheProjectionCheck()
+    {
+        var fixture = CreateFixture();
+        var userId = Guid.NewGuid();
+        fixture.Projections.WithoutActiveProjection.Add(userId);
+
+        var result = await HandleAsync(
+            fixture,
+            ValidCommand(Guid.NewGuid(), userId) with
+            {
+                InitiatorIsPlatformAdmin = true,
+            }
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, fixture.Projections.Calls);
     }
 }

@@ -31,6 +31,8 @@ public sealed class TenantApiFactory : WebApplicationFactory<Program>
                         ["Jwt:PublicKeyPath"] = string.Empty,
                         ["Jwt:PublicKeyPem"] = string.Empty,
                         ["Jwt:Secret"] = JwtSecret,
+                        // El job del WISP no corre contra la base de desarrollo durante los tests.
+                        ["Tenant:WispReviewReminders:Enabled"] = "false",
                     }
                 )
         );

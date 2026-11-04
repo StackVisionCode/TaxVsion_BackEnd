@@ -24,14 +24,24 @@ public sealed class Invitation : TenantEntity
     /// <summary>Tipo de cuenta que crea esta invitación al aceptarse.</summary>
     public UserAccountKind AccountKind => UserAccountKinds.Of(ActorType);
     public Guid? CustomerId { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "OffboardUserHandler",
+        Note = "Las de staff pendientes se cancelan; las de portal son del cliente."
+    )]
     public Guid? InvitedByUserId { get; private set; }
     public string TokenHash { get; private set; } = default!;
     public InvitationStatus Status { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime? AcceptedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? AcceptedByUserId { get; private set; }
     public DateTime? CancelledAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? CancelledByUserId { get; private set; }
 
     /// <summary>Roles (JSON array de GUID) que se asignarán al usuario al aceptar.</summary>

@@ -1,5 +1,6 @@
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
+import type { Conversation } from '../../domain/conversations/conversation.js';
 
 /**
  * Verifica que el caller sea participante activo de la conversacion. Base de la
@@ -19,7 +20,7 @@ export interface AuthorizeConversationParticipantDeps {
 export async function authorizeConversationParticipant(
   command: AuthorizeConversationParticipantCommand,
   deps: AuthorizeConversationParticipantDeps,
-): Promise<Result<void>> {
+): Promise<Result<Conversation>> {
   const conversation = await deps.conversations.findById(command.tenantId, command.conversationId, 0);
   if (!conversation) {
     return Result.fail(makeError('Chat.Conversation.NotFound', 'Conversation not found.'));
@@ -27,5 +28,5 @@ export async function authorizeConversationParticipant(
   if (!conversation.isParticipant(command.userId)) {
     return Result.fail(makeError('Chat.Conversation.NotParticipant', 'User is not a participant.'));
   }
-  return Result.okVoid();
+  return Result.ok(conversation);
 }

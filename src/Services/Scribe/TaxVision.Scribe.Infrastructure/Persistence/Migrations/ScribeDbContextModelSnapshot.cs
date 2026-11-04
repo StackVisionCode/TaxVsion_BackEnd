@@ -305,6 +305,10 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Surface")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<Guid>("CloudStorageFileId")
                         .HasColumnType("uniqueidentifier");
 
@@ -328,7 +332,7 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                     b.Property<int?>("Width")
                         .HasColumnType("int");
 
-                    b.HasKey("TenantId");
+                    b.HasKey("TenantId", "Surface");
 
                     b.ToTable("TenantLogoRefs", (string)null);
                 });
@@ -338,10 +342,24 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PostalAddress")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<long>("ProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("SubDomain")
                         .IsRequired()

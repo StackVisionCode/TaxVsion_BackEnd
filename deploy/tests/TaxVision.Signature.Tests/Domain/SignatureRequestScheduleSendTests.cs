@@ -106,6 +106,7 @@ public sealed class SignatureRequestScheduleSendTests
 
         // AddSigner usa EnsureCanBeEdited por debajo → debería bloquear con el código específico.
         var attempt = request.AddSigner(
+            TestSignatureLimits.Default,
             SignerEmail.Create("other@example.com").Value,
             SignerFullName.Create("Other Signer").Value,
             null
@@ -120,6 +121,7 @@ public sealed class SignatureRequestScheduleSendTests
     private static SignatureRequest Draft() =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 tenantId: Guid.NewGuid(),
                 createdByUserId: Guid.NewGuid(),
                 title: "Schedule test",
@@ -137,17 +139,32 @@ public sealed class SignatureRequestScheduleSendTests
     {
         var request = Draft();
         var signer = request
-            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Sam Signer").Value,
+                null
+            )
             .Value;
         var position = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        request.PlaceField(signer.Id, SignatureFieldKind.Signature, position, null, false);
+        request.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            position,
+            null,
+            false
+        );
         return request;
     }
 
     private static SignatureRequest ReadyDraftWithField()
     {
         var request = DraftWithSignerAndField();
-        request.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
+        request.AttachVerifiedDocument(
+            request.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         return request;
     }
 }

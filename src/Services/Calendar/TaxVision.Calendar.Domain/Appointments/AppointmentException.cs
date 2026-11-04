@@ -35,6 +35,7 @@ public sealed class AppointmentException : BaseEntity, ITenantOwned
 
     public string? NewLocation { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ModifiedByUserId { get; private set; }
 
     public DateTime ModifiedAtUtc { get; private set; }

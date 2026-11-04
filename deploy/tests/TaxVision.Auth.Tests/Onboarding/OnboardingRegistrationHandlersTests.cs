@@ -136,7 +136,8 @@ public sealed class OnboardingRegistrationHandlersTests
                 "Ada's Tax Office",
                 "adas-office",
                 true,
-                termsVersion.Id
+                termsVersion.Id,
+                "America/Chicago"
             ),
             onboardings,
             termsVersions,
@@ -154,6 +155,7 @@ public sealed class OnboardingRegistrationHandlersTests
         Assert.True(result.IsSuccess);
         Assert.Equal("Provisioning", result.Value.Status);
         Assert.Equal(TenantOnboardingStatus.Provisioning, onboarding.Status);
+        Assert.Equal("America/Chicago", onboarding.TimeZoneId);
         Assert.NotNull(onboarding.RegistrationTokenUsedAtUtc);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
 
@@ -371,6 +373,9 @@ public sealed class OnboardingRegistrationHandlersTests
 
         public Task<TermsVersion?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult(ById?.Id == id ? ById : null);
+
+        public Task<TermsVersion?> GetByContentFileIdAsync(Guid contentFileId, CancellationToken ct = default) =>
+            throw new NotImplementedException();
 
         public Task<TermsVersion?> GetCurrentAsync(
             TermsKind kind,

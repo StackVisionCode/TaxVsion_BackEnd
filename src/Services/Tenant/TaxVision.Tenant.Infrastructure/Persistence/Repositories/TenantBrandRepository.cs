@@ -41,4 +41,35 @@ public sealed class TenantBrandRepository(TenantDbContext db) : ITenantBrandRepo
             .TenantBrands.IgnoreQueryFilters()
             .Include(b => b.Assets)
             .FirstOrDefaultAsync(b => b.TenantId == tenantId && b.Assets.Any(a => a.FileId == fileId), ct);
+
+    // Cruza tenants a propósito (republicación de plataforma): IgnoreQueryFilters en ambas tablas.
+    public async Task<IReadOnlyList<ConfirmedBrandLogo>> ListConfirmedLogosAsync(
+        int skip,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        await db.Set<TenantBrandAsset>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(a => a.Key == BrandAssetKey.Logo && a.Status == BrandAssetStatus.Confirmed)
+            .Join(
+                db.TenantBrands.IgnoreQueryFilters(),
+                asset => asset.TenantBrandId,
+                brand => brand.Id,
+                (asset, brand) => new { Asset = asset, brand.Surface }
+            )
+            .OrderBy(x => x.Asset.Id)
+            .Skip(skip)
+            .Take(take)
+            .Select(x => new ConfirmedBrandLogo(
+                x.Asset.TenantId,
+                x.Surface,
+                x.Asset.FileId,
+                x.Asset.ContentType,
+                x.Asset.SizeBytes,
+                x.Asset.Width,
+                x.Asset.Height,
+                x.Asset.ConfirmedAtUtc ?? x.Asset.UpdatedAtUtc
+            ))
+            .ToListAsync(ct);
 }

@@ -40,4 +40,16 @@ public sealed class PushDeviceTokenRepository(NotificationDbContext db) : IPushD
             .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
         token?.Revoke();
     }
+
+    public async Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
+    {
+        // Tracked: Revoke() se persiste con el SaveChangesAsync del caller.
+        var tokens = await db
+            .PushDeviceTokens.IgnoreQueryFilters()
+            .Where(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive)
+            .ToListAsync(ct);
+        foreach (var token in tokens)
+            token.Revoke();
+        return tokens.Count;
+    }
 }

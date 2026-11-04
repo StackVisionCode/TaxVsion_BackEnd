@@ -7,6 +7,7 @@ public sealed class AuthAuditLog : TenantEntity
 {
     private AuthAuditLog() { }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? UserId { get; private set; }
     public string Action { get; private set; } = default!;
     public string? TargetType { get; private set; }

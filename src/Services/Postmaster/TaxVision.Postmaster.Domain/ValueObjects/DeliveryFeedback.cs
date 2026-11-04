@@ -27,6 +27,12 @@ public sealed class DeliveryFeedback
     /// <summary>Código o motivo del proveedor (ej. "550 5.1.1 user unknown"). Nunca contenido del correo.</summary>
     public string? Diagnostic { get; }
 
+    /// <summary>Código RFC 3463 del aviso, o el que traiga el diagnóstico si el origen no lo separa.</summary>
+    public EnhancedStatusCode? StatusCode { get; }
+
+    /// <summary>Motivo para el usuario; null si no hay nada que explicar (entregado, señal…).</summary>
+    public DeliveryFailureCategory? FailureCategory { get; }
+
     private DeliveryFeedback(
         DeliveryFeedbackKind kind,
         DeliveryOutcome? outcome,
@@ -34,7 +40,8 @@ public sealed class DeliveryFeedback
         DateTime occurredAtUtc,
         FeedbackSource source,
         string sourceEventId,
-        string? diagnostic
+        string? diagnostic,
+        EnhancedStatusCode? statusCode
     )
     {
         Kind = kind;
@@ -44,28 +51,38 @@ public sealed class DeliveryFeedback
         Source = source;
         SourceEventId = sourceEventId;
         Diagnostic = diagnostic is { Length: > MaxDiagnosticLength } ? diagnostic[..MaxDiagnosticLength] : diagnostic;
+        StatusCode = statusCode;
+        FailureCategory = outcome is { } value ? DeliveryFailureClassification.Classify(value, statusCode) : null;
     }
 
+    /// <param name="statusCode">Código RFC 3463 si el origen lo trae aparte; si no, se busca en el diagnóstico.</param>
+    /// <remarks>Un rebote duro por buzón lleno queda blando (ver <see cref="DeliveryFailureClassification"/>).</remarks>
     public static Result<DeliveryFeedback> ForOutcome(
         DeliveryOutcome outcome,
         DateTime occurredAtUtc,
         FeedbackSource source,
         string sourceEventId,
-        string? diagnostic
-    ) =>
-        IsValidSourceEventId(sourceEventId)
-            ? Result.Success(
-                new DeliveryFeedback(
-                    DeliveryFeedbackKind.Outcome,
-                    outcome,
-                    null,
-                    occurredAtUtc,
-                    source,
-                    sourceEventId,
-                    diagnostic
-                )
+        string? diagnostic,
+        string? statusCode = null
+    )
+    {
+        if (!IsValidSourceEventId(sourceEventId))
+            return Result.Failure<DeliveryFeedback>(InvalidSourceEventId);
+
+        var code = EnhancedStatusCode.Find(statusCode) ?? EnhancedStatusCode.Find(diagnostic);
+        return Result.Success(
+            new DeliveryFeedback(
+                DeliveryFeedbackKind.Outcome,
+                DeliveryFailureClassification.Normalize(outcome, code),
+                null,
+                occurredAtUtc,
+                source,
+                sourceEventId,
+                diagnostic,
+                code
             )
-            : Result.Failure<DeliveryFeedback>(InvalidSourceEventId);
+        );
+    }
 
     public static Result<DeliveryFeedback> ForSignal(
         EngagementSignal signal,
@@ -82,6 +99,7 @@ public sealed class DeliveryFeedback
                     occurredAtUtc,
                     source,
                     sourceEventId,
+                    null,
                     null
                 )
             )

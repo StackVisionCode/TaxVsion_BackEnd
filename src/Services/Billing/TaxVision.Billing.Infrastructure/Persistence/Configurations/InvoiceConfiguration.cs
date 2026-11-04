@@ -24,6 +24,10 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.Property(i => i.Summary).HasMaxLength(512);
         b.Property(i => i.Notes).HasMaxLength(4000);
         b.Property(i => i.PaymentMethod).HasConversion<string>().HasMaxLength(32);
+        // Condiciones de cobro congeladas al crear el borrador (null = factura de antes de la F1).
+        b.Property(i => i.PaymentTerms).HasConversion<string>().HasMaxLength(32);
+        b.Property(i => i.PaymentInstructions).HasMaxLength(Domain.Settings.TenantBillingSettings.TextMaxLength);
+        b.Property(i => i.InvoiceFooter).HasMaxLength(Domain.Settings.TenantBillingSettings.TextMaxLength);
         b.Property(i => i.ReceiptNumber).HasMaxLength(96);
         b.Property(i => i.ReceiptHash).HasMaxLength(64);
         // Anulación (void): fecha + motivo. Nullable — solo se rellenan al anular.

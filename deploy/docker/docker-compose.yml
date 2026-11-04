@@ -376,6 +376,11 @@ services:
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
       # HttpPlanRateLimitReader — mismo caso que auth-api: sin esto cae a localhost:5360 en prod.
       SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # Perfil de la oficina F1: el EFIN se guarda cifrado (misma clave maestra que el resto) y la
+      # importación lee los emisores de Billing por M2M. Sin la clave solo falla Cumplimiento.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
+      BillingClient__BaseUrl: http://billing-api:8080
       # Fase D1 — credenciales MinIO propias para subir el logo (IAM scoped a
       # taxvision-temp/tenant-branding/*, ver deploy/docker/minio/policies/tenant-source.json
       # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
@@ -513,8 +518,7 @@ services:
       ServiceAuth__Clients__2__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__2__Permissions__1: cloudstorage.file.view
       ServiceAuth__Clients__2__Permissions__2: cloudstorage.file.upload
-      # Fase 4 (descarga en el correo): mintea un share-link de descarga del documento sellado.
-      ServiceAuth__Clients__2__Permissions__3: cloudstorage.share.create
+      # La entrega del firmado ya no crea shares: Signature pide download-url (file.download) al abrir el enlace.
       # Cliente de servicio (M2M) para Customer: sube el Excel/CSV de import directo a MinIO
       # con credenciales propias (ver Customer__Minio__* mas abajo) y solo usa este token para
       # descargarlo de vuelta (parseo de filas) y borrarlo al terminar — nunca para subir.
@@ -2003,6 +2007,9 @@ services:
       # (no crashea, pero el sellado no funciona) — ver DependencyInjection.cs linea 73-83.
       Signature__Sealing__Cms__CertificatePath: /run/secrets/signature-sealing.pfx
       Signature__Sealing__Cms__CertificatePassword: ${SIGNATURE_PFX_PASSWORD:?Set SIGNATURE_PFX_PASSWORD in .env}
+      # Clave RSA fija de los enlaces de firma (la escribe deploy.yml desde SIGNATURE_SIGNER_JWT_PEM_B64).
+      # Sin ella el servicio no arranca: una efímera invalidaba todos los enlaces en cada reinicio.
+      Signature__SignerJwt__PrivateKeyPem: /run/secrets/signature-signer-jwt.pem
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
       # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
@@ -2016,6 +2023,7 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/signature-sealing.pfx:/run/secrets/signature-sealing.pfx:ro
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/signature-signer-jwt.pem:/run/secrets/signature-signer-jwt.pem:ro
     depends_on:
       db-ready:
         condition: service_completed_successfully
@@ -2137,6 +2145,9 @@ services:
       PaymentClient__Public__UseTenantHosts: "true"
       # Base (fallback) de la PAGINA de checkout del frontend ({base}/pay/{token}). Dev = ng serve 4200.
       PaymentClient__Public__CheckoutPageBaseUrl: ${PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL:-http://localhost:4200}
+      # Registro automático del webhook de cada oficina en Stripe/PayPal: base https pública por la que el
+      # proveedor llega a /payments-client/webhooks/*. Vacía = apagado (dev/local: no llegan a localhost).
+      PaymentClient__Webhooks__PublicBaseUrl: ${PAYMENTCLIENT_WEBHOOKS_PUBLIC_BASE_URL:-}
       # RBAC Fase 7: enforza permisos contra la proyección local (poblada por eventos de Auth) en vez de
       # leer perms embebidos en el JWT — los tokens self-service vienen sin perms. Habilita los endpoints
       # humanos de config de pago (settings 2B). Mismo modo que documents-api.

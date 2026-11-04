@@ -44,7 +44,8 @@ public static class ReissueInvoiceHandler
         var nowUtc = clock.GetUtcNow().UtcDateTime;
 
         // 1) Crear el reemplazo como BORRADOR: copia fiel de cliente, moneda, líneas (con su CatalogItemId
-        //    para que el descuento de stock se rehaga al emitir) y notas. El emisor se conserva tal cual.
+        //    para que el descuento de stock se rehaga al emitir) y notas. El emisor y las condiciones de
+        //    cobro se conservan tal cual (es la misma factura corregida).
         var draftLines = original
             .Lines.Select(l => new DraftInvoiceLine(
                 l.Description,
@@ -63,7 +64,8 @@ public static class ReissueInvoiceHandler
             draftLines,
             original.Notes,
             nowUtc,
-            original.Issuer
+            original.Issuer,
+            original.GetTermsSnapshot()
         );
         if (replacementResult.IsFailure)
             return Result.Failure<ReissueInvoiceResult>(replacementResult.Error);

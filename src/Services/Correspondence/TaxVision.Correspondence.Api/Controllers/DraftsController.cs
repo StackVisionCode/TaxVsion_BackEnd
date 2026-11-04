@@ -108,6 +108,10 @@ public sealed class DraftsController(
         [FromQuery] Guid? customerId,
         [FromQuery] bool unlinked,
         [FromQuery(Name = "scope")] string? scopeName,
+        [FromQuery] string? q,
+        [FromQuery] bool hasAttachments,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
@@ -115,6 +119,9 @@ public sealed class DraftsController(
     {
         if (!TryResolveCustomerScope(customerId, unlinked, scopeName, out var scope))
             return BadRequest(CustomerScopeRequired);
+        if (!MailListParams.TryDateRange(fromUtc, toUtc, out var from, out var to))
+            return BadRequest(MailListParams.InvalidDateRange);
+        var filter = MailListParams.Filter(q, hasAttachments, from, to);
         scope = scope.RestrictedTo(await customerAccess.ResolveRestrictedUserIdAsync(User, ct));
 
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
@@ -129,7 +136,8 @@ public sealed class DraftsController(
                 scope,
                 NormalizePage(page),
                 NormalizeSize(size),
-                canSeeOthers ? null : userId
+                canSeeOthers ? null : userId,
+                filter
             ),
             ct
         );
@@ -148,6 +156,10 @@ public sealed class DraftsController(
         [FromQuery] Guid? customerId,
         [FromQuery] bool unlinked,
         [FromQuery(Name = "scope")] string? scopeName,
+        [FromQuery] string? q,
+        [FromQuery] bool hasAttachments,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
@@ -155,6 +167,9 @@ public sealed class DraftsController(
     {
         if (!TryResolveCustomerScope(customerId, unlinked, scopeName, out var scope))
             return BadRequest(CustomerScopeRequired);
+        if (!MailListParams.TryDateRange(fromUtc, toUtc, out var from, out var to))
+            return BadRequest(MailListParams.InvalidDateRange);
+        var filter = MailListParams.Filter(q, hasAttachments, from, to);
         scope = scope.RestrictedTo(await customerAccess.ResolveRestrictedUserIdAsync(User, ct));
 
         if (!User.TryGetTenantId(out var tenantId))
@@ -162,7 +177,7 @@ public sealed class DraftsController(
 
         var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<PagedResult<SentMessageListItem>>(
-            new ListSentMessagesQuery(tenantId, scope, NormalizePage(page), NormalizeSize(size), visible),
+            new ListSentMessagesQuery(tenantId, scope, NormalizePage(page), NormalizeSize(size), visible, filter),
             ct
         );
         return Ok(result);
@@ -176,6 +191,10 @@ public sealed class DraftsController(
         [FromQuery] Guid? customerId,
         [FromQuery] bool unlinked,
         [FromQuery(Name = "scope")] string? scopeName,
+        [FromQuery] string? q,
+        [FromQuery] bool hasAttachments,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
@@ -183,6 +202,9 @@ public sealed class DraftsController(
     {
         if (!TryResolveCustomerScope(customerId, unlinked, scopeName, out var scope))
             return BadRequest(CustomerScopeRequired);
+        if (!MailListParams.TryDateRange(fromUtc, toUtc, out var from, out var to))
+            return BadRequest(MailListParams.InvalidDateRange);
+        var filter = MailListParams.Filter(q, hasAttachments, from, to);
         scope = scope.RestrictedTo(await customerAccess.ResolveRestrictedUserIdAsync(User, ct));
 
         if (!User.TryGetTenantId(out var tenantId))
@@ -190,7 +212,7 @@ public sealed class DraftsController(
 
         var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<PagedResult<TrashItem>>(
-            new ListTrashQuery(tenantId, scope, NormalizePage(page), NormalizeSize(size), visible),
+            new ListTrashQuery(tenantId, scope, NormalizePage(page), NormalizeSize(size), visible, filter),
             ct
         );
         return Ok(result);

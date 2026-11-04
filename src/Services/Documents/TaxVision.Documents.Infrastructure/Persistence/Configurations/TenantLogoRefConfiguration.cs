@@ -9,8 +9,10 @@ public sealed class TenantLogoRefConfiguration : IEntityTypeConfiguration<Tenant
     public void Configure(EntityTypeBuilder<TenantLogoRef> builder)
     {
         builder.ToTable("TenantLogoRefs");
-        builder.HasKey(x => x.TenantId);
+        // Un logo por superficie: quitar el del portal no toca el del CRM.
+        builder.HasKey(x => new { x.TenantId, x.Surface });
         builder.Property(x => x.TenantId).ValueGeneratedNever();
+        builder.Property(x => x.Surface).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(x => x.LogoContentType).HasMaxLength(100);
         builder.Property(x => x.UpdatedAtUtc).IsRequired();
     }

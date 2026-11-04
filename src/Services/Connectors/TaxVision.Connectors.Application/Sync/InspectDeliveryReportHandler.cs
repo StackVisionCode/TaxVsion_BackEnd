@@ -15,6 +15,8 @@ namespace TaxVision.Connectors.Application.Sync;
 public static class InspectDeliveryReportHandler
 {
     private const int MaxDiagnosticLength = 500;
+    private const int MaxSummaryLength = 500;
+    private const int MaxSubjectLength = 500;
 
     public static async Task Handle(
         InspectDeliveryReport cmd,
@@ -52,13 +54,15 @@ public static class InspectDeliveryReportHandler
                 return;
             }
 
-            foreach (var entry in parser.Parse(raw))
-                await PublishAsync(cmd, entry, correlation.CorrelationId, bus);
+            var report = parser.Parse(raw);
+            foreach (var entry in report.Entries)
+                await PublishAsync(cmd, report, entry, correlation.CorrelationId, bus);
         }
     }
 
     private static async Task PublishAsync(
         InspectDeliveryReport cmd,
+        DeliveryReport report,
         DeliveryReportEntry entry,
         string correlationId,
         IMessageBus bus
@@ -79,11 +83,15 @@ public static class InspectDeliveryReportHandler
                 Recipient = entry.Recipient,
                 Action = entry.Action,
                 StatusCode = entry.StatusCode,
-                DiagnosticSnippet = entry.Diagnostic is { Length: > MaxDiagnosticLength }
-                    ? entry.Diagnostic[..MaxDiagnosticLength]
-                    : entry.Diagnostic,
+                DiagnosticSnippet = Truncate(entry.Diagnostic, MaxDiagnosticLength),
                 ReportedAtUtc = cmd.ReceivedAtUtc,
+                ReportSubject = Truncate(report.Subject, MaxSubjectLength),
+                ReportFrom = report.From,
+                ReportSummary = Truncate(report.Summary, MaxSummaryLength),
             }
         );
     }
+
+    private static string? Truncate(string? value, int max) =>
+        value is not null && value.Length > max ? value[..max] : value;
 }

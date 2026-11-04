@@ -317,6 +317,25 @@ public sealed record SaveFileRequestedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary>
+/// CloudStorage descartó un <see cref="SaveFileRequestedIntegrationEvent"/> (datos inválidos, archivo
+/// vacío, política de subida, cuota o registro): ese <see cref="FileId"/> nunca existirá. El servicio
+/// que lo pidió ya pudo apuntarlo en su aggregate (el FileId lo elige él), así que debe soltarlo.
+/// </summary>
+public sealed record FileSaveRejectedIntegrationEvent : IntegrationEvent
+{
+    public required Guid FileId { get; init; }
+
+    /// <summary>El <c>RequestingService</c> del pedido original.</summary>
+    public required string RequestingService { get; init; }
+    public string? OwnerType { get; init; }
+    public Guid? OwnerId { get; init; }
+    public string? FolderType { get; init; }
+
+    /// <summary>Motivo (p. ej. "EmptyFile", "UploadPolicy", "StorageQuota.Exceeded").</summary>
+    public required string Reason { get; init; }
+}
+
+/// <summary>
 /// Migración: pide a CloudStorage re-asignar el dueño lógico de un archivo ya catalogado
 /// (OwnerType/OwnerId), sin mover el objeto físico. Lo publica Signature para que los
 /// documentos firmados existentes (guardados como OwnerType=Signature antes del fix)
@@ -376,4 +395,27 @@ public sealed record FileDeletionSkippedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
     public required string Reason { get; init; }
+}
+
+/// <summary>
+/// Una conexión de nube de la oficina (Drive/OneDrive/Dropbox) quedó ligada a un empleado retirado (su
+/// cuenta, o la autorizó él). CloudStorage NO la revoca: la marca para revisión y deja el canal al
+/// consumidor, que avisa a quienes tengan <see cref="AudiencePermission"/>. Resolverla = reconectar con
+/// una cuenta de la oficina o desconectarla.
+/// </summary>
+public sealed record CloudConnectionReviewRequiredIntegrationEvent : IntegrationEvent
+{
+    public required Guid ConnectionId { get; init; }
+
+    /// <summary>"google-drive", "onedrive" o "dropbox".</summary>
+    public required string Provider { get; init; }
+    public required string AccountEmail { get; init; }
+
+    /// <summary>"AccountOfOffboardedUser" o "ConnectedByOffboardedUser".</summary>
+    public required string Reason { get; init; }
+    public required Guid OffboardedUserId { get; init; }
+
+    /// <summary>Permiso de la audiencia a avisar (administración del almacenamiento).</summary>
+    public required string AudiencePermission { get; init; }
+    public required DateTime FlaggedAtUtc { get; init; }
 }

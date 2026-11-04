@@ -40,14 +40,14 @@ public sealed class RateLimitIntegrationTests : IClassFixture<BillingApiFactory>
     }
 
     [Fact]
-    public async Task UpsertIssuerProfile_trips_with_user_layer_and_limit_60()
+    public async Task UpdateInvoiceSettings_trips_with_user_layer_and_limit_60()
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var client = CreateAuthenticatedClient(tenantId, userId);
 
         var tripped = await FireUntilTrippedAsync(
-            () => client.PutAsJsonAsync("/billing/issuer-profile", new { Name = "Test Co" }),
+            () => client.PutAsJsonAsync("/billing/invoice-settings", new { PaymentTerms = "Net30" }),
             maxAttempts: 120
         );
 

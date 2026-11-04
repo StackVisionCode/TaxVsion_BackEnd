@@ -26,6 +26,7 @@ public sealed class SignatureTemplateTests
     public void CreateDraft_rejects_invalid_titles(string title)
     {
         var result = SignatureTemplate.CreateDraft(
+            TestSignatureLimits.Default,
             Guid.NewGuid(),
             Guid.NewGuid(),
             title,
@@ -48,8 +49,17 @@ public sealed class SignatureTemplateTests
         var template = NewDraft().Value;
         var role = TemplateSlotRole.Create("Primary Taxpayer").Value;
 
-        var a = template.AddSlot(role, "En").Value;
-        var b = template.AddSlot(TemplateSlotRole.Create("Spouse").Value, "En").Value;
+        var a = template
+            .AddSlot(TestSignatureLimits.Default, TestSignatureLimits.MaxRolesPerTemplate, role, "En")
+            .Value;
+        var b = template
+            .AddSlot(
+                TestSignatureLimits.Default,
+                TestSignatureLimits.MaxRolesPerTemplate,
+                TemplateSlotRole.Create("Spouse").Value,
+                "En"
+            )
+            .Value;
 
         Assert.Equal(1, a.Order);
         Assert.Equal(2, b.Order);
@@ -59,9 +69,24 @@ public sealed class SignatureTemplateTests
     public void RemoveSlot_renumbers_remaining_slots_and_rewires_fields()
     {
         var template = NewDraft().Value;
-        template.AddSlot(TemplateSlotRole.Create("Slot1").Value, "En");
-        template.AddSlot(TemplateSlotRole.Create("Slot2").Value, "En");
-        template.AddSlot(TemplateSlotRole.Create("Slot3").Value, "En");
+        template.AddSlot(
+            TestSignatureLimits.Default,
+            TestSignatureLimits.MaxRolesPerTemplate,
+            TemplateSlotRole.Create("Slot1").Value,
+            "En"
+        );
+        template.AddSlot(
+            TestSignatureLimits.Default,
+            TestSignatureLimits.MaxRolesPerTemplate,
+            TemplateSlotRole.Create("Slot2").Value,
+            "En"
+        );
+        template.AddSlot(
+            TestSignatureLimits.Default,
+            TestSignatureLimits.MaxRolesPerTemplate,
+            TemplateSlotRole.Create("Slot3").Value,
+            "En"
+        );
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         template.PlaceField(3, SignatureFieldKind.Signature, pos, null, false);
 
@@ -97,7 +122,12 @@ public sealed class SignatureTemplateTests
         Assert.True(noSlots.IsFailure);
         Assert.Equal("Signature.Template.NoSlots", noSlots.Error.Code);
 
-        template.AddSlot(TemplateSlotRole.Create("Solo").Value, "En");
+        template.AddSlot(
+            TestSignatureLimits.Default,
+            TestSignatureLimits.MaxRolesPerTemplate,
+            TemplateSlotRole.Create("Solo").Value,
+            "En"
+        );
         var noField = template.Publish();
         Assert.True(noField.IsFailure);
         Assert.Equal("Signature.Template.NoSignatureField", noField.Error.Code);
@@ -112,7 +142,12 @@ public sealed class SignatureTemplateTests
     public void Publish_rejects_a_legacy_placeholder_document_until_it_is_repaired()
     {
         var template = NewDraft().Value;
-        template.AddSlot(TemplateSlotRole.Create("Solo").Value, "En");
+        template.AddSlot(
+            TestSignatureLimits.Default,
+            TestSignatureLimits.MaxRolesPerTemplate,
+            TemplateSlotRole.Create("Solo").Value,
+            "En"
+        );
         var position = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         template.PlaceField(1, SignatureFieldKind.Signature, position, null, false);
         var document = Assert.Single(template.Documents);
@@ -131,7 +166,12 @@ public sealed class SignatureTemplateTests
         var template = NewPublishedTemplate();
 
         Assert.Throws<InvalidOperationException>(() =>
-            template.AddSlot(TemplateSlotRole.Create("New Slot").Value, "En")
+            template.AddSlot(
+                TestSignatureLimits.Default,
+                TestSignatureLimits.MaxRolesPerTemplate,
+                TemplateSlotRole.Create("New Slot").Value,
+                "En"
+            )
         );
     }
 
@@ -166,7 +206,13 @@ public sealed class SignatureTemplateTests
         var template = NewDraft().Value;
 
         var slot = template
-            .AddSlot(TemplateSlotRole.Create("Client").Value, "En", SignerVerificationMethod.EmailOtp)
+            .AddSlot(
+                TestSignatureLimits.Default,
+                TestSignatureLimits.MaxRolesPerTemplate,
+                TemplateSlotRole.Create("Client").Value,
+                "En",
+                SignerVerificationMethod.EmailOtp
+            )
             .Value;
 
         Assert.Equal(SignerVerificationMethod.EmailOtp, slot.RequiredVerificationMethod);
@@ -178,6 +224,8 @@ public sealed class SignatureTemplateTests
         var template = NewDraft().Value;
 
         var result = template.AddSlot(
+            TestSignatureLimits.Default,
+            TestSignatureLimits.MaxRolesPerTemplate,
             TemplateSlotRole.Create("Client").Value,
             "En",
             SignerVerificationMethod.PractitionerPin
@@ -191,7 +239,14 @@ public sealed class SignatureTemplateTests
     public void UpdateSlot_changes_language_and_method_keeping_order_and_fields()
     {
         var template = NewDraft().Value;
-        var slot = template.AddSlot(TemplateSlotRole.Create("Client").Value, "En").Value;
+        var slot = template
+            .AddSlot(
+                TestSignatureLimits.Default,
+                TestSignatureLimits.MaxRolesPerTemplate,
+                TemplateSlotRole.Create("Client").Value,
+                "En"
+            )
+            .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         template.PlaceField(slot.Order, SignatureFieldKind.Signature, pos, null, false);
 
@@ -325,6 +380,7 @@ public sealed class SignatureTemplateTests
 
     private static BuildingBlocks.Results.Result<SignatureTemplate> NewDraft() =>
         SignatureTemplate.CreateDraft(
+            TestSignatureLimits.Default,
             tenantId: Guid.NewGuid(),
             createdByUserId: Guid.NewGuid(),
             title: "Standard Consent 2026",
@@ -340,7 +396,12 @@ public sealed class SignatureTemplateTests
     private static SignatureTemplate NewPublishedTemplate()
     {
         var template = NewDraft().Value;
-        template.AddSlot(TemplateSlotRole.Create("Solo").Value, "En");
+        template.AddSlot(
+            TestSignatureLimits.Default,
+            TestSignatureLimits.MaxRolesPerTemplate,
+            TemplateSlotRole.Create("Solo").Value,
+            "En"
+        );
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         template.PlaceField(1, SignatureFieldKind.Signature, pos, null, false);
         template.Publish();

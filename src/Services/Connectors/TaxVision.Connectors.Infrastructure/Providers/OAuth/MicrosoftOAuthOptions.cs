@@ -18,8 +18,10 @@ public sealed class MicrosoftOAuthOptions
 
     // User.Read: sin él, leer /me (para resolver el buzón del guard de identidad) devuelve 401/403 —
     // Mail.Read NO autoriza el perfil del usuario. Es un permiso delegado por defecto (sin admin-consent).
+    // Mail.ReadWrite: responder vía borrador (createReply → send) para conocer el Message-ID enviado y
+    // correlacionar sus rebotes; sin él se cae a /reply sin id. Delegado, sin admin-consent.
     public string Scope { get; set; } =
-        "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read offline_access";
+        "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read offline_access";
 
     public string AuthorizationEndpointTemplate { get; set; } =
         "https://login.microsoftonline.com/{0}/oauth2/v2.0/authorize";

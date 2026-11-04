@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -8,7 +6,9 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Delivery;
 using TaxVision.Signature.Application.Messaging;
+using TaxVision.Signature.Application.Requests.Preparer;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -59,6 +59,7 @@ public static class SignatureRequestCompletedConsumer
         IFileMetadataRefRepository fileRefRepository,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
+        IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
         IUnitOfWork unitOfWork,
@@ -79,6 +80,7 @@ public static class SignatureRequestCompletedConsumer
             fileRefRepository,
             brandingRepository,
             sealer,
+            stampStyles,
             certificateRenderer,
             distributedLock,
             unitOfWork,
@@ -95,6 +97,7 @@ public static class SignatureRequestCompletedConsumer
         IFileMetadataRefRepository fileRefRepository,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
+        IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
         IUnitOfWork unitOfWork,
@@ -115,6 +118,7 @@ public static class SignatureRequestCompletedConsumer
             fileRefRepository,
             brandingRepository,
             sealer,
+            stampStyles,
             certificateRenderer,
             distributedLock,
             unitOfWork,
@@ -136,6 +140,7 @@ public static class SignatureRequestCompletedConsumer
         IFileMetadataRefRepository fileRefRepository,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
+        IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
         IUnitOfWork unitOfWork,
@@ -152,8 +157,11 @@ public static class SignatureRequestCompletedConsumer
             // solicitud en paralelo (double-processing en clúster). Si otro nodo lo tomó,
             // salimos limpiamente — el idempotency-check del pipeline evita duplicados
             // aunque el lock se salte por TTL prematuro.
-            var lockKey = $"signature:sealing:{signatureRequestId:N}";
-            await using var lockHandle = await distributedLock.AcquireAsync(lockKey, SealingLockTtl, ct);
+            await using var lockHandle = await distributedLock.AcquireAsync(
+                SealingLockKey(signatureRequestId),
+                SealingLockTtl,
+                ct
+            );
             if (!lockHandle.IsAcquired)
             {
                 logger.LogInformation(
@@ -195,6 +203,7 @@ public static class SignatureRequestCompletedConsumer
                 storage,
                 brandingRepository,
                 sealer,
+                stampStyles,
                 certificateRenderer,
                 unitOfWork,
                 logger,
@@ -207,6 +216,11 @@ public static class SignatureRequestCompletedConsumer
             }
 
             await PublishSealedAsync(request, pipeline.Value, correlationId, bus);
+
+            // Varios clientes firmantes: cada uno recibe su copia en el portal. Va después del commit
+            // (outbox) por si el FileAvailable de algún archivo ganó la carrera y no encontró la solicitud.
+            if (pipeline.Value.RequestSealingCompleted && request.PendingCustomerCopies().Count > 0)
+                await bus.PublishAsync(new CreateCustomerPortalCopiesCommand(request.TenantId, request.Id));
         }
     }
 
@@ -293,7 +307,7 @@ public static class SignatureRequestCompletedConsumer
     ///   <item><description>Ausente o <c>Pending</c> → aún escaneando: lanza
     ///     <see cref="SignatureImageNotReadyException"/> para que Wolverine reintente el sellado.</description></item>
     ///   <item><description><c>Available</c> → el id del firmante entra al set descargable.</description></item>
-    ///   <item><description><c>Infected</c>/<c>Deleted</c> → se excluye (nunca se embebe): ese campo
+    ///   <item><description><c>Infected</c>/<c>Deleted</c>/<c>Rejected</c> → se excluye (nunca se embebe): ese campo
     ///     cae al sello tipográfico. No se reintenta porque no va a mejorar.</description></item>
     /// </list>
     /// </summary>
@@ -312,7 +326,7 @@ public static class SignatureRequestCompletedConsumer
     )
     {
         var projection = await fileRefRepository.GetByFileIdAsync(tenantId, fileId, ct);
-        if (projection is { Status: FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted })
+        if (projection is { HasScanOutcome: true })
             return projection;
 
         var deadline = DateTime.UtcNow + InProcessScanPollBudget;
@@ -320,7 +334,7 @@ public static class SignatureRequestCompletedConsumer
         {
             await Task.Delay(InProcessScanPollInterval, ct);
             projection = await fileRefRepository.GetByFileIdAsync(tenantId, fileId, ct);
-            if (projection is { Status: FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted })
+            if (projection is { HasScanOutcome: true })
                 return projection;
         }
 
@@ -356,6 +370,7 @@ public static class SignatureRequestCompletedConsumer
 
                 case FileScanStatus.Infected:
                 case FileScanStatus.Deleted:
+                case FileScanStatus.Rejected:
                     logger.LogWarning(
                         "Signature image {FileId} for signer {SignerId} is {Status}; sealing with typographic fallback.",
                         imageFileId,
@@ -400,6 +415,7 @@ public static class SignatureRequestCompletedConsumer
         ISignatureCloudStorageClient storage,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
+        IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IUnitOfWork unitOfWork,
         ILogger logger,
@@ -409,6 +425,8 @@ public static class SignatureRequestCompletedConsumer
         // Bajamos aquí (donde vive el I/O de CloudStorage) el PNG de firma de cada firmante cuyo archivo
         // ya pasó el scan (readyImageSignerIds), para que el engine estampe la imagen y quede puro (sin I/O).
         var signatureImages = await DownloadSignatureImagesAsync(request, readyImageSignerIds, storage, ct);
+        // Marco, formato de fecha y letra automática del tenant: el mismo estilo que vio el preparador.
+        var stampStyle = await stampStyles.ResolveAsync(request.TenantId, ct);
 
         // Firma reutilizable del preparador (canal paralelo, Form 8879). Best-effort: la imagen se subió al
         // crear el perfil (F1), así que ya está Available; si por lo que sea no baja, cae al sello tipográfico.
@@ -436,6 +454,7 @@ public static class SignatureRequestCompletedConsumer
                 originalBytesResult.Value,
                 signatureImages,
                 preparerImage,
+                stampStyle,
                 sealer
             );
             var sealedUpload = BuildSealedUpload(request, document, sealResult);
@@ -597,6 +616,7 @@ public static class SignatureRequestCompletedConsumer
         byte[] originalBytes,
         IReadOnlyDictionary<Guid, byte[]> signatureImages,
         byte[]? preparerImage,
+        StampStyle stampStyle,
         IDocumentSealingEngine sealer
     )
     {
@@ -609,7 +629,8 @@ public static class SignatureRequestCompletedConsumer
             originalBytes,
             fields,
             document.DocumentHashPre?.Value ?? string.Empty,
-            footer
+            footer,
+            stampStyle
         );
         return sealer.Seal(sealingRequest);
     }
@@ -646,7 +667,8 @@ public static class SignatureRequestCompletedConsumer
                         SignerDisplayName: signer.FullName.Value,
                         SignedAtUtc: signedAt,
                         SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? signerImage : null,
-                        Value: textValue
+                        Value: textValue,
+                        FontSizePt: field.FontSizePt
                     )
                 );
             }
@@ -686,7 +708,7 @@ public static class SignatureRequestCompletedConsumer
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
             Content: sealResult.SealedPdfBytes,
-            FileName: BuildDocumentFileName(document.Title, "_Signed.pdf"),
+            FileName: DocumentFileName.For(document.Title, "_Signed.pdf"),
             ContentType: "application/pdf",
             // Values must match CloudStorage's OwnerType / FolderType enums.
             OwnerType: ownerType,
@@ -725,11 +747,13 @@ public static class SignatureRequestCompletedConsumer
         // Cert con que se sellan los documentos (null si el sellado está degradado) → panel "Digital seal".
         var seal = sealer.DescribeSealCertificate();
 
-        // Logo de la OFICINA: la marca del tenant dueño del request (TenantBrandingRef). Al lado, el logo
-        // del SISTEMA: la marca del tenant plataforma (jturbi), misma fuente. Si la oficina no tiene logo
-        // queda solo el del sistema; si el sistema tampoco, el renderer cae al logo de plataforma embebido.
+        // Logo de la OFICINA: el certificado lo recibe el cliente, así que va el del portal y, si no hay,
+        // el del CRM. Al lado, el logo del SISTEMA: la marca del tenant plataforma (jturbi), misma fuente.
+        // Si la oficina no tiene logo queda solo el del sistema; si el sistema tampoco, el renderer cae al
+        // logo de plataforma embebido.
         var (issuerName, officeLogo) = await ResolveBrandingAsync(
             request.TenantId,
+            TenantLogoSurfaces.ClientPreference,
             brandingRepository,
             storage,
             logger,
@@ -741,6 +765,7 @@ public static class SignatureRequestCompletedConsumer
         {
             var (_, resolvedPlatformLogo) = await ResolveBrandingAsync(
                 PlatformTenant.Id,
+                TenantLogoSurfaces.StaffPreference,
                 brandingRepository,
                 storage,
                 logger,
@@ -786,7 +811,7 @@ public static class SignatureRequestCompletedConsumer
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
             Content: certificateBytes,
-            FileName: BuildDocumentFileName(title, "_Certificate.pdf"),
+            FileName: DocumentFileName.For(title, "_Certificate.pdf"),
             ContentType: "application/pdf",
             OwnerType: ownerType,
             OwnerId: ownerId,
@@ -796,41 +821,9 @@ public static class SignatureRequestCompletedConsumer
         );
     }
 
-    private const int MaxFileNameBaseLength = 120;
-
-    /// <summary>Nombre de descarga profesional desde el Title (translitera acentos, deja [A-Za-z0-9._-]). No toca el ObjectKey.</summary>
-    private static string BuildDocumentFileName(string title, string suffix)
-    {
-        var normalized = (title ?? string.Empty).Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(normalized.Length);
-        var lastWasUnderscore = false;
-        foreach (var ch in normalized)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
-                continue;
-
-            if (ch is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-' or '.')
-            {
-                sb.Append(ch);
-                lastWasUnderscore = false;
-            }
-            else if (!lastWasUnderscore)
-            {
-                sb.Append('_');
-                lastWasUnderscore = true;
-            }
-        }
-
-        var cleaned = sb.ToString().Trim('_', '.', '-');
-        if (cleaned.Length > MaxFileNameBaseLength)
-            cleaned = cleaned[..MaxFileNameBaseLength].Trim('_', '.', '-');
-        if (string.IsNullOrEmpty(cleaned))
-            cleaned = "Document";
-        return cleaned + suffix;
-    }
-
     private static async Task<(string? IssuerName, byte[]? TenantLogo)> ResolveBrandingAsync(
         Guid tenantId,
+        IReadOnlyList<TenantLogoSurface> logoPreference,
         ITenantBrandingRefRepository brandingRepository,
         ISignatureCloudStorageClient storage,
         ILogger logger,
@@ -838,25 +831,28 @@ public static class SignatureRequestCompletedConsumer
     )
     {
         var branding = await brandingRepository.GetByTenantIdAsync(tenantId, ct);
-        if (branding is null)
-            return (null, null);
+        var issuerName = branding?.IssuerDisplayName;
 
-        var issuerName = string.IsNullOrWhiteSpace(branding.OfficeName) ? null : branding.OfficeName;
-        if (!branding.HasLogo)
-            return (issuerName, null);
-
-        // Best-effort: un logo que no baja no debe frenar la generación del certificado.
-        var logoResult = await storage.DownloadAsync(tenantId, branding.LogoFileId!.Value, ct);
-        if (logoResult.IsFailure)
+        // Best-effort: un logo que no baja no frena el certificado; se prueba la siguiente superficie.
+        var logos = await brandingRepository.ListLogosAsync(tenantId, ct);
+        foreach (var surface in logoPreference)
         {
+            var logo = logos.FirstOrDefault(l => l.Surface == surface && l.HasLogo);
+            if (logo is null)
+                continue;
+
+            var logoResult = await storage.DownloadAsync(tenantId, logo.LogoFileId!.Value, ct);
+            if (logoResult.IsSuccess)
+                return (issuerName, logoResult.Value);
+
             logger.LogWarning(
-                "Tenant logo download failed for the certificate (tenant {TenantId}); rendering without it.",
+                "Tenant {Surface} logo download failed for the certificate (tenant {TenantId}).",
+                surface,
                 tenantId
             );
-            return (issuerName, null);
         }
 
-        return (issuerName, logoResult.Value);
+        return (issuerName, null);
     }
 
     private static CertificateOfCompletionModel BuildCertificateModel(
@@ -975,15 +971,7 @@ public static class SignatureRequestCompletedConsumer
         return new CertificatePreparerEntry(preparer.DisplayName, MaskIdentifier(preparer.PtinOrEfin), at);
     }
 
-    /// <summary>Enmascara un PTIN/EFIN dejando visibles los últimos 4 (p. ej. "P•••••5678").</summary>
-    private static string MaskIdentifier(string identifier)
-    {
-        if (string.IsNullOrEmpty(identifier))
-            return string.Empty;
-        if (identifier.Length <= 4)
-            return new string('•', identifier.Length);
-        return identifier[0] + new string('•', identifier.Length - 5) + identifier[^4..];
-    }
+    private static string MaskIdentifier(string identifier) => PreparerIdentifierMask.Mask(identifier);
 
     // ============== Fase 6: publicar Sealed / Failed ==============
 
@@ -1004,7 +992,11 @@ public static class SignatureRequestCompletedConsumer
                 {
                     TenantId = request.TenantId,
                     CorrelationId = correlationId,
-                    IdempotencyKey = $"signature.doc_sealed:{request.Id:N}:{sealedDocument.DocumentId:N}:v1",
+                    IdempotencyKey = SignatureSealingIdempotencyKeys.DocumentSealed(
+                        request.Id,
+                        sealedDocument.DocumentId,
+                        sealedDocument.SealedFileId
+                    ),
                     SignatureRequestId = request.Id,
                     CreatedByUserId = request.CreatedByUserId,
                     DocumentId = sealedDocument.DocumentId,
@@ -1061,6 +1053,9 @@ public static class SignatureRequestCompletedConsumer
             .AsTask();
 
     // ============== Helpers ==============
+
+    /// <summary>Lock por solicitud del sellado; lo comparte quien toque sus archivos finales.</summary>
+    internal static string SealingLockKey(Guid signatureRequestId) => $"signature:sealing:{signatureRequestId:N}";
 
     private static string ResolveCorrelationId(string? sourceCorrelationId, Guid sourceEventId) =>
         string.IsNullOrWhiteSpace(sourceCorrelationId) ? sourceEventId.ToString("N") : sourceCorrelationId;

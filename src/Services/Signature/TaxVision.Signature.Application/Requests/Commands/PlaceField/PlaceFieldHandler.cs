@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 
@@ -11,6 +12,7 @@ public static class PlaceFieldHandler
     public static async Task<Result<SignatureFieldResponse>> Handle(
         PlaceFieldCommand cmd,
         ISignatureRequestRepository repository,
+        ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -26,12 +28,14 @@ public static class PlaceFieldHandler
             );
 
         var placement = request.PlaceField(
+            (await platform.GetAsync(ct)).MaxFieldsPerSigner,
             cmd.SignerId,
             cmd.DocumentId,
             cmd.Kind,
             positionResult.Value,
             cmd.Label,
-            cmd.IsRequired
+            cmd.IsRequired,
+            cmd.FontSizePt
         );
         if (placement.IsFailure)
             return Result.Failure<SignatureFieldResponse>(placement.Error);
@@ -52,6 +56,7 @@ public static class PlaceFieldHandler
             field.Position.Width,
             field.Position.Height,
             field.Label,
-            field.IsRequired
+            field.IsRequired,
+            field.FontSizePt
         );
 }

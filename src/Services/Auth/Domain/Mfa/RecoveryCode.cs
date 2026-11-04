@@ -6,6 +6,11 @@ public sealed class RecoveryCode : TenantEntity
 {
     private RecoveryCode() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Se borran (MfaFactors.ClearAsync)."
+    )]
     public Guid UserId { get; private set; }
     public string CodeHash { get; private set; } = default!;
     public DateTime CreatedAtUtc { get; private set; }

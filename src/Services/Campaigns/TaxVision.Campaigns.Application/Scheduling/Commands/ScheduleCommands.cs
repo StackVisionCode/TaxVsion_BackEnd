@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
+using TaxVision.Campaigns.Application.Permissions.Abstractions;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Scheduling;
@@ -89,7 +90,11 @@ public static class ScheduleCampaignHandler
 
 // ─────────────────────────── Pause / Resume / Cancel ───────────────────────────
 
-public sealed record SetScheduleStateCommand(Guid TenantId, Guid ScheduleId, ScheduleAction Action);
+/// <summary>
+/// Pausa / reanuda / cancela un agendado. <paramref name="ActorUserId"/> = quien lo pide (del JWT): si al
+/// reanudar el ejecutor actual ya no puede enviar, el agendado pasa a dispararse en su nombre.
+/// </summary>
+public sealed record SetScheduleStateCommand(Guid TenantId, Guid ScheduleId, ScheduleAction Action, Guid ActorUserId);
 
 public enum ScheduleAction
 {
@@ -103,6 +108,7 @@ public static class SetScheduleStateHandler
     public static async Task<Result<CampaignScheduleResponse>> Handle(
         SetScheduleStateCommand command,
         ICampaignScheduleRepository schedules,
+        IUserPermissionsProjectionRepository permissions,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -114,7 +120,7 @@ public static class SetScheduleStateHandler
         var action = command.Action switch
         {
             ScheduleAction.Pause => schedule.Pause(),
-            ScheduleAction.Resume => schedule.Resume(),
+            ScheduleAction.Resume => await ResumeAsync(schedule, command, schedules, permissions, ct),
             ScheduleAction.Cancel => schedule.Cancel(),
             _ => Result.Failure(CampaignScheduleErrors.InvalidTransition),
         };
@@ -123,5 +129,42 @@ public static class SetScheduleStateHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(CampaignScheduleResponse.From(schedule));
+    }
+
+    // Si quien dispara ya no puede enviar (p. ej. pausado por un retiro), reanudar tal cual dispararía en su
+    // nombre y con su visibilidad: pasa a quien reanuda, con la visibilidad de este, y queda constancia.
+    private static async Task<Result> ResumeAsync(
+        CampaignSchedule schedule,
+        SetScheduleStateCommand command,
+        ICampaignScheduleRepository schedules,
+        IUserPermissionsProjectionRepository permissions,
+        CancellationToken ct
+    )
+    {
+        if (schedule.Status != ScheduleStatus.Paused)
+            return Result.Failure(CampaignScheduleErrors.NotPaused);
+
+        // Sin ejecutor (agendados previos a A1) o con ejecutor elegible: como siempre.
+        if (
+            schedule.EffectiveRunAsUserId is not { } runAs
+            || await ScheduleSenderEligibility.ResolveAsync(permissions, command.TenantId, runAs, ct) is not null
+        )
+            return schedule.Resume();
+
+        var actor = await ScheduleSenderEligibility.ResolveAsync(
+            permissions,
+            command.TenantId,
+            command.ActorUserId,
+            ct
+        );
+        if (actor is null)
+            return Result.Failure(CampaignScheduleErrors.ResumeTakeoverNotAllowed);
+
+        var resumed = schedule.ResumeTakingOver(actor.UserId, actor.CanViewAllCustomers);
+        if (resumed.IsFailure)
+            return resumed;
+
+        await schedules.AddHandoverAsync(CampaignScheduleHandover.ResumedByAdmin(schedule, runAs, DateTime.UtcNow), ct);
+        return Result.Success();
     }
 }

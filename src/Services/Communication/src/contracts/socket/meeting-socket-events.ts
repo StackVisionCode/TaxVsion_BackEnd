@@ -355,6 +355,9 @@ export interface MeetingSnapshotDto {
   strategy: 'Mesh' | 'Sfu';
   hostUserId: string;
   isLocked: boolean;
+  /** D-69/D-68: admite externos y si hay enlace de la reunion encendido. */
+  guestsAllowed?: boolean;
+  guestLinkEnabled?: boolean;
   participants: readonly MeetingParticipantDto[];
   yourRole: 'Host' | 'Cohost' | 'Attendee';
   sequence: number;
@@ -367,6 +370,8 @@ export interface MeetingSnapshotDto {
   endsAtUtc: string | null;
   endReason: MeetingEndReasonDto | null;
   continuationOfMeetingId: string | null;
+  /** MNT-01 (G-2): estado de la ultima grabacion al entrar o volver; null = nunca se grabo. */
+  recording?: MeetingRecordingStateChangedDto | null;
 }
 
 export interface MeetingParticipantChangedDto {
@@ -388,6 +393,9 @@ export interface MeetingStateDto {
   isLocked: boolean;
   hostUserId: string;
   sequence: number;
+  /** D-69/D-68: presentes cuando cambia el acceso de externos o el enlace. */
+  guestsAllowed?: boolean;
+  guestLinkEnabled?: boolean;
   /** F3 — presente cuando status es Ended. */
   endReason?: MeetingEndReasonDto | null;
 }
@@ -489,6 +497,9 @@ export interface MeetingRecordingStateChangedDto {
   maxDurationSeconds?: number | null;
   /** F7: en Stopping = User|LimitReached|MeetingEnded|CallEnded; en Failed = codigo del fallo. */
   reason?: string | null;
+  /** D-71: grabacion a la que se refiere el estado (hay varias por reunion). */
+  recordingId?: string;
+  requestedByUserId?: string;
 }
 
 /** F7 (T-35): la grabacion se corta pronto por el limite (una sola vez por sesion). */

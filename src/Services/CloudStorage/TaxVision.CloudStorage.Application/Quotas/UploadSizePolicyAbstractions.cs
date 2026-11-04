@@ -1,5 +1,5 @@
-using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Domain.Files;
+using TaxVision.CloudStorage.Domain.FileTypes;
 using TaxVision.CloudStorage.Domain.Quotas;
 
 namespace TaxVision.CloudStorage.Application.Quotas;
@@ -37,15 +37,17 @@ public interface IUploadSizePolicyAuditRepository
 }
 
 /// <summary>
-/// Política efectiva de un upload: tipos permitidos de <see cref="CloudStorageOptions.ResolveUploadPolicy"/>
-/// y tamaño de la cadena en BD (Tenant > Plan > Global), cayendo al valor de código si no hay filas.
+/// Política efectiva de un upload (tamaño y tipos) para un tenant y una carpeta: catálogo y política por
+/// carpeta de la plataforma, lo que vende el plan, las excepciones de tamaño en BD (Tenant > Plan > Global)
+/// y, si sube un cliente del portal, la restricción de su oficina.
 /// </summary>
 public interface IUploadPolicyResolver
 {
     Task<EffectiveUploadPolicy> ResolveAsync(
         Guid tenantId,
-        string planCode,
+        TenantStorageLimit limit,
         FolderType folderType,
+        bool forCustomerPortal,
         CancellationToken ct
     );
 }

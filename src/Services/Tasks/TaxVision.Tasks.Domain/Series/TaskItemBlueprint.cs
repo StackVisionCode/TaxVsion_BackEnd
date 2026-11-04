@@ -1,3 +1,4 @@
+using BuildingBlocks.Domain;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 
@@ -19,6 +20,8 @@ public sealed record TaskItemBlueprint
     public required TaskPriority Priority { get; init; }
     public required TaskReference Reference { get; init; }
     public EstimatedHours? Estimated { get; init; }
+
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "TasksUserOffboardedConsumer")]
     public required Guid AssigneeUserId { get; init; }
     public required bool IsStatutory { get; init; }
 }

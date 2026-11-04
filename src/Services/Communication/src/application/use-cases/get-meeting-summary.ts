@@ -74,7 +74,7 @@ export interface MeetingSummaryDto {
 export interface GetMeetingSummaryDeps {
   readonly meetings: MeetingRepository;
   readonly meetingEvents: MeetingEventLogRepository;
-  readonly recordingSessions: Pick<RecordingSessionRepository, 'findByScope'>;
+  readonly recordingSessions: Pick<RecordingSessionRepository, 'findLatestByScope'>;
   readonly userDirectory?: Pick<UserDirectoryRepository, 'findByUserIds'>;
   readonly avatars?: AvatarResolver;
 }
@@ -114,7 +114,7 @@ export async function getMeetingSummary(
   const invitedNotJoined = canManage && !query.isPortal ? await listInvitedNotJoined(meeting.id, snapshot, attendance, deps) : [];
   const hostName = await resolveHostName(snapshot, deps.userDirectory);
   const recording = query.recordingVisible
-    ? await deps.recordingSessions.findByScope(query.tenantId, RecordingScope.Meeting, snapshot.id)
+    ? await deps.recordingSessions.findLatestByScope(query.tenantId, RecordingScope.Meeting, snapshot.id)
     : null;
 
   return Result.ok({

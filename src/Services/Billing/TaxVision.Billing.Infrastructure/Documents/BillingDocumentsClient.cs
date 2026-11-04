@@ -51,6 +51,9 @@ public sealed class BillingDocumentsClient(
                     name = request.Issuer.Name,
                     taxId = request.Issuer.TaxId,
                     address = request.Issuer.Address,
+                    phone = request.Issuer.Phone,
+                    email = request.Issuer.Email,
+                    website = request.Issuer.Website,
                 },
                 customer = new
                 {
@@ -78,6 +81,10 @@ public sealed class BillingDocumentsClient(
                 discount = request.Discount,
                 settlementType = request.SettlementType,
                 adjustments = (request.Adjustments ?? []).Select(a => new { label = a.Label, amount = a.Amount }),
+                // Ajustes de facturación congelados: plazo (texto ya legible), instrucciones de pago y pie.
+                paymentTerms = request.PaymentTerms,
+                paymentInstructions = request.PaymentInstructions,
+                invoiceFooter = request.InvoiceFooter,
             },
         };
 

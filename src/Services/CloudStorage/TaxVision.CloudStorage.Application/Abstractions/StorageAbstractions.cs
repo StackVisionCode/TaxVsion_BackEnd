@@ -364,6 +364,9 @@ public interface IShareLinkRepository
     /// </summary>
     Task<IReadOnlyList<ShareLink>> ListActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct);
 
+    /// <summary>Links ACTIVOS donde el usuario es destinatario, con sus Recipients y tracked (retiro).</summary>
+    Task<IReadOnlyList<ShareLink>> ListActiveWithUserRecipientAsync(Guid tenantId, Guid userId, CancellationToken ct);
+
     /// <summary>Cuántos links ACTIVOS creó el empleado (mismo filtro que ListActiveByCreatorAsync, sin
     /// materializar) — pre-flight de impacto al retirarlo. Default 0 para no romper los fakes; el repo
     /// real lo implementa con COUNT.</summary>

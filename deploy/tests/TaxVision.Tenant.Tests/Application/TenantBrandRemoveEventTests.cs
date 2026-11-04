@@ -7,7 +7,7 @@ using TaxVision.Tenant.Tests.TestSupport;
 
 namespace TaxVision.Tenant.Tests.Application;
 
-/// <summary>Al quitar el logo del CRM, Scribe se entera (TenantLogoRemoved); el resto de assets no.</summary>
+/// <summary>Al quitar el logo del CRM o del Portal sale TenantLogoRemoved con su superficie; el favicon no.</summary>
 public sealed class TenantBrandRemoveEventTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
@@ -33,17 +33,19 @@ public sealed class TenantBrandRemoveEventTests
     }
 
     [Fact]
-    public async Task Removing_the_crm_logo_publishes_TenantLogoRemoved()
+    public async Task Removing_the_crm_logo_publishes_TenantLogoRemoved_for_the_crm_surface()
     {
         var bus = await RemoveAsync(BrandSurface.Crm, BrandAssetKey.Logo);
-        Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
+        var evt = Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
+        Assert.Equal(TenantBrandSurfaces.Crm, evt.Surface);
     }
 
     [Fact]
-    public async Task Removing_the_portal_logo_does_not_notify_scribe()
+    public async Task Removing_the_portal_logo_publishes_TenantLogoRemoved_for_the_portal_surface()
     {
         var bus = await RemoveAsync(BrandSurface.Portal, BrandAssetKey.Logo);
-        Assert.Empty(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
+        var evt = Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
+        Assert.Equal(TenantBrandSurfaces.Portal, evt.Surface);
     }
 
     [Fact]

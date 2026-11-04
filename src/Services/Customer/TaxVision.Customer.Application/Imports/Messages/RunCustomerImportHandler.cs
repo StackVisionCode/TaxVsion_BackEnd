@@ -310,6 +310,7 @@ public static class RunCustomerImportHandler
                 CorrelationId = correlation.CorrelationId,
                 ImportJobId = attemptId,
                 CreatedByUserId = info.CreatedByUserId,
+                NotifyUserId = attempt.NotifyUserId,
                 CompletedAtUtc = completedAtUtc,
                 TotalRows = total,
                 SuccessCount = aggregate.Success,
@@ -823,6 +824,7 @@ public static class RunCustomerImportHandler
                 CorrelationId = correlation.CorrelationId,
                 ImportJobId = attempt.Id,
                 CreatedByUserId = attempt.CreatedByUserId,
+                NotifyUserId = attempt.NotifyUserId,
                 Reason = attempt.FailureReason ?? reason,
                 FailedAtUtc = failedAtUtc,
             }

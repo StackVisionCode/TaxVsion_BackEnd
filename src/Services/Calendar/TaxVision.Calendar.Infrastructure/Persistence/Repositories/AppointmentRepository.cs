@@ -109,6 +109,20 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
             .Where(a => a.Recurrence != null || a.Timing.EndUtc > nowUtc)
             .ToListAsync(ct);
 
+    // Tracked (el consumer de offboard saca al asistente). Mismo corte de vigencia que por organizador.
+    public async Task<IReadOnlyList<Appointment>> ListFutureByStaffAttendeeAsync(
+        Guid tenantId,
+        Guid userId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    ) =>
+        await Scoped(tenantId)
+            .Include(a => a.Attendees)
+            .Include(a => a.Exceptions)
+            .Where(a => a.Status != AppointmentStatus.Cancelled && a.Attendees.Any(at => at.UserId == userId))
+            .Where(a => a.Recurrence != null || a.Timing.EndUtc > nowUtc)
+            .ToListAsync(ct);
+
     // Mismo filtro que ListFutureByOrganizerAsync (vigentes = series o puntuales que aún no terminan),
     // solo cuenta — pre-flight de impacto al retirarlo.
     public Task<int> CountFutureByOrganizerAsync(

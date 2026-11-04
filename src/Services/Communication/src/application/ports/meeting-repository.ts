@@ -22,6 +22,15 @@ export interface MeetingRepository {
   listActiveHostedBy(tenantId: string, hostUserId: string): Promise<Meeting[]>;
   /** Cuántas reuniones activas (Scheduled|Live) tiene como host — pre-flight de impacto al retirarlo. */
   countActiveHostedBy(tenantId: string, hostUserId: string): Promise<number>;
+  /**
+   * Retiro: reuniones Scheduled de OTRO host donde el usuario sigue como participante (no Removed). Aggregate
+   * completo para mutar y guardar.
+   */
+  listScheduledWithParticipant(tenantId: string, userId: string): Promise<Meeting[]>;
+  /** Pre-flight del retiro: cuántas reuniones Scheduled de otros lo tienen como participante o invitado abierto. */
+  countScheduledWithParticipant(tenantId: string, userId: string): Promise<number>;
+  /** Retiro: invitaciones abiertas (sin revocar ni cerrar) a su cuenta en reuniones Scheduled/Live. */
+  listOpenInvitationsForInvitee(tenantId: string, inviteeUserId: string): Promise<MeetingInvitation[]>;
   /** F3 — scheduler de ciclo de vida: todas las reuniones Live de la plataforma (lote acotado). */
   listLive(input: { take: number }): Promise<Meeting[]>;
   /** F3 — Scheduled con fecha (o creación, si no tienen fecha) anterior al corte: candidatas a Expired. */
@@ -38,6 +47,8 @@ export interface MeetingRepository {
    * findInvitationByHash aplica al TokenHash.
    */
   findByShortCodeAnyTenant(shortCode: string): Promise<Meeting | null>;
+  /** D-68: el enlace de la reunion trae su id (GUID global); la oficina sale de la reunion. */
+  findByIdAnyTenant(meetingId: string): Promise<Meeting | null>;
   saveInvitation(invitation: MeetingInvitation): Promise<void>;
   /**
    * Cross-tenant lookup por diseno: el TokenHash es globalmente unico (SHA-256

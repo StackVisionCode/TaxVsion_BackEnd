@@ -25,6 +25,8 @@ public sealed class UpsertSignatureDraftHandlerTests
             repo,
             new FakeProjection(),
             new FakeCategoryResolver(),
+            new FixedSignatureLimitsResolver(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new FakeCache(),
             CancellationToken.None
@@ -64,6 +66,8 @@ public sealed class UpsertSignatureDraftHandlerTests
             repo,
             new FakeProjection(),
             new FakeCategoryResolver(),
+            new FixedSignatureLimitsResolver(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new FakeCache(),
             CancellationToken.None
@@ -90,6 +94,8 @@ public sealed class UpsertSignatureDraftHandlerTests
             repo,
             new FakeProjection(),
             new FakeCategoryResolver(),
+            new FixedSignatureLimitsResolver(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new FakeCache(),
             CancellationToken.None
@@ -109,6 +115,8 @@ public sealed class UpsertSignatureDraftHandlerTests
             repo,
             new FakeProjection(),
             new FakeCategoryResolver(),
+            new FixedSignatureLimitsResolver(),
+            new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new FakeCache(),
             CancellationToken.None
@@ -118,11 +126,112 @@ public sealed class UpsertSignatureDraftHandlerTests
         Assert.Equal("Signature.Request.NotFound", result.Error.Code);
     }
 
+    [Fact]
+    public async Task Returns_the_resolved_ids_in_payload_order()
+    {
+        var draft = NewDraft();
+        var newFileId = Guid.NewGuid();
+        var command = NewCommand(draft) with
+        {
+            Documents = NewCommand(draft)
+                .Documents.Append(new DraftDocumentSpec("doc-2", null, newFileId, "Letter", null))
+                .ToList(),
+            Signers = new[]
+            {
+                new DraftSignerSpec(null, "a@example.com", "Alice A", null, "En", null),
+                new DraftSignerSpec(null, "b@example.com", "Bob B", null, "En", null),
+            },
+            Fields = new[] { SignatureField(signerIndex: 1, "doc-2"), SignatureField(signerIndex: 0, "doc-1") },
+        };
+
+        var result = await Upsert(command, new FakeRepository(draft));
+
+        Assert.True(result.IsSuccess);
+        var response = result.Value;
+        Assert.Equal(new[] { "doc-1", "doc-2" }, response.Documents.Select(d => d.LocalId));
+        Assert.Equal(draft.Documents.Single(d => d.OriginalFileId == newFileId).Id, response.Documents[1].Id);
+        Assert.Equal(
+            new[] { "a@example.com", "b@example.com" },
+            response.SignerIds.Select(id => draft.Signers.Single(s => s.Id == id).Email.Value)
+        );
+        Assert.Equal(
+            draft.Signers.Single(s => s.Email.Value == "b@example.com").Fields.Single().Id,
+            response.FieldIds[0]
+        );
+    }
+
+    [Fact]
+    public async Task Saving_again_without_the_new_ids_does_not_duplicate_documents_or_signers()
+    {
+        var draft = NewDraft();
+        var repo = new FakeRepository(draft);
+        var newFileId = Guid.NewGuid();
+        var body = NewCommand(draft) with
+        {
+            Documents = NewCommand(draft)
+                .Documents.Append(new DraftDocumentSpec("doc-2", null, newFileId, "Letter", null))
+                .ToList(),
+            Signers = new[] { new DraftSignerSpec(null, "a@example.com", "Alice A", null, "En", null) },
+            Fields = new[] { SignatureField(signerIndex: 0, "doc-2") },
+        };
+
+        var first = await Upsert(body, repo);
+        var second = await Upsert(body with { ExpectedUpdatedAtUtc = first.Value.UpdatedAtUtc }, repo);
+
+        Assert.True(second.IsSuccess);
+        Assert.Equal(2, draft.Documents.Count);
+        Assert.Single(draft.Signers);
+        Assert.Equal(first.Value.Documents[1].Id, second.Value.Documents[1].Id);
+        Assert.Equal(first.Value.SignerIds, second.Value.SignerIds);
+        Assert.Single(draft.Signers.Single().Fields);
+    }
+
+    [Fact]
+    public async Task Signers_follow_the_payload_order()
+    {
+        var draft = NewDraftWithOneSigner();
+        var sam = draft.Signers.Single();
+        var command = NewCommand(draft) with
+        {
+            Signers = new[]
+            {
+                new DraftSignerSpec(null, "a@example.com", "Alice A", null, "En", null),
+                new DraftSignerSpec(sam.Id, sam.Email.Value, sam.FullName.Value, null, "En", null),
+            },
+        };
+
+        var result = await Upsert(command, new FakeRepository(draft));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(result.Value.SignerIds, draft.Signers.OrderBy(s => s.Order).Select(s => s.Id));
+        Assert.Equal(sam.Id, result.Value.SignerIds[1]);
+    }
+
+    private static Task<Result<UpsertSignatureDraftResponse>> Upsert(
+        UpsertSignatureDraftCommand command,
+        FakeRepository repo
+    ) =>
+        UpsertSignatureDraftHandler.Handle(
+            command,
+            repo,
+            new FakeProjection(),
+            new FakeCategoryResolver(),
+            new FixedSignatureLimitsResolver(),
+            new FixedSignaturePlatformSettings(),
+            new FakeUnitOfWork(),
+            new FakeCache(),
+            CancellationToken.None
+        );
+
+    private static DraftFieldSpec SignatureField(int signerIndex, string documentLocalId) =>
+        new(null, signerIndex, documentLocalId, SignatureFieldKind.Signature, 1, 0.1, 0.1, 0.2, 0.05, null, true);
+
     // ============== Fábricas ==============
 
     private static SignatureRequest NewDraft() =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 tenantId: Guid.NewGuid(),
                 createdByUserId: Guid.NewGuid(),
                 title: "Autosave test",
@@ -139,7 +248,12 @@ public sealed class UpsertSignatureDraftHandlerTests
     private static SignatureRequest NewDraftWithOneSigner()
     {
         var draft = NewDraft();
-        draft.AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Sam").Value, null);
+        draft.AddSigner(
+            TestSignatureLimits.Default,
+            SignerEmail.Create("s@example.com").Value,
+            SignerFullName.Create("Sam").Value,
+            null
+        );
         return draft;
     }
 
@@ -228,10 +342,12 @@ public sealed class UpsertSignatureDraftHandlerTests
 
         public Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
             DateTime nowUtc,
+            int maxRemindersPerRequest,
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
         public Task<IReadOnlyList<SignatureRequest>> ListPurgeCandidatesAsync(
+            Guid tenantId,
             DateTime olderThanUtc,
             int batchSize,
             CancellationToken ct = default
@@ -242,6 +358,11 @@ public sealed class UpsertSignatureDraftHandlerTests
             int batchSize,
             CancellationToken ct = default
         ) => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<SignatureRequest>>([]);
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,

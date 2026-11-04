@@ -52,6 +52,12 @@ public sealed class SentMessage : TenantEntity
     public EmailStream Stream { get; private set; }
     public string ProviderCode { get; private set; } = default!;
     public SentMessageStatus Status { get; private set; }
+
+    /// <summary>
+    /// Estado de "Email activity", guardado para filtrar con la misma regla que se muestra. Lo recalcula
+    /// cada transición que cambia <see cref="Status"/> o el outcome de un destinatario.
+    /// </summary>
+    public SentMessageActivity Activity { get; private set; }
     public DateTime QueuedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
     public DateTime? LastEventAtUtc { get; private set; }
@@ -168,6 +174,7 @@ public sealed class SentMessage : TenantEntity
                 : inReplyToInternetMessageId,
         };
         message.SetTenant(tenantId);
+        message.RefreshActivity();
         message._references.AddRange(references ?? []);
         message._events.Add(
             SentMessageEvent.Create(tenantId, message.Id, null, SentMessageEventType.Queued, queuedAtUtc, null, null)
@@ -201,6 +208,7 @@ public sealed class SentMessage : TenantEntity
             return Result.Failure(InvalidTransition(SentMessageStatus.Sending));
 
         Status = SentMessageStatus.Sending;
+        RefreshActivity();
         return Result.Success();
     }
 
@@ -228,6 +236,7 @@ public sealed class SentMessage : TenantEntity
                 recipient.MarkAsSent(providerMessageId, sentAtUtc);
         }
         RecordAttempt(succeeded: true, failureReason: null, sentAtUtc);
+        RefreshActivity();
 
         _events.Add(SentMessageEvent.Create(TenantId, Id, null, SentMessageEventType.Sent, sentAtUtc, null, null));
         return Result.Success();
@@ -243,6 +252,7 @@ public sealed class SentMessage : TenantEntity
         if (Status == SentMessageStatus.Sending)
             RecordAttempt(succeeded: false, reason, eventAtUtc);
         Status = SentMessageStatus.Failed;
+        RefreshActivity();
         ErrorReason = Truncate(reason, 500);
         LastEventAtUtc = eventAtUtc;
         _events.Add(
@@ -319,6 +329,7 @@ public sealed class SentMessage : TenantEntity
             return Result.Failure(InvalidTransition(SentMessageStatus.Suppressed));
 
         Status = SentMessageStatus.Suppressed;
+        RefreshActivity();
         ErrorReason = Truncate(reason, 500);
         LastEventAtUtc = eventAtUtc;
         _events.Add(
@@ -337,6 +348,7 @@ public sealed class SentMessage : TenantEntity
             return Result.Failure(InvalidTransition(SentMessageStatus.ProviderNotConfigured));
 
         Status = SentMessageStatus.ProviderNotConfigured;
+        RefreshActivity();
         LastEventAtUtc = eventAtUtc;
         _events.Add(
             SentMessageEvent.Create(
@@ -377,6 +389,7 @@ public sealed class SentMessage : TenantEntity
             return Result.Failure(RecipientNotFound(recipientId));
 
         recipient.MarkRejectedAtSend(reason, rejectedAtUtc);
+        RefreshActivity();
         AppendRecipientEvent(recipient, SentMessageEventType.Rejected, rejectedAtUtc, null, reason);
         return Result.Success();
     }
@@ -417,6 +430,9 @@ public sealed class SentMessage : TenantEntity
         if (recipient is null)
             return Result.Failure<bool>(RecipientNotFound(recipientId));
 
+        // El mismo resultado llegado por otra vía (webhook y consultas de respaldo) ya está anotado: se valida
+        // igual, pero no se repite en el historial.
+        var alreadyRecorded = recipient.HasRecorded(feedback);
         var outcomeBefore = recipient.Outcome;
         var firstOfItsKind = IsFirstSignal(recipient, feedback);
         var applied =
@@ -425,6 +441,9 @@ public sealed class SentMessage : TenantEntity
                 : ApplySignal(recipient, feedback);
         if (applied.IsFailure)
             return Result.Failure<bool>(applied.Error);
+        if (alreadyRecorded)
+            return Result.Success(false);
+        RefreshActivity();
 
         AppendRecipientEvent(
             recipient,
@@ -507,6 +526,24 @@ public sealed class SentMessage : TenantEntity
                 DeliveryOutcome.Complained => SentMessageEventType.Complained,
                 _ => SentMessageEventType.Bounced,
             };
+
+    /// <summary>Única regla de "Email activity": el estado del envío y, si salió, el peor outcome.</summary>
+    private void RefreshActivity() =>
+        Activity = Status switch
+        {
+            SentMessageStatus.Queued or SentMessageStatus.Sending => SentMessageActivity.Sending,
+            SentMessageStatus.Failed or SentMessageStatus.ProviderNotConfigured => SentMessageActivity.Failed,
+            SentMessageStatus.Suppressed => SentMessageActivity.Suppressed,
+            _ => DeliverySummary switch
+            {
+                DeliveryOutcome.Complained => SentMessageActivity.Complained,
+                DeliveryOutcome.HardBounced or DeliveryOutcome.SoftBounced or DeliveryOutcome.Rejected =>
+                    SentMessageActivity.Bounced,
+                DeliveryOutcome.Deferred => SentMessageActivity.Deferred,
+                DeliveryOutcome.Delivered => SentMessageActivity.Delivered,
+                _ => SentMessageActivity.Sent,
+            },
+        };
 
     /// <summary>Orden para mostrar: lo que más necesita atención primero; entregado es lo menos.</summary>
     private static int Severity(DeliveryOutcome outcome) =>

@@ -57,6 +57,7 @@ public sealed class TenantProvisioningClient(
                         subdomain = request.Subdomain,
                         adminEmail = request.AdminEmail,
                         paymentCompletedAtUtc = request.PaymentCompletedAtUtc,
+                        defaultTimeZoneId = request.DefaultTimeZoneId,
                     }
                 ),
             };

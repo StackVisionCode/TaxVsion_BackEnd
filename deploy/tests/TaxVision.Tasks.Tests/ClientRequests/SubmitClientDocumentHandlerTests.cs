@@ -167,4 +167,16 @@ internal sealed class InMemoryClientRequestRepository(params ClientRequest[] see
 
     public Task<ClientRequest?> GetByDocumentFileIdAsync(Guid fileId, CancellationToken ct = default) =>
         Task.FromResult(_requests.FirstOrDefault(r => r.Documents.Any(d => d.FileId == fileId)));
+
+    public Task<IReadOnlyList<ClientRequest>> ListOpenForStaffRecipientAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<ClientRequest>>([
+            .. _requests.Where(r => r.TenantId == tenantId && r.IsOpen && r.StaffRecipientUserId == userId),
+        ]);
+
+    public Task<int> CountOpenForStaffRecipientAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(_requests.Count(r => r.TenantId == tenantId && r.IsOpen && r.StaffRecipientUserId == userId));
 }

@@ -18,6 +18,8 @@ public sealed class TaskDependency : BaseEntity, ITenantOwned
     public Guid DependsOnTaskId { get; private set; }
 
     public DependencyType Type { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 

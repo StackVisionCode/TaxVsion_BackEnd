@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Delivery;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
 
@@ -25,6 +26,7 @@ public static class ListSentMessagesHandler
             query.Page,
             query.Size,
             query.VisibleAccountIds,
+            query.Filter,
             ct
         );
 
@@ -37,13 +39,17 @@ public static class ListSentMessagesHandler
             draft.Id,
             draft.EmailThreadId,
             draft.Subject,
-            draft.Recipients.Where(r => r.Type == EmailRecipientType.To).Select(r => r.Address).ToList(),
+            draft.AddressesOf(EmailRecipientType.To),
             draft.ReplyContext is not null,
             // UpdatedAtUtc ES el instante de envío una vez Sent — ningún método del aggregate lo vuelve
             // a tocar después (mismo criterio que ListThreadMessagesHandler.ToOutboundSummary).
             draft.UpdatedAtUtc,
             draft.Attachments.Count > 0,
             draft.Attachments.Count,
-            draft.CustomerId
+            draft.CustomerId,
+            DeliveryStatusSummary.Overall(draft),
+            DeliveryStatusSummary.Recipients(draft),
+            draft.AddressesOf(EmailRecipientType.Cc),
+            draft.AddressesOf(EmailRecipientType.Bcc)
         );
 }

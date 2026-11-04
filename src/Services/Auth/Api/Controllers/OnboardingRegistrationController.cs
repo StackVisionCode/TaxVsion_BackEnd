@@ -42,7 +42,8 @@ public sealed class OnboardingRegistrationController(IMessageBus bus) : Controll
         string OfficeName,
         string Subdomain,
         bool TermsAccepted,
-        Guid TermsVersionId
+        Guid TermsVersionId,
+        string? TimeZoneId = null
     );
 
     [HttpPost("complete")]
@@ -61,7 +62,8 @@ public sealed class OnboardingRegistrationController(IMessageBus bus) : Controll
                 request.OfficeName,
                 request.Subdomain,
                 request.TermsAccepted,
-                request.TermsVersionId
+                request.TermsVersionId,
+                request.TimeZoneId
             ),
             ct
         );

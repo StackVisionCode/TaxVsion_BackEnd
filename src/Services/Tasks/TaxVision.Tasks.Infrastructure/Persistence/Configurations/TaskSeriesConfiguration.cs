@@ -14,6 +14,7 @@ public sealed class TaskSeriesConfiguration : IEntityTypeConfiguration<TaskSerie
 
         builder.Property(s => s.TenantId).IsRequired();
         builder.Property(s => s.CreatedByUserId).IsRequired();
+        builder.Property(s => s.OwnerUserId);
         builder.Property(s => s.Mode).HasConversion<int>().IsRequired();
         builder.Property(s => s.Status).HasConversion<int>().IsRequired();
         builder.Property(s => s.AnchorUtc).IsRequired();

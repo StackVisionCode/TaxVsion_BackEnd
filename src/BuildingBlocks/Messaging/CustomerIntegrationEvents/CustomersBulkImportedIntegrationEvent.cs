@@ -13,6 +13,9 @@ public sealed record CustomersBulkImportedIntegrationEvent : IntegrationEvent
 {
     public required Guid ImportJobId { get; init; }
     public required Guid CreatedByUserId { get; init; }
+
+    /// <summary>A quién avisar si no es el creador (p. ej. el creador fue retirado). Nulo = el creador.</summary>
+    public Guid? NotifyUserId { get; init; }
     public required DateTime CompletedAtUtc { get; init; }
     public required int TotalRows { get; init; }
     public required int SuccessCount { get; init; }

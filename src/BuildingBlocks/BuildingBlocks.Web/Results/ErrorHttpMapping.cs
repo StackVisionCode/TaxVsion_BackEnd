@@ -301,6 +301,8 @@ public static class ErrorHttpMapping
             or "Tenant.Inactive"
             or "TenantPaymentConfig.NotActive"
             or "Invitation.Forbidden"
+            // Reanudar un agendado de Campaigns exige poder enviar campañas (lo toma a su nombre).
+            or "CampaignSchedule.ResumeTakeoverNotAllowed"
             or "Session.Forbidden"
             or "Mfa.RequiredByPolicy"
             or "Auth.StepUpRequired"
@@ -390,6 +392,8 @@ public static class ErrorHttpMapping
             or "EmailAccount.Conflict"
             or "ShareLink.AlreadyRevoked"
             or "TenantPaymentConfig.AlreadyExists"
+            // Borrar un proveedor con pagos dejaría sin verificar sus reembolsos/disputas: se desactiva.
+            or "TenantPaymentConfig.HasPayments"
             // 2026-07-20 — DeleteFolderHandler: la carpeta tiene subfolders o archivos directos,
             // el llamador debe vaciarla primero. Sin esta entrada caía al default 400.
             or "Folder.NotEmpty"

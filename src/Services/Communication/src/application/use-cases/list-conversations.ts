@@ -1,7 +1,12 @@
 import { Result } from '../../domain/shared/result.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { ConversationKind } from '../../domain/conversations/conversation-kind.js';
-import type { ConversationSnapshot } from '../../domain/conversations/conversation.js';
+import {
+  closedReasonOf,
+  departedDirectParticipantOf,
+  type ConversationClosedReason,
+  type ConversationSnapshot,
+} from '../../domain/conversations/conversation.js';
 import type { GroupRole } from '../../domain/conversations/conversation-participant.js';
 import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 
@@ -26,6 +31,14 @@ export interface ConversationParticipantListItem {
   readonly actorType: string;
 }
 
+/** Quien salió de un Direct (retiro de la oficina): el front lo usa de título aunque ya no participe. */
+export interface DepartedParticipantItem {
+  readonly userId: string;
+  readonly displayName: string;
+  readonly actorType: string;
+  readonly avatarFileId?: string | null;
+}
+
 export interface ConversationListItem {
   readonly id: string;
   readonly kind: 'Direct' | 'Group' | 'Support' | 'Meeting';
@@ -41,6 +54,10 @@ export interface ConversationListItem {
   readonly isArchived: boolean;
   readonly isMuted: boolean;
   readonly myRole: GroupRole | null;
+  /** Solo lectura: archivada o Direct cuyo otro participante ya salió. El historial se sigue leyendo. */
+  readonly isClosedForWriting: boolean;
+  readonly closedReason: ConversationClosedReason | null;
+  readonly departedParticipant: DepartedParticipantItem | null;
 }
 
 /** Una fila del listado; la usan el listado y el ack de `start_group` (T-12). */
@@ -52,6 +69,8 @@ export function toConversationListItem(
 ): ConversationListItem {
   const active = snapshot.participants.filter((p) => !p.isRemoved);
   const me = active.find((p) => p.userId === viewerUserId);
+  const closedReason = closedReasonOf(snapshot);
+  const departed = departedDirectParticipantOf(snapshot);
   return {
     id: snapshot.id,
     kind: snapshot.kind,
@@ -73,7 +92,29 @@ export function toConversationListItem(
     isArchived: snapshot.isArchived,
     isMuted: me?.isMuted ?? false,
     myRole: me?.role ?? null,
+    isClosedForWriting: closedReason !== null,
+    closedReason,
+    departedParticipant: departed ? toDepartedParticipantItem(departed, avatarOf) : null,
   };
+}
+
+/** Participante que salió de un Direct, en el formato de las lecturas (lista y eventos en vivo). */
+export function toDepartedParticipantItem(
+  participant: { userId: string; displayName: string; actorType: string },
+  avatarOf?: (userId: string) => string | null,
+): DepartedParticipantItem {
+  return {
+    userId: participant.userId,
+    displayName: participant.displayName,
+    actorType: participant.actorType,
+    ...(avatarOf ? { avatarFileId: avatarOf(participant.userId) } : {}),
+  };
+}
+
+/** Ids cuya foto pinta la fila: los activos y, en un Direct cerrado, quien salió. */
+export function avatarUserIdsOf(snapshot: ConversationSnapshot): string[] {
+  const departed = departedDirectParticipantOf(snapshot);
+  return [...snapshot.participants.filter((p) => !p.isRemoved).map((p) => p.userId), ...(departed ? [departed.userId] : [])];
 }
 
 export interface ListConversationsResult {
@@ -108,7 +149,7 @@ export async function listConversations(
   // Una sola consulta de fotos para todos los participantes de la pagina.
   const avatars = await resolveAvatars(
     deps.avatars,
-    snapshots.flatMap((snapshot) => snapshot.participants.filter((p) => !p.isRemoved).map((p) => p.userId)),
+    snapshots.flatMap(avatarUserIdsOf),
   );
 
   const items = await Promise.all(

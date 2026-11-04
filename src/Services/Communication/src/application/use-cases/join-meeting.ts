@@ -21,6 +21,8 @@ import { issueIceCredentials, type IssueIceCredentialsResult } from './issue-ice
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
 import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
+import { currentMeetingRecording } from '../services/meeting-recording-state.js';
+import type { RecordingSessionRepository } from '../ports/recording-repository.js';
 
 export interface JoinMeetingCommand {
   readonly tenantId: string;
@@ -38,6 +40,8 @@ export interface JoinMeetingCommand {
    * MeetingInvitation.consumeForGuestJoin (revoked/used/expired, sin hash).
    */
   readonly guestInvitationId?: string;
+  /** D-68: el guest entra por el enlace de la reunion emitido con esta version. */
+  readonly guestLinkVersion?: number;
   readonly audioDefault?: boolean;
   readonly videoDefault?: boolean;
 }
@@ -70,6 +74,8 @@ export interface JoinMeetingDeps extends MeetingEventLogDeps {
   readonly turn: TurnCredentialFactory;
   /** F5: fotos de los participantes del snapshot. Opcional (sin el, salen sin `avatarFileId`). */
   readonly avatars?: AvatarResolver;
+  /** MNT-01 (G-2): el ack trae el estado de la grabacion en curso. */
+  readonly recordingSessions?: Pick<RecordingSessionRepository, 'findLatestByScope'>;
   /** F6 (D-47): sala de espera forzada para guests segun la politica de la oficina. */
   readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
 }
@@ -147,6 +153,24 @@ export async function joinMeeting(
       };
     }
     invitationValid = true;
+  } else if (command.guestLinkVersion !== undefined) {
+    // D-68: quien ya entro por el enlace (adentro, esperando o salio) vuelve aunque se rote o se bloquee;
+    // uno nuevo necesita el enlace vigente. Nunca saltea la sala de espera (D-67).
+    const guestStatus = meeting.toSnapshot().participants.find((p) => p.userId === command.user.userId)?.status ?? null;
+    const known = guestStatus === 'Joined' || guestStatus === 'Waiting' || guestStatus === 'Left';
+    if (!known && !meeting.acceptsGuestLink(command.guestLinkVersion)) {
+      return Result.fail(makeError('Meeting.GuestLinkInvalid', 'This meeting link is no longer valid.'));
+    }
+    invitationValid = known;
+  }
+
+  // D-69: el techo de la oficina vale tambien para quien ya tiene ticket (la oficina pudo apagarlos despues).
+  if (command.user.actorType === 'Guest' && deps.effectiveSettings) {
+    const effective = await deps.effectiveSettings.resolve(command.tenantId);
+    const inside = meeting.toSnapshot().participants.some((p) => p.userId === command.user.userId && p.status === 'Joined');
+    if (!effective.meeting.guestsAllowed && !inside) {
+      return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This office does not allow external guests.'));
+    }
   }
 
   let passcodeMatch: boolean | null = null;
@@ -160,11 +184,6 @@ export async function joinMeeting(
     command.user.actorType === 'CustomerPortal' && deps.customerPortalAccounts
       ? ((await deps.customerPortalAccounts.findActiveByUserId(command.user.userId).catch(() => null))?.customerId ?? null)
       : null;
-  // F6 (D-47): la politica de la oficina manda a los guests a la sala de espera.
-  const forceWaitingRoom =
-    command.user.actorType === 'Guest' && deps.effectiveSettings
-      ? (await deps.effectiveSettings.resolve(command.tenantId)).meeting.guestsWaitingRoom
-      : false;
   const joinResult = meeting.requestJoin({
     userId: command.user.userId,
     displayName: command.user.displayName,
@@ -172,7 +191,7 @@ export async function joinMeeting(
     customerId,
     hasValidInvitation: invitationValid,
     passcodeMatch,
-    forceWaitingRoom,
+    isGuest: command.user.actorType === 'Guest',
     ...(command.audioDefault !== undefined ? { audioDefault: command.audioDefault } : {}),
     ...(command.videoDefault !== undefined ? { videoDefault: command.videoDefault } : {}),
   });
@@ -239,7 +258,11 @@ export async function joinMeeting(
     deps.avatars,
     snapshot.participants.map((p) => p.userId),
   );
-  const dto = buildMeetingSnapshotDto(snapshot, yourRole, conversationId, avatars);
+  const dto = {
+    ...buildMeetingSnapshotDto(snapshot, yourRole, conversationId, avatars),
+    // E-259: la sala de espera no ve lo de adentro; la grabacion llega con el snapshot de la admision.
+    recording: requiresAdmission ? null : await currentMeetingRecording(deps.recordingSessions, command.tenantId, snapshot.id),
+  };
 
   // Best-effort: `issueIceCredentials` no tiene ningun camino de fallo real
   // hoy (ver docblock de JoinMeetingResult.iceServers), pero si algun dia lo

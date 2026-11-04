@@ -20,6 +20,8 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(tenant => tenant.DefaultTimeZoneId).HasMaxLength(100).IsRequired();
         builder.Property(tenant => tenant.Status).HasMaxLength(30).IsRequired();
         builder.Property(tenant => tenant.IsActive).IsRequired();
+        builder.Property(tenant => tenant.DisplayName).HasMaxLength(200);
+        builder.Property(tenant => tenant.ProfileVersion).IsRequired();
 
         builder.HasIndex(tenant => tenant.SubDomain).IsUnique().HasDatabaseName("UX_Tenants_SubDomain");
     }

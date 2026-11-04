@@ -19,8 +19,6 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 [HasPermission(CloudStoragePermissions.SettingsManage)]
 public sealed class DropboxConnectionController(IDropboxConnectionService connections) : ControllerBase
 {
-    public sealed record ConnectionStatusResponse(bool Connected, string? Email);
-
     public sealed record AuthorizationUrlResponse(string AuthorizationUrl);
 
     [HttpGet]
@@ -30,7 +28,7 @@ public sealed class DropboxConnectionController(IDropboxConnectionService connec
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
         var status = await connections.GetStatusAsync(tenantId, ct);
-        return Ok(new ConnectionStatusResponse(status.Connected, status.Email));
+        return Ok(CloudConnectionStatusResponse.From(status));
     }
 
     [HttpPost("connect")]

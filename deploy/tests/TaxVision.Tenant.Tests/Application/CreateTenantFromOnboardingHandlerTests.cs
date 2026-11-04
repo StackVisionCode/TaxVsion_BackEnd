@@ -52,6 +52,44 @@ public sealed class CreateTenantFromOnboardingHandlerTests
         Assert.Equal(string.Empty, tenantCreated.AdminInvitationTokenHash);
     }
 
+    [Theory]
+    [InlineData("America/Chicago", "America/Chicago")]
+    [InlineData(" America/New_York ", "America/New_York")]
+    [InlineData(null, "Etc/UTC")]
+    [InlineData("", "Etc/UTC")]
+    [InlineData("Not/AZone", "Etc/UTC")]
+    public async Task Uses_the_browser_time_zone_when_valid_and_falls_back_to_utc(
+        string? proposedTimeZoneId,
+        string expectedTimeZoneId
+    )
+    {
+        var repo = new FakeTenantRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await CreateTenantFromOnboardingHandler.Handle(
+            new CreateTenantFromOnboardingCommand(
+                Guid.NewGuid(),
+                "Acme Tax Office",
+                "acme-tax",
+                "owner@acme.com",
+                DateTime.UtcNow,
+                proposedTimeZoneId
+            ),
+            repo,
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedTimeZoneId, repo.Added!.DefaultTimeZoneId);
+        Assert.Equal(
+            expectedTimeZoneId,
+            Assert.Single(bus.Published.OfType<TenantCreatedIntegrationEvent>()).DefaultTimeZoneId
+        );
+    }
+
     [Fact]
     public async Task Is_idempotent_when_a_tenant_already_exists_for_the_onboarding()
     {

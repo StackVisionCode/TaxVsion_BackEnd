@@ -16,6 +16,7 @@ namespace TaxVision.Customer.Application.Customers.Avatars;
 ///   <item><description>Available de la vigente → redelivery, no-op.</description></item>
 ///   <item><description>Available de otro fileId → huérfana (reemplazada, quitada, vencida o cliente archivado): se pide su borrado.</description></item>
 ///   <item><description>Infected / BlockedByPolicy / ScanFailed del pendiente → se descarta; la vigente no cambia.</description></item>
+///   <item><description>SaveRejected (pedido "customer") del pendiente → se descarta igual; la vigente no cambia.</description></item>
 /// </list>
 /// Los mismos eventos llegan por el fanout para archivos ajenos (imports, otros servicios): lo que no
 /// es Customer/Avatars se ignora.
@@ -198,6 +199,62 @@ public static class CustomerAvatarScanResultConsumer
             logger,
             ct
         );
+
+    // CloudStorage no registró la foto: ese FileId nunca existirá. Se suelta solo si sigue pendiente.
+    public static async Task Handle(
+        FileSaveRejectedIntegrationEvent msg,
+        ICustomerRepository repository,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<CustomerEntity> logger,
+        CancellationToken ct
+    )
+    {
+        if (
+            !string.Equals(
+                msg.RequestingService,
+                CustomerAvatarMessages.RequestingService,
+                StringComparison.OrdinalIgnoreCase
+            )
+            || !CustomerAvatarMessages.IsCustomerAvatar(msg.OwnerType, msg.FolderType)
+            || msg.OwnerId is not { } customerId
+        )
+            return;
+
+        using var _ = correlation.Push(CorrelationOf(msg.CorrelationId, msg.EventId));
+
+        var customer = await repository.GetByIdAsync(customerId, ct);
+        if (customer is null || customer.TenantId != msg.TenantId)
+        {
+            logger.LogWarning(
+                "Avatar {FileId} was rejected by storage ({Reason}) for unknown customer {CustomerId}; ignoring.",
+                msg.FileId,
+                msg.Reason,
+                customerId
+            );
+            return;
+        }
+
+        // Si ya hay otra pendiente (el usuario volvió a subir), la rechazada no se toca.
+        if (!customer.DiscardPendingProfilePicture(msg.FileId))
+        {
+            logger.LogWarning(
+                "Avatar {FileId} of customer {CustomerId} was rejected by storage ({Reason}) but is no longer pending; ignoring.",
+                msg.FileId,
+                customerId,
+                msg.Reason
+            );
+            return;
+        }
+
+        logger.LogWarning(
+            "Avatar {FileId} of customer {CustomerId} was rejected by storage ({Reason}); discarded.",
+            msg.FileId,
+            customerId,
+            msg.Reason
+        );
+        await unitOfWork.SaveChangesAsync(ct);
+    }
 
     private sealed record ScanFailure(
         Guid TenantId,

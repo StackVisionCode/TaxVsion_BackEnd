@@ -69,7 +69,7 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
             : Result.Success(message);
     }
 
-    /// <summary>Los mismos estados que muestra la pantalla (ver SentMessageActivityStatus).</summary>
+    /// <summary>Filtra por <see cref="SentMessage.Activity"/>, el mismo valor que muestra la pantalla.</summary>
     private static IQueryable<SentMessage> ApplyActivityFilter(
         IQueryable<SentMessage> query,
         SentMessageActivityFilter filter
@@ -85,31 +85,16 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
             query = query.Where(m => m.Recipients.Any(r => r.Address.Contains(recipient)));
         }
 
-        return filter.Status switch
+        // Los mismos contadores que pintan los íconos de la fila.
+        query = filter.Engagement switch
         {
-            SentMessageActivityStatus.Delivered => query.Where(m =>
-                m.Recipients.Any(r => r.Outcome == DeliveryOutcome.Delivered)
-            ),
-            SentMessageActivityStatus.Bounced => query.Where(m =>
-                m.Recipients.Any(r =>
-                    r.Outcome == DeliveryOutcome.HardBounced
-                    || r.Outcome == DeliveryOutcome.SoftBounced
-                    || r.Outcome == DeliveryOutcome.Rejected
-                )
-            ),
-            SentMessageActivityStatus.Complained => query.Where(m =>
-                m.Recipients.Any(r => r.Outcome == DeliveryOutcome.Complained)
-            ),
-            SentMessageActivityStatus.Sent => query.Where(m =>
-                m.Status == SentMessageStatus.Sent
-                && m.Recipients.Any(r => r.Outcome == DeliveryOutcome.Accepted || r.Outcome == DeliveryOutcome.Deferred)
-            ),
-            SentMessageActivityStatus.Failed => query.Where(m =>
-                m.Status == SentMessageStatus.Failed || m.Status == SentMessageStatus.ProviderNotConfigured
-            ),
-            SentMessageActivityStatus.Suppressed => query.Where(m => m.Status == SentMessageStatus.Suppressed),
+            SentMessageEngagement.Opened => query.Where(m => m.Recipients.Any(r => r.OpenCount > 0)),
+            SentMessageEngagement.Clicked => query.Where(m => m.Recipients.Any(r => r.ClickCount > 0)),
             _ => query,
         };
+
+        // La misma columna que se muestra en la fila: cada fila de una pestaña dice esa pestaña.
+        return filter.Status is { } status ? query.Where(m => m.Activity == status) : query;
     }
 
     public async Task<Result<SentMessage>> GetByIdForFeedbackAsync(Guid id, CancellationToken ct = default)
@@ -151,6 +136,33 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
             .AsNoTracking()
             .Take(max)
             .ToListAsync(ct);
+
+    /// <summary>Por tandas: SQL Server acepta hasta ~2100 parámetros por consulta.</summary>
+    private const int KnownProviderIdsChunkSize = 500;
+
+    public async Task<IReadOnlySet<string>> FindKnownProviderMessageIdsAsync(
+        IReadOnlyCollection<string> providerMessageIds,
+        CancellationToken ct = default
+    )
+    {
+        var known = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var chunk in providerMessageIds.Distinct(StringComparer.Ordinal).Chunk(KnownProviderIdsChunkSize))
+        {
+            var found = await (
+                from recipient in dbContext.SentMessageRecipients.IgnoreQueryFilters()
+                join message in dbContext.SentMessages.IgnoreQueryFilters() on recipient.SentMessageId equals message.Id
+                where
+                    message.DeliveryLane == DeliveryLane.SystemProvider
+                    && recipient.ProviderMessageId != null
+                    && chunk.Contains(recipient.ProviderMessageId)
+                select recipient.ProviderMessageId!
+            )
+                .Distinct()
+                .ToListAsync(ct);
+            known.UnionWith(found);
+        }
+        return known;
+    }
 
     public async Task<Result<SentMessage>> FindByInternetMessageIdForFeedbackAsync(
         string internetMessageId,

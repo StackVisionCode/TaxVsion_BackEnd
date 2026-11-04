@@ -101,7 +101,7 @@ export async function attachMeetingRecording(
     return Result.fail(makeError(RecordingErrors.MeetingEmptyFile.code, RecordingErrors.MeetingEmptyFile.message));
   }
 
-  const session = await deps.recordingSessions.findByScope(command.tenantId, RecordingScope.Meeting, command.meetingId);
+  const session = await deps.recordingSessions.findLatestByScope(command.tenantId, RecordingScope.Meeting, command.meetingId);
 
   if (session === null) {
     // ---------- LEGACY PATH ----------
@@ -195,7 +195,12 @@ export async function attachMeetingRecording(
     };
     await deps.publisher.enqueue(processingEvent);
 
-    const dto: MeetingRecordingStateChangedDto = { meetingId: command.meetingId, state: 'Processing', updatedAtUtc: startedAtUtc };
+    const dto: MeetingRecordingStateChangedDto = {
+      meetingId: command.meetingId,
+      state: 'Processing',
+      updatedAtUtc: startedAtUtc,
+      ...(session ? { recordingId: session.id } : {}),
+    };
     deps.emitter.emitToMeeting({
       tenantId: command.tenantId,
       meetingId: command.meetingId,

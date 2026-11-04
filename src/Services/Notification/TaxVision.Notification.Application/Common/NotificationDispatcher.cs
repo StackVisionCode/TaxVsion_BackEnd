@@ -52,6 +52,11 @@ public sealed record PushDispatchOutcome(
 /// antes de despachar. Así es imposible que un consumer nuevo se "olvide" de respetar la
 /// preferencia del usuario, a diferencia de la versión anterior de esta tabla (borrada en
 /// Hardening Fase 20 porque ningún consumer la consultaba).
+///
+/// <para>
+/// Antes que la preferencia va el gate de destinatario inactivo: a un usuario suspendido o retirado
+/// no se le entrega nada por ningún canal, aunque el consumer se olvide de comprobarlo.
+/// </para>
 /// </summary>
 public sealed class NotificationDispatcher(
     ISmsSender smsSender,
@@ -59,6 +64,7 @@ public sealed class NotificationDispatcher(
     IPushDeviceTokenRepository pushDeviceTokens,
     INotificationLogRepository logs,
     IUserNotificationPreferenceRepository preferences,
+    IUserEmailDirectoryRepository userDirectory,
     IIntegrationEventPublisher publisher,
     IUnitOfWork unitOfWork,
     INotificationDispatchMetrics metrics,
@@ -80,6 +86,8 @@ public sealed class NotificationDispatcher(
         CancellationToken ct = default
     )
     {
+        if (await IsRecipientInactiveAsync(tenantId, recipientUserId, templateKey, NotificationChannel.Sms, ct))
+            return;
         if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.Sms, ct, templateKey))
         {
             metrics.RecordSuppressedByPreference(templateKey, "Sms");
@@ -186,6 +194,16 @@ public sealed class NotificationDispatcher(
         CancellationToken ct = default
     )
     {
+        if (
+            await IsRecipientInactiveAsync(
+                request.TenantId,
+                request.RecipientUserId,
+                request.Kind,
+                NotificationChannel.Push,
+                ct
+            )
+        )
+            return PushDispatchOutcome.Done;
         if (
             !await IsAllowedAsync(
                 request.TenantId,
@@ -365,6 +383,8 @@ public sealed class NotificationDispatcher(
         CancellationToken ct = default
     )
     {
+        if (await IsRecipientInactiveAsync(tenantId, recipientUserId, kind, NotificationChannel.Push, ct))
+            return false;
         if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.Push, ct, kind))
         {
             metrics.RecordSuppressedByPreference(kind, "Push");
@@ -415,6 +435,9 @@ public sealed class NotificationDispatcher(
     )
     {
         var inAppKind = inApp?.Kind ?? templateKey;
+        var inAppUserId = recipientUserId ?? inApp?.RecipientUserId;
+        if (await IsRecipientInactiveAsync(tenantId, inAppUserId, inAppKind, NotificationChannel.InApp, ct))
+            return;
         if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.InApp, ct, inAppKind))
         {
             metrics.RecordSuppressedByPreference(inAppKind, "InApp");
@@ -509,6 +532,36 @@ public sealed class NotificationDispatcher(
             return null;
         var trimmed = value.Trim();
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
+    /// <summary>
+    /// Destinatario suspendido o retirado según el directorio local (lo mantienen los eventos de
+    /// ciclo de vida de Auth). Sin fila no hay señal de inactividad y se sigue: ausencia ≠ inactivo.
+    /// </summary>
+    private async Task<bool> IsRecipientInactiveAsync(
+        Guid tenantId,
+        Guid? recipientUserId,
+        string kind,
+        NotificationChannel channel,
+        CancellationToken ct
+    )
+    {
+        if (recipientUserId is not { } userId || userId == Guid.Empty)
+            return false;
+
+        var entry = await userDirectory.FindAsync(tenantId, userId, ct);
+        if (entry is null || entry.IsActive)
+            return false;
+
+        metrics.RecordNoRecipient(kind, channel.ToString());
+        logger.LogInformation(
+            "Notification skipped: user {UserId} in tenant {TenantId} is inactive (channel {Channel}, kind {Kind}).",
+            userId,
+            tenantId,
+            channel,
+            kind
+        );
+        return true;
     }
 
     /// <summary>

@@ -19,4 +19,10 @@ public interface IPaymentAdapterFactory
     /// checkout para presentar solo los métodos ACTIVOS del tenant que además se pueden cobrar — un
     /// provider con config activa pero sin adapter todavía no debe ofrecerse.</summary>
     bool IsRegistered(PaymentProviderCode code);
+
+    /// <summary>Descriptores de los adapters registrados, ordenados por código: el catálogo real.</summary>
+    IReadOnlyList<PaymentProviderDescriptor> GetAvailableProviders();
+
+    /// <summary>Descriptor del adapter de <paramref name="code"/>, o null si no hay adapter.</summary>
+    PaymentProviderDescriptor? FindDescriptor(PaymentProviderCode code);
 }

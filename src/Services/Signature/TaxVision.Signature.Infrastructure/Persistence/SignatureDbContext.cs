@@ -7,11 +7,14 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Signature.Domain.Analytics;
 using TaxVision.Signature.Domain.Audit;
 using TaxVision.Signature.Domain.Categories;
 using TaxVision.Signature.Domain.Consents;
+using TaxVision.Signature.Domain.Delivery;
 using TaxVision.Signature.Domain.Permissions;
+using TaxVision.Signature.Domain.Platform;
 using TaxVision.Signature.Domain.Profiles;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.RateLimiting;
@@ -64,7 +67,12 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<SignatureAnalyticsSnapshot> SignatureAnalyticsSnapshots => Set<SignatureAnalyticsSnapshot>();
 
+    public DbSet<SignatureAnalyticsSealedRequest> SignatureAnalyticsSealedRequests =>
+        Set<SignatureAnalyticsSealedRequest>();
+
     public DbSet<DocumentValidationRecord> DocumentValidationRecords => Set<DocumentValidationRecord>();
+
+    public DbSet<SignedDocumentDelivery> SignedDocumentDeliveries => Set<SignedDocumentDelivery>();
 
     public DbSet<ConsentEvent> ConsentEvents => Set<ConsentEvent>();
 
@@ -86,13 +94,39 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     // TenantEntitlementsChangedIntegrationEvent). Consultada por EfTenantPlanCodeReader.
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
-    // Fase 3C (certificado) — nombre + logo de la oficina para el Certificate of Completion, mantenida
-    // por TenantBrandingProjectionConsumer (TenantCreated + TenantLogoUpdated).
+    // F6 — techos del plan (signature.* de los entitlements) y valores de plataforma (fila única).
+    public DbSet<TenantSignatureLimits> TenantSignatureLimits => Set<TenantSignatureLimits>();
+    public DbSet<SignaturePlatformSettings> SignaturePlatformSettings => Set<SignaturePlatformSettings>();
+
+    // Fase 3C (certificado) — nombre de la oficina y su logo por superficie para el Certificate of
+    // Completion, mantenidas por TenantBrandingProjectionConsumer.
     public DbSet<TenantBrandingRef> TenantBrandingRefs => Set<TenantBrandingRef>();
+    public DbSet<TenantLogoRef> TenantLogoRefs => Set<TenantLogoRef>();
 
     // P2 — proyección compartida de asignaciones cliente→staff (kit BuildingBlocks.CustomerVisibility),
     // mantenida por el consumer compartido + la reconciliación. Alimenta el filtro de visibilidad de solicitudes.
     public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
+    /// <summary>
+    /// SQL Server devuelve <c>datetime2</c> con <see cref="DateTimeKind.Unspecified"/> y la API lo serializaba
+    /// sin "Z": cada cliente tenía que adivinar que era UTC (el detalle de la solicitud mostraba la hora UTC
+    /// como local). Todas las columnas de fecha de este servicio son UTC; se marcan al leer.
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder builder)
+    {
+        builder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        builder.Properties<DateTime?>().HaveConversion<UtcNullableDateTimeConverter>();
+        base.ConfigureConventions(builder);
+    }
+
+    private sealed class UtcDateTimeConverter()
+        : ValueConverter<DateTime, DateTime>(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+
+    private sealed class UtcNullableDateTimeConverter()
+        : ValueConverter<DateTime?, DateTime?>(
+            v => v,
+            v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v
+        );
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

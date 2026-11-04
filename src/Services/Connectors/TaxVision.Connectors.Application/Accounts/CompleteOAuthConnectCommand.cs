@@ -16,7 +16,9 @@ public sealed record CompleteOAuthConnectCommand(
     // Email del usuario en el sistema (del state) — el buzón autorizado debe coincidir (solo personal).
     string? InitiatorEmail = null,
     // true = buzón de oficina (guard de identidad NO aplica); false = personal (== login).
-    bool AsOffice = false
+    bool AsOffice = false,
+    // PlatformAdmin no tiene proyección de permisos en el tenant: no pasa por el guard de iniciador activo.
+    bool InitiatorIsPlatformAdmin = false
 );
 
 public sealed record CompleteOAuthConnectResult(Guid AccountId, string EmailAddress);

@@ -162,6 +162,24 @@ internal sealed class CountingUnitOfWork : IUnitOfWork
     }
 }
 
+/// <summary>
+/// Anota cuántos mensajes había publicado el bus en cada guardado (0 = guardó antes de publicar) y puede
+/// fallar los guardados indicados con el conflicto de concurrencia de <c>TenantDbContext</c>.
+/// </summary>
+internal sealed class PublishOrderUnitOfWork(RecordingMessageBus bus) : IUnitOfWork
+{
+    public List<int> PublishedAtSave { get; } = [];
+    public HashSet<int> ConflictOnSave { get; } = [];
+
+    public Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        PublishedAtSave.Add(bus.Published.Count);
+        if (ConflictOnSave.Contains(PublishedAtSave.Count))
+            throw new ConflictException("Persistence.ConcurrencyConflict", "The record was changed by someone else.");
+        return Task.FromResult(1);
+    }
+}
+
 /// <summary>Repo de marca en memoria que soporta la correlación por fileId del consumer de escaneo.</summary>
 internal sealed class InMemoryBrandRepository : ITenantBrandRepository
 {
@@ -195,4 +213,53 @@ internal sealed class InMemoryBrandRepository : ITenantBrandRepository
 
     public Task<TenantBrand?> GetByAssetFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
         Task.FromResult(All.FirstOrDefault(b => b.TenantId == tenantId && b.Assets.Any(a => a.FileId == fileId)));
+
+    public Task<IReadOnlyList<ConfirmedBrandLogo>> ListConfirmedLogosAsync(
+        int skip,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<ConfirmedBrandLogo>>(
+            All.SelectMany(b =>
+                    b.Assets.Where(a => a.Key == BrandAssetKey.Logo && a.Status == BrandAssetStatus.Confirmed)
+                        .Select(a => new ConfirmedBrandLogo(
+                            a.TenantId,
+                            b.Surface,
+                            a.FileId,
+                            a.ContentType,
+                            a.SizeBytes,
+                            a.Width,
+                            a.Height,
+                            a.ConfirmedAtUtc ?? a.UpdatedAtUtc
+                        ))
+                )
+                .Skip(skip)
+                .Take(take)
+                .ToList()
+        );
+}
+
+/// <summary>Cache que solo registra las claves invalidadas.</summary>
+internal sealed class RecordingCache : BuildingBlocks.Caching.ICacheService
+{
+    private readonly NoopCache _inner = new();
+    public List<string> Removed { get; } = [];
+
+    public Task<T?> GetAsync<T>(string key, CancellationToken ct = default) => _inner.GetAsync<T>(key, ct);
+
+    public Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken ct = default) =>
+        _inner.SetAsync(key, value, ttl, ct);
+
+    public Task RemoveAsync(string key, CancellationToken ct = default)
+    {
+        Removed.Add(key);
+        return Task.CompletedTask;
+    }
+
+    public Task<T> GetOrCreateAsync<T>(
+        string key,
+        Func<CancellationToken, Task<T>> factory,
+        TimeSpan? ttl = null,
+        CancellationToken ct = default
+    ) => _inner.GetOrCreateAsync(key, factory, ttl, ct);
 }

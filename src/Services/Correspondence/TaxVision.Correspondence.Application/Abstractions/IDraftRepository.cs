@@ -45,6 +45,8 @@ public interface IDraftRepository
         int page,
         int size,
         Guid? ownerUserId = null,
+        // Texto (asunto y destinatarios), solo con adjuntos y rango de fechas; null = sin filtro.
+        MailListFilter? filter = null,
         CancellationToken ct = default
     );
 
@@ -71,6 +73,8 @@ public interface IDraftRepository
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        // Texto (asunto y destinatarios), solo con adjuntos y rango de fechas; null = sin filtro.
+        MailListFilter? filter = null,
         CancellationToken ct = default
     );
 
@@ -93,6 +97,8 @@ public interface IDraftRepository
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        // Texto (asunto y destinatarios), solo con adjuntos y rango de fechas; null = sin filtro.
+        MailListFilter? filter = null,
         CancellationToken ct = default
     );
 

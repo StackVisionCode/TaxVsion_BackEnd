@@ -179,9 +179,9 @@ namespace TaxVision.Reminder.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId", "RequestKey")
+                    b.HasIndex("TenantId", "UserId", "RequestKey")
                         .IsUnique()
-                        .HasDatabaseName("UX_Reminders_TenantId_RequestKey");
+                        .HasDatabaseName("UX_Reminders_TenantId_UserId_RequestKey");
 
                     b.ToTable("Reminders", (string)null);
                 });

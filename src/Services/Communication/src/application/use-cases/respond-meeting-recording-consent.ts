@@ -44,7 +44,7 @@ export async function respondMeetingRecordingConsent(
   const meeting = await deps.meetings.findById(command.tenantId, command.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
 
-  const session = await deps.recordingSessions.findByScope(command.tenantId, RecordingScope.Meeting, command.meetingId);
+  const session = await deps.recordingSessions.findLatestByScope(command.tenantId, RecordingScope.Meeting, command.meetingId);
   if (!session) return Result.fail(makeError('RecordingSession.NotFound', 'No recording session for this meeting.'));
   if (session.sessionState !== 'Requesting') {
     return Result.fail(
@@ -100,6 +100,7 @@ export async function respondMeetingRecordingConsent(
     meetingId: command.meetingId,
     state: session.sessionState,
     updatedAtUtc: now.toISOString(),
+    recordingId: session.id,
   };
   deps.emitter.emitToMeeting({
     tenantId: command.tenantId,

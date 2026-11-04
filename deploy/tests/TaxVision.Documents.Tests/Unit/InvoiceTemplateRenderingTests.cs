@@ -14,7 +14,8 @@ public sealed class InvoiceTemplateRenderingTests
     private static IReadOnlyDictionary<string, object?> SampleData(
         string status = "Pending",
         string paidDate = "",
-        string paymentUrl = ""
+        string paymentUrl = "",
+        Dictionary<string, object>? issuer = null
     ) =>
         new Dictionary<string, object?>
         {
@@ -33,12 +34,14 @@ public sealed class InvoiceTemplateRenderingTests
                 ["brandColor"] = "#2563eb",
                 ["displayName"] = "TaxVision Labs SL",
                 ["footer"] = "Documento generado por TaxVision",
-                ["issuer"] = new Dictionary<string, object>
-                {
-                    ["name"] = "TaxVision Labs SL",
-                    ["taxId"] = "B-12345678",
-                    ["address"] = "Calle Mayor 1, Madrid",
-                },
+                ["issuer"] =
+                    issuer
+                    ?? new Dictionary<string, object>
+                    {
+                        ["name"] = "TaxVision Labs SL",
+                        ["taxId"] = "B-12345678",
+                        ["address"] = "Calle Mayor 1, Madrid",
+                    },
                 ["customer"] = new Dictionary<string, object>
                 {
                     ["name"] = "Cliente Ejemplo SA",
@@ -132,5 +135,57 @@ public sealed class InvoiceTemplateRenderingTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("Documents.Template.NotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task The_issuer_phone_email_and_website_are_printed_when_present()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+        var issuer = new Dictionary<string, object>
+        {
+            ["name"] = "Gutierrez Tax Office",
+            ["taxId"] = "12-3456789",
+            ["address"] = "1600 Main St, Suite 200, Austin, TX 78701, US",
+            ["phone"] = "(512) 555-0112",
+            ["email"] = "office@gutierreztax.com",
+            ["website"] = "https://gutierreztax.com",
+        };
+
+        var result = await renderer.RenderHtmlAsync(
+            "billing.invoice.v1",
+            1,
+            Guid.NewGuid(),
+            SampleData(issuer: issuer)
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("<p>(512) 555-0112</p>", result.Value);
+        Assert.Contains("<p>office@gutierreztax.com</p>", result.Value);
+        Assert.Contains("<p>https://gutierreztax.com</p>", result.Value);
+    }
+
+    [Fact]
+    public async Task Empty_contact_details_leave_no_blank_lines()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+        var issuer = new Dictionary<string, object>
+        {
+            ["name"] = "Old office",
+            ["taxId"] = "",
+            ["address"] = "",
+            ["phone"] = "",
+            ["email"] = "",
+            ["website"] = "",
+        };
+
+        var result = await renderer.RenderHtmlAsync(
+            "billing.invoice.v1",
+            1,
+            Guid.NewGuid(),
+            SampleData(issuer: issuer)
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain("<p></p>", result.Value);
     }
 }

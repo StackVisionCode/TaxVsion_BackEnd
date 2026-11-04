@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using BuildingBlocks.Platform;
 using PdfSharp.Drawing;
@@ -6,6 +7,7 @@ using PdfSharp.Pdf.IO;
 using SkiaSharp;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Domain.Requests;
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 
 // ICmsPdfSigner puede no estar registrado en dev — se acepta null como "sin firma CMS".
 
@@ -13,8 +15,8 @@ namespace TaxVision.Signature.Infrastructure.Sealing;
 
 /// <summary>
 /// Implementación por defecto del <see cref="IDocumentSealingEngine"/> basada en
-/// <c>PdfSharp</c>. Abre el PDF original en modo <c>Modify</c>, dibuja un recuadro
-/// con nombre + timestamp por cada campo, agrega un pie de página con el trailer
+/// <c>PdfSharp</c>. Abre el PDF original en modo <c>Modify</c>, estampa el contenido de cada
+/// campo dentro de su caja (ver <see cref="DrawField"/>), agrega un pie de página con el trailer
 /// audit y devuelve los bytes serializados.
 ///
 /// <para>Consideraciones:</para>
@@ -37,7 +39,7 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
         using var input = new MemoryStream(request.OriginalPdfBytes, writable: false);
         using var pdf = PdfReader.Open(input, PdfDocumentOpenMode.Modify);
 
-        StampAllFields(pdf, request.Fields);
+        StampAllFields(pdf, request.Fields, request.Style);
         AppendAuditFooter(pdf, request, platform.Current.BrandName);
 
         using var output = new MemoryStream();
@@ -57,7 +59,7 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
     // ------------------------------------------------------------------
 
     // internal: reusado por el renderer de copias parciales (F7).
-    internal static void StampAllFields(PdfDocument pdf, IReadOnlyList<SealedFieldRender> fields)
+    internal static void StampAllFields(PdfDocument pdf, IReadOnlyList<SealedFieldRender> fields, StampStyle style)
     {
         foreach (var field in fields)
         {
@@ -67,176 +69,236 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
 
             var page = pdf.Pages[pageIndex];
             using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Append);
-            DrawFieldBox(gfx, page, field);
+            DrawField(gfx, page, field, style);
         }
     }
 
-    private static void DrawFieldBox(XGraphics gfx, PdfPage page, SealedFieldRender field)
+    // Colores del estampado: tinta casi negra para el contenido, gris para el marco de la firma.
+    private static readonly XColor InkColor = XColor.FromArgb(24, 30, 42);
+    private static readonly XColor FrameTextColor = XColor.FromArgb(96, 105, 120);
+    private static readonly XColor FrameBorderColor = XColor.FromArgb(180, 190, 205);
+    private static readonly XColor FrameAccentColor = XColor.FromArgb(20, 45, 90);
+
+    /// <summary>
+    /// Estampa un campo dentro de la caja que fijó el preparador. Como en la industria (DocuSign, Dropbox Sign,
+    /// Adobe), iniciales, fecha, texto y casilla llevan SOLO su contenido; la firma puede llevar un marco si la
+    /// oficina lo tiene activo. La evidencia legal es el sello PAdES y el certificado, no estas cajas.
+    /// </summary>
+    private static void DrawField(XGraphics gfx, PdfPage page, SealedFieldRender field, StampStyle style)
     {
-        var pageWidth = page.Width.Point;
-        var pageHeight = page.Height.Point;
-
         var rect = new XRect(
-            field.X * pageWidth,
-            field.Y * pageHeight,
-            field.Width * pageWidth,
-            field.Height * pageHeight
+            field.X * page.Width.Point,
+            field.Y * page.Height.Point,
+            field.Width * page.Width.Point,
+            field.Height * page.Height.Point
         );
-
-        // Professional signature stamp inspired by DocuSign / Adobe Sign:
-        // no saturated fill, subtle border, italic cursive-style name imitating a manuscript
-        // signature, small caption below with "Digitally signed by" and the UTC timestamp.
-        var borderColor = XColor.FromArgb(180, 190, 205);
-        var accentColor = XColor.FromArgb(20, 45, 90);
-        var textPrimary = XColor.FromArgb(24, 30, 42);
-        var textMuted = XColor.FromArgb(96, 105, 120);
-
-        var borderPen = new XPen(borderColor, 0.4);
-        gfx.DrawRoundedRectangle(borderPen, XBrushes.White, rect, new XSize(3, 3));
-
-        // Thin left accent stripe (2pt wide).
-        var accentRect = new XRect(rect.X, rect.Y, 2, rect.Height);
-        gfx.DrawRectangle(new XSolidBrush(accentColor), accentRect);
-
-        var contentX = rect.X + 6;
-        var contentWidth = Math.Max(0, rect.Width - 8);
 
         switch (field.Kind)
         {
             case SignatureFieldKind.Signature:
-                DrawSignatureFieldStamp(
-                    gfx,
-                    field,
-                    contentX,
-                    rect.Y,
-                    contentWidth,
-                    rect.Height,
-                    textPrimary,
-                    textMuted
-                );
+                if (style.ShowSignatureFrame)
+                    DrawFramedSignature(gfx, field, rect);
+                else
+                    DrawSignatureInk(gfx, field, rect);
                 break;
             case SignatureFieldKind.Initials:
-                // Las iniciales se derivan del nombre del firmante (no se estampa el nombre completo ni
-                // la imagen de la firma). Ej. "Amanda B Martinez" → "ABM".
-                DrawInitialsStamp(
+                DrawSingleLine(
                     gfx,
                     ToInitials(field.SignerDisplayName),
-                    contentX,
-                    rect.Y,
-                    contentWidth,
-                    rect.Height,
-                    textPrimary
+                    rect,
+                    field.FontSizePt,
+                    style,
+                    InitialsFont,
+                    center: true
                 );
                 break;
             case SignatureFieldKind.Date:
-                DrawSingleValueStamp(
-                    gfx,
-                    "DATE",
-                    field.SignedAtUtc.ToString("yyyy-MM-dd"),
-                    contentX,
-                    rect.Y,
-                    contentWidth,
-                    rect.Height,
-                    textPrimary,
-                    textMuted
-                );
-                break;
-            case SignatureFieldKind.Checkbox:
-                DrawSingleValueStamp(
-                    gfx,
-                    field.Label ?? "CONFIRMED",
-                    "✓",
-                    contentX,
-                    rect.Y,
-                    contentWidth,
-                    rect.Height,
-                    textPrimary,
-                    textMuted
-                );
+                var date = field.SignedAtUtc.ToString(style.DatePattern, CultureInfo.InvariantCulture);
+                DrawSingleLine(gfx, date, rect, field.FontSizePt, style, TextFont, center: false);
                 break;
             case SignatureFieldKind.Text:
-                DrawTextValueStamp(gfx, field.Value, contentX, rect.Y, contentWidth, rect.Height, textPrimary);
+                DrawWrappedText(gfx, field.Value, rect, field.FontSizePt, style);
+                break;
+            case SignatureFieldKind.Checkbox:
+                DrawCheckMark(gfx, rect);
                 break;
             default:
-                DrawSingleValueStamp(
-                    gfx,
-                    field.Label ?? "SIGNED",
-                    field.SignerDisplayName,
-                    contentX,
-                    rect.Y,
-                    contentWidth,
-                    rect.Height,
-                    textPrimary,
-                    textMuted
-                );
+                DrawSingleLine(gfx, field.SignerDisplayName, rect, field.FontSizePt, style, TextFont, center: false);
                 break;
         }
     }
 
-    private static void DrawSignatureFieldStamp(
+    // Tipografías: las iniciales imitan una marca manuscrita; fecha y texto, letra de formulario.
+    private static readonly (string Family, XFontStyleEx Style) InitialsFont = (
+        "Times New Roman",
+        XFontStyleEx.BoldItalic
+    );
+    private static readonly (string Family, XFontStyleEx Style) TextFont = ("Helvetica", XFontStyleEx.Regular);
+
+    /// <summary>
+    /// Una línea (iniciales, fecha) centrada en vertical: arranca en la letra del preparador o en la automática
+    /// (<see cref="FieldTypography.StartingFontSize"/>) y solo se achica si no cabe en la caja. Nunca crece.
+    /// </summary>
+    private static void DrawSingleLine(
         XGraphics gfx,
-        SealedFieldRender field,
-        double x,
-        double y,
-        double width,
-        double height,
-        XColor textPrimary,
-        XColor textMuted
+        string text,
+        XRect rect,
+        int? fontSizePt,
+        StampStyle style,
+        (string Family, XFontStyleEx Style) typeface,
+        bool center
     )
     {
-        // Layout en bandas apiladas PROPORCIONALES al alto (estilo DocuSign / Adobe Sign), no con offsets
-        // fijos: así, aunque el preparador achique mucho la caja del campo, la firma, el caption y la fecha
-        // nunca se solapan. La firma es la banda dominante; el caption se omite si no cabe sin comérsela, y
-        // la fecha vive en una franja inferior propia separada por una línea.
-        var mutedBrush = new XSolidBrush(textMuted);
-        var primaryBrush = new XSolidBrush(textPrimary);
+        if (string.IsNullOrWhiteSpace(text) || rect.Width <= 0 || rect.Height <= 0)
+            return;
 
-        // Caja chica → se prioriza la firma. Bajo ~34pt de alto no cabe el caption sin aplastar la firma.
-        var showCaption = height >= 34;
-        var captionBand = showCaption ? Math.Min(10.0, height * 0.20) : 0.0;
-        var metaBand = Math.Min(11.0, height * 0.24); // franja inferior para la fecha
-        var gap = Math.Min(2.0, height * 0.04);
-        var signatureBand = Math.Max(1.0, height - captionBand - metaBand - gap);
-
-        if (showCaption)
+        var size = FieldTypography.StartingFontSize(fontSizePt, rect.Height, style.AutoFontMinPt, style.AutoFontMaxPt);
+        var font = new XFont(typeface.Family, size, typeface.Style);
+        while (
+            size > FieldTypography.MinFontSizePt
+            && (gfx.MeasureString(text, font).Width > rect.Width || font.GetHeight() > rect.Height)
+        )
         {
-            var captionFont = new XFont("Helvetica", Math.Clamp(captionBand * 0.62, 4.5, 6.5), XFontStyleEx.Bold);
+            size -= 0.5;
+            font = new XFont(typeface.Family, size, typeface.Style);
+        }
+
+        gfx.DrawString(
+            text,
+            font,
+            new XSolidBrush(InkColor),
+            rect,
+            center ? XStringFormats.Center : XStringFormats.CenterLeft
+        );
+    }
+
+    /// <summary>
+    /// Texto libre del firmante, con salto de línea por ancho. Arranca en la letra del preparador o la automática
+    /// y se achica hasta que el bloque quepa en el alto de la caja; lo que no quepa ni en el mínimo se recorta.
+    /// La etiqueta del preparador es una guía en pantalla y NO se estampa.
+    /// </summary>
+    private static void DrawWrappedText(XGraphics gfx, string? value, XRect rect, int? fontSizePt, StampStyle style)
+    {
+        if (string.IsNullOrWhiteSpace(value) || rect.Width <= 0 || rect.Height <= 0)
+            return;
+
+        var size = FieldTypography.StartingFontSize(fontSizePt, rect.Height, style.AutoFontMinPt, style.AutoFontMaxPt);
+        var font = new XFont(TextFont.Family, size, TextFont.Style);
+        var lines = WrapText(gfx, value, font, rect.Width);
+        while (size > FieldTypography.MinFontSizePt && lines.Count * font.GetHeight() > rect.Height)
+        {
+            size -= 0.5;
+            font = new XFont(TextFont.Family, size, TextFont.Style);
+            lines = WrapText(gfx, value, font, rect.Width);
+        }
+
+        var lineHeight = font.GetHeight();
+        var visible = Math.Max(1, Math.Min(lines.Count, (int)Math.Floor(rect.Height / lineHeight)));
+        var top = rect.Y + Math.Max(0, (rect.Height - visible * lineHeight) / 2);
+        var brush = new XSolidBrush(InkColor);
+        for (var i = 0; i < visible; i++)
             gfx.DrawString(
-                "DIGITALLY SIGNED BY",
-                captionFont,
-                mutedBrush,
-                new XRect(x, y, width, captionBand),
+                lines[i],
+                font,
+                brush,
+                new XRect(rect.X, top + i * lineHeight, rect.Width, lineHeight),
                 XStringFormats.CenterLeft
             );
-        }
+    }
 
-        // Banda de la firma: la imagen capturada (dibujada/subida/tipografiada) o, si no hay, el nombre en
-        // cursiva como fallback tipográfico. Ocupa el grueso de la caja.
-        var signatureArea = new XRect(x, y + captionBand, width, signatureBand);
+    /// <summary>Firma sin marco: la tinta ocupa toda la caja (sin deformarse), alineada a la izquierda.</summary>
+    private static void DrawSignatureInk(XGraphics gfx, SealedFieldRender field, XRect area)
+    {
         if (field.SignatureImageBytes is { Length: > 0 } imageBytes)
         {
-            DrawSignatureImageFitted(gfx, imageBytes, signatureArea);
-        }
-        else
-        {
-            var scriptFont = new XFont(
-                "Times New Roman",
-                Math.Clamp(signatureBand * 0.72, 9, 24),
-                XFontStyleEx.BoldItalic
-            );
-            gfx.DrawString(field.SignerDisplayName, scriptFont, primaryBrush, signatureArea, XStringFormats.CenterLeft);
+            DrawSignatureImageFitted(gfx, imageBytes, area);
+            return;
         }
 
-        // Franja inferior: línea fina + fecha UTC, en su propia banda (nunca encima de la firma).
-        var metaTop = y + height - metaBand;
-        gfx.DrawLine(new XPen(XColor.FromArgb(180, 190, 205), 0.4), x, metaTop, x + width, metaTop);
-        var metaFont = new XFont("Helvetica", Math.Clamp(metaBand * 0.52, 4.5, 6.5), XFontStyleEx.Regular);
+        // Sin imagen: el nombre en cursiva como respaldo tipográfico, tan grande como permita la caja.
+        var size = Math.Max(FieldTypography.MinFontSizePt, area.Height * FieldTypography.AutoHeightRatio);
+        var font = new XFont(InitialsFont.Family, size, InitialsFont.Style);
+        while (
+            size > FieldTypography.MinFontSizePt && gfx.MeasureString(field.SignerDisplayName, font).Width > area.Width
+        )
+        {
+            size -= 0.5;
+            font = new XFont(InitialsFont.Family, size, InitialsFont.Style);
+        }
+        gfx.DrawString(field.SignerDisplayName, font, new XSolidBrush(InkColor), area, XStringFormats.CenterLeft);
+    }
+
+    /// <summary>
+    /// Firma con marco (opcional por oficina, activado por defecto): borde fino, barra de acento, arriba
+    /// "Signed by {nombre}" y abajo la fecha/hora UTC, en bandas finas para que la tinta conserve el grueso de
+    /// la caja. Sin datos internos (el id de la solicitud vive en el certificado, no en cada página).
+    /// </summary>
+    private static void DrawFramedSignature(XGraphics gfx, SealedFieldRender field, XRect rect)
+    {
+        gfx.DrawRoundedRectangle(new XPen(FrameBorderColor, 0.4), XBrushes.White, rect, new XSize(2, 2));
+        const double accentWidth = 1.5;
+        gfx.DrawRectangle(new XSolidBrush(FrameAccentColor), new XRect(rect.X, rect.Y, accentWidth, rect.Height));
+
+        var padding = Math.Min(3.0, rect.Height * 0.08);
+        var inner = new XRect(
+            rect.X + accentWidth + padding,
+            rect.Y + padding,
+            Math.Max(0, rect.Width - accentWidth - 2 * padding),
+            Math.Max(0, rect.Height - 2 * padding)
+        );
+
+        // Bandas de texto del marco: ~14 % del alto cada una (4.5–7 pt); la superior se omite en cajas bajas.
+        var captionSize = Math.Clamp(inner.Height * 0.14, 4.5, 7);
+        var captionFont = new XFont(TextFont.Family, captionSize, XFontStyleEx.Bold);
+        var metaFont = new XFont(TextFont.Family, captionSize, XFontStyleEx.Regular);
+        var band = captionFont.GetHeight();
+        var showCaption = inner.Height >= 4 * band;
+        var mutedBrush = new XSolidBrush(FrameTextColor);
+
+        var inkTop = inner.Y;
+        if (showCaption)
+        {
+            gfx.DrawString(
+                $"Signed by {field.SignerDisplayName}",
+                captionFont,
+                mutedBrush,
+                new XRect(inner.X, inner.Y, inner.Width, band),
+                XStringFormats.CenterLeft
+            );
+            inkTop += band;
+        }
+
+        var metaTop = inner.Bottom - band;
         gfx.DrawString(
-            $"{field.SignedAtUtc:yyyy-MM-dd HH:mm 'UTC'}",
+            $"{field.SignedAtUtc:yyyy-MM-dd HH:mm} UTC",
             metaFont,
             mutedBrush,
-            new XRect(x, metaTop, width, metaBand),
+            new XRect(inner.X, metaTop, inner.Width, band),
             XStringFormats.CenterLeft
+        );
+
+        var inkArea = new XRect(inner.X, inkTop, inner.Width, Math.Max(1, metaTop - inkTop));
+        DrawSignatureInk(gfx, field, inkArea);
+    }
+
+    /// <summary>Casilla marcada: un ✓ trazado (no depende de que la fuente tenga el glifo), centrado en la caja.</summary>
+    private static void DrawCheckMark(XGraphics gfx, XRect rect)
+    {
+        var side = Math.Min(rect.Width, rect.Height) * 0.8;
+        var x = rect.X + (rect.Width - side) / 2;
+        var y = rect.Y + (rect.Height - side) / 2;
+        var pen = new XPen(InkColor, Math.Max(0.8, side * 0.12))
+        {
+            LineCap = XLineCap.Round,
+            LineJoin = XLineJoin.Round,
+        };
+        gfx.DrawLines(
+            pen,
+            [
+                new XPoint(x + side * 0.12, y + side * 0.55),
+                new XPoint(x + side * 0.40, y + side * 0.82),
+                new XPoint(x + side * 0.88, y + side * 0.18),
+            ]
         );
     }
 
@@ -327,117 +389,6 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
         var chars = parts.Where(p => char.IsLetter(p[0])).Select(p => char.ToUpperInvariant(p[0])).Take(4);
         var initials = new string(chars.ToArray());
         return initials.Length == 0 ? "—" : initials;
-    }
-
-    /// <summary>Estampa las iniciales centradas en cursiva (sin caption ni imagen), estilo firma manuscrita.</summary>
-    private static void DrawInitialsStamp(
-        XGraphics gfx,
-        string initials,
-        double x,
-        double y,
-        double width,
-        double height,
-        XColor textPrimary
-    )
-    {
-        // Autoajuste por ANCHO y ALTO. Se usa ~0.55×alto (no todo el alto) para que las iniciales se vean
-        // como una marca proporcionada dentro de la caja, no un monograma gigante, y con cap bajo (20pt).
-        var size = FitFontSize(gfx, initials, "Times New Roman", XFontStyleEx.BoldItalic, width, height * 0.55, 6, 20);
-        var font = new XFont("Times New Roman", size, XFontStyleEx.BoldItalic);
-        var area = new XRect(x, y, width, height);
-        gfx.DrawString(initials, font, new XSolidBrush(textPrimary), area, XStringFormats.Center);
-    }
-
-    /// <summary>
-    /// Mayor tamaño de fuente (en puntos) con el que <paramref name="text"/> cabe dentro de
-    /// <paramref name="maxWidth"/> × <paramref name="maxHeight"/>. Parte del alto disponible y baja hasta
-    /// que quepa a lo ancho, acotado a [minPt, maxPt]. Así el estampado escala con el tamaño del campo.
-    /// </summary>
-    private static double FitFontSize(
-        XGraphics gfx,
-        string text,
-        string family,
-        XFontStyleEx style,
-        double maxWidth,
-        double maxHeight,
-        double minPt,
-        double maxPt
-    )
-    {
-        if (string.IsNullOrEmpty(text) || maxWidth <= 0 || maxHeight <= 0)
-            return minPt;
-
-        // El alto de línea ≈ 1.25× el em: se arranca desde ~0.8×alto para que quepa verticalmente.
-        var size = Math.Clamp(maxHeight * 0.8, minPt, maxPt);
-        while (size > minPt)
-        {
-            var font = new XFont(family, size, style);
-            if (gfx.MeasureString(text, font).Width <= maxWidth)
-                break;
-            size -= 0.5;
-        }
-        return Math.Max(size, minPt);
-    }
-
-    private static void DrawSingleValueStamp(
-        XGraphics gfx,
-        string caption,
-        string value,
-        double x,
-        double y,
-        double width,
-        double height,
-        XColor textPrimary,
-        XColor textMuted
-    )
-    {
-        var captionFont = new XFont("Helvetica", 5.5, XFontStyleEx.Bold);
-        gfx.DrawString(caption.ToUpperInvariant(), captionFont, new XSolidBrush(textMuted), new XPoint(x, y + 8));
-        var valueAreaHeight = Math.Max(1, height - 12);
-        var valueArea = new XRect(x, y + 10, width, valueAreaHeight);
-        // Autoajuste por ancho y alto: el valor (fecha, ✓, etc.) escala con la caja en vez de fijarse al alto.
-        var valueSize = FitFontSize(gfx, value, "Helvetica", XFontStyleEx.Bold, width, valueAreaHeight, 6, 18);
-        var valueFont = new XFont("Helvetica", valueSize, XFontStyleEx.Bold);
-        gfx.DrawString(value, valueFont, new XSolidBrush(textPrimary), valueArea, XStringFormats.CenterLeft);
-    }
-
-    /// <summary>
-    /// Estampa un campo de texto libre (P4): SÓLO el TEXTO que escribió el firmante, con salto de
-    /// línea automático por ancho y centrado verticalmente. La etiqueta/instrucción del preparador
-    /// (p. ej. "Put your age") es una guía para el firmante en la pantalla de firma, NO se sella en
-    /// el documento: en el PDF final debe aparecer únicamente el valor. El texto se recorta si excede
-    /// el alto; un valor vacío no dibuja nada.
-    /// </summary>
-    private static void DrawTextValueStamp(
-        XGraphics gfx,
-        string? value,
-        double x,
-        double y,
-        double width,
-        double height,
-        XColor textPrimary
-    )
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return;
-
-        var valueFont = new XFont("Helvetica", 9, XFontStyleEx.Regular);
-        var lineHeight = valueFont.GetHeight();
-        var brush = new XSolidBrush(textPrimary);
-
-        var lines = WrapText(gfx, value, valueFont, width);
-        var maxY = y + height - 2;
-
-        // Centrado vertical del bloque de texto dentro del alto disponible.
-        var blockHeight = lines.Count * lineHeight;
-        var textY = y + Math.Max(0, (height - blockHeight) / 2) + lineHeight;
-        foreach (var line in lines)
-        {
-            if (textY > maxY)
-                break;
-            gfx.DrawString(line, valueFont, brush, new XPoint(x, textY));
-            textY += lineHeight;
-        }
     }
 
     /// <summary>Parte un texto en líneas que caben en <paramref name="maxWidth"/>, respetando saltos de línea.</summary>

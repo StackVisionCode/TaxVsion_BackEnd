@@ -282,4 +282,93 @@ public sealed class CampaignScheduleTests
         Assert.Null(schedule.CreatedByUserId);
         Assert.True(schedule.CreatorCanViewAllCustomers);
     }
+
+    [Fact]
+    public void Handing_over_on_offboarding_fires_as_the_successor_with_their_visibility_and_keeps_the_creator()
+    {
+        var creator = Guid.NewGuid();
+        var successor = Guid.NewGuid();
+        var schedule = CampaignSchedule
+            .CreateOneTime(Tenant, Campaign, DateTime.UtcNow.AddDays(1), [], createdByUserId: creator)
+            .Value;
+        schedule.Pause();
+
+        var result = schedule.HandOverOnOffboarding(successor, successorCanViewAllCustomers: false);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(creator, schedule.CreatedByUserId);
+        Assert.Equal(successor, schedule.RunAsUserId);
+        Assert.Equal(successor, schedule.EffectiveRunAsUserId);
+        Assert.False(schedule.CreatorCanViewAllCustomers);
+        Assert.Equal(ScheduleStatus.Paused, schedule.Status);
+    }
+
+    [Fact]
+    public void A_closed_schedule_or_an_empty_successor_is_not_handed_over()
+    {
+        var creator = Guid.NewGuid();
+        var schedule = CampaignSchedule
+            .CreateOneTime(Tenant, Campaign, DateTime.UtcNow, [], createdByUserId: creator)
+            .Value;
+
+        Assert.Equal(CampaignScheduleErrors.SuccessorRequired, schedule.HandOverOnOffboarding(Guid.Empty, true).Error);
+        schedule.MarkFired(Guid.NewGuid(), DateTime.UtcNow);
+        Assert.Equal(
+            CampaignScheduleErrors.InvalidTransition,
+            schedule.HandOverOnOffboarding(Guid.NewGuid(), true).Error
+        );
+        Assert.Equal(creator, schedule.EffectiveRunAsUserId);
+    }
+
+    [Fact]
+    public void Pausing_on_offboarding_pauses_an_active_schedule_and_leaves_a_paused_one_as_is()
+    {
+        var active = CampaignSchedule.CreateOneTime(Tenant, Campaign, DateTime.UtcNow.AddDays(1), []).Value;
+        var paused = CampaignSchedule.CreateOneTime(Tenant, Campaign, DateTime.UtcNow.AddDays(1), []).Value;
+        paused.Pause();
+        var cancelled = CampaignSchedule.CreateOneTime(Tenant, Campaign, DateTime.UtcNow.AddDays(1), []).Value;
+        cancelled.Cancel();
+
+        Assert.True(active.PauseOnOffboarding().IsSuccess);
+        Assert.True(paused.PauseOnOffboarding().IsSuccess);
+        Assert.Equal(CampaignScheduleErrors.InvalidTransition, cancelled.PauseOnOffboarding().Error);
+
+        Assert.Equal(ScheduleStatus.Paused, active.Status);
+        Assert.Equal(ScheduleStatus.Paused, paused.Status);
+        Assert.Equal(ScheduleStatus.Cancelled, cancelled.Status);
+    }
+
+    [Fact]
+    public void Resuming_taking_over_fires_as_the_actor_with_their_visibility_and_keeps_the_creator()
+    {
+        var creator = Guid.NewGuid();
+        var actor = Guid.NewGuid();
+        var schedule = CampaignSchedule
+            .CreateOneTime(Tenant, Campaign, DateTime.UtcNow.AddDays(1), [], createdByUserId: creator)
+            .Value;
+        schedule.Pause();
+
+        var result = schedule.ResumeTakingOver(actor, actorCanViewAllCustomers: false);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ScheduleStatus.Active, schedule.Status);
+        Assert.Equal(creator, schedule.CreatedByUserId);
+        Assert.Equal(actor, schedule.EffectiveRunAsUserId);
+        Assert.False(schedule.CreatorCanViewAllCustomers);
+    }
+
+    [Fact]
+    public void Resuming_taking_over_needs_a_paused_schedule_and_an_actor()
+    {
+        var creator = Guid.NewGuid();
+        var schedule = CampaignSchedule
+            .CreateOneTime(Tenant, Campaign, DateTime.UtcNow.AddDays(1), [], createdByUserId: creator)
+            .Value;
+
+        Assert.Equal(CampaignScheduleErrors.NotPaused, schedule.ResumeTakingOver(Guid.NewGuid(), true).Error);
+        schedule.Pause();
+        Assert.Equal(CampaignScheduleErrors.SuccessorRequired, schedule.ResumeTakingOver(Guid.Empty, true).Error);
+        Assert.Equal(ScheduleStatus.Paused, schedule.Status);
+        Assert.Equal(creator, schedule.EffectiveRunAsUserId);
+    }
 }

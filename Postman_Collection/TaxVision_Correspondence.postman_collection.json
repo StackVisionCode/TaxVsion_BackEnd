@@ -239,6 +239,230 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "GetInboxThread",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/threads/{{correspondenceThreadId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"threads",
+								"{{correspondenceThreadId}}"
+							]
+						},
+						"description": "UNA fila del Inbox por id (mismo DTO que ListInboxThreads) para abrir un resultado de búsqueda o un aviso que no está en la página cargada. Mismo gate: buzón visible + cliente asignado; un hilo sin cliente (customerId null, \"Not a client\") lo decide solo el buzón. 404 EmailThread.NotFound si no se ve. Campos nuevos (R2): customerId puede ser null; latestDeliveryNotice = último aviso de entrega { deliveryNoticeId, draftId, recipient, outcome (Delayed|NotDelivered), category, reasonCode, statusCode, diagnostic, suppressed, canViewOriginal, isRead, occurredAtUtc, receivedAtUtc } o null. unreadCount incluye los avisos NotDelivered sin leer (un Delayed nunca cuenta)."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "ListInboxThreads (filters)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/threads?status=all&unlinked=true&hasAttachments=true&unreadOnly=false&fromUtc=2026-10-01T00:00:00Z&toUtc=2026-11-30T23:59:59Z&page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"threads"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "all"
+								},
+								{
+									"key": "unlinked",
+									"value": "true"
+								},
+								{
+									"key": "hasAttachments",
+									"value": "true"
+								},
+								{
+									"key": "unreadOnly",
+									"value": "false"
+								},
+								{
+									"key": "fromUtc",
+									"value": "2026-10-01T00:00:00Z"
+								},
+								{
+									"key": "toUtc",
+									"value": "2026-11-30T23:59:59Z"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Filtros en el servidor (total y páginas reales). unlinked=true = solo conversaciones sin cliente (customerId null); excluyente con customerId (400 Correspondence.CustomerFilterConflict). hasAttachments=true = con algún adjunto entrante o enviado de la conversación. fromUtc/toUtc opcionales (ISO 8601, inclusivo; sin zona = UTC; desde > hasta → 400 Correspondence.InvalidDateRange). Rango sobre la última actividad (lastMessageAtUtc)."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Search",
+			"item": [
+				{
+					"name": "SearchMail",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/search?q=invoice&limit=10",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"search"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "invoice"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Búsqueda unificada (buscador tipo Outlook): { emails[], files[] } de TODAS las carpetas con el mismo control de acceso que el Inbox (buzón visible + cliente asignado; borradores: solo los propios salvo quien ve el buzón de oficina). q recortado, 2–200 caracteres (400 Correspondence.SearchTermTooShort); limit por grupo, 10 por defecto, máx. 50. LIKE acotado por tenant, más reciente primero. Los clientes NO salen de aquí (el front usa su directorio).\n\nemails[]: { source: Thread|Incoming|Outgoing, folder: Inbox|Archived|Sent|Drafts|Trash, threadId?, messageId? (entrante que coincidió o id del borrador/enviado; null si coincidió solo el asunto de la conversación), customerId? (null = no es cliente), subject, matchedField: Subject|From|Snippet|To, occurredAtUtc, fromAddress?, fromName?, toAddresses[], snippet?, hasAttachments }. Inbox/Archived = una fila por conversación.\n\nfiles[]: { source: Incoming|Outgoing, attachmentId, messageId (entrante o enviado), threadId?, customerId?, filename, contentType, sizeBytes, occurredAtUtc, fromAddress?, fromName?, toAddresses[], fileId? (CloudStorage; entrante: null hasta descargarlo), downloadStatus? (solo entrante) }. Entrantes: adjuntos no inline de correos fuera de la papelera; enviados: los de Sent."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SearchMail (filters)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/search?q=invoice&limit=25&customerId=&unlinked=false&hasAttachments=true&unreadOnly=false&fromUtc=2026-10-01T00:00:00Z&toUtc=",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"search"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "invoice"
+								},
+								{
+									"key": "limit",
+									"value": "25"
+								},
+								{
+									"key": "customerId",
+									"value": ""
+								},
+								{
+									"key": "unlinked",
+									"value": "false"
+								},
+								{
+									"key": "hasAttachments",
+									"value": "true"
+								},
+								{
+									"key": "unreadOnly",
+									"value": "false"
+								},
+								{
+									"key": "fromUtc",
+									"value": "2026-10-01T00:00:00Z"
+								},
+								{
+									"key": "toUtc",
+									"value": ""
+								}
+							]
+						},
+						"description": "Mismos { emails[], files[] } que SearchMail con filtros en el servidor: customerId o unlinked=true (sin cliente; excluyentes → 400 Correspondence.CustomerFilterConflict) y fromUtc/toUtc opcionales (ISO 8601, inclusivo; sin zona = UTC; desde > hasta → 400 Correspondence.InvalidDateRange). para correos y archivos; hasAttachments=true y unreadOnly=true solo filtran correos (con unreadOnly no salen enviados ni borradores). Cada correo trae isUnread (conversación: algo sin leer; entrante: su leído; saliente: false)."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
 				}
 			]
 		},
@@ -343,7 +567,7 @@
 								"attachments"
 							]
 						},
-						"description": "Fase 7 — lista los attachments ya persistidos del mensaje (filename/contentType/size/isInline/downloadStatus/cloudStorageFileId), nunca bytes. Requiere correspondence.read. GATE BUZON OFICINA: los resultados se filtran por los buzones que el usuario puede ver; un empleado con connectors.accounts.office.read DENEGADO no ve el correo del buzon de oficina (hilos solo-oficina ocultos; un hilo mixto se muestra entero; abrir el cuerpo/adjuntos de un mensaje de un hilo no visible da 404). Admin y empleados con el permiso ven todo (sin filtro)."
+						"description": "Fase 7 — lista los attachments ya persistidos del mensaje (filename/contentType/size/isInline/downloadStatus/cloudStorageFileId), nunca bytes. Requiere correspondence.read. GATE BUZON OFICINA: los resultados se filtran por los buzones que el usuario puede ver; un empleado con connectors.accounts.office.read DENEGADO no ve el correo del buzon de oficina (hilos solo-oficina ocultos; un hilo mixto se muestra entero; abrir el cuerpo/adjuntos de un mensaje de un hilo no visible da 404). Admin y empleados con el permiso ven todo (sin filtro). Gate: buzón visible Y cliente asignado (sin customers.view_all); si no, 404 IncomingEmail.NotFound."
 					},
 					"response": [],
 					"event": [
@@ -481,6 +705,94 @@
 								"type": "text/javascript",
 								"exec": [
 									"pm.test(\"status 200 or documented error\", () => [200, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Delivery notices",
+			"item": [
+				{
+					"name": "GetDeliveryNoticeOriginal",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/delivery-notices/{{correspondenceDeliveryNoticeId}}/original",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"delivery-notices",
+								"{{correspondenceDeliveryNoticeId}}",
+								"original"
+							]
+						},
+						"description": "\"View original notice\": el aviso técnico (DSN/NDR) tal como llegó al buzón, pedido EN VIVO a Connectors con la cuenta + id del aviso (nunca se guarda). Responde { htmlBody, textBody, headers } como GET /messages/{id}/body. Gate = el de la conversación del aviso. 404 DeliveryNotice.NotFound; 409 DeliveryNotice.OriginalUnavailable si el resultado llegó por webhook (canViewOriginal=false). Los avisos se listan dentro de GET /threads/{id}/messages (kind = DeliveryNotice) y se marcan leídos con POST /threads/{id}/read."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "ResendDeliveryNotice",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/delivery-notices/{{correspondenceDeliveryNoticeId}}/resend",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"delivery-notices",
+								"{{correspondenceDeliveryNoticeId}}",
+								"resend"
+							]
+						},
+						"description": "Crea un borrador para reenviar el correo que rebotó: mismo asunto, cuerpo y adjuntos (mismos FileId), To = solo recipient (corregido) o, si se omite, la misma dirección del aviso; misma conversación y contexto de respuesta. Responde { draftId }; el CRM lo abre en el redactor y el usuario envía. Permiso correspondence.compose, rate limit correspondence.g.draft_manage. 404 DeliveryNotice.NotFound si la conversación no se ve; 400 Draft.AccountNotVisible si el buzón de envío no es del usuario; 400 EmailAddress.Invalid. Dos clics = dos borradores.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"recipient\": \"maria.lopez@x.com\"\n}"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
 								]
 							}
 						}
@@ -916,6 +1228,71 @@
 							]
 						},
 						"description": "Sent sin elegir cliente: correo a clientes visibles + correo a quien no es cliente. Cada fila trae customerId (null = no es cliente). scope=all es excluyente con customerId y unlinked (400 Correspondence.CustomerScopeRequired). Igual en GET /correspondence/drafts?scope=all y GET /correspondence/trash?scope=all."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "ListSent (search)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/sent?scope=all&q=maria&hasAttachments=true&fromUtc=2026-10-01T00:00:00Z&toUtc=&page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"sent"
+							],
+							"query": [
+								{
+									"key": "scope",
+									"value": "all"
+								},
+								{
+									"key": "q",
+									"value": "maria"
+								},
+								{
+									"key": "hasAttachments",
+									"value": "true"
+								},
+								{
+									"key": "fromUtc",
+									"value": "2026-10-01T00:00:00Z"
+								},
+								{
+									"key": "toUtc",
+									"value": ""
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "q (opcional, máx. 200): asunto o destinatario. hasAttachments=true: solo con adjuntos. fromUtc/toUtc opcionales (ISO 8601, inclusivo; sin zona = UTC; desde > hasta → 400 Correspondence.InvalidDateRange). Igual en GET /correspondence/drafts (fecha = último guardado; cada fila trae hasAttachments) y GET /correspondence/trash (fecha del correo, no del borrado; entrantes: asunto, remitente o vista previa). Filas de Sent: deliveryStatus (Delivered|Delayed|NotDelivered|null) y deliveries[] { address, type, status, category, updatedAtUtc }."
 					},
 					"event": [
 						{

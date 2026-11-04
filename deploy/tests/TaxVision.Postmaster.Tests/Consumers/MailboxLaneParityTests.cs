@@ -108,6 +108,30 @@ public sealed class MailboxLaneParityTests
     }
 
     [Fact]
+    public async Task The_sender_shows_the_business_name_when_the_office_has_one()
+    {
+        var mailboxSender = new FakeConnectedMailboxSender();
+        var directory = new FakeTenantDirectoryRepository();
+        var harness = new Harness(new FakeProviderResolver())
+        {
+            MailboxSender = mailboxSender,
+            TenantDirectory = directory,
+        };
+        harness.MailboxResolver.ResolveReturnValue = new MailboxResolveResult(
+            MailboxResolutionStatus.Resolved,
+            new ResolvedMailbox(Guid.NewGuid(), "gmail", "oficina@gmail.com", FromDisplayName: null),
+            null
+        );
+        var evt = CreateEvent(withLogo: true);
+        directory.Names[evt.TenantId] = "Manfer Tax Office";
+        directory.DisplayNames[evt.TenantId] = "Manfer Taxes DBA";
+
+        await harness.HandleAsync(evt);
+
+        Assert.Equal("Manfer Taxes DBA", mailboxSender.LastMessage!.FromDisplayName);
+    }
+
+    [Fact]
     public async Task An_email_without_a_logo_sends_nothing_inline()
     {
         var sent = await SendViaMailboxAsync(withLogo: false);

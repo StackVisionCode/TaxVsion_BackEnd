@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Application.Abstractions;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using TaxVision.Customer.Infrastructure.Persistence.Configurations;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
@@ -86,6 +87,60 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
                     ),
                 ct
             );
+
+    // Archivados donde el usuario es primary o tiene cualquier fila: el retiro lo suelta para que no vuelvan
+    // con él al reactivarlos. Tracked + Include(Assignments) (ReleaseOffboardedStaff muta la colección).
+    public async Task<IReadOnlyList<DomainCustomer>> ListArchivedAssignedAsync(
+        Guid tenantId,
+        Guid userId,
+        int batchSize,
+        Guid afterId,
+        CancellationToken ct
+    ) =>
+        await db
+            .Customers.IgnoreQueryFilters()
+            .Include(c => c.Assignments)
+            .Where(c =>
+                c.TenantId == tenantId
+                && c.Status == TaxVision.Customer.Domain.Customers.CustomerStatus.Archived
+                && c.Id > afterId
+                && (
+                    c.AssignedPreparerUserId == userId
+                    || db.CustomerAssignments.IgnoreQueryFilters()
+                        .Any(a => a.TenantId == tenantId && a.CustomerId == c.Id && a.UserId == userId)
+                )
+            )
+            .OrderBy(c => c.Id)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
+    // Desglose del pre-flight, alineado con lo que hace el consumer del retiro. Primary + adicionales suman lo
+    // mismo que CountActiveByAssignedPreparerAsync (sin solaparse: el adicional excluye a donde ya es primary).
+    public async Task<OffboardingClientCounts> CountOffboardingImpactAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct
+    )
+    {
+        var inTenant = db.Customers.IgnoreQueryFilters().Where(c => c.TenantId == tenantId);
+        var active = inTenant.Where(c => c.Status != TaxVision.Customer.Domain.Customers.CustomerStatus.Archived);
+        var assignedTo = db
+            .CustomerAssignments.IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && a.UserId == userId);
+
+        var primary = await active.CountAsync(c => c.AssignedPreparerUserId == userId, ct);
+        var additional = await active.CountAsync(
+            c => c.AssignedPreparerUserId != userId && assignedTo.Any(a => a.CustomerId == c.Id),
+            ct
+        );
+        var archived = await inTenant.CountAsync(
+            c =>
+                c.Status == TaxVision.Customer.Domain.Customers.CustomerStatus.Archived
+                && (c.AssignedPreparerUserId == userId || assignedTo.Any(a => a.CustomerId == c.Id)),
+            ct
+        );
+        return new OffboardingClientCounts(primary, additional, archived);
+    }
 
     public async Task<IReadOnlyList<DomainCustomer>> GetByIdsAsync(
         Guid tenantId,

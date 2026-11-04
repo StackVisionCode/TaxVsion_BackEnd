@@ -28,12 +28,23 @@ public sealed class ShareLink : TenantEntity, IHasOwner
     public int? MaxAccessCount { get; private set; }
     public int AccessCount { get; private set; }
 
+    /// <summary>Contraseñas fallidas seguidas; al llegar al tope de la oficina el enlace se bloquea un rato.</summary>
+    public int FailedPasswordAttempts { get; private set; }
+
+    public DateTime? PasswordLockedUntilUtc { get; private set; }
+
     /// <summary>Fase C4 — si el link cubre todo el subarbol (true) o solo el contenido directo de la carpeta (false). Siempre false en un link de File.</summary>
     public bool IsRecursive { get; private set; }
 
     /// <summary>Fase C4 — si el link cubre automaticamente lo agregado despues de crearlo (true) o solo lo que ya existia (false). Siempre false en un link de File.</summary>
     public bool AppliesToFutureItems { get; private set; }
     public ShareStatus Status { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "CloudStorageUserOffboardedConsumer",
+        Note = "Sus links activos se revocan."
+    )]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? RevokedAtUtc { get; private set; }
@@ -62,7 +73,8 @@ public sealed class ShareLink : TenantEntity, IHasOwner
         Guid createdBy,
         DateTime nowUtc,
         bool isRecursive = false,
-        bool appliesToFutureItems = false
+        bool appliesToFutureItems = false,
+        int defaultLifetimeDays = DefaultLifetimeDays
     )
     {
         if (resourceType == ShareResourceType.File && (isRecursive || appliesToFutureItems))
@@ -71,7 +83,8 @@ public sealed class ShareLink : TenantEntity, IHasOwner
         if (maxAccessCount is <= 0)
             return Result.Failure<(ShareLink, string)>(ShareErrors.InvalidMaxAccessCount);
 
-        var expiry = expiresAtUtc ?? nowUtc.AddDays(DefaultLifetimeDays);
+        // Sin fecha elegida: la vida por defecto de la oficina (DefaultLifetimeDays solo si no se pasa).
+        var expiry = expiresAtUtc ?? nowUtc.AddDays(defaultLifetimeDays);
         if (expiry <= nowUtc)
             return Result.Failure<(ShareLink, string)>(ShareErrors.ExpirationInPast);
 
@@ -128,6 +141,24 @@ public sealed class ShareLink : TenantEntity, IHasOwner
             Status = ShareStatus.Exhausted;
     }
 
+    public bool IsPasswordLocked(DateTime nowUtc) => PasswordLockedUntilUtc > nowUtc;
+
+    /// <summary>Suma un intento fallido; al llegar a <paramref name="maxAttempts"/> bloquea por <paramref name="lockDuration"/>.</summary>
+    public void RegisterWrongPassword(int maxAttempts, TimeSpan lockDuration, DateTime nowUtc)
+    {
+        FailedPasswordAttempts++;
+        if (FailedPasswordAttempts < maxAttempts)
+            return;
+        PasswordLockedUntilUtc = nowUtc.Add(lockDuration);
+        FailedPasswordAttempts = 0;
+    }
+
+    public void RegisterCorrectPassword()
+    {
+        FailedPasswordAttempts = 0;
+        PasswordLockedUntilUtc = null;
+    }
+
     public Result Revoke(DateTime nowUtc)
     {
         if (Status == ShareStatus.Revoked)
@@ -178,4 +209,11 @@ public sealed class ShareLink : TenantEntity, IHasOwner
         );
 
     public bool HasAnyRecipient => _recipients.Count > 0;
+
+    /// <summary>Visibilidades que sin destinatarios no sirven a nadie.</summary>
+    public bool RequiresRecipients => Visibility is ShareVisibility.SpecificUsers or ShareVisibility.ExternalRecipients;
+
+    /// <summary>Quita a un usuario de los destinatarios (retiro). True si estaba.</summary>
+    public bool RemoveUserRecipient(Guid userId) =>
+        _recipients.RemoveAll(r => r.Kind == ShareRecipientKind.User && r.RecipientUserId == userId) > 0;
 }

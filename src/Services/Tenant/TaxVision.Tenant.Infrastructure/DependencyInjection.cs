@@ -1,4 +1,5 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -8,14 +9,20 @@ using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Tenant.Application.Abstractions;
 using TaxVision.Tenant.Application.Brands.Abstractions;
+using TaxVision.Tenant.Application.Compliance.Abstractions;
 using TaxVision.Tenant.Application.Platform.Abstractions;
+using TaxVision.Tenant.Application.Profiles.Abstractions;
 using TaxVision.Tenant.Application.RateLimiting.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
+using TaxVision.Tenant.Infrastructure.Billing;
 using TaxVision.Tenant.Infrastructure.Branding;
+using TaxVision.Tenant.Infrastructure.Compliance;
 using TaxVision.Tenant.Infrastructure.Onboarding;
 using TaxVision.Tenant.Infrastructure.Persistence;
 using TaxVision.Tenant.Infrastructure.Persistence.Repositories;
 using TaxVision.Tenant.Infrastructure.RateLimiting;
+using TaxVision.Tenant.Infrastructure.Scheduling;
+using TaxVision.Tenant.Infrastructure.Security;
 
 namespace TaxVision.Tenant.Infrastructure;
 
@@ -33,6 +40,7 @@ public static class InfrastructureRegistration
         services.AddScoped<ITenantReadService, TenantReadService>();
 
         AddBranding(services, config);
+        AddOfficeProfile(services, config);
 
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
         // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma
@@ -137,6 +145,40 @@ public static class InfrastructureRegistration
                 var opt =
                     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceAuthClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+    }
+
+    /// <summary>
+    /// Perfil público + cumplimiento de la oficina. El EFIN se cifra con el protector rotativo de
+    /// BuildingBlocks (sección "Encryption": MasterKey/MasterKeyVersion y la anterior al rotar); la clave
+    /// sale de user-secrets o del entorno, nunca del código. La importación lee Billing por M2M.
+    /// </summary>
+    private static void AddOfficeProfile(IServiceCollection services, IConfiguration config)
+    {
+        services.AddScoped<IOfficeProfileRepository, OfficeProfileRepository>();
+        services.AddScoped<IOfficeComplianceRepository, OfficeComplianceRepository>();
+
+        services.AddRotatingSecretProtection(config);
+        services.AddSingleton<IEfinProtector, EfinProtector>();
+
+        // Recordatorio anual del WISP: job diario con lock de Redis entre réplicas.
+        services
+            .AddOptions<WispReviewReminderOptions>()
+            .Bind(config.GetSection(WispReviewReminderOptions.SectionName))
+            .Validate(o => o.IsValid(), "Tenant:WispReviewReminders has out-of-range values.")
+            .ValidateOnStart();
+        services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
+        services.AddHostedService<WispReviewReminderJob>();
+
+        services.AddOptions<BillingClientOptions>().Bind(config.GetSection(BillingClientOptions.SectionName));
+        // La importación pagina todo Billing: mismo timeout de 30 s que los demás clientes M2M, por página.
+        services.AddHttpClient<IBillingIssuerProfileClient, BillingIssuerProfileClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<BillingClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );

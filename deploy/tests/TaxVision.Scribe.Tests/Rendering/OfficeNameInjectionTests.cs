@@ -80,11 +80,79 @@ public sealed class OfficeNameInjectionTests
         Assert.DoesNotContain("Manfer Tax Office", result.Value.Html);
     }
 
+    [Fact]
+    public async Task The_business_name_signs_the_email_instead_of_the_office_name()
+    {
+        var tenantId = Guid.NewGuid();
+        var profiles = new FakeTenantProfileRefRepository();
+        profiles.Names[tenantId] = "Manfer Tax Office";
+        profiles.Profiles[tenantId] = ("Manfer Taxes DBA", null);
+
+        var result = await RenderAsync("tenant-base", tenantId, profiles, callerName: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Invoice from Manfer Taxes DBA", result.Value.Subject);
+        Assert.Contains("footer: Manfer Taxes DBA", result.Value.Html);
+        Assert.DoesNotContain("Manfer Tax Office", result.Value.Html);
+    }
+
+    [Fact]
+    public async Task A_blank_business_name_falls_back_to_the_office_name()
+    {
+        var tenantId = Guid.NewGuid();
+        var profiles = new FakeTenantProfileRefRepository();
+        profiles.Names[tenantId] = "Manfer Tax Office";
+        profiles.Profiles[tenantId] = ("   ", "   ");
+
+        var result = await RenderAsync("tenant-base", tenantId, profiles, callerName: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("footer: Manfer Tax Office", result.Value.Html);
+        Assert.DoesNotContain("address:", result.Value.Html);
+    }
+
+    [Fact]
+    public async Task The_postal_address_reaches_the_footer()
+    {
+        // Requisito CAN-SPAM: el correo de la oficina lleva su dirección postal en el pie.
+        var tenantId = Guid.NewGuid();
+        var profiles = new FakeTenantProfileRefRepository();
+        profiles.Names[tenantId] = "Manfer Tax Office";
+        profiles.Profiles[tenantId] = (null, "1600 Main St, Miami, FL 33101");
+
+        var result = await RenderAsync("tenant-base", tenantId, profiles, callerName: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("address: 1600 Main St, Miami, FL 33101", result.Value.Html);
+    }
+
+    [Fact]
+    public async Task An_address_sent_by_the_caller_is_kept()
+    {
+        var tenantId = Guid.NewGuid();
+        var profiles = new FakeTenantProfileRefRepository();
+        profiles.Names[tenantId] = "Manfer Tax Office";
+        profiles.Profiles[tenantId] = (null, "1600 Main St, Miami, FL 33101");
+
+        var result = await RenderAsync(
+            "tenant-base",
+            tenantId,
+            profiles,
+            callerName: null,
+            callerAddress: "200 Branch Ave, Tampa, FL 33602"
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("address: 200 Branch Ave, Tampa, FL 33602", result.Value.Html);
+        Assert.DoesNotContain("1600 Main St", result.Value.Html);
+    }
+
     private static async Task<Result<RenderedContent>> RenderAsync(
         string layoutKey,
         Guid tenantId,
         FakeTenantProfileRefRepository profiles,
-        string? callerName
+        string? callerName,
+        string? callerAddress = null
     )
     {
         var htmlFileId = Guid.NewGuid();
@@ -149,7 +217,8 @@ public sealed class OfficeNameInjectionTests
         cloudStorage.Seed(htmlFileId, "<p>body: {{ tenant_name }}</p>");
         cloudStorage.Seed(
             layoutHtmlFileId,
-            "<html><body>{{ body | raw }}<i>footer: {{ tenant_name }}</i></body></html>"
+            "<html><body>{{ body | raw }}<i>footer: {{ tenant_name }}</i>"
+                + "{% if tenant_address != blank %}<i>address: {{ tenant_address }}</i>{% endif %}</body></html>"
         );
 
         var renderer = new FluidTemplateRenderer(
@@ -168,6 +237,8 @@ public sealed class OfficeNameInjectionTests
         var variables = new Dictionary<string, object?>();
         if (callerName is not null)
             variables["tenant_name"] = callerName;
+        if (callerAddress is not null)
+            variables["tenant_address"] = callerAddress;
 
         return await renderer.RenderAsync(new RenderRequest(EventKeyValue, tenantId, Locale: null, variables));
     }

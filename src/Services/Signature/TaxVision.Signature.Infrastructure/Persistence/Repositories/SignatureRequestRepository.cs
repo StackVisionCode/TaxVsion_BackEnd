@@ -24,6 +24,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
                 .ThenInclude(signer => signer.DocumentCompletions)
             .Include(request => request.PreparerFields)
             .Include(request => request.Documents)
+            .Include(request => request.CustomerCopies)
             .FirstOrDefaultAsync(request => request.Id == requestId && request.TenantId == tenantId, ct);
 
     public Task<SignatureRequest?> GetByExternalReferenceAsync(
@@ -53,7 +54,10 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         db
             .SignatureRequests.IgnoreQueryFilters()
             .Include(request => request.Signers)
+                // La entrega elige los certificados por documento según los campos de cada firmante.
+                .ThenInclude(signer => signer.Fields)
             .Include(request => request.Documents)
+            .Include(request => request.CustomerCopies)
             .FirstOrDefaultAsync(
                 request =>
                     request.TenantId == tenantId
@@ -74,6 +78,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
                 // Signers=[] y Notification no mandaba ningún email de certificado.
                 .ThenInclude(signer => signer.Fields)
             .Include(request => request.Documents)
+            .Include(request => request.CustomerCopies)
             .FirstOrDefaultAsync(
                 request =>
                     request.TenantId == tenantId
@@ -106,7 +111,11 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         await db
             .SignatureRequests.IgnoreQueryFilters()
             .Include(request => request.Documents)
-            .Where(r => r.Status == SignatureRequestStatus.Draft && r.CreatedAtUtc < createdBeforeUtc)
+            .Where(r =>
+                r.Status == SignatureRequestStatus.Draft
+                && r.CreatedAtUtc < createdBeforeUtc
+                && r.Documents.Any(document => document.VerificationStatus == DocumentVerificationStatus.Pending)
+            )
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<SignatureRequest>> ListExpiredCandidatesAsync(
@@ -123,6 +132,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
 
     public async Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
         DateTime nowUtc,
+        int maxRemindersPerRequest,
         CancellationToken ct = default
     ) =>
         await db
@@ -132,7 +142,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
                 r.Status == SignatureRequestStatus.InProgress
                 && r.AutoRemindersEnabled
                 && r.ExpiresAtUtc > nowUtc
-                && r.RemindersSent < SignatureRequest.MaxRemindersPerRequest
+                && r.RemindersSent < maxRemindersPerRequest
                 && r.SentAtUtc != null
                 // Intervalo dinámico por-solicitud: base = último reminder o, si no hubo, el envío inicial.
                 && (
@@ -144,6 +154,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<SignatureRequest>> ListPurgeCandidatesAsync(
+        Guid tenantId,
         DateTime olderThanUtc,
         int batchSize,
         CancellationToken ct = default
@@ -151,7 +162,8 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         await db
             .SignatureRequests.IgnoreQueryFilters()
             .Where(r =>
-                !r.LegalHold
+                r.TenantId == tenantId
+                && !r.LegalHold
                 && (
                     r.Status == SignatureRequestStatus.Completed
                     || r.Status == SignatureRequestStatus.Rejected
@@ -187,6 +199,32 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .ToListAsync(ct);
 
     // Migracion (re-asignacion de sellados): tenantId explicito ES el limite, IgnoreQueryFilters() intencional.
+    public async Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSeveralCustomerSignersAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    )
+    {
+        // En SQL: al menos dos firmantes-cliente; en memoria: que sean clientes DISTINTOS.
+        var candidates = await db
+            .SignatureRequests.IgnoreQueryFilters()
+            .Include(request => request.Signers)
+                .ThenInclude(signer => signer.Fields)
+            .Include(request => request.Documents)
+            .Include(request => request.CustomerCopies)
+            .Where(request =>
+                request.TenantId == tenantId
+                && request.Status == SignatureRequestStatus.Completed
+                && request.Documents.Any(document => document.SealedFileId != null)
+                && request.Signers.Count(signer => signer.MappedCustomerId != null) >= 2
+            )
+            .ToListAsync(ct);
+        return candidates
+            .Where(request =>
+                request.Signers.Select(signer => signer.MappedCustomerId).OfType<Guid>().Distinct().Count() >= 2
+            )
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
         Guid tenantId,
         CancellationToken ct = default

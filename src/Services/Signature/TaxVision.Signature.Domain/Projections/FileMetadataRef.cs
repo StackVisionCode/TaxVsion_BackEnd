@@ -9,6 +9,9 @@ public enum FileScanStatus
     Available,
     Infected,
     Deleted,
+
+    /// <summary>CloudStorage no lo aceptó (guardado rechazado, bloqueado por política o scan fallido): nunca estará disponible.</summary>
+    Rejected,
 }
 
 /// <summary>
@@ -37,6 +40,9 @@ public sealed class FileMetadataRef
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>El archivo ya tiene un resultado final (disponible o no); <c>Pending</c> sigue esperando.</summary>
+    public bool HasScanOutcome => Status != FileScanStatus.Pending;
+
     public static FileMetadataRef ForAvailable(
         Guid tenantId,
         Guid fileId,
@@ -62,6 +68,14 @@ public sealed class FileMetadataRef
         };
     }
 
+    /// <summary>Infectado sin haber pasado por Available (el evento llegó antes que cualquier otro).</summary>
+    public static FileMetadataRef ForInfected(Guid tenantId, Guid fileId, string scanReport) =>
+        ForOutcome(tenantId, fileId, FileScanStatus.Infected, scanReport);
+
+    /// <summary>Rechazado por CloudStorage sin haber existido nunca como Available.</summary>
+    public static FileMetadataRef ForRejected(Guid tenantId, Guid fileId, string reason) =>
+        ForOutcome(tenantId, fileId, FileScanStatus.Rejected, reason);
+
     public void MarkAvailable(string objectKey, string contentType, long sizeBytes, string checksumSha256)
     {
         ObjectKey = objectKey;
@@ -80,10 +94,43 @@ public sealed class FileMetadataRef
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// Rechazo de CloudStorage. No pisa un resultado ya conocido (Available, Infected o Deleted): un
+    /// evento tardío o ajeno no degrada un archivo que sí existe ni cambia un motivo más específico.
+    /// </summary>
+    public void MarkRejected(string reason)
+    {
+        if (Status is FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted)
+            return;
+
+        Status = FileScanStatus.Rejected;
+        RejectionReason = TruncateReport(reason);
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public void MarkDeleted()
     {
         Status = FileScanStatus.Deleted;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    // Sin objeto ni metadatos (nunca hubo FileAvailable): columnas requeridas vacías.
+    private static FileMetadataRef ForOutcome(Guid tenantId, Guid fileId, FileScanStatus status, string reason)
+    {
+        var now = DateTime.UtcNow;
+        return new FileMetadataRef
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            FileId = fileId,
+            ObjectKey = string.Empty,
+            ContentType = string.Empty,
+            SizeBytes = 0,
+            Status = status,
+            RejectionReason = TruncateReport(reason),
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+        };
     }
 
     private static string TruncateReport(string report) =>

@@ -1,5 +1,8 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Correspondence.Domain.Delivery;
+using TaxVision.Correspondence.Domain.Inbox;
+using TaxVision.Correspondence.Domain.ValueObjects;
 
 namespace TaxVision.Correspondence.Domain.Compose;
 
@@ -25,7 +28,7 @@ public sealed class Draft : IHasOwner, ITenantOwned
     public const int FailureReasonMaxLength = 500;
 
     private readonly List<DraftRecipient> _recipients = [];
-    private readonly List<DraftAttachmentRef> _attachments = [];
+    private readonly List<DraftAttachment> _attachments = [];
 
     private Draft() { }
 
@@ -47,6 +50,11 @@ public sealed class Draft : IHasOwner, ITenantOwned
     /// ownership check falla-cerrado para esos drafts legacy en vez de asumir un dueño que no se
     /// conoce (ver migración additive que agrega esta columna con ese default).
     /// </summary>
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "CorrespondenceUserOffboardedConsumer",
+        Note = "Abiertos: al sucesor o se descartan; lo enviado no se toca."
+    )]
     public Guid CreatedByUserId { get; private set; }
 
     /// <summary>Referencia opaca al <c>TenantEmailAccount</c> de Connectors desde la que se enviará — sin FK ni navegación, mismo tratamiento que <see cref="Inbox.IncomingEmail.AccountId"/>.</summary>
@@ -80,13 +88,18 @@ public sealed class Draft : IHasOwner, ITenantOwned
     /// sin límite con el tiempo — el mismo trade-off de Fase 10 aplicado acá degradaría con el uso
     /// real del sistema en vez de quedarse chico. Por eso, a diferencia de Fase 10, se materializa
     /// el join en esta columna en vez de filtrar el JSON en memoria. Null para correspondencia
-    /// nueva (no hay thread hasta que el customer responda); se fija una sola vez en
-    /// <see cref="CreateReply"/>, nunca vuelve a cambiar.
+    /// nueva (no hay thread hasta que el customer responda); se fija una sola vez, en
+    /// <see cref="CreateReply"/> o en <see cref="LinkToThread"/> (aviso de no entrega), y nunca vuelve a cambiar.
     /// </summary>
     public Guid? EmailThreadId { get; private set; }
 
     public IReadOnlyCollection<DraftRecipient> Recipients => _recipients.AsReadOnly();
-    public IReadOnlyCollection<DraftAttachmentRef> Attachments => _attachments.AsReadOnly();
+
+    /// <summary>Direcciones de un tipo (To/Cc/Bcc) en el orden en que se cargaron.</summary>
+    public IReadOnlyList<string> AddressesOf(EmailRecipientType type) =>
+        _recipients.Where(r => r.Type == type).Select(r => r.Address).ToList();
+
+    public IReadOnlyCollection<DraftAttachment> Attachments => _attachments.AsReadOnly();
 
     /// <summary>
     /// RBAC Fase 5 (RBAC_Hardening_Plan.md) — implementación de <see cref="ITenantOwned"/> para el
@@ -178,6 +191,64 @@ public sealed class Draft : IHasOwner, ITenantOwned
     }
 
     /// <summary>
+    /// Reenvío tras un aviso de no entrega: un borrador nuevo con el asunto, el cuerpo y los adjuntos del enviado
+    /// original (mismos archivos de CloudStorage), dirigido SOLO a <paramref name="recipient"/> (el destinatario
+    /// corregido o el mismo). Queda en la misma conversación y conserva el contexto de respuesta, si lo había, para
+    /// que el reenvío salga en el mismo hilo. Lo revisa y lo envía el usuario.
+    /// </summary>
+    public static Result<Draft> CreateResend(
+        Draft original,
+        EmailAddress recipient,
+        Guid createdByUserId,
+        Guid emailThreadId
+    )
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        ArgumentNullException.ThrowIfNull(recipient);
+
+        if (original.Status != DraftStatus.Sent)
+            return Result.Failure<Draft>(new Error("Draft.ResendRequiresSent", "Only a sent email can be resent."));
+        if (emailThreadId == Guid.Empty)
+            return Result.Failure<Draft>(new Error("Draft.EmailThreadIdRequired", "EmailThreadId is required."));
+
+        var validationError = ValidateIds(original.TenantId, original.AccountId, createdByUserId);
+        if (validationError is not null)
+            return Result.Failure<Draft>(validationError);
+
+        var now = DateTime.UtcNow;
+        var draft = new Draft
+        {
+            Id = Guid.NewGuid(),
+            TenantId = original.TenantId,
+            CustomerId = original.CustomerId,
+            CreatedByUserId = createdByUserId,
+            AccountId = original.AccountId,
+            Subject = original.Subject,
+            HtmlBody = original.HtmlBody,
+            TextBody = original.TextBody,
+            Status = DraftStatus.Draft,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+            ReplyContext = original.ReplyContext,
+            EmailThreadId = emailThreadId,
+        };
+
+        // Mismo nombre visible si el destinatario no cambió.
+        var displayName = original
+            ._recipients.FirstOrDefault(r =>
+                string.Equals(r.Address, recipient.NormalizedValue, StringComparison.OrdinalIgnoreCase)
+            )
+            ?.DisplayName;
+        draft._recipients.Add(
+            DraftRecipient.Create(draft.TenantId, draft.Id, recipient, EmailRecipientType.To, displayName)
+        );
+        foreach (var attachment in original._attachments)
+            draft._attachments.Add(DraftAttachment.Create(draft.TenantId, draft.Id, attachment.ToRef()));
+
+        return Result.Success(draft);
+    }
+
+    /// <summary>
     /// Autoguardado parcial (semántica PATCH) — solo pisa los campos no-null. Pensado para ser
     /// llamado cada pocos segundos mientras el usuario escribe (debounced desde el frontend,
     /// Fase 11); por eso no genera domain event de integración, solo mueve
@@ -228,7 +299,7 @@ public sealed class Draft : IHasOwner, ITenantOwned
         if (IndexOfAttachment(attachmentRef.FileId) >= 0)
             return Result.Success();
 
-        _attachments.Add(attachmentRef);
+        _attachments.Add(DraftAttachment.Create(TenantId, Id, attachmentRef));
         UpdatedAtUtc = DateTime.UtcNow;
         return Result.Success();
     }
@@ -273,6 +344,26 @@ public sealed class Draft : IHasOwner, ITenantOwned
             return Result.Failure(new Error("Draft.CreatedByUserIdRequired", "CreatedByUserId is required."));
 
         CreatedByUserId = newUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Cambia el buzón desde el que saldrá un borrador ABIERTO (al retirar a su autor, si salía de un buzón
+    /// personal suyo que Connectors desconecta y purga). Lo enviado no se toca.
+    /// </summary>
+    public Result MoveToAccount(Guid accountId)
+    {
+        if (Status != DraftStatus.Draft)
+            return Result.Failure(InvalidTransition(nameof(MoveToAccount)));
+
+        if (accountId == Guid.Empty)
+            return Result.Failure(new Error("Draft.AccountIdRequired", "AccountId is required."));
+
+        if (AccountId == accountId)
+            return Result.Success();
+
+        AccountId = accountId;
         UpdatedAtUtc = DateTime.UtcNow;
         return Result.Success();
     }
@@ -327,6 +418,52 @@ public sealed class Draft : IHasOwner, ITenantOwned
     public void Restore()
     {
         DeletedAtUtc = null;
+    }
+
+    /// <summary>
+    /// Resultado de entrega de un destinatario de este correo ya enviado (Postmaster lo correlaciona). Devuelve
+    /// <c>true</c> si cambió el estado; <c>false</c> si es repetido o más viejo que el último aplicado.
+    /// </summary>
+    public Result<bool> RecordDeliveryOutcome(
+        string recipientAddress,
+        DeliveryOutcome outcome,
+        string? category,
+        DateTime occurredAtUtc
+    )
+    {
+        if (Status != DraftStatus.Sent)
+            return Result.Failure<bool>(InvalidTransition(nameof(RecordDeliveryOutcome)));
+
+        var recipient = _recipients.Find(r =>
+            string.Equals(r.Address, recipientAddress?.Trim(), StringComparison.OrdinalIgnoreCase)
+        );
+        if (recipient is null)
+            return Result.Failure<bool>(
+                new Error("Draft.RecipientNotFound", "The recipient is not part of this email.")
+            );
+
+        return Result.Success(recipient.RecordDelivery(outcome, category, occurredAtUtc));
+    }
+
+    /// <summary>
+    /// Un correo nuevo enviado no tiene conversación hasta que algo llega sobre él (una respuesta o un aviso de no
+    /// entrega): ahí se le crea una y se enlaza acá. Solo una vez; enlazar al mismo hilo es un no-op.
+    /// </summary>
+    public Result LinkToThread(Guid emailThreadId)
+    {
+        if (Status != DraftStatus.Sent)
+            return Result.Failure(InvalidTransition(nameof(LinkToThread)));
+        if (emailThreadId == Guid.Empty)
+            return Result.Failure(new Error("Draft.EmailThreadIdRequired", "EmailThreadId is required."));
+        if (EmailThreadId == emailThreadId)
+            return Result.Success();
+        if (EmailThreadId is not null)
+            return Result.Failure(
+                new Error("Draft.AlreadyInThread", "This email already belongs to another conversation.")
+            );
+
+        EmailThreadId = emailThreadId;
+        return Result.Success();
     }
 
     /// <summary>Sending → Failed. El usuario puede reintentar creando un nuevo intento de envío sobre el mismo Draft en Fase 14 — este aggregate solo registra el motivo.</summary>

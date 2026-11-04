@@ -26,4 +26,19 @@ public sealed class EmailLayoutRepository(ScribeDbContext dbContext) : IEmailLay
 
     public async Task AddAsync(EmailLayout layout, CancellationToken ct = default) =>
         await dbContext.EmailLayouts.AddAsync(layout, ct);
+
+    // IgnoreQueryFilters: mismo motivo que EmailTemplateRepository.GetReferencingFileAsync.
+    public async Task<IReadOnlyList<EmailLayout>> GetReferencingFileAsync(
+        Guid fileId,
+        CancellationToken ct = default
+    ) =>
+        await dbContext
+            .EmailLayouts.IgnoreQueryFilters()
+            .Include(l => l.Versions)
+            .Where(l =>
+                l.Versions.Any(v =>
+                    v.HtmlFileId == fileId || v.DesignJsonFileId == fileId || v.PreviewImageFileId == fileId
+                )
+            )
+            .ToListAsync(ct);
 }

@@ -22,6 +22,12 @@ namespace TaxVision.PaymentClient.Infrastructure;
 
 public static class DependencyInjection
 {
+    private static bool IsHttpsBase(string value) =>
+        Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && string.IsNullOrEmpty(uri.Query)
+        && string.IsNullOrEmpty(uri.Fragment);
+
     public static IServiceCollection AddPaymentClientInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration
@@ -51,12 +57,66 @@ public static class DependencyInjection
         services.AddSecretProtection();
 
         services.Configure<PlatformStripeCredentials>(configuration.GetSection(PlatformStripeCredentials.SectionName));
+
+        // Registro automático del webhook de cada oficina: apagado sin base pública (local).
+        services
+            .AddOptions<PaymentWebhookOptions>()
+            .Bind(configuration.GetSection(PaymentWebhookOptions.SectionName))
+            .Validate(
+                o => string.IsNullOrWhiteSpace(o.PublicBaseUrl) || IsHttpsBase(o.PublicBaseUrl),
+                $"{PaymentWebhookOptions.SectionName}:PublicBaseUrl must be an absolute https URL without query or fragment."
+            )
+            .Validate(
+                o => o.MaxAttempts is >= 1 and <= PaymentWebhookOptions.MaxAttemptsLimit,
+                $"{PaymentWebhookOptions.SectionName}:MaxAttempts must be between 1 and {PaymentWebhookOptions.MaxAttemptsLimit}."
+            )
+            .Validate(
+                o => o.RetryDelaySeconds is >= 5 and <= 3600,
+                $"{PaymentWebhookOptions.SectionName}:RetryDelaySeconds must be between 5 and 3600."
+            )
+            .Validate(
+                o => o.PendingSweepIntervalMinutes is >= 1 and <= 1440,
+                $"{PaymentWebhookOptions.SectionName}:PendingSweepIntervalMinutes must be between 1 and 1440."
+            )
+            .Validate(
+                o => o.PendingMarginMinutes is >= 5 and <= 1440,
+                $"{PaymentWebhookOptions.SectionName}:PendingMarginMinutes must be between 5 and 1440."
+            )
+            .Validate(
+                o => o.PendingSweepBatchSize is >= 1 and <= 500,
+                $"{PaymentWebhookOptions.SectionName}:PendingSweepBatchSize must be between 1 and 500."
+            )
+            .ValidateOnStart();
         services.AddSingleton<IStripeConnectGateway, StripeConnectGateway>();
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
             ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
         );
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
+
+        // Revisión de pagos atascados esperando al proveedor (StuckPaymentReconciliationJob).
+        services
+            .AddOptions<StuckPaymentReconciliationOptions>()
+            .Bind(configuration.GetSection(StuckPaymentReconciliationOptions.SectionName))
+            .Validate(
+                o => o.IntervalMinutes is >= 1 and <= 1440,
+                $"{StuckPaymentReconciliationOptions.SectionName}:IntervalMinutes must be between 1 and 1440."
+            )
+            .Validate(
+                o => o.StuckAfterMinutes >= 5,
+                $"{StuckPaymentReconciliationOptions.SectionName}:StuckAfterMinutes must be at least 5."
+            )
+            .Validate(
+                o =>
+                    o.GiveUpAfterDays >= 1
+                    && TimeSpan.FromDays(o.GiveUpAfterDays) > TimeSpan.FromMinutes(o.StuckAfterMinutes),
+                $"{StuckPaymentReconciliationOptions.SectionName}:GiveUpAfterDays must be at least 1 and longer than StuckAfterMinutes."
+            )
+            .Validate(
+                o => o.BatchSize is >= 1 and <= StuckPaymentReconciliationOptions.MaxBatchSize,
+                $"{StuckPaymentReconciliationOptions.SectionName}:BatchSize must be between 1 and {StuckPaymentReconciliationOptions.MaxBatchSize}."
+            )
+            .ValidateOnStart();
 
         services.AddSingleton<IPaymentClientMetrics, PaymentClientMetrics>();
 

@@ -5,6 +5,7 @@ using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Queries;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
+using TaxVision.CloudStorage.Domain.Platform;
 
 namespace TaxVision.CloudStorage.Tests.Application;
 
@@ -76,18 +77,15 @@ public sealed class ZipDownloadHandlerTests
 
     private static RequestAuditContext Audit() => new(null, null, "corr-1");
 
-    private static IOptions<CloudStorageOptions> Options(
+    private static FakeStoragePlatformSettingsProvider Options(
         int maxFiles = 500,
         long maxBytes = 500L * 1024 * 1024,
         int maxFolders = 50
     ) =>
-        Microsoft.Extensions.Options.Options.Create(
-            new CloudStorageOptions
-            {
-                MaxZipFiles = maxFiles,
-                MaxZipAggregateBytes = maxBytes,
-                MaxZipFolders = maxFolders,
-            }
+        FakeStoragePlatformSettingsProvider.With(
+            (nameof(StoragePlatformSettings.MaxZipFiles), maxFiles),
+            (nameof(StoragePlatformSettings.MaxZipAggregateBytes), maxBytes),
+            (nameof(StoragePlatformSettings.MaxZipFolders), maxFolders)
         );
 
     private sealed record Harness(
@@ -102,7 +100,7 @@ public sealed class ZipDownloadHandlerTests
 
         public Task<BuildingBlocks.Results.Result<ZipDownloadPlan>> Handle(
             PrepareZipDownloadQuery query,
-            IOptions<CloudStorageOptions>? options = null
+            FakeStoragePlatformSettingsProvider? options = null
         ) =>
             PrepareZipDownloadHandler.Handle(
                 query,

@@ -166,6 +166,12 @@ public sealed class TenantBrandColorHandlersTests
 
         public Task<TenantBrand?> GetByAssetFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ConfirmedBrandLogo>> ListConfirmedLogosAsync(
+            int skip,
+            int take,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

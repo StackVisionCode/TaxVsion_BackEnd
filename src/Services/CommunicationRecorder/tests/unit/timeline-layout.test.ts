@@ -83,6 +83,19 @@ describe('timeline model', () => {
     ]);
   });
 
+  it('reunión: quien esperó y fue rechazado (sin filas de entrada) no aparece', () => {
+    const m = model(
+      [
+        ev(-20_000, 'participant.joined', 'ana'),
+        ev(-10_000, 'participant.waiting', 'cleo'),
+        ev(-5000, 'participant.denied', 'ana', { targetUserId: 'cleo' }),
+        ev(5000, 'participant.admitted', 'ana', { targetUserId: 'bob' }),
+      ],
+      [],
+    );
+    expect(m.users.map((u) => u.userId)).toEqual(['ana', 'bob']);
+  });
+
   it('llamada sin eventos: ambos presentes por las pistas, cámara visible si hay video; nombre de respaldo', () => {
     const m = model([], [tr('a1', 'ana', 'audio', 0, 60_000), tr('v1', 'ana', 'video', 0, 60_000), tr('a2', 'x-user', 'audio', 500, 60_000)], 60_000, [people[0] as TimelineParticipant]);
     expect(m.users.map((u) => [u.userId, u.displayName])).toEqual([

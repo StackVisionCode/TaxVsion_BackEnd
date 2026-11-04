@@ -17,6 +17,8 @@ public sealed class PriceBookVersion : BaseEntity
 
     public int Version { get; private set; }
     public DateTime EffectiveFromUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 

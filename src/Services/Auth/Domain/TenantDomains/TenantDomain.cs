@@ -52,6 +52,8 @@ public sealed class TenantDomain : AggregateRoot
 
     public string? VerificationMethod { get; private set; }
     public DateTime? VerifiedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 

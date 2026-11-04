@@ -99,6 +99,23 @@ public sealed class ReminderDueConsumerTests
         Assert.Equal(NotificationCategory.Reminders, harness.Preferences.LastAskedCategory);
     }
 
+    /// <summary>
+    /// Staff suspendido o retirado: no le llega por ningún canal. El correo lo corta el resolver y
+    /// in-app/push el gate del dispatcher, sin que el consumer tenga que saberlo.
+    /// </summary>
+    [Fact]
+    public async Task A_un_usuario_inactivo_no_le_llega_por_ningun_canal()
+    {
+        var harness = new Harness(preferencesEnabled: true, withActiveDevice: true);
+        harness.Directory.Seed(TenantId, UserId, "retirado@example.com", isActive: false);
+
+        await Handle(harness, Due());
+
+        Assert.Empty(harness.EmailGateway.Queued);
+        Assert.Empty(harness.Logs.Logs);
+        Assert.Empty(harness.PushSender.Sent);
+    }
+
     [Fact]
     public async Task Un_recordatorio_pospuesto_lo_dice_en_el_titulo()
     {
@@ -186,6 +203,7 @@ public sealed class ReminderDueConsumerTests
                 devices,
                 Logs,
                 Preferences,
+                Directory,
                 new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
@@ -333,8 +351,8 @@ public sealed class ReminderDueConsumerTests
     {
         public List<UserEmailDirectoryEntry> Entries { get; } = [];
 
-        internal void Seed(Guid tenantId, Guid userId, string email) =>
-            Entries.Add(UserEmailDirectoryEntry.Create(tenantId, userId, email));
+        internal void Seed(Guid tenantId, Guid userId, string email, bool isActive = true) =>
+            Entries.Add(UserEmailDirectoryEntry.Create(tenantId, userId, email, isActive));
 
         public Task<UserEmailDirectoryEntry?> FindAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             Task.FromResult(Entries.FirstOrDefault(e => e.TenantId == tenantId && e.UserId == userId));

@@ -17,5 +17,10 @@ public sealed record SentMessageListItem(
     bool HasAttachments,
     int AttachmentCount,
     // Cliente en el que se archivó; null = enviado a alguien que no es cliente.
-    Guid? CustomerId
+    Guid? CustomerId,
+    // Peor estado de entrega entre los destinatarios (Delivered/Delayed/NotDelivered); null = "Sent", sin noticias.
+    string? DeliveryStatus = null,
+    IReadOnlyList<Delivery.RecipientDeliverySummary>? Deliveries = null,
+    IReadOnlyList<string>? CcAddresses = null,
+    IReadOnlyList<string>? BccAddresses = null
 );

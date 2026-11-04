@@ -216,6 +216,7 @@ public sealed class InitiateUploadHandlerTests
                 new SystemFolderProvisioner(new FakeFolderRepository()),
                 new FakeObjectStorage(),
                 Options.Create(new CloudStorageOptions()),
+                new FakeStoragePlatformSettingsProvider(),
                 new FakeUploadPolicyResolver(),
                 new FakeSystemClock(DateTime.UtcNow),
                 new FakeUnitOfWork(),

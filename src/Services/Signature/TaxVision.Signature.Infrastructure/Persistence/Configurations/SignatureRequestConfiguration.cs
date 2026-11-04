@@ -107,6 +107,11 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
                     .HasMaxLength(PreparerInfo.MaxTitleLabelLength);
                 // A1 — quién es el preparer. Nullable: las solicitudes anteriores no lo tienen.
                 preparer.Property(p => p.UserId).HasColumnName("Preparer_UserId");
+                // Retiro / cambio de preparador / candidatos: búsquedas por usuario preparador.
+                preparer
+                    .HasIndex(p => p.UserId)
+                    .HasFilter("[Preparer_UserId] IS NOT NULL")
+                    .HasDatabaseName("IX_SignatureRequests_Preparer_UserId");
             }
         );
         builder.Property(request => request.PreparerSignedByUserId);
@@ -170,6 +175,15 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
 
         builder
             .Metadata.FindNavigation(nameof(SignatureRequest.Documents))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(request => request.CustomerCopies)
+            .WithOne()
+            .HasForeignKey(copy => copy.SignatureRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder
+            .Metadata.FindNavigation(nameof(SignatureRequest.CustomerCopies))!
             .SetPropertyAccessMode(PropertyAccessMode.Field);
     }
 }

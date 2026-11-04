@@ -48,6 +48,14 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository, S
     return toSnapshot(row);
   }
 
+  async findActiveStaffByEmail(tenantId: string, email: string): Promise<UserDirectoryEntrySnapshot | null> {
+    // La intercalacion de SQL Server no distingue mayusculas: el email se compara tal cual.
+    const row = await this.prisma.userDirectoryEntry.findFirst({
+      where: { TenantId: tenantId, Email: email.trim(), IsActive: true, ActorType: { notIn: ['CustomerPortal', 'Guest'] } },
+    });
+    return row ? toSnapshot(row) : null;
+  }
+
   async findByUserIds(userIds: readonly string[]): Promise<UserDirectoryEntrySnapshot[]> {
     const uniqueUserIds = [...new Set(userIds.filter((userId) => userId.trim().length > 0))];
     if (uniqueUserIds.length === 0) return [];

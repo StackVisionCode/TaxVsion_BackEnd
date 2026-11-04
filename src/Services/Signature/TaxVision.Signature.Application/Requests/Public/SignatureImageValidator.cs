@@ -5,7 +5,7 @@ namespace TaxVision.Signature.Application.Requests.Public;
 /// <summary>
 /// Validación pura del PNG de firma que sube el firmante anónimo. No toca I/O ni storage:
 /// inspecciona los bytes para confirmar que es realmente un PNG (magic bytes + chunk IHDR),
-/// que su peso está acotado y que sus dimensiones son razonables. Así el endpoint público
+/// que su peso no pasa el tope de la plataforma y que sus dimensiones son razonables. Así el endpoint público
 /// rechaza payloads maliciosos/enormes antes de tocar MinIO, y la regla queda testeable.
 ///
 /// <para>
@@ -22,19 +22,17 @@ public static class SignatureImageValidator
     // Cabecera mínima verificable: 8 (firma) + 4 (len) + 4 ("IHDR") + 8 (ancho+alto).
     private const int MinInspectableLength = 24;
 
-    /// <summary>~1.5 MB — de sobra para una firma manuscrita trazada; corta bombas de descompresión.</summary>
-    public const int MaxBytes = 1_500_000;
-
     private const int MaxDimension = 4000;
 
-    public static Result Validate(byte[]? content)
+    /// <param name="maxBytes">Tope de la plataforma (<c>SignaturePlatformSettings.MaxSignatureImageBytes</c>).</param>
+    public static Result Validate(byte[]? content, int maxBytes)
     {
         if (content is null || content.Length == 0)
             return Result.Failure(new Error("Signature.Image.Empty", "The signature image is empty."));
 
-        if (content.Length > MaxBytes)
+        if (content.Length > maxBytes)
             return Result.Failure(
-                new Error("Signature.Image.TooLarge", $"The signature image exceeds {MaxBytes} bytes.")
+                new Error("Signature.Image.TooLarge", $"The signature image exceeds {maxBytes} bytes.")
             );
 
         if (content.Length < MinInspectableLength || !HasPngSignature(content))

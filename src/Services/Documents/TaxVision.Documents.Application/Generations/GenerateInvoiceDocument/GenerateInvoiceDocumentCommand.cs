@@ -63,10 +63,24 @@ public sealed record InvoicePayload(
     // SettlementType = "Paid" | "Mixed" | "FullyCoveredByCode" (total $0). Retrocompatible (defaults).
     decimal Discount = 0m,
     IReadOnlyList<InvoiceAdjustment>? Adjustments = null,
-    string? SettlementType = null
+    string? SettlementType = null,
+    // Ajustes de facturación que Billing congeló en la factura: plazo ya legible ("Net 30"),
+    // instrucciones de pago y pie (gana sobre el pie de la marca). Retrocompatible (defaults).
+    string? PaymentTerms = null,
+    string? PaymentInstructions = null,
+    string? InvoiceFooter = null
 );
 
-public sealed record InvoiceParty(string Name, string TaxId, string? Address);
+/// <summary>Parte de la factura. Teléfono, correo y web son opcionales (hoy solo los manda el emisor):
+/// un payload viejo sin ellos se representa igual.</summary>
+public sealed record InvoiceParty(
+    string Name,
+    string TaxId,
+    string? Address,
+    string? Phone = null,
+    string? Email = null,
+    string? Website = null
+);
 
 public sealed record InvoiceLine(string Description, decimal Quantity, decimal UnitPrice, decimal Amount);
 

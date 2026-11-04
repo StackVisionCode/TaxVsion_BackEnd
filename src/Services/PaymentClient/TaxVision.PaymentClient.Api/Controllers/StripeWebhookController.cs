@@ -3,6 +3,7 @@ using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Application.TenantPayments.Commands.ProcessTenantWebhook;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 using Wolverine;
@@ -23,7 +24,7 @@ namespace TaxVision.PaymentClient.Api.Controllers;
 [EnableRateLimiting("webhooks")]
 public sealed class StripeWebhookController(IMessageBus bus) : ControllerBase
 {
-    [HttpPost]
+    [HttpPost(Name = PaymentWebhookRoutes.Stripe)]
     [RateLimitExempt(
         "Anónimo — conserva el limiter nativo \"webhooks\" (1000 req/min/IP), verificado contra el WebhookSecretEncrypted per-tenant dentro de ProcessTenantWebhookHandler."
     )]
@@ -33,10 +34,13 @@ public sealed class StripeWebhookController(IMessageBus bus) : ControllerBase
         using (var reader = new StreamReader(Request.Body))
             rawPayload = await reader.ReadToEndAsync(ct);
 
-        var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Stripe-Signature"] = Request.Headers["Stripe-Signature"].ToString(),
+        };
 
         var result = await bus.InvokeAsync<Result>(
-            new ProcessTenantWebhookCommand(tenantId, PaymentProviderCode.Stripe, rawPayload, signatureHeader),
+            new ProcessTenantWebhookCommand(tenantId, PaymentProviderCode.Stripe, rawPayload, headers),
             ct
         );
 

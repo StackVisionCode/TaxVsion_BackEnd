@@ -1,3 +1,4 @@
+import { SystemMessageKind } from '../../domain/conversations/message-kind.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import { Conversation } from '../../domain/conversations/conversation.js';
@@ -105,7 +106,7 @@ export async function startGroupConversation(
     return Result.fail(conversationResult.error);
   }
   const conversation = conversationResult.value;
-  conversation.appendSystemMessage({ body: `${command.creator.displayName} created the group`, now });
+  conversation.appendSystemMessage({ body: `${command.creator.displayName} created the group`, systemKind: SystemMessageKind.Membership, now });
 
   const startedEvent: ConversationStartedEvent = {
     eventId: randomUUID(),

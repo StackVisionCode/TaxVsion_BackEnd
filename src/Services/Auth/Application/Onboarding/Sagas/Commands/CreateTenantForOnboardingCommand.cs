@@ -24,17 +24,23 @@ public static class CreateTenantForOnboardingHandler
     public static async Task<OnboardingProvisioningStepFailedIntegrationEvent?> Handle(
         CreateTenantForOnboardingCommand command,
         ITenantProvisioningClient client,
+        ITenantOnboardingRepository onboardings,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        // La zona del navegador vive en el registro, no en el evento que arranca la saga; si no está,
+        // Tenant crea la oficina en UTC (también para onboardings en vuelo sin el dato).
+        var timeZoneId = (await onboardings.GetByIdAsync(command.OnboardingId, ct))?.TimeZoneId;
+
         var result = await client.CreateTenantAsync(
             new CreateTenantForOnboardingRequest(
                 command.OnboardingId,
                 command.OfficeName,
                 command.Subdomain,
                 command.AdminEmail,
-                command.PaymentCompletedAtUtc
+                command.PaymentCompletedAtUtc,
+                timeZoneId
             ),
             ct
         );

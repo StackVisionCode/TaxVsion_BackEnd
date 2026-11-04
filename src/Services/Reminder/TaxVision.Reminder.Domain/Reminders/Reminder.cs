@@ -30,6 +30,11 @@ public sealed class Reminder : AggregateRoot, IHasOwner
     private Reminder() { } // EF Core
 
     /// <summary>Destinatario Y creador. v1: siempre la misma persona (los compartidos son non-goal).</summary>
+    [UserReference(
+        UserReferenceKind.Private,
+        HandledBy = "ReminderUserOffboardedConsumer",
+        Note = "Los pendientes se cancelan y desagendan."
+    )]
     public Guid UserId { get; private set; }
 
     public ReminderSubject Subject { get; private set; } = default!;
@@ -38,7 +43,7 @@ public sealed class Reminder : AggregateRoot, IHasOwner
     public ReminderTimeZone TimeZone { get; private set; } = default!;
     public ReminderStatus Status { get; private set; }
 
-    /// <summary>Clave de idempotencia (ADR-R-07). Índice ÚNICO junto con <c>TenantId</c>.</summary>
+    /// <summary>Clave de idempotencia (ADR-R-07). Índice ÚNICO junto con <c>TenantId</c> y <c>UserId</c>.</summary>
     public RequestKey RequestKey { get; private set; } = default!;
 
     public DateTime CreatedAtUtc { get; private set; }

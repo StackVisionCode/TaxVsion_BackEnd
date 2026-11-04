@@ -67,6 +67,7 @@ public static class ClientRequestCreatedConsumer
                             ["due_at_utc"] = evt.DueAtUtc,
                             ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
                         },
+                        ScribeRenderAudience.Client,
                         ct
                     )
                 ).EnsureRendered(TemplateKey);
@@ -143,19 +144,21 @@ public static class ClientRequestFulfilledConsumer
         {
             var title = $"El cliente respondió: {evt.Title}";
             var body = evt.DocumentCount == 1 ? "Subió un documento." : $"Subió {evt.DocumentCount} documentos.";
+            // Quien sigue el pedido (sucesor tras un retiro); los mensajes viejos no lo traen.
+            var staffUserId = evt.StaffRecipientUserId ?? evt.RequestedByUserId;
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.RequestedByUserId:N}",
+                $"user:{staffUserId:N}",
                 title,
                 NotificationCategory.DocumentsAndSignatures,
                 "task.client_request_fulfilled",
                 evt.EventId,
                 correlation.CorrelationId,
-                recipientUserId: evt.RequestedByUserId,
+                recipientUserId: staffUserId,
                 inApp: new InAppNotificationRequest(
                     NotificationKinds.TasksClientRequestFulfilled,
-                    evt.RequestedByUserId,
+                    staffUserId,
                     evt.EventId,
                     "tasks.client_request_fulfilled.v1",
                     evt.OccurredOn,
@@ -174,7 +177,7 @@ public static class ClientRequestFulfilledConsumer
 
             await dispatcher.SendPushAsync(
                 evt.TenantId,
-                evt.RequestedByUserId,
+                staffUserId,
                 title,
                 body,
                 NotificationCategory.DocumentsAndSignatures,
@@ -289,18 +292,20 @@ public static class ClientRequestDocumentRejectedConsumer
     )
     {
         var title = $"Archivo del cliente rechazado: {evt.DisplayName} ({evt.Reason})";
+        // Quien sigue el pedido (sucesor tras un retiro); los mensajes viejos no lo traen.
+        var staffUserId = evt.StaffRecipientUserId ?? evt.RequestedByUserId;
         await dispatcher.RecordInAppAsync(
             evt.TenantId,
-            $"user:{evt.RequestedByUserId:N}",
+            $"user:{staffUserId:N}",
             title,
             NotificationCategory.DocumentsAndSignatures,
             "task.client_request_document_rejected",
             evt.EventId,
             correlation.CorrelationId,
-            recipientUserId: evt.RequestedByUserId,
+            recipientUserId: staffUserId,
             inApp: new InAppNotificationRequest(
                 NotificationKinds.TasksClientRequestDocumentRejected,
-                evt.RequestedByUserId,
+                staffUserId,
                 evt.EventId,
                 "tasks.client_request_document_rejected.v1",
                 evt.OccurredOn,
@@ -355,6 +360,7 @@ public static class ClientRequestDocumentRejectedConsumer
                     ["client_message"] = evt.ClientMessage,
                     ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
                 },
+                ScribeRenderAudience.Client,
                 ct
             )
         ).EnsureRendered(TemplateKey);

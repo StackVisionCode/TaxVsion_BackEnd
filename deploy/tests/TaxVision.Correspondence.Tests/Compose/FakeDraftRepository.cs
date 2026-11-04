@@ -41,6 +41,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         int page,
         int size,
         Guid? ownerUserId = null,
+        MailListFilter? filter = null,
         CancellationToken ct = default
     )
     {
@@ -50,6 +51,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         var filtered = _store
             .Where(x => x.TenantId == tenantId && x.CustomerId == scope.CustomerId && x.Status == DraftStatus.Draft)
             .Where(x => ownerUserId is null || x.CreatedByUserId == ownerUserId)
+            .Where(x => Matches(x, filter))
             .OrderByDescending(x => x.UpdatedAtUtc)
             .ToList();
 
@@ -65,6 +67,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        MailListFilter? filter = null,
         CancellationToken ct = default
     )
     {
@@ -74,6 +77,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         var filtered = _store
             .Where(x => x.TenantId == tenantId && x.CustomerId == scope.CustomerId && x.Status == DraftStatus.Sent)
             .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
+            .Where(x => Matches(x, filter))
             .OrderByDescending(x => x.UpdatedAtUtc)
             .ToList();
 
@@ -113,6 +117,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        MailListFilter? filter = null,
         CancellationToken ct = default
     )
     {
@@ -127,6 +132,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
                 && x.IsDeleted
             )
             .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
+            .Where(x => Matches(x, filter))
             .OrderByDescending(x => x.DeletedAtUtc)
             .ToList();
 
@@ -157,4 +163,17 @@ internal sealed class FakeDraftRepository : IDraftRepository
         );
 
     public void Remove(Draft entity) => _store.Remove(entity);
+
+    // Mismo criterio que el repo real: asunto o algún destinatario, adjuntos y rango sobre UpdatedAtUtc.
+    private static bool Matches(Draft draft, MailListFilter? filter) =>
+        filter is null
+        || (
+            (
+                filter.Search is null
+                || draft.Subject.Contains(filter.Search, StringComparison.OrdinalIgnoreCase)
+                || draft.Recipients.Any(r => r.Address.Contains(filter.Search, StringComparison.OrdinalIgnoreCase))
+            )
+            && (!filter.HasAttachmentsOnly || draft.Attachments.Count > 0)
+            && filter.InRange(draft.UpdatedAtUtc)
+        );
 }

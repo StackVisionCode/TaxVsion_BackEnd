@@ -5,6 +5,10 @@ namespace TaxVision.Scribe.Tests.Rendering;
 
 internal sealed class FakeLogoResolver(LogoAsset asset) : ILogoResolver
 {
-    public Task<LogoAsset> ResolveAsync(LogoScope logoScope, Guid? tenantId, CancellationToken ct = default) =>
-        Task.FromResult(asset);
+    public Task<LogoAsset> ResolveAsync(
+        LogoScope logoScope,
+        Guid? tenantId,
+        RenderAudience audience = RenderAudience.Staff,
+        CancellationToken ct = default
+    ) => Task.FromResult(asset);
 }

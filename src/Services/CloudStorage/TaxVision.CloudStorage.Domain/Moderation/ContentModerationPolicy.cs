@@ -71,6 +71,7 @@ public sealed class ContentModerationPolicy : BaseEntity
     /// <summary>true: si el scanner falla o no está configurado, el archivo queda en revisión en vez de publicarse.</summary>
     public bool FailClosed { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
@@ -162,6 +163,8 @@ public sealed class ContentModerationPolicyAudit : BaseEntity
 
     public string OldSettingsJson { get; private set; } = default!;
     public string NewSettingsJson { get; private set; } = default!;
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ActorUserId { get; private set; }
     public DateTime OccurredAtUtc { get; private set; }
 

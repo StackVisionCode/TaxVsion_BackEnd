@@ -54,7 +54,11 @@ public sealed record InvoiceDetailResponse(
     bool IsReissuable,
     /// <summary>Si esta factura es un reemplazo, la original que sustituye; si fue reemplazada, su reemplazo.</summary>
     Guid? ReplacesInvoiceId,
-    Guid? ReplacedByInvoiceId
+    Guid? ReplacedByInvoiceId,
+    /// <summary>Condiciones congeladas al crear la factura (null si es anterior a los ajustes de facturación).</summary>
+    string? PaymentTerms = null,
+    string? PaymentInstructions = null,
+    string? InvoiceFooter = null
 );
 
 public static class GetInvoiceDetailHandler
@@ -142,7 +146,10 @@ public static class GetInvoiceDetailHandler
                 history,
                 reissuable,
                 invoice.ReplacesInvoiceId,
-                invoice.ReplacedByInvoiceId
+                invoice.ReplacedByInvoiceId,
+                invoice.PaymentTerms?.ToString(),
+                invoice.PaymentInstructions,
+                invoice.InvoiceFooter
             )
         );
     }

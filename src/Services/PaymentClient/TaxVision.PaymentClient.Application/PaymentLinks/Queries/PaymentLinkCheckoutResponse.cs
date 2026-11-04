@@ -12,7 +12,10 @@ public sealed record PaymentLinkCheckoutResponse(
     IReadOnlyList<CheckoutPaymentMethod> Methods,
     /// <summary>Etiqueta legible del cobro (p. ej. el NÚMERO de factura "INV-2026-00010") para mostrar
     /// en vez del id crudo. null para links sueltos o payables sin etiqueta.</summary>
-    string? PurposeDescription = null
+    string? PurposeDescription = null,
+    /// <summary>Subdominio de la oficina: la página pública lo usa para pedir su marca (logo y colores) al
+    /// endpoint anónimo de Tenant, igual que los formularios públicos.</summary>
+    string? TenantBrandingKey = null
 );
 
 /// <summary>Un método de pago ofrecible en el checkout. <see cref="PublishableKey"/> es seguro de

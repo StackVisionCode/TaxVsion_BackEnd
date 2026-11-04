@@ -114,7 +114,107 @@ public sealed class PayPalPaymentAdapterTests
         Assert.Equal("PayPal.MissingClientId", result.Error.Code);
     }
 
+    [Fact]
+    public async Task Capture_asks_for_the_full_order_representation()
+    {
+        var handler = RouteHandler(captureResponse: Ok(CompletedCapture(extra: string.Empty)));
+        var adapter = CreateAdapter(handler);
+
+        await adapter.AuthorizeChargeAsync(Credentials, Request(), CancellationToken.None);
+
+        Assert.Equal("return=representation", Assert.Single(handler.PreferHeaders));
+    }
+
+    [Fact]
+    public async Task Capture_paid_with_a_PayPal_wallet_returns_the_payer()
+    {
+        // Forma del ejemplo oficial de la respuesta del capture (Orders v2).
+        const string extra = """
+            ,
+            "payment_source": { "paypal": {
+              "name": { "given_name": "John", "surname": "Doe" },
+              "email_address": "customer@example.com",
+              "account_id": "QYR5Z8XDVJNXQ"
+            } },
+            "payer": {
+              "name": { "given_name": "John", "surname": "Doe" },
+              "email_address": "customer@example.com",
+              "payer_id": "QYR5Z8XDVJNXQ"
+            }
+            """;
+        var adapter = CreateAdapter(RouteHandler(captureResponse: Ok(CompletedCapture(extra))));
+
+        var result = await adapter.AuthorizeChargeAsync(Credentials, Request(), CancellationToken.None);
+
+        Assert.Equal(PaymentStatus.Succeeded, result.Value.Status);
+        var payer = Assert.IsType<ProviderPayerDetails>(result.Value.Payer);
+        Assert.Equal("John Doe", payer.Name);
+        Assert.Equal("customer@example.com", payer.Email);
+        Assert.Null(payer.CardBrand);
+        Assert.Null(payer.CardLast4);
+    }
+
+    [Fact]
+    public async Task Capture_paid_with_a_card_returns_brand_last_digits_and_card_holder()
+    {
+        const string extra = """
+            ,
+            "payment_source": { "card": {
+              "name": "Jane Roe", "last_digits": "1881", "brand": "VISA", "type": "CREDIT"
+            } }
+            """;
+        var adapter = CreateAdapter(RouteHandler(captureResponse: Ok(CompletedCapture(extra))));
+
+        var result = await adapter.AuthorizeChargeAsync(Credentials, Request(), CancellationToken.None);
+
+        var payer = Assert.IsType<ProviderPayerDetails>(result.Value.Payer);
+        Assert.Equal("Jane Roe", payer.Name);
+        Assert.Null(payer.Email);
+        Assert.Equal("VISA", payer.CardBrand);
+        Assert.Equal("1881", payer.CardLast4);
+    }
+
+    [Fact]
+    public async Task Capture_without_payer_or_payment_source_returns_no_payer()
+    {
+        var adapter = CreateAdapter(RouteHandler(captureResponse: Ok(CompletedCapture(extra: string.Empty))));
+
+        var result = await adapter.AuthorizeChargeAsync(Credentials, Request(), CancellationToken.None);
+
+        Assert.Equal(PaymentStatus.Succeeded, result.Value.Status);
+        Assert.Null(result.Value.Payer);
+    }
+
+    [Fact]
+    public async Task Capture_with_unexpected_payer_shapes_is_tolerated()
+    {
+        const string extra = """
+            ,
+            "payment_source": "card",
+            "payer": { "name": "John Doe", "email_address": 42 }
+            """;
+        var adapter = CreateAdapter(RouteHandler(captureResponse: Ok(CompletedCapture(extra))));
+
+        var result = await adapter.AuthorizeChargeAsync(Credentials, Request(), CancellationToken.None);
+
+        Assert.Equal(PaymentStatus.Succeeded, result.Value.Status);
+        Assert.Null(result.Value.Payer);
+    }
+
     // ---- helpers ----
+
+    private static string CompletedCapture(string extra) =>
+        $$"""
+            {
+              "id": "ORDER-123",
+              "status": "COMPLETED",
+              "purchase_units": [
+                { "payments": { "captures": [
+                  { "id": "CAP-999", "status": "COMPLETED", "amount": { "value": "150.00", "currency_code": "USD" } }
+                ] } }
+              ]{{extra}}
+            }
+            """;
 
     private static HttpResponseMessage Ok(string json) =>
         new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
@@ -137,11 +237,18 @@ public sealed class PayPalPaymentAdapterTests
     private sealed class RoutingHandler(HttpResponseMessage tokenResponse, HttpResponseMessage otherResponse)
         : HttpMessageHandler
     {
+        /// <summary>Encabezado Prefer de cada llamada que no es el token.</summary>
+        public List<string> PreferHeaders { get; } = [];
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
-            var response = path.EndsWith("/v1/oauth2/token", StringComparison.Ordinal) ? tokenResponse : otherResponse;
-            return Task.FromResult(response);
+            var isToken = path.EndsWith("/v1/oauth2/token", StringComparison.Ordinal);
+            if (!isToken)
+                PreferHeaders.Add(
+                    request.Headers.TryGetValues("Prefer", out var values) ? string.Join(",", values) : string.Empty
+                );
+            return Task.FromResult(isToken ? tokenResponse : otherResponse);
         }
     }
 

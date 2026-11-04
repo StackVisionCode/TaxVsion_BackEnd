@@ -173,6 +173,57 @@ public sealed class SaaSReceiptRequestTests
         Assert.Null(requested.UnitAmountCents);
     }
 
+    // El "Billed to" sale de la proyección del perfil de la oficina.
+    [Fact]
+    public async Task The_receipt_request_carries_the_billed_to_of_the_office_profile()
+    {
+        var payment = SucceededPayment(SaaSPaymentType.SubscriptionRenewal);
+        var bus = new CapturingMessageBus();
+        var tenants = new FakeTenantRegistry(
+            "Acme Tax",
+            tenant =>
+                tenant.ApplyProfile(1, "Acme Tax LLC", "12-3456789", "1 Main St, Miami, FL 33101", DateTime.UtcNow)
+        );
+
+        await SaaSPaymentResultPublisher.PublishReceiptRequestAsync(
+            payment,
+            bus,
+            "corr",
+            tenants,
+            CancellationToken.None
+        );
+
+        var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
+        Assert.Equal("Acme Tax", requested.OfficeName);
+        Assert.Equal(
+            new SaaSBilledToData("Acme Tax LLC", "12-3456789", "1 Main St, Miami, FL 33101"),
+            requested.BilledTo
+        );
+    }
+
+    // Sin ningún dato del perfil viaja null y el recibo muestra solo el nombre de la oficina.
+    [Fact]
+    public async Task Without_office_profile_data_the_billed_to_travels_null()
+    {
+        var payment = SucceededPayment(SaaSPaymentType.SubscriptionRenewal);
+        var bus = new CapturingMessageBus();
+        var tenants = new FakeTenantRegistry(
+            "Acme Tax",
+            tenant => tenant.ApplyProfile(1, " ", null, "", DateTime.UtcNow)
+        );
+
+        await SaaSPaymentResultPublisher.PublishReceiptRequestAsync(
+            payment,
+            bus,
+            "corr",
+            tenants,
+            CancellationToken.None
+        );
+
+        var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
+        Assert.Null(requested.BilledTo);
+    }
+
     private static SaaSPayment SucceededPayment(
         SaaSPaymentType type,
         int? quantity = null,

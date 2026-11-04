@@ -8,6 +8,11 @@ public sealed class FileObject : TenantEntity
     private FileObject() { }
 
     public OwnerType OwnerType { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Provenance,
+        Note = "Dueño polimórfico (OwnerType); con User, el staff con permiso lo sigue viendo: no hay acceso por usuario."
+    )]
     public Guid? OwnerId { get; private set; }
     public FolderType FolderType { get; private set; }
     public int? TaxYear { get; private set; }
@@ -30,6 +35,8 @@ public sealed class FileObject : TenantEntity
     public string? ChecksumSha256 { get; private set; }
     public FileStatus Status { get; private set; }
     public string? ScanReport { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UploadExpiresAtUtc { get; private set; }

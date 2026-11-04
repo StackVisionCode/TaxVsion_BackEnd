@@ -11,4 +11,6 @@ public sealed class SystemAssetRefRepository(ScribeDbContext dbContext) : ISyste
 
     public async Task AddAsync(SystemAssetRef assetRef, CancellationToken ct = default) =>
         await dbContext.SystemAssetRefs.AddAsync(assetRef, ct);
+
+    public void Remove(SystemAssetRef assetRef) => dbContext.SystemAssetRefs.Remove(assetRef);
 }

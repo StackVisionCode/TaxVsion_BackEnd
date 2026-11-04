@@ -5,6 +5,10 @@ import { logger } from '../logger/logger.js';
 import { consumerProjectionFailuresTotal } from '../telemetry/metrics.js';
 import type { ProcessedEventStore } from '../../application/ports/processed-event-store.js';
 import type { ConsumerHandler, IncomingEnvelope } from '../../application/ports/event-consumer.js';
+import {
+  OFFBOARDING_INCOMPLETE_CLR_TYPE,
+  OFFBOARDING_STEP_COMPLETED_TYPE,
+} from '../../contracts/events/offboarding-events.js';
 
 /**
  * Registry sencillo de consumers por `eventType`. Cada handler valida el shape
@@ -184,6 +188,9 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // F7: un compuesto que no pasa el escaneo deja la grabacion en Failed (antes se ignoraba).
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileScanFailedIntegrationEvent':
     'cloudstorage.file.scan_failed.v1',
+  // MNT-01 (E-292): CloudStorage descarto un SaveFileRequested; grabaciones y transcripts sueltan el FileId.
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileSaveRejectedIntegrationEvent':
+    'cloudstorage.file.save_rejected.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkFolderItemAddedIntegrationEvent':
     'cloudstorage.sharelink.folder_item_added.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkAccessedIntegrationEvent':
@@ -203,6 +210,13 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // FileInfectedDetectedIntegrationEvent) — requiere el mecanismo de fan-out por rol de la
   // Fase 4 del plan de notificaciones, todavia no construido. Publicarlo sin consumirlo es
   // intencional, no un olvido.
+  // Correspondence — Wolverine suele mandar ya el alias; el nombre CLR queda cubierto por si no.
+  'BuildingBlocks.Messaging.CorrespondenceIntegrationEvents.CorrespondenceCustomerEmailReceivedIntegrationEvent':
+    'correspondence.customer_email_received.v1',
+  'BuildingBlocks.Messaging.CorrespondenceIntegrationEvents.CorrespondenceThreadStateChangedIntegrationEvent':
+    'correspondence.thread_state_changed.v1',
+  'BuildingBlocks.Messaging.CorrespondenceIntegrationEvents.CorrespondenceDeliveryNoticeReceivedIntegrationEvent':
+    'correspondence.delivery_notice_received.v1',
   // Connectors
   'BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsOAuthRefreshFailedIntegrationEvent':
     'connectors.oauth.refresh_failed.v1',
@@ -232,6 +246,9 @@ const INTENTIONALLY_IGNORED_EVENT_TYPES = new Set([
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormActionFailedIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormCompletedIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormRejectedIntegrationEvent',
+  // Retiro con acuse: los acuses de los servicios .NET y el aviso de retiro incompleto son para Auth/Notification.
+  OFFBOARDING_STEP_COMPLETED_TYPE,
+  OFFBOARDING_INCOMPLETE_CLR_TYPE,
 ]);
 const UNKNOWN_EVENT_LOG_INTERVAL_MS = 60_000;
 

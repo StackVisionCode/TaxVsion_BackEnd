@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import type { Conversation } from '../../src/domain/conversations/conversation.js';
+import { Conversation } from '../../src/domain/conversations/conversation.js';
+import { Result } from '../../src/domain/shared/result.js';
 import type { ConversationRepository } from '../../src/application/ports/conversation-repository.js';
 import type {
   CloudStorageUploadClient,
@@ -15,7 +16,12 @@ function u(): string {
 
 function conversationRepo(members: string[] | null): ConversationRepository {
   const conversation =
-    members === null ? null : ({ isParticipant: (uid: string) => members.includes(uid) } as unknown as Conversation);
+    members === null
+      ? null
+      : ({
+          isParticipant: (uid: string) => members.includes(uid),
+          ensureCanWrite: () => Result.okVoid(),
+        } as unknown as Conversation);
   return { async findById() {
       return conversation;
     } } as unknown as ConversationRepository;
@@ -74,6 +80,29 @@ describe('conversation attachment upload mediation', () => {
       expect(result.value.uploadUrl).toBe('https://minio.local/upload');
       expect(result.value.formData).toEqual({ key: 'obj', policy: 'p' });
     }
+  });
+
+  it('rechaza la subida en un Direct cuyo otro participante ya no está en la oficina', async () => {
+    const direct = Conversation.startDirect({
+      tenantId,
+      initiator: { userId: memberId, displayName: 'Admin', actorType: 'TenantAdmin' },
+      recipient: { userId: u(), displayName: 'Ana Leaver', actorType: 'TenantEmployee' },
+    });
+    if (!direct.isSuccess) throw new Error('setup');
+    const leaver = direct.value.getParticipantSnapshots().find((p) => p.userId !== memberId)!;
+    direct.value.retireParticipantBySystem(leaver.userId);
+    const initiate = vi.fn();
+    const result = await createAttachmentUpload(cmd, {
+      conversations: { findById: async () => direct.value } as unknown as ConversationRepository,
+      cloudStorageUpload: { ...uploadOk, initiate },
+      attachmentReservations: reservations(),
+    });
+    expect(result.isSuccess).toBe(false);
+    if (!result.isSuccess) {
+      expect(result.error.code).toBe('Chat.Conversation.ParticipantLeft');
+      expect(result.error.message).toBe('Ana Leaver is no longer with the office.');
+    }
+    expect(initiate).not.toHaveBeenCalled();
   });
 
   it('rejects an upload from a non-participant', async () => {

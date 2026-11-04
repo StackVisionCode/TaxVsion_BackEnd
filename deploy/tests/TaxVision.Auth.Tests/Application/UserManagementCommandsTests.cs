@@ -1,5 +1,9 @@
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Offboarding;
 using TaxVision.Auth.Application.Users.Commands;
+using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.Invitations;
+using TaxVision.Auth.Domain.Offboarding;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Sessions;
@@ -252,6 +256,9 @@ public sealed class UserManagementCommandsTests
         var result = await OffboardUserHandler.Handle(
             new OffboardUserCommand(tenantId, client.Id, Guid.NewGuid(), SuccessorUserId: null),
             new SingleUserRepository(client),
+            new InMemoryMfaRepository(),
+            new InMemoryInvitationRepository(),
+            new InMemoryOffboardingRunRepository(),
             new ThrowingSessionRepository(),
             new ThrowingDenylist(),
             new ThrowingSessionRevocationPublisher(),
@@ -272,6 +279,13 @@ public sealed class UserManagementCommandsTests
     {
         public override Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult<User?>(user);
+    }
+
+    /// <summary>Varios usuarios por id (el que se retira y su sucesor).</summary>
+    private sealed class UsersByIdRepository(params User[] users) : ThrowingUserRepository
+    {
+        public override Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+            Task.FromResult(users.FirstOrDefault(u => u.Id == id));
     }
 
     /// <summary>Como la anterior, pero además dice cuántos administradores activos hay.</summary>
@@ -512,10 +526,14 @@ public sealed class UserManagementCommandsTests
         var avatar = AvatarDoubles.GiveConfirmedAvatar(target);
         var bus = new FakeMessageBus();
         var unitOfWork = new OrderedUnitOfWork(bus);
+        var runs = new InMemoryOffboardingRunRepository();
 
         var result = await OffboardUserHandler.Handle(
             new OffboardUserCommand(tenantId, target.Id, Guid.NewGuid(), SuccessorUserId: null),
             new SingleUserRepository(target),
+            new InMemoryMfaRepository(),
+            new InMemoryInvitationRepository(),
+            runs,
             new QuietSessionRepository(),
             new QuietDenylist(),
             new RecordingSessionRevocationPublisher(),
@@ -540,6 +558,11 @@ public sealed class UserManagementCommandsTests
             afterSave.OfType<BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent>()
         );
         Assert.Null(profile.AvatarFileId);
+        // Acuse por servicio: la corrida nace con todos los pasos esperados del registro.
+        var run = Assert.Single(runs.Runs);
+        Assert.Equal(target.Id, run.UserId);
+        Assert.Equal(OffboardingParticipants.ExpectedSteps.Count(), run.ExpectedCount);
+        Assert.Equal(TaxVision.Auth.Domain.Offboarding.OffboardingRunStatus.InProgress, run.Status);
     }
 
     [Fact]
@@ -552,6 +575,9 @@ public sealed class UserManagementCommandsTests
         await OffboardUserHandler.Handle(
             new OffboardUserCommand(tenantId, target.Id, Guid.NewGuid(), SuccessorUserId: null),
             new SingleUserRepository(target),
+            new InMemoryMfaRepository(),
+            new InMemoryInvitationRepository(),
+            new InMemoryOffboardingRunRepository(),
             new QuietSessionRepository(),
             new QuietDenylist(),
             new RecordingSessionRevocationPublisher(),
@@ -573,6 +599,215 @@ public sealed class UserManagementCommandsTests
             message => message is BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent
         );
     }
+
+    /// <summary>
+    /// El guard de "último admin" protege a los admins ACTIVOS: retirar a uno ya suspendido no cambia cuántos
+    /// quedan, así que no se bloquea aunque solo quede un admin activo.
+    /// </summary>
+    [Fact]
+    public async Task OffboardUserHandler_retires_a_suspended_admin_when_a_single_active_admin_remains()
+    {
+        var tenantId = Guid.NewGuid();
+        var target = Admin(tenantId);
+        target.Deactivate(DateTime.UtcNow);
+
+        var result = await OffboardAsync(
+            tenantId,
+            target,
+            new SingleUserWithAdminCountRepository(target, activeAdmins: 1),
+            new InMemoryMfaRepository(),
+            new InMemoryInvitationRepository(),
+            new QuietAuthAuditWriter()
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Equal(UserStatus.Offboarded, target.Status);
+    }
+
+    [Fact]
+    public async Task OffboardUserHandler_refuses_to_remove_the_last_active_admin()
+    {
+        var tenantId = Guid.NewGuid();
+        var target = Admin(tenantId);
+
+        var result = await OffboardAsync(
+            tenantId,
+            target,
+            new SingleUserWithAdminCountRepository(target, activeAdmins: 1),
+            new InMemoryMfaRepository(),
+            new InMemoryInvitationRepository(),
+            new QuietAuthAuditWriter()
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("User.LastAdmin", result.Error.Code);
+        Assert.Equal(UserStatus.Active, target.Status);
+    }
+
+    /// <summary>
+    /// Higiene al retirar: sin TOTP, recovery codes ni dispositivos de confianza vivos, y sin invitaciones de
+    /// staff pendientes a su nombre (llevan roles que él eligió). Las de portal y las de otros no se tocan.
+    /// </summary>
+    [Fact]
+    public async Task OffboardUserHandler_purges_mfa_and_cancels_the_pending_staff_invitations_the_leaver_sent()
+    {
+        var tenantId = Guid.NewGuid();
+        var target = Employee(tenantId);
+        var actorId = Guid.NewGuid();
+        var mfa = new InMemoryMfaRepository();
+        mfa.Enroll(target);
+        var invitations = new InMemoryInvitationRepository();
+        var sentByLeaver = Invite(tenantId, "new.hire@example.com", UserActorType.TenantEmployee, null, target.Id);
+        var portalByLeaver = Invite(
+            tenantId,
+            "client@example.com",
+            UserActorType.CustomerPortal,
+            Guid.NewGuid(),
+            target.Id
+        );
+        var sentByOther = Invite(tenantId, "other@example.com", UserActorType.TenantEmployee, null, Guid.NewGuid());
+        invitations.Invitations.AddRange([sentByLeaver, portalByLeaver, sentByOther]);
+        var audit = new FakeAuthAuditWriter();
+
+        var result = await OffboardAsync(
+            tenantId,
+            target,
+            new SingleUserRepository(target),
+            mfa,
+            invitations,
+            audit,
+            actorId
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.False(target.MfaEnabled);
+        Assert.Empty(mfa.Methods);
+        Assert.Empty(mfa.Codes);
+        Assert.All(mfa.Devices, device => Assert.False(device.IsActive));
+
+        Assert.Equal(InvitationStatus.Cancelled, sentByLeaver.Status);
+        Assert.Equal(actorId, sentByLeaver.CancelledByUserId);
+        Assert.Equal(InvitationStatus.Pending, portalByLeaver.Status);
+        Assert.Equal(InvitationStatus.Pending, sentByOther.Status);
+
+        var cancelledLog = Assert.Single(audit.Logs, log => log.Action == AuthAuditAction.InvitationCancelled);
+        Assert.Equal(sentByLeaver.Id, cancelledLog.TargetId);
+        var offboardedLog = Assert.Single(audit.Logs, log => log.Action == AuthAuditAction.UserOffboarded);
+        Assert.Contains("\"cancelledInvitations\":1", offboardedLog.DetailsJson);
+    }
+
+    [Fact]
+    public async Task OffboardUserHandler_keeps_the_offboarding_record_with_actor_successor_and_reason()
+    {
+        var tenantId = Guid.NewGuid();
+        var target = Employee(tenantId);
+        var successor = Employee(tenantId);
+        var actor = Guid.NewGuid();
+        var runs = new InMemoryOffboardingRunRepository();
+
+        var result = await OffboardUserHandler.Handle(
+            new OffboardUserCommand(tenantId, target.Id, actor, successor.Id, OffboardingReason.Resigned, " New job "),
+            new UsersByIdRepository(target, successor),
+            new InMemoryMfaRepository(),
+            new InMemoryInvitationRepository(),
+            runs,
+            new QuietSessionRepository(),
+            new QuietDenylist(),
+            new RecordingSessionRevocationPublisher(),
+            new QuietAuthAuditWriter(),
+            new QuietRequestContext(),
+            new QuietCorrelationContext(),
+            new QuietUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var run = Assert.Single(runs.Runs);
+        Assert.Equal(actor, run.OffboardedByUserId);
+        Assert.Equal(successor.Id, run.SuccessorUserId);
+        Assert.Equal(OffboardingReason.Resigned, run.Reason);
+        Assert.Equal("New job", run.ReasonNote);
+    }
+
+    [Fact]
+    public async Task OffboardUserHandler_rejects_a_bad_note_before_touching_the_user()
+    {
+        var tenantId = Guid.NewGuid();
+        var target = Employee(tenantId);
+
+        var result = await OffboardUserHandler.Handle(
+            new OffboardUserCommand(
+                tenantId,
+                target.Id,
+                Guid.NewGuid(),
+                null,
+                OffboardingReason.Other,
+                new string('a', OffboardingDetails.ReasonNoteMaxLength + 1)
+            ),
+            new UsersByIdRepository(target),
+            new InMemoryMfaRepository(),
+            new InMemoryInvitationRepository(),
+            new InMemoryOffboardingRunRepository(),
+            new QuietSessionRepository(),
+            new QuietDenylist(),
+            new RecordingSessionRevocationPublisher(),
+            new QuietAuthAuditWriter(),
+            new QuietRequestContext(),
+            new QuietCorrelationContext(),
+            new QuietUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.Equal("Offboarding.ReasonNoteTooLong", result.Error.Code);
+        Assert.NotEqual(UserStatus.Offboarded, target.Status);
+    }
+
+    private static Task<BuildingBlocks.Results.Result> OffboardAsync(
+        Guid tenantId,
+        User target,
+        IUserRepository users,
+        IMfaRepository mfa,
+        IInvitationRepository invitations,
+        IAuthAuditWriter audit,
+        Guid? actorId = null
+    ) =>
+        OffboardUserHandler.Handle(
+            new OffboardUserCommand(tenantId, target.Id, actorId ?? Guid.NewGuid(), SuccessorUserId: null),
+            users,
+            mfa,
+            invitations,
+            new InMemoryOffboardingRunRepository(),
+            new QuietSessionRepository(),
+            new QuietDenylist(),
+            new RecordingSessionRevocationPublisher(),
+            audit,
+            new QuietRequestContext(),
+            new QuietCorrelationContext(),
+            new QuietUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+    private static Invitation Invite(
+        Guid tenantId,
+        string email,
+        UserActorType actorType,
+        Guid? customerId,
+        Guid invitedByUserId
+    ) =>
+        Invitation
+            .Create(
+                tenantId,
+                email,
+                actorType,
+                customerId,
+                invitedByUserId,
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Guid.NewGuid().ToByteArray())),
+                DateTime.UtcNow.AddDays(7)
+            )
+            .Value;
 
     /// <summary>El evento de perfil es el perfil completo: un cambio de nombre lleva también la foto actual.</summary>
     [Fact]

@@ -15,6 +15,7 @@ public static class UserAvatarMessages
     public const string FolderType = "Avatars";
     public const string FileName = "avatar.webp";
     public const string SourceService = "auth.avatars";
+    public const string RequestingService = "auth";
 
     public static SaveFileRequestedIntegrationEvent SaveFileRequested(
         User user,
@@ -27,7 +28,7 @@ public static class UserAvatarMessages
         {
             TenantId = user.TenantId,
             FileId = stored.FileId,
-            RequestingService = "auth",
+            RequestingService = RequestingService,
             SourceBucket = stored.SourceBucket,
             SourceObjectKey = stored.SourceObjectKey,
             ActorId = user.Id,

@@ -100,6 +100,22 @@ describe('ConsumerRuntime — resolución del header AMQP `type`', () => {
     expect(channel.ack).toHaveBeenCalledTimes(1);
   });
 
+  it('el nombre CLR del aviso de entrega de Correspondence resuelve a su alias', async () => {
+    const { dispatch, handler } = await startRuntime('correspondence.delivery_notice_received.v1');
+
+    await dispatch(
+      message(
+        'BuildingBlocks.Messaging.CorrespondenceIntegrationEvents.CorrespondenceDeliveryNoticeReceivedIntegrationEvent',
+        { EventId: 'evt-9', TenantId: 'tenant-1' },
+      ),
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'correspondence.delivery_notice_received.v1' }),
+    );
+  });
+
   it('un header sin handler registrado se advierte una vez por ventana y se ackea', async () => {
     const { dispatch, handler } = await startRuntime();
 

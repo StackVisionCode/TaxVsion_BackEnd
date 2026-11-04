@@ -327,7 +327,7 @@ public sealed class ShareLinkHandlerTests
         var tenantId = Guid.NewGuid();
         var file = AvailableFile(tenantId);
         var limit = TenantStorageLimit.Create(tenantId, "starter", 1000, 1000);
-        limit.SetLinkSharingPolicy(allow: false, requirePassword: false, maxLifetimeDays: 30);
+        limit.SetSharingPolicy(false, false, 7, 30, 8, 10, null);
 
         var result = await CreateExternalLink(tenantId, file, limit);
 
@@ -341,7 +341,7 @@ public sealed class ShareLinkHandlerTests
         var tenantId = Guid.NewGuid();
         var file = AvailableFile(tenantId);
         var limit = TenantStorageLimit.Create(tenantId, "starter", 1000, 1000);
-        limit.SetLinkSharingPolicy(allow: true, requirePassword: true, maxLifetimeDays: 30);
+        limit.SetSharingPolicy(true, true, 7, 30, 8, 10, null);
 
         var result = await CreateExternalLink(tenantId, file, limit, password: null);
 
@@ -355,7 +355,7 @@ public sealed class ShareLinkHandlerTests
         var tenantId = Guid.NewGuid();
         var file = AvailableFile(tenantId);
         var limit = TenantStorageLimit.Create(tenantId, "starter", 1000, 1000);
-        limit.SetLinkSharingPolicy(allow: true, requirePassword: false, maxLifetimeDays: 7);
+        limit.SetSharingPolicy(true, false, 7, 7, 8, 10, null);
 
         var result = await CreateExternalLink(tenantId, file, limit, expiresAtUtc: DateTime.UtcNow.AddDays(30));
 
@@ -749,6 +749,7 @@ public sealed class ShareLinkHandlerTests
         var result = await UpdateShareExpirationHandler.Handle(
             new UpdateShareExpirationCommand(tenantId, link.Id, DateTime.UtcNow.AddDays(-1)),
             shares,
+            new FakeStorageLimitRepository(),
             new FakeSystemClock(DateTime.UtcNow),
             new FakeUnitOfWork(),
             CancellationToken.None
@@ -857,6 +858,8 @@ public sealed class ShareLinkHandlerTests
             folders ?? new FakeFolderRepository(),
             new FakeObjectStorage(),
             new FakeShareLinkPasswordHasher(),
+            new FakeStorageLimitRepository(),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(DateTime.UtcNow),
@@ -938,6 +941,8 @@ public sealed class ShareLinkHandlerTests
             new FakeFolderRepository(),
             storage,
             new FakeShareLinkPasswordHasher(),
+            new FakeStorageLimitRepository(),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(DateTime.UtcNow),
@@ -1028,6 +1033,8 @@ public sealed class ShareLinkHandlerTests
             new FakeFolderRepository(),
             new FakeObjectStorage(),
             new FakeShareLinkPasswordHasher(),
+            new FakeStorageLimitRepository(),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(now.AddMinutes(5)), // ya vencido
@@ -1190,6 +1197,7 @@ public sealed class ShareLinkHandlerTests
             files,
             folders ?? new FakeFolderRepository(),
             new FakeObjectStorage(),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(DateTime.UtcNow),

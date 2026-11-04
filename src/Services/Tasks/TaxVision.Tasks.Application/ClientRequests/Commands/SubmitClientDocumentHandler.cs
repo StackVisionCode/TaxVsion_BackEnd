@@ -98,6 +98,7 @@ public static class SubmitClientDocumentHandler
             TaskId = request.TaskId,
             Title = request.Title,
             RequestedByUserId = request.RequestedByUserId,
+            StaffRecipientUserId = request.StaffRecipientUserId,
             DocumentCount = request.Documents.Count(d => d.IsActive),
         };
 }

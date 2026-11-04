@@ -42,7 +42,7 @@ public sealed class TaskSeriesMaterializer(ITaskRepository tasks, ITaskSeriesRep
 
         var created = TaskItem.Create(
             taskSeries.TenantId,
-            taskSeries.CreatedByUserId,
+            taskSeries.EffectiveOwnerUserId,
             blueprint.Title,
             blueprint.Description,
             blueprint.Priority,

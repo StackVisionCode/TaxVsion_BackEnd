@@ -28,6 +28,8 @@ public sealed class CampaignRun : TenantEntity
     private CampaignRun() { }
 
     public Guid CampaignId { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "La audiencia se congela al iniciar; no dispara de nuevo.")]
     public Guid TriggeredByUserId { get; private set; }
     public string TriggerKind { get; private set; } = default!;
     public DateTime CreatedAtUtc { get; private set; }

@@ -15,6 +15,11 @@ public sealed class ReferralCode : TenantEntity
     public Guid ProgramId { get; private set; }
     public Guid? TenantScopeId { get; private set; }
     public ReferralParticipantType OwnerType { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Provenance,
+        Note = "No es un empleado: es la oficina o el contribuyente que refiere (OwnerType)."
+    )]
     public Guid OwnerId { get; private set; }
     public string CodeHash { get; private set; } = default!;
     public string DisplayPrefix { get; private set; } = default!;
@@ -25,7 +30,11 @@ public sealed class ReferralCode : TenantEntity
     public string PayloadFingerprint { get; private set; } = default!;
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
     public DateTime? RevokedAtUtc { get; private set; }
     public string? RevocationReason { get; private set; }

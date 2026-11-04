@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using Minio.DataModel.Args;
 using TaxVision.Customer.Application.Abstractions;
+using TaxVision.Customer.Application.Imports;
 using Wolverine;
 
 namespace TaxVision.Customer.Infrastructure.Imports;
@@ -83,13 +84,13 @@ internal sealed class CustomerImportCloudStorageClient(
             {
                 TenantId = tenantId,
                 FileId = fileId,
-                RequestingService = "customer",
+                RequestingService = CustomerImportFiles.RequestingService,
                 SourceBucket = options.TempBucket,
                 SourceObjectKey = sourceObjectKey,
                 ActorId = actorId,
-                OwnerType = "Tenant",
+                OwnerType = CustomerImportFiles.OwnerType,
                 OwnerId = null,
-                FolderType = "Imports",
+                FolderType = CustomerImportFiles.FolderType,
                 TaxYear = null,
                 OriginalName = fileName,
                 ContentType = contentType,

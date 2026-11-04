@@ -52,4 +52,38 @@ describe('forwardMessage', () => {
     expect(result.isSuccess ? 'ok' : result.error.code).toBe('Chat.Message.NotFound');
     expect(insertForwarded).not.toHaveBeenCalled();
   });
+
+  it('no reenvía hacia un Direct cuyo otro participante ya no está en la oficina', async () => {
+    const tenantId = u();
+    const [ana, bo, leaver] = [u(), u(), u()];
+    const origin = direct(tenantId, ana, bo);
+    const sent = origin.sendText({ senderId: ana, body: 'W-2 attached' });
+    if (!sent.isSuccess) throw new Error(sent.error.code);
+    const target = direct(tenantId, ana, leaver);
+    target.retireParticipantBySystem(leaver);
+    const byId = new Map([
+      [origin.id, origin],
+      [target.id, target],
+    ]);
+    const insertForwarded = vi.fn();
+    const deps = {
+      messages: { findById: vi.fn(async () => sent.value), insertForwarded },
+      conversations: { findById: vi.fn(async (_t: string, id: string) => byId.get(id) ?? null) },
+      idempotency: {
+        tryReserve: vi.fn(async () => ({ status: 'reserved', token: 't' })),
+        release: vi.fn(async () => undefined),
+        commit: vi.fn(async () => undefined),
+      },
+      emitter: { emitToConversation: vi.fn() },
+      userDirectory: { findByUserId: vi.fn(async () => null) },
+    } as unknown as ForwardMessageDeps;
+
+    const result = await forwardMessage(
+      { tenantId, correlationId: u(), clientKey: u(), originMessageId: sent.value.id, targetConversationId: target.id, forwarderUserId: ana },
+      deps,
+    );
+
+    expect(result.isSuccess ? 'ok' : result.error.code).toBe('Chat.Conversation.ParticipantLeft');
+    expect(insertForwarded).not.toHaveBeenCalled();
+  });
 });

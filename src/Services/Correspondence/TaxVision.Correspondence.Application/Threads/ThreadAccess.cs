@@ -27,6 +27,8 @@ internal static class ThreadAccess
         )
             return false;
 
-        return await emailThreads.IsCustomerVisibleAsync(thread.TenantId, thread.CustomerId, restrictToUserId, ct);
+        // Un hilo sin cliente (D-1) lo decide solo el buzón (D-2).
+        return thread.CustomerId is not { } customerId
+            || await emailThreads.IsCustomerVisibleAsync(thread.TenantId, customerId, restrictToUserId, ct);
     }
 }

@@ -1,6 +1,6 @@
 namespace TaxVision.Billing.Api.Authorization;
 
-/// <summary>Permisos que exigen los endpoints de facturación tenant→cliente (Invoices + IssuerProfile).
+/// <summary>Permisos que exigen los endpoints de facturación tenant→cliente (Invoices, IssuerProfile, InvoiceSettings).
 /// Son OPERATIVOS (no peligrosos): el TenantAdmin los recibe por su bundle de sistema y el empleado por
 /// el suyo (PermissionCatalog.cs: invoicing.view / invoicing.manage). NO confundir con billing.* de Auth,
 /// que es el billing de SUSCRIPCIÓN SaaS (peligroso/admin-only, RBAC Fase 2) y no se usa en este servicio.
@@ -12,9 +12,9 @@ public static class InvoicingPermissions
     public const string Manage = "invoicing.manage";
 
     /// <summary>
-    /// Editar el emisor legal de las facturas (razón social, RNC/EIN, dirección fiscal). Sale de
-    /// <see cref="Manage"/> porque no es trabajo de facturación diaria: cambia con qué identidad
-    /// fiscal factura la oficina, y eso lo decide el dueño, no el preparador que emite la factura.
+    /// Editar los ajustes de facturación (plazo de pago, instrucciones de pago, pie). Sale de
+    /// <see cref="Manage"/> porque no es trabajo de facturación diaria: cómo cobra la oficina lo decide
+    /// el dueño, no el preparador que emite la factura. El emisor legal ya no se edita aquí (vive en Tenant).
     /// </summary>
     public const string IssuerManage = "invoicing.issuer.manage";
 }

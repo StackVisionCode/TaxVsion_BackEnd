@@ -91,8 +91,11 @@ public sealed class OAuthConnection : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>Scopes de <paramref name="requiredScope"/> que este grant no tiene; vacío = permisos al día.</summary>
+    public IReadOnlyList<string> MissingScopes(string requiredScope) => OAuthScopes.Missing(Scope, requiredScope);
+
     /// <summary>
-    /// Revoked|Expired → Active. El usuario volvió a pasar por el flujo de conectar cuenta (D3
+    /// Revoked|Expired → Active (o Active → Active para ampliar permisos). El usuario volvió a pasar por el flujo de conectar cuenta (D3
     /// §12.5) tras haberse desconectado o expirado. Reutiliza esta misma fila en vez de crear una
     /// nueva — <c>OAuthConnections.AccountId</c> tiene un índice único, así que un segundo
     /// <c>OAuthConnection</c> para la misma cuenta nunca es insertable. El caller es responsable de
@@ -101,7 +104,9 @@ public sealed class OAuthConnection : BaseEntity
     /// </summary>
     public Result Reconnect(string clientId, string scope, DateTime authorizedAtUtc)
     {
-        if (Status is not (OAuthConnectionStatus.Revoked or OAuthConnectionStatus.Expired))
+        // Active → Active solo para ampliar permisos: el servicio pidió scopes nuevos tras conectar.
+        var widensActiveGrant = Status == OAuthConnectionStatus.Active && MissingScopes(scope).Count > 0;
+        if (!widensActiveGrant && Status is not (OAuthConnectionStatus.Revoked or OAuthConnectionStatus.Expired))
             return Result.Failure(InvalidTransition(OAuthConnectionStatus.Active));
 
         if (string.IsNullOrWhiteSpace(clientId) || clientId.Length > 200)

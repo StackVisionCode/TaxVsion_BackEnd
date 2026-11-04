@@ -40,7 +40,19 @@ public sealed class TaskSeries : BaseEntity, ITenantOwned
 
     public DateTime? EndsAtUtc { get; private set; }
     public int? MaxOccurrences { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "Quien la gestiona es EffectiveOwnerUserId.")]
     public Guid CreatedByUserId { get; private set; }
+
+    /// <summary>
+    /// Dueño operativo cuando no es el creador (p. ej. el creador fue retirado). Nulo = el creador. No
+    /// reemplaza a <see cref="CreatedByUserId"/>, que es procedencia y no cambia.
+    /// </summary>
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "TasksUserOffboardedConsumer")]
+    public Guid? OwnerUserId { get; private set; }
+
+    /// <summary>Quién gestiona la serie y figura como creador de las ocurrencias nuevas.</summary>
+    public Guid EffectiveOwnerUserId => OwnerUserId ?? CreatedByUserId;
     public DateTime CreatedAtUtc { get; private set; }
 
     public byte[] RowVersion { get; private set; } = [];
@@ -184,6 +196,22 @@ public sealed class TaskSeries : BaseEntity, ITenantOwned
             return Result.Success();
 
         Blueprint = Blueprint with { AssigneeUserId = newAssigneeUserId };
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Pasa la gestión de la serie (y la autoría de las ocurrencias nuevas) a otra persona, p. ej. al retirar
+    /// a su dueño. No sobre series terminadas. Idempotente. No toca <see cref="CreatedByUserId"/>.
+    /// </summary>
+    public Result TransferOwnership(Guid newOwnerUserId)
+    {
+        if (newOwnerUserId == Guid.Empty)
+            return Result.Failure(TaskErrors.OwnerRequired);
+
+        if (Status == SeriesStatus.Ended)
+            return Result.Failure(TaskErrors.Series.AlreadyEnded);
+
+        OwnerUserId = newOwnerUserId == CreatedByUserId ? null : newOwnerUserId;
         return Result.Success();
     }
 

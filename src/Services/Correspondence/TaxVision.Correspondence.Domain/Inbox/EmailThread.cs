@@ -4,20 +4,26 @@ using BuildingBlocks.Results;
 namespace TaxVision.Correspondence.Domain.Inbox;
 
 /// <summary>
-/// Agrupador de <see cref="IncomingEmail"/> de la misma conversación entre el tenant y un
-/// customer. <see cref="CustomerId"/> es obligatorio por el mismo motivo que en
-/// <see cref="IncomingEmail"/>: un hilo sin customer no tiene sentido en este modelo.
+/// Conversación entre el tenant y un destinatario: agrupa los <see cref="IncomingEmail"/>, los enviados
+/// (<c>Draft.EmailThreadId</c>) y los avisos de entrega. Un hilo que nace de un correo entrante siempre tiene
+/// cliente (solo entra correo de clientes); uno que nace de un aviso de no entrega puede no tenerlo (D-1):
+/// <see cref="CustomerId"/> null = "Not a client", y su visibilidad la decide solo el buzón.
 /// </summary>
 public sealed class EmailThread : ITenantOwned
 {
     public const int SubjectMaxLength = 1000;
     public const int ProviderThreadIdMaxLength = 200;
 
+    /// <summary>Asunto de la conversación cuando el correo original salió sin asunto.</summary>
+    public const string NoSubject = "(no subject)";
+
     private EmailThread() { }
 
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
-    public Guid CustomerId { get; private set; }
+
+    /// <summary>Null = el destinatario no es cliente (solo hilos nacidos de un aviso de no entrega).</summary>
+    public Guid? CustomerId { get; private set; }
     public string Subject { get; private set; } = default!;
     public string? ProviderThreadId { get; private set; }
     public DateTime FirstMessageAtUtc { get; private set; }
@@ -56,6 +62,70 @@ public sealed class EmailThread : ITenantOwned
                 ArchivedAtUtc = null,
             }
         );
+    }
+
+    /// <summary>
+    /// Conversación para un correo nuevo enviado que aún no tenía una (D-1): nace cuando llega su primer aviso de
+    /// entrega. <see cref="MessageCount"/> cuenta solo entrantes, así que empieza en 0; el enviado enlazado la
+    /// mantiene visible. <paramref name="customerId"/> null = el destinatario no es cliente.
+    /// <paramref name="threadId"/> lo elige el caller (el id del enviado): dos avisos simultáneos del mismo correo
+    /// chocan en la clave primaria en vez de crear dos conversaciones.
+    /// </summary>
+    public static Result<EmailThread> NewForSentEmail(
+        Guid threadId,
+        Guid tenantId,
+        Guid? customerId,
+        string subject,
+        DateTime sentAtUtc
+    )
+    {
+        if (threadId == Guid.Empty)
+            return Result.Failure<EmailThread>(new Error("EmailThread.IdRequired", "Id is required."));
+        if (customerId == Guid.Empty)
+            return Result.Failure<EmailThread>(
+                new Error("EmailThread.CustomerIdInvalid", "CustomerId must be a valid id or null.")
+            );
+
+        var normalizedSubject = string.IsNullOrWhiteSpace(subject) ? NoSubject : subject.Trim();
+        if (normalizedSubject.Length > SubjectMaxLength)
+            normalizedSubject = normalizedSubject[..SubjectMaxLength];
+        if (tenantId == Guid.Empty)
+            return Result.Failure<EmailThread>(new Error("EmailThread.TenantIdRequired", "TenantId is required."));
+
+        return Result.Success(
+            new EmailThread
+            {
+                Id = threadId,
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Subject = normalizedSubject,
+                ProviderThreadId = null,
+                FirstMessageAtUtc = sentAtUtc,
+                LastMessageAtUtc = sentAtUtc,
+                MessageCount = 0,
+                Status = EmailThreadStatus.Active,
+                ArchivedAtUtc = null,
+            }
+        );
+    }
+
+    /// <summary>
+    /// Llegó un aviso de entrega. Si exige acción (no entregado) la conversación vuelve al Inbox (D-3) y sube
+    /// arriba; un Delayed no la mueve (D-4). Devuelve <c>true</c> si cambió el hilo.
+    /// </summary>
+    public bool RegisterDeliveryNotice(DateTime noticeAtUtc, bool requiresAction)
+    {
+        if (!requiresAction)
+            return false;
+
+        var changed = Status == EmailThreadStatus.Archived;
+        Unarchive();
+        if (noticeAtUtc > LastMessageAtUtc)
+        {
+            LastMessageAtUtc = noticeAtUtc;
+            changed = true;
+        }
+        return changed;
     }
 
     /// <summary>

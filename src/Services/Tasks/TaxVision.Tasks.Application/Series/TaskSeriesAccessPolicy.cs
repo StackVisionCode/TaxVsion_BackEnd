@@ -5,7 +5,8 @@ namespace TaxVision.Tasks.Application.Series;
 /// <summary>
 /// Quién puede pausar, reanudar o terminar una serie recurrente. Mismo criterio que
 /// <see cref="TaxVision.Tasks.Application.Tasks.TaskAccessPolicy"/> con las tareas sueltas: la creó, o
-/// tiene el override de supervisión.
+/// tiene el override de supervisión. Tras un retiro, el dueño operativo
+/// (<see cref="TaskSeries.EffectiveOwnerUserId"/>) ocupa el lugar del creador.
 ///
 /// <para>
 /// Hasta la fase A1, los tres endpoints solo pedían <c>tasks.write</c>, así que cualquier empleado podía
@@ -17,5 +18,5 @@ namespace TaxVision.Tasks.Application.Series;
 public static class TaskSeriesAccessPolicy
 {
     public static bool CanMutate(TaskSeries series, Guid userId, bool hasManageAll) =>
-        hasManageAll || series.CreatedByUserId == userId;
+        hasManageAll || series.EffectiveOwnerUserId == userId;
 }

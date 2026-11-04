@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Application.Settings;
 using TaxVision.Signature.Application.Settings.Commands.UpdateSettings;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -19,7 +20,11 @@ namespace TaxVision.Signature.Api.Controllers;
 [ApiController]
 [Route("signature/settings")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class SettingsController(ITenantSignatureSettingsRepository repository, IMessageBus bus) : ControllerBase
+public sealed class SettingsController(
+    ITenantSignatureSettingsRepository repository,
+    ISignatureLimitsResolver limits,
+    IMessageBus bus
+) : ControllerBase
 {
     [HttpGet]
     [HasPermission(SignaturePermissions.SettingsManage)]
@@ -36,14 +41,15 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
         if (settings is null)
             return NotFound();
 
-        return Ok(TenantSignatureSettingsResponse.From(settings));
+        var policy = await limits.ResolveAsync(tenantId, ct);
+        return Ok(TenantSignatureSettingsResponse.From(settings, policy));
     }
 
     /// <summary>
     /// Reemplaza la configuración completa del tenant (semántica PUT). El tenant admin
     /// puede ajustar canales de verificación, expiración de tokens, recordatorios,
-    /// generación de certificado, límites de documentos y política de retención.
-    /// El TenantId se toma exclusivamente del JWT.
+    /// generación de certificado, límites de documentos y la purga. Los años de retención se ignoran: los
+    /// fija la oficina en Cumplimiento. El TenantId se toma exclusivamente del JWT.
     /// </summary>
     [HttpPut]
     [HasPermission(SignaturePermissions.SettingsManage)]
@@ -94,6 +100,20 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
                 )
             );
 
+        // Formato de fecha del estampado si vino en el body. Valor inválido = 400.
+        DateStampFormat? dateStampFormat = null;
+        if (body.DateStampFormat is { Length: > 0 } rawDateFormat)
+        {
+            if (!Enum.TryParse<DateStampFormat>(rawDateFormat, ignoreCase: true, out var parsedDateFormat))
+                return BadRequest(
+                    new Error(
+                        "Signature.Settings.DateStampFormatInvalid",
+                        "DateStampFormat must be 'MonthDayYear', 'DayMonthYear' or 'IsoDate'."
+                    )
+                );
+            dateStampFormat = parsedDateFormat;
+        }
+
         // F7 — parsea el Kind si vino en el body. Valor inválido = 400.
         PartialCopyAudienceKind? audienceKind = null;
         if (body.PartialCopyDefaultAudienceKind is { Length: > 0 } raw)
@@ -120,16 +140,24 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
             body.GenerateCertificateByDefault,
             body.AllowEmployeeOwnSignature,
             body.DocumentLimits.MaxPdfBytes,
-            body.DocumentLimits.MaxImageBytes,
             body.DocumentLimits.MaxPagesPerDocument,
-            body.RetentionPolicy.RetentionYears,
             body.RetentionPolicy.AllowPurge,
             body.SendPartialCopyDefault,
             audienceKind,
             body.SendSealedDocumentDefault,
             body.ExpirationEnabledByDefault,
             body.SendCertificateToSignersDefault,
-            body.RequiresConsentByDefault
+            body.RequiresConsentByDefault,
+            body.Delivery is { } delivery
+                ? new DeliveryPolicyInput(
+                    delivery.LinkLifetimeDays,
+                    delivery.AllowPublicReissue,
+                    delivery.AttachDocuments,
+                    delivery.MaxAttachmentBytes
+                )
+                : null,
+            body.ShowSignatureFrame,
+            dateStampFormat
         );
 
         var result = await bus.InvokeAsync<Result>(cmd, ct);

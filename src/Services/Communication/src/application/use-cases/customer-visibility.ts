@@ -2,7 +2,7 @@ import { isPlatformAdmin } from '../../domain/shared/permissions.js';
 import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
 
 // Permiso de Customer que hace bypass de la asignación: quien lo tiene ve a todos los clientes del tenant.
-const CUSTOMERS_VIEW_ALL = 'customers.view_all';
+export const CUSTOMERS_VIEW_ALL = 'customers.view_all';
 
 /**
  * ¿Este staff ve a todos los clientes? PlatformAdmin o `customers.view_all` (el admin de la oficina). Es el mismo

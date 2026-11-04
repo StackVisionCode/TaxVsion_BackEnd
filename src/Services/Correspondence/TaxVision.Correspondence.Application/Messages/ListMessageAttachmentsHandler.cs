@@ -25,6 +25,7 @@ public static class ListMessageAttachmentsHandler
                 new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
             );
 
+        // Buzón visible y cliente asignado: los adjuntos no deben verse si el hilo no se ve.
         if (
             !await MailboxVisibility.CanSeeMessageAsync(
                 query.VisibleAccountIds,
@@ -33,6 +34,7 @@ public static class ListMessageAttachmentsHandler
                 emailThreads,
                 ct
             )
+            || !await emailThreads.IsCustomerVisibleAsync(query.TenantId, email.CustomerId, query.RestrictToUserId, ct)
         )
             return Result.Failure<IReadOnlyList<AttachmentSummary>>(
                 new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")

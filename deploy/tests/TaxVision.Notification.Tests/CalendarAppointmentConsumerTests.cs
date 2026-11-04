@@ -91,6 +91,24 @@ public sealed class CalendarAppointmentConsumerTests
         Assert.Equal("2026-08-20 16:00", harness.Render.LastVariables["new_local"]);
     }
 
+    /// <summary>
+    /// El empleado ve el logo del CRM y el cliente invitado el del portal: un render por audiencia, y
+    /// cada destinatario recibe el suyo.
+    /// </summary>
+    [Fact]
+    public async Task El_empleado_recibe_el_render_del_equipo_y_el_cliente_el_del_cliente()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+
+        await Scheduled(harness, Invitation());
+
+        Assert.Equal([ScribeRenderAudience.Staff, ScribeRenderAudience.Client], harness.Render.Audiences);
+        var employee = Assert.Single(harness.Gateway.Queued, e => e.To == "empleado@example.com");
+        var client = Assert.Single(harness.Gateway.Queued, e => e.To == "cliente@example.com");
+        Assert.EndsWith(":Staff", employee.Subject);
+        Assert.EndsWith(":Client", client.Subject);
+    }
+
     /// <summary>Sin destinatarios no se renderiza: pedirle a Scribe un correo que no se manda es trabajo tirado.</summary>
     [Fact]
     public async Task Sin_destinatarios_no_se_renderiza_nada()
@@ -148,6 +166,7 @@ public sealed class CalendarAppointmentConsumerTests
                 new NoOpPushDeviceTokenRepository(),
                 new NoOpNotificationLogRepository(),
                 new SwitchablePreferences(preferencesEnabled),
+                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
                 new CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
@@ -243,16 +262,30 @@ public sealed class CalendarAppointmentConsumerTests
 
         public int Calls { get; private set; }
 
+        public List<ScribeRenderAudience> Audiences { get; } = [];
+
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
             string eventKey,
             Guid tenantId,
             IReadOnlyDictionary<string, object?> variables,
             CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ScribeRenderAudience.Staff, ct);
+
+        // El asunto lleva la audiencia para saber qué render recibió cada destinatario.
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
         )
         {
             Calls++;
             LastVariables = variables;
-            return Task.FromResult(Result.Success(new ScribeRenderedEmail(eventKey, "<p>html</p>", "text")));
+            Audiences.Add(audience);
+            return Task.FromResult(
+                Result.Success(new ScribeRenderedEmail($"{eventKey}:{audience}", "<p>html</p>", "text"))
+            );
         }
     }
 

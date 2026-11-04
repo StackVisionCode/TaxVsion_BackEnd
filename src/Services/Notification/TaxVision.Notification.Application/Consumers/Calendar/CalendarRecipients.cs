@@ -18,7 +18,7 @@ namespace TaxVision.Notification.Application.Consumers.Calendar;
 /// </summary>
 internal static class CalendarRecipients
 {
-    public static async Task<IReadOnlyList<string>> AllowedAsync(
+    public static async Task<IReadOnlyList<AppointmentRecipient>> AllowedAsync(
         IReadOnlyList<AppointmentRecipient> recipients,
         Guid tenantId,
         IUserNotificationPreferenceRepository preferences,
@@ -27,12 +27,12 @@ internal static class CalendarRecipients
         CancellationToken ct
     )
     {
-        var allowed = new List<string>(recipients.Count);
+        var allowed = new List<AppointmentRecipient>(recipients.Count);
         foreach (var recipient in recipients)
         {
             if (recipient.UserId is not { } userId)
             {
-                allowed.Add(recipient.Email);
+                allowed.Add(recipient);
                 continue;
             }
 
@@ -46,7 +46,7 @@ internal static class CalendarRecipients
 
             if (enabled)
             {
-                allowed.Add(recipient.Email);
+                allowed.Add(recipient);
                 continue;
             }
 
@@ -59,6 +59,52 @@ internal static class CalendarRecipients
         }
 
         return allowed;
+    }
+
+    /// <summary>Un compañero (con <c>UserId</c>) lee como Staff; un cliente o invitado sin cuenta, como Client.</summary>
+    public static ScribeRenderAudience AudienceOf(AppointmentRecipient recipient) =>
+        recipient.UserId is null ? ScribeRenderAudience.Client : ScribeRenderAudience.Staff;
+
+    /// <summary>
+    /// Renderiza una vez por audiencia presente y encola el correo de cada destinatario. Todos los renders
+    /// van antes de encolar: si Scribe falla, el reintento no deja correos a medias.
+    /// </summary>
+    public static async Task QueueByAudienceAsync(
+        IReadOnlyList<AppointmentRecipient> recipients,
+        Guid tenantId,
+        string templateKey,
+        IReadOnlyDictionary<string, object?> variables,
+        IScribeRenderClient scribeClient,
+        IEmailDispatchGateway gateway,
+        Guid relatedEventId,
+        string? correlationId,
+        CancellationToken ct
+    )
+    {
+        var renders = new Dictionary<ScribeRenderAudience, ScribeRenderedEmail>();
+        foreach (var recipient in recipients)
+        {
+            var audience = AudienceOf(recipient);
+            if (!renders.ContainsKey(audience))
+                renders[audience] = (
+                    await scribeClient.RenderAsync(templateKey, tenantId, variables, audience, ct)
+                ).EnsureRendered(templateKey);
+        }
+
+        foreach (var recipient in recipients)
+        {
+            await gateway.QueueEmailAsync(
+                renders[AudienceOf(recipient)]
+                    .ToDispatchRequest(
+                        tenantId: tenantId,
+                        to: recipient.Email,
+                        templateKey: templateKey,
+                        relatedEventId: relatedEventId,
+                        correlationId: correlationId
+                    ),
+                ct
+            );
+        }
     }
 
     /// <summary>

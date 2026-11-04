@@ -851,7 +851,7 @@ public sealed class FolderHandlerTests
             folders,
             files,
             new FakeStorageAuditRepository(),
-            Options.Create(new CloudStorageOptions()),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
             new FakeMessageBus(),

@@ -7,7 +7,17 @@ import type { IntegrationEventPublisher } from '../ports/integration-event-publi
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { ConversationAuditRepository } from '../ports/conversation-audit-repository.js';
+import type { SupportTicketRepository } from '../ports/support-ticket-repository.js';
+import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
 import { removeUserFromGroups } from '../use-cases/group-administration.js';
+import {
+  failRequestedClientRecordings,
+  handOverDirectChats,
+  handOverSupportTickets,
+  removeFromOthersMeetings,
+  type OffboardingContext,
+} from '../use-cases/offboarding-handover.js';
+import type { RecordingLifecycleDeps } from '../use-cases/recording-lifecycle.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { Meeting } from '../../domain/meetings/meeting.js';
 import { MeetingStatus } from '../../domain/meetings/meeting-enums.js';
@@ -18,6 +28,12 @@ import {
   type MeetingHostTransferredEvent,
 } from '../../contracts/events/meeting-events.js';
 import {
+  COMMUNICATION_OFFBOARDING_SERVICE,
+  COMMUNICATION_OFFBOARDING_STEP,
+  OFFBOARDING_STEP_COMPLETED_TYPE,
+  type UserOffboardingStepCompletedEvent,
+} from '../../contracts/events/offboarding-events.js';
+import {
   MeetingSocketEvents,
   type MeetingCancelledDto,
   type MeetingListChangedDto,
@@ -27,11 +43,11 @@ const CANCEL_REASON = 'The host was removed from the tenant.';
 
 /**
  * Offboarding — retiro TERMINAL de un empleado (auth.user.offboarded.v1). A diferencia de
- * `deactivated` (baja reversible), aca hay que re-duenar su trabajo activo. Lo unico que
- * Communication no cubre por otra via es el HOST de reuniones: el dominio solo deja actuar al
- * host, asi que una reunion agendada/viva de un host retirado no la puede iniciar ni cancelar
- * nadie. El ruteo de chat por preparador se auto-cura via los eventos `customer.preparer_*`
- * que Customer republica al retirar al preparador (los consume customer-consumers.ts).
+ * `deactivated` (baja reversible, D-7: solo bloquea el acceso), aca se re-dueña su trabajo activo:
+ * reuniones que hospeda, reuniones e invitaciones de otros (#4), grupos, chats Direct con clientes
+ * (D-4) y con staff, tickets de soporte (D-5) y grabaciones que capturaba en su navegador.
+ * Idempotente y sin orden asumido: cada paso actua solo sobre lo que sigue apuntando al retirado,
+ * asi que un reintento (o un paso que falló) retoma donde quedó. La procedencia no se toca.
  */
 export function bindOffboardingConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
@@ -45,11 +61,19 @@ export function bindOffboardingConsumers(
     /** F8b (T-19): sale de sus grupos con sucesión (Owner → Admin más antiguo → staff más antiguo). */
     conversations?: ConversationRepository;
     conversationAudit?: ConversationAuditRepository;
+    /** D-5: tickets que abrió (al sucesor o al admin) o atendía como agente (vuelven a la cola). */
+    supportTickets?: SupportTicketRepository;
+    /** D-4: el chat nuevo con el sucesor solo se abre si la oficina tiene el chat encendido. */
+    settings?: TenantSettingsProvider;
+    /** Grabaciones con captura en su navegador que siguen abiertas: se cierran por sistema. */
+    recordingLifecycle?: RecordingLifecycleDeps;
   },
 ): void {
   register('auth.user.offboarded.v1', async (env) => {
     const userId = getString(env.payload, 'userId') ?? getString(env.payload, 'UserId');
     if (!userId) return;
+    // El nombre se lee antes de nada: los mensajes de sistema lo muestran (la fila se conserva inactiva).
+    const leaverEntry = await deps.userDirectory.findByUserId(userId);
 
     // 1. Baseline: offboard incluye la baja — se inactivan las mismas 3 proyecciones que
     //    `deactivated`. Idempotente; offboard es terminal en Auth (no llega un reactivated luego).
@@ -70,17 +94,70 @@ export function bindOffboardingConsumers(
       if (successor) {
         await reassignHost(meeting, successor, env, deps);
       } else {
-        await cancelOrEnd(meeting, actorUserId, env, deps);
+        await cancelOrEnd(meeting, actorUserId, userId, env, deps);
       }
     }
 
-    // 4. Grupos: sale de todos; la sucesión la resuelve cada aggregate.
+    const ctx: OffboardingContext = {
+      tenantId: env.tenantId,
+      leaverUserId: userId,
+      leaverDisplayName: leaverEntry && leaverEntry.tenantId === env.tenantId ? leaverEntry.displayName : null,
+      successor,
+      offboardedByUserId:
+        getString(env.payload, 'offboardedByUserId') ?? getString(env.payload, 'OffboardedByUserId') ?? null,
+      correlationId: env.correlationId ?? '',
+    };
+
+    // 4. #4: sale de las reuniones agendadas de otros (incluidas las que acaba de ceder) y de sus invitaciones.
+    await removeFromOthersMeetings(ctx, { meetings: deps.meetings });
+
     if (deps.conversations) {
+      // 5. Grupos (archivados incluidos): sale de todos; la sucesión la resuelve cada aggregate.
       await removeUserFromGroups(
         { tenantId: env.tenantId, userId, reason: 'Offboarded' },
         { conversations: deps.conversations, conversationAudit: deps.conversationAudit, emitter: deps.emitter },
       );
+      // 6. D-4: chats Direct (clientes: cerrar y seguir con el sucesor o la oficina; staff: removido).
+      await handOverDirectChats(ctx, {
+        conversations: deps.conversations,
+        conversationAudit: deps.conversationAudit,
+        emitter: deps.emitter,
+        publisher: deps.publisher,
+        customerPortalAccounts: deps.customerPortalAccounts,
+        settings: deps.settings,
+        userDirectory: deps.userDirectory,
+        userPermissions: deps.userPermissions,
+      });
+      // 7. D-5: tickets de soporte.
+      if (deps.supportTickets) {
+        await handOverSupportTickets(ctx, {
+          supportTickets: deps.supportTickets,
+          conversations: deps.conversations,
+          conversationAudit: deps.conversationAudit,
+          emitter: deps.emitter,
+          userDirectory: deps.userDirectory,
+          userPermissions: deps.userPermissions,
+        });
+      }
     }
+
+    // 8. Grabaciones Client que capturaba: su navegador ya no subirá el archivo.
+    if (deps.recordingLifecycle) await failRequestedClientRecordings(ctx, deps.recordingLifecycle);
+
+    // 9. Acuse a Auth (avance del retiro): solo si todo lo anterior terminó; un reintento lo repite y Auth lo absorbe.
+    const completedAt = new Date().toISOString();
+    const ack: UserOffboardingStepCompletedEvent = {
+      eventId: randomUUID(),
+      eventType: OFFBOARDING_STEP_COMPLETED_TYPE,
+      tenantId: env.tenantId,
+      correlationId: env.correlationId ?? '',
+      occurredOnUtc: completedAt,
+      userId,
+      service: COMMUNICATION_OFFBOARDING_SERVICE,
+      step: COMMUNICATION_OFFBOARDING_STEP,
+      completedAtUtc: completedAt,
+    };
+    await deps.publisher.enqueue(ack);
   });
 }
 
@@ -90,12 +167,12 @@ async function resolveEligibleSuccessor(
   tenantId: string,
   successorId: string | undefined,
   leaverUserId: string,
-): Promise<{ userId: string; displayName: string } | null> {
+): Promise<{ userId: string; displayName: string; actorType: string } | null> {
   if (!successorId || successorId === leaverUserId) return null;
   const entry = await userDirectory.findByUserId(successorId);
   if (!entry || entry.tenantId !== tenantId || !entry.isActive) return null;
   if (entry.actorType !== 'TenantEmployee' && entry.actorType !== 'TenantAdmin') return null;
-  return { userId: entry.userId, displayName: entry.displayName };
+  return { userId: entry.userId, displayName: entry.displayName, actorType: entry.actorType };
 }
 
 async function reassignHost(
@@ -131,6 +208,7 @@ async function reassignHost(
 async function cancelOrEnd(
   meeting: Meeting,
   actorUserId: string,
+  leaverUserId: string,
   env: IncomingEnvelope,
   deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher; emitter: RealtimeEmitter },
 ): Promise<void> {
@@ -142,6 +220,8 @@ async function cancelOrEnd(
   const snapshot = meeting.toSnapshot();
   const now = new Date();
   const participantUserIds = snapshot.participants.map((p) => p.userId);
+  // #4: el aviso de cancelación (título, hora y enlace) no le llega al retirado.
+  const notifiedUserIds = meeting.notifiableUserIds().filter((id) => id !== leaverUserId);
 
   if (wasLive) {
     const event: MeetingEndedEvent = {
@@ -196,7 +276,7 @@ async function cancelOrEnd(
     meetingId: meeting.id,
     cancelledByUserId: actorUserId,
     cancelledAtUtc: now.toISOString(),
-    participantUserIds,
+    participantUserIds: notifiedUserIds,
     invitedEmails,
     reason: CANCEL_REASON,
     meetingTitle: meetingSnapshot.title,

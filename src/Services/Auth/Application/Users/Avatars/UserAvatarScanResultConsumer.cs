@@ -12,7 +12,7 @@ namespace TaxVision.Auth.Application.Users.Avatars;
 /// Resultado del antivirus de CloudStorage para las fotos de perfil del staff (User/Avatars). Solo
 /// actúa sobre la foto pendiente del usuario: un evento viejo o repetido no cambia nada. Una foto que
 /// quedó disponible pero ya no la referencia nadie (se subió otra encima, se quitó o venció) se manda
-/// a borrar para no dejar huérfanos.
+/// a borrar para no dejar huérfanos. Un pedido de guardado rechazado se descarta igual que un fallo.
 /// </summary>
 public static class UserAvatarScanResultConsumer
 {
@@ -142,6 +142,35 @@ public static class UserAvatarScanResultConsumer
             logger,
             ct
         );
+
+    // CloudStorage rechazó el pedido de guardado (vacío, política, cuota...): esa foto nunca existirá.
+    // Nunca llegó a confirmarse, así que solo se suelta si sigue siendo la pendiente.
+    public static Task Handle(
+        FileSaveRejectedIntegrationEvent msg,
+        IUserRepository users,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<User> logger,
+        CancellationToken ct
+    ) =>
+        string.Equals(msg.RequestingService, UserAvatarMessages.RequestingService, StringComparison.Ordinal)
+            ? DiscardAsync(
+                new ScanFailure(
+                    msg.TenantId,
+                    msg.FileId,
+                    msg.OwnerType,
+                    msg.OwnerId,
+                    msg.FolderType,
+                    $"save_rejected:{msg.Reason}"
+                ),
+                CorrelationOf(msg.CorrelationId, msg.EventId),
+                users,
+                unitOfWork,
+                correlation,
+                logger,
+                ct
+            )
+            : Task.CompletedTask;
 
     private static Task DiscardAsync(
         ScanFailure failure,

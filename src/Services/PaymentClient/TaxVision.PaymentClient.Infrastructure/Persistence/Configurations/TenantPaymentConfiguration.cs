@@ -99,6 +99,38 @@ public sealed class TenantPaymentConfiguration : IEntityTypeConfiguration<Tenant
         builder.Property(payment => payment.FailureCode).HasMaxLength(100);
         builder.Property(payment => payment.FailureReason).HasMaxLength(1000);
 
+        // Datos del pagador (PII): columnas nullable; requerido para que una fila sin datos cargue vacío, no null.
+        builder.OwnsOne(
+            payment => payment.Payer,
+            payer =>
+            {
+                payer
+                    .Property(p => p.ReceiptEmail)
+                    .HasColumnName("ReceiptEmail")
+                    .HasMaxLength(PayerDetails.EmailMaxLength);
+                payer.Property(p => p.PayerName).HasColumnName("PayerName").HasMaxLength(PayerDetails.NameMaxLength);
+                payer.Property(p => p.PayerEmail).HasColumnName("PayerEmail").HasMaxLength(PayerDetails.EmailMaxLength);
+                payer
+                    .Property(p => p.CardBrand)
+                    .HasColumnName("CardBrand")
+                    .HasMaxLength(PayerDetails.CardBrandMaxLength);
+                payer.Property(p => p.CardLast4).HasColumnName("CardLast4").HasMaxLength(PayerDetails.CardLast4Length);
+            }
+        );
+        builder.Navigation(payment => payment.Payer).IsRequired();
+        builder.Ignore(payment => payment.IsAwaitingProviderConfirmation);
+
+        // Cola de la revisión de atascados: nunca consultados primero, luego los consultados hace más tiempo.
+        builder
+            .HasIndex(payment => new
+            {
+                payment.Status,
+                payment.LastProviderCheckAtUtc,
+                payment.UpdatedAtUtc,
+            })
+            .HasFilter("[Status] IN ('Processing', 'RequiresAction')")
+            .HasDatabaseName("IX_TenantPayments_AwaitingProvider");
+
         builder.Property(payment => payment.RowVersion).IsRowVersion();
 
         builder

@@ -23,6 +23,7 @@ public sealed class UserPermissionsProjection : TenantEntity
 {
     private UserPermissionsProjection() { }
 
+    [UserReference(UserReferenceKind.Projection, HandledBy = "UserLifecyclePermissionsProjectionConsumer")]
     public Guid UserId { get; private set; }
     public int PermissionsVersion { get; private set; }
     public string PermissionCodesJson { get; private set; } = "[]";
@@ -67,6 +68,27 @@ public sealed class UserPermissionsProjection : TenantEntity
         PermissionsVersion = permissionsVersion;
         PermissionCodesJson = SerializeCodes(permissionCodes);
         RoleIdsJson = SerializeRoleIds(roleIds);
+        IsActive = true;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// El usuario fue desactivado o retirado en Auth: deja la proyección fail-closed (la lectura de
+    /// permisos filtra por <c>IsActive</c>). No toca permisos ni versión — el evento no los trae. Idempotente.
+    /// </summary>
+    public void MarkInactive()
+    {
+        if (!IsActive)
+            return;
+        IsActive = false;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>El usuario fue reactivado en Auth: vuelve a autorizar. Los permisos llegan por su propio evento. Idempotente.</summary>
+    public void MarkActive()
+    {
+        if (IsActive)
+            return;
         IsActive = true;
         UpdatedAtUtc = DateTime.UtcNow;
     }

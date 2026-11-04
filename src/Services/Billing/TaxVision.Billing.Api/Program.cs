@@ -75,6 +75,11 @@ builder.Services.Configure<AuthorizationOptions>(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
 });
 
+// Endpoints M2M internos (internal/billing/*): solo tokens de servicio. Mismo patrón que Documents/Customer.
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
 // H-01 Capa 2 — resuelve las políticas perm:* de [HasPermission("billing.*")].
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 

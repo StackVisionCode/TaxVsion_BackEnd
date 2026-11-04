@@ -2,14 +2,19 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Categories;
+using TaxVision.Signature.Application.Limits;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
+using TaxVision.Signature.Domain.Settings;
 
 namespace TaxVision.Signature.Application.Requests.Commands.UpsertDraft;
 
 /// <summary>
-/// Autosave: reconcilia metadata + signers + fields en una sola transacción. Dividido en fases
-/// explícitas por guardrail #1 (load → version → metadata → signers → fields → save).
+/// Autosave y guardado final de un borrador: reconcilia el estado completo (metadata + documentos +
+/// firmantes + campos) en una sola transacción. Fases explícitas por guardrail #1 (load → version →
+/// metadata → documents → signers → fields → save). Idempotente: un documento sin id se reconoce por su
+/// archivo y un firmante sin id por su email, así un reintento (o una respuesta perdida) no duplica.
 /// </summary>
 public static class UpsertSignatureDraftHandler
 {
@@ -18,6 +23,8 @@ public static class UpsertSignatureDraftHandler
         ISignatureRequestRepository repository,
         ICustomerEmailProjectionRepository customerProjection,
         ISignatureCategoryResolver categoryResolver,
+        ISignatureLimitsResolver limits,
+        ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
         ISignatureRequestListCacheInvalidator listCache,
         CancellationToken ct
@@ -31,25 +38,35 @@ public static class UpsertSignatureDraftHandler
         if (versionCheck.IsFailure)
             return Result.Failure<UpsertSignatureDraftResponse>(versionCheck.Error);
 
-        var metadata = await ApplyMetadata(request, cmd, categoryResolver, ct);
+        var policy = (await limits.ResolveAsync(cmd.TenantId, ct)).ForRequests;
+        var metadata = await ApplyMetadata(request, cmd, policy, categoryResolver, ct);
         if (metadata.IsFailure)
             return Result.Failure<UpsertSignatureDraftResponse>(metadata.Error);
 
-        var documentIds = ReconcileDocuments(request, cmd.Documents);
+        var documentIds = ReconcileDocuments(request, cmd.Documents, policy);
         if (documentIds.IsFailure)
             return Result.Failure<UpsertSignatureDraftResponse>(documentIds.Error);
 
-        var signerIds = await ReconcileSigners(request, cmd.Signers, cmd.TenantId, customerProjection, ct);
+        var signerIds = await ReconcileSigners(request, cmd.Signers, cmd.TenantId, customerProjection, policy, ct);
         if (signerIds.IsFailure)
             return Result.Failure<UpsertSignatureDraftResponse>(signerIds.Error);
 
-        var fields = ReconcileFields(request, cmd.Fields, signerIds.Value, documentIds.Value);
-        if (fields.IsFailure)
-            return Result.Failure<UpsertSignatureDraftResponse>(fields.Error);
+        var maxFieldsPerSigner = (await platform.GetAsync(ct)).MaxFieldsPerSigner;
+        var fieldIds = ReconcileFields(request, cmd.Fields, signerIds.Value, documentIds.Value, maxFieldsPerSigner);
+        if (fieldIds.IsFailure)
+            return Result.Failure<UpsertSignatureDraftResponse>(fieldIds.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
-        return Result.Success(new UpsertSignatureDraftResponse(request.UpdatedAtUtc));
+        return Result.Success(
+            new UpsertSignatureDraftResponse(
+                request.UpdatedAtUtc,
+                cmd.Documents.Select(spec => new UpsertedDraftDocument(spec.LocalId, documentIds.Value[spec.LocalId]))
+                    .ToList(),
+                signerIds.Value,
+                fieldIds.Value
+            )
+        );
     }
 
     // ===== Fase 1: versión =====
@@ -72,6 +89,7 @@ public static class UpsertSignatureDraftHandler
     private static async Task<Result> ApplyMetadata(
         SignatureRequest request,
         UpsertSignatureDraftCommand cmd,
+        SignatureLimits policy,
         ISignatureCategoryResolver categoryResolver,
         CancellationToken ct
     )
@@ -80,7 +98,13 @@ public static class UpsertSignatureDraftHandler
         if (category.IsFailure)
             return Result.Failure(category.Error);
 
-        var metadata = request.UpdateMetadata(cmd.Title, cmd.Description, category.Value, cmd.TokenExpirationHours);
+        var metadata = request.UpdateMetadata(
+            policy,
+            cmd.Title,
+            cmd.Description,
+            category.Value,
+            cmd.TokenExpirationHours
+        );
         if (metadata.IsFailure)
             return metadata;
 
@@ -126,7 +150,9 @@ public static class UpsertSignatureDraftHandler
         // F7 — expiración opcional: ON exige horas, OFF borra el reloj.
         if (cmd.ExpirationEnabled is { } expOn)
         {
-            var applied = expOn ? request.EnableExpiration(cmd.TokenExpirationHours) : request.DisableExpiration();
+            var applied = expOn
+                ? request.EnableExpiration(policy, cmd.TokenExpirationHours)
+                : request.DisableExpiration();
             if (applied.IsFailure)
                 return applied;
         }
@@ -137,20 +163,19 @@ public static class UpsertSignatureDraftHandler
     // ===== Fase 3: documents =====
     private static Result<IReadOnlyDictionary<string, Guid>> ReconcileDocuments(
         SignatureRequest request,
-        IReadOnlyList<DraftDocumentSpec> inbound
+        IReadOnlyList<DraftDocumentSpec> inbound,
+        SignatureLimits policy
     )
     {
-        if (inbound is null || inbound.Count is < 1 or > SignatureRequest.MaxDocuments)
-            return Result.Failure<IReadOnlyDictionary<string, Guid>>(
-                new Error(
-                    "Signature.Request.DocumentCount",
-                    $"Document count must be between 1 and {SignatureRequest.MaxDocuments}."
-                )
-            );
+        var documentCount = policy.CheckDocumentCount(inbound?.Count ?? 0);
+        if (documentCount.IsFailure)
+            return Result.Failure<IReadOnlyDictionary<string, Guid>>(documentCount.Error);
 
         var resolvedIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
         var keptIds = new HashSet<Guid>();
         var orderedIds = new List<Guid>(inbound.Count);
+        // Los que el payload nombra por id no se pueden tomar por archivo.
+        var referencedIds = inbound.Where(spec => spec.Id is not null).Select(spec => spec.Id!.Value).ToHashSet();
 
         foreach (var spec in inbound)
         {
@@ -159,15 +184,21 @@ public static class UpsertSignatureDraftHandler
                     new Error("Signature.Request.DocumentLocalId", "Every document must have a unique local id.")
                 );
 
-            RequestDocument document;
-            if (spec.Id is { } existingId)
-            {
-                document = request.Documents.FirstOrDefault(candidate => candidate.Id == existingId)!;
-                if (document is null)
-                    return Result.Failure<IReadOnlyDictionary<string, Guid>>(
-                        new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
-                    );
+            // Sin id: el mismo archivo ya en la solicitud es ese documento (un guardado anterior lo creó).
+            var document = spec.Id is { } existingId
+                ? request.Documents.FirstOrDefault(candidate => candidate.Id == existingId)
+                : request.Documents.FirstOrDefault(candidate =>
+                    candidate.OriginalFileId == spec.OriginalFileId
+                    && !keptIds.Contains(candidate.Id)
+                    && !referencedIds.Contains(candidate.Id)
+                );
+            if (spec.Id is not null && document is null)
+                return Result.Failure<IReadOnlyDictionary<string, Guid>>(
+                    new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
+                );
 
+            if (document is not null)
+            {
                 if (document.OriginalFileId != spec.OriginalFileId)
                 {
                     var replace = request.ReplaceDocumentFile(document.Id, spec.OriginalFileId, spec.PageCount);
@@ -184,7 +215,7 @@ public static class UpsertSignatureDraftHandler
             }
             else
             {
-                var added = request.AddDocument(spec.OriginalFileId, spec.Title, spec.Note, spec.PageCount);
+                var added = request.AddDocument(policy, spec.OriginalFileId, spec.Title, spec.Note, spec.PageCount);
                 if (added.IsFailure)
                     return Result.Failure<IReadOnlyDictionary<string, Guid>>(added.Error);
                 document = added.Value;
@@ -214,17 +245,21 @@ public static class UpsertSignatureDraftHandler
     }
 
     // ===== Fase 4: signers =====
-    // Identidad: server Signer.Id. Entrantes con Id → existentes; sin Id → crear. Server sin eco → borrar.
+    // Identidad: server Signer.Id; sin Id, el firmante con ese email (un guardado anterior lo creó); si no
+    // hay, se crea. Server sin eco → borrar. Al final, el orden de firma es el del payload.
     private static async Task<Result<IReadOnlyList<Guid>>> ReconcileSigners(
         SignatureRequest request,
         IReadOnlyList<DraftSignerSpec> inbound,
         Guid tenantId,
         ICustomerEmailProjectionRepository customerProjection,
+        SignatureLimits policy,
         CancellationToken ct
     )
     {
         var resolvedIds = new Guid[inbound.Count];
         var keptIds = new HashSet<Guid>();
+        // Los que el payload nombra por id no se pueden tomar por email.
+        var referencedIds = inbound.Where(spec => spec.Id is not null).Select(spec => spec.Id!.Value).ToHashSet();
 
         for (var i = 0; i < inbound.Count; i++)
         {
@@ -233,18 +268,24 @@ public static class UpsertSignatureDraftHandler
             if (vo.IsFailure)
                 return Result.Failure<IReadOnlyList<Guid>>(vo.Error);
 
-            if (spec.Id is { } existingId)
-            {
-                var existing = request.Signers.FirstOrDefault(s => s.Id == existingId);
-                if (existing is null)
-                    return Result.Failure<IReadOnlyList<Guid>>(
-                        new Error("Signature.Request.SignerMissing", "Signer not found in this request.")
-                    );
+            var existing = spec.Id is { } existingId
+                ? request.Signers.FirstOrDefault(s => s.Id == existingId)
+                : request.Signers.FirstOrDefault(s =>
+                    !keptIds.Contains(s.Id)
+                    && !referencedIds.Contains(s.Id)
+                    && string.Equals(s.Email.Value, vo.Value.Email.Value, StringComparison.OrdinalIgnoreCase)
+                );
+            if (spec.Id is not null && existing is null)
+                return Result.Failure<IReadOnlyList<Guid>>(
+                    new Error("Signature.Request.SignerMissing", "Signer not found in this request.")
+                );
 
+            if (existing is not null)
+            {
                 var phone = request.SetSignerPhoneNumber(existing.Id, vo.Value.PhoneNumber);
                 if (phone.IsFailure)
                     return Result.Failure<IReadOnlyList<Guid>>(phone.Error);
-                var method = request.SetSignerRequiredVerificationMethod(existing.Id, spec.VerificationMethod);
+                var method = request.SetSignerRequiredVerificationMethod(policy, existing.Id, spec.VerificationMethod);
                 if (method.IsFailure)
                     return Result.Failure<IReadOnlyList<Guid>>(method.Error);
 
@@ -255,6 +296,7 @@ public static class UpsertSignatureDraftHandler
 
             var mappedCustomerId = await ResolveMappedCustomerId(tenantId, vo.Value.Email, customerProjection, ct);
             var added = request.AddSigner(
+                policy,
                 vo.Value.Email,
                 vo.Value.FullName,
                 mappedCustomerId,
@@ -276,25 +318,35 @@ public static class UpsertSignatureDraftHandler
                 return Result.Failure<IReadOnlyList<Guid>>(removed.Error);
         }
 
+        if (resolvedIds.Length > 0 && !request.Signers.Select(s => s.Id).SequenceEqual(resolvedIds))
+        {
+            var reordered = request.ReorderSigners(resolvedIds);
+            if (reordered.IsFailure)
+                return Result.Failure<IReadOnlyList<Guid>>(reordered.Error);
+        }
+
         return Result.Success<IReadOnlyList<Guid>>(resolvedIds);
     }
 
     // ===== Fase 5: fields =====
     // Identidad por Id; nuevos se colocan con PlaceField; los que ya no aparecen se borran.
     // Un cambio de posición exige mandar un field nuevo (Id null) y omitir el viejo.
-    private static Result ReconcileFields(
+    // Devuelve los ids en el orden del payload.
+    private static Result<IReadOnlyList<Guid>> ReconcileFields(
         SignatureRequest request,
         IReadOnlyList<DraftFieldSpec> inbound,
         IReadOnlyList<Guid> signerIds,
-        IReadOnlyDictionary<string, Guid> documentIds
+        IReadOnlyDictionary<string, Guid> documentIds,
+        int maxFieldsPerSigner
     )
     {
         var keptFieldIds = new HashSet<Guid>();
+        var fieldIds = new List<Guid>(inbound.Count);
 
         foreach (var spec in inbound)
         {
             if (spec.SignerIndex < 0 || spec.SignerIndex >= signerIds.Count)
-                return Result.Failure(
+                return Result.Failure<IReadOnlyList<Guid>>(
                     new Error(
                         "Signature.Request.FieldSignerIndexInvalid",
                         "Field references a signer not in the payload."
@@ -303,7 +355,7 @@ public static class UpsertSignatureDraftHandler
 
             var signerId = signerIds[spec.SignerIndex];
             if (!documentIds.TryGetValue(spec.DocumentLocalId, out var documentId))
-                return Result.Failure(
+                return Result.Failure<IReadOnlyList<Guid>>(
                     new Error(
                         "Signature.Request.FieldDocumentLocalIdInvalid",
                         "Field references a document not in the payload."
@@ -316,11 +368,11 @@ public static class UpsertSignatureDraftHandler
                     .Signers.FirstOrDefault(s => s.Id == signerId)
                     ?.Fields.FirstOrDefault(f => f.Id == existingId);
                 if (existing is null)
-                    return Result.Failure(
+                    return Result.Failure<IReadOnlyList<Guid>>(
                         new Error("Signature.Request.FieldMissing", "Field not found for the given signer.")
                     );
                 if (existing.DocumentId != documentId)
-                    return Result.Failure(
+                    return Result.Failure<IReadOnlyList<Guid>>(
                         new Error(
                             "Signature.Request.FieldDocumentMismatch",
                             "An existing field cannot be moved to another document."
@@ -328,23 +380,27 @@ public static class UpsertSignatureDraftHandler
                     );
 
                 keptFieldIds.Add(existingId);
+                fieldIds.Add(existingId);
                 continue;
             }
 
             var position = FieldPosition.Create(spec.Page, spec.X, spec.Y, spec.Width, spec.Height);
             if (position.IsFailure)
-                return position;
+                return Result.Failure<IReadOnlyList<Guid>>(position.Error);
             var placed = request.PlaceField(
+                maxFieldsPerSigner,
                 signerId,
                 documentId,
                 spec.Kind,
                 position.Value,
                 spec.Label,
-                spec.IsRequired
+                spec.IsRequired,
+                spec.FontSizePt
             );
             if (placed.IsFailure)
-                return placed;
+                return Result.Failure<IReadOnlyList<Guid>>(placed.Error);
             keptFieldIds.Add(placed.Value.Id);
+            fieldIds.Add(placed.Value.Id);
         }
 
         foreach (var signer in request.Signers)
@@ -353,11 +409,11 @@ public static class UpsertSignatureDraftHandler
             {
                 var removed = request.RemoveField(signer.Id, orphan);
                 if (removed.IsFailure)
-                    return removed;
+                    return Result.Failure<IReadOnlyList<Guid>>(removed.Error);
             }
         }
 
-        return Result.Success();
+        return Result.Success<IReadOnlyList<Guid>>(fieldIds);
     }
 
     // ===== Helpers =====

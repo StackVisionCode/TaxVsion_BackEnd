@@ -64,6 +64,19 @@ export type CommunicationPermission =
   (typeof CommunicationPermissions)[keyof typeof CommunicationPermissions];
 
 /**
+ * Permisos de Auth que Communication exige en alguna ruta propia. `users.manage` gatea el pre-flight del
+ * retiro, igual que en los otros servicios. Sin módulo comercial: el gate de módulo nunca lo bloquea.
+ */
+export const AuthPermissions = {
+  UsersManage: 'users.manage',
+} as const;
+
+export type AuthPermission = (typeof AuthPermissions)[keyof typeof AuthPermissions];
+
+/** Lo que se puede exigir con `checkPermission`/`requirePermission`. */
+export type RequiredPermission = CommunicationPermission | AuthPermission;
+
+/**
  * Sujeto minimo necesario para chequear un permiso — AuthenticatedPrincipal
  * (jwt-verifier.ts) satisface esta forma estructuralmente, sin necesidad de
  * importarlo aca (evitaria una dependencia domain -> infrastructure).
@@ -94,7 +107,7 @@ export type ModuleGateResult =
   | { readonly denied: true; readonly module: string };
 export type ModuleGate = (
   subject: PermissionSubject,
-  required: CommunicationPermission,
+  required: RequiredPermission,
 ) => Promise<ModuleGateResult>;
 let moduleGate: ModuleGate | undefined;
 
@@ -145,7 +158,7 @@ async function getCachedSnapshot(
 
 export async function checkPermission(
   subject: PermissionSubject,
-  required: CommunicationPermission,
+  required: RequiredPermission,
   projectionRepo: UserPermissionsProjectionRepository,
 ): Promise<PermissionCheckResult> {
   if (isPlatformAdmin(subject.actorType)) return { allowed: true };

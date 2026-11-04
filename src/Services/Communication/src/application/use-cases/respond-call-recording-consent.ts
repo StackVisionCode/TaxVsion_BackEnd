@@ -39,7 +39,7 @@ export async function respondCallRecordingConsent(
   const call = await deps.calls.findById(command.tenantId, command.callId);
   if (!call) return Result.fail(makeError('Call.NotFound', 'Call not found.'));
 
-  const session = await deps.recordingSessions.findByScope(command.tenantId, RecordingScope.Call, command.callId);
+  const session = await deps.recordingSessions.findLatestByScope(command.tenantId, RecordingScope.Call, command.callId);
   if (!session) return Result.fail(makeError('RecordingSession.NotFound', 'No recording session for this call.'));
   if (session.sessionState !== 'Requesting') {
     return Result.fail(makeError('RecordingSession.NotRequesting', `Cannot respond while session is ${session.sessionState}.`));
@@ -88,6 +88,7 @@ export async function respondCallRecordingConsent(
     callId: command.callId,
     state: session.sessionState,
     updatedAtUtc: now.toISOString(),
+    recordingId: session.id,
   };
   deps.emitter.emitToCall({
     tenantId: command.tenantId,

@@ -7,7 +7,7 @@ public sealed class EventRoutingContractTests
         "SignatureDocumentsReadyForSealingIntegrationEvent",
         "SignatureDocumentSealedIntegrationEvent",
         "SignatureRequestSealingCompletedIntegrationEvent",
-        "SignatureReadyForDownloadIntegrationEvent",
+        "SignedDocumentsDeliveryReadyIntegrationEvent",
     ];
 
     [Fact]
@@ -21,6 +21,20 @@ public sealed class EventRoutingContractTests
 
             Assert.Contains(expectedRoute, programSource, StringComparison.Ordinal);
         }
+    }
+
+    [Theory]
+    [InlineData("SignaturePreparerChangedIntegrationEvent")]
+    [InlineData("SignaturePreparerAttentionRequiredIntegrationEvent")]
+    public void Preparer_offboarding_events_are_routed_to_the_shared_exchange(string eventName)
+    {
+        var programSource = File.ReadAllText(FindSignatureProgram());
+
+        Assert.Contains(
+            $"PublishMessage<{eventName}>().ToRabbitExchange(\"taxvision-events\")",
+            programSource,
+            StringComparison.Ordinal
+        );
     }
 
     private static string FindSignatureProgram()

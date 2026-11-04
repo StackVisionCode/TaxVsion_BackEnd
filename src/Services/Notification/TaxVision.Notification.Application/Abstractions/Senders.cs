@@ -84,6 +84,14 @@ public interface IPushDeviceTokenRepository
     /// en el mismo flujo (mismo criterio que <see cref="AddAsync"/>).
     /// </summary>
     Task RevokeAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Revoca todos los tokens activos del usuario (suspensión o retiro) y devuelve cuántos. No
+    /// persiste: el caller guarda. Por defecto falla cerrado para que una implementación que no lo
+    /// soporte no aparente haber revocado.
+    /// </summary>
+    Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        throw new NotSupportedException($"{GetType().Name} does not support revoking a user's push devices.");
 }
 
 public interface INotificationLogRepository

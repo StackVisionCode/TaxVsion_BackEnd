@@ -21,6 +21,8 @@ public sealed class EmailLayout : BaseEntity, INullableTenantOwned
     public string Name { get; private set; } = default!;
     public string? Description { get; private set; }
     public EmailContentStatus Status { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }
@@ -129,6 +131,28 @@ public sealed class EmailLayout : BaseEntity, INullableTenantOwned
         UpdatedAtUtc = publishedAtUtc;
         return Result.Success();
     }
+
+    /// <summary>
+    /// CloudStorage rechazó <paramref name="fileId"/> (nunca va a existir): las Draft sueltan las
+    /// referencias opcionales que lo apuntan. Idempotente; devuelve si cambió algo.
+    /// </summary>
+    public bool ReleaseRejectedFile(Guid fileId, DateTime nowUtc)
+    {
+        var released = false;
+        foreach (var version in _versions)
+            released |= version.ReleaseRejectedOptionalFile(fileId);
+
+        if (released)
+            UpdatedAtUtc = nowUtc;
+        return released;
+    }
+
+    /// <summary>Drafts cuyo HTML es <paramref name="fileId"/>: no se pueden publicar, hay que guardar otra.</summary>
+    public IReadOnlyList<int> DraftsBlockedByRejectedFile(Guid fileId) =>
+        _versions
+            .Where(v => v.Status == EmailVersionStatus.Draft && v.HtmlFileId == fileId)
+            .Select(v => v.VersionNumber)
+            .ToList();
 
     public Result DeprecateLayout(DateTime updatedAtUtc)
     {

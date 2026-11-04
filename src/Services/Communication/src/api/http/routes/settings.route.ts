@@ -20,8 +20,10 @@ const PatchBody = z.object({
   groupsAllowMultipleClients: z.boolean().optional(),
   defaultCameraOff: z.boolean().optional(),
   defaultMicrophoneOff: z.boolean().optional(),
-  persistChatOnEnd: z.boolean().optional(),
-  // La retención (mensajes, grabaciones y purga) ya no la edita la oficina: la fija PlatformAdmin.
+  // D-72 (null = no fijado): solo si PlatformAdmin dejó a la oficina gestionar su retención.
+  purgeEnabled: z.boolean().nullable().optional(),
+  messageRetentionDays: OptionalInt,
+  recordingRetentionDays: OptionalInt,
   recordingConsentPolicy: z.enum(['AllAcceptedRequired', 'NoRejections', 'HostOverride']).optional(),
   defaultMeetingDurationMinutes: OptionalInt,
   maxMeetingDurationMinutes: OptionalInt,
@@ -54,7 +56,6 @@ const PatchBody = z.object({
   meetingReactionCatalog: z.array(z.string().min(1).max(16)).max(30).nullable().optional(),
   // F6 (null = hereda).
   meetingReminderMinutesBefore: z.number().int().min(0).nullable().optional(),
-  guestsWaitingRoom: z.boolean().nullable().optional(),
   // F7 (null = hereda): vocabulario del transcript y notas de voz transcritas.
   transcriptPrompt: z.string().max(1000).nullable().optional(),
   voiceNoteTranscriptEnabled: z.boolean().nullable().optional(),

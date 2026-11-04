@@ -15,6 +15,7 @@ using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Avatars;
 using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Application.Moderation;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Application.RateLimiting.Abstractions;
 using TaxVision.CloudStorage.Infrastructure.Permissions;
@@ -44,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<IFileObjectRepository, FileObjectRepository>();
         services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
         services.AddScoped<IStoragePolicyRepository, StoragePolicyRepository>();
+        services.AddScoped<ITenantCloudConnectionRepository, TenantCloudConnectionRepository>();
         services.AddScoped<IStorageAuditRepository, StorageAuditRepository>();
         services.AddScoped<IFolderRepository, FolderRepository>();
         services.AddScoped<ISystemFolderProvisioner, SystemFolderProvisioner>();
@@ -69,6 +71,12 @@ public static class DependencyInjection
         services.AddScoped<IUploadSizePolicyAuditRepository, UploadSizePolicyAuditRepository>();
         services.AddSingleton<UploadPolicyCache>();
         services.AddScoped<IUploadPolicyResolver, UploadPolicyResolver>();
+        services.AddScoped<IFilePolicyCatalogRepository, FilePolicyCatalogRepository>();
+        services.AddSingleton<FilePolicyCatalogCache>();
+        // Ajustes operativos de la plataforma (fila única en BD): caché singleton por réplica.
+        services.AddScoped<IStoragePlatformSettingsRepository, StoragePlatformSettingsRepository>();
+        services.AddSingleton<StoragePlatformSettingsCache>();
+        services.AddScoped<IStoragePlatformSettingsProvider, StoragePlatformSettingsProvider>();
 
         services.Configure<CloudStorageOptions>(configuration.GetSection(CloudStorageOptions.SectionName));
         services.Configure<MinioOptions>(configuration.GetSection(MinioOptions.SectionName));

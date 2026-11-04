@@ -27,6 +27,8 @@ public sealed class Campaign : TenantEntity
     public const int MaxMessageLength = 500_000;
 
     public string Name { get; private set; } = default!;
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public CampaignChannel Channels { get; private set; }
 

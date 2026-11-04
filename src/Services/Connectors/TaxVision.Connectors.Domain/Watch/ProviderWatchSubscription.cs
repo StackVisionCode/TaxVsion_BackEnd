@@ -88,4 +88,10 @@ public sealed class ProviderWatchSubscription : BaseEntity
 
     /// <summary>Se agotaron los reintentos (3 fallos consecutivos, Fase 6) — requiere reauth manual.</summary>
     public void MarkFailed() => Status = ProviderWatchStatus.Failed;
+
+    /// <summary>
+    /// La cuenta se desconectó: sin renovaciones (WatchRenewalJob ignora Removed) el push del proveedor
+    /// vence solo y los avisos que lleguen antes se descartan. Reconectar la reactiva vía <see cref="Renew"/>.
+    /// </summary>
+    public void MarkRemoved() => Status = ProviderWatchStatus.Removed;
 }

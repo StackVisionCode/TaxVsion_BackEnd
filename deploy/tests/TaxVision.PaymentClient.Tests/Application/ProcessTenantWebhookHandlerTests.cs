@@ -133,15 +133,41 @@ public sealed class ProcessTenantWebhookHandlerTests
         Assert.Equal(WebhookEventStatus.Applied, webhooks.Added!.Status);
     }
 
-    // Arma el handler con todos los fakes; el config del tenant lleva un WebhookSecretEncrypted válido.
+    [Fact]
+    public async Task Office_without_webhook_secret_rejects_the_webhook_without_verifying_or_recording_it()
+    {
+        // El webhook secret es opcional para activar; sin él no se puede verificar → no-2xx y nada se registra.
+        var payment = CreateProcessingPayment();
+        var provider = new FakePaymentProvider(
+            new WebhookVerificationResult("evt_new", "payment_intent.succeeded", "{}"),
+            new WebhookEventPayload("pi_123", PaymentStatus.Succeeded, null, null, null)
+        );
+        var webhooks = new FakeWebhookEventRepository();
+
+        var result = await InvokeAsync(payment, provider, webhooks, BuildActiveConfig(webhookSecret: null));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("TenantPaymentConfig.WebhookSecretMissing", result.Error.Code);
+        Assert.False(provider.VerifyWasCalled);
+        Assert.Null(webhooks.Added);
+        Assert.Equal(PaymentStatus.Processing, payment.Status);
+    }
+
+    // Arma el handler con todos los fakes; por defecto el config lleva un WebhookSecretEncrypted válido.
     private static Task<Result> InvokeAsync(
         TenantPayment payment,
         IPaymentProvider provider,
-        IWebhookEventRepository webhooks
+        IWebhookEventRepository webhooks,
+        TenantPaymentConfig? config = null
     ) =>
         ProcessTenantWebhookHandler.Handle(
-            new ProcessTenantWebhookCommand(TenantId, PaymentProviderCode.Stripe, "{}", "sig"),
-            new FakeTenantPaymentConfigRepository(BuildActiveConfig()),
+            new ProcessTenantWebhookCommand(
+                TenantId,
+                PaymentProviderCode.Stripe,
+                "{}",
+                new Dictionary<string, string> { ["Stripe-Signature"] = "sig" }
+            ),
+            new FakeTenantPaymentConfigRepository(config ?? BuildActiveConfig()),
             new FakePaymentAdapterFactory(provider),
             new FakeSecretProtector(),
             webhooks,
@@ -184,7 +210,7 @@ public sealed class ProcessTenantWebhookHandlerTests
         return payment;
     }
 
-    private static TenantPaymentConfig BuildActiveConfig()
+    private static TenantPaymentConfig BuildActiveConfig(string? webhookSecret = "cipher-webhook")
     {
         var config = TenantPaymentConfig
             .Create(
@@ -198,7 +224,7 @@ public sealed class ProcessTenantWebhookHandlerTests
             .Value;
         config.UpdateSecrets(
             EncryptedSecret.Create("cipher-key").Value,
-            EncryptedSecret.Create("cipher-webhook").Value,
+            webhookSecret is null ? null : EncryptedSecret.Create(webhookSecret).Value,
             Guid.Empty,
             Now()
         );
@@ -239,15 +265,29 @@ file sealed class FakePaymentProvider(WebhookVerificationResult verification, We
     : IPaymentProvider
 {
     public bool ParseWasCalled { get; private set; }
+    public bool VerifyWasCalled { get; private set; }
+
+    public Task<Result<WebhookEventPayload>> GetChargeStatusAsync(
+        TenantProviderCredentials credentials,
+        ChargeStatusLookup lookup,
+        CancellationToken ct
+    ) => throw new NotSupportedException();
 
     public PaymentProviderCode Code => PaymentProviderCode.Stripe;
 
+    public PaymentProviderDescriptor Descriptor { get; } =
+        new(PaymentProviderCode.Stripe, "Stripe", "Publishable key", "Secret key", true, false);
+
     public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
         string rawPayload,
-        string signatureHeader,
-        string webhookSecret,
+        IReadOnlyDictionary<string, string> headers,
+        TenantProviderCredentials credentials,
         CancellationToken ct
-    ) => Task.FromResult(Result.Success(verification));
+    )
+    {
+        VerifyWasCalled = true;
+        return Task.FromResult(Result.Success(verification));
+    }
 
     public Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(
         string rawPayload,
@@ -279,6 +319,10 @@ file sealed class FakePaymentAdapterFactory(IPaymentProvider provider) : IPaymen
     public IPaymentProvider Resolve(PaymentProviderCode code) => provider;
 
     public bool IsRegistered(PaymentProviderCode code) => true;
+
+    public IReadOnlyList<PaymentProviderDescriptor> GetAvailableProviders() => [provider.Descriptor];
+
+    public PaymentProviderDescriptor? FindDescriptor(PaymentProviderCode code) => provider.Descriptor;
 }
 
 file sealed class FakePaymentLinkRepository : IPaymentLinkRepository
@@ -358,8 +402,9 @@ file sealed class FakeTenantPaymentRepository(TenantPayment payment) : ITenantPa
                 : null
         );
 
-    public Task<IReadOnlyList<TenantPayment>> GetStuckProcessingAsync(
-        DateTime cutoffUtc,
+    public Task<IReadOnlyList<AwaitingProviderPayment>> GetAwaitingProviderConfirmationAsync(
+        DateTime stuckBeforeUtc,
+        DateTime createdAfterUtc,
         int batchSize,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
@@ -377,6 +422,14 @@ file sealed class FakeTenantPaymentRepository(TenantPayment payment) : ITenantPa
         DateTime? to,
         int page,
         int pageSize,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
+    public Task<bool> AnyForProviderAsync(Guid tenantId, PaymentProviderCode code, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlySet<PaymentProviderCode>> GetConfiguredProvidersWithPaymentsAsync(
+        Guid tenantId,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
@@ -409,6 +462,12 @@ file sealed class FakeTenantPaymentConfigRepository(TenantPaymentConfig config) 
 
     public Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) =>
         throw new NotImplementedException();
+
+    public Task<IReadOnlyList<TenantPaymentConfig>> GetStalePendingWebhookSetupsAsync(
+        DateTime requestedBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
 
     public void Remove(TenantPaymentConfig config) => throw new NotImplementedException();
 }

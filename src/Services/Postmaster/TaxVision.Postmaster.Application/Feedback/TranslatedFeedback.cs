@@ -10,11 +10,16 @@ namespace TaxVision.Postmaster.Application.Feedback;
 /// <param name="CorrelationHeader">Valor de <c>X-TaxVision-Message-Id</c>, si el proveedor lo devuelve.</param>
 /// <param name="ProviderMessageId">Id propio del proveedor para ese correo.</param>
 /// <param name="RawPayload">El pedazo del payload que describe este aviso, solo para auditoría.</param>
+/// <param name="Report">Dónde quedó el aviso si llegó como correo al buzón (DSN); null si vino por webhook.</param>
 public sealed record TranslatedFeedback(
     string? MessageId,
     string? CorrelationHeader,
     string? ProviderMessageId,
     string RecipientAddress,
     DeliveryFeedback Feedback,
-    string RawPayload
+    string RawPayload,
+    DeliveryReportRef? Report = null
 );
+
+/// <summary>El aviso de no entrega dentro del buzón conectado: cuenta y su id ahí ("ver aviso original").</summary>
+public sealed record DeliveryReportRef(Guid AccountId, string ProviderMessageId);

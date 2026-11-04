@@ -16,6 +16,14 @@ public static class FormAuditAction
     public const string IntakeLinkCreated = "intake_link.created";
     public const string IntakeLinkUpdated = "intake_link.updated";
     public const string IntakeLinkTokenViewed = "intake_link.token_viewed";
+    public const string IntakeLinkResponsibleChanged = "intake_link.responsible_changed";
+
+    // Responsable retirado sin sucesor elegible: el enlace queda pausado hasta que un admin lo retome.
+    public const string IntakeLinkPausedResponsibleOffboarded = "intake_link.paused_responsible_offboarded";
+    public const string RequestResponsibleChanged = "request.responsible_changed";
+
+    // Responsable retirado y nadie elegible para heredar la request: queda señalada para un admin.
+    public const string RequestResponsibleUnavailable = "request.responsible_unavailable";
     public const string ConsentNoticeCreated = "consent_notice.created";
     public const string ConsentNoticeUpdated = "consent_notice.updated";
     public const string ConsentNoticePublished = "consent_notice.published";

@@ -18,6 +18,8 @@ namespace TaxVision.Notification.Application.Consumers;
 //     obsoleta es peor que una ausente — la ausente dispara la recuperación pull, la obsoleta manda
 //     el correo a la dirección vieja sin que nadie se entere.
 //   · UserDeactivated / UserReactivated → hay dirección, pero cambia si corresponde escribirle.
+//   · UserOffboarded → igual que la suspensión, pero terminal: si no había fila se crea inactiva con
+//     el correo del evento, para que el gate de entrega del dispatcher lo vea como inactivo.
 //
 // `UserProfileUpdated` NO aparece acá a propósito: solo lleva nombre y apellido.
 // ---------------------------------------------------------------------------
@@ -96,6 +98,34 @@ public static class UserEmailDirectoryDeactivationConsumer
             correlation,
             ct
         );
+}
+
+public static class UserEmailDirectoryOffboardingConsumer
+{
+    public static async Task Handle(
+        UserOffboardedIntegrationEvent evt,
+        IUserEmailDirectoryRepository directory,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
+        {
+            var existing = await directory.FindAsync(evt.TenantId, evt.UserId, ct);
+            if (existing is not null)
+                existing.SetActive(false);
+            else if (!string.IsNullOrWhiteSpace(evt.Email))
+                await directory.AddAsync(
+                    UserEmailDirectoryEntry.Create(evt.TenantId, evt.UserId, evt.Email, isActive: false),
+                    ct
+                );
+            else
+                return;
+
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+    }
 }
 
 public static class UserEmailDirectoryReactivationConsumer

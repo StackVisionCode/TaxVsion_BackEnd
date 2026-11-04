@@ -106,9 +106,9 @@ describe('listConversations — avatarFileId de los participantes', () => {
     expect(second!.participants.find((p) => p.userId === CLIENT)?.avatarFileId).toBe('f-client');
   });
 
-  it('no resuelve a los participantes removidos', async () => {
-    const avatars = resolverWith({});
-    await listConversations(
+  it('en un Direct resuelve también a quien salió (lo usa de título) sin listarlo como participante', async () => {
+    const avatars = resolverWith({ [PREPARER]: 'file-preparer' });
+    const result = await listConversations(
       { tenantId: TENANT, userId: ME, page: 1, size: 20 },
       {
         conversations: conversationsRepo([
@@ -117,7 +117,10 @@ describe('listConversations — avatarFileId de los participantes', () => {
         avatars,
       },
     );
-    expect(avatars.resolve.mock.calls[0]![0]).toEqual([ME]);
+    expect(avatars.resolve.mock.calls[0]![0]).toEqual([ME, PREPARER]);
+    const item = result.isSuccess ? result.value.items[0]! : null;
+    expect(item?.participants.map((p) => p.userId)).toEqual([ME]);
+    expect(item?.departedParticipant).toMatchObject({ userId: PREPARER, avatarFileId: 'file-preparer' });
   });
 
   it('sin resolver omite el campo', async () => {

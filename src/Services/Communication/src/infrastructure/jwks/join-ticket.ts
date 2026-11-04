@@ -16,7 +16,12 @@ import type { AuthenticatedPrincipal } from './jwt-verifier.js';
 const secretKey = new TextEncoder().encode(config.meetingInvitations.joinTicketSecret);
 
 export interface JoinTicketClaims {
-  readonly invitationId: string;
+  /** Invitacion personal; ausente cuando entra por el enlace de la reunion (D-68). */
+  readonly invitationId?: string;
+  /** D-68: por enlace, cada persona tiene su propio id (UUID); por invitacion es el id de la invitacion. */
+  readonly guestUserId?: string;
+  /** D-68: version del enlace con la que se emitio (si se rota o apaga, ya no entra uno nuevo). */
+  readonly guestLinkVersion?: number;
   readonly meetingId: string;
   readonly tenantId: string;
   readonly displayName: string;
@@ -25,15 +30,19 @@ export interface JoinTicketClaims {
 }
 
 export async function signJoinTicket(claims: JoinTicketClaims): Promise<string> {
+  const guestUserId = claims.guestUserId ?? claims.invitationId;
+  if (!guestUserId) throw new Error('A guest join ticket needs an invitation or a guest id.');
   return new SignJWT({
     tenant_id: claims.tenantId,
     meeting_id: claims.meetingId,
-    invitation_id: claims.invitationId,
+    guest_id: guestUserId,
+    ...(claims.invitationId ? { invitation_id: claims.invitationId } : {}),
+    ...(claims.guestLinkVersion !== undefined ? { link_version: claims.guestLinkVersion } : {}),
     display_name: claims.displayName,
     actor_type: 'Guest',
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-    .setSubject(`invitation:${claims.invitationId}`)
+    .setSubject(claims.invitationId ? `invitation:${claims.invitationId}` : `guest:${guestUserId}`)
     .setIssuedAt()
     .setExpirationTime(`${Math.max(claims.ttlSeconds ?? 0, config.meetingInvitations.joinTicketTtlSeconds)}s`)
     .sign(secretKey);
@@ -61,14 +70,17 @@ export async function verifyGuestJoinTicket(ticket: string): Promise<Authenticat
   const tenantId = typeof payload['tenant_id'] === 'string' ? payload['tenant_id'] : undefined;
   const meetingId = typeof payload['meeting_id'] === 'string' ? payload['meeting_id'] : undefined;
   const invitationId = typeof payload['invitation_id'] === 'string' ? payload['invitation_id'] : undefined;
-  if (!tenantId || !meetingId || !invitationId) {
+  const linkVersion = typeof payload['link_version'] === 'number' ? payload['link_version'] : undefined;
+  // Tickets anteriores a D-68 no traen guest_id: el guest era el id de la invitacion.
+  const guestUserId = typeof payload['guest_id'] === 'string' ? payload['guest_id'] : invitationId;
+  if (!tenantId || !meetingId || !guestUserId || (!invitationId && linkVersion === undefined)) {
     throw new InvalidJoinTicketError('Guest join ticket is missing required claims.');
   }
 
   return {
-    // F6: el userId del guest ES el invitationId (UUID): las columnas UserId/ActorUserId son uniqueidentifier
-    // y un prefijo de texto rompia el upsert del participante y el MeetingEventLog. `actorType: 'Guest'` lo distingue.
-    userId: invitationId,
+    // F6: el userId del guest es un UUID (id de la invitacion o, por enlace, uno propio): las columnas
+    // UserId/ActorUserId son uniqueidentifier. `actorType: 'Guest'` lo distingue.
+    userId: guestUserId,
     tenantId,
     actorType: 'Guest',
     permissions: [],

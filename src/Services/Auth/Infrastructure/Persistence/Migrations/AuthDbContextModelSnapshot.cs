@@ -518,6 +518,77 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.ToTable("TrustedDevices", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Domain.Offboarding.OffboardingRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("IncompleteAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("OffboardedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ReasonNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("SuccessorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IncompleteAtUtc", "StartedAtUtc");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("OffboardingRuns", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Offboarding.OffboardingRunStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Service")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Step")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RunId", "Service", "Step")
+                        .IsUnique();
+
+                    b.ToTable("OffboardingRunSteps", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.EmailVerification.EmailVerificationChallenge", b =>
                 {
                     b.Property<Guid>("Id")
@@ -808,6 +879,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("TermsVersionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<long?>("TotalDiscountCents")
                         .HasColumnType("bigint");
@@ -4188,6 +4263,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<DateTime?>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("SubDomain")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -4434,7 +4512,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.HasIndex(new[] { "TenantId", "Email" }, "IX_Users_TenantId_Email_Staff")
                         .IsUnique()
-                        .HasFilter("[ActorType] <> N'CustomerPortal'");
+                        .HasFilter("[ActorType] <> N'CustomerPortal' AND [Status] <> N'Offboarded'");
 
                     b.ToTable("Users", (string)null);
                 });
@@ -4526,6 +4604,15 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Domain.Offboarding.OffboardingRunStep", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Offboarding.OffboardingRun", null)
+                        .WithMany("Steps")
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.OnboardingCodeReservation", b =>
                 {
                     b.HasOne("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.TenantOnboarding", null)
@@ -4601,6 +4688,11 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Offboarding.OffboardingRun", b =>
+                {
+                    b.Navigation("Steps");
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.TenantOnboarding", b =>

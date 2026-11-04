@@ -10,6 +10,13 @@ public sealed class CustomerAssignmentProjection : TenantEntity
     private CustomerAssignmentProjection() { }
 
     public Guid CustomerId { get; private set; }
+
+    // Compartida: el retiro la limpia vía el snapshot que Customer publica al retirar.
+    [UserReference(
+        UserReferenceKind.Projection,
+        HandledBy = "Customer:CustomerUserOffboardedConsumer",
+        Via = "CustomerAssignmentsChangedIntegrationEvent"
+    )]
     public Guid UserId { get; private set; }
     public DateTime Version { get; private set; }
 

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Postmaster.Application.Feedback;
 using TaxVision.Postmaster.Domain.Sending;
 using TaxVision.Postmaster.Domain.ValueObjects;
 using TaxVision.Postmaster.Infrastructure.Feedback.Smtp2Go;
@@ -67,6 +68,17 @@ public sealed class Smtp2GoWebhookFeedbackTranslatorTests
     }
 
     [Fact]
+    public void Translate_reads_the_status_code_from_the_server_response()
+    {
+        var item = Assert.Single(Translator.Translate(Event("bounce", "hard")).Value);
+
+        Assert.Equal("5.1.1", item.Feedback.StatusCode?.ToString());
+        Assert.Equal(DeliveryFailureCategory.InvalidAddress, item.Feedback.FailureCategory);
+        // El webhook no deja nada en un buzón.
+        Assert.Null(item.Report);
+    }
+
+    [Fact]
     public void Translate_carries_the_three_correlation_ids_and_the_diagnostic()
     {
         var item = Assert.Single(Translator.Translate(Event("bounce", "hard")).Value);
@@ -88,6 +100,83 @@ public sealed class Smtp2GoWebhookFeedbackTranslatorTests
 
         Assert.Equal(first.Feedback.SourceEventId, retry.Feedback.SourceEventId);
         Assert.NotEqual(first.Feedback.SourceEventId, other.Feedback.SourceEventId);
+    }
+
+    [Theory]
+    [InlineData("open", EngagementSignal.Opened)]
+    [InlineData("click", EngagementSignal.Clicked)]
+    public void Translate_gives_opens_and_clicks_the_canonical_engagement_id(string eventName, EngagementSignal signal)
+    {
+        var item = Assert.Single(Translator.Translate(Event(eventName)).Value);
+
+        var expected = DeliveryFeedbackEventId.ForEngagement(
+            "1oQsWu-4XUKtC-0n",
+            "customer@example.com",
+            signal,
+            new DateTime(2026, 10, 21, 12, 0, 0, DateTimeKind.Utc)
+        );
+        Assert.Equal(expected, item.Feedback.SourceEventId);
+    }
+
+    [Fact]
+    public void Translate_gives_delivery_outcomes_the_canonical_id()
+    {
+        var item = Assert.Single(Translator.Translate(Event("bounce", "hard")).Value);
+
+        var expected = DeliveryFeedbackEventId.ForOutcome(
+            "1oQsWu-4XUKtC-0n",
+            "customer@example.com",
+            DeliveryOutcome.HardBounced,
+            new DateTime(2026, 10, 21, 12, 0, 0, DateTimeKind.Utc)
+        );
+        Assert.Equal(expected, item.Feedback.SourceEventId);
+    }
+
+    [Fact]
+    public async Task Translate_and_the_activity_poller_give_the_same_delivery_the_same_id()
+    {
+        var webhook = Assert.Single(Translator.Translate(Event("delivered", time: "1792929600")).Value);
+        var handler = new FakeSmtp2GoHttpHandler();
+        handler.Enqueue(
+            System.Net.HttpStatusCode.OK,
+            FakeSmtp2GoHttpHandler.Page(
+                null,
+                FakeSmtp2GoHttpHandler.ActivityEvent("1oQsWu-4XUKtC-0n", "delivered", date: "2026-10-25T12:00:00Z")
+            )
+        );
+
+        var polled = await Smtp2GoActivityFeedbackPollerTests
+            .CreatePoller(handler)
+            .PollEngagementAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, 10, CancellationToken.None);
+
+        var delivered = Assert.Single(polled);
+        Assert.Equal(DeliveryOutcome.Delivered, delivered.Feedback.Outcome);
+        Assert.Equal(webhook.Feedback.SourceEventId, delivered.Feedback.SourceEventId);
+    }
+
+    [Fact]
+    public async Task Translate_and_the_activity_poller_give_the_same_open_the_same_id()
+    {
+        var webhook = Assert.Single(Translator.Translate(Event("open", time: "1792929600")).Value);
+        var handler = new FakeSmtp2GoHttpHandler();
+        handler.Enqueue(
+            System.Net.HttpStatusCode.OK,
+            FakeSmtp2GoHttpHandler.Page(
+                null,
+                // Mismo instante que el webhook, informado como RFC 3339 en vez de segundos Unix.
+                FakeSmtp2GoHttpHandler.ActivityEvent("1oQsWu-4XUKtC-0n", "opened", date: "2026-10-25T12:00:00Z")
+            )
+        );
+
+        var polled = await Smtp2GoActivityFeedbackPollerTests
+            .CreatePoller(handler)
+            .PollEngagementAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, 10, CancellationToken.None);
+
+        Assert.Equal(
+            DateTimeOffset.FromUnixTimeSeconds(1792929600).UtcDateTime,
+            Assert.Single(polled).Feedback.OccurredAtUtc
+        );
+        Assert.Equal(webhook.Feedback.SourceEventId, polled[0].Feedback.SourceEventId);
     }
 
     [Fact]

@@ -42,6 +42,11 @@ public sealed class DocumentGeneration : AggregateRoot
     /// <summary>P-18: página (1-indexada) donde la plantilla reservó la caja de firma. Nulo sin copia de firma.</summary>
     public int? SignatureAnchorPage { get; private set; }
 
+    /// <summary>P-18: OwnerType/FolderType con que se subió la copia (el OwnerId es el de <see cref="Owner"/>).
+    /// Hacen falta para pedir su borrado si la generación se cae; nulos en filas anteriores.</summary>
+    public string? SignatureCopyOwnerType { get; private set; }
+    public string? SignatureCopyFolderType { get; private set; }
+
     public string IdempotencyKey { get; private set; } = string.Empty;
 
     /// <summary>Id externo de correlación (p.ej. el GenerationId que Tasks guarda en la revisión). El PK
@@ -199,6 +204,22 @@ public sealed class DocumentGeneration : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>CloudStorage rechazó el archivo que se estaba subiendo: ese FileId nunca existirá. Sólo
+    /// aplica a la subida en curso (Uploading con ese mismo FileId); un reintento ya tiene otro FileId.</summary>
+    public Result RejectUpload(Guid fileId, string errorCode, string errorMessage, DateTime nowUtc)
+    {
+        if (FileId is null || FileId != fileId)
+            return Result.Failure(
+                new Error("Documents.Generation.FileIdMismatch", "Rejected FileId does not match the uploaded FileId.")
+            );
+        if (Status != DocumentGenerationStatus.Uploading)
+            return Result.Failure(
+                new Error("Documents.Generation.InvalidTransition", $"Cannot reject the upload from {Status}.")
+            );
+
+        return Fail(errorCode, errorMessage, nowUtc);
+    }
+
     public Result Cancel(DateTime nowUtc)
     {
         if (Status is DocumentGenerationStatus.Completed or DocumentGenerationStatus.Cancelled)
@@ -255,13 +276,38 @@ public sealed class DocumentGeneration : AggregateRoot
         FileName = fileName;
     }
 
-    /// <summary>P-18: registra la copia del PDF para Signature (segundo FileId) y la página del ancla de firma.</summary>
-    public void AttachSignatureCopy(Guid signatureCopyFileId, int anchorPage)
+    /// <summary>P-18: registra la copia del PDF para Signature (segundo FileId), la página del ancla de firma y
+    /// el owner/carpeta con que se subió.</summary>
+    public void AttachSignatureCopy(Guid signatureCopyFileId, int anchorPage, string ownerType, string folderType)
     {
         if (signatureCopyFileId != Guid.Empty)
             SignatureCopyFileId = signatureCopyFileId;
         if (anchorPage >= 1)
             SignatureAnchorPage = anchorPage;
+        SignatureCopyOwnerType = string.IsNullOrWhiteSpace(ownerType) ? null : ownerType.Trim();
+        SignatureCopyFolderType = string.IsNullOrWhiteSpace(folderType) ? null : folderType.Trim();
+    }
+
+    /// <summary>Suelta la copia de firma para que el cierre no anuncie un archivo inexistente o huérfano
+    /// (CloudStorage la rechazó, o rechazó el archivo principal). Sólo antes de Completed (después ya se
+    /// anunció) y sólo si sigue siendo esa copia.</summary>
+    public Result DetachSignatureCopy(Guid signatureCopyFileId, DateTime nowUtc)
+    {
+        if (SignatureCopyFileId is null || SignatureCopyFileId != signatureCopyFileId)
+            return Result.Failure(
+                new Error("Documents.Generation.FileIdMismatch", "Signature copy FileId does not match.")
+            );
+        if (Status is DocumentGenerationStatus.Completed)
+            return Result.Failure(
+                new Error("Documents.Generation.InvalidTransition", "Signature copy was already announced.")
+            );
+
+        SignatureCopyFileId = null;
+        SignatureAnchorPage = null;
+        SignatureCopyOwnerType = null;
+        SignatureCopyFolderType = null;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
     }
 
     private Result Transition(

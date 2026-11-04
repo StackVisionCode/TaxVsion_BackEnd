@@ -8,12 +8,11 @@ using TaxVision.Reminder.Domain.Reminders;
 namespace TaxVision.Reminder.Application.Reminders.Consumers;
 
 /// <summary>
-/// Al RETIRAR (offboard) a un empleado: cancela y desagenda sus recordatorios PRIVADOS (Category
-/// <c>General</c> — «recordame llamar a Pérez», no apuntan a nada externo). Los atados a
-/// Calendar/Task/Note NO se tocan aquí: los cierra el cascade de <c>reminder.target_closed.v1</c> del
-/// propio servicio cuando procesa su offboard. Un «recordame a MÍ» no se reasigna: se cancela. Se
-/// persiste primero y se desagenda después (EF y Quartz no comparten transacción; el job de
-/// reconciliación cubre el hueco). Idempotente.
+/// Al RETIRAR (offboard) a un empleado: cancela y desagenda TODOS sus recordatorios pendientes
+/// (General, Task, Calendar y Note). Tasks y Calendar reasignan el objeto al sucesor sin cerrar el
+/// recordatorio viejo, así que esperar su <c>target_closed</c> dejaría avisando al retirado. Un
+/// recordatorio es privado de su dueño: no se reasigna, se cancela. Se persiste primero y se desagenda
+/// después (EF y Quartz no comparten transacción; el job de reconciliación cubre el hueco). Idempotente.
 /// </summary>
 public static class ReminderUserOffboardedConsumer
 {
@@ -34,7 +33,7 @@ public static class ReminderUserOffboardedConsumer
             )
         )
         {
-            var pending = await reminders.ListPendingGeneralByUserAsync(msg.TenantId, msg.UserId, ct);
+            var pending = await reminders.ListPendingByUserAsync(msg.TenantId, msg.UserId, ct);
             if (pending.Count == 0)
                 return;
 
@@ -55,7 +54,7 @@ public static class ReminderUserOffboardedConsumer
             }
 
             logger.LogInformation(
-                "Offboarded user {UserId}: cancelled and unscheduled {Count} private reminder(s) in tenant {TenantId}.",
+                "Offboarded user {UserId}: cancelled and unscheduled {Count} pending reminder(s) in tenant {TenantId}.",
                 msg.UserId,
                 cancelled.Count,
                 msg.TenantId

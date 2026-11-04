@@ -7,6 +7,12 @@ public sealed record TenantLogoUpload(byte[] Content, string ContentType, string
 
 public sealed record TenantLogoDownloadUrl(Uri Url, DateTime ExpiresAtUtc);
 
+/// <summary>Identidad de Tenant ante CloudStorage: va en SaveFileRequested y vuelve en FileSaveRejected.</summary>
+public static class TenantCloudStorageRequests
+{
+    public const string RequestingService = "tenant";
+}
+
 /// <summary>Archivo ya subido a MinIO, aún sin pedir el catálogo/escaneo a CloudStorage.</summary>
 public sealed record TenantBrandStoredFile(Guid FileId, string SourceObjectKey);
 

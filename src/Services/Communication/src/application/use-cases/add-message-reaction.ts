@@ -52,6 +52,9 @@ export async function addMessageReaction(
   if (!conversation.isParticipant(cmd.userId)) {
     return Result.fail(makeError('Chat.Conversation.NotParticipant', 'User is not a participant.'));
   }
+  // Chat cerrado = solo lectura (la pantalla ya lo oculta; acá se hace cumplir).
+  const open = conversation.ensureOpen();
+  if (!open.isSuccess) return Result.fail(open.error);
 
   const now = new Date();
   const reactionResult = MessageReaction.create({

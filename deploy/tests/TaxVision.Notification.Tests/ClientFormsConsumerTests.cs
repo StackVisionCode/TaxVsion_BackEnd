@@ -464,6 +464,7 @@ public sealed class ClientFormsConsumerTests
         Assert.Equal("task.form_access_code.v1", render.EventKey);
         Assert.Equal("123456", render.Variables["code"]);
         Assert.True(Assert.Single(gateway.Queued).Confidential);
+        Assert.Equal(ScribeRenderAudience.Client, render.Audience);
     }
 
     [Fact]
@@ -772,6 +773,8 @@ public sealed class ClientFormsConsumerTests
         Assert.Equal("client@example.com", email.To);
         Assert.Equal("Es", render.Variables["language"]);
         Assert.DoesNotContain(metrics.NoRecipient, channel => channel == "Email");
+        // Destinatario cliente: el correo lleva el logo del portal.
+        Assert.Equal(ScribeRenderAudience.Client, render.Audience);
     }
 
     [Fact]
@@ -1153,15 +1156,25 @@ public sealed class ClientFormsConsumerTests
         public int TextCalls { get; private set; }
         public string? EventKey { get; private set; }
         public IReadOnlyDictionary<string, object?> Variables { get; private set; } = new Dictionary<string, object?>();
+        public ScribeRenderAudience? Audience { get; private set; }
 
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
             string eventKey,
             Guid tenantId,
             IReadOnlyDictionary<string, object?> variables,
             CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ScribeRenderAudience.Staff, ct);
+
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
         )
         {
             Calls++;
+            Audience = audience;
             EventKey = eventKey;
             Variables = variables;
             return Task.FromResult(Result.Success(new ScribeRenderedEmail("Subject", "<p>Body</p>", "Body")));

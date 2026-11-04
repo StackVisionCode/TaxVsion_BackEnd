@@ -328,6 +328,130 @@ public sealed class CustomerAvatarScanResultConsumerTests
         Assert.Equal(1, unitOfWork.Saves);
     }
 
+    [Fact]
+    public async Task Pending_picture_rejected_by_storage_is_discarded_and_the_current_one_stays()
+    {
+        var customer = WithPicture(out var current);
+        var pending = Begin(customer);
+        var unitOfWork = new RecordingUnitOfWork(new FakeMessageBus());
+
+        await SaveRejectedAsync(SaveRejected(customer, pending), customer, unitOfWork);
+
+        AssertDiscarded(customer, current, unitOfWork);
+    }
+
+    [Fact]
+    public async Task Storage_rejection_of_an_older_picture_keeps_the_newer_pending_one()
+    {
+        var customer = NewCustomer();
+        var older = Begin(customer);
+        var newer = Begin(customer);
+        var unitOfWork = new RecordingUnitOfWork(new FakeMessageBus());
+
+        await SaveRejectedAsync(SaveRejected(customer, older), customer, unitOfWork);
+
+        Assert.Equal(newer, customer.PendingProfilePictureFileId);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
+    [Theory]
+    [InlineData("signature", "Customer", "Avatars")]
+    [InlineData("customer", "Tenant", "Imports")]
+    [InlineData("customer", null, null)]
+    public async Task Storage_rejections_of_other_files_are_ignored(
+        string service,
+        string? ownerType,
+        string? folderType
+    )
+    {
+        var customer = NewCustomer();
+        var pending = Begin(customer);
+        var unitOfWork = new RecordingUnitOfWork(new FakeMessageBus());
+
+        await SaveRejectedAsync(
+            SaveRejected(customer, pending) with
+            {
+                RequestingService = service,
+                OwnerType = ownerType,
+                FolderType = folderType,
+            },
+            customer,
+            unitOfWork
+        );
+
+        Assert.Equal(pending, customer.PendingProfilePictureFileId);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task Storage_rejection_for_an_unknown_customer_or_tenant_is_a_no_op()
+    {
+        var customer = NewCustomer();
+        var pending = Begin(customer);
+        var unitOfWork = new RecordingUnitOfWork(new FakeMessageBus());
+
+        await SaveRejectedAsync(
+            SaveRejected(customer, pending) with
+            {
+                OwnerId = Guid.NewGuid(),
+            },
+            customer,
+            unitOfWork
+        );
+        await SaveRejectedAsync(
+            SaveRejected(customer, pending) with
+            {
+                TenantId = Guid.NewGuid(),
+            },
+            customer,
+            unitOfWork
+        );
+        await SaveRejectedAsync(SaveRejected(customer, Guid.NewGuid()), customer, unitOfWork);
+
+        Assert.Equal(pending, customer.PendingProfilePictureFileId);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task Repeated_storage_rejection_is_idempotent()
+    {
+        var customer = NewCustomer();
+        var pending = Begin(customer);
+        var unitOfWork = new RecordingUnitOfWork(new FakeMessageBus());
+
+        for (var i = 0; i < 2; i++)
+            await SaveRejectedAsync(SaveRejected(customer, pending), customer, unitOfWork);
+
+        Assert.Null(customer.PendingProfilePictureFileId);
+        Assert.Equal(1, unitOfWork.Saves);
+    }
+
+    private static Task SaveRejectedAsync(
+        FileSaveRejectedIntegrationEvent msg,
+        DomainCustomer customer,
+        RecordingUnitOfWork unitOfWork
+    ) =>
+        CustomerAvatarScanResultConsumer.Handle(
+            msg,
+            Repo(customer),
+            unitOfWork,
+            new FixedCorrelationContext(),
+            NullLogger<DomainCustomer>.Instance,
+            CancellationToken.None
+        );
+
+    private static FileSaveRejectedIntegrationEvent SaveRejected(DomainCustomer customer, Guid fileId) =>
+        new()
+        {
+            TenantId = TenantId,
+            FileId = fileId,
+            RequestingService = "customer",
+            OwnerType = "Customer",
+            OwnerId = customer.Id,
+            FolderType = "Avatars",
+            Reason = "UploadPolicy",
+        };
+
     private static void AssertDiscarded(DomainCustomer customer, Guid current, RecordingUnitOfWork unitOfWork)
     {
         Assert.Null(customer.PendingProfilePictureFileId);

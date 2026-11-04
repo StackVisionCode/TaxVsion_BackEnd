@@ -1,7 +1,9 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Domain.Requests;
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 
 namespace TaxVision.Signature.Application.Requests.Public;
 
@@ -12,6 +14,7 @@ public static class ViewPublicSignerHandler
         ISigningTokenService tokenService,
         ISignatureRequestRepository repository,
         ITenantBrandingRefRepository branding,
+        IStampStyleResolver stampStyles,
         IJtiDenylist denylist,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -26,7 +29,8 @@ public static class ViewPublicSignerHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         var tenantBranding = await branding.GetByTenantIdAsync(request.TenantId, ct);
-        return Result.Success(BuildView(request, signer, tenantBranding?.SubDomain ?? string.Empty));
+        var style = await stampStyles.ResolveAsync(request.TenantId, ct);
+        return Result.Success(BuildView(request, signer, tenantBranding?.SubDomain ?? string.Empty, style));
     }
 
     // ------------------------------------------------------------------
@@ -39,7 +43,12 @@ public static class ViewPublicSignerHandler
         request.RecordSignerFirstView(signer.Id, viewedAt, cmd.ClientIp, cmd.UserAgent);
     }
 
-    private static PublicSignerView BuildView(SignatureRequest request, Signer signer, string tenantSubDomain) =>
+    private static PublicSignerView BuildView(
+        SignatureRequest request,
+        Signer signer,
+        string tenantSubDomain,
+        StampStyle style
+    ) =>
         new(
             SignatureRequestId: request.Id,
             SignerId: signer.Id,
@@ -70,7 +79,14 @@ public static class ViewPublicSignerHandler
             TenantSubDomain: tenantSubDomain,
             // F7 — true si la configuración del request incluye a este signer en la audiencia.
             PartialCopyWillBeSent: request.SendPartialCopyOnEachSignature
-                && request.PartialCopyAudience.Includes(signer.Id)
+                && request.PartialCopyAudience.Includes(signer.Id),
+            StampStyle: new PublicStampStyleView(
+                style.DatePattern,
+                style.AutoFontMinPt,
+                style.AutoFontMaxPt,
+                FieldTypography.AutoHeightRatio,
+                FieldTypography.MinFontSizePt
+            )
         );
 
     private static bool IsNextInSequence(SignatureRequest request, Signer signer)
@@ -97,7 +113,8 @@ public static class ViewPublicSignerHandler
             field.Position.Width,
             field.Position.Height,
             field.Label,
-            field.IsRequired
+            field.IsRequired,
+            field.FontSizePt
         );
 
     private static PublicSignerDocumentView MapDocument(RequestDocument document, Signer signer)

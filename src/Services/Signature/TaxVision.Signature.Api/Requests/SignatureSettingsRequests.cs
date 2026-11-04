@@ -26,9 +26,25 @@ public sealed record UpdateSignatureSettingsBody(
     // null = no tocar. Emailar el certificado a los firmantes (solo surte efecto si además se genera) y
     // exigir el consentimiento ESIGN/UETA por default (política legal del despacho).
     bool? SendCertificateToSignersDefault = null,
-    bool? RequiresConsentByDefault = null
+    bool? RequiresConsentByDefault = null,
+    // Entrega de los documentos firmados; null = no tocar (clientes que aún no lo envían).
+    DeliveryPolicyBody? Delivery = null,
+    // Estampado: marco de la firma y formato de fecha ("MonthDayYear", "DayMonthYear", "IsoDate"); null = no tocar.
+    bool? ShowSignatureFrame = null,
+    string? DateStampFormat = null
 );
 
-public sealed record DocumentLimitsBody(long MaxPdfBytes, long MaxImageBytes, int MaxPagesPerDocument);
+public sealed record DeliveryPolicyBody(
+    int LinkLifetimeDays,
+    bool AllowPublicReissue,
+    bool AttachDocuments,
+    long MaxAttachmentBytes
+);
 
-public sealed record RetentionPolicyBody(int RetentionYears, bool AllowPurge);
+public sealed record DocumentLimitsBody(long MaxPdfBytes, int MaxPagesPerDocument);
+
+/// <summary>
+/// Solo <paramref name="AllowPurge"/> cambia algo. <paramref name="RetentionYears"/> se acepta para no romper clientes
+/// que aún lo envían, pero se ignora: los años los fija la oficina en Cumplimiento (Tenant).
+/// </summary>
+public sealed record RetentionPolicyBody(bool AllowPurge, int? RetentionYears = null);

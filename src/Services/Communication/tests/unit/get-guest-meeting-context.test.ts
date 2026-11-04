@@ -41,7 +41,7 @@ async function inviteExternal(runtime: ReturnType<typeof buildMeetingRuntime>, m
 
 describe('getGuestMeetingContext (F6, T-63)', () => {
   it('devuelve titulo, host, estado, politica de guests y la politica de media; 404 uniforme si el token no vale', async () => {
-    const runtime = buildMeetingRuntime({ guestsWaitingRoomDefault: true });
+    const runtime = buildMeetingRuntime();
     const tenantId = u();
     const { meeting } = scheduledMeeting(tenantId, { waitingRoom: false });
     await runtime.repository.save(meeting);
@@ -86,7 +86,7 @@ describe('getGuestMeetingContext (F6, T-63)', () => {
   });
 
   it('la politica de la oficina manda al guest a la sala de espera aunque la reunion no la exija', async () => {
-    const runtime = buildMeetingRuntime({ guestsWaitingRoomDefault: true });
+    const runtime = buildMeetingRuntime();
     const tenantId = u();
     const { meeting, host } = scheduledMeeting(tenantId, { waitingRoom: false });
     meeting.start({ hostUserId: host.userId });
@@ -105,7 +105,7 @@ describe('getGuestMeetingContext (F6, T-63)', () => {
         ...runtime.deps,
         passcodes: { verify: async () => true, hash: async () => 'h' } as unknown as PasscodeHasher,
         turn: { issue: () => ({ iceServers: [], expiresAtUtc: new Date().toISOString() }) } as unknown as TurnCredentialFactory,
-        effectiveSettings: new FakeEffectiveSettingsResolver({ guestsWaitingRoomDefault: true }),
+        effectiveSettings: new FakeEffectiveSettingsResolver(),
       },
     );
     expect(joined.isSuccess).toBe(true);

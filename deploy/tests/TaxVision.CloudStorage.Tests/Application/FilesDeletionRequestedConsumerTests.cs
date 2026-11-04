@@ -65,7 +65,7 @@ public sealed class FilesDeletionRequestedConsumerTests
             message,
             files,
             audit ?? new FakeStorageAuditRepository(),
-            Options.Create(new CloudStorageOptions()),
+            new FakeStoragePlatformSettingsProvider(),
             new FakeSystemClock(Now),
             new FakeUnitOfWork(),
             bus,

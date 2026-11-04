@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.CustomerVisibility;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Compose;
@@ -15,6 +14,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         db
             .Drafts.IgnoreQueryFilters()
             .Include(d => d.Recipients)
+            .Include(d => d.Attachments)
             .FirstOrDefaultAsync(d => d.TenantId == tenantId && d.Id == id, ct);
 
     /// <summary>
@@ -76,6 +76,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         int page,
         int size,
         Guid? ownerUserId = null,
+        MailListFilter? filter = null,
         CancellationToken ct = default
     )
     {
@@ -84,6 +85,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
 
         var query = InScope(db.Drafts.AsNoTracking().IgnoreQueryFilters().Where(d => d.TenantId == tenantId), scope)
             .Where(d => d.Status == DraftStatus.Draft);
+        query = MailVisibilityQueries.FilterOutgoing(query, filter);
 
         // A1 — el filtro va en la consulta, no después de paginar: filtrar en memoria dejaría los
         // totales y las páginas mintiendo.
@@ -92,7 +94,9 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
 
         var totalCount = await query.CountAsync(ct);
 
+        // Include(Attachments): la fila dice si el borrador lleva adjuntos.
         var items = await query
+            .Include(d => d.Attachments)
             .OrderByDescending(d => d.UpdatedAtUtc)
             .Skip((normalizedPage - 1) * normalizedSize)
             .Take(normalizedSize)
@@ -109,6 +113,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        MailListFilter? filter = null,
         CancellationToken ct = default
     )
     {
@@ -119,16 +124,14 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
             .Where(d => d.Status == DraftStatus.Sent && d.DeletedAtUtc == null);
 
         // Gate de buzón de oficina: oculta enviados desde buzones no visibles.
-        if (visibleAccountIds is not null)
-        {
-            var ids = visibleAccountIds as Guid[] ?? visibleAccountIds.ToArray();
-            query = query.Where(d => ids.Contains(d.AccountId));
-        }
+        query = MailVisibilityQueries.FromVisibleMailbox(query, visibleAccountIds);
+        query = MailVisibilityQueries.FilterOutgoing(query, filter);
 
         var totalCount = await query.CountAsync(ct);
 
         var items = await query
             .Include(d => d.Recipients)
+            .Include(d => d.Attachments)
             .OrderByDescending(d => d.UpdatedAtUtc)
             .Skip((normalizedPage - 1) * normalizedSize)
             .Take(normalizedSize)
@@ -149,6 +152,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
             .Drafts.AsNoTracking()
             .IgnoreQueryFilters()
             .Include(d => d.Recipients)
+            .Include(d => d.Attachments)
             .Where(d =>
                 d.TenantId == tenantId
                 && d.EmailThreadId == emailThreadId
@@ -164,6 +168,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        MailListFilter? filter = null,
         CancellationToken ct = default
     )
     {
@@ -174,16 +179,14 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
             .Where(d => d.Status == DraftStatus.Sent && d.DeletedAtUtc != null);
 
         // Gate de buzón de oficina: oculta enviados borrados desde buzones no visibles.
-        if (visibleAccountIds is not null)
-        {
-            var ids = visibleAccountIds as Guid[] ?? visibleAccountIds.ToArray();
-            query = query.Where(d => ids.Contains(d.AccountId));
-        }
+        query = MailVisibilityQueries.FromVisibleMailbox(query, visibleAccountIds);
+        query = MailVisibilityQueries.FilterOutgoing(query, filter);
 
         var totalCount = await query.CountAsync(ct);
 
         var items = await query
             .Include(d => d.Recipients)
+            .Include(d => d.Attachments)
             .OrderByDescending(d => d.DeletedAtUtc)
             .Skip((normalizedPage - 1) * normalizedSize)
             .Take(normalizedSize)
@@ -194,35 +197,8 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
 
     public void Remove(Draft entity) => db.Drafts.Remove(entity);
 
-    // IS NULL explícito y no "CustomerId == @p" con un parámetro nullable: EF traduciría esa
-    // comparación con la semántica de null de C# (un OR) y SQL Server dejaría de buscar por
-    // IX_Drafts_TenantId_CustomerId_Status_UpdatedAtUtc.
-    private IQueryable<Draft> InScope(IQueryable<Draft> drafts, DraftCustomerScope scope)
-    {
-        var assignments = db.Set<CustomerAssignmentProjection>();
-        if (scope.IsAll)
-        {
-            // Sin cliente siempre; de cliente, solo los visibles para quien no tiene customers.view_all.
-            return scope.RestrictToUserId is { } user
-                ? drafts.Where(d =>
-                    d.CustomerId == null
-                    || assignments.Any(a =>
-                        a.TenantId == d.TenantId && a.CustomerId == d.CustomerId && a.UserId == user
-                    )
-                )
-                : drafts;
-        }
-        if (scope.CustomerId is { } customerId)
-        {
-            var ofCustomer = drafts.Where(d => d.CustomerId == customerId);
-            return scope.RestrictToUserId is { } user
-                ? ofCustomer.Where(d =>
-                    assignments.Any(a => a.TenantId == d.TenantId && a.CustomerId == customerId && a.UserId == user)
-                )
-                : ofCustomer;
-        }
-        return drafts.Where(d => d.CustomerId == null);
-    }
+    private IQueryable<Draft> InScope(IQueryable<Draft> drafts, DraftCustomerScope scope) =>
+        MailVisibilityQueries.OutgoingInScope(db, drafts, scope);
 
     // Tracked (sin AsNoTracking): DraftCleanupJob muta cada fila (Draft.Discard()) y guarda por el
     // mismo UnitOfWork/DbContext del scope — a diferencia de los listados de solo lectura de arriba.

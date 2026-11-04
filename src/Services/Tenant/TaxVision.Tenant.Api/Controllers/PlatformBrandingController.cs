@@ -188,6 +188,31 @@ public sealed class PlatformBrandingController(IMessageBus bus, ILogger<Platform
         return NoContent();
     }
 
+    /// <summary>
+    /// Vuelve a anunciar el logo confirmado (CRM y Portal) de TODOS los tenants para poblar o reparar las
+    /// proyecciones de Scribe, Documents y Signature. Idempotente: correrlo de nuevo no cambia nada. Se
+    /// llama una vez tras desplegar los consumidores por superficie, y cuando una proyección se pierde.
+    /// </summary>
+    [HttpPost("logos/republish")]
+    [HasPermission(TenantBrandingPermissions.Platform)]
+    [RateLimit("tenant.g.branding_manage")]
+    [ProducesResponseType<RepublishTenantLogosResult>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> RepublishLogos(CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<RepublishTenantLogosResult>>(new RepublishTenantLogosCommand(), ct);
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+        User.TryGetUserId(out var actorId);
+        logger.LogInformation(
+            "System branding: republished {Published} tenant logo event(s) by platformAdmin={ActorId}",
+            result.Value.Published,
+            actorId
+        );
+        return Ok(result.Value);
+    }
+
     private void Audit(string action, Domain.Enums.BrandSurface surface)
     {
         User.TryGetUserId(out var actorId);

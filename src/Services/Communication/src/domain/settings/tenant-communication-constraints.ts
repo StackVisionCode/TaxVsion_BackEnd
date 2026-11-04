@@ -20,6 +20,8 @@ export interface TenantCommunicationConstraintsSnapshot {
   readonly messageRetentionDays: number | null;
   readonly recordingRetentionDays: number | null;
   readonly purgeEnabled: boolean | null;
+  /** D-72: la oficina gestiona su propia retención (null = la global de la plataforma). */
+  readonly retentionManagedByTenant: boolean | null;
   readonly notes: string | null;
   readonly updatedByUserId: string | null;
   readonly createdAtUtc: Date;
@@ -73,6 +75,7 @@ export class TenantCommunicationConstraints {
       messageRetentionDays: null,
       recordingRetentionDays: null,
       purgeEnabled: null,
+      retentionManagedByTenant: null,
       notes: null,
       updatedByUserId: null,
       createdAtUtc: now,

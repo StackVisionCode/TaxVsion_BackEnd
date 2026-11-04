@@ -31,6 +31,15 @@ class FakeMeetingRepository implements MeetingRepository {
   async countActiveHostedBy(): Promise<number> {
     return 0;
   }
+  async listScheduledWithParticipant(): Promise<Meeting[]> {
+    return [];
+  }
+  async countScheduledWithParticipant(): Promise<number> {
+    return 0;
+  }
+  async listOpenInvitationsForInvitee(): Promise<MeetingInvitation[]> {
+    return [];
+  }
   private readonly store = new Map<string, Meeting>();
   async save(meeting: Meeting): Promise<void> {
     this.store.set(meeting.id, meeting);
@@ -43,6 +52,9 @@ class FakeMeetingRepository implements MeetingRepository {
     return null;
   }
   async findByShortCodeAnyTenant(): Promise<Meeting | null> {
+    return null;
+  }
+  async findByIdAnyTenant(): Promise<null> {
     return null;
   }
   async saveInvitation(): Promise<void> {}
@@ -165,7 +177,7 @@ async function seedRequestingSession(
   requestedByUserId: string,
 ) {
   await harness.meetings.save(meeting);
-  const requestResult = meeting.requestRecording({ actorUserId: requestedByUserId, existingSession: null });
+  const requestResult = meeting.requestRecording({ actorUserId: requestedByUserId, latestSession: null });
   if (!requestResult.isSuccess) throw new Error(requestResult.error.message);
   await harness.recordingSessions.save(requestResult.value.session);
   return requestResult.value.session;
@@ -188,7 +200,7 @@ describe('startMeetingRecording — policy AllAcceptedRequired', () => {
     expect(result.isSuccess).toBe(false);
     if (!result.isSuccess) expect(result.error.code).toBe('RecordingSession.ConsentPolicyNotSatisfied');
 
-    const session = await harness.recordingSessions.findByScope(meeting.tenantId, RecordingScope.Meeting, meeting.id);
+    const session = await harness.recordingSessions.findLatestByScope(meeting.tenantId, RecordingScope.Meeting, meeting.id);
     expect(session?.sessionState).toBe('Requesting');
     expect(harness.publisher.events).toHaveLength(0);
   });
@@ -208,7 +220,7 @@ describe('startMeetingRecording — policy AllAcceptedRequired', () => {
     );
     expect(result.isSuccess).toBe(true);
 
-    const session = await harness.recordingSessions.findByScope(meeting.tenantId, RecordingScope.Meeting, meeting.id);
+    const session = await harness.recordingSessions.findLatestByScope(meeting.tenantId, RecordingScope.Meeting, meeting.id);
     expect(session?.sessionState).toBe('Recording');
     expect(harness.publisher.events).toHaveLength(1);
     expect(harness.publisher.events[0]?.eventType).toBe('communication.meeting.recording_started.v1');
@@ -228,7 +240,7 @@ describe('startMeetingRecording — policy NoRejections (default)', () => {
     );
     expect(result.isSuccess).toBe(true);
 
-    const session = await harness.recordingSessions.findByScope(meeting.tenantId, RecordingScope.Meeting, meeting.id);
+    const session = await harness.recordingSessions.findLatestByScope(meeting.tenantId, RecordingScope.Meeting, meeting.id);
     expect(session?.sessionState).toBe('Recording');
   });
 
@@ -274,7 +286,7 @@ describe('recording-consent-timeout-scheduler behavior (via startMeetingRecordin
       harness,
     );
     expect(result.isSuccess).toBe(true);
-    const after = await harness.recordingSessions.findByScope(meeting.tenantId, RecordingScope.Meeting, meeting.id);
+    const after = await harness.recordingSessions.findLatestByScope(meeting.tenantId, RecordingScope.Meeting, meeting.id);
     expect(after?.sessionState).toBe('Recording');
   });
 

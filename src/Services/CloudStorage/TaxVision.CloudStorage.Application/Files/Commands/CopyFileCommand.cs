@@ -4,10 +4,12 @@ using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
+using TaxVision.CloudStorage.Domain.Platform;
 using Wolverine;
 
 namespace TaxVision.CloudStorage.Application.Files.Commands;
@@ -33,6 +35,7 @@ public static class CopyFileHandler
         ISystemFolderProvisioner systemFolders,
         IObjectStorage storage,
         IOptions<CloudStorageOptions> options,
+        IStoragePlatformSettingsProvider platform,
         IUploadPolicyResolver uploadPolicies,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
@@ -56,7 +59,7 @@ public static class CopyFileHandler
             limits,
             keyBuilder,
             systemFolders,
-            options.Value,
+            await platform.GetAsync(ct),
             uploadPolicies,
             clock,
             bus,
@@ -142,7 +145,7 @@ public static class CopyFileHandler
         IStorageLimitRepository limits,
         IObjectKeyBuilder keyBuilder,
         ISystemFolderProvisioner systemFolders,
-        CloudStorageOptions options,
+        StoragePlatformSettings platformSettings,
         IUploadPolicyResolver uploadPolicies,
         ISystemClock clock,
         IMessageBus bus,
@@ -163,7 +166,7 @@ public static class CopyFileHandler
             limits,
             keyBuilder,
             systemFolders,
-            options,
+            platformSettings,
             uploadPolicies,
             clock,
             bus,

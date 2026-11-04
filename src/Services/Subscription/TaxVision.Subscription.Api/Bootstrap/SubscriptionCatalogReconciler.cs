@@ -33,7 +33,7 @@ public sealed class SubscriptionCatalogReconciler(
 
         await SubscriptionModuleCatalogSeeder.SeedAsync(db, catalogOptions.Value, log, cancellationToken);
         await ReconcilePlanModulesAsync(services, log, cancellationToken);
-        await ReconcileCommunicationEntitlementsAsync(services, log, cancellationToken);
+        await ReconcileCatalogEntitlementsAsync(services, log, cancellationToken);
         await ReconcileQuotaAddOnsAsync(services, log, cancellationToken);
         await services.GetRequiredService<ICommercialModuleShadowReconciler>().ReconcileAllAsync(cancellationToken);
     }
@@ -93,16 +93,17 @@ public sealed class SubscriptionCatalogReconciler(
         !current.SetEquals(desired);
 
     // Solo los tres planes comerciales: un testlive* u otro plan ad hoc no recibe claves que no eligió.
-    private static readonly string[] CommunicationReconciledPlanCodes =
+    private static readonly string[] CatalogReconciledPlanCodes =
     [
         PlanCatalog.Starter,
         PlanCatalog.Pro,
         PlanCatalog.Enterprise,
     ];
 
-    // Idempotente: solo versiona el plan cuya versión publicada no trae todas las claves communication.*;
-    // el recálculo por plan propaga la versión nueva a cada tenant vía entitlements_changed.
-    private static async Task ReconcileCommunicationEntitlementsAsync(
+    // Idempotente: solo versiona el plan cuya versión publicada no trae todas las claves de catálogo
+    // (communication.*, storage.* de archivos, signature.*), en UNA versión nueva con todas las que falten; el
+    // recálculo por plan propaga la versión nueva a cada tenant vía entitlements_changed.
+    private static async Task ReconcileCatalogEntitlementsAsync(
         IServiceProvider services,
         ILogger log,
         CancellationToken ct
@@ -114,20 +115,20 @@ public sealed class SubscriptionCatalogReconciler(
 
         foreach (var snapshot in await plans.GetAllAsync(ct))
         {
-            if (!CommunicationReconciledPlanCodes.Contains(snapshot.Code.Value, StringComparer.Ordinal))
+            if (!CatalogReconciledPlanCodes.Contains(snapshot.Code.Value, StringComparer.Ordinal))
                 continue;
 
             var published = snapshot.GetPublishedVersion();
             if (published is null)
             {
                 log.LogWarning(
-                    "Catalog reconciler skipped communication entitlements for plan {PlanCode}: no published version.",
+                    "Catalog reconciler skipped catalog entitlements for plan {PlanCode}: no published version.",
                     snapshot.Code.Value
                 );
                 continue;
             }
 
-            if (CommunicationEntitlementCatalog.MissingFrom(published, snapshot.Tier).Count == 0)
+            if (PlanEntitlementCatalogs.MissingFrom(published, snapshot.Tier).Count == 0)
                 continue;
 
             var plan = await plans.GetByIdForUpdateAsync(snapshot.Id, ct);
@@ -135,14 +136,14 @@ public sealed class SubscriptionCatalogReconciler(
                 continue;
 
             var result = plan.AddMissingEntitlements(
-                CommunicationEntitlementCatalog.SeedsFor(plan.Tier),
+                PlanEntitlementCatalogs.SeedsFor(plan.Tier),
                 Guid.Empty,
                 DateTime.UtcNow
             );
             if (result.IsFailure)
             {
                 log.LogError(
-                    "Catalog reconciler could not add communication entitlements to plan {PlanCode}: {ErrorCode}.",
+                    "Catalog reconciler could not add catalog entitlements to plan {PlanCode}: {ErrorCode}.",
                     plan.Code.Value,
                     result.Error.Code
                 );
@@ -155,7 +156,7 @@ public sealed class SubscriptionCatalogReconciler(
             await unitOfWork.SaveChangesAsync(ct);
             await bus.PublishAsync(new RecalculateEntitlementsForPlanCommand(plan.Id));
             log.LogInformation(
-                "Catalog reconciler added {Count} communication entitlements to plan {PlanCode}.",
+                "Catalog reconciler added {Count} catalog entitlements to plan {PlanCode}.",
                 result.Value,
                 plan.Code.Value
             );

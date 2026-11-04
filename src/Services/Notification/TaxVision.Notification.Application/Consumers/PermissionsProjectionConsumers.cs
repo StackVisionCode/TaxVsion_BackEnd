@@ -125,13 +125,44 @@ public static class UserDeactivatedPermissionsProjectionConsumer
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
-        {
-            var existing = await repository.GetAsync(evt.TenantId, evt.UserId, ct);
-            if (existing is null)
-                return;
+            await MarkInactiveAsync(evt.TenantId, evt.UserId, repository, unitOfWork, ct);
+    }
 
-            existing.MarkInactive();
-            await unitOfWork.SaveChangesAsync(ct);
-        }
+    internal static async Task MarkInactiveAsync(
+        Guid tenantId,
+        Guid userId,
+        INotificationRecipientPermissionsProjectionRepository repository,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var existing = await repository.GetAsync(tenantId, userId, ct);
+        if (existing is null)
+            return;
+
+        existing.MarkInactive();
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+}
+
+/// <summary>Retiro ⊇ suspensión: el retirado sale de las audiencias ByPermission igual que el suspendido.</summary>
+public static class UserOffboardedPermissionsProjectionConsumer
+{
+    public static async Task Handle(
+        UserOffboardedIntegrationEvent evt,
+        INotificationRecipientPermissionsProjectionRepository repository,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
+            await UserDeactivatedPermissionsProjectionConsumer.MarkInactiveAsync(
+                evt.TenantId,
+                evt.UserId,
+                repository,
+                unitOfWork,
+                ct
+            );
     }
 }

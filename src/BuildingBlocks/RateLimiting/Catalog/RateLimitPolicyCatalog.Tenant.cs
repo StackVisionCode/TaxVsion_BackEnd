@@ -26,6 +26,19 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 3000
     );
 
+    // Cliente del portal leyendo la tarjeta pública de su oficina. Política propia para no compartir
+    // el overlay del tenant con el staff (mismo criterio que notes.f.portal_read).
+    public static readonly RateLimitPolicyDefinition TenantPortalProfileRead = Define(
+        "tenant.f.portal_profile_read",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 300,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 3000
+    );
+
     public static readonly RateLimitPolicyDefinition TenantStatusChange = Define(
         "tenant.g.status_change",
         RateLimitCategory.G,

@@ -3,6 +3,8 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Limits;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -15,9 +17,6 @@ namespace TaxVision.Signature.Application.Requests.Public;
 /// </summary>
 public static class IssueVerificationChallengeHandler
 {
-    private const int OtpLength = 6;
-    private static readonly TimeSpan ChallengeLifetime = TimeSpan.FromMinutes(10);
-
     public static async Task<Result> Handle(
         IssueVerificationChallengeCommand cmd,
         ISigningTokenService tokenService,
@@ -25,6 +24,8 @@ public static class IssueVerificationChallengeHandler
         IJtiDenylist denylist,
         IPinHasher hasher,
         IOtpCodeGenerator codeGenerator,
+        ISignatureLimitsResolver limits,
+        ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -45,11 +46,18 @@ public static class IssueVerificationChallengeHandler
                 )
             );
 
-        var plaintext = codeGenerator.Generate(OtpLength);
+        // El código solo sale por un canal que la oficina tiene activo y el plan permite.
+        var policy = await limits.ResolveAsync(request.TenantId, ct);
+        var channel = policy.ForRequests.CheckVerificationMethod(cmd.Method);
+        if (channel.IsFailure)
+            return channel;
+
+        var verification = (await platform.GetAsync(ct)).Verification;
+        var plaintext = codeGenerator.Generate(verification.OtpLength);
         var hash = hasher.Hash(plaintext);
         var issuedAt = DateTime.UtcNow;
 
-        var issueResult = request.IssueVerificationChallenge(signer.Id, cmd.Method, hash, issuedAt, ChallengeLifetime);
+        var issueResult = request.IssueVerificationChallenge(signer.Id, cmd.Method, hash, issuedAt, verification);
         if (issueResult.IsFailure)
             return Result.Failure(issueResult.Error);
 

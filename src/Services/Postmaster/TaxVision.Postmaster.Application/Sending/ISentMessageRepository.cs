@@ -39,7 +39,6 @@ public interface ISentMessageRepository
         CancellationToken ct = default
     );
 
-    /// <summary>Busca por el id propio del proveedor y el destinatario, cuando el aviso no trae nuestro Message-ID.</summary>
     /// <summary>
     /// Destinatarios del proveedor del sistema que siguen sin resultado final (Accepted o Deferred) y
     /// salieron dentro de la ventana. Los más viejos primero.
@@ -51,6 +50,16 @@ public interface ISentMessageRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// De los ids del proveedor recibidos, los que son de correos nuestros salidos por el proveedor del
+    /// sistema. Una consulta por lote: los avisos de otros entornos que comparten la cuenta se descartan.
+    /// </summary>
+    Task<IReadOnlySet<string>> FindKnownProviderMessageIdsAsync(
+        IReadOnlyCollection<string> providerMessageIds,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Busca por el id propio del proveedor y el destinatario, cuando el aviso no trae nuestro Message-ID.</summary>
     Task<Result<SentMessage>> FindByProviderMessageIdForFeedbackAsync(
         string providerMessageId,
         string recipientAddress,

@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Tasks.Application.Reminders;
 using TaxVision.Tasks.Application.Series.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Series;
@@ -14,9 +15,9 @@ namespace TaxVision.Tasks.Application.Tasks.Consumers;
 /// <summary>
 /// Al RETIRAR (offboard) a un empleado: (1) sus tareas ABIERTAS asignadas se reasignan al sucesor (o se
 /// DESASIGNAN si no hay sucesor, para que la oficina las retome) y (2) las series cuyo asignado por
-/// defecto es él redirigen sus ocurrencias futuras al sucesor (o se PAUSAN si no hay sucesor). NO se
-/// tocan: tareas terminadas (Completed/Cancelled), `CreatedByUserId`/timers/adjuntos (procedencia), ni
-/// las `ClientRequest` (peticiones de cliente, aggregate aparte sin asignado). Idempotente.
+/// defecto es él redirigen sus ocurrencias futuras al sucesor (o se PAUSAN si no hay sucesor); las
+/// que él gestionaba pasan al sucesor (o a quien ejecutó el retiro). El sucesor pide su recordatorio de vencimiento. NO se tocan: tareas terminadas, `CreatedByUserId`/adjuntos
+/// (procedencia). Timers y `ClientRequest` tienen sus propios consumers del retiro. Idempotente.
 /// </summary>
 public static class TasksUserOffboardedConsumer
 {
@@ -133,12 +134,16 @@ public static class TasksUserOffboardedConsumer
                 DueAtUtc = task.Due?.DueAtUtc,
             }
         );
+        // El del retirado lo cancela Reminder; el sucesor pide el suyo (clave por usuario, idempotente).
+        await TaskDueReminder.PublishIfDueAsync(task, bus, correlation);
         return true;
     }
 
     /// <summary>
-    /// Series cuyo asignado por defecto es el que se va (pocas por tenant → se filtran en memoria sobre el
-    /// listado del tenant, sin índice dedicado). Con sucesor redirigen las ocurrencias futuras; sin él se pausan.
+    /// Series del que se va, como asignado por defecto o como dueño (pocas por tenant → se filtran en memoria
+    /// sobre el listado del tenant, sin índice dedicado). Asignado: con sucesor redirigen las ocurrencias
+    /// futuras; sin él se pausan. Dueño: la gestión pasa al sucesor o, sin él, a quien ejecutó el retiro, para
+    /// que alguien activo pueda editarla y las ocurrencias nuevas no nazcan a nombre del retirado.
     /// </summary>
     private static async Task<int> RedirectSeriesAsync(
         UserOffboardedIntegrationEvent msg,
@@ -149,11 +154,20 @@ public static class TasksUserOffboardedConsumer
     )
     {
         var affected = (await series.ListAsync(msg.TenantId, null, ct))
-            .Where(s => s.Blueprint.AssigneeUserId == msg.UserId && s.Status != SeriesStatus.Ended)
+            .Where(s =>
+                s.Status != SeriesStatus.Ended
+                && (s.Blueprint.AssigneeUserId == msg.UserId || s.EffectiveOwnerUserId == msg.UserId)
+            )
             .ToList();
 
+        var newOwner = successor ?? (msg.OffboardedByUserId is { } admin && admin != msg.UserId ? admin : null);
         foreach (var affectedSeries in affected)
         {
+            if (affectedSeries.EffectiveOwnerUserId == msg.UserId && newOwner is { } owner)
+                affectedSeries.TransferOwnership(owner);
+
+            if (affectedSeries.Blueprint.AssigneeUserId != msg.UserId)
+                continue;
             if (successor is { } newAssignee)
                 affectedSeries.ReassignBlueprintAssignee(newAssignee);
             else

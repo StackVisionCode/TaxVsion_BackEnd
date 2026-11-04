@@ -34,6 +34,15 @@ public interface ICloudStorageClient
     );
 }
 
+/// <summary>
+/// <c>RequestingService</c> con el que Scribe firma sus <c>SaveFileRequestedIntegrationEvent</c>; CloudStorage
+/// lo devuelve igual en <c>FileSaveRejectedIntegrationEvent</c> y así se reconocen los rechazos propios.
+/// </summary>
+public static class ScribeStorageIdentity
+{
+    public const string RequestingService = "scribe";
+}
+
 /// <summary>Obtiene (y cachea) tokens de servicio M2M del Auth para un tenant (grant client-credentials).</summary>
 public interface IServiceTokenAcquirer
 {

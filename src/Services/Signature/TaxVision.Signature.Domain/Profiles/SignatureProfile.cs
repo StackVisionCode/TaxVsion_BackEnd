@@ -14,12 +14,14 @@ public sealed class SignatureProfile : TenantEntity
     public const int MinLabelLength = 1;
     public const int MaxLabelLength = 80;
 
-    /// <summary>Tope de firmas activas (no archivadas) por ámbito (usuario u oficina). Archivar libera cupo.</summary>
-    public const int MaxActiveProfilesPerScope = 10;
-
     private SignatureProfile() { }
 
     /// <summary>Dueño de la firma: un usuario (firma personal) o <c>null</c> = firma de oficina del tenant.</summary>
+    [UserReference(
+        UserReferenceKind.Private,
+        HandledBy = "SignatureUserOffboardedConsumer",
+        Note = "Perfiles personales: se archivan."
+    )]
     public Guid? OwnerUserId { get; private set; }
 
     /// <summary>Etiqueta legible que el usuario le da a esta firma (p. ej. "Firma azul").</summary>
@@ -35,6 +37,7 @@ public sealed class SignatureProfile : TenantEntity
     public bool IsDefault { get; private set; }
     public bool IsArchived { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }

@@ -132,12 +132,6 @@ public sealed class ScanFileHandlerTests
         // Cambio de comportamiento intencional: Avatars no se intersecta con el plan (starter sin webp).
         var fixture = CreateFixture(FolderType.Avatars, null, "avatar.webp", "image/webp", OwnerType.User);
         fixture.Inspector.Result = new InspectedContent("image/webp", Sha256);
-        fixture.Options.PlanPolicies["starter"] = new StoragePlanPolicy
-        {
-            MaxFileSizeBytes = 10L * 1024 * 1024,
-            AllowedExtensions = [".jpg", ".jpeg", ".png"],
-            AllowedContentTypes = ["image/jpeg", "image/png"],
-        };
 
         await ScanAsync(fixture);
 
@@ -180,12 +174,6 @@ public sealed class ScanFileHandlerTests
             OwnerType.Communication
         );
         fixture.Inspector.Result = new InspectedContent("video/webm", Sha256);
-        fixture.Options.PlanPolicies["starter"] = new StoragePlanPolicy
-        {
-            MaxFileSizeBytes = 10L * 1024 * 1024,
-            AllowedExtensions = [".pdf"],
-            AllowedContentTypes = ["application/pdf"],
-        };
 
         await ScanAsync(fixture);
 
@@ -279,7 +267,7 @@ public sealed class ScanFileHandlerTests
             fixture.ContentScanner,
             fixture.Inspector,
             Options.Create(fixture.Options),
-            new FakeUploadPolicyResolver(fixture.Options),
+            new FakeUploadPolicyResolver(),
             new FakeSystemClock(fixture.Now),
             new FakeUnitOfWork(),
             fixture.Bus,

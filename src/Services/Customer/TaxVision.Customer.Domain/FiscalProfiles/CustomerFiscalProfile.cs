@@ -22,6 +22,8 @@ public sealed class CustomerFiscalProfile : TenantEntity
     public byte[]? RefundBankAccountCipher { get; private set; }
     public byte[]? RefundBankRoutingCipher { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
 
     internal static Result<CustomerFiscalProfile> Create(

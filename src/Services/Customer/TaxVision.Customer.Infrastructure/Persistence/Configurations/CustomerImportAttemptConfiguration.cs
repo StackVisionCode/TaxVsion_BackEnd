@@ -12,6 +12,7 @@ public sealed class CustomerImportAttemptConfiguration : IEntityTypeConfiguratio
         b.HasKey(a => a.Id);
         b.Property(a => a.TenantId).IsRequired();
         b.Property(a => a.CreatedByUserId).IsRequired();
+        b.Property(a => a.FollowUpUserId);
         b.Property(a => a.IdempotencyKey).HasMaxLength(80).IsRequired();
         b.Property(a => a.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(a => a.Strategy).HasConversion<string>().HasMaxLength(20).IsRequired();

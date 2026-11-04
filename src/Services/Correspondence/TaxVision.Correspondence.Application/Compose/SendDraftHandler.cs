@@ -146,7 +146,7 @@ public static class SendDraftHandler
             to,
             cc,
             bcc,
-            draft.Attachments.ToList(),
+            draft.Attachments.Select(a => a.ToRef()).ToList(),
             draft.ReplyContext,
             ct
         );

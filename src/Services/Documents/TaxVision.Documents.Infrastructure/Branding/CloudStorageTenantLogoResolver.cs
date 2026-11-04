@@ -6,6 +6,7 @@ using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Security;
 using Microsoft.Extensions.Logging;
 using TaxVision.Documents.Application.Abstractions;
+using TaxVision.Documents.Domain.Branding;
 
 namespace TaxVision.Documents.Infrastructure.Branding;
 
@@ -19,7 +20,7 @@ public sealed class CloudStorageClientOptions
 
 /// <summary>
 /// Resuelve el logo del tenant (proyección local <c>TenantLogoRef</c> → bytes de CloudStorage) como un
-/// <c>data:</c> URI para embeber en el PDF. Usa el flujo M2M presignado
+/// <c>data:</c> URI para embeber en el PDF; la audiencia elige la superficie (cliente: Portal → CRM). Usa el flujo M2M presignado
 /// (<c>POST storage/files/{id}/download-url</c> → GET), el mismo que ya usan Scribe/Postmaster/Signature.
 /// Best-effort: cualquier fallo (sin logo, sin credenciales M2M, sin permiso, error de red) devuelve
 /// <c>null</c> y el PDF se genera sin logo (comportamiento actual) — nunca lanza.
@@ -40,12 +41,30 @@ public sealed class CloudStorageTenantLogoResolver(
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public async Task<string?> ResolveLogoDataUriAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<string?> ResolveLogoDataUriAsync(
+        Guid tenantId,
+        LogoAudience audience,
+        CancellationToken ct = default
+    )
     {
-        var logoRef = await repository.GetByTenantAsync(tenantId, ct);
-        if (logoRef is null || !logoRef.HasLogo)
-            return null;
+        var logos = await repository.ListByTenantAsync(tenantId, ct);
+        // En orden de preferencia de la audiencia; si uno no baja se prueba el siguiente.
+        foreach (var surface in TenantLogoSurfaces.PreferenceFor(audience))
+        {
+            var logoRef = logos.FirstOrDefault(l => l.Surface == surface && l.HasLogo);
+            if (logoRef is null)
+                continue;
 
+            var dataUri = await DownloadAsDataUriAsync(tenantId, logoRef, ct);
+            if (dataUri is not null)
+                return dataUri;
+        }
+
+        return null;
+    }
+
+    private async Task<string?> DownloadAsDataUriAsync(Guid tenantId, TenantLogoRef logoRef, CancellationToken ct)
+    {
         var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
         if (string.IsNullOrEmpty(token))
         {

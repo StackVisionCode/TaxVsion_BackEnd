@@ -301,6 +301,7 @@ function wireMeetingSocket(
       typeof principal.raw['display_name'] === 'string' ? principal.raw['display_name'] : undefined;
     const guestInvitationId =
       typeof principal.raw['invitation_id'] === 'string' ? principal.raw['invitation_id'] : undefined;
+    const guestLinkVersion = typeof principal.raw['link_version'] === 'number' ? principal.raw['link_version'] : undefined;
     // Fallback legible cuando el directorio no tiene fila (owner viejo de onboarding / race): el email
     // del JWT, para que la tile del participante nunca muestre el GUID crudo.
     const selfEmail = typeof principal.raw['email'] === 'string' ? principal.raw['email'] : undefined;
@@ -318,6 +319,7 @@ function wireMeetingSocket(
           ? { invitationToken: parsed.data.invitationToken }
           : {}),
         ...(isGuest && guestInvitationId !== undefined ? { guestInvitationId } : {}),
+        ...(isGuest && guestInvitationId === undefined && guestLinkVersion !== undefined ? { guestLinkVersion } : {}),
         ...(parsed.data.audioDefault !== undefined ? { audioDefault: parsed.data.audioDefault } : {}),
         ...(parsed.data.videoDefault !== undefined ? { videoDefault: parsed.data.videoDefault } : {}),
       },
@@ -1451,6 +1453,10 @@ function wireMeetingSocket(
     // de meeting en vez de un permiso Auth separado.
     const meeting = await container.meetings.findById(tenantId, parsed.data.meetingId);
     const canModerate = meeting ? meeting.hostUserId === userId || meeting.isCohost(userId) : false;
+    // Con el meeting terminado (chat archivado) solo borra quien tiene `chat.moderate`.
+    const hasModeratePermission = (
+      await checkPermission(principal, CommunicationPermissions.ChatModerate, container.userPermissions)
+    ).allowed;
     const result = await deleteMessage(
       {
         tenantId,
@@ -1459,6 +1465,7 @@ function wireMeetingSocket(
         messageId: parsed.data.messageId,
         actorUserId: userId,
         actorCanModerate: canModerate,
+        actorHasModeratePermission: hasModeratePermission,
       },
       container,
     );

@@ -15,6 +15,8 @@ public sealed partial class ConsentNoticeVersion : TenantEntity
     public string TextSnapshot { get; private set; } = string.Empty;
     public string ContentHash { get; private set; } = string.Empty;
     public DateTime PublishedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid PublishedByUserId { get; private set; }
 
     internal static Result<ConsentNoticeVersion> Create(

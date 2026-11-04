@@ -24,7 +24,8 @@ public sealed record GenerateOnboardingReceiptDocumentCommand(
 /// OnboardingPaymentSucceededIntegrationEvent en Auth) — Documents no tiene su propio VO Money, y
 /// esto evita inventar uno solo para este slice. TransactionReferenceMask son los últimos 4 dígitos
 /// de la referencia de pago (nunca el número completo); PaymentMethodMasked es texto libre del
-/// proveedor de pago (p.ej. "Visa •••• 4242").
+/// proveedor de pago (p.ej. "Visa •••• 4242"). OfficeName es el nombre de la oficina escrito en el
+/// registro; opcional: un payload viejo (o un recibo pedido antes del registro) sale solo con el pagador.
 /// </summary>
 public sealed record OnboardingReceiptPayload(
     string PayerFirstName,
@@ -35,7 +36,8 @@ public sealed record OnboardingReceiptPayload(
     string Currency,
     DateTime PaidAtUtc,
     string TransactionReferenceMask,
-    string? PaymentMethodMasked
+    string? PaymentMethodMasked,
+    string? OfficeName = null
 );
 
 /// <summary>Respuesta 202: la generación se registró; el archivo se produce de forma asíncrona.</summary>

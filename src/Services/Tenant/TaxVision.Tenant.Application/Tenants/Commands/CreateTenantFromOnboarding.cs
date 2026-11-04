@@ -15,7 +15,8 @@ public sealed record CreateTenantFromOnboardingCommand(
     string OfficeName,
     string Subdomain,
     string AdminEmail,
-    DateTime PaymentCompletedAtUtc
+    DateTime PaymentCompletedAtUtc,
+    string? DefaultTimeZoneId = null
 );
 
 /// <summary>
@@ -59,7 +60,7 @@ public static class CreateTenantFromOnboardingHandler
         var createResult = Domain.Tenant.Create(
             command.OfficeName,
             command.Subdomain,
-            IanaTimeZone.UtcId,
+            OnboardingTimeZoneOrUtc(command.DefaultTimeZoneId),
             command.OnboardingId
         );
         if (createResult.IsFailure)
@@ -98,4 +99,8 @@ public static class CreateTenantFromOnboardingHandler
 
         return Result.Success();
     }
+
+    // La zona del navegador es una sugerencia: inválida o ausente cae a UTC, nunca frena el alta.
+    private static string OnboardingTimeZoneOrUtc(string? proposed) =>
+        IanaTimeZone.TryNormalize(proposed, out var normalized) ? normalized : IanaTimeZone.UtcId;
 }

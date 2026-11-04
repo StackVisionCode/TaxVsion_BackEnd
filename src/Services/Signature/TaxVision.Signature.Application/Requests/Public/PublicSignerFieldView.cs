@@ -12,5 +12,7 @@ public sealed record PublicSignerFieldView(
     double Width,
     double Height,
     string? Label,
-    bool IsRequired
+    bool IsRequired,
+    // Letra del estampado (iniciales/fecha/texto); null = automática según la caja.
+    int? FontSizePt = null
 );

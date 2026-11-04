@@ -79,4 +79,44 @@ public sealed class CampaignScheduleRepository(CampaignsDbContext db) : ICampaig
 
     public async Task AddAsync(CampaignSchedule schedule, CancellationToken ct = default) =>
         await db.CampaignSchedules.AddAsync(schedule, ct);
+
+    // Consumer sin tenant ambiental: IgnoreQueryFilters + tenant explícito (viene del evento).
+    public async Task<IReadOnlyList<CampaignSchedule>> ListOpenRunAsUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) => await OpenRunAs(tenantId, userId).ToListAsync(ct);
+
+    public Task<int> CountOpenRunAsUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        OpenRunAs(tenantId, userId).CountAsync(ct);
+
+    public async Task<IReadOnlySet<Guid>> ListPausedOnOffboardingAsync(
+        Guid tenantId,
+        Guid fromUserId,
+        CancellationToken ct = default
+    ) =>
+        (
+            await db
+                .CampaignScheduleHandovers.IgnoreQueryFilters()
+                .Where(h =>
+                    h.TenantId == tenantId
+                    && h.FromUserId == fromUserId
+                    && h.Outcome == CampaignScheduleHandoverOutcome.Paused
+                )
+                .Select(h => h.ScheduleId)
+                .ToListAsync(ct)
+        ).ToHashSet();
+
+    public async Task AddHandoverAsync(CampaignScheduleHandover handover, CancellationToken ct = default) =>
+        await db.CampaignScheduleHandovers.AddAsync(handover, ct);
+
+    // EffectiveRunAsUserId no se traduce a SQL: se escribe la misma regla (heredado, o del creador sin heredero).
+    private IQueryable<CampaignSchedule> OpenRunAs(Guid tenantId, Guid userId) =>
+        db
+            .CampaignSchedules.IgnoreQueryFilters()
+            .Where(s =>
+                s.TenantId == tenantId
+                && (s.Status == ScheduleStatus.Active || s.Status == ScheduleStatus.Paused)
+                && (s.RunAsUserId == userId || (s.RunAsUserId == null && s.CreatedByUserId == userId))
+            );
 }

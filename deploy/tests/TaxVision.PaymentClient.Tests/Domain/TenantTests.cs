@@ -97,6 +97,53 @@ public sealed class TenantTests
         Assert.True(tenant.CanOperate());
     }
 
+    [Fact]
+    public void Without_a_profile_the_customer_sees_the_office_name()
+    {
+        var tenant = CreateCustomerTenant();
+
+        Assert.Equal("Acme Tax", tenant.CustomerFacingName);
+        Assert.Equal(0, tenant.ProfileVersion);
+    }
+
+    [Fact]
+    public void A_profile_display_name_is_trimmed_and_shown_to_the_customer()
+    {
+        var tenant = CreateCustomerTenant();
+
+        Assert.True(tenant.ApplyProfile(1, "  Acme Refunds  ", DateTime.UtcNow));
+
+        Assert.Equal("Acme Refunds", tenant.DisplayName);
+        Assert.Equal("Acme Refunds", tenant.CustomerFacingName);
+        Assert.Equal(1, tenant.ProfileVersion);
+    }
+
+    [Fact]
+    public void A_blank_display_name_falls_back_to_the_office_name()
+    {
+        var tenant = CreateCustomerTenant();
+        tenant.ApplyProfile(1, "Acme Refunds", DateTime.UtcNow);
+
+        Assert.True(tenant.ApplyProfile(2, "   ", DateTime.UtcNow));
+
+        Assert.Null(tenant.DisplayName);
+        Assert.Equal("Acme Tax", tenant.CustomerFacingName);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(1)]
+    public void A_profile_version_not_newer_than_the_applied_one_is_ignored(long version)
+    {
+        var tenant = CreateCustomerTenant();
+        tenant.ApplyProfile(2, "Current", DateTime.UtcNow);
+
+        Assert.False(tenant.ApplyProfile(version, "Stale", DateTime.UtcNow));
+
+        Assert.Equal("Current", tenant.DisplayName);
+        Assert.Equal(2, tenant.ProfileVersion);
+    }
+
     private static Tenant CreateCustomerTenant() =>
         Tenant
             .Register(Guid.NewGuid(), "Acme Tax", "acme", TenantKind.Customer, "America/New_York", DateTime.UtcNow)

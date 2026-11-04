@@ -44,12 +44,19 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
     /// <summary>Cuándo caduca la sesión del proveedor. Mientras no caduque, esta intención sigue siendo
     /// pagable: abrir otra en paralelo arriesga un doble cobro.</summary>
     public DateTime? CheckoutExpiresAtUtc { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Provenance,
+        Note = "Actor de registro; el cobro y el aprovisionamiento siguen igual sin él."
+    )]
     public Guid RequestedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public DateTime? PaidAtUtc { get; private set; }
     public DateTime? CancelledAtUtc { get; private set; }
     public DateTime? ExpiredAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? CancelledByUserId { get; private set; }
     public string? CancelReason { get; private set; }
     public string? FailureReason { get; private set; }

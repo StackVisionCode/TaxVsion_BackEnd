@@ -29,10 +29,30 @@ public class MicrosoftOAuthClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(HttpStatusCode.OK, """{ "access_token": "at", "refresh_token": "rt", "expires_in": 3600 }""");
 
-        var grant = await CreateClient(handler).RefreshAccessTokenAsync("refresh-token");
+        var grant = await CreateClient(handler).RefreshAccessTokenAsync("refresh-token", "granted-scope");
 
         Assert.Equal("at", grant.AccessToken);
         Assert.Equal("rt", grant.RefreshToken);
+    }
+
+    [Fact]
+    public async Task RefreshAccessTokenAsync_SendsTheGrantedScopeNotTheConfiguredOne()
+    {
+        var handler = new FakeHttpMessageHandler();
+        string? capturedBody = null;
+        handler.Enqueue(request =>
+        {
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{ "access_token": "at", "refresh_token": "rt", "expires_in": 3600 }"""),
+            };
+        });
+
+        await CreateClient(handler).RefreshAccessTokenAsync("refresh-token", "Mail.Read offline_access");
+
+        Assert.Contains("scope=Mail.Read+offline_access", capturedBody);
+        Assert.DoesNotContain("ReadWrite", capturedBody);
     }
 
     [Fact]
@@ -99,7 +119,7 @@ public class MicrosoftOAuthClientTests
         handler.Enqueue(status, $$"""{ "error": "{{error}}", "error_description": "{{description}}" }""");
 
         var ex = await Assert.ThrowsAsync<OAuthProviderException>(() =>
-            CreateClient(handler).RefreshAccessTokenAsync("refresh-token")
+            CreateClient(handler).RefreshAccessTokenAsync("refresh-token", "granted-scope")
         );
 
         Assert.True(ex.RequiresReconnect);
@@ -129,7 +149,7 @@ public class MicrosoftOAuthClientTests
         handler.Enqueue(status, body);
 
         var ex = await Assert.ThrowsAsync<OAuthProviderException>(() =>
-            CreateClient(handler).RefreshAccessTokenAsync("refresh-token")
+            CreateClient(handler).RefreshAccessTokenAsync("refresh-token", "granted-scope")
         );
 
         Assert.False(ex.RequiresReconnect);

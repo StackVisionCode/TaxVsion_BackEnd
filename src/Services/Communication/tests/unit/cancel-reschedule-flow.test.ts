@@ -24,6 +24,15 @@ class FakeMeetingRepository implements MeetingRepository {
   async countActiveHostedBy(): Promise<number> {
     return 0;
   }
+  async listScheduledWithParticipant(): Promise<Meeting[]> {
+    return [];
+  }
+  async countScheduledWithParticipant(): Promise<number> {
+    return 0;
+  }
+  async listOpenInvitationsForInvitee(): Promise<MeetingInvitation[]> {
+    return [];
+  }
   private readonly meetings = new Map<string, Meeting>();
   private readonly invitations = new Map<string, MeetingInvitation>();
   async save(meeting: Meeting): Promise<void> {
@@ -37,6 +46,9 @@ class FakeMeetingRepository implements MeetingRepository {
     return null;
   }
   async findByShortCodeAnyTenant(): Promise<null> {
+    return null;
+  }
+  async findByIdAnyTenant(): Promise<null> {
     return null;
   }
   async saveInvitation(inv: MeetingInvitation): Promise<void> {

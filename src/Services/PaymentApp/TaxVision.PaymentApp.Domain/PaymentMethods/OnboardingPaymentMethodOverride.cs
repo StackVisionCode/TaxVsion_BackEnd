@@ -18,6 +18,8 @@ public sealed class OnboardingPaymentMethodOverride : BaseEntity
     public bool Enabled { get; private set; }
     public string? DisabledReason { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
 
     private OnboardingPaymentMethodOverride() { }

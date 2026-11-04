@@ -103,6 +103,7 @@ public sealed class SupportOpenedConsumerTests
                 devices,
                 Logs,
                 new AllowAllPreferences(),
+                new InMemoryUserEmailDirectoryRepository(),
                 new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),

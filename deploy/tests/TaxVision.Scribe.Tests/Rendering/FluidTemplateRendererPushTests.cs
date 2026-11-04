@@ -206,6 +206,11 @@ public sealed class FluidTemplateRendererPushTests
             int batchSize,
             CancellationToken ct = default
         ) => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<EmailTemplate>> GetReferencingFileAsync(
+            Guid fileId,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
     }
 
     private sealed class RecordingCloudStorage : ICloudStorageClient

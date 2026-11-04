@@ -15,6 +15,7 @@ public sealed class DocumentValidationRecord : TenantEntity
 
     private DocumentValidationRecord() { }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid RequestedByUserId { get; private set; }
 
     /// <summary>SHA-256 hex-lowercase del contenido validado. Permite dedup y trazabilidad.</summary>

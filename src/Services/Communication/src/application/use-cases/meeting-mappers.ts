@@ -43,6 +43,8 @@ export function buildMeetingSnapshotDto(
     strategy: snapshot.strategy,
     hostUserId: snapshot.hostUserId,
     isLocked: snapshot.isLocked,
+    guestsAllowed: snapshot.guestsAllowed,
+    guestLinkEnabled: snapshot.guestLinkEnabled,
     participants: snapshot.participants.map((p) => participantSnapshotToDto(p, avatars)),
     yourRole,
     sequence: 0,

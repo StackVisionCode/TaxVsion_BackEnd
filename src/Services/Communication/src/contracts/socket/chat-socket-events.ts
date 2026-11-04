@@ -237,6 +237,8 @@ export interface MessageDto {
   /** F8a: meeting dueño cuando `conversationKind` es Meeting. */
   meetingId?: string | null;
   kind: 'Text' | 'Attachment' | 'System';
+  /** Solo kind=System: Call (llamada), Membership (entra/sale/rol), Notice (otro aviso). null en el resto o en avisos viejos sin dato. */
+  systemKind?: 'Call' | 'Membership' | 'Notice' | null;
   body: string | null;
   attachmentFileId: string | null;
   replyToMessageId: string | null;
@@ -428,6 +430,10 @@ export interface ConversationUpdatedDto {
   adminsOnlyWrite?: boolean;
   /** Solo a las pestañas del propio usuario (silencio propio). */
   isMuted?: boolean;
+  /** Solo lectura en vivo (p. ej. el otro participante del Direct se retiró de la oficina). */
+  isClosedForWriting?: boolean;
+  closedReason?: 'Archived' | 'ParticipantLeft' | null;
+  departedParticipant?: { userId: string; displayName: string; actorType: string; avatarFileId?: string | null } | null;
 }
 
 export const ChatSocketEvents = {

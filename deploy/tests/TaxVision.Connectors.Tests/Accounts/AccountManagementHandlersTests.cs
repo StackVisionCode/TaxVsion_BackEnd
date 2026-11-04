@@ -1,8 +1,10 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Infrastructure.OAuth;
 using TaxVision.Connectors.Tests.OAuth;
+using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.Accounts;
 
@@ -75,12 +77,50 @@ public class AccountManagementHandlersTests
         var accounts = await ListTenantEmailAccountsHandler.Handle(
             new ListTenantEmailAccountsQuery(tenantId, Guid.NewGuid()),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
         // Ambas son de oficina (sin dueño) → la del tenant llamante se ve, la de otro tenant no.
         var dto = Assert.Single(accounts);
         Assert.Equal("mine@gmail.com", dto.EmailAddress);
+    }
+
+    [Fact]
+    public async Task ListTenantEmailAccounts_ReportsScopesTheActiveConnectionHasNotGranted()
+    {
+        var repository = new FakeTenantEmailAccountRepository();
+        var tenantId = Guid.NewGuid();
+        var account = TenantEmailAccount
+            .Create(tenantId, "office@outlook.com", ProviderCode.Graph, Guid.NewGuid(), Now)
+            .Value;
+        repository.Accounts.Add(account);
+        var connections = new FakeOAuthConnectionRepository();
+        var connection = OAuthConnection
+            .Create(account.Id, ProviderCode.Graph, "client", "Mail.Read Mail.Send", Now)
+            .Value;
+        var protector = new FakeEncryptedSecretProtector();
+        connection.AttachToken(
+            OAuthToken
+                .Create(connection.Id, protector.Protect("at"), protector.Protect("rt"), Now.AddHours(1), Now)
+                .Value
+        );
+        connections.Connections.Add(connection);
+        var client = new FakeOAuthProviderClient(ProviderCode.Graph)
+        {
+            ConfiguredScope = "Mail.Read Mail.ReadWrite Mail.Send",
+        };
+
+        var accounts = await ListTenantEmailAccountsHandler.Handle(
+            new ListTenantEmailAccountsQuery(tenantId, Guid.NewGuid()),
+            repository,
+            connections,
+            new FakeOAuthProviderClientFactory(client),
+            CancellationToken.None
+        );
+
+        Assert.Equal(["Mail.ReadWrite"], Assert.Single(accounts).MissingScopes);
     }
 
     [Fact]
@@ -95,6 +135,8 @@ public class AccountManagementHandlersTests
         var result = await GetTenantEmailAccountHandler.Handle(
             new GetTenantEmailAccountQuery(Guid.NewGuid(), account.Id, Guid.NewGuid()),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
@@ -116,6 +158,8 @@ public class AccountManagementHandlersTests
         var result = await GetTenantEmailAccountHandler.Handle(
             new GetTenantEmailAccountQuery(tenantId, personal.Id, Guid.NewGuid()), // otro usuario
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
@@ -151,6 +195,8 @@ public class AccountManagementHandlersTests
         var accounts = await ListTenantEmailAccountsHandler.Handle(
             new ListTenantEmailAccountsQuery(tenantId, me),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
@@ -177,6 +223,8 @@ public class AccountManagementHandlersTests
         var accounts = await ListTenantEmailAccountsHandler.Handle(
             new ListTenantEmailAccountsQuery(tenantId, me, CanSeeOffice: false),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
 
@@ -199,6 +247,8 @@ public class AccountManagementHandlersTests
         var denied = await GetTenantEmailAccountHandler.Handle(
             new GetTenantEmailAccountQuery(tenantId, office.Id, Guid.NewGuid(), CanSeeOffice: false),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
         Assert.True(denied.IsFailure);
@@ -208,6 +258,8 @@ public class AccountManagementHandlersTests
         var allowed = await GetTenantEmailAccountHandler.Handle(
             new GetTenantEmailAccountQuery(tenantId, office.Id, Guid.NewGuid(), CanSeeOffice: true),
             repository,
+            new FakeOAuthConnectionRepository(),
+            new FakeOAuthProviderClientFactory(new FakeOAuthProviderClient(ProviderCode.Gmail)),
             CancellationToken.None
         );
         Assert.True(allowed.IsSuccess);
@@ -250,12 +302,14 @@ public class AccountManagementHandlersTests
             new DisconnectAccountCommand(tenantId, account.Id),
             accountRepository,
             connectionRepository,
+            new FakeProviderWatchSubscriptionRepository(),
             new FakeOAuthProviderClientFactory(providerClient),
             protector,
             auditLogRepository,
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
+            NullLogger<DisconnectAccountCommand>.Instance,
             CancellationToken.None
         );
 
@@ -265,5 +319,62 @@ public class AccountManagementHandlersTests
         Assert.Contains("refresh-token", providerClient.RevokedRefreshTokens);
         Assert.Single(auditLogRepository.Entries);
         Assert.Single(bus.Published);
+    }
+
+    [Fact]
+    public async Task DisconnectAccount_StopsTheInboundPush_AndSurvivesAFailingRevocation()
+    {
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        var connectionRepository = new FakeOAuthConnectionRepository();
+        var watchRepository = new FakeProviderWatchSubscriptionRepository();
+        var providerClient = new FakeOAuthProviderClient(ProviderCode.Gmail)
+        {
+            ThrowOnRevoke = new HttpRequestException("provider down"),
+        };
+        var protector = new FakeEncryptedSecretProtector();
+        var tenantId = Guid.NewGuid();
+        var account = TenantEmailAccount
+            .Create(tenantId, "office@gmail.com", ProviderCode.Gmail, Guid.NewGuid(), Now)
+            .Value;
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        accountRepository.Accounts.Add(account);
+        var connection = OAuthConnection.Create(account.Id, ProviderCode.Gmail, "client-1", "scope", Now).Value;
+        connection.AttachToken(
+            OAuthToken
+                .Create(connection.Id, protector.Protect("access"), protector.Protect("refresh"), Now.AddHours(1), Now)
+                .Value
+        );
+        connectionRepository.Connections.Add(connection);
+        var watch = TaxVision
+            .Connectors.Domain.Watch.ProviderWatchSubscription.Create(
+                account.Id,
+                ProviderCode.Gmail,
+                "history-1",
+                "topic",
+                DateTime.UtcNow.AddDays(3),
+                DateTime.UtcNow
+            )
+            .Value;
+        watchRepository.Subscriptions.Add(watch);
+
+        var result = await DisconnectAccountHandler.Handle(
+            new DisconnectAccountCommand(tenantId, account.Id),
+            accountRepository,
+            connectionRepository,
+            watchRepository,
+            new FakeOAuthProviderClientFactory(providerClient),
+            protector,
+            new FakeProviderConnectionAuditLogRepository(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            NullLogger<DisconnectAccountCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantEmailAccountStatus.Disconnected, account.Status);
+        Assert.Equal(TaxVision.Connectors.Domain.Watch.ProviderWatchStatus.Removed, watch.Status);
     }
 }

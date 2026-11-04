@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -21,6 +22,7 @@ public static class VerifyChallengeHandler
         ISignatureRequestRepository repository,
         IJtiDenylist denylist,
         IPinHasher hasher,
+        ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -44,7 +46,8 @@ public static class VerifyChallengeHandler
             isMatch,
             attemptedAt,
             cmd.ClientIp,
-            cmd.UserAgent
+            cmd.UserAgent,
+            (await platform.GetAsync(ct)).Verification
         );
         await unitOfWork.SaveChangesAsync(ct);
         await PublishOutcomeAsync(

@@ -36,7 +36,10 @@ public sealed record NotificationTemplateSeed(
     //      automático fallido, con intento, próximo reintento, tarjeta real y lo suspendido al final.
     // v21 (por plantilla): communication.meeting.invitation con título, fecha local, host, código,
     //      rama "in progress" y adjunto .ics (F6).
-    int ContentVersion = 21,
+    // v23 (por plantilla): tenant.wisp_review_due.v1 nueva — revisión anual del WISP (F4 Cumplimiento).
+    // v24 (por plantilla): 6 plantillas nuevas de avisos del retiro de empleados (OffboardingNoticesVersion).
+    // v25 (por plantilla): auth.user_offboarding_incomplete.v1 nueva — retiro sin todos los acuses en plazo.
+    int ContentVersion = 22,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -93,6 +96,14 @@ public static class NotificationTemplateSeedSource
             SubscriptionMandateCreated,
             UserSlotGated,
             UserSlotUnlocked,
+            WispReviewDue,
+            SecurityCoordinatorVacated,
+            CampaignSchedulesPaused,
+            SignaturePreparerAttention,
+            SignaturePreparerChanged,
+            CloudConnectionReviewRequired,
+            OfficeMailboxReviewRequired,
+            OffboardingIncomplete,
             ReminderDue,
             TaskWaitingOnClient,
             AppointmentScheduled,
@@ -263,6 +274,21 @@ public static class NotificationTemplateSeedSource
         ["subscription.mandate_created"] = "Automatic renewal is now enabled on your subscription.",
         ["seats.user_gated.v1"] = "A team member lost access because the office is over its active seat limit.",
         ["seats.user_unlocked.v1"] = "A team member can access the office again.",
+        ["tenant.wisp_review_due.v1"] =
+            "Your annual security plan (WISP) review needs attention. Mark it reviewed in Office settings.",
+        ["tenant.security_coordinator_vacated.v1"] =
+            "Your security coordinator is no longer with your office. Choose a new one in Office settings.",
+        ["campaign.schedules_paused_on_offboarding.v1"] =
+            "Some scheduled campaigns were paused. Cancel them or schedule them again.",
+        ["sig.preparer_attention_required.v1"] =
+            "A signature request needs your attention because its preparer is no longer with your office.",
+        ["sig.preparer_changed.v1"] = "A signature request has a new preparer.",
+        ["storage.cloud_connection_review_required.v1"] =
+            "Your office's cloud storage connection needs to be reconnected with an office account.",
+        ["connectors.office_mailbox_review_required.v1"] =
+            "An office mailbox needs to be reconnected with an account your office controls.",
+        ["auth.user_offboarding_incomplete.v1"] =
+            "Part of an offboarding hasn't confirmed yet. Some work or access may still be active.",
         ["reminder.due"] = "A quick reminder about something on your list.",
         ["task.waiting_on_client.v1"] = "We're still missing a few documents from you to move forward.",
         ["calendar.appointment_scheduled.v1"] = "Your appointment is booked. Here are the details.",
@@ -409,6 +435,299 @@ public static class NotificationTemplateSeedSource
                 ("userEmail", VariableType.String, false, null, "Email of the restored team member."),
                 ("tenantName", VariableType.String, true, null, "Office name."),
             ]
+        );
+
+    /// <summary>
+    /// F4 Cumplimiento — la revisión anual del WISP está por vencer (DueSoon) o venció (Overdue). Va al
+    /// responsable de seguridad y a quienes administran la oficina; la manda la plataforma (system-base).
+    /// </summary>
+    private static NotificationTemplateSeed WispReviewDue { get; } =
+        new(
+            EventKey: "tenant.wisp_review_due.v1",
+            TemplateKey: "tenant.wisp_review_due.v1",
+            Name: "Tenant — WISP annual review due",
+            Subject: "{% if is_overdue %}Your security plan review is overdue{% else %}Your security plan review is due {{ due_date }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Compliance</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#D97706" style="background-color:#D97706;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">{% if is_overdue %}Your security plan review is overdue{% else %}Your security plan review is due soon{% endif %}</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if is_overdue %}The annual review of your office's written information security plan (WISP) was due on <strong style="color:#23384B;">{{ due_date }}</strong>.{% else %}The annual review of your office's written information security plan (WISP) is due on <strong style="color:#23384B;">{{ due_date }}</strong>.{% endif %} The FTC Safeguards Rule requires reviewing the WISP at least once a year.</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Once you've reviewed it, open <strong style="color:#23384B;">Office settings &rarr; Compliance</strong> and mark it reviewed.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ settings_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open Compliance settings</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you're the security coordinator or an administrator of your office on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("is_overdue", VariableType.Bool, true, "false", "true when the review date already passed."),
+                ("due_date", VariableType.String, true, null, "Review due date, already formatted (en-US)."),
+                ("settings_url", VariableType.Url, true, null, "Office settings → Compliance in the office CRM."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ],
+            // Explícita y mayor que el default: el seeder publica solo si supera la SeedContentVersion guardada.
+            ContentVersion: 23
+        );
+
+    // ---------- Avisos del retiro de empleados (offboard): al personal de la oficina, system-base ----------
+
+    // Versión propia de las 6 plantillas del retiro: explícita y mayor que el default (22) y que el WISP (23).
+    private const int OffboardingNoticesVersion = 24;
+
+    // Plantilla nueva del retiro con acuse: versión explícita propia, por encima de las anteriores.
+    private const int OffboardingIncompleteVersion = 25;
+
+    /// <summary>Un retiro no recibió el acuse de todas las partes en el plazo (Auth, barrido del retiro).</summary>
+    private static NotificationTemplateSeed OffboardingIncomplete { get; } =
+        new(
+            EventKey: "auth.user_offboarding_incomplete.v1",
+            TemplateKey: "auth.user_offboarding_incomplete.v1",
+            Name: "Auth — Offboarding didn't finish",
+            Subject: "{{ user_name }}'s offboarding didn't finish",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Team</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#D97706" style="background-color:#D97706;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">An offboarding didn't finish</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ user_name }}</strong> was offboarded, but {% if pending_modules.size == 1 %}this area hasn't{% else %}these areas haven't{% endif %} confirmed the handover yet:</td></tr>
+              <tr><td style="padding-bottom:16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;font-weight:bold;mso-line-height-rule:exactly;">{{ pending_modules | join: ", " }}</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Some of their work or access there may still be active. Review it, and contact support if it doesn't clear up.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ users_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open Users</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you manage your office's users on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("user_name", VariableType.String, true, null, "Name of the person who was offboarded."),
+                ("pending_modules", VariableType.String, true, null, "List of the areas that haven't confirmed."),
+                ("users_url", VariableType.Url, true, null, "Users page in the office CRM."),
+                ProductName,
+            ],
+            ContentVersion: OffboardingIncompleteVersion
+        );
+
+    /// <summary>El responsable de seguridad (WISP) fue retirado y la designación quedó vacante.</summary>
+    private static NotificationTemplateSeed SecurityCoordinatorVacated { get; } =
+        new(
+            EventKey: "tenant.security_coordinator_vacated.v1",
+            TemplateKey: "tenant.security_coordinator_vacated.v1",
+            Name: "Tenant — Security coordinator vacant",
+            Subject: "Your office needs a new security coordinator",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Compliance</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#D97706" style="background-color:#D97706;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">Your office needs a new security coordinator</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">The person designated as your office's security coordinator is no longer with your office, so the role is now vacant.</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">The FTC Safeguards Rule requires every office to designate someone to oversee its information security plan (WISP). Choose a new coordinator in <strong style="color:#23384B;">Office settings &rarr; Compliance</strong>.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ settings_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Choose a coordinator</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you're an administrator of your office on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("settings_url", VariableType.Url, true, null, "Office settings → Compliance in the office CRM."),
+                ProductName,
+            ],
+            ContentVersion: OffboardingNoticesVersion
+        );
+
+    /// <summary>Campaigns pausó los agendados de un empleado retirado sin sucesor.</summary>
+    private static NotificationTemplateSeed CampaignSchedulesPaused { get; } =
+        new(
+            EventKey: "campaign.schedules_paused_on_offboarding.v1",
+            TemplateKey: "campaign.schedules_paused_on_offboarding.v1",
+            Name: "Campaigns — Schedules paused after offboarding",
+            Subject: "{% if campaign_count == 1 %}A scheduled campaign was paused{% else %}{{ campaign_count }} scheduled campaigns were paused{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Campaigns</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#D97706" style="background-color:#D97706;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">{% if campaign_count == 1 %}A scheduled campaign was paused{% else %}Scheduled campaigns were paused{% endif %}</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if campaign_count == 1 %}This campaign was{% else %}These campaigns were{% endif %} scheduled by someone who's no longer with your office. So nothing goes out in their name, we paused {% if campaign_count == 1 %}it{% else %}them{% endif %}:</td></tr>
+              <tr><td style="padding-bottom:16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;font-weight:bold;mso-line-height-rule:exactly;">{{ campaign_names | join: ", " }}</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Open Campaigns to cancel {% if campaign_count == 1 %}it{% else %}them{% endif %} or schedule {% if campaign_count == 1 %}it{% else %}them{% endif %} again. Nothing will be sent until you do.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ campaigns_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open Campaigns</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you manage campaigns for your office on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("campaign_count", VariableType.Number, true, null, "How many different campaigns were paused."),
+                ("campaign_names", VariableType.String, true, null, "List of the paused campaign names."),
+                ("campaigns_url", VariableType.Url, true, null, "Campaigns page in the office CRM."),
+                ProductName,
+            ],
+            ContentVersion: OffboardingNoticesVersion
+        );
+
+    /// <summary>Una solicitud de firma necesita otro preparador (o revisión) por el retiro de un empleado.</summary>
+    private static NotificationTemplateSeed SignaturePreparerAttention { get; } =
+        new(
+            EventKey: "sig.preparer_attention_required.v1",
+            TemplateKey: "sig.preparer_attention_required.v1",
+            Name: "Signature — Preparer needs attention after offboarding",
+            Subject: "{% if reason == 'PreparerCleared' %}Choose a new preparer for “{{ request_title }}”{% elsif reason == 'PreparerChangeBlocked' %}“{{ request_title }}” needs a new preparer{% elsif reason == 'UnsentRequestKept' %}Review the unsent request “{{ request_title }}”{% else %}“{{ request_title }}” needs your attention{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Signatures</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#D97706" style="background-color:#D97706;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">{% if reason == 'PreparerCleared' %}Choose a new preparer{% elsif reason == 'PreparerChangeBlocked' %}This request needs a new preparer{% elsif reason == 'UnsentRequestKept' %}Review an unsent request{% else %}A signature request needs your attention{% endif %}</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if reason == 'PreparerCleared' %}The preparer of <strong style="color:#23384B;">{{ request_title }}</strong> is no longer with your office, so they were removed from it. Choose a new preparer before you send it.{% elsif reason == 'PreparerChangeBlocked' %}The preparer of <strong style="color:#23384B;">{{ request_title }}</strong> is no longer with your office and hasn't signed yet. Change the preparer so the return can be signed.{% elsif reason == 'UnsentRequestKept' %}<strong style="color:#23384B;">{{ request_title }}</strong> was created by someone who's no longer with your office and hasn't been sent. Review it and decide whether to send it or cancel it.{% else %}Someone who worked on <strong style="color:#23384B;">{{ request_title }}</strong> is no longer with your office. Open it to see what needs to change.{% endif %}</td></tr>
+              <tr>
+                <td align="left" style="padding:22px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ request_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open the request</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you work with signature requests at your office on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                (
+                    "reason",
+                    VariableType.String,
+                    true,
+                    null,
+                    "PreparerCleared, PreparerChangeBlocked or UnsentRequestKept."
+                ),
+                ("request_title", VariableType.String, true, null, "Title of the signature request."),
+                ("request_url", VariableType.Url, true, null, "The signature request in the office CRM."),
+                ProductName,
+            ],
+            ContentVersion: OffboardingNoticesVersion
+        );
+
+    /// <summary>El preparador de una solicitud enviada pasó a otra persona: aviso al nuevo preparador o al autor.</summary>
+    private static NotificationTemplateSeed SignaturePreparerChanged { get; } =
+        new(
+            EventKey: "sig.preparer_changed.v1",
+            TemplateKey: "sig.preparer_changed.v1",
+            Name: "Signature — Preparer changed",
+            Subject: "{% if is_new_preparer %}You're now the preparer for “{{ request_title }}”{% else %}New preparer for “{{ request_title }}”{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Signatures</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">{% if is_new_preparer %}You're now the preparer{% else %}New preparer{% endif %}</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if is_offboarding %}The previous preparer of <strong style="color:#23384B;">{{ request_title }}</strong> is no longer with your office. {% endif %}{% if is_new_preparer %}You'll sign {% if is_offboarding %}this return{% else %}<strong style="color:#23384B;">{{ request_title }}</strong>{% endif %} as its preparer. Open the request to review it.{% else %}<strong style="color:#23384B;">{{ preparer_name }}</strong> is now the preparer of {% if is_offboarding %}this signature request{% else %}<strong style="color:#23384B;">{{ request_title }}</strong>{% endif %}.{% endif %}</td></tr>
+              <tr>
+                <td align="left" style="padding:22px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ request_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open the request</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you're the preparer or the author of this signature request on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                (
+                    "is_new_preparer",
+                    VariableType.Bool,
+                    true,
+                    "false",
+                    "true for the new preparer; false for the request author."
+                ),
+                (
+                    "is_offboarding",
+                    VariableType.Bool,
+                    true,
+                    "false",
+                    "true when the change was caused by the previous preparer leaving the office."
+                ),
+                ("request_title", VariableType.String, true, null, "Title of the signature request."),
+                ("preparer_name", VariableType.String, true, null, "Name of the new preparer."),
+                ("request_url", VariableType.Url, true, null, "The signature request in the office CRM."),
+                ProductName,
+            ],
+            ContentVersion: OffboardingNoticesVersion
+        );
+
+    /// <summary>Una conexión de nube de la oficina quedó ligada a un empleado retirado.</summary>
+    private static NotificationTemplateSeed CloudConnectionReviewRequired { get; } =
+        new(
+            EventKey: "storage.cloud_connection_review_required.v1",
+            TemplateKey: "storage.cloud_connection_review_required.v1",
+            Name: "Storage — Cloud connection needs to be reconnected",
+            Subject: "Reconnect your office's {{ provider_name }} connection",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Storage</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#D97706" style="background-color:#D97706;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">Reconnect your {{ provider_name }} connection</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if reason == 'AccountOfOffboardedUser' %}Your office's {{ provider_name }} connection uses the account <strong style="color:#23384B;">{{ account_email }}</strong>, which belongs to someone who's no longer with your office.{% elsif reason == 'ConnectedByOffboardedUser' %}Your office's {{ provider_name }} connection (<strong style="color:#23384B;">{{ account_email }}</strong>) was set up by someone who's no longer with your office.{% else %}Your office's {{ provider_name }} connection (<strong style="color:#23384B;">{{ account_email }}</strong>) is linked to someone who's no longer with your office.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Reconnect it with an account that belongs to your office, or disconnect it.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ storage_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open storage settings</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you manage your office's storage on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("provider_name", VariableType.String, true, null, "Google Drive, OneDrive or Dropbox."),
+                ("account_email", VariableType.String, true, null, "Account the connection uses."),
+                ("reason", VariableType.String, true, null, "AccountOfOffboardedUser or ConnectedByOffboardedUser."),
+                ("storage_url", VariableType.Url, true, null, "Storage page in the office CRM."),
+                ProductName,
+            ],
+            ContentVersion: OffboardingNoticesVersion
+        );
+
+    /// <summary>Un buzón de oficina quedó ligado a un empleado retirado.</summary>
+    private static NotificationTemplateSeed OfficeMailboxReviewRequired { get; } =
+        new(
+            EventKey: "connectors.office_mailbox_review_required.v1",
+            TemplateKey: "connectors.office_mailbox_review_required.v1",
+            Name: "Connectors — Office mailbox needs to be reconnected",
+            Subject: "Reconnect the office mailbox {{ mailbox_email }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Email</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#D97706" style="background-color:#D97706;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">Reconnect an office mailbox</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if reason == 'AddressOfOffboardedUser' %}The office mailbox <strong style="color:#23384B;">{{ mailbox_email }}</strong> is the address of someone who's no longer with your office.{% elsif reason == 'ConnectedByOffboardedUser' %}The office mailbox <strong style="color:#23384B;">{{ mailbox_email }}</strong> was connected by someone who's no longer with your office.{% else %}The office mailbox <strong style="color:#23384B;">{{ mailbox_email }}</strong> is linked to someone who's no longer with your office.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Reconnect it with an account your office controls, or disconnect it.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ mailbox_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open the mailbox</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you manage your office's mailboxes on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("mailbox_email", VariableType.String, true, null, "Address of the office mailbox."),
+                ("reason", VariableType.String, true, null, "AddressOfOffboardedUser or ConnectedByOffboardedUser."),
+                ("mailbox_url", VariableType.Url, true, null, "The mailbox in the office CRM."),
+                ProductName,
+            ],
+            ContentVersion: OffboardingNoticesVersion
         );
 
     private static NotificationTemplateSeed Invitation { get; } =
@@ -1036,10 +1355,10 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Firma completada</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, el proceso de firma se completó exitosamente el {{ completed_at }} UTC. No necesitas hacer nada más.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, {% if is_reissue %}este es tu nuevo enlace para descargar los documentos firmados; el anterior ya no funciona.{% else %}el proceso de firma se completó exitosamente el {{ completed_at }} UTC. Puedes descargar los documentos firmados aquí abajo.{% endif %}</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Signature completed</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the signature process was completed successfully on {{ completed_at }} UTC. You can download the signed document below.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, {% if is_reissue %}here is your new link to download the signed documents; the previous one no longer works.{% else %}the signature process was completed successfully on {{ completed_at }} UTC. You can download the signed documents below.{% endif %}</td></tr>
               {% endif %}
               {% if download_links and download_links.size > 0 %}
               <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Documentos disponibles ({{ document_count }}):{% else %}Available documents ({{ document_count }}):{% endif %}</td></tr>
@@ -1051,6 +1370,12 @@ public static class NotificationTemplateSeedSource
               </tr>
               {% endfor %}
               {% endif %}
+              {% if delivery_url %}
+              <tr><td style="padding-top:20px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Este enlace es personal y vale hasta el {{ expires_at }}.{% if can_request_new_link %} Si vence, ábrelo igual y podrás pedir uno nuevo, que llegará a este mismo correo.{% else %} Si vence, pide uno nuevo a la oficina que te lo envió.{% endif %}{% if has_attachments %} También te adjuntamos los archivos.{% endif %}{% else %}This link is personal and valid until {{ expires_at }}.{% if can_request_new_link %} If it expires, open it anyway and you can request a new one, sent to this same email.{% else %} If it expires, ask the office that sent it for a new one.{% endif %}{% if has_attachments %} The files are also attached.{% endif %}{% endif %}</td></tr>
+              {% endif %}
+              {% if portal_url %}
+              <tr><td style="padding-top:10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}También están en tu portal de cliente: <a href="{{ portal_url }}" target="_blank" style="color:#1E466B;font-weight:bold;text-decoration:underline;">abrir el portal</a>.{% else %}They're also in your client portal: <a href="{{ portal_url }}" target="_blank" style="color:#1E466B;font-weight:bold;text-decoration:underline;">open the portal</a>.{% endif %}</td></tr>
+              {% endif %}
             </table>
             """,
             Variables:
@@ -1060,8 +1385,32 @@ public static class NotificationTemplateSeedSource
                 ("download_links", VariableType.String, false, null, "Lista de objetos { title, url } por documento."),
                 ("document_count", VariableType.Number, true, "1", "Cantidad de documentos sellados."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
+                (
+                    "delivery_url",
+                    VariableType.Url,
+                    false,
+                    null,
+                    "Página de entrega de Signature con todos los archivos."
+                ),
+                ("expires_at", VariableType.String, false, null, "Fecha (UTC) hasta la que vale el enlace."),
+                (
+                    "can_request_new_link",
+                    VariableType.Bool,
+                    false,
+                    "false",
+                    "Si al vencer el firmante puede pedir un enlace nuevo."
+                ),
+                (
+                    "portal_url",
+                    VariableType.Url,
+                    false,
+                    null,
+                    "Carpeta de documentos del portal (solo clientes con cuenta)."
+                ),
+                ("is_reissue", VariableType.Bool, false, "false", "Es un enlace nuevo que reemplaza al anterior."),
+                ("has_attachments", VariableType.Bool, false, "false", "Los archivos también van adjuntos."),
             ],
-            ContentVersion: 15
+            ContentVersion: 16
         );
 
     // F7 — copia inmediata: cada firmante recibe lo que firmó cuando firma él, aunque los demás
@@ -1081,9 +1430,9 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, gracias por completar {{ document_count }} documento(s) el {{ signed_at }} UTC.</td></tr>
               {% if total_signers and total_signers > 1 %}
               {% if send_sealed_to_signers %}
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Adjuntamos tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>; cuando el documento quede completo, recibirás el PDF final sellado.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Adjuntamos{% else %}Aquí tienes{% endif %} tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>; cuando el documento quede completo, recibirás el PDF final sellado.</td></tr>
               {% else %}
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Adjuntamos tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>. Guárdala como constancia de tu firma.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Adjuntamos{% else %}Aquí tienes{% endif %} tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>. Guárdala como constancia de tu firma.</td></tr>
               {% endif %}
               {% else %}
               {% if send_sealed_to_signers %}
@@ -1097,9 +1446,9 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, thanks for completing {{ document_count }} document(s) on {{ signed_at }} UTC.</td></tr>
               {% if total_signers and total_signers > 1 %}
               {% if send_sealed_to_signers %}
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Attached is your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>; when the document is complete, you'll receive the final sealed PDF.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Attached is{% else %}Here is{% endif %} your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>; when the document is complete, you'll receive the final sealed PDF.</td></tr>
               {% else %}
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Attached is your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>. Keep it as a record of your signature.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Attached is{% else %}Here is{% endif %} your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>. Keep it as a record of your signature.</td></tr>
               {% endif %}
               {% else %}
               {% if send_sealed_to_signers %}
@@ -1118,6 +1467,12 @@ public static class NotificationTemplateSeedSource
               </tr>
               {% endfor %}
               {% endif %}
+              {% if delivery_url %}
+              <tr><td style="padding-top:20px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Este enlace es personal y vale hasta el {{ expires_at }}.{% if can_request_new_link %} Si vence, ábrelo igual y podrás pedir uno nuevo, que llegará a este mismo correo.{% else %} Si vence, pide uno nuevo a la oficina que te lo envió.{% endif %}{% if has_attachments %} También te adjuntamos los archivos.{% endif %}{% else %}This link is personal and valid until {{ expires_at }}.{% if can_request_new_link %} If it expires, open it anyway and you can request a new one, sent to this same email.{% else %} If it expires, ask the office that sent it for a new one.{% endif %}{% if has_attachments %} The files are also attached.{% endif %}{% endif %}</td></tr>
+              {% endif %}
+              {% if portal_url %}
+              <tr><td style="padding-top:10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}También están en tu portal de cliente: <a href="{{ portal_url }}" target="_blank" style="color:#1E466B;font-weight:bold;text-decoration:underline;">abrir el portal</a>.{% else %}They're also in your client portal: <a href="{{ portal_url }}" target="_blank" style="color:#1E466B;font-weight:bold;text-decoration:underline;">open the portal</a>.{% endif %}</td></tr>
+              {% endif %}
             </table>
             """,
             Variables:
@@ -1135,8 +1490,32 @@ public static class NotificationTemplateSeedSource
                     "false",
                     "True si el preparador va a enviar el PDF sellado al final."
                 ),
+                (
+                    "delivery_url",
+                    VariableType.Url,
+                    false,
+                    null,
+                    "Página de entrega de Signature con todos los archivos."
+                ),
+                ("expires_at", VariableType.String, false, null, "Fecha (UTC) hasta la que vale el enlace."),
+                (
+                    "can_request_new_link",
+                    VariableType.Bool,
+                    false,
+                    "false",
+                    "Si al vencer el firmante puede pedir un enlace nuevo."
+                ),
+                (
+                    "portal_url",
+                    VariableType.Url,
+                    false,
+                    null,
+                    "Carpeta de documentos del portal (solo clientes con cuenta)."
+                ),
+                ("is_reissue", VariableType.Bool, false, "false", "Es un enlace nuevo que reemplaza al anterior."),
+                ("has_attachments", VariableType.Bool, false, "false", "Los archivos también van adjuntos."),
             ],
-            ContentVersion: 17
+            ContentVersion: 18
         );
 
     private static NotificationTemplateSeed SignatureCertificateReady { get; } =

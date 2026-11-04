@@ -140,6 +140,7 @@ export class PrismaMessageRepository implements MessageRepository {
         TranscriptText: m.transcriptText ?? null,
         TranscriptState: m.transcriptState ?? null,
         TranscriptLanguage: m.transcriptLanguage ?? null,
+        SystemKind: m.systemKind ?? null,
       },
     });
     const links = messageLinkRows(m);

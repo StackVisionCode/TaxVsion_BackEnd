@@ -40,6 +40,23 @@ public sealed class InvitationRepository(AuthDbContext db) : IInvitationReposito
     public async Task AddAsync(Invitation invitation, CancellationToken ct = default) =>
         await db.Invitations.AddAsync(invitation, ct);
 
+    // Tracked: el retiro las cancela. Solo staff: las de portal son del vínculo cliente-oficina, no de quien las envió.
+    public async Task<IReadOnlyList<Invitation>> ListPendingStaffSentByAsync(
+        Guid tenantId,
+        Guid invitedByUserId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Invitations.IgnoreQueryFilters()
+            .Where(OfKind(UserAccountKind.Staff))
+            .Where(invitation =>
+                invitation.TenantId == tenantId
+                && invitation.InvitedByUserId == invitedByUserId
+                && invitation.Status == InvitationStatus.Pending
+                && invitation.ExpiresAtUtc > DateTime.UtcNow
+            )
+            .ToListAsync(ct);
+
     // Solo cuentan asiento las invitaciones de STAFF (TenantEmployee/TenantAdmin). Las invitaciones de
     // portal (clientes) NO consumen asientos del plan — se crean desde Clients y viven en su propio pool.
     public Task<int> CountPendingAsync(Guid tenantId, CancellationToken ct = default) =>

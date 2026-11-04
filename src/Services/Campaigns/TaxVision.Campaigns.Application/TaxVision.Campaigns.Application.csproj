@@ -3,6 +3,8 @@
     <ProjectReference Include="..\TaxVision.Campaigns.Domain\TaxVision.Campaigns.Domain.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <!-- campaigns.send / customers.view_all: elegibilidad del sucesor de agendados al retirar (D-6). -->
+    <ProjectReference Include="..\..\..\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="WolverineFx" Version="6.14.0" />

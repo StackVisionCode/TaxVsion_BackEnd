@@ -8,6 +8,7 @@ import {
   type GroupRole,
 } from './conversation-participant.js';
 import { Message, type MessageSnapshot } from './message.js';
+import type { SystemMessageKind } from './message-kind.js';
 import {
   assertKindMatchesKey,
   computeDirectUniquenessKey,
@@ -54,6 +55,27 @@ export interface ConversationSnapshot {
 export interface GroupRemovalOutcome {
   readonly newOwnerUserId: string | null;
   readonly archived: boolean;
+}
+
+/**
+ * Por qué ya no se escribe en la conversación (estado derivado, no se persiste): Archived = cerrada (meeting
+ * terminado, ticket cerrado, chat de cliente cerrado); ParticipantLeft = Direct cuyo otro participante ya no
+ * está (retiro de la oficina). El historial se sigue leyendo en ambos casos.
+ */
+export type ConversationClosedReason = 'Archived' | 'ParticipantLeft';
+
+type ClosureView = Pick<ConversationSnapshot, 'kind' | 'isArchived' | 'participants'>;
+
+/** Regla de la salida en un Direct, sobre el snapshot (la usan el aggregate y las lecturas). */
+export function departedDirectParticipantOf(view: Pick<ClosureView, 'kind' | 'participants'>): ConversationParticipantSnapshot | null {
+  if (view.kind !== ConversationKind.Direct) return null;
+  return view.participants.find((p) => p.isRemoved) ?? null;
+}
+
+/** Motivo por el que nadie escribe; null = abierta. Archivada pesa más que la salida del otro. */
+export function closedReasonOf(view: ClosureView): ConversationClosedReason | null {
+  if (view.isArchived) return 'Archived';
+  return departedDirectParticipantOf(view) ? 'ParticipantLeft' : null;
 }
 
 /** F8b (T-21): topes del nombre (columna NVARCHAR(120)) y de la descripción (NVARCHAR(500)). */
@@ -353,13 +375,19 @@ export class Conversation {
    * materializa como mensaje normal (persiste + emite) para que quede en el
    * historial de la conversación en ambos lados.
    */
-  appendSystemMessage(input: { body: string; attachmentFileId?: string | null; now?: Date }): Result<Message> {
+  appendSystemMessage(input: {
+    body: string;
+    attachmentFileId?: string | null;
+    systemKind?: SystemMessageKind;
+    now?: Date;
+  }): Result<Message> {
     const now = input.now ?? new Date();
     const messageResult = Message.createSystem({
       conversationId: this.state.id,
       tenantId: this.state.tenantId,
       body: input.body,
       attachmentFileId: input.attachmentFileId ?? null,
+      ...(input.systemKind ? { systemKind: input.systemKind } : {}),
       now,
     });
     if (!messageResult.isSuccess) return messageResult;
@@ -480,6 +508,90 @@ export class Conversation {
     const target = this.findActiveParticipant(userId);
     if (!target) return null;
     return this.detachParticipant(target, now);
+  }
+
+  // ------------------------------------------------------------------
+  // Retiro (offboarding) por SISTEMA: sin actor, lo dispara el consumer de `auth.user.offboarded.v1`.
+  // ------------------------------------------------------------------
+
+  /**
+   * Direct: el retirado deja el chat (pierde el primary y queda removido). Devuelve si era el primary y
+   * quién queda del otro lado; null si no es un Direct o ya no participaba (idempotente).
+   */
+  retireParticipantBySystem(
+    userId: string,
+    now: Date = new Date(),
+  ): { wasPrimaryPreparer: boolean; counterpart: ConversationParticipantSnapshot | null } | null {
+    if (this.state.kind !== ConversationKind.Direct) return null;
+    const target = this.findActiveParticipant(userId);
+    if (!target) return null;
+    const wasPrimaryPreparer = target.isPrimaryPreparer;
+    target.markAsPrimaryPreparer(false);
+    target.remove(now);
+    this.touchParticipants(now);
+    const counterpart = this.participants.find((p) => p.userId !== userId && !p.isRemoved) ?? null;
+    return { wasPrimaryPreparer, counterpart: counterpart?.toSnapshot() ?? null };
+  }
+
+  /** Direct: marca al staff como preparador principal del cliente (sucesor del retirado). Devuelve si cambió. */
+  markPrimaryPreparerBySystem(userId: string, now: Date = new Date()): boolean {
+    if (this.state.kind !== ConversationKind.Direct) return false;
+    const target = this.findActiveParticipant(userId);
+    if (!target || target.isPrimaryPreparer || !isStaffActor(target.actorType)) return false;
+    target.markAsPrimaryPreparer(true);
+    this.touchParticipants(now);
+    return true;
+  }
+
+  /**
+   * Support: el ticket pasa a otro staff de la oficina; sale quien lo abrió y entra el nuevo dueño (o vuelve,
+   * si ya había estado). Devuelve si cambió.
+   */
+  replaceSupportRequesterBySystem(input: {
+    previousUserId: string;
+    next: { userId: string; displayName: string; actorType: string };
+    now?: Date;
+  }): boolean {
+    if (this.state.kind !== ConversationKind.Support || input.previousUserId === input.next.userId) return false;
+    const now = input.now ?? new Date();
+    const previous = this.findActiveParticipant(input.previousUserId);
+    if (!previous && this.findActiveParticipant(input.next.userId)) return false;
+    previous?.remove(now);
+    const known = this.participants.find((p) => p.userId === input.next.userId);
+    if (known) {
+      known.reactivate({ displayName: input.next.displayName, role: 'Member', now });
+    } else {
+      this.participants.push(
+        ConversationParticipant.create({
+          conversationId: this.state.id,
+          tenantId: this.state.tenantId,
+          userId: input.next.userId,
+          displayName: input.next.displayName,
+          actorType: input.next.actorType,
+          role: 'Member',
+          now,
+        }),
+      );
+    }
+    this.touchParticipants(now);
+    return true;
+  }
+
+  /**
+   * Chat de un cliente cerrado por el retiro de su staff: Direct archivado, con el staff removido y el cliente
+   * aún dentro. Su historial lo puede leer la oficina con permiso sobre ese cliente (procedencia).
+   */
+  isClosedClientChat(): boolean {
+    if (this.state.kind !== ConversationKind.Direct || !this.state.isArchived) return false;
+    const removedStaff = this.participants.some((p) => p.isRemoved && isStaffActor(p.actorType));
+    return removedStaff && this.closedChatClient() !== null;
+  }
+
+  /** Cliente (cuenta de portal) que sigue en un chat cerrado por el retiro; null si no aplica. */
+  closedChatClient(): ConversationParticipantSnapshot | null {
+    if (this.state.kind !== ConversationKind.Direct) return null;
+    const client = this.participants.find((p) => !p.isRemoved && p.actorType === 'CustomerPortal');
+    return client?.toSnapshot() ?? null;
   }
 
   /** F8b (D-22): solo el Owner (o el Tenant Admin) nombra o quita Admins; los clientes nunca administran. */
@@ -673,6 +785,34 @@ export class Conversation {
     return extractSupportTicketId(this.state.uniquenessKey);
   }
 
+  /**
+   * Direct cuyo otro participante ya salió (hoy solo por retiro de la oficina): queda en solo lectura para
+   * quien sigue. null si no es un Direct o siguen los dos.
+   */
+  departedParticipant(): ConversationParticipantSnapshot | null {
+    return departedDirectParticipantOf({ kind: this.state.kind, participants: this.getParticipantSnapshots() });
+  }
+
+  get closedReason(): ConversationClosedReason | null {
+    return closedReasonOf({ ...this.state, participants: this.getParticipantSnapshots() });
+  }
+
+  get isClosedForWriting(): boolean {
+    return this.closedReason !== null;
+  }
+
+  /**
+   * Chat cerrado (archivado o Direct con el otro fuera): el historial es de solo lectura, también para
+   * reaccionar, fijar o borrar. Mismos códigos que al enviar.
+   */
+  ensureOpen(): Result<void> {
+    if (this.state.isArchived) return Result.fail(makeError('Chat.Conversation.Archived', 'Conversation is archived.'));
+    const departed = this.departedParticipant();
+    return departed
+      ? Result.fail(makeError('Chat.Conversation.ParticipantLeft', `${departed.displayName} is no longer with the office.`))
+      : Result.okVoid();
+  }
+
   /** Regla única de "puede escribir ahora" (enviar o editar): conversación activa y participante vigente. */
   ensureCanWrite(userId: string): Result<void> {
     const participant = this.ensureWriter(userId);
@@ -702,6 +842,8 @@ export class Conversation {
   private ensureWriter(userId: string): Result<ConversationParticipant> {
     const participant = this.ensureActiveParticipant(userId);
     if (!participant.isSuccess) return participant;
+    const open = this.ensureOpen();
+    if (!open.isSuccess) return Result.fail(open.error);
     if (this.state.kind === ConversationKind.Group && this.state.adminsOnlyWrite && participant.value.role === 'Member') {
       return Result.fail(makeError('Chat.Conversation.AdminsOnly', 'Only group admins can write in this group.'));
     }

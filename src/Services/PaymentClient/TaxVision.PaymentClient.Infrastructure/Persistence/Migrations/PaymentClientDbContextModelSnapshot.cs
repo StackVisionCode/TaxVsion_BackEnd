@@ -636,6 +636,10 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<string>("ProviderWebhookId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("PublishableKey")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -667,7 +671,18 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("WebhookSecretEncrypted");
 
+                    b.Property<string>("WebhookSetup")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("WebhookSetupRequestedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("WebhookSetupRequestedAtUtc")
+                        .HasDatabaseName("IX_TenantPaymentConfigs_PendingWebhookSetup")
+                        .HasFilter("[WebhookSetup] = 'Pending'");
 
                     b.HasIndex("TenantId", "ProviderCode")
                         .IsUnique()
@@ -777,6 +792,9 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsLegalHeld")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("LastProviderCheckAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("NextActionType")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -843,6 +861,10 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("IX_TenantPayments_TenantId_Status");
 
+                    b.HasIndex("Status", "LastProviderCheckAtUtc", "UpdatedAtUtc")
+                        .HasDatabaseName("IX_TenantPayments_AwaitingProvider")
+                        .HasFilter("[Status] IN ('Processing', 'RequiresAction')");
+
                     b.ToTable("TenantPayments", (string)null);
                 });
 
@@ -891,6 +913,10 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -903,6 +929,12 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<long>("ProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1303,6 +1335,44 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.PaymentClient.Domain.TenantPayments.TenantPayment", b =>
                 {
+                    b.OwnsOne("TaxVision.PaymentClient.Domain.TenantPayments.PayerDetails", "Payer", b1 =>
+                        {
+                            b1.Property<Guid>("TenantPaymentId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("CardBrand")
+                                .HasMaxLength(30)
+                                .HasColumnType("nvarchar(30)")
+                                .HasColumnName("CardBrand");
+
+                            b1.Property<string>("CardLast4")
+                                .HasMaxLength(4)
+                                .HasColumnType("nvarchar(4)")
+                                .HasColumnName("CardLast4");
+
+                            b1.Property<string>("PayerEmail")
+                                .HasMaxLength(320)
+                                .HasColumnType("nvarchar(320)")
+                                .HasColumnName("PayerEmail");
+
+                            b1.Property<string>("PayerName")
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("PayerName");
+
+                            b1.Property<string>("ReceiptEmail")
+                                .HasMaxLength(320)
+                                .HasColumnType("nvarchar(320)")
+                                .HasColumnName("ReceiptEmail");
+
+                            b1.HasKey("TenantPaymentId");
+
+                            b1.ToTable("TenantPayments");
+
+                            b1.WithOwner()
+                                .HasForeignKey("TenantPaymentId");
+                        });
+
                     b.OwnsOne("TaxVision.PaymentClient.Domain.ValueObjects.Money", "Amount", b1 =>
                         {
                             b1.Property<Guid>("TenantPaymentId")
@@ -1405,6 +1475,9 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("ExternalChargeReference");
+
+                    b.Navigation("Payer")
+                        .IsRequired();
 
                     b.Navigation("Purpose")
                         .IsRequired();

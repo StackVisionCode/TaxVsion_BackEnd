@@ -95,7 +95,7 @@ internal sealed class SignatureCloudStorageClient(
             {
                 TenantId = tenantId,
                 FileId = fileId,
-                RequestingService = "signature",
+                RequestingService = SignatureStorage.RequestingService,
                 SourceBucket = options.TempBucket,
                 SourceObjectKey = sourceObjectKey,
                 ActorId = upload.ActorId,
@@ -113,34 +113,22 @@ internal sealed class SignatureCloudStorageClient(
         return Result.Success(fileId);
     }
 
-    public async Task<Result<string>> CreateDownloadShareLinkAsync(
+    public async Task<Result<Guid>> CopyToCustomerAsync(
         Guid tenantId,
-        Guid fileId,
-        IReadOnlyList<string> recipientEmails,
-        DateTime expiresAtUtc,
+        Guid sourceFileId,
+        Guid customerId,
+        int taxYear,
         CancellationToken ct = default
     )
     {
         var tokenResult = await AcquireTokenAsync(tenantId, ct);
         if (tokenResult.IsFailure)
-            return Result.Failure<string>(tokenResult.Error);
+            return Result.Failure<Guid>(tokenResult.Error);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"storage/files/{fileId}/shares")
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"storage/files/{sourceFileId}/copies")
         {
             Content = JsonContent.Create(
-                new CreateShareLinkRequestDto(
-                    Visibility: "ExternalRecipients",
-                    Permission: "Download",
-                    Password: null,
-                    ExpiresAtUtc: expiresAtUtc,
-                    MaxAccessCount: null,
-                    RecipientUserIds: null,
-                    RecipientCustomerIds: null,
-                    RecipientEmails: recipientEmails,
-                    // Signature entrega el enlace en su propio correo (sig.completed / sig.certificate),
-                    // así que CloudStorage NO debe mandar además su "A document was shared with you".
-                    SuppressRecipientEmails: true
-                ),
+                new CopyFileRequestDto("Customer", customerId, "Signatures", taxYear),
                 options: Json
             ),
         };
@@ -149,14 +137,26 @@ internal sealed class SignatureCloudStorageClient(
         using var response = await httpClient.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning("CloudStorage create-share-link call failed ({Status}).", (int)response.StatusCode);
-            return Result.Failure<string>(new Error("Signature.Storage.Share", "create-share-link request failed."));
+            logger.LogWarning(
+                "CloudStorage copy of {FileId} failed ({Status}).",
+                sourceFileId,
+                (int)response.StatusCode
+            );
+            return Result.Failure<Guid>(new Error("Signature.Storage.Copy", "CloudStorage copy request failed."));
         }
+        var payload = await response.Content.ReadFromJsonAsync<CopiedFileResponseDto>(Json, ct);
+        return payload is null
+            ? Result.Failure<Guid>(new Error("Signature.Storage.Copy", "Empty response from CloudStorage copy."))
+            : Result.Success(payload.FileId);
+    }
 
-        var payload = await response.Content.ReadFromJsonAsync<CreatedShareLinkResponseDto>(Json, ct);
-        return payload is null || string.IsNullOrWhiteSpace(payload.PlainToken)
-            ? Result.Failure<string>(new Error("Signature.Storage.Share", "Empty share token from CloudStorage."))
-            : Result.Success(payload.PlainToken);
+    public async Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default)
+    {
+        var tokenResult = await AcquireTokenAsync(tenantId, ct);
+        if (tokenResult.IsFailure)
+            return Result.Failure<Uri>(tokenResult.Error);
+
+        return await FetchDownloadUrlAsync(fileId, tokenResult.Value, ct);
     }
 
     public async Task<Result<SignatureFileMetadata>> GetFileAsync(
@@ -180,7 +180,7 @@ internal sealed class SignatureCloudStorageClient(
             using var response = await httpClient.SendAsync(request, ct);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 return Result.Failure<SignatureFileMetadata>(
-                    new Error("Signature.Storage.FileLookup", "File not found in CloudStorage.")
+                    new Error(SignatureStorage.FileNotFoundCode, "File not found in CloudStorage.")
                 );
             if (!response.IsSuccessStatusCode)
             {
@@ -263,20 +263,10 @@ internal sealed class SignatureCloudStorageClient(
 
     private sealed record DownloadUrlResponseDto(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
 
-    private sealed record CreateShareLinkRequestDto(
-        string Visibility,
-        string Permission,
-        string? Password,
-        DateTime? ExpiresAtUtc,
-        int? MaxAccessCount,
-        IReadOnlyList<Guid>? RecipientUserIds,
-        IReadOnlyList<Guid>? RecipientCustomerIds,
-        IReadOnlyList<string>? RecipientEmails,
-        bool SuppressRecipientEmails
-    );
+    // Enums de CloudStorage serializados como string (JsonStringEnumConverter en su API).
+    private sealed record CopyFileRequestDto(string OwnerType, Guid OwnerId, string FolderType, int TaxYear);
 
-    // Solo se lee el token plano (el resto de CreatedShareLinkResponse se ignora).
-    private sealed record CreatedShareLinkResponseDto(string PlainToken);
+    private sealed record CopiedFileResponseDto(Guid FileId);
 
     // Subset de FileResponse (CloudStorage FileContracts): solo lo que GetFileAsync necesita.
     private sealed record FileLookupResponseDto(

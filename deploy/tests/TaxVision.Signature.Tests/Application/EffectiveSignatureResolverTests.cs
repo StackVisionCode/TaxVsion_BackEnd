@@ -89,12 +89,18 @@ public sealed class EffectiveSignatureResolverTests
             Task.FromResult<TenantSignatureSettings?>(settings);
 
         public Task AddAsync(TenantSignatureSettings s, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<Guid>> ListTenantIdsWithPurgeEnabledAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
     private sealed class FakeProfiles(SignatureProfile? personalDefault, SignatureProfile? officeDefault)
         : ISignatureProfileRepository
     {
         public Task<SignatureProfile?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
+            Task.FromResult<SignatureProfile?>(null);
+
+        public Task<SignatureProfile?> GetByFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             Task.FromResult<SignatureProfile?>(null);
 
         public Task<IReadOnlyList<SignatureProfile>> ListVisibleAsync(

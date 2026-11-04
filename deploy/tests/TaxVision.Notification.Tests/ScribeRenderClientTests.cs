@@ -104,4 +104,43 @@ public sealed class ScribeRenderClientTests
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value.InlineAssets);
     }
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        public string? LastBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            LastBody = await request.Content!.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"subject": "s", "html": "<p>h</p>", "text": "t"}""",
+                    Encoding.UTF8,
+                    "application/json"
+                ),
+            };
+        }
+    }
+
+    [Theory]
+    [InlineData(null, "Staff")]
+    [InlineData(ScribeRenderAudience.Client, "Client")]
+    public async Task RenderAsync_sends_the_audience_as_text(ScribeRenderAudience? audience, string expected)
+    {
+        var handler = new CapturingHandler();
+        var client = new ScribeRenderClient(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5205/") },
+            new FakeTokenAcquirer(),
+            NullLogger<ScribeRenderClient>.Instance
+        );
+        var variables = new Dictionary<string, object?>();
+
+        var result = audience is { } value
+            ? await client.RenderAsync("billing.invoice_sent.v1", Guid.NewGuid(), variables, value)
+            : await client.RenderAsync("billing.invoice_sent.v1", Guid.NewGuid(), variables);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains($"\"audience\":\"{expected}\"", handler.LastBody);
+    }
 }

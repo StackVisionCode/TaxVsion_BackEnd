@@ -10,6 +10,11 @@ public sealed class SignatureProfileRepository(SignatureDbContext db) : ISignatu
     public Task<SignatureProfile?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         db.SignatureProfiles.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == id && p.TenantId == tenantId, ct);
 
+    public Task<SignatureProfile?> GetByFileIdAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+        db
+            .SignatureProfiles.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.FileId == fileId && p.TenantId == tenantId, ct);
+
     public async Task<IReadOnlyList<SignatureProfile>> ListVisibleAsync(
         Guid tenantId,
         Guid userId,

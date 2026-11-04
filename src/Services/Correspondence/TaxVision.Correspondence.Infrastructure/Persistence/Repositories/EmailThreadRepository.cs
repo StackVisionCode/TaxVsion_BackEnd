@@ -92,10 +92,13 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
             query = query.Where(x => x.Status == status);
         if (filter.CustomerId is { } customerId)
             query = query.Where(x => x.CustomerId == customerId);
+        if (filter.Unlinked)
+            query = query.Where(x => x.CustomerId == null);
         if (filter.UnreadOnly)
-            query = query.Where(x =>
-                db.IncomingEmails.Any(ie => ie.EmailThreadId == x.Id && !ie.IsRead && ie.DeletedAtUtc == null)
-            );
+            query = MailVisibilityQueries.ThreadsWithUnread(db, query, filter.TenantId);
+        if (filter.HasAttachmentsOnly)
+            query = MailVisibilityQueries.ThreadsWithAttachments(db, query);
+        query = MailVisibilityQueries.ThreadsInRange(query, filter.FromUtc, filter.ToUtc);
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
             var term = filter.Search.Trim();
@@ -137,9 +140,23 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
                 && threads.Any(t => t.Id == ie.EmailThreadId)
             )
             .GroupBy(ie => ie.EmailThreadId)
-            .Select(g => g.Count())
+            .Select(g => new { ThreadId = g.Key, Count = g.Count() })
             .ToListAsync(ct);
-        return new UnreadMailCount(unread.Count, unread.Sum());
+
+        // Un aviso de no entrega sin leer cuenta como un mensaje sin leer de su hilo.
+        var unreadNotices = await MailVisibilityQueries
+            .UnreadNotices(db, tenantId)
+            .Where(n => threads.Any(t => t.Id == n.EmailThreadId))
+            .GroupBy(n => n.EmailThreadId)
+            .Select(g => new { ThreadId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var threadCount = unread
+            .Select(x => x.ThreadId)
+            .Concat(unreadNotices.Select(x => x.ThreadId))
+            .Distinct()
+            .Count();
+        return new UnreadMailCount(threadCount, unread.Sum(x => x.Count) + unreadNotices.Sum(x => x.Count));
     }
 
     public async Task<bool> IsCustomerVisibleAsync(
@@ -153,54 +170,16 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
             .IgnoreQueryFilters()
             .AnyAsync(a => a.TenantId == tenantId && a.CustomerId == customerId && a.UserId == userId, ct);
 
-    // Hilos del tenant que el usuario puede ver: gate de buzón + (si no ve todos) cliente asignado.
     private IQueryable<EmailThread> Visible(
         Guid tenantId,
         IReadOnlyCollection<Guid>? visibleAccountIds,
         Guid? restrictToUserId
-    )
-    {
-        var query = WithMailboxGate(
-            db.EmailThreads.AsNoTracking().IgnoreQueryFilters().Where(x => x.TenantId == tenantId),
-            visibleAccountIds
-        );
-        if (restrictToUserId is { } userId)
-            query = query.Where(x =>
-                db.Set<CustomerAssignmentProjection>()
-                    .Any(a => a.TenantId == tenantId && a.CustomerId == x.CustomerId && a.UserId == userId)
-            );
-        return query;
-    }
+    ) => MailVisibilityQueries.VisibleThreads(db, tenantId, visibleAccountIds, restrictToUserId);
 
     private IQueryable<EmailThread> WithMailboxGate(
         IQueryable<EmailThread> query,
         IReadOnlyCollection<Guid>? visibleAccountIds
-    )
-    {
-        if (visibleAccountIds is null)
-        {
-            // Sin gate: se oculta solo el hilo SIN contenido visible (0 entrantes vivos y 0 enviados vivos).
-            return query.Where(x =>
-                x.MessageCount > 0
-                || db.Drafts.Any(d => d.EmailThreadId == x.Id && d.Status == DraftStatus.Sent && d.DeletedAtUtc == null)
-            );
-        }
-
-        // Gate de buzón de oficina: el hilo debe tener ≥1 mensaje (entrante vivo o enviado) de un
-        // buzón visible. Los hilos solo-oficina desaparecen; un hilo mixto se muestra entero.
-        var ids = AsArray(visibleAccountIds);
-        return query.Where(x =>
-            db.IncomingEmails.Any(ie =>
-                ie.EmailThreadId == x.Id && ie.DeletedAtUtc == null && ids.Contains(ie.AccountId)
-            )
-            || db.Drafts.Any(d =>
-                d.EmailThreadId == x.Id
-                && d.Status == DraftStatus.Sent
-                && d.DeletedAtUtc == null
-                && ids.Contains(d.AccountId)
-            )
-        );
-    }
+    ) => MailVisibilityQueries.WithMailboxGate(db, query, visibleAccountIds);
 
     public async Task<bool> HasVisibleMessageAsync(
         Guid tenantId,
@@ -239,7 +218,7 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
             );
     }
 
-    private static Guid[] AsArray(IReadOnlyCollection<Guid> ids) => ids as Guid[] ?? ids.ToArray();
+    private static Guid[] AsArray(IReadOnlyCollection<Guid> ids) => MailVisibilityQueries.AsArray(ids);
 
     private static int ClampPageSize(int requested) =>
         requested switch

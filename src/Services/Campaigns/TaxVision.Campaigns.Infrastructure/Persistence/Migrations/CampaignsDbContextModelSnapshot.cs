@@ -598,6 +598,9 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(0);
 
+                    b.Property<Guid?>("RunAsUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -619,6 +622,53 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_CampaignSchedules_TenantId_CampaignId");
 
                     b.ToTable("CampaignSchedules", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Scheduling.CampaignScheduleHandover", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FromUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PerformedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ScheduleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SourceEventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("ToCanViewAllCustomers")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("ToUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "FromUserId")
+                        .HasDatabaseName("IX_CampaignScheduleHandovers_TenantId_FromUserId");
+
+                    b.HasIndex("TenantId", "ScheduleId")
+                        .HasDatabaseName("IX_CampaignScheduleHandovers_TenantId_ScheduleId");
+
+                    b.ToTable("CampaignScheduleHandovers", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Senders.SenderProfile", b =>

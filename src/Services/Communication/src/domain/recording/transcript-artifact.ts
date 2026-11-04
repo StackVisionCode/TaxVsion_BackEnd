@@ -25,7 +25,12 @@ export interface TranscriptArtifactSnapshot {
   readonly failureReason: string | null;
   readonly createdAtUtc: Date;
   readonly completedAtUtc: Date | null;
+  /** MNT-01 (E-292): CloudStorage confirmo el .txt; null = todavia no se sabe si existe. */
+  readonly filesConfirmedAtUtc: Date | null;
 }
+
+/** Que archivo del transcript solto un rechazo de CloudStorage. */
+export type ReleasedTranscriptFile = 'txt' | 'json' | null;
 
 export interface TranscriptResult {
   readonly txtFileId: string | null;
@@ -79,6 +84,7 @@ export class TranscriptArtifact {
       failureReason: null,
       createdAtUtc: input.now ?? new Date(),
       completedAtUtc: null,
+      filesConfirmedAtUtc: null,
     });
   }
 
@@ -89,6 +95,7 @@ export class TranscriptArtifact {
       state: 'Processing',
       failureReason: null,
       completedAtUtc: null,
+      filesConfirmedAtUtc: null,
       createdAtUtc: now,
     };
   }
@@ -113,8 +120,38 @@ export class TranscriptArtifact {
       realtimeFactor: result.realtimeFactor,
       failureReason: null,
       completedAtUtc: now,
+      filesConfirmedAtUtc: null,
     };
     return Result.okVoid();
+  }
+
+  /** CloudStorage confirmo el .txt (disponible tras el escaneo). */
+  confirmFiles(now: Date = new Date()): void {
+    if (this.state.state !== 'Ready' || this.state.filesConfirmedAtUtc) return;
+    this.state = { ...this.state, filesConfirmedAtUtc: now };
+  }
+
+  /**
+   * CloudStorage rechazo o nunca registro un archivo del transcript. Sin el .txt no hay transcript que
+   * mostrar: queda Failed y se suelta el puntero; sin el .json solo se suelta ese id.
+   */
+  releaseRejectedFile(fileId: string, reason: string, now: Date = new Date()): ReleasedTranscriptFile {
+    if (fileId === this.state.txtFileId) {
+      this.state = {
+        ...this.state,
+        state: 'Failed',
+        txtFileId: null,
+        failureReason: `StorageRejected:${reason}`.slice(0, 64),
+        completedAtUtc: now,
+        filesConfirmedAtUtc: null,
+      };
+      return 'txt';
+    }
+    if (fileId === this.state.jsonFileId) {
+      this.state = { ...this.state, jsonFileId: null };
+      return 'json';
+    }
+    return null;
   }
 
   fail(reason: string, now: Date = new Date()): void {

@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Audit;
@@ -44,12 +45,25 @@ public static class CompleteOAuthConnectHandler
         ISmtpCredentialsRepository smtpCredentialsRepository,
         IImapCredentialsRepository imapCredentialsRepository,
         IProviderSyncCursorRepository providerSyncCursorRepository,
+        IUserPermissionsProjectionReader initiatorProjections,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        // El state dura ~10 min y no se busca por usuario: si lo retiraron o suspendieron entretanto,
+        // no se canjea el código ni se toca nada (va antes de cualquier efecto).
+        var initiatorCheck = await ConnectInitiatorGuard.EnsureActiveAsync(
+            cmd.TenantId,
+            cmd.InitiatedByUserId,
+            cmd.InitiatorIsPlatformAdmin,
+            initiatorProjections,
+            ct
+        );
+        if (initiatorCheck.IsFailure)
+            return Result.Failure<CompleteOAuthConnectResult>(initiatorCheck.Error);
+
         var clientResult = clientFactory.Resolve(cmd.ProviderCode);
         if (clientResult.IsFailure)
             return Result.Failure<CompleteOAuthConnectResult>(clientResult.Error);
@@ -95,6 +109,8 @@ public static class CompleteOAuthConnectHandler
 
         TenantEmailAccount account;
         OAuthConnection? existingConnection = null;
+        // Reautorizar una conexión activa solo para ampliar permisos: el watch ya corre, no se rearma.
+        var widensActiveGrant = false;
         if (isNewAccount)
         {
             var createResult = TenantEmailAccount.Create(
@@ -122,7 +138,13 @@ public static class CompleteOAuthConnectHandler
             if (existingConnectionResult.IsSuccess)
             {
                 existingConnection = existingConnectionResult.Value;
-                if (existingConnection.Status is OAuthConnectionStatus.Active or OAuthConnectionStatus.Pending)
+                widensActiveGrant =
+                    existingConnection.Status == OAuthConnectionStatus.Active
+                    && existingConnection.MissingScopes(client.ConfiguredScope).Count > 0;
+                if (
+                    !widensActiveGrant
+                    && existingConnection.Status is OAuthConnectionStatus.Active or OAuthConnectionStatus.Pending
+                )
                     return Result.Failure<CompleteOAuthConnectResult>(
                         new Error(
                             "CompleteOAuthConnectHandler.AlreadyConnected",
@@ -131,6 +153,10 @@ public static class CompleteOAuthConnectHandler
                     );
             }
         }
+
+        // Fila desconectada que era personal de otra persona (p. ej. un retirado re-invitado): pasa a quien conecta.
+        if (!isNewAccount)
+            account.ReassignOwnerOnReconnect(cmd.AsOffice ? null : cmd.InitiatedByUserId);
 
         if (existingConnection is not null)
         {
@@ -201,7 +227,23 @@ public static class CompleteOAuthConnectHandler
                 providerSyncCursorRepository.Remove(staleCursor.Value);
         }
 
+        // Un grant nuevo prueba que alguien vigente tiene acceso: se cierra una revisión pendiente.
+        account.ClearReview();
+
         await unitOfWork.SaveChangesAsync(ct);
+
+        if (widensActiveGrant && account.Status == TenantEmailAccountStatus.Active)
+        {
+            await AuditAsync(
+                account,
+                $"Updated permissions for {account.EmailAddress} via {cmd.ProviderCode}.",
+                now,
+                auditLogRepository,
+                unitOfWork,
+                ct
+            );
+            return Result.Success(new CompleteOAuthConnectResult(account.Id, account.EmailAddress));
+        }
 
         // WatchActivationService publica ConnectorsTenantEmailAccountConnected al activar (punto único
         // compartido con el reauth), así que acá ya no se publica — se evita el doble evento.
@@ -219,19 +261,38 @@ public static class CompleteOAuthConnectHandler
         if (watchResult.IsFailure)
             return Result.Failure<CompleteOAuthConnectResult>(watchResult.Error);
 
+        await AuditAsync(
+            account,
+            $"Connected {account.EmailAddress} via {cmd.ProviderCode}.",
+            now,
+            auditLogRepository,
+            unitOfWork,
+            ct
+        );
+
+        return Result.Success(new CompleteOAuthConnectResult(account.Id, account.EmailAddress));
+    }
+
+    private static async Task AuditAsync(
+        TenantEmailAccount account,
+        string detail,
+        DateTime now,
+        IProviderConnectionAuditLogRepository auditLogRepository,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
         var auditResult = ProviderConnectionAuditLog.Create(
             account.Id,
             ProviderConnectionAuditAction.Connect,
-            $"Connected {account.EmailAddress} via {cmd.ProviderCode}.",
+            detail,
             "Success",
             now
         );
-        if (auditResult.IsSuccess)
-        {
-            await auditLogRepository.AddAsync(auditResult.Value, ct);
-            await unitOfWork.SaveChangesAsync(ct);
-        }
+        if (auditResult.IsFailure)
+            return;
 
-        return Result.Success(new CompleteOAuthConnectResult(account.Id, account.EmailAddress));
+        await auditLogRepository.AddAsync(auditResult.Value, ct);
+        await unitOfWork.SaveChangesAsync(ct);
     }
 }

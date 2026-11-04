@@ -14,6 +14,8 @@ public sealed class RefundLine : BaseEntity
     public Money Amount { get; private set; } = null!;
     public string Reason { get; private set; } = default!;
     public string? ExternalRefundReference { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid RequestedByUserId { get; private set; }
     public DateTime RefundedAtUtc { get; private set; }
 

@@ -1,3 +1,5 @@
+using TaxVision.Connectors.Application.OAuth;
+
 namespace TaxVision.Connectors.Application.Accounts;
 
 public static class ListTenantEmailAccountsHandler
@@ -5,6 +7,8 @@ public static class ListTenantEmailAccountsHandler
     public static async Task<IReadOnlyList<TenantEmailAccountDto>> Handle(
         ListTenantEmailAccountsQuery query,
         ITenantEmailAccountRepository accountRepository,
+        IOAuthConnectionRepository connectionRepository,
+        IOAuthProviderClientFactory clientFactory,
         CancellationToken ct
     )
     {
@@ -14,18 +18,6 @@ public static class ListTenantEmailAccountsHandler
             query.CanSeeOffice,
             ct
         );
-        return accounts
-            .Select(a => new TenantEmailAccountDto(
-                a.Id,
-                a.EmailAddress,
-                a.ProviderCode.ToString(),
-                a.DisplayName,
-                a.Status.ToString(),
-                a.ConnectedAtUtc,
-                a.CreatedAtUtc,
-                a.OwnerUserId,
-                a.IsOffice
-            ))
-            .ToList();
+        return await TenantEmailAccountDtoFactory.CreateAsync(accounts, connectionRepository, clientFactory, ct);
     }
 }

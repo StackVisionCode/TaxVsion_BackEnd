@@ -16,6 +16,7 @@ public sealed record RawMessageAttachment(
     string? PartId = null
 );
 
+/// <param name="ContentType">Tipo MIME raíz (ej. multipart/report) cuando el proveedor ya lo trae gratis; null si no.</param>
 public sealed record RawMessage(
     string ProviderMessageId,
     string? ProviderThreadId,
@@ -31,7 +32,8 @@ public sealed record RawMessage(
     string Snippet,
     DateTime ReceivedAtUtc,
     IReadOnlyList<RawMessageAttachment> Attachments,
-    AuthenticationSignals AuthenticationSignals
+    AuthenticationSignals AuthenticationSignals,
+    string? ContentType = null
 )
 {
     public bool HasAttachments => Attachments.Count > 0;

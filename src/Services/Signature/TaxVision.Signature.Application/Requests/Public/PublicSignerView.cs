@@ -26,5 +26,16 @@ public sealed record PublicSignerView(
     IReadOnlyList<PublicSignerDocumentView> Documents,
     IReadOnlyList<PublicSignerFieldView> Fields,
     string TenantSubDomain,
-    bool PartialCopyWillBeSent
+    bool PartialCopyWillBeSent,
+    // Cómo se estampan sus campos (formato de fecha y rango de la letra automática).
+    PublicStampStyleView StampStyle
+);
+
+public sealed record PublicStampStyleView(
+    string DatePattern,
+    int AutoFontMinPt,
+    int AutoFontMaxPt,
+    double AutoHeightRatio,
+    // Piso al achicar un texto que no cabe.
+    int MinFontSizePt
 );

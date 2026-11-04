@@ -22,6 +22,8 @@ public sealed class TenantPaymentMandate : BaseEntity
     public string ConsentTextVersion { get; private set; } = default!;
     public string ConsentIpAddress { get; private set; } = default!;
     public string? ConsentUserAgent { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "Aceptación legal del mandato de cobro.")]
     public Guid AcceptedByUserId { get; private set; }
     public DateTime AcceptedAtUtc { get; private set; }
     public long AgreedAmountCents { get; private set; }

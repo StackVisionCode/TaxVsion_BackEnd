@@ -65,11 +65,3 @@ public enum InvoiceAdjustmentType
     Promo,
     Gift,
 }
-
-/// <summary>Política de reinicio de la numeración server-side por tenant.</summary>
-public enum NumberResetPolicy
-{
-    None,
-    Yearly,
-    Monthly,
-}

@@ -25,6 +25,9 @@ export class PrismaMeetingRepository implements MeetingRepository {
           PasscodeHash: snapshot.passcodeHash,
           RequireWaitingRoom: snapshot.requireWaitingRoom,
           IsLocked: snapshot.isLocked,
+          GuestsAllowed: snapshot.guestsAllowed,
+          GuestLinkEnabled: snapshot.guestLinkEnabled,
+          GuestLinkVersion: snapshot.guestLinkVersion,
           MaxParticipants: snapshot.maxParticipants,
           Strategy: snapshot.strategy,
           RecordingRequested: snapshot.recordingRequested,
@@ -54,6 +57,9 @@ export class PrismaMeetingRepository implements MeetingRepository {
           PasscodeHash: snapshot.passcodeHash,
           RequireWaitingRoom: snapshot.requireWaitingRoom,
           IsLocked: snapshot.isLocked,
+          GuestsAllowed: snapshot.guestsAllowed,
+          GuestLinkEnabled: snapshot.guestLinkEnabled,
+          GuestLinkVersion: snapshot.guestLinkVersion,
           Strategy: snapshot.strategy,
           RecordingFileId: snapshot.recordingFileId,
           TranscriptFileId: snapshot.transcriptFileId,
@@ -158,6 +164,43 @@ export class PrismaMeetingRepository implements MeetingRepository {
     });
   }
 
+  async listScheduledWithParticipant(tenantId: string, userId: string): Promise<Meeting[]> {
+    const rows = await this.prisma.meeting.findMany({
+      where: scheduledWithParticipantWhere(tenantId, userId),
+      include: { Participants: true },
+      orderBy: { CreatedAtUtc: 'asc' },
+    });
+    return rows.map((row) => toDomainMeeting(row, row.Participants));
+  }
+
+  async countScheduledWithParticipant(tenantId: string, userId: string): Promise<number> {
+    return this.prisma.meeting.count({
+      where: {
+        TenantId: tenantId,
+        Status: 'Scheduled',
+        HostUserId: { not: userId },
+        OR: [
+          { Participants: { some: { UserId: userId, Status: { not: 'Removed' } } } },
+          { Invitations: { some: { TenantId: tenantId, InviteeUserId: userId, RevokedAtUtc: null, ClosedAtUtc: null } } },
+        ],
+      },
+    });
+  }
+
+  async listOpenInvitationsForInvitee(tenantId: string, inviteeUserId: string): Promise<MeetingInvitation[]> {
+    const rows = await this.prisma.meetingInvitation.findMany({
+      where: {
+        TenantId: tenantId,
+        InviteeUserId: inviteeUserId,
+        RevokedAtUtc: null,
+        ClosedAtUtc: null,
+        Meeting: { Status: { in: [...UPCOMING_STATUSES] } },
+      },
+      orderBy: { CreatedAtUtc: 'asc' },
+    });
+    return rows.map(toDomainMeetingInvitation);
+  }
+
   /** Todas las oficinas: el scheduler de ciclo de vida recorre las reuniones en curso. */
   async listLive(input: { take: number }): Promise<Meeting[]> {
     const rows = await this.prisma.meeting.findMany({
@@ -199,6 +242,15 @@ export class PrismaMeetingRepository implements MeetingRepository {
 
   async findByShortCodeAnyTenant(shortCode: string): Promise<Meeting | null> {
     const row = await this.prisma.meeting.findFirst({ where: { ShortCode: shortCode } });
+    if (!row) return null;
+    const participants = await this.prisma.meetingParticipant.findMany({
+      where: { MeetingId: row.Id, TenantId: row.TenantId },
+    });
+    return toDomainMeeting(row, participants);
+  }
+
+  async findByIdAnyTenant(meetingId: string): Promise<Meeting | null> {
+    const row = await this.prisma.meeting.findFirst({ where: { Id: meetingId } });
     if (!row) return null;
     const participants = await this.prisma.meetingParticipant.findMany({
       where: { MeetingId: row.Id, TenantId: row.TenantId },
@@ -381,5 +433,15 @@ function meetingsForUserWhere(
     TenantId: input.tenantId,
     Status: { in: statuses },
     AND: conditions,
+  };
+}
+
+/** Retiro: agendadas de otro host donde el usuario sigue como participante (no Removed). */
+function scheduledWithParticipantWhere(tenantId: string, userId: string): Prisma.MeetingWhereInput {
+  return {
+    TenantId: tenantId,
+    Status: 'Scheduled',
+    HostUserId: { not: userId },
+    Participants: { some: { UserId: userId, Status: { not: 'Removed' } } },
   };
 }

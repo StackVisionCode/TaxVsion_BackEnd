@@ -7,6 +7,7 @@ using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.CustomerAccess;
@@ -70,6 +71,7 @@ public static class InitiateUploadHandler
         ISystemFolderProvisioner systemFolders,
         IObjectStorage storage,
         IOptions<CloudStorageOptions> options,
+        IStoragePlatformSettingsProvider platform,
         IUploadPolicyResolver uploadPolicies,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
@@ -79,6 +81,7 @@ public static class InitiateUploadHandler
     {
         var request = command.Request;
         var config = options.Value;
+        var platformSettings = await platform.GetAsync(ct);
 
         var denied = await PortalUploadDenyGuard.EnsurePortalUploadAllowedAsync(
             command.Scope,
@@ -112,7 +115,7 @@ public static class InitiateUploadHandler
             limits,
             keyBuilder,
             systemFolders,
-            config,
+            platformSettings,
             uploadPolicies,
             clock,
             bus,
@@ -140,7 +143,7 @@ public static class InitiateUploadHandler
             )
         );
 
-        var lifetime = TimeSpan.FromMinutes(Math.Clamp(config.PresignedUrlMinutes, 1, 60));
+        var lifetime = TimeSpan.FromMinutes(platformSettings.SignedUrlMinutes);
         var upload = await storage.CreateUploadPolicyAsync(
             config.TempBucket,
             file.ObjectKey,
@@ -354,7 +357,13 @@ public static class ScanFileHandler
             var limit =
                 await limits.GetAsync(command.TenantId, ct)
                 ?? throw new InvalidOperationException("Tenant quota projection is missing.");
-            var uploadPolicy = await uploadPolicies.ResolveAsync(command.TenantId, limit.PlanCode, file.FolderType, ct);
+            var uploadPolicy = await uploadPolicies.ResolveAsync(
+                command.TenantId,
+                limit,
+                file.FolderType,
+                forCustomerPortal: false,
+                ct
+            );
             if (
                 !inspected.IsSafe
                 || !FileTypeCompatibility.Matches(file.OriginalName, inspected.ContentType)
@@ -672,7 +681,7 @@ public static class DeleteFileHandler
         DeleteFileCommand command,
         IFileObjectRepository files,
         IStorageAuditRepository audit,
-        IOptions<CloudStorageOptions> options,
+        IStoragePlatformSettingsProvider platform,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -692,7 +701,7 @@ public static class DeleteFileHandler
                 )
             );
 
-        var retentionDays = options.Value.RecycleBinRetentionDays;
+        var retentionDays = (await platform.GetAsync(ct)).RecycleBinRetentionDays;
         var result = file.SoftDelete(clock.UtcNow, TimeSpan.FromDays(retentionDays));
         if (result.IsFailure)
             return result;

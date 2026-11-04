@@ -49,6 +49,17 @@ public static class ShareErrors
         "ShareLink.PasswordRequiredForLinkShare",
         "This tenant requires a password on external share links."
     );
+
+    public static Error PasswordTooShort(int minLength) =>
+        new("ShareLink.PasswordTooShort", $"Share link passwords must have at least {minLength} characters.");
+
+    public static Error DownloadsExceedMax(int max) =>
+        new("ShareLink.DownloadsExceedMax", $"External share links allow at most {max} downloads.");
+
+    public static readonly Error PasswordLocked = new(
+        "ShareLink.PasswordLocked",
+        "Too many wrong passwords. Try again later."
+    );
     public static readonly Error ShareLifetimeExceedsMax = new(
         "ShareLink.ShareLifetimeExceedsMax",
         "The expiration exceeds the maximum lifetime allowed for external share links."

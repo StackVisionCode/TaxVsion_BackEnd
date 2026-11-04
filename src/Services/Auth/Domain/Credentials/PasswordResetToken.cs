@@ -8,6 +8,11 @@ public sealed class PasswordResetToken : TenantEntity
 
     private PasswordResetToken() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Inerte: canjearlo exige usuario activo."
+    )]
     public Guid UserId { get; private set; }
     public string TokenHash { get; private set; } = default!;
     public string? RequestedIp { get; private set; }

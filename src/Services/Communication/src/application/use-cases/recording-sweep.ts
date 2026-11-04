@@ -13,6 +13,9 @@ import {
   warnRecordingLimit,
   type RecordingLifecycleDeps,
 } from './recording-lifecycle.js';
+import { findRecordingTranscript } from '../services/recording-transcript-lookup.js';
+import type { TranscriptArtifact } from '../../domain/recording/transcript-artifact.js';
+import { markTranscriptFileAvailable, releaseRejectedTranscriptFile } from './transcript-file-status.js';
 
 export interface RecordingSweepDeps extends RecordingLifecycleDeps {
   readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'resolve' | 'platform'>;
@@ -24,12 +27,17 @@ export interface RecordingSweepReport {
   readonly stoppedByLimit: number;
   readonly ready: number;
   readonly failed: number;
+  /** MNT-01 (E-292): transcripts cuyo .txt CloudStorage confirmo / nunca registro. */
+  readonly transcriptsConfirmed: number;
+  readonly transcriptsReleased: number;
 }
 
 /** Estados de CloudStorage que significan "el archivo nunca estara disponible". */
 const REJECTED_FILE_STATUSES = new Set(['Infected', 'Quarantined', 'ScanFailed', 'BlockedByPolicy', 'Rejected', 'Deleted']);
 /** Un archivo recien subido tarda en registrarse/escanearse: no se consulta antes de este margen. */
 const AVAILABILITY_CHECK_GRACE_MS = 60_000;
+/** Transcripts sin confirmar revisados por vuelta (incluye los anteriores a E-292, una sola vez). */
+const TRANSCRIPT_CHECK_BATCH = 50;
 
 /**
  * F7: barrido de grabaciones (lock Redis afuera). (1) aviso y corte por limite (T-35); (2) respaldo de
@@ -80,7 +88,50 @@ export async function runRecordingSweep(now: Date, deps: RecordingSweepDeps): Pr
     failed += 1;
   }
 
-  return { warned, stoppedByLimit, ready, failed };
+  let transcriptsConfirmed = 0;
+  let transcriptsReleased = 0;
+  const unconfirmed =
+    (await deps.transcripts?.listReadyUnconfirmed?.(new Date(now.getTime() - AVAILABILITY_CHECK_GRACE_MS), TRANSCRIPT_CHECK_BATCH)) ?? [];
+  for (const artifact of unconfirmed) {
+    const outcome = await checkTranscriptFile(artifact, now, availabilityTimeoutMs, deps).catch((err: unknown) => {
+      logger.warn({ err, transcriptId: artifact.toSnapshot().id }, 'transcript file check failed');
+      return 'none' as const;
+    });
+    if (outcome === 'confirmed') transcriptsConfirmed += 1;
+    if (outcome === 'released') transcriptsReleased += 1;
+  }
+
+  return { warned, stoppedByLimit, ready, failed, transcriptsConfirmed, transcriptsReleased };
+}
+
+/**
+ * MNT-01 (E-292): respaldo del evento de CloudStorage para el .txt de un transcript. Disponible →
+ * confirmado (no se vuelve a revisar); rechazado o sin registro pasado el plazo → Failed y la reunion
+ * deja de apuntarlo. Sana tambien los transcripts que quedaron apuntando a un archivo inexistente.
+ */
+async function checkTranscriptFile(
+  artifact: TranscriptArtifact,
+  now: Date,
+  timeoutMs: number,
+  deps: RecordingSweepDeps,
+): Promise<'confirmed' | 'released' | 'none'> {
+  const a = artifact.toSnapshot();
+  if (!a.txtFileId || !a.completedAtUtc || !deps.transcripts) return 'none';
+  const statusDeps = { transcripts: deps.transcripts, meetings: deps.meetings, calls: deps.calls };
+  const metadata = await deps.cloudStorageMetadata.getMetadata(a.tenantId, a.txtFileId);
+  if (metadata?.status === 'Available') {
+    await markTranscriptFileAvailable({ tenantId: a.tenantId, fileId: a.txtFileId }, statusDeps);
+    return 'confirmed';
+  }
+  if (metadata?.status && REJECTED_FILE_STATUSES.has(metadata.status)) {
+    await releaseRejectedTranscriptFile({ tenantId: a.tenantId, fileId: a.txtFileId, reason: metadata.status }, statusDeps);
+    return 'released';
+  }
+  if (!metadata && now.getTime() - a.completedAtUtc.getTime() > timeoutMs) {
+    await releaseRejectedTranscriptFile({ tenantId: a.tenantId, fileId: a.txtFileId, reason: 'NotRegistered' }, statusDeps);
+    return 'released';
+  }
+  return 'none';
 }
 
 async function checkAvailability(
@@ -146,7 +197,7 @@ export async function runRecordingRetention(now: Date, deps: RecordingRetentionD
       const s = session.toSnapshot();
       const files: FileDeletionTarget[] = [];
       if (s.recordingFileId) files.push({ fileId: s.recordingFileId, ownerType: 'Communication', ownerId: s.scopeId, folderType: 'Recordings' });
-      const transcript = await deps.transcripts?.findByScope(s.tenantId, s.scope, s.scopeId);
+      const transcript = deps.transcripts ? await findRecordingTranscript(deps.transcripts, session) : null;
       const t = transcript?.toSnapshot();
       if (t?.txtFileId) files.push({ fileId: t.txtFileId, ownerType: 'Communication', ownerId: s.scopeId, folderType: 'Transcripts' });
       if (t?.jsonFileId) files.push({ fileId: t.jsonFileId, ownerType: 'Communication', ownerId: s.scopeId, folderType: 'Transcripts' });
@@ -157,13 +208,13 @@ export async function runRecordingRetention(now: Date, deps: RecordingRetentionD
       if (s.scope === RecordingScope.Meeting) {
         const meeting = await deps.meetings.findById(s.tenantId, s.scopeId);
         if (meeting) {
-          meeting.clearRecordingFiles();
+          meeting.clearRecordingFiles({ recordingFileId: s.recordingFileId, transcriptFileId: t?.txtFileId ?? null });
           await deps.meetings.save(meeting);
         }
       } else {
         const call = await deps.calls.findById(s.tenantId, s.scopeId);
         if (call) {
-          call.clearRecordingFiles();
+          call.clearRecordingFiles({ recordingFileId: s.recordingFileId, transcriptFileId: t?.txtFileId ?? null });
           await deps.calls.save(call);
         }
       }

@@ -10,7 +10,9 @@ import { requestVoiceNoteTranscript } from '../../../application/use-cases/reque
 import { createAttachmentUpload } from '../../../application/use-cases/create-attachment-upload.js';
 import { completeAttachmentUpload } from '../../../application/use-cases/complete-attachment-upload.js';
 import { CloudStorageUploadError } from '../../../infrastructure/cloudstorage/http-cloudstorage-upload-client.js';
-import { CommunicationPermissions, checkPermission } from '../../../domain/shared/permissions.js';
+import { CommunicationPermissions, checkPermission, isStaffActor } from '../../../domain/shared/permissions.js';
+import { seesAllCustomers } from '../../../application/use-cases/customer-visibility.js';
+import { listClosedClientChats } from '../../../application/use-cases/closed-client-chat-access.js';
 import { CONTENT_PAGE_MAX, listConversationContent } from '../../../application/use-cases/list-conversation-content.js';
 import { listConversationAudit } from '../../../application/use-cases/list-conversation-audit.js';
 import { completeGroupAvatarUpload, createGroupAvatarUpload } from '../../../application/use-cases/group-avatar-upload.js';
@@ -42,6 +44,7 @@ function attachmentHttpStatus(code: string): number {
     case 'Chat.Attachment.Deleted':
       return 410;
     case 'Chat.Attachment.Pending':
+    case 'Chat.Conversation.ParticipantLeft':
       return 409;
     default:
       return 400;
@@ -109,6 +112,25 @@ export async function registerConversationRoutes(
     },
   );
 
+  // GET /communication/customers/:customerId/closed-chats — D-4: chats del cliente cerrados por el retiro de su
+  // staff (historial de procedencia). Los abre GET .../messages en solo lectura. Solo staff que ve al cliente.
+  app.get(
+    '/communication/customers/:customerId/closed-chats',
+    { preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const forbidden = { code: 'Auth.Forbidden', message: 'Only office staff who can see this client can read these chats.' };
+      if (!isStaffActor(principal.actorType)) return reply.code(403).send(forbidden);
+      const { customerId } = z.object({ customerId: z.string().uuid() }).parse(request.params);
+      const canSee =
+        (await seesAllCustomers(principal, container.userPermissions)) ||
+        (await container.customerAssignments.isAssigned(principal.tenantId, customerId, principal.userId));
+      if (!canSee) return reply.code(403).send(forbidden);
+      const items = await listClosedClientChats({ tenantId: principal.tenantId, customerId }, container);
+      return reply.send({ items });
+    },
+  );
+
   // GET /communication/conversations/:id/messages
   app.get(
     '/communication/conversations/:id/messages',
@@ -124,6 +146,7 @@ export async function registerConversationRoutes(
           tenantId: principal.tenantId,
           conversationId: params.id,
           requesterUserId: principal.userId,
+          requesterActorType: principal.actorType,
           ...(query.before !== undefined ? { beforeUtc: query.before } : {}),
           ...(query.since !== undefined ? { afterUtc: query.since } : {}),
           take: query.take,
@@ -243,6 +266,7 @@ export async function registerConversationRoutes(
           userId: principal.userId,
           conversationId: params.id,
           fileId: params.fileId,
+          actorType: principal.actorType,
         },
         container,
       );
@@ -490,6 +514,7 @@ export async function registerConversationRoutes(
           userId: principal.userId,
           conversationId: params.id,
           fileId: params.fileId,
+          actorType: principal.actorType,
         },
         container,
       );

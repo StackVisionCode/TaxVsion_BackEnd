@@ -197,6 +197,29 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
             )
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<FormRequest>> ListOpenByEffectiveResponsibleAsync(
+        Guid tenantId,
+        Guid userId,
+        int take,
+        CancellationToken ct = default
+    ) => await OpenByEffectiveResponsible(tenantId, userId).OrderBy(item => item.Id).Take(take).ToListAsync(ct);
+
+    public Task<int> CountOpenByEffectiveResponsibleAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        OpenByEffectiveResponsible(tenantId, userId).CountAsync(ct);
+
+    private IQueryable<FormRequest> OpenByEffectiveResponsible(Guid tenantId, Guid userId) =>
+        context
+            .FormRequests.IgnoreQueryFilters()
+            .Where(item =>
+                item.TenantId == tenantId
+                && item.Status != FormRequestStatus.Completed
+                && item.Status != FormRequestStatus.Cancelled
+                && (
+                    item.ResponsibleUserId == userId
+                    || (item.ResponsibleUserId == null && item.RequestedByUserId == userId)
+                )
+            );
+
     public async Task<IReadOnlyList<FormRequest>> ListByCustomerAsync(
         Guid tenantId,
         Guid customerId,

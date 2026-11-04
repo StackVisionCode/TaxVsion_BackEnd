@@ -231,6 +231,26 @@ public sealed class DraftTests
     }
 
     [Fact]
+    public void AttachFile_stores_a_child_row_of_this_draft_and_tenant_that_maps_back_to_the_ref()
+    {
+        var tenantId = Guid.NewGuid();
+        var draft = Draft.CreateNew(tenantId, null, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var attachment = Attachment(sizeBytes: 2048);
+
+        draft.AttachFile(attachment);
+
+        var stored = Assert.Single(draft.Attachments);
+        Assert.NotEqual(Guid.Empty, stored.Id);
+        Assert.Equal(draft.Id, stored.DraftId);
+        Assert.Equal(tenantId, stored.TenantId);
+        var back = stored.ToRef();
+        Assert.Equal(attachment.FileId, back.FileId);
+        Assert.Equal(attachment.Filename, back.Filename);
+        Assert.Equal(attachment.ContentType, back.ContentType);
+        Assert.Equal(2048, back.SizeBytes);
+    }
+
+    [Fact]
     public void AttachFile_attaching_the_same_fileId_twice_is_a_no_op()
     {
         var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
@@ -417,5 +437,20 @@ public sealed class DraftTests
         }
 
         throw new InvalidOperationException($"Unsupported status for this helper: {status}.");
+    }
+
+    [Fact]
+    public void MoveToAccount_ChangesTheMailboxOfAnOpenDraftOnly()
+    {
+        var draft = Draft.CreateNew(Guid.NewGuid(), null, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var office = Guid.NewGuid();
+
+        Assert.True(draft.MoveToAccount(office).IsSuccess);
+        Assert.Equal(office, draft.AccountId);
+        Assert.True(draft.MoveToAccount(Guid.Empty).IsFailure);
+
+        draft.Discard();
+        Assert.True(draft.MoveToAccount(Guid.NewGuid()).IsFailure);
+        Assert.Equal(office, draft.AccountId);
     }
 }

@@ -16,4 +16,19 @@ internal sealed class TenantBrandingRefRepository(SignatureDbContext db) : ITena
 
     public async Task<IReadOnlyList<TenantBrandingRef>> ListAllAsync(CancellationToken ct = default) =>
         await db.TenantBrandingRefs.IgnoreQueryFilters().ToListAsync(ct);
+
+    public Task<TenantLogoRef?> GetLogoAsync(
+        Guid tenantId,
+        TenantLogoSurface surface,
+        CancellationToken ct = default
+    ) =>
+        db
+            .TenantLogoRefs.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(l => l.TenantId == tenantId && l.Surface == surface, ct);
+
+    public async Task<IReadOnlyList<TenantLogoRef>> ListLogosAsync(Guid tenantId, CancellationToken ct = default) =>
+        await db.TenantLogoRefs.IgnoreQueryFilters().Where(l => l.TenantId == tenantId).ToListAsync(ct);
+
+    public async Task AddLogoAsync(TenantLogoRef logo, CancellationToken ct = default) =>
+        await db.TenantLogoRefs.AddAsync(logo, ct);
 }

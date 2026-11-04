@@ -24,6 +24,8 @@ export interface ScheduleMeetingCommand {
   readonly recordingRequested?: boolean;
   /** null/ausente = automático (INV-T01 R-7). */
   readonly transcriptLanguage?: string | null;
+  /** D-69: ausente = lo que permita la oficina; nunca por encima de la oficina. */
+  readonly guestsAllowed?: boolean;
   /** "Start a new meeting" (D-34): reunión de la que ésta es continuación. */
   readonly continuationOfMeetingId?: string | null;
 }
@@ -81,6 +83,7 @@ export async function scheduleMeeting(
     ...(command.scheduledDurationMinutes !== undefined ? { scheduledDurationMinutes: command.scheduledDurationMinutes } : {}),
     recordingRequested: command.recordingRequested ?? false,
     transcriptLanguage: command.transcriptLanguage ?? null,
+    guestsAllowed: effective.meeting.guestsAllowed && (command.guestsAllowed ?? true),
     mediaPolicy,
     durationPolicy,
     continuationOfMeetingId: command.continuationOfMeetingId ?? null,

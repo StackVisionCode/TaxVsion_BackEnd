@@ -80,6 +80,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -103,6 +104,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -122,6 +124,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -161,6 +164,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -177,6 +181,56 @@ public sealed class ListThreadMessagesHandlerTests
         Assert.Equal("Re: Original subject", outboundItem.Subject);
         Assert.Null(outboundItem.From);
         Assert.Equal(["to@example.com"], outboundItem.ToAddresses);
+    }
+
+    [Fact]
+    public async Task Handle_OutboundCarriesCcAndBccSeparately_InboundNever()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var thread = EmailThread.NewFromMessage(tenantId, customerId, "Subject", null, DateTime.UtcNow).Value;
+        var emailThreads = new FakeEmailThreadRepository();
+        await emailThreads.AddAsync(thread);
+        var incomingEmails = new FakeIncomingEmailRepository();
+        await incomingEmails.AddAsync(
+            NewIncomingEmail(tenantId, customerId, thread.Id, DateTime.UtcNow.AddMinutes(-10))
+        );
+
+        var replyContext = ReplyContext.Create(Guid.NewGuid(), thread.Id, null, null, null).Value;
+        var draft = Draft
+            .CreateReply(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid(), replyContext, "Subject")
+            .Value;
+        draft.AutoSave(
+            "Re: Subject",
+            "<p>x</p>",
+            "x",
+            [
+                new DraftRecipientData(Address("to@example.com"), EmailRecipientType.To, null),
+                new DraftRecipientData(Address("cc@example.com"), EmailRecipientType.Cc, null),
+                new DraftRecipientData(Address("bcc@example.com"), EmailRecipientType.Bcc, null),
+            ]
+        );
+        draft.MarkSending();
+        draft.MarkSent(Guid.NewGuid());
+        var drafts = new FakeDraftRepository();
+        await drafts.AddAsync(draft);
+
+        var result = await ListThreadMessagesHandler.Handle(
+            new ListThreadMessagesQuery(tenantId, thread.Id, 1, 20),
+            emailThreads,
+            incomingEmails,
+            drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
+            CancellationToken.None
+        );
+
+        var inbound = result.Value.Items[0];
+        Assert.Null(inbound.CcAddresses);
+        Assert.Null(inbound.BccAddresses);
+        var outbound = result.Value.Items[1];
+        Assert.Equal(["to@example.com"], outbound.ToAddresses);
+        Assert.Equal(["cc@example.com"], outbound.CcAddresses!);
+        Assert.Equal(["bcc@example.com"], outbound.BccAddresses!);
     }
 
     [Fact]
@@ -201,6 +255,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -242,6 +297,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 
@@ -289,6 +345,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
         var page2 = await ListThreadMessagesHandler.Handle(
@@ -296,6 +353,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
         var page3 = await ListThreadMessagesHandler.Handle(
@@ -303,6 +361,7 @@ public sealed class ListThreadMessagesHandlerTests
             emailThreads,
             incomingEmails,
             drafts,
+            new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             CancellationToken.None
         );
 

@@ -7,7 +7,8 @@ public sealed record CreateTenantForOnboardingRequest(
     string OfficeName,
     string Subdomain,
     string AdminEmail,
-    DateTime PaymentCompletedAtUtc
+    DateTime PaymentCompletedAtUtc,
+    string? DefaultTimeZoneId = null
 );
 
 /// <summary>PayFlow (Fase 15) — dispara la creación asíncrona del Tenant real

@@ -14,9 +14,8 @@ public sealed record UpdateSignatureSettingsCommand(
     bool GenerateCertificateByDefault,
     bool AllowEmployeeOwnSignature,
     long MaxPdfBytes,
-    long MaxImageBytes,
     int MaxPagesPerDocument,
-    int RetentionYears,
+    // Los años de retención no van aquí: los fija la oficina en Cumplimiento (Tenant).
     bool AllowPurge,
     // F7 — null = no tocar.
     bool? SendPartialCopyDefault = null,
@@ -24,5 +23,15 @@ public sealed record UpdateSignatureSettingsCommand(
     bool? SendSealedDocumentDefault = null,
     bool? ExpirationEnabledByDefault = null,
     bool? SendCertificateToSignersDefault = null,
-    bool? RequiresConsentByDefault = null
+    bool? RequiresConsentByDefault = null,
+    DeliveryPolicyInput? Delivery = null,
+    bool? ShowSignatureFrame = null,
+    DateStampFormat? DateStampFormat = null
+);
+
+public sealed record DeliveryPolicyInput(
+    int LinkLifetimeDays,
+    bool AllowPublicReissue,
+    bool AttachDocuments,
+    long MaxAttachmentBytes
 );

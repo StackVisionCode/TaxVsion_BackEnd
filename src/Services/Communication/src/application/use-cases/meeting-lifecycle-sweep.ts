@@ -251,7 +251,8 @@ export async function sendDueMeetingReminders(
         .filter((s) => s.revokedAtUtc === null && s.closedAtUtc === null);
       const inviteeUserIds = [...new Set(invitations.flatMap((s) => (s.inviteeUserId ? [s.inviteeUserId] : [])))];
       const invitedEmails = invitations.flatMap((s) => (s.inviteeUserId === null && s.inviteeEmail ? [s.inviteeEmail] : []));
-      const participantUserIds = snapshot.participants.map((p) => p.userId);
+      // Los Removed (p.ej. un empleado retirado) ya no reciben el recordatorio.
+      const participantUserIds = meeting.notifiableUserIds();
       const host = (await deps.tenantHostResolver?.resolveHost(meeting.tenantId)) ?? null;
       const timeZone = (await deps.tenantHostResolver?.resolveTimeZone?.(meeting.tenantId)) ?? null;
       const urls = buildMeetingListUrls({

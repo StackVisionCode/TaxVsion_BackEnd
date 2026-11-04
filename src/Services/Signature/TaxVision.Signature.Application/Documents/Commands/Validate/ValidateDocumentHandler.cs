@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Documents;
 using TaxVision.Signature.Domain.Validation;
 
 namespace TaxVision.Signature.Application.Documents.Commands.Validate;
@@ -9,7 +10,7 @@ namespace TaxVision.Signature.Application.Documents.Commands.Validate;
 /// Preflight de documento antes de subirlo como <c>OriginalFileId</c> de una
 /// <c>SignatureRequest</c>. Fases explícitas por método privado:
 /// <list type="number">
-///   <item>Delegar en <see cref="IDocumentValidator"/> el análisis técnico.</item>
+///   <item>Delegar en <see cref="IPdfInspector"/> el análisis técnico y aplicar los límites del tenant.</item>
 ///   <item>Convertir el veredicto en <see cref="DocumentValidationRecord"/> (Accepted/Rejected).</item>
 ///   <item>Persistir el registro y mapear a la respuesta.</item>
 /// </list>
@@ -18,7 +19,8 @@ public static class ValidateDocumentHandler
 {
     public static async Task<Result<ValidateDocumentResponse>> Handle(
         ValidateDocumentCommand cmd,
-        IDocumentValidator validator,
+        IPdfInspector inspector,
+        IDocumentLimitsResolver limitsResolver,
         IDocumentValidationRepository repository,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -28,7 +30,8 @@ public static class ValidateDocumentHandler
         if (basicChecks.IsFailure)
             return Result.Failure<ValidateDocumentResponse>(basicChecks.Error);
 
-        var outcome = validator.Validate(cmd.Content, cmd.FileName, cmd.ContentType);
+        var limits = await limitsResolver.ResolveAsync(cmd.TenantId, ct);
+        var outcome = DocumentAcceptancePolicy.Combine(inspector.Inspect(cmd.Content, cmd.ContentType), limits);
         var recordResult = BuildRecord(cmd, outcome);
         if (recordResult.IsFailure)
             return Result.Failure<ValidateDocumentResponse>(recordResult.Error);

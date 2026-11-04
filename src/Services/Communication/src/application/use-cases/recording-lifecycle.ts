@@ -52,6 +52,8 @@ import {
   type CallRecordingStateChangedDto,
 } from '../../contracts/socket/call-socket-events.js';
 import type { RecordingComposedPayload, RecordingCompositionFailedPayload } from '../../contracts/events/recording-events.js';
+import { findRecordingTranscript } from '../services/recording-transcript-lookup.js';
+import { recordingStateOf } from '../services/meeting-recording-state.js';
 
 /**
  * F7: transiciones de la grabacion que dispara el SISTEMA (captura server-side, limite, fin de la
@@ -88,14 +90,7 @@ export function emitRecordingState(
 ): void {
   if (!deps.emitter) return;
   const s = session.toSnapshot();
-  const base = {
-    state: s.state,
-    updatedAtUtc: new Date().toISOString(),
-    captureMode: s.captureMode,
-    startedAtUtc: s.startedAtUtc ? s.startedAtUtc.toISOString() : null,
-    maxDurationSeconds: s.maxDurationSeconds,
-    reason: reason ?? (s.state === 'Stopping' ? s.stopReason : s.state === 'Failed' ? s.failureReason : null),
-  };
+  const base = recordingStateOf(session, reason);
   if (s.scope === RecordingScope.Meeting) {
     const dto: MeetingRecordingStateChangedDto = { meetingId: s.scopeId, ...base };
     deps.emitter.emitToMeeting({ tenantId: s.tenantId, meetingId: s.scopeId, event: MeetingSocketEvents.RecordingStateChanged, envelope: envelope(correlationId, dto) });
@@ -222,7 +217,7 @@ export async function stopRecordingBySystem(
   input: { tenantId: string; scope: RecordingScope; scopeId: string; reason: RecordingStopReasonType; correlationId: string },
   deps: RecordingLifecycleDeps,
 ): Promise<Result<void>> {
-  const session = await deps.recordingSessions.findByScope(input.tenantId, input.scope, input.scopeId);
+  const session = await deps.recordingSessions.findLatestByScope(input.tenantId, input.scope, input.scopeId);
   if (!session || session.sessionState !== 'Recording') return Result.okVoid();
   const now = new Date();
   const stopped = session.stop(now, input.reason);
@@ -362,7 +357,7 @@ export async function requestTranscript(session: RecordingSession, deps: Recordi
   if (!effective.recording.transcriptEnabled) return;
 
   if (deps.transcripts) {
-    const existing = await deps.transcripts.findByScope(s.tenantId, s.scope, s.scopeId);
+    const existing = await findRecordingTranscript(deps.transcripts, session);
     const artifact = existing ?? TranscriptArtifact.start({ tenantId: s.tenantId, scope: s.scope, scopeId: s.scopeId, recordingSessionId: s.id });
     if (existing) existing.restart();
     await deps.transcripts.save(artifact);
@@ -445,6 +440,18 @@ async function audioTrackRefs(
   });
 }
 
+/**
+ * D-71: Meeting/Call apuntan al archivo de la grabacion mas reciente que ya tiene uno; una grabacion
+ * anterior que termina de componerse tarde no pisa a una posterior.
+ */
+export async function isNewestWithFile(session: RecordingSession, deps: Pick<RecordingLifecycleDeps, 'recordingSessions'>): Promise<boolean> {
+  const all = await deps.recordingSessions.listByScope(session.toSnapshot().tenantId, session.scope, session.scopeId);
+  return !all.some((other) => {
+    const o = other.toSnapshot();
+    return other.sequence > session.sequence && (o.composedFileId !== null || o.recordingFileId !== null);
+  });
+}
+
 /** Recorder: compuesto subido → Processing; Meeting/Call apuntan al compuesto; se pide el transcript. */
 export async function handleRecordingComposed(
   payload: RecordingComposedPayload,
@@ -452,8 +459,9 @@ export async function handleRecordingComposed(
   deps: RecordingLifecycleDeps,
 ): Promise<void> {
   const correlationId = env.correlationId ?? `recording:${payload.sessionId}`;
-  const session = await deps.recordingSessions.findByScope(env.tenantId, payload.scope, payload.scopeId);
-  if (!session || session.id !== payload.sessionId) {
+  // D-71: por id; puede llegar cuando otra grabacion de la misma reunion ya empezo.
+  const session = await deps.recordingSessions.findById(env.tenantId, payload.sessionId);
+  if (!session || session.scope !== payload.scope || session.scopeId !== payload.scopeId) {
     logger.warn({ sessionId: payload.sessionId }, 'recording.composed for an unknown session');
     return;
   }
@@ -470,12 +478,14 @@ export async function handleRecordingComposed(
     return;
   }
   await deps.recordingSessions.save(session);
-  if (payload.scope === RecordingScope.Meeting) {
-    const meeting = await deps.meetings.findById(env.tenantId, payload.scopeId);
-    if (meeting && meeting.setRecordingFile(payload.composedFileId).isSuccess) await deps.meetings.save(meeting);
-  } else {
-    const call = await deps.calls.findById(env.tenantId, payload.scopeId);
-    if (call && call.setRecordingFile(payload.composedFileId).isSuccess) await deps.calls.save(call);
+  if (await isNewestWithFile(session, deps)) {
+    if (payload.scope === RecordingScope.Meeting) {
+      const meeting = await deps.meetings.findById(env.tenantId, payload.scopeId);
+      if (meeting && meeting.setRecordingFile(payload.composedFileId).isSuccess) await deps.meetings.save(meeting);
+    } else {
+      const call = await deps.calls.findById(env.tenantId, payload.scopeId);
+      if (call && call.setRecordingFile(payload.composedFileId).isSuccess) await deps.calls.save(call);
+    }
   }
   emitRecordingState(deps, session, correlationId);
   await requestTranscript(session, deps, correlationId);
@@ -486,8 +496,8 @@ export async function handleCompositionFailed(
   env: { tenantId: string; correlationId?: string | null },
   deps: RecordingLifecycleDeps,
 ): Promise<void> {
-  const session = await deps.recordingSessions.findByScope(env.tenantId, payload.scope, payload.scopeId);
-  if (!session || session.id !== payload.sessionId) return;
+  const session = await deps.recordingSessions.findById(env.tenantId, payload.sessionId);
+  if (!session || session.scope !== payload.scope || session.scopeId !== payload.scopeId) return;
   logger.warn({ sessionId: payload.sessionId, reason: payload.reason, error: payload.errorMessage }, 'recording composition failed');
   await failRecording(session, payload.reason, deps, env.correlationId ?? `recording:${payload.sessionId}`);
 }
@@ -565,7 +575,7 @@ export async function recomposeRecording(
   input: { tenantId: string; scope: RecordingScope; scopeId: string; correlationId: string },
   deps: RecordingLifecycleDeps,
 ): Promise<Result<void>> {
-  const session = await deps.recordingSessions.findByScope(input.tenantId, input.scope, input.scopeId);
+  const session = await deps.recordingSessions.findLatestByScope(input.tenantId, input.scope, input.scopeId);
   if (!session) return Result.fail(makeError('Recording.NotFound', 'Recording not found.'));
   if (!deps.capture) return Result.fail(makeError('Recording.RecorderUnavailable', 'The recording service is not available.'));
   const begin = session.beginRecomposing();

@@ -24,7 +24,7 @@ public sealed class ReminderPolicyTests
         var now = DateTime.UtcNow;
         var request = NewInProgress(sentAt: now.AddHours(-10), autoReminders: true, intervalHours: 48);
 
-        Assert.False(request.IsReminderDue(now));
+        Assert.False(request.IsReminderDue(now, TestSignatureLimits.MaxRemindersPerRequest));
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public sealed class ReminderPolicyTests
         var now = DateTime.UtcNow;
         var request = NewInProgress(sentAt: now.AddHours(-49), autoReminders: true, intervalHours: 48);
 
-        Assert.True(request.IsReminderDue(now));
+        Assert.True(request.IsReminderDue(now, TestSignatureLimits.MaxRemindersPerRequest));
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public sealed class ReminderPolicyTests
         var now = DateTime.UtcNow;
         var request = NewInProgress(sentAt: now.AddHours(-100), autoReminders: false, intervalHours: 48);
 
-        Assert.False(request.IsReminderDue(now));
+        Assert.False(request.IsReminderDue(now, TestSignatureLimits.MaxRemindersPerRequest));
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public sealed class ReminderPolicyTests
         var request = NewInProgress(sentAt: now.AddHours(-200), autoReminders: true, intervalHours: 24);
         request.RecordReminderDispatched(now.AddHours(-10)); // último hace 10h, intervalo 24h
 
-        Assert.False(request.IsReminderDue(now));
+        Assert.False(request.IsReminderDue(now, TestSignatureLimits.MaxRemindersPerRequest));
     }
 
     [Fact]
@@ -71,6 +71,7 @@ public sealed class ReminderPolicyTests
     private static SignatureRequest NewDraft() =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Test",
@@ -88,6 +89,7 @@ public sealed class ReminderPolicyTests
     {
         var draft = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Test",
@@ -103,11 +105,26 @@ public sealed class ReminderPolicyTests
             )
             .Value;
         var signer = draft
-            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("The Signer").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("The Signer").Value,
+                null
+            )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(sentAt);
         return draft;
     }

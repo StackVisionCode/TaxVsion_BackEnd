@@ -159,6 +159,8 @@ builder.Host.UseWolverine(options =>
     // Verificado E2E: PDF factura → CloudStorage File(Available) → Billing PdfFileId. Ver CloudStorage.Api
     // Program.cs líneas 186-196.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-external-uploads");
+    // Borrado de la copia de firma huérfana cuando CloudStorage rechaza el archivo principal (mismo canal que Tasks).
+    options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
 
     options.ApplyStandardFailurePolicies();
 });

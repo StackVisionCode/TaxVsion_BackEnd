@@ -7,7 +7,8 @@ namespace TaxVision.PaymentClient.Domain.Tenants;
 
 /// <summary>
 /// Proyección local del tenant, alimentada por <c>TenantCreatedIntegrationEvent</c> /
-/// <c>TenantStatusChangedIntegrationEvent</c>. PaymentClient nunca llama a Auth/Tenant en el
+/// <c>TenantStatusChangedIntegrationEvent</c> (y el nombre comercial por
+/// <c>TenantProfileChangedIntegrationEvent</c>). PaymentClient nunca llama a Auth/Tenant en el
 /// hot path de un cobro (§42.2 del diseño) — misma estrategia que PaymentApp.
 /// </summary>
 public sealed class Tenant : BaseEntity
@@ -20,6 +21,20 @@ public sealed class Tenant : BaseEntity
     public bool IsActive { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    /// <summary>Sello <c>UpdatedAtUtc</c> de Tenant del último renombre / cambio de zona aplicado; null =
+    /// nombre y zona del alta. Ordena los <c>TenantUpdatedIntegrationEvent</c>.</summary>
+    public DateTime? SourceUpdatedAtUtc { get; private set; }
+
+    /// <summary>Nombre comercial (DBA) del perfil de la oficina; null = sin dato.</summary>
+    public string? DisplayName { get; private set; }
+
+    /// <summary>Versión del perfil aplicado; 0 = nunca llegó uno. Ordena los
+    /// <c>TenantProfileChangedIntegrationEvent</c>, independiente de <see cref="SourceUpdatedAtUtc"/>.</summary>
+    public long ProfileVersion { get; private set; }
+
+    /// <summary>Nombre de la oficina que ve el cliente pagador: el comercial si existe.</summary>
+    public string CustomerFacingName => DisplayName ?? Name;
 
     private Tenant() { }
 
@@ -70,6 +85,35 @@ public sealed class Tenant : BaseEntity
 
         SubDomain = subDomain.Trim().ToLowerInvariant();
         UpdatedAtUtc = nowUtc;
+    }
+
+    /// <summary>Renombre / cambio de zona publicado por Tenant (estado completo). Ignora un evento más
+    /// viejo que el aplicado; uno igual se reaplica (idempotente). Devuelve <c>true</c> si se aplicó.</summary>
+    public bool ApplyTenantUpdate(string name, string defaultTimeZoneId, DateTime sourceUpdatedAtUtc, DateTime nowUtc)
+    {
+        if (SourceUpdatedAtUtc is { } applied && sourceUpdatedAtUtc < applied)
+            return false;
+        if (string.IsNullOrWhiteSpace(name) || !IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalized))
+            return false;
+
+        Name = name.Trim();
+        DefaultTimeZoneId = normalized;
+        SourceUpdatedAtUtc = sourceUpdatedAtUtc;
+        UpdatedAtUtc = nowUtc;
+        return true;
+    }
+
+    /// <summary>Perfil publicado por Tenant (estado completo). Ignora una versión menor o igual a la
+    /// aplicada (repetido o fuera de orden). Devuelve <c>true</c> si se aplicó.</summary>
+    public bool ApplyProfile(long version, string? displayName, DateTime nowUtc)
+    {
+        if (version <= ProfileVersion)
+            return false;
+
+        DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim();
+        ProfileVersion = version;
+        UpdatedAtUtc = nowUtc;
+        return true;
     }
 
     public void ApplyStatusChange(string status, bool isActive, DateTime nowUtc)

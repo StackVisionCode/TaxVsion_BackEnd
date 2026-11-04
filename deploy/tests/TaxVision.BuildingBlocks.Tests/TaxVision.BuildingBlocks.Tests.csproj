@@ -12,6 +12,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
+    <!-- Host real de Wolverine en los tests de la política del acuse del retiro (codegen en runtime). -->
+    <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.14.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

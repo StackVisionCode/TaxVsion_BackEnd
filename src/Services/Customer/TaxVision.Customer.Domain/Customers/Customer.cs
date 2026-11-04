@@ -50,13 +50,21 @@ public sealed class Customer : TenantEntity
     public Guid? ProfilePictureModerationFileId { get; private set; }
     public ProfilePictureModerationState? ProfilePictureModerationState { get; private set; }
     public Guid? OccupationId { get; private set; }
+
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "CustomerUserOffboardedConsumer")]
     public Guid? AssignedPreparerUserId { get; private set; }
     public CustomerFiscalProfile? FiscalProfile { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? LastModifiedByUserId { get; private set; }
     public DateTime? ArchivedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? ArchivedByUserId { get; private set; }
 
     public CustomerOrigin? Origin =>
@@ -704,6 +712,22 @@ public sealed class Customer : TenantEntity
             AssignedPreparerUserId = null;
         Touch(byUserId);
         return Result.Success();
+    }
+
+    /// <summary>Suelta a un miembro del staff RETIRADO de un cliente en cualquier estado (incluido archivado):
+    /// quita su fila y, si era el primary, limpia la denormalización. No asigna a nadie: un archivado no recibe
+    /// preparador nuevo, y al reactivarlo la oficina elige uno. Devuelve si era el primary.</summary>
+    public Result<bool> ReleaseOffboardedStaff(Guid userId, Guid byUserId)
+    {
+        var wasPrimary = AssignedPreparerUserId == userId;
+        var removed = _assignments.RemoveAll(a => a.UserId == userId);
+        if (removed == 0 && !wasPrimary)
+            return Result.Failure<bool>(new Error("Customer.NotAssigned", "User is not assigned to this customer."));
+
+        if (wasPrimary)
+            AssignedPreparerUserId = null;
+        Touch(byUserId);
+        return Result.Success(wasPrimary);
     }
 
     // ============== Status transitions ==============

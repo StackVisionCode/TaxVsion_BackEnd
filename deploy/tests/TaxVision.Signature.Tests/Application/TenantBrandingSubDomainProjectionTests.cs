@@ -170,6 +170,17 @@ public sealed class TenantBrandingSubDomainProjectionTests
 
         public Task<IReadOnlyList<TenantBrandingRef>> ListAllAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<TenantBrandingRef>>([.. _store.Values]);
+
+        public Task<TenantLogoRef?> GetLogoAsync(
+            Guid tenantId,
+            TenantLogoSurface surface,
+            CancellationToken ct = default
+        ) => Task.FromResult<TenantLogoRef?>(null);
+
+        public Task<IReadOnlyList<TenantLogoRef>> ListLogosAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<TenantLogoRef>>([]);
+
+        public Task AddLogoAsync(TenantLogoRef logo, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class FakeUow : IUnitOfWork

@@ -149,6 +149,7 @@ public sealed partial class FluidTemplateRenderer(
             request.Locale?.Value,
             logoOwner.Scope,
             logoOwner.TenantId,
+            request.Audience,
             ResolveDispatchScope(layoutResult.Value.LayoutKey.Value, templateResult.Value.DispatchScopeOverride),
             variables,
             ct
@@ -207,6 +208,8 @@ public sealed partial class FluidTemplateRenderer(
             locale: null,
             logoOwner.Scope,
             logoOwner.TenantId,
+            // La vista previa del editor se ve como la ve el equipo.
+            RenderAudience.Staff,
             ResolveDispatchScope(layoutResult.Value.LayoutKey.Value, template.DispatchScopeOverride),
             NormalizeVariables(sampleVariables),
             ct
@@ -310,6 +313,7 @@ public sealed partial class FluidTemplateRenderer(
         string? locale,
         LogoScope logoScope,
         Guid? logoTenantId,
+        RenderAudience audience,
         string dispatchScope,
         IReadOnlyDictionary<string, object?> variables,
         CancellationToken ct
@@ -333,6 +337,7 @@ public sealed partial class FluidTemplateRenderer(
                 locale,
                 logoScope,
                 logoTenantId,
+                audience,
                 dispatchScope,
                 variables,
                 layer => worstCacheLayer = WorstOf(worstCacheLayer, layer),
@@ -365,6 +370,7 @@ public sealed partial class FluidTemplateRenderer(
         string? locale,
         LogoScope logoScope,
         Guid? logoTenantId,
+        RenderAudience audience,
         string dispatchScope,
         IReadOnlyDictionary<string, object?> variables,
         Action<CacheLayer> reportCacheLayer,
@@ -399,7 +405,7 @@ public sealed partial class FluidTemplateRenderer(
         if (bodyHtmlResult.IsFailure)
             return Result.Failure<RenderedContent>(bodyHtmlResult.Error);
 
-        var logoAsset = await logoResolver.ResolveAsync(logoScope, logoTenantId, ct);
+        var logoAsset = await logoResolver.ResolveAsync(logoScope, logoTenantId, audience, ct);
 
         var layoutTemplateResult = await GetOrParseLayoutTemplateAsync(
             BuildCacheKey(tenantId, layoutKeyValue, layoutVersion.VersionNumber, "layout"),
@@ -472,10 +478,11 @@ public sealed partial class FluidTemplateRenderer(
         templateOverride ?? (layoutKey == TenantLayoutKey ? DispatchScopes.TenantPreferred : DispatchScopes.System);
 
     /// <summary>
-    /// <c>tenant_name</c> lo pone el renderer, no el caller. Lo usan el asunto, el cuerpo y el layout de
-    /// oficina (cabecera sin logo y pie), asi que un caller que se olvide deja el correo sin firma —
-    /// paso en produccion: "here is your invoice from ." Si la proyeccion todavia no tiene la oficina,
-    /// vale lo que haya mandado el caller.
+    /// <c>tenant_name</c> lo pone el renderer, no el caller: nombre comercial si la oficina lo cargó, si
+    /// no su nombre. Lo usan el asunto, el cuerpo y el layout de oficina (cabecera sin logo y pie), asi
+    /// que un caller que se olvide deja el correo sin firma — paso en produccion: "here is your invoice
+    /// from ." <c>tenant_address</c> (pie, dirección postal) sale de la proyección solo si el caller no
+    /// mandó una. Si la proyeccion todavia no tiene la oficina, vale lo que haya mandado el caller.
     /// </summary>
     private async Task<IReadOnlyDictionary<string, object?>> WithOfficeNameAsync(
         IReadOnlyDictionary<string, object?> variables,
@@ -491,10 +498,16 @@ public sealed partial class FluidTemplateRenderer(
         if (profile is null)
             return variables;
 
-        return new Dictionary<string, object?>(variables, StringComparer.OrdinalIgnoreCase)
+        var result = new Dictionary<string, object?>(variables, StringComparer.OrdinalIgnoreCase)
         {
-            ["tenant_name"] = profile.Name,
+            ["tenant_name"] = profile.SignatureName,
         };
+        if (
+            profile.PostalAddress is { } address
+            && (!result.TryGetValue("tenant_address", out var sent) || string.IsNullOrWhiteSpace(sent?.ToString()))
+        )
+            result["tenant_address"] = address;
+        return result;
     }
 
     /// <summary>

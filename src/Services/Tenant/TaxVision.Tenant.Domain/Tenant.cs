@@ -9,6 +9,9 @@ namespace TaxVision.Tenant.Domain;
 
 public partial class Tenant : BaseEntity
 {
+    /// <summary>Tope del nombre; lo comparte la columna (TenantConfiguration).</summary>
+    public const int NameMaxLength = 200;
+
     public string Name { get; private set; } = default!;
     public string SubDomain { get; private set; } = default!;
     public TenantKind Kind { get; private set; }
@@ -16,6 +19,10 @@ public partial class Tenant : BaseEntity
     public EnumTenantStatus.TenantStatus Status { get; private set; }
 
     public DateTime CreatedAtUtc { get; private set; }
+
+    /// <summary>Último cambio de nombre o zona horaria. Viaja en <c>TenantUpdatedIntegrationEvent</c>
+    /// para que cada proyección descarte un evento más viejo que lo que ya tiene.</summary>
+    public DateTime UpdatedAtUtc { get; private set; }
 
     /// <summary>PayFlow (Fase 16) — presente solo para tenants creados vía
     /// <c>internal/tenants/from-onboarding</c>. Único índice filtrado: idempotencia de ese endpoint
@@ -31,8 +38,9 @@ public partial class Tenant : BaseEntity
         Guid? onboardingId = null
     )
     {
-        if (string.IsNullOrWhiteSpace(name))
-            return Result.Failure<Tenant>(new Error("Tenant.Name", "Name is required."));
+        var nameResult = ValidateName(name);
+        if (nameResult.IsFailure)
+            return Result.Failure<Tenant>(nameResult.Error);
 
         var sub = (subdomain ?? "").Trim().ToLower();
 
@@ -44,24 +52,20 @@ public partial class Tenant : BaseEntity
                 )
             );
 
-        if (!IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalizedTimeZoneId))
-        {
-            return Result.Failure<Tenant>(
-                new Error(
-                    "Tenant.DefaultTimeZoneId",
-                    "DefaultTimeZoneId must be a valid IANA time zone identifier, for example America/Santo_Domingo."
-                )
-            );
-        }
+        var timeZoneResult = ValidateTimeZone(defaultTimeZoneId);
+        if (timeZoneResult.IsFailure)
+            return Result.Failure<Tenant>(timeZoneResult.Error);
 
+        var nowUtc = DateTime.UtcNow;
         var tenant = new Tenant
         {
-            Name = name.Trim(),
+            Name = nameResult.Value,
             SubDomain = sub,
             Kind = TenantKind.Customer,
-            DefaultTimeZoneId = normalizedTimeZoneId,
+            DefaultTimeZoneId = timeZoneResult.Value,
             Status = EnumTenantStatus.TenantStatus.Active,
-            CreatedAtUtc = DateTime.UtcNow,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
             OnboardingId = onboardingId,
         };
 
@@ -85,6 +89,68 @@ public partial class Tenant : BaseEntity
 
         SubDomain = sub;
         return Result.Success();
+    }
+
+    /// <summary>Renombra la oficina. Devuelve <c>true</c> si el nombre cambió; sin cambio no se toca
+    /// <see cref="UpdatedAtUtc"/> y no hay nada que publicar.</summary>
+    public Result<bool> Rename(string name, DateTime nowUtc)
+    {
+        var guard = GuardEditable();
+        if (guard.IsFailure)
+            return Result.Failure<bool>(guard.Error);
+
+        var nameResult = ValidateName(name);
+        if (nameResult.IsFailure)
+            return Result.Failure<bool>(nameResult.Error);
+
+        if (string.Equals(Name, nameResult.Value, StringComparison.Ordinal))
+            return Result.Success(false);
+
+        Name = nameResult.Value;
+        Touch(nowUtc);
+        return Result.Success(true);
+    }
+
+    /// <summary>Cambia la zona horaria por defecto (IANA). Devuelve <c>true</c> si cambió.</summary>
+    public Result<bool> ChangeTimeZone(string ianaTimeZoneId, DateTime nowUtc)
+    {
+        var guard = GuardEditable();
+        if (guard.IsFailure)
+            return Result.Failure<bool>(guard.Error);
+
+        var timeZoneResult = ValidateTimeZone(ianaTimeZoneId);
+        if (timeZoneResult.IsFailure)
+            return Result.Failure<bool>(timeZoneResult.Error);
+
+        if (string.Equals(DefaultTimeZoneId, timeZoneResult.Value, StringComparison.Ordinal))
+            return Result.Success(false);
+
+        DefaultTimeZoneId = timeZoneResult.Value;
+        Touch(nowUtc);
+        return Result.Success(true);
+    }
+
+    /// <summary>
+    /// Edición de estado completo (nombre + zona horaria) como una sola operación: valida ambos antes
+    /// de tocar nada, así un dato inválido no deja la mitad aplicada. Devuelve <c>true</c> si algo cambió.
+    /// </summary>
+    public Result<bool> UpdateNameAndTimeZone(string name, string ianaTimeZoneId, DateTime nowUtc)
+    {
+        var guard = GuardEditable();
+        if (guard.IsFailure)
+            return Result.Failure<bool>(guard.Error);
+
+        var nameResult = ValidateName(name);
+        if (nameResult.IsFailure)
+            return Result.Failure<bool>(nameResult.Error);
+
+        var timeZoneResult = ValidateTimeZone(ianaTimeZoneId);
+        if (timeZoneResult.IsFailure)
+            return Result.Failure<bool>(timeZoneResult.Error);
+
+        var renamed = Rename(nameResult.Value, nowUtc).Value;
+        var rezoned = ChangeTimeZone(timeZoneResult.Value, nowUtc).Value;
+        return Result.Success(renamed || rezoned);
     }
 
     public Result Suspend()
@@ -131,6 +197,39 @@ public partial class Tenant : BaseEntity
         Status = status;
         return Result.Success();
     }
+
+    // El tenant de plataforma es reservado: su nombre lo fija el seed.
+    private Result GuardEditable() =>
+        Kind == TenantKind.Platform
+            ? Result.Failure(new Error("Tenant.PlatformProtected", "The reserved platform tenant cannot be edited."))
+            : Result.Success();
+
+    // Nunca retrocede: el orden de los eventos depende de este sello.
+    private void Touch(DateTime nowUtc) => UpdatedAtUtc = nowUtc > UpdatedAtUtc ? nowUtc : UpdatedAtUtc;
+
+    private static Result<string> ValidateName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Failure<string>(new Error("Tenant.Name", "Name is required."));
+
+        var trimmed = name.Trim();
+        if (trimmed.Length > NameMaxLength)
+            return Result.Failure<string>(
+                new Error("Tenant.Name", $"Name must be at most {NameMaxLength} characters long.")
+            );
+
+        return Result.Success(trimmed);
+    }
+
+    private static Result<string> ValidateTimeZone(string? ianaTimeZoneId) =>
+        IanaTimeZone.TryNormalize(ianaTimeZoneId, out var normalized)
+            ? Result.Success(normalized)
+            : Result.Failure<string>(
+                new Error(
+                    "Tenant.DefaultTimeZoneId",
+                    "DefaultTimeZoneId must be a valid IANA time zone identifier, for example America/Santo_Domingo."
+                )
+            );
 
     private static Regex MyRegex()
     {

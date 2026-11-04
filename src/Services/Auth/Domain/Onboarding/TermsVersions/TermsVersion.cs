@@ -33,6 +33,8 @@ public sealed class TermsVersion : BaseEntity
     public DateTime? EffectiveUntilUtc { get; private set; }
     public string Locale { get; private set; } = default!;
     public DateTime CreatedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
 
     public static Result<TermsVersion> Publish(
@@ -108,6 +110,21 @@ public sealed class TermsVersion : BaseEntity
 
         ContentUri = contentUri;
         return Result.Success();
+    }
+
+    /// <summary>
+    /// CloudStorage rechazó el documento: ese archivo nunca existirá. La versión deja de servir contenido
+    /// y de estar vigente (vuelve a regir la anterior); para reintentar se publica otra. true si era ese archivo.
+    /// </summary>
+    public bool WithdrawRejectedContent(Guid fileId, DateTime nowUtc)
+    {
+        if (fileId == Guid.Empty || ContentFileId != fileId)
+            return false;
+
+        ContentFileId = null;
+        if (EffectiveUntilUtc is null || EffectiveUntilUtc > nowUtc)
+            EffectiveUntilUtc = nowUtc;
+        return true;
     }
 
     private static bool IsValidContentHash(string? hash)

@@ -70,8 +70,14 @@ public sealed class JsonProtectedPayloadCodec(IRotatingSecretProtector protector
             && intakeLinkId != Guid.Empty
             && binding.FormRequestId is null
             && binding.Participant is null;
+        // Atadura por clave (fuera de Client Forms, p. ej. la entrega de Signature): solo tenant + clave.
+        var keyBound =
+            binding.FormRequestId is null
+            && binding.Participant is null
+            && binding.IntakeLinkId is null
+            && !string.IsNullOrWhiteSpace(binding.IdempotencyKey);
         return binding.TenantId != Guid.Empty
-            && requestBound != intakeBound
+            && new[] { requestBound, intakeBound, keyBound }.Count(bound => bound) == 1
             && binding.ChallengeId != Guid.Empty
             && (binding.IdempotencyKey is null || !string.IsNullOrWhiteSpace(binding.IdempotencyKey));
     }

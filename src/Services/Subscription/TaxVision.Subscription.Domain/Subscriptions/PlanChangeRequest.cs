@@ -28,6 +28,11 @@ public sealed class PlanChangeRequest : BaseEntity
     /// <summary>Null = mantener el ciclo de facturación actual, no se pidió cambiarlo.</summary>
     public BillingCycle? ToBillingCycle { get; private set; }
     public PlanChangeRequestStatus Status { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Provenance,
+        Note = "Actor de registro; el cobro y el aprovisionamiento siguen igual sin él."
+    )]
     public Guid RequestedByUserId { get; private set; }
     public DateTime RequestedAtUtc { get; private set; }
     public DateTime? AppliedAtUtc { get; private set; }
@@ -50,6 +55,8 @@ public sealed class PlanChangeRequest : BaseEntity
     public DateTime? CheckoutExpiresAtUtc { get; private set; }
     public DateTime? CancelledAtUtc { get; private set; }
     public DateTime? ExpiredAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? CancelledByUserId { get; private set; }
     public string? CancelReason { get; private set; }
 

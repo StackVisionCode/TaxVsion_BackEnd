@@ -1,3 +1,5 @@
+using BuildingBlocks.Domain;
+
 namespace TaxVision.Tasks.Domain.Tasks;
 
 /// <summary>De dónde salió el adjunto. Enlazar es el caso dominante en una firma fiscal.</summary>
@@ -42,6 +44,7 @@ public sealed class TaskAttachment
     public AttachmentStatus Status { get; private set; }
     public string? RejectionReason { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid AttachedByUserId { get; }
     public DateTime AttachedAtUtc { get; }
     public DateTime? DetachedAtUtc { get; private set; }

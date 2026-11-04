@@ -5,6 +5,7 @@ import type {
   AttachmentTrackingRepository,
   AttachmentTrackingSnapshot,
 } from '../ports/attachment-tracking-repository.js';
+import { canOfficeReadClosedClientChat, type ClosedClientChatAccessDeps } from './closed-client-chat-access.js';
 
 /**
  * Decision unica de acceso a un adjunto de chat: el archivo existe, pertenece a
@@ -25,9 +26,11 @@ export interface AuthorizeConversationAttachmentCommand {
   readonly userId: string;
   readonly conversationId: string;
   readonly fileId: string;
+  /** D-4: con el tipo de actor, el staff con permiso sobre el cliente abre adjuntos de su chat cerrado por un retiro. */
+  readonly actorType?: string;
 }
 
-export interface AuthorizeConversationAttachmentDeps {
+export interface AuthorizeConversationAttachmentDeps extends ClosedClientChatAccessDeps {
   readonly conversations: ConversationRepository;
   readonly attachmentTracking: AttachmentTrackingRepository;
   /** F8b (D-21): para el corte por ingreso del cliente en grupos. */
@@ -54,7 +57,10 @@ export async function authorizeConversationAttachment(
   if (!conversation) {
     return Result.fail(makeError('Chat.Attachment.NotFound', 'Attachment not found.'));
   }
-  if (!conversation.isParticipant(command.userId)) {
+  if (
+    !conversation.isParticipant(command.userId) &&
+    !(await canOfficeReadClosedClientChat(conversation, { userId: command.userId, actorType: command.actorType }, deps))
+  ) {
     return Result.fail(makeError('Chat.Conversation.NotParticipant', 'User is not a participant.'));
   }
   // F8b (D-21): un adjunto anterior al ingreso del cliente no existe para él (misma respuesta uniforme).

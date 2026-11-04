@@ -16,10 +16,14 @@ public sealed partial class FormParticipant : AggregateRoot
     public DateTime? VerifiedAtUtc { get; private set; }
     public Guid? LinkedCustomerId { get; private set; }
     public DateTime? LinkedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? LinkedByUserId { get; private set; }
     public FormParticipantSource Source { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? LostAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? LostByUserId { get; private set; }
     public string? LostReason { get; private set; }
 

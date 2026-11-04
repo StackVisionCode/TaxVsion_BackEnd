@@ -63,6 +63,27 @@ internal sealed class FormIntakeLinkRepository(TasksDbContext context) : IFormIn
             .OrderByDescending(item => item.CreatedAtUtc)
             .ToArrayAsync(ct);
 
+    public async Task<IReadOnlyList<FormIntakeLink>> ListNotRevokedByResponsibleAsync(
+        Guid tenantId,
+        Guid responsibleUserId,
+        CancellationToken ct = default
+    ) => await NotRevokedByResponsible(tenantId, responsibleUserId).ToArrayAsync(ct);
+
+    public Task<int> CountNotRevokedByResponsibleAsync(
+        Guid tenantId,
+        Guid responsibleUserId,
+        CancellationToken ct = default
+    ) => NotRevokedByResponsible(tenantId, responsibleUserId).CountAsync(ct);
+
+    private IQueryable<FormIntakeLink> NotRevokedByResponsible(Guid tenantId, Guid responsibleUserId) =>
+        context
+            .FormIntakeLinks.IgnoreQueryFilters()
+            .Where(item =>
+                item.TenantId == tenantId
+                && item.ResponsibleUserId == responsibleUserId
+                && item.Status != FormIntakeLinkStatus.Revoked
+            );
+
     public void Add(FormIntakeLink link) => context.FormIntakeLinks.Add(link);
 }
 

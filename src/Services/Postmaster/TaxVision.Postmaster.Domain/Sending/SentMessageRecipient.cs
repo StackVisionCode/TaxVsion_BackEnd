@@ -164,6 +164,13 @@ public sealed class SentMessageRecipient : TenantEntity
             ErrorReason = Truncate(diagnostic, 500);
     }
 
+    /// <summary>Mismo resultado y misma hora (al segundo) que el que ya tiene: el mismo aviso repetido.</summary>
+    internal bool HasRecorded(DeliveryFeedback feedback) =>
+        feedback.Kind == DeliveryFeedbackKind.Outcome
+        && Outcome == feedback.Outcome
+        && OutcomeAtUtc is { } recordedAt
+        && Math.Abs((recordedAt.ToUniversalTime() - feedback.OccurredAtUtc.ToUniversalTime()).TotalSeconds) < 1;
+
     private static bool IsSignal(DeliveryFeedback feedback, EngagementSignal expected) =>
         feedback.Kind == DeliveryFeedbackKind.Signal && feedback.Signal == expected;
 

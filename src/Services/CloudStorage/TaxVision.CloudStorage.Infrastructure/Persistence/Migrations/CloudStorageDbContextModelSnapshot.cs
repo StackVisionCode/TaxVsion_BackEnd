@@ -194,6 +194,118 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerDocumentAccessRules", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.FileTypes.FilePolicyAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("After")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Before")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AtUtc");
+
+                    b.ToTable("FilePolicyAudits", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.FileTypes.FileTypeDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentTypes")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Extension")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Group")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Extension")
+                        .IsUnique();
+
+                    b.ToTable("FileTypeDefinitions", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.FileTypes.FolderFilePolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AllowedExtensions")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("FolderType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<long>("MaxSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("UsesPlanFileSize")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("UsesPlanFileTypes")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FolderType")
+                        .IsUnique();
+
+                    b.ToTable("FolderFilePolicies", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.CloudStorage.Domain.Files.FileObject", b =>
                 {
                     b.Property<Guid>("Id")
@@ -601,6 +713,46 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.ToTable("UserPermissionsProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Platform.StoragePlatformSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("MaxZipAggregateBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("MaxZipFiles")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxZipFolders")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RecycleBinRetentionDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SharePasswordLockMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ShareUrlMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SignedUrlMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("UploadReservationHours")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StoragePlatformSettings", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.CloudStorage.Domain.Providers.CloudProviderOAuthState", b =>
                 {
                     b.Property<Guid>("Id")
@@ -646,6 +798,9 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ConnectedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("ConnectedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ProtectedRefreshToken")
                         .IsRequired()
                         .HasMaxLength(4096)
@@ -655,6 +810,13 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ReviewReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ReviewRequiredAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -762,6 +924,11 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
 
+                    b.Property<int>("DefaultShareLifetimeDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(7);
+
                     b.Property<bool>("IsSuspended")
                         .HasColumnType("bit");
 
@@ -771,15 +938,42 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.Property<long>("MaxFileSizeBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<int?>("MaxShareDownloads")
+                        .HasColumnType("int");
+
                     b.Property<int>("MaxShareLifetimeDays")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(30);
 
+                    b.Property<int>("MaxSharePasswordAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(10);
+
+                    b.Property<int>("MinSharePasswordLength")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(8);
+
                     b.Property<string>("PlanCode")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PlanFileTypeGroups")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)")
+                        .HasDefaultValue("documents,spreadsheets,images,data,media");
+
+                    b.Property<string>("PortalFileTypeGroups")
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<long?>("PortalMaxFileBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<bool>("RequirePasswordOnLinkShares")
                         .ValueGeneratedOnAdd()
@@ -961,6 +1155,11 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ExpiresAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("FailedPasswordAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<bool>("IsRecursive")
                         .HasColumnType("bit");
 
@@ -970,6 +1169,9 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.Property<string>("PasswordHash")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("PasswordLockedUntilUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Permission")
                         .IsRequired()

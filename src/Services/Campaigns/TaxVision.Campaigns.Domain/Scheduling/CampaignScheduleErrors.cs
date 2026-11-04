@@ -27,4 +27,12 @@ public static class CampaignScheduleErrors
         "Invalid state transition."
     );
     public static readonly Error NotFound = new("CampaignSchedule.NotFound", "Schedule not found.");
+    public static readonly Error SuccessorRequired = new(
+        "CampaignSchedule.SuccessorRequired",
+        "A successor is required to hand over the schedule."
+    );
+    public static readonly Error ResumeTakeoverNotAllowed = new(
+        "CampaignSchedule.ResumeTakeoverNotAllowed",
+        "The person this schedule sends on behalf of can no longer send campaigns, and you can't take it over: you need permission to send campaigns in this office."
+    );
 }

@@ -66,6 +66,7 @@ public sealed class SignatureRequestReadServiceAuthorVisibilityTests
     private static SignatureRequest Draft(Guid createdByUserId) =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Tenant,
                 createdByUserId,
                 "Consent 2026",

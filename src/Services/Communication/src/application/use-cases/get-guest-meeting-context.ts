@@ -5,6 +5,8 @@ import type { EffectiveSettingsResolver } from '../ports/effective-settings-reso
 import type { UserDirectoryRepository } from '../ports/user-directory-repository.js';
 import { toMediaPolicyDto, type MediaPolicyDto } from './media-policy-query.js';
 import { resolveUserDisplayName } from './resolve-user-display-name.js';
+import { parseGuestLinkToken, verifyGuestLinkToken } from '../../infrastructure/jwks/guest-link-token.js';
+import type { Meeting } from '../../domain/meetings/meeting.js';
 
 export interface GuestMeetingContextDto {
   readonly meetingTitle: string;
@@ -16,6 +18,10 @@ export interface GuestMeetingContextDto {
   readonly inviteeName: string | null;
   readonly guestsAllowed: boolean;
   readonly waitingRoom: boolean;
+  /** D-68: entra por el enlace de la reunion (el invitado escribe su nombre). */
+  readonly viaMeetingLink: boolean;
+  /** D-68: la reunion esta bloqueada; por el enlace no se puede pedir entrar. */
+  readonly isLocked: boolean;
   /** Politica de media de la oficina (sin preferencias de usuario): el guest no tiene JWT para pedirla. */
   readonly mediaPolicy: MediaPolicyDto;
 }
@@ -35,6 +41,8 @@ const GENERIC_NOT_FOUND = makeError('Meeting.Invitation.NotFound', 'Invitation n
  * (`status: 'Ended'`), igual que la politica de guests apagada (`guestsAllowed: false`).
  */
 export async function getGuestMeetingContext(input: { token: string }, deps: GetGuestMeetingContextDeps): Promise<Result<GuestMeetingContextDto>> {
+  const link = parseGuestLinkToken(input.token);
+  if (link) return guestLinkContext(input.token, link.meetingId, deps);
   const invitation = await deps.meetings.findInvitationByHash(MeetingInvitation.hash(input.token));
   if (!invitation) return Result.fail(GENERIC_NOT_FOUND);
   const snap = invitation.toSnapshot();
@@ -70,8 +78,42 @@ export async function getGuestMeetingContext(input: { token: string }, deps: Get
     status,
     shortCode: m.shortCode,
     inviteeName: snap.inviteeName,
-    guestsAllowed: effective.meeting.guestsAllowed,
-    waitingRoom: m.requireWaitingRoom || effective.meeting.guestsWaitingRoom,
+    guestsAllowed: effective.meeting.guestsAllowed && m.guestsAllowed,
+    // D-67: un externo siempre espera admision.
+    waitingRoom: true,
+    viaMeetingLink: false,
+    isLocked: m.isLocked,
     mediaPolicy: toMediaPolicyDto(effective),
   });
+}
+
+/** D-68: contexto del enlace de la reunion; un enlace rotado, apagado o de otra version es un 404 ciego. */
+async function guestLinkContext(token: string, meetingId: string, deps: GetGuestMeetingContextDeps): Promise<Result<GuestMeetingContextDto>> {
+  const meeting = await deps.meetings.findByIdAnyTenant(meetingId);
+  if (!meeting || !validLink(meeting, token)) return Result.fail(GENERIC_NOT_FOUND);
+  const m = meeting.toSnapshot();
+  const effective = await deps.effectiveSettings.resolve(m.tenantId);
+  return Result.ok({
+    meetingTitle: m.title,
+    hostDisplayName: await resolveUserDisplayName(
+      deps.userDirectory,
+      m.hostUserId,
+      m.participants.find((p) => p.userId === m.hostUserId)?.displayName,
+    ),
+    scheduledForUtc: m.scheduledForUtc ? m.scheduledForUtc.toISOString() : null,
+    durationMinutes: m.scheduledDurationMinutes ?? m.maxDurationMinutes ?? effective.meeting.defaultDurationMinutes,
+    status: m.status === 'Scheduled' ? 'Scheduled' : 'Live',
+    shortCode: m.shortCode,
+    inviteeName: null,
+    guestsAllowed: effective.meeting.guestsAllowed && m.guestsAllowed,
+    waitingRoom: true,
+    viaMeetingLink: true,
+    isLocked: m.isLocked,
+    mediaPolicy: toMediaPolicyDto(effective),
+  });
+}
+
+function validLink(meeting: Meeting, token: string): boolean {
+  const m = meeting.toSnapshot();
+  return m.guestLinkEnabled && verifyGuestLinkToken(token, m.guestLinkVersion) && meeting.acceptsGuestLink(m.guestLinkVersion);
 }

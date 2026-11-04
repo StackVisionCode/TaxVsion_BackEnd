@@ -15,7 +15,8 @@ public interface IReceiptDocumentClient
 /// <summary>Datos del recibo tal cual los conoce Auth al momento del pago. Los montos viajan en
 /// centavos + moneda (mismo shape que OnboardingPaymentSucceededIntegrationEvent) —
 /// TransactionReferenceMask son los últimos 4 caracteres de la referencia de pago del proveedor,
-/// nunca la referencia completa.</summary>
+/// nunca la referencia completa. OfficeName (opcional) = nombre de la oficina escrito en el registro; el
+/// recibo lo muestra en "Billed to" cuando ya se conoce.</summary>
 public sealed record RequestReceiptGenerationRequest(
     Guid OnboardingId,
     string PayerFirstName,
@@ -28,5 +29,6 @@ public sealed record RequestReceiptGenerationRequest(
     string TransactionReferenceMask,
     string? PaymentMethodMasked,
     string IdempotencyKey,
-    string CorrelationId
+    string CorrelationId,
+    string? OfficeName = null
 );

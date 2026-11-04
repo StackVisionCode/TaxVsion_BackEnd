@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Domain.Audit;
 using TaxVision.Correspondence.Domain.Backfill;
 using TaxVision.Correspondence.Domain.Compose;
+using TaxVision.Correspondence.Domain.Delivery;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Domain.Permissions;
 using TaxVision.Correspondence.Domain.Projections;
@@ -52,6 +53,8 @@ public sealed class CorrespondenceDbContext(
     public DbSet<UnmatchedIncomingEmail> UnmatchedIncomingEmails => Set<UnmatchedIncomingEmail>();
     public DbSet<Draft> Drafts => Set<Draft>();
     public DbSet<DraftRecipient> DraftRecipients => Set<DraftRecipient>();
+    public DbSet<DraftAttachment> DraftAttachments => Set<DraftAttachment>();
+    public DbSet<DeliveryNotice> DeliveryNotices => Set<DeliveryNotice>();
     public DbSet<CorrespondenceAuditLog> CorrespondenceAuditLogs => Set<CorrespondenceAuditLog>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();

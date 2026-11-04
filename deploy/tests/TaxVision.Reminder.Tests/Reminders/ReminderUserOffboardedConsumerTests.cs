@@ -7,8 +7,8 @@ using TaxVision.Reminder.Domain.ValueObjects;
 namespace TaxVision.Reminder.Tests.Reminders;
 
 /// <summary>
-/// Al retirar (offboard) a un empleado se cancelan y desagendan sus recordatorios PRIVADOS (General).
-/// Los atados a un target (Task/Calendar/Note) y los de otros usuarios no se tocan aquí.
+/// Al retirar (offboard) a un empleado se cancelan y desagendan TODOS sus recordatorios pendientes
+/// (General, Task, Calendar y Note). Los de otros usuarios y los ya cerrados no se tocan.
 /// </summary>
 public sealed class ReminderUserOffboardedConsumerTests
 {
@@ -65,35 +65,60 @@ public sealed class ReminderUserOffboardedConsumerTests
         );
 
     [Fact]
-    public async Task Cancels_and_unschedules_the_leavers_private_reminders_only()
+    public async Task Cancels_and_unschedules_every_pending_reminder_of_the_leaver()
     {
         var leaver = Guid.NewGuid();
         var reminders = new FakeReminderRepository();
         var scheduler = new RecordingScheduler();
         var metrics = new RecordingReminderMetrics();
-        var minePrivate = Seed(reminders, leaver, ReminderCategory.General, null);
-        var mineTask = Seed(reminders, leaver, ReminderCategory.Task, Guid.NewGuid());
-        var otherPrivate = Seed(reminders, Guid.NewGuid(), ReminderCategory.General, null);
+        var mine = new[]
+        {
+            Seed(reminders, leaver, ReminderCategory.General, null),
+            Seed(reminders, leaver, ReminderCategory.Task, Guid.NewGuid()),
+            Seed(reminders, leaver, ReminderCategory.Calendar, Guid.NewGuid()),
+            Seed(reminders, leaver, ReminderCategory.Note, Guid.NewGuid()),
+        };
+        var otherUsers = Seed(reminders, Guid.NewGuid(), ReminderCategory.Task, Guid.NewGuid());
 
         await Run(reminders, scheduler, metrics, leaver);
 
-        Assert.Equal(ReminderStatus.Cancelled, minePrivate.Status);
-        Assert.Equal(ReminderCancellationReasons.OwnerOffboarded, minePrivate.CancellationReason);
-        Assert.Contains(minePrivate.Id, scheduler.Unscheduled);
-        Assert.Equal([ReminderCancellationReasons.OwnerOffboarded], metrics.Cancelled);
-
-        Assert.Equal(ReminderStatus.Scheduled, mineTask.Status); // atado a target: lo cierra su propio servicio
-        Assert.Equal(ReminderStatus.Scheduled, otherPrivate.Status); // de otro usuario: intacto
+        Assert.All(
+            mine,
+            reminder =>
+            {
+                Assert.Equal(ReminderStatus.Cancelled, reminder.Status);
+                Assert.Equal(ReminderCancellationReasons.OwnerOffboarded, reminder.CancellationReason);
+                Assert.Contains(reminder.Id, scheduler.Unscheduled);
+            }
+        );
+        Assert.Equal(4, metrics.Cancelled.Count);
+        Assert.Equal(ReminderStatus.Scheduled, otherUsers.Status);
     }
 
     [Fact]
-    public async Task No_private_reminders_is_a_noop()
+    public async Task Redelivery_is_a_noop_once_cancelled()
     {
         var leaver = Guid.NewGuid();
         var reminders = new FakeReminderRepository();
         var scheduler = new RecordingScheduler();
         var metrics = new RecordingReminderMetrics();
-        Seed(reminders, leaver, ReminderCategory.Task, Guid.NewGuid());
+        Seed(reminders, leaver, ReminderCategory.Calendar, Guid.NewGuid());
+
+        await Run(reminders, scheduler, metrics, leaver);
+        await Run(reminders, scheduler, metrics, leaver);
+
+        Assert.Single(scheduler.Unscheduled);
+        Assert.Single(metrics.Cancelled);
+    }
+
+    [Fact]
+    public async Task No_pending_reminders_is_a_noop()
+    {
+        var leaver = Guid.NewGuid();
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var metrics = new RecordingReminderMetrics();
+        Seed(reminders, Guid.NewGuid(), ReminderCategory.Task, Guid.NewGuid());
 
         await Run(reminders, scheduler, metrics, leaver);
 

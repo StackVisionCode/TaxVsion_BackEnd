@@ -20,6 +20,9 @@ namespace TaxVision.Correspondence.Application.Messages;
 /// </summary>
 public static class DownloadAttachmentHandler
 {
+    // Firma del pedido a CloudStorage; AttachmentSaveRejectedConsumer filtra los rechazos con este valor.
+    public const string RequestingService = "correspondence";
+
     public static async Task<Result<DownloadAttachmentResult>> Handle(
         DownloadAttachmentCommand command,
         IIncomingEmailRepository incomingEmails,
@@ -52,6 +55,10 @@ public static class DownloadAttachmentHandler
 
         if (attachment.DownloadStatus == AttachmentDownloadStatus.Downloaded)
             return Result.Success(ToResult(attachment));
+
+        // Storage lo rechazaría igual: no se vuelve a bajar ni a copiar. Cuota/suspensión sí reintentan.
+        if (attachment.HasPermanentStorageRejection)
+            return Result.Failure<DownloadAttachmentResult>(AttachmentFailureErrors.For(attachment));
 
         var markInProgressResult = await MarkInProgressAsync(attachment, unitOfWork, ct);
         if (markInProgressResult.IsFailure)
@@ -186,7 +193,7 @@ public static class DownloadAttachmentHandler
             {
                 TenantId = command.TenantId,
                 FileId = fileId,
-                RequestingService = "correspondence",
+                RequestingService = RequestingService,
                 SourceBucket = upload.SourceBucket,
                 SourceObjectKey = upload.SourceObjectKey,
                 ActorId = command.ActorId,

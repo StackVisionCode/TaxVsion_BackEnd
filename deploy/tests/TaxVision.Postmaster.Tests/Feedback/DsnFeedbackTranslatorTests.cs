@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+using TaxVision.Postmaster.Application.Feedback;
 using TaxVision.Postmaster.Domain.Sending;
 using TaxVision.Postmaster.Domain.ValueObjects;
 using TaxVision.Postmaster.Infrastructure.Feedback.Dsn;
@@ -43,6 +44,26 @@ public sealed class DsnFeedbackTranslatorTests
         Assert.Equal("AM6P@outlook.com", item.MessageId);
         Assert.Equal("gone@example.com", item.RecipientAddress);
         Assert.Equal("550 5.1.1 user unknown", item.Feedback.Diagnostic);
+    }
+
+    [Fact]
+    public void Translate_keeps_a_full_mailbox_soft_even_when_the_server_says_5_2_2()
+    {
+        // Outlook responde 5.2.2 al buzón lleno: es temporal, no se suprime la dirección (D-5).
+        var item = Assert.Single(Translator.Translate(Report("failed", "5.2.2")).Value);
+
+        Assert.Equal(DeliveryOutcome.SoftBounced, item.Feedback.Outcome);
+        Assert.Equal(DeliveryFailureCategory.MailboxFull, item.Feedback.FailureCategory);
+        Assert.Equal("5.2.2", item.Feedback.StatusCode?.ToString());
+    }
+
+    [Fact]
+    public void Translate_carries_where_the_report_is_in_the_mailbox()
+    {
+        var item = Assert.Single(Translator.Translate(Report("failed", "5.1.1")).Value);
+
+        Assert.Equal(new DeliveryReportRef(AccountId, "report-1"), item.Report);
+        Assert.Equal(DeliveryFailureCategory.InvalidAddress, item.Feedback.FailureCategory);
     }
 
     [Theory]

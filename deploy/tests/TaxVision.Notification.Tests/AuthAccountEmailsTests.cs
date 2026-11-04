@@ -50,6 +50,8 @@ public sealed class AuthAccountEmailsTests
         Assert.Equal($"https://{Host}/portal/client/auth/reset-password/new?token=tok", variables["reset_link"]);
         Assert.Equal("portal", variables["account_kind"]);
         Assert.Equal("Acme Tax", variables["office"]);
+        // La cuenta de portal es del cliente: el correo lleva el logo del portal.
+        Assert.Equal(ScribeRenderAudience.Client, scribe.Rendered.Single().Audience);
     }
 
     [Fact]
@@ -80,6 +82,7 @@ public sealed class AuthAccountEmailsTests
         var variables = scribe.Rendered.Single().Variables;
         Assert.Equal($"https://{Host}/reset-password?token=tok", variables["reset_link"]);
         Assert.Equal("workspace", variables["account_kind"]);
+        Assert.Equal(ScribeRenderAudience.Staff, scribe.Rendered.Single().Audience);
     }
 
     [Fact]
@@ -117,6 +120,7 @@ public sealed class AuthAccountEmailsTests
             .Variables;
         Assert.Contains("client portal account at Acme Tax", (string)warning["description"]!);
         Assert.Contains(gateway.Requests, request => request.To == "ana@example.com");
+        Assert.All(scribe.Rendered, render => Assert.Equal(ScribeRenderAudience.Client, render.Audience));
     }
 
     [Fact]
@@ -149,7 +153,11 @@ public sealed class AuthAccountEmailsTests
         Assert.Equal("Acme Tax", variables["inviter"]);
     }
 
-    private sealed record Render(string EventKey, IReadOnlyDictionary<string, object?> Variables);
+    private sealed record Render(
+        string EventKey,
+        IReadOnlyDictionary<string, object?> Variables,
+        ScribeRenderAudience Audience
+    );
 
     private sealed class CapturingScribe : IScribeRenderClient
     {
@@ -160,9 +168,17 @@ public sealed class AuthAccountEmailsTests
             Guid tenantId,
             IReadOnlyDictionary<string, object?> variables,
             CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ScribeRenderAudience.Staff, ct);
+
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
         )
         {
-            Rendered.Add(new Render(eventKey, variables));
+            Rendered.Add(new Render(eventKey, variables, audience));
             return Task.FromResult(Result.Success(new ScribeRenderedEmail("subject", "<p>body</p>", "body")));
         }
     }

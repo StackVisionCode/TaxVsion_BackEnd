@@ -1,10 +1,10 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.CloudStorage.Application.Abstractions;
-using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Domain.Files;
+using TaxVision.CloudStorage.Domain.Platform;
 using TaxVision.CloudStorage.Domain.Quotas;
 using Wolverine;
 
@@ -35,7 +35,7 @@ internal static class UploadRegistration
         IStorageLimitRepository limits,
         IObjectKeyBuilder keyBuilder,
         ISystemFolderProvisioner systemFolders,
-        CloudStorageOptions config,
+        StoragePlatformSettings platformSettings,
         IUploadPolicyResolver uploadPolicies,
         ISystemClock clock,
         IMessageBus bus,
@@ -56,7 +56,8 @@ internal static class UploadRegistration
         if (limit is null)
             return Result.Failure<FileObject>(QuotaErrors.NotProvisioned);
 
-        var policy = await uploadPolicies.ResolveAsync(tenantId, limit.PlanCode, folderType, ct);
+        // El cliente del portal además queda dentro de lo que su oficina le permite subir.
+        var policy = await uploadPolicies.ResolveAsync(tenantId, limit, folderType, scope.IsCustomerPortal, ct);
         if (string.IsNullOrWhiteSpace(originalName) || originalName.Length > 255)
             return Result.Failure<FileObject>(FileErrors.UnsupportedType);
 
@@ -115,7 +116,7 @@ internal static class UploadRegistration
             sizeBytes,
             actorId,
             clock.UtcNow,
-            clock.UtcNow.AddHours(Math.Clamp(config.UploadReservationHours, 1, 168))
+            clock.UtcNow.AddHours(platformSettings.UploadReservationHours)
         );
         if (registered.IsFailure)
         {

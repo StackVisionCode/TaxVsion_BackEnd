@@ -12,6 +12,9 @@ export const MeetingEventType = {
   Expired: 'meeting.expired',
   Locked: 'meeting.locked',
   Unlocked: 'meeting.unlocked',
+  // D-69/D-68: acceso de externos y enlace de la reunion.
+  GuestAccessChanged: 'guests.access_changed',
+  GuestLinkChanged: 'guests.link_changed',
   MutedAll: 'meeting.muted_all',
   DurationWarning: 'meeting.duration_warning',
   ParticipantWaiting: 'participant.waiting',

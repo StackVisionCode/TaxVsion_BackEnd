@@ -7,6 +7,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Signature.Api.Requests;
+using TaxVision.Signature.Application.Delivery;
 using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Settings.Commands.ApplyPlanConstraints;
 using TaxVision.Signature.Domain.Settings;
@@ -24,8 +25,8 @@ namespace TaxVision.Signature.Api.Controllers;
 public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
 {
     /// <summary>
-    /// Establece los techos de plan para un tenant específico.
-    /// La configuración existente del tenant se auto-corrige si excede los nuevos límites.
+    /// Fija la excepción del tenant sobre su plan (campo nulo = hereda del plan). Lo que eligió la oficina
+    /// por encima de los techos nuevos se acota al leerlo.
     /// </summary>
     [HttpPut("signature-constraints")]
     [HasPermission(SignaturePermissions.PlanConstraintsManage)]
@@ -49,33 +50,42 @@ public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
         if (!User.TryGetUserId(out var adminUserId))
             return Unauthorized();
 
-        VerificationChannel allowedMask = VerificationChannel.None;
-        foreach (var name in body.AllowedChannels)
+        VerificationChannel? allowedChannels = null;
+        if (body.AllowedChannels is { } channelNames)
         {
-            if (
-                !Enum.TryParse<VerificationChannel>(name, ignoreCase: true, out var ch)
-                || ch == VerificationChannel.None
-            )
-                return BadRequest(
-                    new Error("Signature.Constraints.InvalidChannel", $"Unknown verification channel: '{name}'.")
-                );
-            allowedMask |= ch;
-        }
+            var allowedMask = VerificationChannel.None;
+            foreach (var name in channelNames)
+            {
+                if (
+                    !Enum.TryParse<VerificationChannel>(name, ignoreCase: true, out var ch)
+                    || ch == VerificationChannel.None
+                )
+                    return BadRequest(
+                        new Error("Signature.Constraints.InvalidChannel", $"Unknown verification channel: '{name}'.")
+                    );
+                allowedMask |= ch;
+            }
 
-        if (allowedMask == VerificationChannel.None)
-            return BadRequest(
-                new Error("Signature.Constraints.NoChannels", "At least one verification channel must be specified.")
-            );
+            if (allowedMask == VerificationChannel.None)
+                return BadRequest(
+                    new Error(
+                        "Signature.Constraints.NoChannels",
+                        "At least one verification channel must be specified."
+                    )
+                );
+            allowedChannels = allowedMask;
+        }
 
         var cmd = new ApplyPlanConstraintsCommand(
             tenantId,
             adminUserId,
+            body.MaxDocumentsPerRequest,
+            body.MaxSignersPerRequest,
             body.MaxAllowedPdfBytes,
-            body.MaxAllowedImageBytes,
             body.MaxAllowedPages,
             body.MinRetentionYears,
             body.PurgeAllowed,
-            allowedMask,
+            allowedChannels,
             body.MaxTokenExpirationHours
         );
 
@@ -104,6 +114,30 @@ public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
     {
         var result = await bus.InvokeAsync<Result<ReassignedSealedOwnersReport>>(
             new ReassignSealedDocumentOwnersCommand(tenantId, dryRun),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Migración (una sola vez): las solicitudes de VARIOS clientes firmantes completadas antes de que
+    /// existieran las copias de portal no las tienen. Genera la copia de cada documento firmado (y sus
+    /// certificados) en la carpeta "Signed Documents" de cada cliente. <c>dryRun=true</c> (default) solo
+    /// cuenta. Idempotente: se puede repetir; las que no estaban disponibles quedan para otra pasada.
+    /// </summary>
+    [HttpPost("/signature/admin/backfill-portal-copies")]
+    [HasPermission(SignaturePermissions.PlanConstraintsManage)]
+    [RateLimit("signature.g.admin_constraints_manage")]
+    [ProducesResponseType<PortalCopiesBackfillReport>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> BackfillPortalCopies(
+        [FromQuery] Guid tenantId,
+        [FromQuery] bool dryRun = true,
+        CancellationToken ct = default
+    )
+    {
+        var result = await bus.InvokeAsync<Result<PortalCopiesBackfillReport>>(
+            new BackfillCustomerPortalCopiesCommand(tenantId, dryRun),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

@@ -121,4 +121,39 @@ public sealed class ListMessageAttachmentsHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("IncomingEmail.NotFound", result.Error.Code);
     }
+
+    [Fact]
+    public async Task Handle_ForAUserNotAssignedToTheCustomer_ReturnsNotFound()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var preparer = Guid.NewGuid();
+        var email = NewIncomingEmail(
+            tenantId,
+            customerId,
+            Guid.NewGuid(),
+            [new IncomingEmailAttachmentData("w2.pdf", "application/pdf", 10, "p", false)]
+        );
+        var incomingEmails = new FakeIncomingEmailRepository();
+        await incomingEmails.AddAsync(email);
+        var threads = new FakeEmailThreadRepository();
+
+        var hidden = await ListMessageAttachmentsHandler.Handle(
+            new ListMessageAttachmentsQuery(tenantId, email.Id, RestrictToUserId: preparer),
+            incomingEmails,
+            threads,
+            CancellationToken.None
+        );
+        threads.Assignments.Add((preparer, customerId));
+        var visible = await ListMessageAttachmentsHandler.Handle(
+            new ListMessageAttachmentsQuery(tenantId, email.Id, RestrictToUserId: preparer),
+            incomingEmails,
+            threads,
+            CancellationToken.None
+        );
+
+        Assert.Equal("IncomingEmail.NotFound", hidden.Error.Code);
+        Assert.True(visible.IsSuccess);
+        Assert.Single(visible.Value);
+    }
 }

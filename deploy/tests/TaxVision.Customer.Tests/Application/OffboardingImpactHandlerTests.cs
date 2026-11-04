@@ -4,8 +4,9 @@ using CustomerEntity = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Tests.Application;
 
-// El pre-flight de impacto devuelve cuántos clientes activos tiene asignados el empleado (para la preview
-// antes de retirarlo). El fake devuelve el count solo si coinciden tenant+user → prueba que el handler los reenvía.
+// El pre-flight de impacto devuelve cuántos clientes activos tiene asignados el empleado (retrocompatible) y el
+// desglose de lo que les pasa: primary (se traspasan), accesos adicionales (se revocan) y archivados (se sueltan).
+// El fake devuelve los counts solo si coinciden tenant+user → prueba que el handler los reenvía.
 public sealed class OffboardingImpactHandlerTests
 {
     [Fact]
@@ -25,6 +26,30 @@ public sealed class OffboardingImpactHandlerTests
     }
 
     [Fact]
+    public async Task Splits_primary_clients_from_additional_access_and_reports_archived_ones()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var repo = new CountingCustomerRepository(
+            tenantId,
+            userId,
+            count: 7,
+            breakdown: new OffboardingClientCounts(PrimaryClients: 5, AdditionalAccess: 2, ArchivedClients: 3)
+        );
+
+        var result = await OffboardingImpactHandler.Handle(
+            new OffboardingImpactQuery(tenantId, userId),
+            repo,
+            CancellationToken.None
+        );
+
+        Assert.Equal(7, result.AssignedClients);
+        Assert.Equal(5, result.PrimaryClients);
+        Assert.Equal(2, result.AdditionalAccess);
+        Assert.Equal(3, result.ArchivedClients);
+    }
+
+    [Fact]
     public async Task Returns_zero_when_the_employee_has_no_assigned_clients()
     {
         var tenantId = Guid.NewGuid();
@@ -37,12 +62,27 @@ public sealed class OffboardingImpactHandlerTests
         );
 
         Assert.Equal(0, result.AssignedClients);
+        Assert.Equal(0, result.PrimaryClients);
+        Assert.Equal(0, result.AdditionalAccess);
+        Assert.Equal(0, result.ArchivedClients);
     }
 
-    private sealed class CountingCustomerRepository(Guid tenantId, Guid userId, int count) : ICustomerRepository
+    private sealed class CountingCustomerRepository(
+        Guid tenantId,
+        Guid userId,
+        int count,
+        OffboardingClientCounts? breakdown = null
+    ) : ICustomerRepository
     {
         public Task<int> CountActiveByAssignedPreparerAsync(Guid t, Guid preparer, CancellationToken ct) =>
             t == tenantId && preparer == userId ? Task.FromResult(count) : Task.FromResult(0);
+
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid t, Guid user, CancellationToken ct) =>
+            Task.FromResult(
+                t == tenantId && user == userId
+                    ? breakdown ?? OffboardingClientCounts.None
+                    : OffboardingClientCounts.None
+            );
 
         public Task<CustomerEntity?> GetByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
 

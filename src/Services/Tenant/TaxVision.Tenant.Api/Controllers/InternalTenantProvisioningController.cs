@@ -23,7 +23,8 @@ public sealed class InternalTenantProvisioningController(IMessageBus bus) : Cont
         string OfficeName,
         string Subdomain,
         string AdminEmail,
-        DateTime PaymentCompletedAtUtc
+        DateTime PaymentCompletedAtUtc,
+        string? DefaultTimeZoneId = null
     );
 
     [HttpPost("from-onboarding")]
@@ -38,7 +39,8 @@ public sealed class InternalTenantProvisioningController(IMessageBus bus) : Cont
             request.OfficeName,
             request.Subdomain,
             request.AdminEmail,
-            request.PaymentCompletedAtUtc
+            request.PaymentCompletedAtUtc,
+            request.DefaultTimeZoneId
         );
 
         var result = await bus.InvokeAsync<Result>(command, ct);

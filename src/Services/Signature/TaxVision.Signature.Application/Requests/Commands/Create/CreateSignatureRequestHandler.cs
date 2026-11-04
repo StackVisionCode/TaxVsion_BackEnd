@@ -6,6 +6,8 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Categories;
+using TaxVision.Signature.Application.Documents.Verification;
+using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Settings;
@@ -15,7 +17,7 @@ namespace TaxVision.Signature.Application.Requests.Commands.Create;
 
 /// <summary>
 /// Fases: (1) factory del aggregate, (2) si el archivo ya está disponible en CloudStorage
-/// se adjunta el hash original, (3) persistir, (4) publicar el evento de creación.
+/// se revisa en el servidor (un PDF inválido corta la creación), (3) persistir, (4) publicar el evento.
 /// La disponibilidad del documento es un flag derivado — no mueve el Status.
 /// </summary>
 public static class CreateSignatureRequestHandler
@@ -25,23 +27,22 @@ public static class CreateSignatureRequestHandler
         ISignatureRequestRepository repository,
         IFileMetadataRefRepository fileRepository,
         ITenantSignatureSettingsRepository settingsRepository,
+        ISignatureLimitsResolver limits,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
         ISignatureRequestListCacheInvalidator listCache,
         ISignatureCategoryResolver categoryResolver,
         ISignatureCloudStorageClient storage,
+        IRequestDocumentVerifier verifier,
         ILogger<CreateSignatureRequestCommand> logger,
         CancellationToken ct
     )
     {
-        if (cmd.Documents is null || cmd.Documents.Count is < 1 or > SignatureRequest.MaxDocuments)
-            return Result.Failure<SignatureRequestResponse>(
-                new Error(
-                    "Signature.Request.DocumentCount",
-                    $"Document count must be between 1 and {SignatureRequest.MaxDocuments}."
-                )
-            );
+        var policy = await limits.ResolveAsync(cmd.TenantId, ct);
+        var documentCount = policy.ForRequests.CheckDocumentCount(cmd.Documents?.Count ?? 0);
+        if (documentCount.IsFailure)
+            return Result.Failure<SignatureRequestResponse>(documentCount.Error);
 
         // La categoría debe ser de sistema o una custom del tenant; se guarda con su nombre canónico.
         var category = await categoryResolver.ResolveAsync(cmd.TenantId, cmd.Category, ct);
@@ -59,10 +60,7 @@ public static class CreateSignatureRequestHandler
         var sendSealed = cmd.SendSealedDocumentToSigners ?? settings?.SendSealedDocumentDefault ?? false;
         var sendPartial = cmd.SendPartialCopyOnEachSignature ?? settings?.SendPartialCopyDefault ?? false;
         var expirationEnabled = cmd.ExpirationEnabled ?? settings?.ExpirationEnabledByDefault ?? true;
-        var tokenExpirationHours =
-            cmd.TokenExpirationHours
-            ?? settings?.DefaultTokenExpirationHoursValue
-            ?? TenantSignatureSettings.DefaultTokenExpirationHours;
+        var tokenExpirationHours = cmd.TokenExpirationHours ?? policy.DefaultTokenHours;
         var generateCertificate = cmd.GenerateCertificate ?? settings?.GenerateCertificateByDefault ?? true;
         var sendCertificate = cmd.SendCertificateToSigners ?? settings?.SendCertificateToSignersDefault ?? false;
         // Consentimiento ESIGN/UETA: política legal del despacho, ON si no hay settings.
@@ -70,6 +68,7 @@ public static class CreateSignatureRequestHandler
 
         var draftResult = CreateDraft(
             cmd,
+            policy.ForRequests,
             category.Value,
             tokenExpirationHours,
             requiresConsent,
@@ -85,13 +84,30 @@ public static class CreateSignatureRequestHandler
             return Result.Failure<SignatureRequestResponse>(draftResult.Error);
 
         var request = draftResult.Value;
-        foreach (var documentInput in cmd.Documents)
+        foreach (var documentInput in cmd.Documents!)
         {
-            var addResult = request.AddDocument(documentInput.OriginalFileId, documentInput.Title, documentInput.Note);
+            var addResult = request.AddDocument(
+                policy.ForRequests,
+                documentInput.OriginalFileId,
+                documentInput.Title,
+                documentInput.Note
+            );
             if (addResult.IsFailure)
                 return Result.Failure<SignatureRequestResponse>(addResult.Error);
 
-            await TryAttachHashIfFileAvailable(request, addResult.Value, fileRepository, storage, logger, ct);
+            var verification = await VerifyIfFileAvailableAsync(
+                request,
+                addResult.Value,
+                fileRepository,
+                storage,
+                verifier,
+                logger,
+                ct
+            );
+            if (verification.Kind == DocumentVerificationKind.Rejected)
+                return Result.Failure<SignatureRequestResponse>(
+                    DocumentVerificationErrors.Rejected(addResult.Value, verification.Rejection!)
+                );
         }
 
         await PersistRequestAsync(request, repository, unitOfWork, ct);
@@ -105,6 +121,7 @@ public static class CreateSignatureRequestHandler
 
     private static Result<SignatureRequest> CreateDraft(
         CreateSignatureRequestCommand cmd,
+        SignatureLimits limits,
         string category,
         int tokenExpirationHours,
         bool requiresConsent,
@@ -117,6 +134,7 @@ public static class CreateSignatureRequestHandler
         bool expirationEnabled
     ) =>
         SignatureRequest.CreateDraft(
+            limits: limits,
             tenantId: cmd.TenantId,
             createdByUserId: cmd.CreatedByUserId,
             title: cmd.Title,
@@ -136,27 +154,26 @@ public static class CreateSignatureRequestHandler
             certificateGenerationMode: cmd.CertificateGenerationMode
         );
 
-    // ============== Fase 2: adjuntar hash si el archivo ya está disponible ==============
+    // ============== Fase 2: revisar el archivo si ya está disponible ==============
     // Cache-aside: la proyección local se alimenta por bus (FileAvailable). Si está Available
     // la usamos directa; si no, consultamos la fuente autoritaria por HTTP y resincronizamos
     // la proyección. Esto desbloquea casos donde el bus perdió el evento o la proyección
     // quedó stale (p.ej. Deleted mientras el file sigue vivo en CloudStorage).
-    private static async Task TryAttachHashIfFileAvailable(
+    private static async Task<DocumentVerificationResult> VerifyIfFileAvailableAsync(
         SignatureRequest request,
         RequestDocument document,
         IFileMetadataRefRepository fileRepository,
         ISignatureCloudStorageClient storage,
+        IRequestDocumentVerifier verifier,
         ILogger logger,
         CancellationToken ct
     )
     {
         var file = await fileRepository.GetByFileIdAsync(request.TenantId, document.OriginalFileId, ct);
-        var hash = ExtractAvailableHash(file);
-
-        if (hash is null)
+        if (ExtractAvailableHash(file) is null)
         {
             // Proyección vacía o no-Available: pregunta a CloudStorage (fuente autoritaria).
-            hash = await ResyncFromCloudStorageAsync(
+            var hash = await ResyncFromCloudStorageAsync(
                 request.TenantId,
                 document.OriginalFileId,
                 fileRepository,
@@ -165,14 +182,10 @@ public static class CreateSignatureRequestHandler
                 ct
             );
             if (hash is null)
-                return;
+                return DocumentVerificationResult.Deferred;
         }
 
-        var hashResult = Domain.Requests.ValueObjects.DocumentHash.Create(hash);
-        if (hashResult.IsFailure)
-            return;
-
-        request.AttachDocumentHash(document.Id, hashResult.Value);
+        return await verifier.VerifyAsync(request, document.Id, ct);
     }
 
     private static string? ExtractAvailableHash(FileMetadataRef? file) =>

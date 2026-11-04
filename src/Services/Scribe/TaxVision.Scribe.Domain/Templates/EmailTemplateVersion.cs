@@ -30,6 +30,8 @@ public sealed class EmailTemplateVersion : BaseEntity
     public Guid? LayoutId { get; private set; }
     public int? LayoutVersionNumber { get; private set; }
     public DateTime? PublishedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? PublishedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 
@@ -170,4 +172,43 @@ public sealed class EmailTemplateVersion : BaseEntity
     }
 
     internal void Archive() => Status = EmailVersionStatus.Archived;
+
+    /// <summary>
+    /// CloudStorage rechazó <paramref name="fileId"/>: una Draft suelta las referencias opcionales que lo
+    /// apuntan (sin texto, el render lo deriva del HTML). Published/Archived son inmutables y el contenido
+    /// obligatorio (ver <see cref="RequiresFile"/>) no se suelta.
+    /// </summary>
+    internal bool ReleaseRejectedOptionalFile(Guid fileId, TemplateChannel channel)
+    {
+        if (Status != EmailVersionStatus.Draft)
+            return false;
+
+        var released = false;
+        if (channel == TemplateChannel.Email && TextFileId == fileId)
+        {
+            TextFileId = null;
+            TextStorageKey = null;
+            released = true;
+        }
+
+        if (DesignJsonFileId == fileId)
+        {
+            DesignJsonFileId = null;
+            DesignJsonStorageKey = null;
+            released = true;
+        }
+
+        if (PreviewImageFileId == fileId)
+        {
+            PreviewImageFileId = null;
+            PreviewImageStorageKey = null;
+            released = true;
+        }
+
+        return released;
+    }
+
+    /// <summary>Contenido obligatorio de la versión: el HTML en Email, el texto en Push.</summary>
+    internal bool RequiresFile(Guid fileId, TemplateChannel channel) =>
+        channel == TemplateChannel.Push ? TextFileId == fileId : HtmlFileId == fileId;
 }

@@ -99,6 +99,18 @@ public sealed class TenantStorageLimitConfiguration : IEntityTypeConfiguration<T
         builder.Property(limit => limit.AllowLinkOnlyExternalShares).HasDefaultValue(true);
         builder.Property(limit => limit.RequirePasswordOnLinkShares).HasDefaultValue(false);
         builder.Property(limit => limit.MaxShareLifetimeDays).HasDefaultValue(30);
+        builder.Property(limit => limit.DefaultShareLifetimeDays).HasDefaultValue(7);
+        builder.Property(limit => limit.MinSharePasswordLength).HasDefaultValue(8);
+        builder
+            .Property(limit => limit.MaxSharePasswordAttempts)
+            .HasDefaultValue(TenantStorageLimit.DefaultMaxSharePasswordAttempts);
+        // Grupos de tipos del plan (entitlement); el default cubre las filas existentes hasta el próximo evento.
+        builder
+            .Property(limit => limit.PlanFileTypeGroups)
+            .HasMaxLength(400)
+            .HasDefaultValue(TaxVision.CloudStorage.Domain.FileTypes.PlanFileAllowanceDefaults.FileTypeGroups)
+            .IsRequired();
+        builder.Property(limit => limit.PortalFileTypeGroups).HasMaxLength(400);
         builder.Property(limit => limit.RowVersion).IsRowVersion();
         builder.HasIndex(limit => limit.TenantId).IsUnique();
     }
@@ -114,6 +126,10 @@ public sealed class TenantCloudConnectionConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.Provider).HasMaxLength(32).IsRequired();
         builder.Property(x => x.AccountEmail).HasMaxLength(320).IsRequired();
         builder.Property(x => x.ProtectedRefreshToken).HasMaxLength(4096).IsRequired();
+        builder.Property(x => x.ConnectedByUserId);
+        builder.Property(x => x.ReviewRequiredAtUtc);
+        builder.Property(x => x.ReviewReason).HasMaxLength(TenantCloudConnection.ReviewReasonMaxLength);
+        builder.Ignore(x => x.NeedsReview);
         builder.HasIndex(x => new { x.TenantId, x.Provider }).IsUnique();
     }
 }
@@ -185,6 +201,7 @@ public sealed class ShareLinkConfiguration : IEntityTypeConfiguration<ShareLink>
         builder.Property(link => link.Visibility).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(link => link.Permission).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(link => link.PasswordHash).HasMaxLength(256);
+        builder.Property(link => link.FailedPasswordAttempts).HasDefaultValue(0);
         builder.Property(link => link.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(link => link.RowVersion).IsRowVersion();
 

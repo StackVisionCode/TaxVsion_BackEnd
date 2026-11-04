@@ -2,11 +2,10 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
-using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Application.Files.Commands;
+using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
@@ -565,7 +564,7 @@ public static class DeleteFolderHandler
         IFolderRepository folders,
         IFileObjectRepository files,
         IStorageAuditRepository audit,
-        IOptions<CloudStorageOptions> options,
+        IStoragePlatformSettingsProvider platform,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -608,7 +607,7 @@ public static class DeleteFolderHandler
             return Result.Failure(FolderErrors.FileDeletePermissionRequired);
 
         var now = clock.UtcNow;
-        var retention = TimeSpan.FromDays(options.Value.RecycleBinRetentionDays);
+        var retention = TimeSpan.FromDays((await platform.GetAsync(ct)).RecycleBinRetentionDays);
         // El batch agrupa toda la operación; la carpeta RAÍZ usa su propio Id como batchId (así la
         // papelera lista una sola entrada por carpeta borrada y restaura/purga todo el subárbol junto).
         var batchId = root.Id;

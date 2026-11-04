@@ -28,4 +28,13 @@ public sealed record ConnectorsDeliveryReportDetectedIntegrationEvent : Integrat
     public string? DiagnosticSnippet { get; init; }
 
     public required DateTime ReportedAtUtc { get; init; }
+
+    /// <summary>Asunto del aviso tal como llegó (ej. "Undeliverable: Factura"). Opcional: lectores viejos lo ignoran.</summary>
+    public string? ReportSubject { get; init; }
+
+    /// <summary>Remitente del aviso (ej. mailer-daemon@googlemail.com).</summary>
+    public string? ReportFrom { get; init; }
+
+    /// <summary>Texto legible del aviso para humanos, truncado. Nunca contenido del correo original.</summary>
+    public string? ReportSummary { get; init; }
 }

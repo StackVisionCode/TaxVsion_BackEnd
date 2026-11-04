@@ -3,133 +3,73 @@ using BuildingBlocks.Results;
 namespace TaxVision.Signature.Domain.Settings;
 
 /// <summary>
-/// Techos que la PLATAFORMA impone sobre la configuración que un tenant admin puede
-/// elegir. Separar "lo que el plan contratado permite" de "lo que el tenant eligió
-/// dentro de ese margen" es lo que impide que el preparador tenga libertad irrestricta.
-///
-/// Valores por defecto = plan básico (Email + SMS, 25 MB, 7 años, sin purge).
-/// El endpoint de plataforma PUT /admin/tenants/{id}/signature-constraints los eleva
-/// según el plan contratado (Starter, Pro, Enterprise, etc.).
+/// Excepción que PlatformAdmin le pone a un tenant sobre lo que vende su plan (columnas <c>Plan_*</c>). Cada
+/// valor nulo hereda del plan (<see cref="TenantSignatureLimits"/>); uno con valor lo reemplaza, sube o baje.
+/// Sin excepción (todo nulo) rige el plan tal cual.
 /// </summary>
 public sealed record SignaturePlanConstraints
 {
-    // Defaults plan básico
-    public const long DefaultMaxAllowedPdfBytes = 25L * 1024 * 1024; // 25 MB
-    public const long DefaultMaxAllowedImageBytes = 10L * 1024 * 1024; // 10 MB
-    public const int DefaultMaxAllowedPages = 100;
-    public const int DefaultMinRetentionYears = 7; // mínimo IRS para docs fiscales
-    public const bool DefaultPurgeAllowed = false;
-    public const VerificationChannel DefaultAllowedChannels = VerificationChannel.Email | VerificationChannel.Sms;
-    public const int DefaultMaxTokenExpirationHours = 720; // 30 días
-
-    /// <summary>Tamaño máximo de PDF que el tenant puede configurar (bytes).</summary>
-    public long MaxAllowedPdfBytes { get; private init; }
-
-    /// <summary>Tamaño máximo de imagen que el tenant puede configurar (bytes).</summary>
-    public long MaxAllowedImageBytes { get; private init; }
-
-    /// <summary>Máximo de páginas por documento que el tenant puede configurar.</summary>
-    public int MaxAllowedPages { get; private init; }
-
-    /// <summary>El tenant no puede configurar retención menor a este valor.</summary>
-    public int MinRetentionYears { get; private init; }
-
-    /// <summary>Si false, el tenant no puede activar AllowPurge en su RetentionPolicy.</summary>
-    public bool PurgeAllowed { get; private init; }
-
-    /// <summary>
-    /// Bitmask de canales que la plataforma habilitó para este tenant/plan.
-    /// El tenant sólo puede elegir dentro de esta máscara.
-    /// </summary>
-    public VerificationChannel AllowedChannels { get; private init; }
-
-    /// <summary>El tenant no puede configurar tokenExpiration mayor a este valor.</summary>
-    public int MaxTokenExpirationHours { get; private init; }
+    public int? MaxDocumentsPerRequest { get; private init; }
+    public int? MaxSignersPerRequest { get; private init; }
+    public long? MaxAllowedPdfBytes { get; private init; }
+    public int? MaxAllowedPages { get; private init; }
+    public int? MinRetentionYears { get; private init; }
+    public bool? PurgeAllowed { get; private init; }
+    public VerificationChannel? AllowedChannels { get; private init; }
+    public int? MaxTokenExpirationHours { get; private init; }
 
     private SignaturePlanConstraints() { }
 
-    public static SignaturePlanConstraints Default() =>
-        new()
-        {
-            MaxAllowedPdfBytes = DefaultMaxAllowedPdfBytes,
-            MaxAllowedImageBytes = DefaultMaxAllowedImageBytes,
-            MaxAllowedPages = DefaultMaxAllowedPages,
-            MinRetentionYears = DefaultMinRetentionYears,
-            PurgeAllowed = DefaultPurgeAllowed,
-            AllowedChannels = DefaultAllowedChannels,
-            MaxTokenExpirationHours = DefaultMaxTokenExpirationHours,
-        };
+    public static SignaturePlanConstraints None() => new();
 
-    /// <summary>
-    /// Construye restricciones validadas desde valores externos (endpoint de plataforma).
-    /// Aplica los techos absolutos del dominio Signature para que una configuración de
-    /// plataforma nunca supere lo que el propio sistema puede manejar.
-    /// </summary>
+    /// <summary>Valida cada valor dado contra los techos técnicos; los nulos no se tocan.</summary>
     public static Result<SignaturePlanConstraints> Create(
-        long maxAllowedPdfBytes,
-        long maxAllowedImageBytes,
-        int maxAllowedPages,
-        int minRetentionYears,
-        bool purgeAllowed,
-        VerificationChannel allowedChannels,
-        int maxTokenExpirationHours
+        int? maxDocumentsPerRequest,
+        int? maxSignersPerRequest,
+        long? maxAllowedPdfBytes,
+        int? maxAllowedPages,
+        int? minRetentionYears,
+        bool? purgeAllowed,
+        VerificationChannel? allowedChannels,
+        int? maxTokenExpirationHours
     )
     {
-        if (maxAllowedPdfBytes is <= 0 or > DocumentLimits.AbsoluteMaxPdfBytes)
-            return Result.Failure<SignaturePlanConstraints>(
-                new Error(
-                    "Signature.PlanConstraints.PdfBytes",
-                    $"MaxAllowedPdfBytes must be between 1 and {DocumentLimits.AbsoluteMaxPdfBytes}."
-                )
+        if (maxDocumentsPerRequest is < 1 or > SignatureLimits.AbsoluteMaxDocumentsPerRequest)
+            return Invalid(
+                "Documents",
+                $"MaxDocumentsPerRequest must be between 1 and {SignatureLimits.AbsoluteMaxDocumentsPerRequest}."
             );
-
-        if (maxAllowedImageBytes is <= 0 or > DocumentLimits.AbsoluteMaxPdfBytes)
-            return Result.Failure<SignaturePlanConstraints>(
-                new Error(
-                    "Signature.PlanConstraints.ImageBytes",
-                    $"MaxAllowedImageBytes must be between 1 and {DocumentLimits.AbsoluteMaxPdfBytes}."
-                )
+        if (maxSignersPerRequest is < 1 or > SignatureLimits.AbsoluteMaxSignersPerRequest)
+            return Invalid(
+                "Signers",
+                $"MaxSignersPerRequest must be between 1 and {SignatureLimits.AbsoluteMaxSignersPerRequest}."
             );
-
-        if (maxAllowedPages is <= 0 or > DocumentLimits.AbsoluteMaxPages)
-            return Result.Failure<SignaturePlanConstraints>(
-                new Error(
-                    "Signature.PlanConstraints.Pages",
-                    $"MaxAllowedPages must be between 1 and {DocumentLimits.AbsoluteMaxPages}."
-                )
+        if (maxAllowedPdfBytes is < 1024 or > DocumentLimits.AbsoluteMaxPdfBytes)
+            return Invalid(
+                "PdfBytes",
+                $"MaxAllowedPdfBytes must be between 1024 and {DocumentLimits.AbsoluteMaxPdfBytes}."
             );
-
+        if (maxAllowedPages is < 1 or > DocumentLimits.AbsoluteMaxPages)
+            return Invalid("Pages", $"MaxAllowedPages must be between 1 and {DocumentLimits.AbsoluteMaxPages}.");
         if (minRetentionYears is < RetentionPolicy.MinRetentionYears or > RetentionPolicy.MaxRetentionYears)
-            return Result.Failure<SignaturePlanConstraints>(
-                new Error(
-                    "Signature.PlanConstraints.RetentionYears",
-                    $"MinRetentionYears must be between {RetentionPolicy.MinRetentionYears} and {RetentionPolicy.MaxRetentionYears}."
-                )
+            return Invalid(
+                "RetentionYears",
+                $"MinRetentionYears must be between {RetentionPolicy.MinRetentionYears} and {RetentionPolicy.MaxRetentionYears}."
             );
-
         if (allowedChannels == VerificationChannel.None)
-            return Result.Failure<SignaturePlanConstraints>(
-                new Error("Signature.PlanConstraints.Channels", "At least one verification channel must be allowed.")
-            );
-
-        if (
-            maxTokenExpirationHours
-            is < TenantSignatureSettings.MinTokenExpirationHours
-                or > TenantSignatureSettings.MaxTokenExpirationHours
-        )
-            return Result.Failure<SignaturePlanConstraints>(
-                new Error(
-                    "Signature.PlanConstraints.TokenExpiration",
-                    $"MaxTokenExpirationHours must be between {TenantSignatureSettings.MinTokenExpirationHours} "
-                        + $"and {TenantSignatureSettings.MaxTokenExpirationHours}."
-                )
+            return Invalid("Channels", "At least one verification channel must be allowed.");
+        if (maxTokenExpirationHours is < SignatureLimits.MinTokenHours or > SignatureLimits.AbsoluteMaxTokenHours)
+            return Invalid(
+                "TokenExpiration",
+                $"MaxTokenExpirationHours must be between {SignatureLimits.MinTokenHours} and {SignatureLimits.AbsoluteMaxTokenHours}."
             );
 
         return Result.Success(
             new SignaturePlanConstraints
             {
+                MaxDocumentsPerRequest = maxDocumentsPerRequest,
+                MaxSignersPerRequest = maxSignersPerRequest,
                 MaxAllowedPdfBytes = maxAllowedPdfBytes,
-                MaxAllowedImageBytes = maxAllowedImageBytes,
                 MaxAllowedPages = maxAllowedPages,
                 MinRetentionYears = minRetentionYears,
                 PurgeAllowed = purgeAllowed,
@@ -138,4 +78,20 @@ public sealed record SignaturePlanConstraints
             }
         );
     }
+
+    /// <summary>Lo que vende el plan con esta excepción encima.</summary>
+    public SignatureLimits ApplyTo(SignatureLimits plan) =>
+        SignatureLimits.Create(
+            MaxDocumentsPerRequest ?? plan.MaxDocumentsPerRequest,
+            MaxSignersPerRequest ?? plan.MaxSignersPerRequest,
+            MaxAllowedPdfBytes ?? plan.MaxPdfBytes,
+            MaxAllowedPages ?? plan.MaxPagesPerDocument,
+            MaxTokenExpirationHours ?? plan.MaxTokenHours,
+            MinRetentionYears ?? plan.MinRetentionYears,
+            PurgeAllowed ?? plan.PurgeAllowed,
+            AllowedChannels ?? plan.AllowedChannels
+        );
+
+    private static Result<SignaturePlanConstraints> Invalid(string field, string message) =>
+        Result.Failure<SignaturePlanConstraints>(new Error($"Signature.PlanConstraints.{field}", message));
 }

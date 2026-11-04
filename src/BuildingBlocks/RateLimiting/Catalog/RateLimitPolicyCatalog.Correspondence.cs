@@ -14,6 +14,18 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 3000
     );
 
+    // GET /correspondence/search: LIKE acotado sobre hilos, enviados, borradores y adjuntos (mismo perfil que customer.h.search).
+    public static readonly RateLimitPolicyDefinition CorrespondenceMailSearch = Define(
+        "correspondence.h.mail_search",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
+    );
+
     public static readonly RateLimitPolicyDefinition CorrespondenceThreadManage = Define(
         "correspondence.g.thread_manage",
         RateLimitCategory.G,

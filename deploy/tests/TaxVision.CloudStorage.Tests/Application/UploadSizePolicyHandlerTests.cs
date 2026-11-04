@@ -58,12 +58,20 @@ public sealed class UploadSizePolicyHandlerTests
         {
             var resolver = new UploadPolicyResolver(
                 Policies,
-                Options.Create(new CloudStorageOptions()),
+                new UploadPolicyResolverTests.InMemoryFilePolicyCatalog(),
+                new FilePolicyCatalogCache(),
                 Cache,
                 new FakeSystemClock(Now)
             );
+            var limit = TenantStorageLimit.Create(tenantId, planCode, 10L * 1024 * MB, 10 * MB);
             return (
-                await resolver.ResolveAsync(tenantId, planCode, folderType, CancellationToken.None)
+                await resolver.ResolveAsync(
+                    tenantId,
+                    limit,
+                    folderType,
+                    forCustomerPortal: false,
+                    CancellationToken.None
+                )
             ).MaxFileSizeBytes;
         }
     }
@@ -148,7 +156,7 @@ public sealed class UploadSizePolicyHandlerTests
     public async Task Remove_existing_row_deletes_it_and_audits_new_null()
     {
         var fixture = new Fixture();
-        // 400 MB a propósito: el fallback de código para Recordings es 300 MB y el test debe distinguirlos.
+        // 400 MB a propósito: sin fila, Recordings cae al techo de su carpeta (500 MB) y el test debe distinguirlos.
         await fixture.SetAsync(UploadSizePolicyScope.Tenant, FolderType.Recordings, 400 * MB, tenantId: Tenant);
         Assert.Equal(400 * MB, await fixture.WarmCacheAsync(FolderType.Recordings, "starter", Tenant));
 
@@ -162,7 +170,7 @@ public sealed class UploadSizePolicyHandlerTests
         Assert.Null(entry.NewMaxFileSizeBytes);
         Assert.Equal(Tenant, entry.TenantId);
         Assert.Equal(2, fixture.UnitOfWork.SaveChangesCallCount);
-        Assert.Equal(300 * MB, await fixture.WarmCacheAsync(FolderType.Recordings, "starter", Tenant));
+        Assert.Equal(500 * MB, await fixture.WarmCacheAsync(FolderType.Recordings, "starter", Tenant));
     }
 
     [Fact]

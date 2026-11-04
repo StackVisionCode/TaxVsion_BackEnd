@@ -42,7 +42,6 @@ export interface TenantCommunicationSettingsSnapshot {
   readonly groupsAllowMultipleClients: boolean;
   readonly defaultCameraOff: boolean;
   readonly defaultMicrophoneOff: boolean;
-  readonly persistChatOnEnd: boolean;
   /**
    * Gap cerrado en Fase Backend 3 — la columna Prisma existia desde Fase 2
    * (default 'NoRejections') pero nunca se conecto al aggregate. Ver
@@ -74,7 +73,6 @@ export interface TenantCommunicationSettingsSnapshot {
   readonly meetingReactionCatalog: readonly string[] | null;
   // F6 (null = hereda): recordatorio T-N y sala de espera para guests.
   readonly meetingReminderMinutesBefore: number | null;
-  readonly guestsWaitingRoom: boolean | null;
   // F7: vocabulario de la oficina para el transcript (T-30) y notas de voz transcritas (null = hereda).
   readonly transcriptPrompt: string | null;
   readonly voiceNoteTranscriptEnabled: boolean | null;
@@ -84,6 +82,10 @@ export interface TenantCommunicationSettingsSnapshot {
   readonly chatEditWindowMinutesSupport: number | null;
   readonly chatEditWindowMinutesMeeting: number | null;
   readonly chatMaxEditsPerMessage: number | null;
+  // D-72 (null = no fijado): solo rigen si PlatformAdmin dejó a la oficina gestionar su retención.
+  readonly purgeEnabled: boolean | null;
+  readonly messageRetentionDays: number | null;
+  readonly recordingRetentionDays: number | null;
   readonly createdAtUtc: Date;
   readonly updatedAtUtc: Date;
 }
@@ -107,7 +109,9 @@ export type OfficeNumericKey =
   | 'chatEditWindowMinutesGroup'
   | 'chatEditWindowMinutesSupport'
   | 'chatEditWindowMinutesMeeting'
-  | 'chatMaxEditsPerMessage';
+  | 'chatMaxEditsPerMessage'
+  | 'messageRetentionDays'
+  | 'recordingRetentionDays';
 
 /** Claves numericas opcionales de la oficina y el rango tecnico que las acota. */
 const OFFICE_NUMERIC_RANGES: Record<OfficeNumericKey, TechnicalLimitKey> = {
@@ -126,9 +130,17 @@ const OFFICE_NUMERIC_RANGES: Record<OfficeNumericKey, TechnicalLimitKey> = {
   chatEditWindowMinutesSupport: 'chatEditWindowMinutesSupport',
   chatEditWindowMinutesMeeting: 'chatEditWindowMinutesMeeting',
   chatMaxEditsPerMessage: 'chatMaxEditsPerMessage',
+  messageRetentionDays: 'messageRetentionDays',
+  recordingRetentionDays: 'recordingRetentionDays',
 };
 
-type CeilingedKey = Exclude<OfficeNumericKey, 'ringingTimeoutSeconds' | 'meetingReminderMinutesBefore'>;
+/** D-72: lo que la oficina solo cambia si gestiona su propia retención. */
+export const OFFICE_RETENTION_KEYS = ['purgeEnabled', 'messageRetentionDays', 'recordingRetentionDays'] as const;
+
+type CeilingedKey = Exclude<
+  OfficeNumericKey,
+  'ringingTimeoutSeconds' | 'meetingReminderMinutesBefore' | 'messageRetentionDays' | 'recordingRetentionDays'
+>;
 type NumericCeilingKey = {
   [K in keyof EffectiveCeilings]: EffectiveCeilings[K] extends number ? K : never;
 }[keyof EffectiveCeilings];
@@ -185,7 +197,6 @@ export class TenantCommunicationSettings {
       groupsAllowMultipleClients: false,
       defaultCameraOff: true,
       defaultMicrophoneOff: false,
-      persistChatOnEnd: false,
       recordingConsentPolicy: RecordingConsentPolicy.NoRejections,
       defaultMeetingDurationMinutes: null,
       maxMeetingDurationMinutes: null,
@@ -209,7 +220,6 @@ export class TenantCommunicationSettings {
       reactionsEnabled: null,
       meetingReactionCatalog: null,
       meetingReminderMinutesBefore: null,
-      guestsWaitingRoom: null,
       transcriptPrompt: null,
       voiceNoteTranscriptEnabled: null,
       chatEditWindowMinutesDirect: null,
@@ -217,6 +227,9 @@ export class TenantCommunicationSettings {
       chatEditWindowMinutesSupport: null,
       chatEditWindowMinutesMeeting: null,
       chatMaxEditsPerMessage: null,
+      purgeEnabled: null,
+      messageRetentionDays: null,
+      recordingRetentionDays: null,
       createdAtUtc: now,
       updatedAtUtc: now,
     });
@@ -257,6 +270,22 @@ export class TenantCommunicationSettings {
     if (changes.length === 0) return Result.ok([]);
     this.state = { ...this.state, ...normalized, updatedAtUtc: now };
     return Result.ok(changes);
+  }
+
+  /**
+   * D-72: sin la capacidad, la oficina no cambia su retención. Reenviar el valor que ya tiene no
+   * cuenta como cambio (los guardados de pantalla completa siguen funcionando).
+   */
+  validateRetentionPatch(patch: TenantCommunicationSettingsPatch, managedByTenant: boolean): Result<void> {
+    if (managedByTenant) return Result.okVoid();
+    const touched = OFFICE_RETENTION_KEYS.some((key) => patch[key] !== undefined && patch[key] !== this.state[key]);
+    if (!touched) return Result.okVoid();
+    return Result.fail(
+      makeError(
+        'Settings.RetentionNotManagedByTenant',
+        'Retention is managed by the platform administrator for this office.',
+      ),
+    );
   }
 
   /** Rechaza el patch si alguna clave supera el techo efectivo (T-46). */

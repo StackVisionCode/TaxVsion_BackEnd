@@ -12,6 +12,8 @@ public sealed class CustomerAuditLog : TenantEntity
     private CustomerAuditLog() { }
 
     public Guid CustomerId { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid ActorUserId { get; private set; }
     public string Action { get; private set; } = default!;
     public string Outcome { get; private set; } = default!;

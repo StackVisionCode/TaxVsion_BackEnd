@@ -17,8 +17,12 @@ public interface ITenantPaymentRepository
         CancellationToken ct = default
     );
 
-    Task<IReadOnlyList<TenantPayment>> GetStuckProcessingAsync(
-        DateTime cutoffUtc,
+    /// <summary>Pagos que siguen esperando al proveedor (<c>Processing</c>/<c>RequiresAction</c>) sin cambios
+    /// desde <paramref name="stuckBeforeUtc"/> y creados después de <paramref name="createdAfterUtc"/>, de todos
+    /// los tenants. Primero los nunca consultados y luego los consultados hace más tiempo (no se acaparan).</summary>
+    Task<IReadOnlyList<AwaitingProviderPayment>> GetAwaitingProviderConfirmationAsync(
+        DateTime stuckBeforeUtc,
+        DateTime createdAfterUtc,
         int batchSize,
         CancellationToken ct = default
     );
@@ -40,5 +44,18 @@ public interface ITenantPaymentRepository
         CancellationToken ct = default
     );
 
+    /// <summary>¿La oficina tiene algún pago con ese proveedor? (borrar su config dejaría sin verificar
+    /// los webhooks de reembolsos y disputas de esos pagos).</summary>
+    Task<bool> AnyForProviderAsync(Guid tenantId, PaymentProviderCode code, CancellationToken ct = default);
+
+    /// <summary>De los proveedores configurados por la oficina, los que tienen al menos un pago (una consulta).</summary>
+    Task<IReadOnlySet<PaymentProviderCode>> GetConfiguredProvidersWithPaymentsAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    );
+
     Task AddAsync(TenantPayment payment, CancellationToken ct = default);
 }
+
+/// <summary>Lo mínimo para revisar un pago atascado en su propio comando (y su tenant).</summary>
+public sealed record AwaitingProviderPayment(Guid TenantPaymentId, Guid TenantId);

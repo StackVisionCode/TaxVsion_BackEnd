@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Domain;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
@@ -36,6 +37,9 @@ public sealed class TenantOnboardingProcessManager : Saga
 {
     public Guid Id { get; set; }
     public Guid? TenantId { get; set; }
+
+    // El dueño que creó el alta de la oficina: registro del proceso, no trabajo que se reasigne.
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? UserId { get; set; }
     public Guid? SubscriptionId { get; set; }
     public Guid? PasswordHashReference { get; set; }

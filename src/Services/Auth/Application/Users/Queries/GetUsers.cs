@@ -28,7 +28,9 @@ public sealed record UserSummaryResponse(
     int? SlotIndex,
     bool IsGated,
     // Foto confirmada del usuario (null = iniciales). Se sirve en /storage/avatars/{id}.
-    Guid? AvatarFileId = null
+    Guid? AvatarFileId = null,
+    // Cuándo se retiró (solo Offboarded): la tabla muestra "Offboarded <fecha>" en vez de "Joined".
+    DateTime? RemovedAtUtc = null
 );
 
 public sealed record GetUsersQuery(
@@ -98,7 +100,8 @@ public static class GetUsersHandler
                     user.CustomerId,
                     slot?.SlotIndex,
                     slot?.IsGated ?? false,
-                    user.AvatarFileId
+                    user.AvatarFileId,
+                    user.RemovedAtUtc
                 )
             );
         }
@@ -148,7 +151,8 @@ public static class GetUserByIdHandler
                 user.CustomerId,
                 slot?.SlotIndex,
                 slot?.IsGated ?? false,
-                user.AvatarFileId
+                user.AvatarFileId,
+                user.RemovedAtUtc
             )
         );
     }

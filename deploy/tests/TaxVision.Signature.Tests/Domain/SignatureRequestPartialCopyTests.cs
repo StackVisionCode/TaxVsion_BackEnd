@@ -77,7 +77,7 @@ public class SignatureRequestPartialCopyTests
         var request = NewDraft();
         request.DisableExpiration();
 
-        var result = request.EnableExpiration(48);
+        var result = request.EnableExpiration(TestSignatureLimits.Default, 48);
 
         Assert.True(result.IsSuccess);
         Assert.True(request.ExpirationEnabled);
@@ -91,7 +91,7 @@ public class SignatureRequestPartialCopyTests
         var request = NewDraft();
         request.DisableExpiration();
 
-        var result = request.ExtendExpiration(24);
+        var result = request.ExtendExpiration(TestSignatureLimits.Default, 24);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Request.ExpirationDisabled", result.Error.Code);
@@ -198,6 +198,7 @@ public class SignatureRequestPartialCopyTests
     private static SignatureRequest NewDraft() =>
         SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Partial Copy Test",
@@ -215,7 +216,12 @@ public class SignatureRequestPartialCopyTests
     {
         var request = NewDraft();
         signer = request
-            .AddSigner(SignerEmail.Create("alice@example.com").Value, SignerFullName.Create("Alice A").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("alice@example.com").Value,
+                SignerFullName.Create("Alice A").Value,
+                null
+            )
             .Value;
         return request;
     }
@@ -224,6 +230,7 @@ public class SignatureRequestPartialCopyTests
     {
         var draft = SignatureRequest
             .CreateDraft(
+                TestSignatureLimits.Default,
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Partial Copy InProgress",
@@ -238,11 +245,26 @@ public class SignatureRequestPartialCopyTests
             )
             .Value;
         var signer = draft
-            .AddSigner(SignerEmail.Create("bob@example.com").Value, SignerFullName.Create("Bob B").Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create("bob@example.com").Value,
+                SignerFullName.Create("Bob B").Value,
+                null
+            )
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
-        draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
+        draft.PlaceField(
+            TestSignatureLimits.MaxFieldsPerSigner,
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            null,
+            false
+        );
+        draft.AttachVerifiedDocument(
+            draft.Documents[0].Id,
+            VerifiedDocument.Create(DocumentHash.Create(new string('a', 64)).Value, 50).Value
+        );
         draft.Send(DateTime.UtcNow);
         return draft;
     }

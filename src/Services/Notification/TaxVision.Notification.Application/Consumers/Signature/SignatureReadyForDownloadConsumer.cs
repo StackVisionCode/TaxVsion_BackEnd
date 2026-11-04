@@ -14,6 +14,8 @@ namespace TaxVision.Notification.Application.Consumers.Signature;
 /// con el botón "descargar documento firmado". Reemplaza al viejo consumer que salía del evento
 /// <c>Completed</c> (que era demasiado temprano: el archivo aún no existía en CloudStorage).
 /// </summary>
+// LEGADO (2026-11): Signature ya no publica este evento (lo reemplazó SignedDocumentsDeliveryReadyIntegrationEvent,
+// sin shares). Queda solo para drenar mensajes en vuelo durante el despliegue; retirar en el siguiente release.
 public static class SignatureReadyForDownloadConsumer
 {
     private const string TemplateKey = SignatureTemplateCatalog.CompletedKey;
@@ -107,6 +109,7 @@ public static class SignatureReadyForDownloadConsumer
                             ["document_count"] = evt.SealedFiles.Count,
                             ["language"] = signer.Language,
                         },
+                        ScribeRenderAudience.Client,
                         ct
                     )
                 ).EnsureRendered("sig.request_completed.v1");

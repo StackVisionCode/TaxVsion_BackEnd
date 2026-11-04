@@ -1,11 +1,15 @@
+using System.Text.Json;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Application.Mfa;
+using TaxVision.Auth.Application.Offboarding;
 using TaxVision.Auth.Application.Users.Avatars;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.Offboarding;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
@@ -145,9 +149,7 @@ public static class ReactivateUserHandler
 
         // Offboard es terminal: no se puede reactivar a un usuario retirado.
         if (target.Status == UserStatus.Offboarded)
-            return Result.Failure(
-                new Error("User.Offboarded", "This user has been removed from the tenant and cannot be reactivated.")
-            );
+            return Result.Failure(new Error("User.Offboarded", "This user was offboarded and can't be reactivated."));
 
         // Los usuarios de portal de cliente NO consumen asiento del plan (mismo criterio que el alta:
         // CreateInvitation salta el seat guard para CustomerPortal). Reactivar uno no debe fallar por
@@ -209,7 +211,9 @@ public sealed record OffboardUserCommand(
     Guid TenantId,
     Guid TargetUserId,
     Guid RequestedByUserId,
-    Guid? SuccessorUserId
+    Guid? SuccessorUserId,
+    OffboardingReason? Reason = null,
+    string? ReasonNote = null
 );
 
 public static class OffboardUserHandler
@@ -219,6 +223,9 @@ public static class OffboardUserHandler
     public static async Task<Result> Handle(
         OffboardUserCommand command,
         IUserRepository users,
+        IMfaRepository mfa,
+        IInvitationRepository invitations,
+        IOffboardingRunRepository offboardingRuns,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
         ISessionRevocationPublisher revocations,
@@ -255,9 +262,11 @@ public static class OffboardUserHandler
             );
         }
 
-        // No dejar al tenant sin ningún admin.
+        // No dejar al tenant sin ningún admin. Solo cuenta si el objetivo es un admin ACTIVO: retirar a uno
+        // ya suspendido no cambia cuántos admins activos quedan.
         if (
             target.ActorType == UserActorType.TenantAdmin
+            && target.IsActive
             && await users.CountActiveAdminsAsync(command.TenantId, ct) <= 1
         )
             return Result.Failure(new Error("User.LastAdmin", "You cannot remove the last active administrator."));
@@ -278,6 +287,16 @@ public static class OffboardUserHandler
                 );
         }
 
+        // La ficha se valida antes de tocar nada: un motivo inválido no deja un retiro a medias.
+        var details = OffboardingDetails.Create(
+            command.RequestedByUserId,
+            command.SuccessorUserId,
+            command.Reason,
+            command.ReasonNote
+        );
+        if (details.IsFailure)
+            return details;
+
         var offboard = target.Offboard(DateTime.UtcNow);
         if (offboard.IsFailure)
             return offboard;
@@ -288,6 +307,31 @@ public static class OffboardUserHandler
 
         // Corta el acceso al instante: mismo camino probado que Deactivate (A5: ahora también anuncia).
         await SessionAccessCutoff.ForUserAsync(target, "admin_revoke", sessions, denylist, revocations, ct);
+
+        // Higiene (el acceso ya está cortado): sin segundo factor ni invitaciones vivas a su nombre.
+        var hadMfa = target.MfaEnabled;
+        await MfaFactors.ClearAsync(target, mfa, ct);
+        var cancelledInvitations = await CancelPendingInvitationsSentByAsync(
+            target,
+            command.RequestedByUserId,
+            invitations,
+            audit,
+            request,
+            correlation,
+            ct
+        );
+
+        // Acuse por servicio: la corrida nace en la misma transacción que el evento, así todo acuse la encuentra.
+        var run = OffboardingRun.Start(
+            target.TenantId,
+            target.Id,
+            target.RemovedAtUtc ?? DateTime.UtcNow,
+            details.Value,
+            OffboardingParticipants.ExpectedSteps
+        );
+        if (run.IsFailure)
+            return run;
+        await offboardingRuns.AddAsync(run.Value, ct);
 
         await bus.PublishAsync(
             new UserOffboardedIntegrationEvent
@@ -313,7 +357,16 @@ public static class OffboardUserHandler
                 request.UserAgent,
                 correlation.CorrelationId,
                 targetType: "User",
-                targetId: target.Id
+                targetId: target.Id,
+                // El motivo y la nota quedan en la ficha (solo admins), no en la bitácora de seguridad.
+                detailsJson: JsonSerializer.Serialize(
+                    new
+                    {
+                        mfaCleared = hadMfa,
+                        cancelledInvitations,
+                        successorUserId = command.SuccessorUserId,
+                    }
+                )
             ),
             ct
         );
@@ -332,6 +385,51 @@ public static class OffboardUserHandler
 
         return Result.Success();
     }
+
+    /// <summary>
+    /// Cancela las invitaciones de staff pendientes que envió quien se va: llevan roles que él eligió y nadie
+    /// en la oficina las vigila. Igual que la cancelación manual, no avisa al invitado (el enlace deja de valer);
+    /// si la oficina lo quiere igual, lo invita de nuevo un admin. Las de portal no se tocan: son del cliente.
+    /// </summary>
+    private static async Task<int> CancelPendingInvitationsSentByAsync(
+        User target,
+        Guid actorUserId,
+        IInvitationRepository invitations,
+        IAuthAuditWriter audit,
+        IRequestContext request,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        var cancelled = 0;
+        var now = DateTime.UtcNow;
+        foreach (var invitation in await invitations.ListPendingStaffSentByAsync(target.TenantId, target.Id, ct))
+        {
+            if (invitation.Cancel(actorUserId, now).IsFailure)
+                continue;
+
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    invitation.TenantId,
+                    actorUserId,
+                    AuthAuditAction.InvitationCancelled,
+                    true,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    targetType: "Invitation",
+                    targetId: invitation.Id,
+                    detailsJson: InviterOffboardedDetails
+                ),
+                ct
+            );
+            cancelled++;
+        }
+
+        return cancelled;
+    }
+
+    private const string InviterOffboardedDetails = """{"reason":"inviter_offboarded"}""";
 }
 
 // ---------------------------------------------------------------------------

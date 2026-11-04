@@ -19,6 +19,8 @@ public sealed class FormModuleSettings : TenantEntity
 
     // Histórico del interruptor retirado; ya no se escribe.
     public DateTime? EnabledAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? EnabledByUserId { get; private set; }
     public string? Note { get; private set; }
     public bool ExternalParticipantsEnabled { get; private set; }

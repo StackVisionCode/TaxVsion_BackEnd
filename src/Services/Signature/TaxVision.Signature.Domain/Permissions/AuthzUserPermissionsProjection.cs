@@ -24,6 +24,7 @@ public sealed class AuthzUserPermissionsProjection : TenantEntity
 {
     private AuthzUserPermissionsProjection() { }
 
+    [UserReference(UserReferenceKind.Projection, HandledBy = "UserLifecyclePermissionsProjectionConsumer")]
     public Guid UserId { get; private set; }
     public int PermissionsVersion { get; private set; }
     public string PermissionCodesJson { get; private set; } = "[]";

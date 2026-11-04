@@ -57,4 +57,22 @@ internal sealed class ClientRequestRepository(TasksDbContext context) : IClientR
             .ClientRequests.IgnoreQueryFilters()
             .Include(r => r.Documents)
             .FirstOrDefaultAsync(r => r.Documents.Any(d => d.FileId == fileId), ct);
+
+    public async Task<IReadOnlyList<ClientRequest>> ListOpenForStaffRecipientAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) => await OpenForStaffRecipient(tenantId, userId).ToListAsync(ct);
+
+    public Task<int> CountOpenForStaffRecipientAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        OpenForStaffRecipient(tenantId, userId).CountAsync(ct);
+
+    private IQueryable<ClientRequest> OpenForStaffRecipient(Guid tenantId, Guid userId) =>
+        context
+            .ClientRequests.IgnoreQueryFilters()
+            .Where(r =>
+                r.TenantId == tenantId
+                && (r.Status == ClientRequestStatus.Pending || r.Status == ClientRequestStatus.Submitted)
+                && (r.FollowUpUserId == userId || (r.FollowUpUserId == null && r.RequestedByUserId == userId))
+            );
 }

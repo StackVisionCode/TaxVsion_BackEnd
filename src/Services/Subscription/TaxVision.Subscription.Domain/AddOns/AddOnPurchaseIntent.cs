@@ -53,12 +53,19 @@ public sealed class AddOnPurchaseIntent : TenantEntity
 
     /// <summary>El add-on que se activó al pagar; queda para no volver a crearlo en una redelivery.</summary>
     public Guid? TenantAddOnId { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Provenance,
+        Note = "Actor de registro; el cobro y el aprovisionamiento siguen igual sin él."
+    )]
     public Guid RequestedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public DateTime? PaidAtUtc { get; private set; }
     public DateTime? CancelledAtUtc { get; private set; }
     public DateTime? ExpiredAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? CancelledByUserId { get; private set; }
     public string? CancelReason { get; private set; }
     public string? FailureReason { get; private set; }

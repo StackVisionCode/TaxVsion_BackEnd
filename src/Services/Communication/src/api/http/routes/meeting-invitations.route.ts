@@ -13,11 +13,14 @@ import { resolveInvitationToken } from '../../../application/use-cases/resolve-i
 import { resolveMeetingByCode } from '../../../application/use-cases/resolve-meeting-by-code.js';
 import { getGuestMeetingContext } from '../../../application/use-cases/get-guest-meeting-context.js';
 import type { MeetingInviteeKind } from '../../../domain/meetings/meeting-invitation.js';
+import { isGuestAccessToken, parseGuestLinkToken } from '../../../infrastructure/jwks/guest-link-token.js';
 
 const IdParams = z.object({ id: z.string().uuid() });
 const InvitationIdParams = z.object({ id: z.string().uuid(), invitationId: z.string().uuid() });
 const ShortCodeParams = z.object({ shortCode: z.string().min(1).max(16) });
-const GuestTokenBody = z.object({ token: z.string().length(64) });
+// D-68: token de invitacion (64) o enlace de la reunion (`{meetingId}.{mac}`).
+const GuestAccessToken = z.string().max(128).refine(isGuestAccessToken, 'Invalid token.');
+const GuestTokenBody = z.object({ token: GuestAccessToken });
 
 const MeetingInviteeInputSchema = z.object({
   kind: z.enum(['employee', 'customer', 'external']),
@@ -33,7 +36,7 @@ const CreateInvitationsBody = z.object({
 });
 
 const JoinByTokenBody = z.object({
-  token: z.string().length(64),
+  token: GuestAccessToken,
   displayName: z.string().min(1).max(120).optional(),
 });
 
@@ -152,8 +155,10 @@ export async function registerMeetingInvitationRoutes(
     {
       preHandler: async (request, reply) => {
         const body = JoinByTokenBody.parse(request.body);
+        // D-68: el enlace de la reunion lo comparten varias personas: el cupo es por persona (IP), no por enlace.
+        const subject = parseGuestLinkToken(body.token) ? `${body.token}:${request.ip}` : body.token;
         const decision = await container.httpRateLimiter.allow({
-          key: `comm:rl:${CommunicationRateLimitPolicyNames.MeetingJoinByToken}:${body.token}`,
+          key: `comm:rl:${CommunicationRateLimitPolicyNames.MeetingJoinByToken}:${subject}`,
           policy: CommunicationRateLimitPolicyNames.MeetingJoinByToken,
           maxPerWindow: config.rateLimit.meetingJoinByToken.maxPerWindow,
           windowSeconds: config.rateLimit.meetingJoinByToken.windowSeconds,
@@ -175,8 +180,12 @@ export async function registerMeetingInvitationRoutes(
       );
       if (!result.isSuccess) {
         // F6 (D-47): token valido pero la oficina no admite externos: 403 explicito (no enumera nada).
-        if (result.error.code === 'Meeting.GuestsNotAllowed') {
+        // D-68: con un enlace de reunion valido, bloqueada (403) o sin nombre (400) se dicen tal cual.
+        if (result.error.code === 'Meeting.GuestsNotAllowed' || result.error.code === 'Meeting.Locked') {
           return reply.code(403).send({ code: result.error.code, message: result.error.message });
+        }
+        if (result.error.code === 'Meeting.Guest.NameRequired') {
+          return reply.code(400).send({ code: result.error.code, message: result.error.message });
         }
         // Anti-enumeracion: siempre 404, sin distinguir revoked/used/expired/not-found.
         return reply

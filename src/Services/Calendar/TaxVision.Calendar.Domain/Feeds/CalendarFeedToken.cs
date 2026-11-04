@@ -15,6 +15,7 @@ public sealed class CalendarFeedToken : TenantEntity
 {
     private CalendarFeedToken() { }
 
+    [UserReference(UserReferenceKind.Credential, HandledBy = "CalendarUserOffboardedConsumer")]
     public Guid UserId { get; private set; }
 
     public byte[] TokenHash { get; private set; } = default!;

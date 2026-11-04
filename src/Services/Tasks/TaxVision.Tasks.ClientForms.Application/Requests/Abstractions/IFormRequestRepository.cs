@@ -86,6 +86,18 @@ public interface IFormRequestRepository
     // fanout; el llamador valida el tenant contra la request encontrada.
     Task<FormRequest?> GetByPdfGenerationIdAsync(Guid generationId, CancellationToken ct = default) =>
         Task.FromResult<FormRequest?>(null);
+
+    // Abiertas cuyo responsable efectivo (ResponsibleUserId ?? RequestedByUserId) es el usuario; rastreadas,
+    // para reasignarlas al retirarlo.
+    Task<IReadOnlyList<FormRequest>> ListOpenByEffectiveResponsibleAsync(
+        Guid tenantId,
+        Guid userId,
+        int take,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+
+    Task<int> CountOpenByEffectiveResponsibleAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(0);
 }
 
 public interface IFormFileScanVerdictRepository

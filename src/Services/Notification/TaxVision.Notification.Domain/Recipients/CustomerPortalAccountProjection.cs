@@ -8,6 +8,12 @@ public sealed class CustomerPortalAccountProjection : TenantEntity
     private CustomerPortalAccountProjection() { }
 
     public Guid CustomerId { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Projection,
+        HandledBy = "RecipientProjectionUserOffboardedConsumer",
+        Note = "Cuenta de portal (cliente); se apaga si llega su baja."
+    )]
     public Guid UserId { get; private set; }
     public bool IsActive { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }

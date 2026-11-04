@@ -98,7 +98,7 @@ internal static class DeliveryFeedbackApplier
             return ItemOutcome.Invalid;
         }
 
-        await SuppressIfNeededAsync(match, item.Feedback, receivedAtUtc, stores, ct);
+        var suppressed = await SuppressIfNeededAsync(match, item.Feedback, receivedAtUtc, stores, ct);
 
         var receipt = DeliveryFeedbackReceipt.Create(
             source,
@@ -109,17 +109,36 @@ internal static class DeliveryFeedbackApplier
         if (!await stores.Receipts.TryCommitAsync(receipt, ct))
             return ItemOutcome.Duplicate;
 
-        // Después de guardar: si se avisara antes y el guardado fallara, Notification vería algo que no pasó.
+        // Después de guardar: si se avisara antes y el guardado fallara, se vería algo que no pasó.
+        // Solo si cambió el resultado: un aviso repetido (otro id, mismo estado) no se vuelve a contar.
         if (applied.Value)
-            await NotifyAsync(match.Message, item.Feedback, stores);
+            await NotifyAsync(match, item, suppressed, stores);
         return ItemOutcome.Applied;
     }
 
-    private static async Task NotifyAsync(SentMessage message, DeliveryFeedback feedback, DeliveryFeedbackStores stores)
+    /// <summary>Notification para sus correos; Correspondence para los enviados desde el CRM.</summary>
+    private static async Task NotifyAsync(
+        FeedbackMatch match,
+        TranslatedFeedback item,
+        bool suppressed,
+        DeliveryFeedbackStores stores
+    )
     {
-        var evt = DeliveryFeedbackNotifier.EventFor(message, feedback, Guid.NewGuid().ToString("N"));
-        if (evt is not null)
-            await stores.Bus.PublishAsync(evt);
+        var correlationId = Guid.NewGuid().ToString("N");
+        var forNotification = DeliveryFeedbackNotifier.EventFor(match.Message, item.Feedback, correlationId);
+        if (forNotification is not null)
+            await stores.Bus.PublishAsync(forNotification);
+
+        var forCorrespondence = CorrespondenceDeliveryFeedbackNotifier.EventFor(
+            match.Message,
+            match.Recipient,
+            item.Feedback,
+            item.Report,
+            suppressed,
+            correlationId
+        );
+        if (forCorrespondence is not null)
+            await stores.Bus.PublishAsync(forCorrespondence);
     }
 
     /// <summary>
@@ -154,8 +173,11 @@ internal static class DeliveryFeedbackApplier
         return recipient is null ? null : new FeedbackMatch(found.Value, recipient);
     }
 
-    /// <summary>Rebote duro o queja: no se le vuelve a escribir. Va en la misma transacción que el aviso.</summary>
-    private static async Task SuppressIfNeededAsync(
+    /// <summary>
+    /// Rebote duro o queja: no se le vuelve a escribir. Va en la misma transacción que el aviso.
+    /// Devuelve true si este aviso creó la supresión.
+    /// </summary>
+    private static async Task<bool> SuppressIfNeededAsync(
         FeedbackMatch match,
         DeliveryFeedback feedback,
         DateTime receivedAtUtc,
@@ -170,12 +192,12 @@ internal static class DeliveryFeedbackApplier
             _ => null,
         };
         if (reason is null)
-            return;
+            return false;
 
         var tenantId = match.Message.TenantId;
         var address = match.Recipient.Address;
         if ((await stores.SuppressionList.GetByAddressAsync(tenantId, address, ct)).IsSuccess)
-            return;
+            return false;
 
         var entry = SuppressionListEntry.CreateFromFeedback(
             tenantId,
@@ -185,8 +207,11 @@ internal static class DeliveryFeedbackApplier
             match.Message.Id,
             receivedAtUtc
         );
-        if (entry.IsSuccess)
-            await stores.SuppressionList.AddAsync(entry.Value, ct);
+        if (entry.IsFailure)
+            return false;
+
+        await stores.SuppressionList.AddAsync(entry.Value, ct);
+        return true;
     }
 
     private static async Task RecordUnmatchedAsync(

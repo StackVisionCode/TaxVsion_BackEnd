@@ -242,6 +242,42 @@ describe('updateSettings (office)', () => {
     expect(h.emitterSpy.members).toEqual([{ tenantId, event: 'settings.changed', changedKeys: ['maxMeetingParticipants', 'meetingSoundsPolicy'] }]);
   });
 
+  it('D-72: retention changes are rejected while the office does not manage its retention', async () => {
+    const h = harness();
+    const tenantId = randomUUID();
+    const r = await updateSettings(
+      { tenantId, actorUserId: randomUUID(), correlationId: 'c6', patch: { purgeEnabled: true, messageRetentionDays: 30 } },
+      h,
+    );
+    expect(!r.isSuccess && r.error.code).toBe('Settings.RetentionNotManagedByTenant');
+    expect(h.configurationAudit.entries).toEqual([]);
+    expect(h.tenantSettings.rows.get(tenantId)?.toSnapshot().purgeEnabled).toBeNull();
+  });
+
+  it('D-72: with the capability granted to the office, retention is saved and audited', async () => {
+    const h = harness();
+    const tenantId = randomUUID();
+    const constraints = TenantCommunicationConstraints.empty(tenantId);
+    constraints.update({ retentionManagedByTenant: true }, { userId: randomUUID() });
+    await h.tenantConstraints.save(constraints);
+
+    const r = await updateSettings(
+      { tenantId, actorUserId: randomUUID(), correlationId: 'c7', patch: { purgeEnabled: true, recordingRetentionDays: 30 } },
+      h,
+    );
+    expect(r.isSuccess).toBe(true);
+    if (!r.isSuccess) return;
+    expect(r.value.settings.purgeEnabled).toBe(true);
+    expect(r.value.settings.recordingRetentionDays).toBe(30);
+    expect(h.configurationAudit.entries.map((e) => e.key)).toEqual(['purgeEnabled', 'recordingRetentionDays']);
+
+    const outOfRange = await updateSettings(
+      { tenantId, actorUserId: randomUUID(), correlationId: 'c8', patch: { messageRetentionDays: 0 } },
+      h,
+    );
+    expect(!outOfRange.isSuccess && outOfRange.error.code).toBe('Settings.OutOfTechnicalRange');
+  });
+
   it('overview returns settings, limits, constraints and effective values', async () => {
     const h = harness();
     const tenantId = randomUUID();
@@ -253,6 +289,10 @@ describe('updateSettings (office)', () => {
     // F9: la pantalla de la oficina lee los rangos técnicos de aquí (no los repite).
     expect(overview.ranges.defaultMeetingDurationMinutes).toEqual({ min: 5, max: 480 });
     expect(overview.ranges.chatEditWindowMinutesDirect.min).toBe(0);
+    // D-72: rangos de los días de retención y si la oficina la gestiona.
+    expect(overview.ranges.messageRetentionDays).toEqual({ min: 1, max: 3650 });
+    expect(overview.ranges.recordingRetentionDays).toEqual({ min: 1, max: 3650 });
+    expect(overview.effective.retention.managedByTenant).toBe(false);
     expect(overview.transcriptPromptMaxLength).toBeGreaterThan(0);
   });
 });

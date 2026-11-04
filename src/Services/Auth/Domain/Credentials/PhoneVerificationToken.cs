@@ -9,6 +9,11 @@ public sealed class PhoneVerificationToken : TenantEntity
 
     private PhoneVerificationToken() { }
 
+    [UserReference(
+        UserReferenceKind.Credential,
+        HandledBy = "OffboardUserHandler",
+        Note = "Inerte: canjearlo exige usuario activo."
+    )]
     public Guid UserId { get; private set; }
     public string PhoneNumber { get; private set; } = default!;
     public string CodeHash { get; private set; } = default!;

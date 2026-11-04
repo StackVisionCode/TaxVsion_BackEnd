@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Signature.Application.Abstractions;
 
 namespace TaxVision.Signature.Infrastructure.Security;
@@ -8,10 +9,11 @@ namespace TaxVision.Signature.Infrastructure.Security;
 /// <summary>
 /// Proveedor de claves RSA para el JWT de signer. Estrategia:
 /// <list type="bullet">
-///   <item>Si <c>Signature:SignerJwt:PrivateKeyPem</c> apunta a un archivo válido, se
-///     carga desde disco (dev/prod con Vault-mount).</item>
-///   <item>Caso contrario se genera una clave ephemeral en memoria (dev only —
-///     invalida los tokens al reiniciar).</item>
+///   <item>Si <c>Signature:SignerJwt:PrivateKeyPem</c> está configurado, se carga ese archivo. Si no existe o no
+///     es una clave RSA privada de al menos 2048 bits, el servicio no arranca (es un error de configuración).</item>
+///   <item>Sin configurar: en Development se genera una clave efímera (invalida los tokens al reiniciar); en
+///     cualquier otro entorno el servicio no arranca — con una efímera cada redeploy mataba todos los enlaces
+///     de firma ya enviados.</item>
 /// </list>
 /// <para>
 /// El <c>Kid</c> se deriva del SHA-256 del módulo público — determinista sin necesidad
@@ -20,13 +22,19 @@ namespace TaxVision.Signature.Infrastructure.Security;
 /// </summary>
 public sealed class RsaSigningKeyProvider : IRsaKeyProvider, IDisposable
 {
+    public const int MinimumKeySizeBits = 2048;
+
     private readonly RSA _rsa;
 
     public string ActiveKid { get; }
 
-    public RsaSigningKeyProvider(IConfiguration configuration, ILogger<RsaSigningKeyProvider> logger)
+    public RsaSigningKeyProvider(
+        IOptions<SignerJwtOptions> options,
+        IHostEnvironment environment,
+        ILogger<RsaSigningKeyProvider> logger
+    )
     {
-        _rsa = LoadOrCreateKey(configuration, logger);
+        _rsa = LoadOrCreateKey(options.Value.PrivateKeyPem, environment, logger);
         ActiveKid = ComputeKid(_rsa);
     }
 
@@ -56,20 +64,69 @@ public sealed class RsaSigningKeyProvider : IRsaKeyProvider, IDisposable
     // Métodos privados: cada uno una única responsabilidad
     // ------------------------------------------------------------------
 
-    private static RSA LoadOrCreateKey(IConfiguration configuration, ILogger logger)
+    private static RSA LoadOrCreateKey(string? pemPath, IHostEnvironment environment, ILogger logger)
     {
-        var pemPath = configuration["Signature:SignerJwt:PrivateKeyPem"];
-        if (!string.IsNullOrWhiteSpace(pemPath) && File.Exists(pemPath))
-        {
-            var rsa = RSA.Create();
-            rsa.ImportFromPem(File.ReadAllText(pemPath));
-            logger.LogInformation("Loaded Signature signer RSA key from {Path}.", pemPath);
-            return rsa;
-        }
+        if (!string.IsNullOrWhiteSpace(pemPath))
+            return LoadFromFile(pemPath, logger);
+
+        if (!environment.IsDevelopment())
+            throw new InvalidOperationException(
+                $"{SignerJwtOptions.SectionName}:PrivateKeyPem is not configured. Outside Development the signer "
+                    + "key must be a mounted PEM file; an ephemeral key would invalidate every signing link on restart."
+            );
+
         logger.LogWarning(
             "No Signature:SignerJwt:PrivateKeyPem configured. Generating ephemeral RSA-2048 key (dev only)."
         );
-        return RSA.Create(2048);
+        return RSA.Create(MinimumKeySizeBits);
+    }
+
+    private static RSA LoadFromFile(string pemPath, ILogger logger)
+    {
+        if (!File.Exists(pemPath))
+            throw new InvalidOperationException(
+                $"{SignerJwtOptions.SectionName}:PrivateKeyPem points to '{pemPath}', but the file does not exist."
+            );
+
+        var rsa = RSA.Create();
+        try
+        {
+            rsa.ImportFromPem(File.ReadAllText(pemPath));
+        }
+        catch (Exception ex) when (ex is ArgumentException or CryptographicException)
+        {
+            rsa.Dispose();
+            throw new InvalidOperationException(
+                $"{SignerJwtOptions.SectionName}:PrivateKeyPem '{pemPath}' is not a valid RSA private key PEM.",
+                ex
+            );
+        }
+
+        if (!HasPrivateKey(rsa) || rsa.KeySize < MinimumKeySizeBits)
+        {
+            rsa.Dispose();
+            throw new InvalidOperationException(
+                $"{SignerJwtOptions.SectionName}:PrivateKeyPem '{pemPath}' must be an RSA private key of at least "
+                    + $"{MinimumKeySizeBits} bits."
+            );
+        }
+
+        logger.LogInformation("Loaded Signature signer RSA key from {Path}.", pemPath);
+        return rsa;
+    }
+
+    // Un PEM con solo la parte pública importa bien pero no sirve para firmar.
+    private static bool HasPrivateKey(RSA rsa)
+    {
+        try
+        {
+            rsa.ExportParameters(includePrivateParameters: true);
+            return true;
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
     }
 
     private static string ComputeKid(RSA rsa)

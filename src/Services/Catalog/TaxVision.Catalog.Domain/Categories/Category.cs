@@ -9,6 +9,7 @@ public sealed class Category : TenantEntity
 {
     public const int NameMax = 100;
 
+    [UserReference(UserReferenceKind.Provenance, Note = "Creador; no filtra lecturas.")]
     public Guid TaxUserId { get; private set; }
     public string Name { get; private set; } = default!;
     public string? Description { get; private set; }

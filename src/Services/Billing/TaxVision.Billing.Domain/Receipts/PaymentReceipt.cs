@@ -25,6 +25,8 @@ public sealed class PaymentReceipt : AggregateRoot
     public ReceiptStatus Status { get; private set; }
     public string? Notes { get; private set; }
     public Guid? PdfFileId { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? ProcessedByUserId { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 

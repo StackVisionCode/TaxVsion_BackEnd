@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using BuildingBlocks.Common;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Abstractions;
@@ -27,10 +28,16 @@ internal sealed class FakeMessageBus : IMessageBus
     /// <summary>Resultado para cualquier otro tipo de retorno (lo usan los tests de controllers M2M).</summary>
     public object? InvokeAnyResult { get; set; }
 
+    /// <summary>Se llama en cada publicación (p. ej. para comprobar que ya se guardó antes de publicar).</summary>
+    public Action<object>? OnPublish { get; set; }
+
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
         if (message is not null)
+        {
+            OnPublish?.Invoke(message);
             Published.Add(message);
+        }
         return ValueTask.CompletedTask;
     }
 
@@ -127,6 +134,21 @@ internal sealed class FakeCorrelationContext : ICorrelationContext
     private sealed class Popper(FakeCorrelationContext owner, string previous) : IDisposable
     {
         public void Dispose() => owner.CorrelationId = previous;
+    }
+}
+
+/// <summary>Proyección local de permisos: todos activos salvo los de <see cref="WithoutActiveProjection"/>.</summary>
+internal sealed class FakeUserPermissionsProjectionReader : IUserPermissionsProjectionReader
+{
+    public HashSet<Guid> WithoutActiveProjection { get; } = [];
+    public int Calls { get; private set; }
+
+    public Task<UserPermissionsSnapshot?> GetSnapshotAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
+    {
+        Calls++;
+        return Task.FromResult(
+            WithoutActiveProjection.Contains(userId) ? null : new UserPermissionsSnapshot(1, Array.Empty<string>())
+        );
     }
 }
 
@@ -287,6 +309,17 @@ internal sealed class FakeOAuthConnectionRepository : IOAuthConnectionRepository
         return Task.FromResult(ids);
     }
 
+    public Task<IReadOnlyDictionary<Guid, string>> ListActiveScopesByAccountIdsAsync(
+        IReadOnlyCollection<Guid> accountIds,
+        CancellationToken ct = default
+    )
+    {
+        IReadOnlyDictionary<Guid, string> scopes = Connections
+            .Where(c => accountIds.Contains(c.AccountId) && c.Status == OAuthConnectionStatus.Active)
+            .ToDictionary(c => c.AccountId, c => c.Scope);
+        return Task.FromResult(scopes);
+    }
+
     public void Remove(OAuthConnection connection) => Connections.Remove(connection);
 }
 
@@ -309,15 +342,27 @@ internal sealed class FakeOAuthProviderClient(ProviderCode providerCode) : IOAut
 
     public string BuildAuthorizationUrl(string state) => $"https://provider.example.com/authorize?state={state}";
 
+    public Exception? ThrowOnRevoke { get; set; }
+
     public Task RevokeAsync(string refreshToken, CancellationToken ct = default)
     {
+        if (ThrowOnRevoke is not null)
+            throw ThrowOnRevoke;
         RevokedRefreshTokens.Add(refreshToken);
         return Task.CompletedTask;
     }
 
-    public Task<OAuthTokenGrant> RefreshAccessTokenAsync(string refreshToken, CancellationToken ct = default)
+    public List<string> RefreshScopes { get; } = [];
+
+    public Task<OAuthTokenGrant> RefreshAccessTokenAsync(
+        string refreshToken,
+        string grantedScope,
+        CancellationToken ct = default
+    )
     {
         Interlocked.Increment(ref _callCount);
+        lock (RefreshScopes)
+            RefreshScopes.Add(grantedScope);
         if (ThrowOnRefresh is not null)
             throw ThrowOnRefresh;
 

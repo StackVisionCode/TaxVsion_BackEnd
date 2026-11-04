@@ -33,6 +33,7 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
         builder.Property(onboarding => onboarding.RegistrationEmailSentAtUtc);
 
         builder.Property(onboarding => onboarding.OfficeName).HasMaxLength(256);
+        builder.Property(onboarding => onboarding.TimeZoneId).HasMaxLength(100);
         builder.Property(onboarding => onboarding.RequestedSubdomain).HasMaxLength(63);
 
         builder.Property(onboarding => onboarding.TermsContentHash).HasMaxLength(64);

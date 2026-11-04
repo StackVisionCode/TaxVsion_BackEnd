@@ -22,6 +22,7 @@ public enum FormIntakeLinkAction
     Revoke,
     PinVersion,
     RegenerateToken,
+    ChangeResponsible,
 }
 
 public sealed record UpdateFormIntakeLinkCommand(
@@ -31,7 +32,8 @@ public sealed record UpdateFormIntakeLinkCommand(
     FormIntakeLinkAction Action,
     Guid? FormTemplateVersionId,
     byte[] RowVersion,
-    DateTime NowUtc
+    DateTime NowUtc,
+    Guid? ResponsibleUserId = null
 );
 
 public sealed record GetFormIntakeLinkTokenQuery(Guid TenantId, Guid ByUserId, Guid LinkId);

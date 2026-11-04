@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../shared/result.js';
-import { MessageKind } from './message-kind.js';
+import { MessageKind, SystemMessageKind } from './message-kind.js';
 import { makeMessageBody, type MessageBody } from './message-body.js';
 
 /**
@@ -48,6 +48,8 @@ export interface MessageSnapshot {
   readonly transcriptLanguage?: string | null;
   /** F8: cuántas veces se editó. Ausente = 0 (mensajes anteriores a F8). */
   readonly editCount?: number;
+  /** Solo kind=System: de dónde sale el aviso (ícono del hilo). Ausente/null en el resto. */
+  readonly systemKind?: SystemMessageKind | null;
 }
 
 /** F8: política vigente para editar un mensaje propio (minutos desde el envío; 0 = no se edita). */
@@ -172,6 +174,8 @@ export class Message {
     body: string;
     /** F7: adjunto del sistema (p. ej. el transcript de una llamada) que el hilo muestra como enlace. */
     attachmentFileId?: string | null;
+    /** Origen del aviso; sin dato es un Notice. */
+    systemKind?: SystemMessageKind;
     now?: Date;
   }): Result<Message> {
     return Result.ok(
@@ -179,6 +183,7 @@ export class Message {
         id: randomUUID(),
         conversationId: input.conversationId,
         tenantId: input.tenantId,
+        systemKind: input.systemKind ?? SystemMessageKind.Notice,
         senderId: SYSTEM_SENDER_ID,
         senderDisplayName: 'System',
         kind: MessageKind.System,

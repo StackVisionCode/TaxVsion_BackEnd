@@ -14,4 +14,12 @@ internal sealed class FakeEmailLayoutRepository(EmailLayout layout) : IEmailLayo
         );
 
     public Task AddAsync(EmailLayout value, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<IReadOnlyList<EmailLayout>> GetReferencingFileAsync(Guid fileId, CancellationToken ct = default)
+    {
+        var referenced = layout.Versions.Any(v =>
+            v.HtmlFileId == fileId || v.DesignJsonFileId == fileId || v.PreviewImageFileId == fileId
+        );
+        return Task.FromResult<IReadOnlyList<EmailLayout>>(referenced ? [layout] : []);
+    }
 }

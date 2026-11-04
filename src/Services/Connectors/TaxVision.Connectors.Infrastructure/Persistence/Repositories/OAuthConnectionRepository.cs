@@ -41,6 +41,15 @@ public sealed class OAuthConnectionRepository(ConnectorsDbContext dbContext) : I
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, string>> ListActiveScopesByAccountIdsAsync(
+        IReadOnlyCollection<Guid> accountIds,
+        CancellationToken ct = default
+    ) =>
+        await dbContext
+            .OAuthConnections.AsNoTracking()
+            .Where(c => accountIds.Contains(c.AccountId) && c.Status == OAuthConnectionStatus.Active)
+            .ToDictionaryAsync(c => c.AccountId, c => c.Scope, ct);
+
     // El token es tabla aparte sin FK con cascade (ver ConnectorsDbContext): se borra explícito.
     public void Remove(OAuthConnection connection)
     {

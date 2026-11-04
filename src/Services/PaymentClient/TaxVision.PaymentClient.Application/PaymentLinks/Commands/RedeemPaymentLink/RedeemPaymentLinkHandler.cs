@@ -85,7 +85,8 @@ public static class RedeemPaymentLinkHandler
             config.ProviderCode,
             config.StatementDescriptor,
             actorUserId: Guid.Empty,
-            nowUtc
+            nowUtc,
+            command.ReceiptEmail
         );
         if (preparedResult.IsFailure)
             return Result.Failure<RedeemPaymentLinkResponse>(preparedResult.Error);

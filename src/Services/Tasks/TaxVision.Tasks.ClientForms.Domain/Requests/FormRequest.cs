@@ -24,6 +24,8 @@ public sealed class FormRequest : AggregateRoot
     public Guid? LinkConflictingRequestId { get; private set; }
     public FormRequestOrigin Origin { get; private set; }
     public Guid? IntakeLinkId { get; private set; }
+
+    [UserReference(UserReferenceKind.ActiveWork, HandledBy = "FormRequestsUserOffboardedConsumer")]
     public Guid? ResponsibleUserId { get; private set; }
     public Guid FormTemplateId { get; private set; }
     public Guid FormTemplateVersionId { get; private set; }
@@ -33,6 +35,12 @@ public sealed class FormRequest : AggregateRoot
     public int? TaxYear { get; private set; }
     public Guid? TaskId { get; private set; }
     public DateTime? DueAtUtc { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.ActiveWork,
+        HandledBy = "FormRequestsUserOffboardedConsumer",
+        Note = "No cambia; si no hay ResponsibleUserId es el responsable y el retiro lo fija."
+    )]
     public Guid RequestedByUserId { get; private set; }
     public DateTime RequestedAtUtc { get; private set; }
     public FormRequestStatus Status { get; private set; }
@@ -41,9 +49,13 @@ public sealed class FormRequest : AggregateRoot
     public int CurrentRevisionNumber { get; private set; }
     public int DraftProgressPercent { get; private set; }
     public DateTime? CompletedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? CompletedByUserId { get; private set; }
     public string? CompletionNote { get; private set; }
     public DateTime? CancelledAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
     public Guid? CancelledByUserId { get; private set; }
     public FormCancelReason? CancelReason { get; private set; }
     public string? CancelNote { get; private set; }
@@ -637,8 +649,10 @@ public sealed class FormRequest : AggregateRoot
         var revision = Submission?.CurrentRevision(revisionNumber);
         if (revision is null)
             return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureFailed();
-        return Result.Success();
+        // Un segundo aviso de fallo (dispatch duplicado) no vuelve a planificar ni a notificar.
+        return revision.MarkSignatureFailed()
+            ? Result.Success()
+            : Result.Failure(FormRequestErrors.SignatureNotPending);
     }
 
     public Result MarkSignatureSigned(int revisionNumber)

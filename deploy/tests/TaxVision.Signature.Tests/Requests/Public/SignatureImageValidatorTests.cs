@@ -39,7 +39,7 @@ public sealed class SignatureImageValidatorTests
     [Fact]
     public void Valid_png_passes()
     {
-        var result = SignatureImageValidator.Validate(BuildPng(600, 200));
+        var result = SignatureImageValidator.Validate(BuildPng(600, 200), TestSignatureLimits.MaxSignatureImageBytes);
 
         Assert.True(result.IsSuccess);
     }
@@ -47,7 +47,7 @@ public sealed class SignatureImageValidatorTests
     [Fact]
     public void Null_is_rejected()
     {
-        var result = SignatureImageValidator.Validate(null);
+        var result = SignatureImageValidator.Validate(null, TestSignatureLimits.MaxSignatureImageBytes);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Image.Empty", result.Error.Code);
@@ -56,7 +56,7 @@ public sealed class SignatureImageValidatorTests
     [Fact]
     public void Empty_is_rejected()
     {
-        var result = SignatureImageValidator.Validate([]);
+        var result = SignatureImageValidator.Validate([], TestSignatureLimits.MaxSignatureImageBytes);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Image.Empty", result.Error.Code);
@@ -65,9 +65,9 @@ public sealed class SignatureImageValidatorTests
     [Fact]
     public void Oversized_payload_is_rejected()
     {
-        var oversized = new byte[SignatureImageValidator.MaxBytes + 1];
+        var oversized = new byte[TestSignatureLimits.MaxSignatureImageBytes + 1];
 
-        var result = SignatureImageValidator.Validate(oversized);
+        var result = SignatureImageValidator.Validate(oversized, TestSignatureLimits.MaxSignatureImageBytes);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Image.TooLarge", result.Error.Code);
@@ -82,7 +82,7 @@ public sealed class SignatureImageValidatorTests
         jpeg[1] = 0xD8;
         jpeg[2] = 0xFF;
 
-        var result = SignatureImageValidator.Validate(jpeg);
+        var result = SignatureImageValidator.Validate(jpeg, TestSignatureLimits.MaxSignatureImageBytes);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Image.NotPng", result.Error.Code);
@@ -95,7 +95,7 @@ public sealed class SignatureImageValidatorTests
         // Corrompe el chunk IHDR.
         bytes[12] = (byte)'X';
 
-        var result = SignatureImageValidator.Validate(bytes);
+        var result = SignatureImageValidator.Validate(bytes, TestSignatureLimits.MaxSignatureImageBytes);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Image.NotPng", result.Error.Code);
@@ -104,7 +104,7 @@ public sealed class SignatureImageValidatorTests
     [Fact]
     public void Zero_dimension_is_rejected()
     {
-        var result = SignatureImageValidator.Validate(BuildPng(0, 200));
+        var result = SignatureImageValidator.Validate(BuildPng(0, 200), TestSignatureLimits.MaxSignatureImageBytes);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Image.BadDimensions", result.Error.Code);
@@ -113,7 +113,7 @@ public sealed class SignatureImageValidatorTests
     [Fact]
     public void Oversized_dimension_is_rejected()
     {
-        var result = SignatureImageValidator.Validate(BuildPng(5000, 200));
+        var result = SignatureImageValidator.Validate(BuildPng(5000, 200), TestSignatureLimits.MaxSignatureImageBytes);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Image.BadDimensions", result.Error.Code);
