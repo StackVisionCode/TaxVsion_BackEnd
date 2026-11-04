@@ -10,6 +10,9 @@ namespace TaxVision.Signature.Infrastructure.Sealing;
 /// an alias of Arial (or the closest sans-serif fallback the OS provides).
 /// PdfSharp 6.x has no built-in font resolution and requires this to render
 /// stamps, audit footers, and certificate-of-completion pages.
+/// Si la máquina no tiene el estilo pedido (p. ej. un Linux con solo DejaVu básico, sin cursivas), se usa
+/// el estilo más cercano de la misma familia y PdfSharp simula lo que falta: las iniciales salen en negrita
+/// cursiva en cualquier servidor, no solo donde esté instalada la fuente exacta.
 /// </summary>
 public sealed class SealingFontResolver : IFontResolver
 {
@@ -42,8 +45,11 @@ public sealed class SealingFontResolver : IFontResolver
     private readonly Dictionary<string, FaceRef> _faceIndex = new(StringComparer.OrdinalIgnoreCase);
 
     public SealingFontResolver()
+        : this(GetFontDirectories()) { }
+
+    /// <summary>Con carpetas propias (los tests simulan así un servidor con pocas fuentes).</summary>
+    public SealingFontResolver(IReadOnlyList<string> searchDirs)
     {
-        var searchDirs = GetFontDirectories();
         // Cada alias de familia con sus cuatro estilos (regular, negrita, cursiva, negrita cursiva).
         var aliases = new (string Alias, string[] Candidates)[]
         {
@@ -67,22 +73,31 @@ public sealed class SealingFontResolver : IFontResolver
         }
     }
 
-    public FontResolverInfo? ResolveTypeface(string familyName, bool isBold, bool isItalic)
+    public FontResolverInfo? ResolveTypeface(string familyName, bool isBold, bool isItalic) =>
+        ResolveInFamily(familyName, isBold, isItalic) ?? ResolveInFamily("Helvetica", isBold, isItalic);
+
+    /// <summary>
+    /// El estilo exacto; si no está, el más cercano de la familia (primero conservando la negrita, que pesa más
+    /// a la vista) y PdfSharp simula la negrita o la cursiva que falte.
+    /// </summary>
+    private FontResolverInfo? ResolveInFamily(string family, bool isBold, bool isItalic)
     {
-        var key = BuildKey(familyName, isBold, isItalic);
-        if (_faceIndex.TryGetValue(key, out var faceRef))
-            return new FontResolverInfo(faceRef.FaceId);
-
-        // Try same family without style modifier.
-        if (_faceIndex.TryGetValue(familyName, out faceRef))
-            return new FontResolverInfo(faceRef.FaceId);
-
-        // Fall back to Helvetica (always mapped to a sans-serif).
-        if (_faceIndex.TryGetValue(BuildKey("Helvetica", isBold, isItalic), out faceRef))
-            return new FontResolverInfo(faceRef.FaceId);
-        if (_faceIndex.TryGetValue("Helvetica", out faceRef))
-            return new FontResolverInfo(faceRef.FaceId);
-
+        var candidates = new (bool Bold, bool Italic)[]
+        {
+            (isBold, isItalic),
+            (isBold, false),
+            (false, isItalic),
+            (false, false),
+        };
+        foreach (var (bold, italic) in candidates.Distinct())
+        {
+            if (_faceIndex.TryGetValue(BuildKey(family, bold, italic), out var faceRef))
+                return new FontResolverInfo(
+                    faceRef.FaceId,
+                    mustSimulateBold: isBold && !bold,
+                    mustSimulateItalic: isItalic && !italic
+                );
+        }
         return null;
     }
 
@@ -147,12 +162,25 @@ public sealed class SealingFontResolver : IFontResolver
     {
         // Windows TTF conventions: Arial.ttf, Arialbd.ttf, Ariali.ttf, Arialbi.ttf
         // Linux TTF conventions:   LiberationSans-Regular.ttf, LiberationSans-Bold.ttf, LiberationSans-Italic.ttf
+        //                          DejaVuSans-Oblique.ttf, DejaVuSans-BoldOblique.ttf (DejaVu Sans/Mono dicen "Oblique")
         var normalized = family.Replace(" ", string.Empty);
         return (bold, italic) switch
         {
-            (true, true) => [$"{normalized}bi.ttf", $"{normalized}-BoldItalic.ttf", $"{normalized}bi.otf"],
+            (true, true) =>
+            [
+                $"{normalized}bi.ttf",
+                $"{normalized}-BoldItalic.ttf",
+                $"{normalized}-BoldOblique.ttf",
+                $"{normalized}bi.otf",
+            ],
             (true, false) => [$"{normalized}bd.ttf", $"{normalized}-Bold.ttf", $"{normalized}bd.otf"],
-            (false, true) => [$"{normalized}i.ttf", $"{normalized}-Italic.ttf", $"{normalized}i.otf"],
+            (false, true) =>
+            [
+                $"{normalized}i.ttf",
+                $"{normalized}-Italic.ttf",
+                $"{normalized}-Oblique.ttf",
+                $"{normalized}i.otf",
+            ],
             _ => [$"{normalized}.ttf", $"{normalized}-Regular.ttf", $"{normalized}.otf"],
         };
     }
