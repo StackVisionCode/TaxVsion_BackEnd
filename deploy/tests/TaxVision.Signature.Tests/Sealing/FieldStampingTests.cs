@@ -50,7 +50,9 @@ public sealed class FieldStampingTests
     {
         var stamped = Stamp(Field(SignatureFieldKind.Date, height: TwentyPointsHigh, width: 0.06, fontSizePt: 30));
 
-        var size = Assert.Single(stamped.FontSizes, size => size != FooterFontSize);
+        // Stamp ya quitó el pie: lo que queda es la fecha (en un servidor con letra ancha llega al mínimo, 6 pt,
+        // que es también la medida del pie; por eso no se filtra por tamaño).
+        var size = Assert.Single(stamped.FontSizes);
         Assert.True(size < 30, $"expected the date to shrink, got {size} pt");
     }
 
@@ -62,7 +64,8 @@ public sealed class FieldStampingTests
             Field(SignatureFieldKind.Text, height: 40.0 / 792, width: 0.3, fontSizePt: 14, value: text)
         );
 
-        Assert.All(stamped.FontSizes.Where(size => size != FooterFontSize), size => Assert.True(size < 14));
+        Assert.NotEmpty(stamped.FontSizes);
+        Assert.All(stamped.FontSizes, size => Assert.True(size < 14));
         Assert.Equal(0, stamped.Shapes);
     }
 
@@ -79,10 +82,28 @@ public sealed class FieldStampingTests
     [Fact]
     public void Initials_use_the_bold_italic_face_shown_in_the_editor()
     {
+        var baseline = Seal([], showFrame: true);
         var pdf = Seal([Field(SignatureFieldKind.Initials, height: TwentyPointsHigh)], showFrame: true);
 
-        Assert.Contains(FontNames(pdf), name => name.Contains("BoldItalic", StringComparison.OrdinalIgnoreCase));
+        // La fuente que agregó el campo (sin el prefijo de subconjunto, que cambia en cada PDF).
+        var added = Assert.Single(FontNames(pdf).Select(FaceName).Except(FontNames(baseline).Select(FaceName)));
+        // Con la negrita cursiva instalada se usa tal cual; en un servidor que no la tiene (Linux con DejaVu
+        // básico) se usa la negrita y PdfSharp simula la cursiva inclinando el texto. Las dos se ven igual.
+        var realBoldItalic = added.Contains("BoldItalic", StringComparison.OrdinalIgnoreCase);
+        var simulatedItalic =
+            added.Contains("Bold", StringComparison.OrdinalIgnoreCase)
+            && Operators(pdf)
+                .Any(o =>
+                    o.Name == "Tm"
+                    && o.Operands.Count == 6
+                    && SizeOf(o.Operands[2]) is var skew
+                    && skew != 0
+                    && !double.IsNaN(skew)
+                );
+        Assert.True(realBoldItalic || simulatedItalic, $"initials were drawn with '{added}' and no italic");
     }
+
+    private static string FaceName(string baseFont) => baseFont[(baseFont.IndexOf('+') + 1)..];
 
     [Fact]
     public void A_checkbox_is_just_a_drawn_check_mark()
@@ -94,8 +115,6 @@ public sealed class FieldStampingTests
     }
 
     // ------------------------------------------------------------------
-
-    private const double FooterFontSize = 6;
 
     private static SealedFieldRender Field(
         SignatureFieldKind kind,
