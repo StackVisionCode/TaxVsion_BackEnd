@@ -7,6 +7,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Sms.Domain.Customers;
 using TaxVision.Sms.Domain.Messages;
 using TaxVision.Sms.Domain.OptOut;
 using TaxVision.Sms.Domain.Permissions;
@@ -37,6 +38,10 @@ public sealed class SmsDbContext(DbContextOptions<SmsDbContext> options, ITenant
     // P2 — proyección compartida de asignaciones cliente↔staff (kit BuildingBlocks.CustomerVisibility),
     // mantenida por el snapshot CustomerAssignmentsChanged de Customer. Filtra la visibilidad por asignación.
     public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
+    // SMS-16 — política de contacto del cliente (canal SMS), mantenida por los eventos de Customer.
+    public DbSet<CustomerContactPolicyProjection> CustomerContactPolicyProjections =>
+        Set<CustomerContactPolicyProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

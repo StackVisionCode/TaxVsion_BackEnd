@@ -52,6 +52,13 @@ public sealed class StockMovementConfiguration : IEntityTypeConfiguration<StockM
             m.CatalogItemId,
             m.MovedAtUtc,
         });
+
+        // Lectura del ledger de una factura dentro del candado de commit-sale. No único: una factura deja
+        // varios Sale/Return por ítem a lo largo de sus ediciones.
+        builder
+            .HasIndex(m => new { m.TenantId, m.Reference })
+            .HasFilter("[Reference] IS NOT NULL")
+            .HasDatabaseName("IX_StockMovements_Tenant_Reference");
     }
 }
 

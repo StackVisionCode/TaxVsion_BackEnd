@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Wallet.Api;
 using TaxVision.Wallet.Application;
 using TaxVision.Wallet.Infrastructure;
 using TaxVision.Wallet.Infrastructure.Persistence;
@@ -119,6 +120,7 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, WalletDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    options.ApplyWalletFailureRules();
     options.ApplyStandardFailurePolicies();
 
     // PUBLICADOS (guardrail 13) — un PublishMessage<T> por CADA evento de integración que Wallet publica.

@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -29,7 +28,6 @@ public static class OfficeWispReviewDueConsumer
         NotificationDispatcher dispatcher,
         IRecipientResolver resolver,
         IUserEmailResolver emails,
-        IUserNotificationPreferenceRepository preferences,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribe,
         ITenantHostResolver hosts,
@@ -71,18 +69,7 @@ public static class OfficeWispReviewDueConsumer
             var host = await hosts.ResolveHostAsync(evt.OfficeTenantId, ct);
             var settingsUrl = $"{TenantEmailLinks.StaffBase(host, portal.Value)}/company/settings#compliance";
 
-            await SendEmailsAsync(
-                evt,
-                notice,
-                settingsUrl,
-                recipients,
-                emails,
-                preferences,
-                gateway,
-                scribe,
-                correlation,
-                ct
-            );
+            await SendEmailsAsync(evt, notice, settingsUrl, recipients, emails, gateway, scribe, correlation, ct);
 
             foreach (var userId in recipients)
             {
@@ -121,36 +108,22 @@ public static class OfficeWispReviewDueConsumer
         string settingsUrl,
         IReadOnlyList<Guid> recipients,
         IUserEmailResolver emails,
-        IUserNotificationPreferenceRepository preferences,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribe,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
-        // El gate de preferencias del dispatcher no cubre el correo: se filtra acá (lo obligatorio no se filtra).
-        var skipPreference =
-            NotificationCategoryRules.IsLocked(Category)
-            || NotificationCatalog
-                .GetRequired(NotificationKinds.TenantWispReviewDue)
-                .IsMandatoryFor(NotificationChannel.Email);
-        var addresses = new List<string>();
+        // La preferencia de correo la aplica el gateway (RecipientUserId + Category).
+        var addresses = new List<(Guid UserId, string Address)>();
         foreach (var userId in recipients)
         {
-            if (
-                !skipPreference
-                && !await preferences.IsEnabledAsync(
-                    evt.OfficeTenantId,
-                    userId,
-                    Category,
-                    NotificationChannel.Email,
-                    ct
-                )
-            )
-                continue;
             var address = await emails.ResolveAsync(evt.OfficeTenantId, userId, ct);
-            if (!string.IsNullOrWhiteSpace(address) && !addresses.Contains(address, StringComparer.OrdinalIgnoreCase))
-                addresses.Add(address);
+            if (
+                !string.IsNullOrWhiteSpace(address)
+                && !addresses.Exists(a => string.Equals(a.Address, address, StringComparison.OrdinalIgnoreCase))
+            )
+                addresses.Add((userId, address));
         }
         if (addresses.Count == 0)
             return;
@@ -169,7 +142,7 @@ public static class OfficeWispReviewDueConsumer
             )
         ).EnsureRendered(EmailEventKey);
 
-        foreach (var address in addresses)
+        foreach (var (userId, address) in addresses)
             await gateway.QueueEmailAsync(
                 render.ToDispatchRequest(
                     evt.OfficeTenantId,
@@ -177,7 +150,11 @@ public static class OfficeWispReviewDueConsumer
                     EmailEventKey,
                     evt.EventId,
                     correlation.CorrelationId
-                ),
+                ) with
+                {
+                    RecipientUserId = userId,
+                    Category = Category,
+                },
                 ct
             );
     }

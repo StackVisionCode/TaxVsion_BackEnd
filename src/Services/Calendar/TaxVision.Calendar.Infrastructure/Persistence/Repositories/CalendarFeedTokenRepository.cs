@@ -15,6 +15,16 @@ internal sealed class CalendarFeedTokenRepository(CalendarDbContext context) : I
             .CalendarFeedTokens.IgnoreQueryFilters()
             .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.UserId == userId && t.RevokedAtUtc == null, ct);
 
+    public async Task<IReadOnlyList<CalendarFeedToken>> ListActiveForUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) =>
+        await context
+            .CalendarFeedTokens.IgnoreQueryFilters()
+            .Where(t => t.TenantId == tenantId && t.UserId == userId && t.RevokedAtUtc == null)
+            .ToListAsync(ct);
+
     public async Task<CalendarFeedToken?> FindByHashAsync(byte[] tokenHash, CancellationToken ct = default) =>
         await context.CalendarFeedTokens.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
 

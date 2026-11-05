@@ -93,6 +93,126 @@ public class HttpResiliencePipelineTests
     }
 
     [Fact]
+    public async Task Create_WithPersistentHttpFailure_StillRetriesTwiceBeforeFailing()
+    {
+        var breaker = HttpResiliencePipeline.Create("gmail", minimumThroughput: 3);
+        var attempts = 0;
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            breaker.ExecuteAsync<int>(_ =>
+            {
+                attempts++;
+                throw new HttpRequestException("connection reset");
+            })
+        );
+
+        // El pipeline de siempre no cambia: 1 intento + 2 reintentos.
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
+    public async Task CreateWithoutRetry_WithHttpFailure_CallsOperationOnce()
+    {
+        var breaker = HttpResiliencePipeline.CreateWithoutRetry("sms-send", minimumThroughput: 3);
+        var attempts = 0;
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            breaker.ExecuteAsync<int>(_ =>
+            {
+                attempts++;
+                throw new HttpRequestException("connection reset");
+            })
+        );
+
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
+    public async Task CreateWithoutRetry_WithTimeout_CallsOperationOnce()
+    {
+        var breaker = HttpResiliencePipeline.CreateWithoutRetry("sms-send", minimumThroughput: 3);
+        var attempts = 0;
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            breaker.ExecuteAsync<int>(_ =>
+            {
+                attempts++;
+                throw new TaskCanceledException("timeout");
+            })
+        );
+
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
+    public async Task CreateWithoutRetry_After3ConsecutiveFailures_OpensAndSkipsSubsequentCalls()
+    {
+        var openedKeys = new List<string>();
+        var breaker = HttpResiliencePipeline.CreateWithoutRetry(
+            "sms-send",
+            minimumThroughput: 3,
+            breakDuration: TimeSpan.FromSeconds(60),
+            onOpened: key => openedKeys.Add(key)
+        );
+        var attempts = 0;
+
+        for (var i = 0; i < 3; i++)
+        {
+            await Assert.ThrowsAsync<HttpRequestException>(() =>
+                breaker.ExecuteAsync<int>(_ =>
+                {
+                    attempts++;
+                    throw new HttpRequestException("connection reset");
+                })
+            );
+        }
+
+        await Assert.ThrowsAsync<BrokenCircuitException>(() =>
+            breaker.ExecuteAsync<int>(_ =>
+            {
+                attempts++;
+                return Task.FromResult(0);
+            })
+        );
+
+        Assert.Equal(3, attempts);
+        Assert.Contains("sms-send", openedKeys);
+    }
+
+    [Fact]
+    public void GetOrCreateWithoutRetry_WithSameKey_ReturnsSameInstanceSeparateFromRetryPipeline()
+    {
+        var registry = new HttpResiliencePipelineRegistry();
+
+        var first = registry.GetOrCreateWithoutRetry("twilio");
+        var second = registry.GetOrCreateWithoutRetry("twilio");
+        var withRetry = registry.GetOrCreate("twilio");
+
+        Assert.Same(first, second);
+        Assert.NotSame(first, withRetry);
+    }
+
+    [Fact]
+    public async Task Registry_GetOrCreate_StillRetriesAfterWithoutRetryIsUsed()
+    {
+        var registry = new HttpResiliencePipelineRegistry();
+        _ = registry.GetOrCreateWithoutRetry("twilio");
+        var attempts = 0;
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            registry
+                .GetOrCreate("twilio")
+                .ExecuteAsync<int>(_ =>
+                {
+                    attempts++;
+                    throw new HttpRequestException("connection reset");
+                })
+        );
+
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
     public void GetOrCreate_WithSameKey_ReturnsSamePipelineInstance()
     {
         var registry = new HttpResiliencePipelineRegistry();

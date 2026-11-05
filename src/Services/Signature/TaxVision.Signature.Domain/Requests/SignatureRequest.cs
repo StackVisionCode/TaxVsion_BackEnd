@@ -163,6 +163,12 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public DateTime? RejectedAtUtc { get; private set; }
     public Guid? RejectedBySignerId { get; private set; }
 
+    /// <summary>Control de concurrencia: dos escrituras desde lecturas viejas no se pisan.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
+    /// <summary>El sellado se dio por fallido; el job de reconciliación no lo reintenta hasta un reseal manual.</summary>
+    public DateTime? SealingFailedAtUtc { get; private set; }
+
     /// <summary>Timestamp de la última tanda de reminders emitida por el scheduler.</summary>
     public DateTime? LastReminderSentAtUtc { get; private set; }
 
@@ -2191,6 +2197,61 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
+    /// <summary>
+    /// Reposición: todos los firmantes firmaron pero la solicitud quedó sin completar (dos firmas que se
+    /// pisaron). Devuelve <c>true</c> si la completó ahora y <c>false</c> si ya estaba completada.
+    /// Una <c>Expired</c> solo se completa con <paramref name="allowExpired"/> (D-SIG-1).
+    /// </summary>
+    public Result<bool> ReconcileCompletion(DateTime nowUtc, bool allowExpired)
+    {
+        var evaluation = EvaluateCompletionReconciliation(allowExpired);
+        if (evaluation.IsFailure || !evaluation.Value)
+            return evaluation;
+
+        TransitionToCompleted(nowUtc);
+        return Result.Success(true);
+    }
+
+    /// <summary>Lo mismo que <see cref="ReconcileCompletion"/> sin modificar nada (simulación).</summary>
+    public Result<bool> EvaluateCompletionReconciliation(bool allowExpired)
+    {
+        if (Status == SignatureRequestStatus.Completed)
+            return Result.Success(false);
+
+        var reconcilable =
+            Status == SignatureRequestStatus.InProgress || (allowExpired && Status == SignatureRequestStatus.Expired);
+        if (!reconcilable)
+            return Result.Failure<bool>(
+                new Error(
+                    "Signature.Request.NotReconcilable",
+                    $"A request in status {Status} cannot be completed by reconciliation."
+                )
+            );
+
+        if (!AllSignersHaveSigned())
+            return Result.Failure<bool>(
+                new Error("Signature.Request.SignersPending", "Not every signer has signed this request.")
+            );
+
+        return Result.Success(true);
+    }
+
+    public void MarkSealingFailed(DateTime failedAtUtc)
+    {
+        SealingFailedAtUtc = failedAtUtc;
+        Touch();
+    }
+
+    /// <summary>Reseal manual: el job vuelve a considerar la solicitud.</summary>
+    public void ClearSealingFailure()
+    {
+        if (SealingFailedAtUtc is null)
+            return;
+
+        SealingFailedAtUtc = null;
+        Touch();
+    }
+
     public Result ExtendExpiration(SignatureLimits limits, int additionalHours)
     {
         if (IsTerminal())
@@ -2496,7 +2557,12 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public string? RotateSignerToken(Guid signerId, string tokenId)
     {
         var signer = FindSignerOrNull(signerId);
-        return signer?.RotateCurrentToken(tokenId);
+        if (signer is null)
+            return null;
+
+        var previous = signer.RotateCurrentToken(tokenId);
+        Touch();
+        return previous;
     }
 
     private bool EmailAlreadyPresent(SignerEmail email) => _signers.Any(s => s.Email.Value == email.Value);

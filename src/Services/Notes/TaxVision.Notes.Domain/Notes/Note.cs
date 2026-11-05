@@ -189,8 +189,9 @@ public sealed class Note : TenantEntity, IHasOwner
         if (attachment is null)
             return Result.Failure(NoteErrors.AttachmentNotFound);
 
-        attachment.MarkAvailable();
-        Touch();
+        // Sin cambio (Detached, infected o ya Available) = éxito sin tocar la nota.
+        if (attachment.MarkAvailable())
+            Touch();
         return Result.Success();
     }
 
@@ -201,8 +202,8 @@ public sealed class Note : TenantEntity, IHasOwner
         if (attachment is null)
             return Result.Failure(NoteErrors.AttachmentNotFound);
 
-        attachment.MarkUnderReview();
-        Touch();
+        if (attachment.MarkUnderReview())
+            Touch();
         return Result.Success();
     }
 
@@ -216,8 +217,8 @@ public sealed class Note : TenantEntity, IHasOwner
         if (attachment is null)
             return Result.Failure(NoteErrors.AttachmentNotFound);
 
-        attachment.MarkRejected(reason.Trim());
-        Touch();
+        if (attachment.MarkRejected(reason.Trim()))
+            Touch();
         return Result.Success();
     }
 

@@ -60,6 +60,35 @@ public sealed class NotesFileScanResultConsumerTests
     }
 
     [Fact]
+    public async Task Handle_FileAvailableForDetachedAttachment_DoesNotResurrect()
+    {
+        var tenantId = Guid.NewGuid();
+        var repo = new FakeNoteRepository();
+        var (note, fileId) = SeedNoteWithAttachment(repo, tenantId);
+        note.DetachFile(fileId);
+
+        await NotesFileScanResultConsumer.Handle(
+            new FileAvailableIntegrationEvent
+            {
+                TenantId = tenantId,
+                FileId = fileId,
+                ObjectKey = "key",
+                ContentType = "application/pdf",
+                SizeBytes = 1024,
+                ChecksumSha256 = "abc",
+                CreatedBy = Guid.NewGuid(),
+            },
+            repo,
+            new NoOpUnitOfWork(),
+            new NoOpCorrelationContext(),
+            NullLogger<Note>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(NoteAttachmentStatus.Detached, note.Attachments.Single().Status);
+    }
+
+    [Fact]
     public async Task FileInfectedDetected_marks_matching_attachment_Rejected_with_infected_reason()
     {
         var tenantId = Guid.NewGuid();
@@ -115,6 +144,72 @@ public sealed class NotesFileScanResultConsumerTests
         Assert.Equal(NoteAttachmentStatus.Rejected, attachment.Status);
         Assert.Equal("blocked-by-policy", attachment.RejectionReason);
     }
+
+    [Fact]
+    public async Task Handle_FileScanFailed_MarksAttachmentRejected()
+    {
+        var tenantId = Guid.NewGuid();
+        var repo = new FakeNoteRepository();
+        var (note, fileId) = SeedNoteWithAttachment(repo, tenantId);
+        var uow = new NoOpUnitOfWork();
+
+        await HandleScanFailedAsync(ScanFailed(tenantId, fileId, "scan_stalled"), repo, uow);
+
+        var attachment = note.Attachments.Single();
+        Assert.Equal(NoteAttachmentStatus.Rejected, attachment.Status);
+        Assert.Equal("scan-failed", attachment.RejectionReason);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task Handle_FileScanFailedBlobMissing_MarksRejectedFileMissing()
+    {
+        var tenantId = Guid.NewGuid();
+        var repo = new FakeNoteRepository();
+        var (note, fileId) = SeedNoteWithAttachment(repo, tenantId);
+
+        await HandleScanFailedAsync(ScanFailed(tenantId, fileId, "blob_missing"), repo, new NoOpUnitOfWork());
+
+        var attachment = note.Attachments.Single();
+        Assert.Equal(NoteAttachmentStatus.Rejected, attachment.Status);
+        Assert.Equal("file-missing", attachment.RejectionReason);
+    }
+
+    [Fact]
+    public async Task Handle_FileScanFailedTenantMismatch_DoesNothing()
+    {
+        var repo = new FakeNoteRepository();
+        var (note, fileId) = SeedNoteWithAttachment(repo, Guid.NewGuid());
+        var uow = new NoOpUnitOfWork();
+
+        await HandleScanFailedAsync(ScanFailed(Guid.NewGuid(), fileId, "scan_stalled"), repo, uow);
+
+        Assert.Equal(NoteAttachmentStatus.Pending, note.Attachments.Single().Status);
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    private static FileScanFailedIntegrationEvent ScanFailed(Guid tenantId, Guid fileId, string reason) =>
+        new()
+        {
+            TenantId = tenantId,
+            FileId = fileId,
+            ObjectKey = "key",
+            Reason = reason,
+        };
+
+    private static Task HandleScanFailedAsync(
+        FileScanFailedIntegrationEvent evt,
+        FakeNoteRepository repo,
+        NoOpUnitOfWork uow
+    ) =>
+        NotesFileScanResultConsumer.Handle(
+            evt,
+            repo,
+            uow,
+            new NoOpCorrelationContext(),
+            NullLogger<Note>.Instance,
+            CancellationToken.None
+        );
 
     // T-20: en revisión queda retenido; si el revisor aprueba pasa a Available, y un veredicto final no vuelve atrás.
     [Fact]

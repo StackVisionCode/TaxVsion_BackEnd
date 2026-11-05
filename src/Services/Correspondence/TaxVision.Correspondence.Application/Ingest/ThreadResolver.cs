@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
 
 namespace TaxVision.Correspondence.Application.Ingest;
@@ -10,8 +11,9 @@ namespace TaxVision.Correspondence.Application.Ingest;
 /// <see cref="RawMessageReceivedConsumer"/> traía inline desde Fase 4; la capa 4 es nueva:
 ///
 /// <list type="number">
-/// <item>ProviderThreadId — match exacto por <c>(TenantId, ProviderThreadId)</c>. Prioridad máxima.</item>
-/// <item>InReplyTo — el <see cref="IncomingEmail"/> dueño de ese <c>InternetMessageId</c>, si existe.</item>
+/// <item>ProviderThreadId — match exacto por <c>(TenantId, CustomerId, ProviderThreadId)</c>. Prioridad máxima.</item>
+/// <item>InReplyTo — el <see cref="IncomingEmail"/> del mismo cliente dueño de ese <c>InternetMessageId</c> o, si no
+/// hay, el enviado del CRM con ese Message-ID.</item>
 /// <item>References — igual que InReplyTo pero sobre la lista completa; si hay más de un match
 /// se queda con el de <see cref="IncomingEmail.ReceivedAtUtc"/> más reciente.</item>
 /// <item>Subject fallback (opcional, <see cref="CorrespondenceIngestOptions.EnableSubjectThreadingFallback"/>,
@@ -26,6 +28,7 @@ namespace TaxVision.Correspondence.Application.Ingest;
 public sealed class ThreadResolver(
     IEmailThreadRepository threads,
     IIncomingEmailRepository incomingEmails,
+    IDraftRepository drafts,
     IOptions<CorrespondenceIngestOptions> options
 )
 {
@@ -37,6 +40,7 @@ public sealed class ThreadResolver(
     /// </summary>
     private static readonly TimeSpan SubjectFallbackWindow = TimeSpan.FromDays(7);
 
+    // COR-02: un hilo por cliente. Ninguna capa empareja con el hilo (o el correo) de otro cliente.
     public async Task<EmailThreadResolution> ResolveAsync(
         Guid tenantId,
         Guid customerId,
@@ -48,17 +52,43 @@ public sealed class ThreadResolver(
         CancellationToken ct
     )
     {
-        var byProviderThreadId = await ResolveByProviderThreadIdAsync(tenantId, providerThreadId, ct);
-        if (byProviderThreadId is not null)
-            return new EmailThreadResolution(byProviderThreadId, ThreadMatchLayer.ProviderThreadId);
+        if (providerThreadId is not null)
+        {
+            var byProviderThreadId = await threads.FindByProviderThreadIdAsync(
+                tenantId,
+                customerId,
+                providerThreadId,
+                ct
+            );
+            if (byProviderThreadId is not null)
+                return new EmailThreadResolution(byProviderThreadId, ThreadMatchLayer.ProviderThreadId);
+        }
 
-        var byInReplyTo = await ResolveByInReplyToAsync(tenantId, inReplyTo, ct);
-        if (byInReplyTo is not null)
-            return new EmailThreadResolution(byInReplyTo, ThreadMatchLayer.InReplyTo);
+        if (inReplyTo is not null)
+        {
+            var byInReplyTo = await ResolveByMessageIdsAsync(
+                tenantId,
+                customerId,
+                [inReplyTo],
+                ThreadMatchLayer.InReplyTo,
+                ct
+            );
+            if (byInReplyTo is not null)
+                return byInReplyTo;
+        }
 
-        var byReferences = await ResolveByReferencesAsync(tenantId, references, ct);
-        if (byReferences is not null)
-            return new EmailThreadResolution(byReferences, ThreadMatchLayer.References);
+        if (references is { Count: > 0 })
+        {
+            var byReferences = await ResolveByMessageIdsAsync(
+                tenantId,
+                customerId,
+                references,
+                ThreadMatchLayer.References,
+                ct
+            );
+            if (byReferences is not null)
+                return byReferences;
+        }
 
         if (!options.Value.EnableSubjectThreadingFallback)
             return EmailThreadResolution.NoMatch;
@@ -69,52 +99,77 @@ public sealed class ThreadResolver(
             : new EmailThreadResolution(bySubject, ThreadMatchLayer.SubjectFallback);
     }
 
-    private Task<EmailThread?> ResolveByProviderThreadIdAsync(
+    /// <summary>
+    /// Capas 2 y 3: primero los entrantes del mismo cliente (el más reciente gana) y, si no hay, los enviados desde
+    /// el CRM (COR-16). Un enviado sin hilo vuelve en <see cref="EmailThreadResolution.UnthreadedSentDraft"/>.
+    /// </summary>
+    private async Task<EmailThreadResolution?> ResolveByMessageIdsAsync(
         Guid tenantId,
-        string? providerThreadId,
-        CancellationToken ct
-    ) =>
-        providerThreadId is null
-            ? Task.FromResult<EmailThread?>(null)
-            : threads.FindByProviderThreadIdAsync(tenantId, providerThreadId, ct);
-
-    private async Task<EmailThread?> ResolveByInReplyToAsync(Guid tenantId, string? inReplyTo, CancellationToken ct)
-    {
-        if (inReplyTo is null)
-            return null;
-
-        var related = await incomingEmails.FindByInternetMessageIdAsync(tenantId, inReplyTo, ct);
-        return related is null ? null : await threads.GetByIdAsync(tenantId, related.EmailThreadId, ct);
-    }
-
-    private async Task<EmailThread?> ResolveByReferencesAsync(
-        Guid tenantId,
-        IReadOnlyList<string>? references,
-        CancellationToken ct
-    )
-    {
-        if (references is not { Count: > 0 })
-            return null;
-
-        var mostRecent = await FindMostRecentReferencedEmailAsync(tenantId, references, ct);
-        return mostRecent is null ? null : await threads.GetByIdAsync(tenantId, mostRecent.EmailThreadId, ct);
-    }
-
-    private async Task<IncomingEmail?> FindMostRecentReferencedEmailAsync(
-        Guid tenantId,
-        IReadOnlyList<string> references,
+        Guid customerId,
+        IReadOnlyList<string> messageIds,
+        ThreadMatchLayer layer,
         CancellationToken ct
     )
     {
         IncomingEmail? mostRecent = null;
-        foreach (var reference in references)
+        foreach (var messageId in messageIds)
         {
-            var candidate = await incomingEmails.FindByInternetMessageIdAsync(tenantId, reference, ct);
-            if (candidate is not null && (mostRecent is null || candidate.ReceivedAtUtc > mostRecent.ReceivedAtUtc))
+            var candidate = await incomingEmails.FindByInternetMessageIdAsync(tenantId, messageId, ct);
+            if (
+                candidate is not null
+                && candidate.CustomerId == customerId
+                && (mostRecent is null || candidate.ReceivedAtUtc > mostRecent.ReceivedAtUtc)
+            )
+                mostRecent = candidate;
+        }
+
+        if (mostRecent is not null)
+        {
+            var thread = await OwnThreadAsync(tenantId, customerId, mostRecent.EmailThreadId, ct);
+            if (thread is not null)
+                return new EmailThreadResolution(thread, layer);
+        }
+
+        var sent = await FindMostRecentSentAsync(tenantId, customerId, messageIds, ct);
+        if (sent is null)
+            return null;
+        if (sent.EmailThreadId is not { } sentThreadId)
+            return new EmailThreadResolution(null, layer, sent);
+
+        var sentThread = await OwnThreadAsync(tenantId, customerId, sentThreadId, ct);
+        return sentThread is null ? null : new EmailThreadResolution(sentThread, layer);
+    }
+
+    private async Task<Draft?> FindMostRecentSentAsync(
+        Guid tenantId,
+        Guid customerId,
+        IReadOnlyList<string> messageIds,
+        CancellationToken ct
+    )
+    {
+        Draft? mostRecent = null;
+        foreach (var messageId in messageIds)
+        {
+            var normalized = Draft.NormalizeMessageId(messageId);
+            if (normalized is null)
+                continue;
+
+            var candidate = await drafts.FindSentByInternetMessageIdAsync(tenantId, normalized, ct);
+            if (
+                candidate is not null
+                && candidate.CustomerId == customerId
+                && (mostRecent is null || candidate.UpdatedAtUtc > mostRecent.UpdatedAtUtc)
+            )
                 mostRecent = candidate;
         }
 
         return mostRecent;
+    }
+
+    private async Task<EmailThread?> OwnThreadAsync(Guid tenantId, Guid customerId, Guid threadId, CancellationToken ct)
+    {
+        var thread = await threads.GetByIdAsync(tenantId, threadId, ct);
+        return thread?.CustomerId == customerId ? thread : null;
     }
 
     private async Task<EmailThread?> ResolveBySubjectFallbackAsync(

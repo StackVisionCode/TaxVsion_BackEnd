@@ -58,6 +58,18 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
             .HasFilter("[InternetMessageId] IS NOT NULL")
             .HasDatabaseName("IX_IncomingEmails_TenantId_InternetMessageId_Unique");
 
+        // Dedup sin InternetMessageId: misma copia del mismo buzón (red contra dos ingestas concurrentes).
+        builder
+            .HasIndex(x => new
+            {
+                x.TenantId,
+                x.AccountId,
+                x.ProviderMessageId,
+            })
+            .IsUnique()
+            .HasFilter("[InternetMessageId] IS NULL")
+            .HasDatabaseName("IX_IncomingEmails_TenantId_AccountId_ProviderMessageId_NoInternetId");
+
         // Inbox por customer, más reciente primero (ReceivedAtUtc DESC per plan §24).
         builder
             .HasIndex(x => new

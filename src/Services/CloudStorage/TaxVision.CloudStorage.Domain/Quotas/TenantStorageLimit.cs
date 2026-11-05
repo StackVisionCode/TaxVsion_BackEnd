@@ -113,6 +113,16 @@ public sealed class TenantStorageLimit : TenantEntity
     /// </summary>
     public void ReleaseUsed(long bytes) => UsedBytes = Math.Max(0, UsedBytes - bytes);
 
+    /// <summary>Reposición de CST-5: fija valores absolutos calculados desde Files (idempotente).</summary>
+    public Result Recalculate(long usedBytes, long reservedBytes)
+    {
+        if (usedBytes < 0 || reservedBytes < 0)
+            return Result.Failure(QuotaErrors.InvalidRecalculation);
+        UsedBytes = usedBytes;
+        ReservedBytes = reservedBytes;
+        return Result.Success();
+    }
+
     public void ApplyPlan(string planCode, long maxBytes, long maxFileSizeBytes, string? fileTypeGroups = null)
     {
         PlanCode = planCode;
@@ -247,6 +257,10 @@ public static class QuotaErrors
         "The file exceeds the plan's per-file limit."
     );
     public static readonly Error Exceeded = new("StorageQuota.Exceeded", "The tenant storage quota would be exceeded.");
+    public static readonly Error InvalidRecalculation = new(
+        "StorageQuota.InvalidRecalculation",
+        "Recalculated storage counters cannot be negative."
+    );
     public static readonly Error InvalidSharingPolicy = new(
         "StorageQuota.InvalidSharingPolicy",
         "Link lifetime must be 1–3650 days (default not above the maximum), passwords 4–64 characters, 3–50 attempts and downloads 1–100000."

@@ -1,4 +1,5 @@
 using BuildingBlocks.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
@@ -35,13 +36,6 @@ public sealed class SeatCheckoutReconciliationJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var intents = services.GetRequiredService<ISeatPurchaseIntentRepository>();
-        var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
-        var seats = services.GetRequiredService<ISubscriptionSeatRepository>();
-        var payments = services.GetRequiredService<ISeatCheckoutPaymentClient>();
-        var audit = services.GetRequiredService<ISubscriptionAuditLogWriter>();
-        var metrics = services.GetRequiredService<ISubscriptionMetrics>();
-        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
-        var bus = services.GetRequiredService<IMessageBus>();
         var jobLogger = services.GetRequiredService<ILogger<SeatCheckoutReconciliationJob>>();
 
         var nowUtc = DateTime.UtcNow;
@@ -49,34 +43,7 @@ public sealed class SeatCheckoutReconciliationJob(
         if (stale.Count == 0)
             return;
 
-        var provisionedCount = 0;
-        foreach (var intent in stale)
-        {
-            try
-            {
-                if (
-                    await ReconcileOneAsync(
-                        intent,
-                        subscriptions,
-                        seats,
-                        payments,
-                        audit,
-                        metrics,
-                        unitOfWork,
-                        bus,
-                        jobLogger,
-                        nowUtc,
-                        ct
-                    )
-                )
-                    provisionedCount++;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                jobLogger.LogError(ex, "Seat checkout reconcile failed for intent {IntentId}.", intent.Id);
-            }
-        }
-
+        var provisionedCount = await ReconcileAsync([.. stale.Select(intent => intent.Id)], nowUtc, ct);
         if (provisionedCount > 0)
             jobLogger.LogInformation(
                 "SeatCheckoutReconciliationJob provisioned {Count} paid-but-pending intent(s).",
@@ -84,22 +51,57 @@ public sealed class SeatCheckoutReconciliationJob(
             );
     }
 
+    // Cada intención en su propio scope: un fallo deja sucio solo su DbContext.
+    internal async Task<int> ReconcileAsync(IReadOnlyList<Guid> intentIds, DateTime nowUtc, CancellationToken ct)
+    {
+        var provisionedCount = 0;
+        foreach (var intentId in intentIds)
+        {
+            using var itemScope = ScopeFactory.CreateScope();
+            var services = itemScope.ServiceProvider;
+            var jobLogger = services.GetRequiredService<ILogger<SeatCheckoutReconciliationJob>>();
+            try
+            {
+                if (await ReconcileOneAsync(intentId, services, jobLogger, nowUtc, ct))
+                    provisionedCount++;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                jobLogger.LogInformation("Seat checkout intent {IntentId} provisioned by another writer.", intentId);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                jobLogger.LogError(ex, "Seat checkout reconcile failed for intent {IntentId}.", intentId);
+            }
+        }
+
+        return provisionedCount;
+    }
+
     private static async Task<bool> ReconcileOneAsync(
-        SeatPurchaseIntent intent,
-        ISubscriptionRepository subscriptions,
-        ISubscriptionSeatRepository seats,
-        ISeatCheckoutPaymentClient payments,
-        ISubscriptionAuditLogWriter audit,
-        ISubscriptionMetrics metrics,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        Guid intentId,
+        IServiceProvider services,
         ILogger logger,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
+        var intent = await services
+            .GetRequiredService<ISeatPurchaseIntentRepository>()
+            .GetByIdForProvisioningAsync(intentId, ct);
+        if (intent is null || intent.Status != SeatPurchaseIntentStatus.Pending)
+            return false;
+
         if (intent.SaaSPaymentId is not { } paymentId)
             return false;
+
+        var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
+        var seats = services.GetRequiredService<ISubscriptionSeatRepository>();
+        var payments = services.GetRequiredService<ISeatCheckoutPaymentClient>();
+        var audit = services.GetRequiredService<ISubscriptionAuditLogWriter>();
+        var metrics = services.GetRequiredService<ISubscriptionMetrics>();
+        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+        var bus = services.GetRequiredService<IMessageBus>();
 
         var status = await payments.GetPaymentStatusAsync(intent.TenantId, paymentId, ct);
         if (status is null)

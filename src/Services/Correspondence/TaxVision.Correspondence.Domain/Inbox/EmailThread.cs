@@ -129,18 +129,39 @@ public sealed class EmailThread : ITenantOwned
     }
 
     /// <summary>
-    /// Registra que llegó un mensaje nuevo al hilo. Falla en vez de reabrir silenciosamente un
-    /// hilo archivado — reabrir es una decisión de negocio explícita que esta fase no modela
-    /// (nada la dispara todavía).
+    /// Registra que llegó un mensaje nuevo al hilo. Un hilo archivado vuelve al Inbox, como con un aviso de
+    /// no entrega: la respuesta del cliente nunca se descarta. Devuelve <c>true</c> si el hilo se reabrió.
     /// </summary>
-    public Result AppendMessage(DateTime receivedAtUtc)
+    public Result<bool> AppendMessage(DateTime receivedAtUtc)
     {
-        if (Status == EmailThreadStatus.Archived)
-            return Result.Failure(new Error("EmailThread.Archived", "Cannot append a message to an archived thread."));
-
+        var reopened = Status == EmailThreadStatus.Archived;
+        Unarchive();
         LastMessageAtUtc = receivedAtUtc;
         MessageCount++;
-        return Result.Success();
+        return Result.Success(reopened);
+    }
+
+    /// <summary>
+    /// Completa el id de conversación del proveedor de un hilo que no lo tenía (p. ej. el de un correo nuevo enviado
+    /// desde el CRM, cuando llega la primera respuesta). Nunca pisa uno existente. Devuelve <c>true</c> si cambió.
+    /// </summary>
+    public bool AdoptProviderThreadId(string? providerThreadId)
+    {
+        if (ProviderThreadId is not null || string.IsNullOrWhiteSpace(providerThreadId))
+            return false;
+        if (providerThreadId.Length > ProviderThreadIdMaxLength)
+            return false;
+
+        ProviderThreadId = providerThreadId;
+        return true;
+    }
+
+    /// <summary>Reposición (COR-02): recalcula contador y fechas tras mover correos entre hilos.</summary>
+    public void ResetMessageStats(int messageCount, DateTime firstMessageAtUtc, DateTime lastMessageAtUtc)
+    {
+        MessageCount = Math.Max(0, messageCount);
+        FirstMessageAtUtc = firstMessageAtUtc;
+        LastMessageAtUtc = lastMessageAtUtc;
     }
 
     // Un entrante fue/volvió de la papelera. MessageCount cuenta solo entrantes.

@@ -15,8 +15,11 @@ public sealed class WalletRepository(WalletDbContext db) : IWalletRepository
     // IgnoreQueryFilters(): el tenantId viene explícito y validado desde Application (mismo criterio que
     // Notes/Campaigns). El filtro global fail-closed es red de seguridad para queries fuera del repo; en
     // un handler de Wolverine el TenantContext puede no estar poblado y excluiría filas legítimas.
-    public Task<Domain.Wallet.Wallet?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        db.Wallets.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.TenantId == tenantId, ct);
+    public Task<Domain.Wallet.Wallet?> GetByTenantAsync(
+        Guid tenantId,
+        string currency,
+        CancellationToken ct = default
+    ) => db.Wallets.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.TenantId == tenantId && w.Currency == currency, ct);
 
     public async Task AddAsync(Domain.Wallet.Wallet wallet, CancellationToken ct = default) =>
         await db.Wallets.AddAsync(wallet, ct);

@@ -204,7 +204,7 @@ public static class SaveFileFromSourceHandler
                 await storage.DeleteAsync(evt.SourceBucket, evt.SourceObjectKey, ct);
             }
 
-            file.MarkPendingScan();
+            file.MarkPendingScan(clock.UtcNow);
 
             // Coloca el archivo en su carpeta de sistema segun FolderType (get-or-create por
             // category, idempotente). Tipos internos devuelven null y se quedan en raiz. Cierra

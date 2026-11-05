@@ -2,6 +2,8 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using TaxVision.Documents.Application.Generations;
 using TaxVision.Documents.Application.Abstractions;
 using TaxVision.Documents.Application.Generations.OnboardingReceipt;
 using TaxVision.Documents.Domain.Generations;
@@ -37,6 +39,7 @@ public sealed class GenerateOnboardingReceiptDocumentHandlerTests
             new TestCorrelationContext("corr-1"),
             TestPlatform.Settings,
             TimeProvider.System,
+            Options.Create(new GenerationRetryOptions()),
             NullLogger<GenerateOnboardingReceiptDocumentResult>.Instance,
             CancellationToken.None
         );
@@ -73,6 +76,7 @@ public sealed class GenerateOnboardingReceiptDocumentHandlerTests
             new TestCorrelationContext("corr-1"),
             TestPlatform.Settings,
             TimeProvider.System,
+            Options.Create(new GenerationRetryOptions()),
             NullLogger<GenerateOnboardingReceiptDocumentResult>.Instance,
             CancellationToken.None
         );
@@ -84,7 +88,41 @@ public sealed class GenerateOnboardingReceiptDocumentHandlerTests
         Assert.Equal(0, unitOfWork.SaveCount);
     }
 
-    private static DocumentGeneration NewGeneration(Guid onboardingId, string idempotencyKey)
+    [Fact]
+    public async Task Handle_ExistingStalledQueued_RequeuesProcessCommand()
+    {
+        var onboardingId = Guid.NewGuid();
+        var idempotencyKey = $"onb-receipt:{onboardingId:N}";
+        var twoHoursAgo = DateTime.UtcNow.AddHours(-2);
+        var existing = NewGeneration(onboardingId, idempotencyKey, twoHoursAgo);
+        Assert.True(existing.Queue(twoHoursAgo).IsSuccess);
+        var unitOfWork = new RecordingUnitOfWork();
+        var bus = new RecordingMessageBus();
+
+        var result = await GenerateOnboardingReceiptDocumentHandler.Handle(
+            NewCommand(onboardingId, idempotencyKey),
+            new InMemoryDocumentGenerationRepository(existing),
+            unitOfWork,
+            bus,
+            new TestCorrelationContext("corr-1"),
+            TestPlatform.Settings,
+            TimeProvider.System,
+            Options.Create(new GenerationRetryOptions()),
+            NullLogger<GenerateOnboardingReceiptDocumentResult>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(DocumentGenerationStatus.Queued.ToString(), result.Value.Status);
+        Assert.Equal(1, unitOfWork.SaveCount);
+        var process = Assert.Single(bus.Published.OfType<ProcessOnboardingReceiptGenerationCommand>());
+        Assert.Equal(existing.Id, process.GenerationId);
+    }
+
+    private static DocumentGeneration NewGeneration(Guid onboardingId, string idempotencyKey) =>
+        NewGeneration(onboardingId, idempotencyKey, DateTime.UtcNow);
+
+    private static DocumentGeneration NewGeneration(Guid onboardingId, string idempotencyKey, DateTime nowUtc)
     {
         var result = DocumentGeneration.Request(
             tenantId: PlatformTenant.Id,
@@ -99,7 +137,7 @@ public sealed class GenerateOnboardingReceiptDocumentHandlerTests
             idempotencyKey: idempotencyKey,
             correlationId: "corr-1",
             causationId: null,
-            nowUtc: DateTime.UtcNow
+            nowUtc: nowUtc
         );
 
         Assert.True(result.IsSuccess);

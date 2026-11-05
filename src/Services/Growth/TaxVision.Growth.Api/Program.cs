@@ -20,6 +20,7 @@ using Serilog;
 using StackExchange.Redis;
 using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
+using TaxVision.Growth.Api.Messaging;
 using TaxVision.Growth.Infrastructure;
 using TaxVision.Growth.Infrastructure.Observability;
 using TaxVision.Growth.Infrastructure.Persistence;
@@ -154,6 +155,8 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    // Antes de la estándar: gana la primera regla que matchea.
+    options.ApplyGrowthFailurePolicies();
     options.ApplyStandardFailurePolicies();
 });
 

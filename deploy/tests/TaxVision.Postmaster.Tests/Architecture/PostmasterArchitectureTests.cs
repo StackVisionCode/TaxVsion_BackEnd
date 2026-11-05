@@ -360,6 +360,43 @@ public sealed class PostmasterArchitectureTests
         return violations;
     }
 
+    /// <summary>
+    /// El envío al proveedor nunca va dentro de la transacción: un fallo al confirmar después de enviar
+    /// revertiría la reserva y el reintento duplicaría el correo (PMS-01).
+    /// </summary>
+    [Fact]
+    public void Senders_are_only_called_from_non_transactional_handlers()
+    {
+        Type[] senders =
+        [
+            typeof(TaxVision.Postmaster.Application.Abstractions.IEmailSender),
+            typeof(TaxVision.Postmaster.Application.Abstractions.IConnectedMailboxSender),
+        ];
+        var violations = new List<string>();
+        foreach (var type in ApplicationAssembly.GetTypes())
+        {
+            if (!type.Name.EndsWith("Handler") && !type.Name.EndsWith("Consumer"))
+                continue;
+
+            var handlers = type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)
+                .Where(m => m.Name is "Handle" or "HandleAsync" or "Consume" or "ConsumeAsync");
+            foreach (var method in handlers)
+            {
+                var parameters = method.GetParameters().Select(p => p.ParameterType).ToList();
+                if (!parameters.Any(senders.Contains))
+                    continue;
+
+                var transactional =
+                    method.GetCustomAttribute<Wolverine.Attributes.NonTransactionalAttribute>() is null
+                    || parameters.Contains(typeof(BuildingBlocks.Persistence.IUnitOfWork));
+                if (transactional)
+                    violations.Add($"{type.Name}.{method.Name}");
+            }
+        }
+
+        Assert.True(violations.Count == 0, "Handlers that send inside a transaction: " + string.Join(", ", violations));
+    }
+
     private static string Describe(TestResult result) =>
         result.FailingTypes is null
             ? "Unknown architecture violation."

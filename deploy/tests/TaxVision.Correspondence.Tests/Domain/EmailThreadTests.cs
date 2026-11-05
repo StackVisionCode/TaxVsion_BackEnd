@@ -45,16 +45,20 @@ public sealed class EmailThreadTests
     }
 
     [Fact]
-    public void AppendMessage_fails_when_the_thread_is_archived()
+    public void AppendMessage_ArchivedThread_UnarchivesAndIncrementsCount()
     {
         var thread = EmailThread.NewFromMessage(Guid.NewGuid(), Guid.NewGuid(), "Subject", null, DateTime.UtcNow).Value;
+        thread.AppendMessage(DateTime.UtcNow);
+        thread.AppendMessage(DateTime.UtcNow);
         thread.Archive();
 
         var result = thread.AppendMessage(DateTime.UtcNow);
 
-        Assert.True(result.IsFailure);
-        Assert.Equal("EmailThread.Archived", result.Error.Code);
-        Assert.Equal(1, thread.MessageCount);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value);
+        Assert.Equal(EmailThreadStatus.Active, thread.Status);
+        Assert.Null(thread.ArchivedAtUtc);
+        Assert.Equal(4, thread.MessageCount);
     }
 
     [Fact]

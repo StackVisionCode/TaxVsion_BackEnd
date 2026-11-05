@@ -368,6 +368,9 @@ public sealed class ForgotPasswordHandlerTests
 
     private sealed class MultiOfficeUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         // email → (tenantId → user)
         private readonly Dictionary<string, Dictionary<Guid, User>> _byEmail = new(StringComparer.OrdinalIgnoreCase);
 
@@ -447,6 +450,9 @@ public sealed class ForgotPasswordHandlerTests
 
     private sealed class ExplodingUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task<User?> GetByEmailAsync(

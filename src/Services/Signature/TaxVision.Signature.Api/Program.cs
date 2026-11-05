@@ -323,6 +323,13 @@ builder.Host.UseWolverine(options =>
         .Policies.OnException<SignatureCopyNotReadyException>()
         .RetryWithCooldown(SignatureRequestFromFormRequestedConsumer.CopyWaitCooldowns);
 
+    // Sellado con CloudStorage o MinIO caídos: reintentos largos programados (no retienen el consumidor).
+    // En el último intento el consumidor ya no lanza: avisa SealingFailed y marca la solicitud.
+    options.Policies.OnException<SealingTransientException>().ScheduleRetry(SealingTransientException.Cooldowns);
+
+    // Candado de sellado en manos de otro nodo: se reintenta y, al agotarse, va a la cola de errores.
+    options.Policies.OnException<SealingLockBusyException>().ScheduleRetry(SealingLockBusyException.Cooldowns);
+
     options.ApplyStandardFailurePolicies();
 });
 

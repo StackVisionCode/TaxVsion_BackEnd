@@ -47,6 +47,12 @@ public interface IFileObjectRepository
     );
     Task<IReadOnlyList<FileObject>> ListExpiredUploadsAsync(DateTime nowUtc, int take, CancellationToken ct);
 
+    /// <summary>Cross-tenant: PendingScan/Scanning encolados (o creados) antes de <paramref name="olderThanUtc"/>.</summary>
+    Task<IReadOnlyList<FileObject>> ListStuckScansAsync(DateTime olderThanUtc, int take, CancellationToken ct);
+
+    /// <summary>CST-5: lo mínimo para calcular la cuota de un tenant (incluye la papelera).</summary>
+    Task<IReadOnlyList<QuotaFootprintInput>> ListQuotaInputsAsync(Guid tenantId, CancellationToken ct);
+
     /// <summary>
     /// Backfill (barrido de plataforma): tenants distintos que TIENEN al menos un archivo sin
     /// carpeta de tipo navegable — la lista exacta a migrar (ni mas ni menos). Cross-tenant.
@@ -285,6 +291,21 @@ public interface IStorageLimitRepository
 {
     void Add(TenantStorageLimit limit);
     Task<TenantStorageLimit?> GetAsync(Guid tenantId, CancellationToken ct);
+
+    /// <summary>Lee la fila con UPDLOCK/HOLDLOCK (exige transacción): frena Reserve/Commit del tenant mientras tanto.</summary>
+    Task<TenantStorageLimit?> GetForUpdateAsync(Guid tenantId, CancellationToken ct);
+}
+
+/// <summary>Estado y tamaño de un archivo para recalcular la cuota (ScanReport solo si está bloqueado).</summary>
+public sealed record QuotaFootprintInput(
+    FileStatus Status,
+    FileStatus? StatusBeforeSoftDelete,
+    string? ScanReport,
+    long SizeBytes
+)
+{
+    public QuotaFootprint Footprint =>
+        FileObject.FootprintOf(FileObject.EffectiveStatusOf(Status, StatusBeforeSoftDelete), ScanReport);
 }
 
 public interface IStoragePolicyRepository
@@ -468,6 +489,17 @@ public static class StorageObjectTags
 }
 
 /// <summary>
+/// CST-18: evidencia de cuarentena cuya fila ya se purgó. Se copia bajo este prefijo (objeto nuevo) para que
+/// la regla de lifecycle cuente los días desde la purga.
+/// </summary>
+public static class QuarantinePurgedObjects
+{
+    public const string Prefix = "purged/";
+
+    public static string KeyFor(string objectKey) => Prefix + objectKey;
+}
+
+/// <summary>
 /// Fase U — presigned multipart upload (initiate/complete/abort). Puerto separado
 /// de <see cref="IObjectStorage"/> a proposito: usa un SDK distinto (AWSSDK.S3,
 /// no el SDK "Minio" que respalda IObjectStorage) porque el SDK "Minio" no expone
@@ -527,6 +559,9 @@ public enum VirusScanVerdict
     Infected,
     Error,
 }
+
+/// <summary>El antivirus no dio veredicto: fallo transitorio, Wolverine reintenta (no es ArgumentException, que iría a la DLQ).</summary>
+public sealed class VirusScanUnavailableException(string message) : Exception(message);
 
 public interface IFileContentInspector
 {

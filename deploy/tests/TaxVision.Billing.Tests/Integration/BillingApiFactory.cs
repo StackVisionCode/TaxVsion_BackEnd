@@ -31,6 +31,8 @@ public sealed class BillingApiFactory : WebApplicationFactory<Program>
                         ["Jwt:PublicKeyPath"] = string.Empty,
                         ["Jwt:PublicKeyPem"] = string.Empty,
                         ["Jwt:Secret"] = JwtSecret,
+                        // El job de reconciliación (BIL-3b) no corre contra la base real en las pruebas de host.
+                        ["Billing:SyncReconciliation:Enabled"] = "false",
                     }
                 )
         );

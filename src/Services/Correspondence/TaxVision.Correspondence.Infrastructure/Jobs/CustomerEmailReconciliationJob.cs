@@ -101,6 +101,11 @@ public sealed class CustomerEmailReconciliationJob(
         using (correlation.Push(Guid.NewGuid().ToString("N")))
         {
             var result = await reconciliationService.ReconcileTenantAsync(tenantId, ct);
+            if (result.Conflicts > 0)
+                Observability.CorrespondenceMetrics.ProjectionReconcileConflictsTotal.Add(
+                    result.Conflicts,
+                    new KeyValuePair<string, object?>("source", "tenant_job")
+                );
             if (result.TotalFixed == 0)
                 return false;
 

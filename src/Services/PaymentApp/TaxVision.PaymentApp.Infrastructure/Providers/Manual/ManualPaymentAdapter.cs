@@ -55,6 +55,7 @@ public sealed class ManualPaymentAdapter(ILogger<ManualPaymentAdapter> logger) :
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     )
     {

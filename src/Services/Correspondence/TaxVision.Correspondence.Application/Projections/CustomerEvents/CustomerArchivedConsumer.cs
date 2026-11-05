@@ -38,7 +38,16 @@ public static class CustomerArchivedConsumer
                 return;
             }
 
-            existing.SoftDelete();
+            if (!existing.SoftDelete(evt.OccurredOn))
+            {
+                logger.LogDebug(
+                    "{Event} {EventId} for customer {CustomerId} is older than the projection; ignored.",
+                    "CustomerArchived",
+                    evt.EventId,
+                    evt.CustomerId
+                );
+                return;
+            }
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

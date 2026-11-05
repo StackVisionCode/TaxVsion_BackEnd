@@ -143,13 +143,13 @@ public sealed class ReminderRepository(ReminderDbContext context) : IReminderRep
             .Where(r => r.TenantId == tenantId && r.UserId == userId && PendingStatuses.Contains(r.Status))
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<ReminderAggregate>> ListScheduledWithinHorizonAsync(
+    public async Task<IReadOnlyList<ReminderAggregate>> ListPendingWithinHorizonAsync(
         DateTime horizonUtc,
         CancellationToken ct = default
     ) =>
         await context
             .Reminders.IgnoreQueryFilters()
-            .Where(r => r.Status == ReminderStatus.Scheduled && r.Schedule.FireAtUtc <= horizonUtc)
+            .Where(r => PendingFireStatuses.Contains(r.Status) && r.Schedule.FireAtUtc <= horizonUtc)
             .OrderBy(r => r.Schedule.FireAtUtc)
             .ToListAsync(ct);
 }

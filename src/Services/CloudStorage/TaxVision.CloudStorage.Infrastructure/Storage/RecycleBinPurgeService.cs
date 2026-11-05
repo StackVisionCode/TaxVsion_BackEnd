@@ -13,7 +13,7 @@ namespace TaxVision.CloudStorage.Infrastructure.Storage;
 /// <summary>
 /// Fase C1 — job diario que borra definitivamente lo que lleva mas de
 /// RecycleBinRetentionDays en la papelera: objeto de MinIO, fila de FileObject y
-/// libera la cuota (TenantStorageLimit.ReleaseUsed). Mismo patron que
+/// libera la cuota según el estado previo (QuotaRelease). Mismo patron que
 /// ExpiredUploadCleanupService (PeriodicTimer + scope por tick + try/catch que
 /// nunca tumba el host).
 /// </summary>
@@ -38,6 +38,7 @@ public sealed class RecycleBinPurgeService(IServiceScopeFactory scopeFactory, IL
             var limits = scope.ServiceProvider.GetRequiredService<IStorageLimitRepository>();
             var audit = scope.ServiceProvider.GetRequiredService<IStorageAuditRepository>();
             var storage = scope.ServiceProvider.GetRequiredService<IObjectStorage>();
+            var multipartStorage = scope.ServiceProvider.GetRequiredService<IMultipartUploadStorage>();
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
             var clock = scope.ServiceProvider.GetRequiredService<ISystemClock>();
             var options = scope.ServiceProvider.GetRequiredService<IOptions<CloudStorageOptions>>().Value;
@@ -53,11 +54,12 @@ public sealed class RecycleBinPurgeService(IServiceScopeFactory scopeFactory, IL
                 await RecycleBinPurger.PurgeAsync(
                     file,
                     "retention-expired",
-                    options.MainBucket,
+                    options,
                     files,
                     limits,
                     audit,
                     storage,
+                    multipartStorage,
                     clock,
                     actorId: null,
                     correlationId: $"recyclebin-purge-{file.Id:N}",

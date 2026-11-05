@@ -69,6 +69,12 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
                     .HasConversion<string>()
                     .HasMaxLength(30);
                 reference.Property(r => r.Value).HasColumnName("ExternalChargeReference").HasMaxLength(200);
+                // Un cobro del proveedor corresponde a un solo pago (PAY-4).
+                reference
+                    .HasIndex(r => new { r.Provider, r.Value })
+                    .IsUnique()
+                    .HasFilter("[ExternalChargeReference] IS NOT NULL")
+                    .HasDatabaseName("UX_SaaSPayments_ExternalChargeProvider_Reference");
             }
         );
 
@@ -100,8 +106,24 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
             .HasDatabaseName("UX_SaaSPayments_OnboardingId");
 
         builder.Property(payment => payment.ProviderCheckoutSessionId).HasMaxLength(200);
+        // El id de sesión del proveedor es global: una sesión, un pago (PAY-4).
+        builder
+            .HasIndex(payment => payment.ProviderCheckoutSessionId)
+            .IsUnique()
+            .HasFilter("[ProviderCheckoutSessionId] IS NOT NULL")
+            .HasDatabaseName("UX_SaaSPayments_ProviderCheckoutSessionId");
 
         builder.Property(payment => payment.RowVersion).IsRowVersion();
+
+        // Revisión manual de éxitos del proveedor que no se aplicaron (PAY-1).
+        builder.Property(payment => payment.ReviewReasonCode).HasMaxLength(50);
+        builder.Property(payment => payment.ReviewProviderReference).HasMaxLength(200);
+        builder.Property(payment => payment.ReviewPaidCurrency).HasMaxLength(3);
+        builder.Property(payment => payment.ReviewResolution).HasMaxLength(50);
+        builder
+            .HasIndex(payment => payment.ReviewRequiredAtUtc)
+            .HasFilter("[ReviewRequiredAtUtc] IS NOT NULL AND [ReviewResolvedAtUtc] IS NULL")
+            .HasDatabaseName("IX_SaaSPayments_ReviewPending");
 
         builder
             .HasIndex(payment => new { payment.TenantId, payment.Status })

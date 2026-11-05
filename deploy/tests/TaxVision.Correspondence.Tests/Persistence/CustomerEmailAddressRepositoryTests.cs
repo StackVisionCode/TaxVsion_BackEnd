@@ -46,7 +46,7 @@ public sealed class CustomerEmailAddressRepositoryTests
             Guid.NewGuid(),
             EmailAddress.Create("gone@example.com").Value
         );
-        deleted.SoftDelete();
+        deleted.SoftDelete(DateTime.UtcNow);
         await repository.AddAsync(deleted);
         await db.SaveChangesAsync();
 

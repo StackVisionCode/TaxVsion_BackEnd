@@ -15,12 +15,16 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
 
     public Task<EmailThread?> FindByProviderThreadIdAsync(
         Guid tenantId,
+        Guid customerId,
         string providerThreadId,
         CancellationToken ct = default
     ) =>
         db
             .EmailThreads.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ProviderThreadId == providerThreadId, ct);
+            .FirstOrDefaultAsync(
+                x => x.TenantId == tenantId && x.CustomerId == customerId && x.ProviderThreadId == providerThreadId,
+                ct
+            );
 
     public Task<EmailThread?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         db.EmailThreads.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);

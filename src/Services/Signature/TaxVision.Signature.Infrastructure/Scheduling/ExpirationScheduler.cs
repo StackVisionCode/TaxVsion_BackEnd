@@ -1,6 +1,7 @@
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -118,7 +119,20 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
             );
         }
 
-        await unitOfWork.SaveChangesAsync(ct);
+        try
+        {
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+        catch (ConflictException ex) when (ex.Code == "Persistence.ConcurrencyConflict")
+        {
+            // Alguien firmó o rechazó mientras tanto: el lote no se guarda ni avisa; la vuelta siguiente lo reevalúa.
+            logger.LogWarning(
+                "ExpirationScheduler skipped a batch of {Count} requests modified concurrently.",
+                eventsToPublish.Count
+            );
+            return;
+        }
+
         foreach (var evt in eventsToPublish)
             await bus.PublishAsync(evt);
 

@@ -10,12 +10,45 @@ internal sealed class FakeIncomingEmailRepository : IIncomingEmailRepository
 
     public IReadOnlyList<IncomingEmail> All => _store;
 
+    /// <summary>Hilos para <see cref="ListInForeignThreadsAsync"/> (reparación de COR-02).</summary>
+    public FakeEmailThreadRepository? Threads { get; init; }
+
+    public Task<IReadOnlyList<IncomingEmail>> ListInForeignThreadsAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<IncomingEmail>>(
+            _store
+                .Where(ie =>
+                    ie.TenantId == tenantId
+                    && Threads?.All.Any(t =>
+                        t.Id == ie.EmailThreadId && t.CustomerId is { } owner && owner != ie.CustomerId
+                    ) == true
+                )
+                .ToList()
+        );
+
     public Task<IncomingEmail?> FindByInternetMessageIdAsync(
         Guid tenantId,
         string internetMessageId,
         CancellationToken ct = default
     ) =>
         Task.FromResult(_store.FirstOrDefault(x => x.TenantId == tenantId && x.InternetMessageId == internetMessageId));
+
+    public Task<IncomingEmail?> FindByProviderMessageIdAsync(
+        Guid tenantId,
+        Guid accountId,
+        string providerMessageId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            _store.FirstOrDefault(x =>
+                x.TenantId == tenantId
+                && x.AccountId == accountId
+                && x.ProviderMessageId == providerMessageId
+                && x.InternetMessageId == null
+            )
+        );
 
     public Task<IncomingEmail?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         Task.FromResult(_store.FirstOrDefault(x => x.TenantId == tenantId && x.Id == id));

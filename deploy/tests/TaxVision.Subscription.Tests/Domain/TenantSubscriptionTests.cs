@@ -660,6 +660,51 @@ public sealed class TenantSubscriptionTests
         Assert.Null(subscription.TrialEndsAtUtc);
     }
 
+    [Fact]
+    public void RecordPurchase_WhenActive_UpdatesUpdatedAtUtc()
+    {
+        var subscription = ActiveSubscription();
+        var actor = Guid.NewGuid();
+        var t1 = DateTime.UtcNow.AddMinutes(5);
+
+        var result = subscription.RecordPurchase(actor, t1);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(t1, subscription.UpdatedAtUtc);
+        Assert.Equal(actor, subscription.UpdatedBy);
+    }
+
+    [Fact]
+    public void RecordPurchase_WhenSuspended_Fails()
+    {
+        var subscription = ActiveSubscription();
+        subscription.SuspendForPolicyViolation("abuse", Guid.Empty, DateTime.UtcNow);
+        var updatedAt = subscription.UpdatedAtUtc;
+
+        var result = subscription.RecordPurchase(Guid.NewGuid(), DateTime.UtcNow.AddMinutes(5));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(updatedAt, subscription.UpdatedAtUtc);
+    }
+
+    private static TenantSubscription ActiveSubscription()
+    {
+        var (plan, version) = CreatePublishedPlan("starter");
+        var nowUtc = DateTime.UtcNow;
+        return TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                plan,
+                version,
+                BillingCycle.Monthly,
+                nowUtc,
+                nowUtc.AddDays(30),
+                Guid.Empty,
+                nowUtc
+            )
+            .Value;
+    }
+
     private static (SubscriptionPlan Plan, SubscriptionPlanVersion Version) CreatePublishedPlan(string code) =>
         CreatePublishedPlan(code, [BillingCycle.Monthly]);
 

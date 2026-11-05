@@ -233,6 +233,29 @@ public static class ProcessProviderWebhookHandler
         var transitionResult = ApplyPayload(payment, payload, metrics);
         if (transitionResult.IsFailure)
         {
+            var reviewReason = LateProviderSuccessPolicy.ReviewReasonFor(
+                payment,
+                payload.Status,
+                transitionResult.Error
+            );
+            if (reviewReason is not null)
+            {
+                await FlagForReviewAsync(
+                    payment,
+                    webhookEvent,
+                    payload,
+                    reviewReason,
+                    transitionResult.Error.Code,
+                    audit,
+                    metrics,
+                    correlation,
+                    logger,
+                    ct
+                );
+                await unitOfWork.SaveChangesAsync(ct);
+                return Result.Success();
+            }
+
             webhookEvent.MarkStale(payment.Id, transitionResult.Error.Code, DateTime.UtcNow);
             await unitOfWork.SaveChangesAsync(ct);
             logger.LogInformation(
@@ -284,6 +307,61 @@ public static class ProcessProviderWebhookHandler
         );
 
         return Result.Success();
+    }
+
+    // Éxito del proveedor que no se aplica: queda visible para revisión en vez de Stale silencioso.
+    private static async Task FlagForReviewAsync(
+        SaaSPayment payment,
+        WebhookEvent webhookEvent,
+        WebhookEventPayload payload,
+        string reviewReason,
+        string errorCode,
+        IPaymentAuditLogWriter audit,
+        IPaymentAppMetrics metrics,
+        ICorrelationContext correlation,
+        ILogger<WebhookEvent> logger,
+        CancellationToken ct
+    )
+    {
+        var nowUtc = DateTime.UtcNow;
+        var firstFlag = LateProviderSuccessPolicy.Flag(
+            payment,
+            reviewReason,
+            payload.ReconciledChargeReference ?? payload.ProviderChargeReference,
+            payload.PaidAmountCents,
+            payload.PaidCurrency,
+            metrics,
+            logger,
+            nowUtc
+        );
+        webhookEvent.MarkNeedsReview(payment.Id, errorCode, nowUtc);
+
+        if (!firstFlag)
+            return;
+
+        await AuditEntryFactory.AppendAsync(
+            audit,
+            payment.TenantId,
+            nameof(SaaSPayment),
+            payment.Id,
+            PaymentAuditAction.SaaSPaymentReviewRequired,
+            actorUserId: Guid.Empty,
+            correlation.CorrelationId,
+            before: (object?)null,
+            after: new
+            {
+                payment.Status,
+                payment.ReviewReasonCode,
+                payment.ReviewProviderReference,
+                payment.ReviewPaidAmountCents,
+                payment.ReviewPaidCurrency,
+                webhookEvent.ProviderEventId,
+                webhookEvent.EventType,
+            },
+            reason: errorCode,
+            nowUtc,
+            ct
+        );
     }
 
     // El pago de onboarding todavía no tiene tenant (TenantId vacío): sin esto todos los onboardings
@@ -399,7 +477,7 @@ public static class ProcessProviderWebhookHandler
 
     // F2 defense-in-depth: aunque el evento de éxito esté autenticado por firma, se exige que el monto
     // cobrado que reporta el provider coincida con el cargo esperado (y la moneda). Si no coincide, NO
-    // se aplica: el caller lo marca Stale con este código y el pago no queda como "Succeeded" por un
+    // se aplica: el caller lo deja en revisión con este código y el pago no queda como "Succeeded" por un
     // importe distinto (captura parcial / misconfig). Si el adapter no reporta monto (null) no se puede
     // verificar y se aplica igual — compatibilidad hacia atrás.
     private static Error? VerifyPaidAmount(SaaSPayment payment, WebhookEventPayload payload)

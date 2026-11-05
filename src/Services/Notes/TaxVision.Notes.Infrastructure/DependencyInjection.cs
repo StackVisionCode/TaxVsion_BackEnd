@@ -14,6 +14,7 @@ using TaxVision.Notes.Application.Notes.Abstractions;
 using TaxVision.Notes.Application.Permissions.Abstractions;
 using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Application.RateLimiting.Abstractions;
+using TaxVision.Notes.Infrastructure.CloudStorage;
 using TaxVision.Notes.Infrastructure.Customers;
 using TaxVision.Notes.Infrastructure.Jobs;
 using TaxVision.Notes.Infrastructure.Notes;
@@ -76,7 +77,30 @@ public static class DependencyInjection
         AddRateLimitTierQuotas(services, configuration);
         AddCustomerDirectory(services, configuration);
         AddPermissionsPullRecovery(services);
+        AddPendingAttachmentReconciliation(services, configuration);
         return services;
+    }
+
+    // NTS-1: el veredicto del escaneo sale una vez; si llegó antes que el adjunto se pregunta a
+    // CloudStorage (al adjuntar y con un job). Reusa el IServiceTokenAcquirer de AddRateLimitTierQuotas.
+    private static void AddPendingAttachmentReconciliation(IServiceCollection services, IConfiguration configuration)
+    {
+        services
+            .AddOptions<NotesCloudStorageClientOptions>()
+            .Bind(configuration.GetSection(NotesCloudStorageClientOptions.SectionName));
+        services.AddHttpClient<INoteFileScanStatusClient, NotesFileScanStatusClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<NotesCloudStorageClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+
+        services
+            .AddOptions<PendingAttachmentReconciliationOptions>()
+            .Bind(configuration.GetSection(PendingAttachmentReconciliationOptions.SectionName));
+        services.AddHostedService<PendingAttachmentReconciliationJob>();
     }
 
     // Opción B (de este plan) — recuperación pull bajo demanda cuando ProjectionPermissionsSource

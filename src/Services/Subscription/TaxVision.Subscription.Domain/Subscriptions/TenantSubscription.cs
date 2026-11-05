@@ -596,6 +596,19 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Compra directa de add-ons o asientos: toca la fila para que su RowVersion serialice dos
+    /// compras simultáneas del mismo tenant (la segunda choca al guardar).</summary>
+    public Result RecordPurchase(Guid actorUserId, DateTime nowUtc)
+    {
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
+            return Result.Failure(
+                new Error("Subscription.CannotPurchase", $"Cannot purchase while subscription is {Status}.")
+            );
+
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result SuspendForPolicyViolation(string reason, Guid actorUserId, DateTime nowUtc)
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active, SubscriptionStatus.PastDue))

@@ -31,7 +31,14 @@ public interface ICustomerEmailReconciliationService
 /// retoma desde la página 1 (no hay cursor: el volumen esperado por tenant no lo justifica, mismo
 /// criterio que el backfill).
 /// </summary>
-public sealed record CustomerEmailReconciliationResult(int Created, int Updated, int Reactivated, bool CompletedFully)
+// Conflicts = clientes omitidos porque su email ya está activo para otro cliente.
+public sealed record CustomerEmailReconciliationResult(
+    int Created,
+    int Updated,
+    int Reactivated,
+    bool CompletedFully,
+    int Conflicts = 0
+)
 {
     public int TotalFixed => Created + Updated + Reactivated;
 }

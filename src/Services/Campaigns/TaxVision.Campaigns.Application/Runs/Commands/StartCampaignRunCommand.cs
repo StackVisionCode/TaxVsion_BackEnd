@@ -14,6 +14,9 @@ namespace TaxVision.Campaigns.Application.Runs.Commands;
 /// <summary>Una persona destinataria del envío (se expande a una unidad por canal de la campaña).</summary>
 public sealed record StartRunRecipient(string ContactRef, string? Email, string? PhoneE164);
 
+/// <summary>Agendado y slot que disparan el run (Id determinista, ver <c>ScheduledRunId</c>).</summary>
+public sealed record ScheduledSlot(Guid ScheduleId, DateTime SlotUtc);
+
 /// <summary>
 /// Arranca una ejecución (<c>send-now</c>) de una campaña sobre una lista de destinatarios. Slice 2:
 /// audiencia manual explícita (Customer/Contactos/segmentos y el Scheduler llegan después). Cada
@@ -85,10 +88,20 @@ public static class StartCampaignRunHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
-        CancellationToken ct
+        CancellationToken ct,
+        ScheduledSlot? scheduled = null
     )
     {
-        var runResult = CampaignRun.Start(campaign.TenantId, campaign.Id, triggeredByUserId, triggerKind, units);
+        var runResult = scheduled is null
+            ? CampaignRun.Start(campaign.TenantId, campaign.Id, triggeredByUserId, triggerKind, units)
+            : CampaignRun.StartScheduled(
+                campaign.TenantId,
+                campaign.Id,
+                triggeredByUserId,
+                scheduled.ScheduleId,
+                scheduled.SlotUtc,
+                units
+            );
         if (runResult.IsFailure)
             return Result.Failure<CampaignRunResponse>(runResult.Error);
 

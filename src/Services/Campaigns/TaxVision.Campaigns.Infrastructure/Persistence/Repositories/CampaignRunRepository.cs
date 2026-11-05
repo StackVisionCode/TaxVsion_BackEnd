@@ -47,4 +47,25 @@ public sealed class CampaignRunRepository(CampaignsDbContext db) : ICampaignRunR
 
     public async Task AddAsync(CampaignRun run, CancellationToken ct = default) =>
         await db.CampaignRuns.AddAsync(run, ct);
+
+    public async Task<IReadOnlyList<StaleRunRef>> ListStaleDispatchingAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .CampaignRuns.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.Status == CampaignRunStatus.Dispatching && r.CreatedAtUtc < createdBeforeUtc)
+            .OrderBy(r => r.CreatedAtUtc)
+            .Take(batchSize)
+            .Select(r => new StaleRunRef(r.TenantId, r.Id))
+            .ToListAsync(ct);
+
+    public Task<Guid?> GetScheduleIdAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
+        db
+            .CampaignRuns.IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId && r.Id == runId)
+            .Select(r => r.ScheduleId)
+            .FirstOrDefaultAsync(ct);
 }

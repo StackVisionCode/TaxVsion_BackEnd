@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Results;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
@@ -48,7 +49,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -92,7 +93,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var bus = new FakeMessageBus();
 
         await Assert.ThrowsAsync<IdempotencyReservationInProgressException>(() =>
-            NotificationsEmailSendRequestedConsumer.Handle(
+            EmailSendPipeline.RunAsync(
                 evt,
                 idempotencyGuard,
                 new FakeProviderResolver(),
@@ -138,7 +139,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var bus = new FakeMessageBus();
 
         await Assert.ThrowsAsync<IdempotencyReservationInProgressException>(() =>
-            NotificationsEmailSendRequestedConsumer.Handle(
+            EmailSendPipeline.RunAsync(
                 evt,
                 idempotencyGuard,
                 providerResolver,
@@ -178,7 +179,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -220,7 +221,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         };
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -258,7 +259,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -299,7 +300,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var emailSender = new FakeEmailSender();
         var sentMessages = new FakeSentMessageRepository();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             new FakeIdempotencyGuard(),
             providerResolver,
@@ -349,7 +350,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -409,7 +410,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -452,7 +453,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -495,7 +496,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -539,7 +540,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -655,7 +656,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var bus = new FakeMessageBus();
 
         var deferred = await Assert.ThrowsAsync<EmailRateLimitedException>(() =>
-            NotificationsEmailSendRequestedConsumer.Handle(
+            EmailSendPipeline.RunAsync(
                 evt,
                 idempotencyGuard,
                 new FakeProviderResolver(),
@@ -677,10 +678,132 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         );
 
         Assert.Equal(TimeSpan.FromSeconds(20), deferred.RetryAfter);
-        Assert.Empty(sentMessages.Added);
-        Assert.Single(idempotencyGuard.Released);
+        // Nada salió: el mensaje sigue preparado, sin intento, y se reprograma el paso de envío.
+        var message = Assert.Single(sentMessages.Added);
+        Assert.Equal(TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Sending, message.Status);
+        Assert.Null(message.SendAttemptedAtUtc);
+        Assert.Empty(idempotencyGuard.Completed);
         Assert.Empty(bus.Published);
     }
+
+    /// <summary>
+    /// La reserva quedó abierta hace 5 min y su SentMessage ya intentó salir (el proceso murió antes de
+    /// grabar el resultado). Volver a entregar el evento no puede reenviar a ciegas.
+    /// </summary>
+    [Fact]
+    public async Task Abandoned_reservation_with_attempted_send_is_not_resent()
+    {
+        var evt = CreateEvent();
+        await using var db = CreateInMemoryContext();
+        var abandoned = TaxVision.Postmaster.Domain.Idempotency.EmailIdempotency.Reserve(
+            evt.TenantId,
+            evt.IdempotencyKey,
+            DateTime.UtcNow.AddMinutes(-5),
+            TimeSpan.FromDays(7)
+        );
+        db.EmailIdempotencies.Add(abandoned.Value);
+        var inFlight = TaxVision
+            .Postmaster.Domain.Sending.SentMessage.Queue(
+                evt.TenantId,
+                evt.IdempotencyKey,
+                evt.Subject,
+                "no-reply@taxvision.com",
+                TaxVision.Postmaster.Domain.Sending.EmailStream.Transactional,
+                "system-smtp",
+                evt.NotificationLogId,
+                evt.CorrelationId,
+                "TaxVision",
+                replyTo: null,
+                evt.TemplateKey,
+                DateTime.UtcNow.AddMinutes(-5)
+            )
+            .Value;
+        inFlight.AddRecipient(evt.To, TaxVision.Postmaster.Domain.Sending.RecipientType.To, null);
+        inFlight.MarkAsSending();
+        inFlight.MarkSendAttempted(DateTime.UtcNow.AddMinutes(-5));
+        db.SentMessages.Add(inFlight);
+        await db.SaveChangesAsync();
+
+        var guard = new TaxVision.Postmaster.Infrastructure.Idempotency.SqlIdempotencyGuard(
+            db,
+            NullLogger<TaxVision.Postmaster.Infrastructure.Idempotency.SqlIdempotencyGuard>.Instance
+        );
+        var sentMessages = new TaxVision.Postmaster.Infrastructure.Persistence.Repositories.SentMessageRepository(db);
+        var providerResolver = new FakeProviderResolver
+        {
+            ResolveReturnValue = new ResolveResult(ProviderResolutionStatus.Resolved, CreateResolvedProvider(), null),
+        };
+        var emailSender = new FakeEmailSender();
+        var bus = new FakeMessageBus();
+
+        await Assert.ThrowsAsync<IdempotencyReservationInProgressException>(() =>
+            EmailSendPipeline.RunAsync(
+                evt,
+                guard,
+                providerResolver,
+                new FakeConnectedMailboxResolver(),
+                new FakeSuppressionListRepository(),
+                new FakeEmailProviderRateLimiter(),
+                emailSender,
+                new FakeConnectedMailboxSender(),
+                new FakeInlineAssetFetcher(),
+                new FakeOutboundAttachmentFetcher(),
+                sentMessages,
+                new FakeTenantDirectoryRepository(),
+                db,
+                new FakeCorrelationContext(),
+                bus,
+                NullLogger.Instance,
+                CancellationToken.None
+            )
+        );
+
+        // El comando durable de ese mensaje se vuelve a entregar: se cierra como desconocido, sin reenviar.
+        await EmailSendPipeline.DispatchAsync(
+            new TaxVision.Postmaster.Application.Sending.Commands.DispatchSentMessage.DispatchSentMessageCommand(
+                inFlight.Id,
+                evt.TenantId,
+                evt.IdempotencyKey,
+                TaxVision.Postmaster.Domain.Sending.DeliveryLane.SystemProvider,
+                evt,
+                Mailbox: null
+            ),
+            sentMessages,
+            providerResolver,
+            new FakeEmailProviderRateLimiter(),
+            emailSender,
+            new FakeConnectedMailboxSender(),
+            new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
+            new FakeTenantDirectoryRepository(),
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(0, emailSender.SendCount);
+        var closed = await db.SentMessages.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal(TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Failed, closed.Status);
+        Assert.StartsWith(SendOutcomeReasons.SendOutcomeUnknown, closed.ErrorReason);
+        Assert.IsType<PostmasterEmailDeliveryFailedIntegrationEvent>(Assert.Single(bus.Published));
+    }
+
+    private sealed class NoTenantContext : BuildingBlocks.Tenancy.ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
+    }
+
+    private static TaxVision.Postmaster.Infrastructure.Persistence.PostmasterDbContext CreateInMemoryContext() =>
+        new(
+            new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TaxVision.Postmaster.Infrastructure.Persistence.PostmasterDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options,
+            new NoTenantContext()
+        );
 
     [Fact]
     public void Deferred_email_waits_the_limiter_window_plus_a_short_jitter()
@@ -701,7 +824,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         FakeMessageBus bus,
         int delivery
     ) =>
-        NotificationsEmailSendRequestedConsumer.Handle(
+        EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             new FakeProviderResolver
@@ -749,7 +872,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -796,7 +919,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -846,7 +969,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             providerResolver,
@@ -894,7 +1017,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             new FakeProviderResolver(),
@@ -941,7 +1064,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             idempotencyGuard,
             new FakeProviderResolver(),
@@ -1003,7 +1126,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         };
         var sentMessages = new FakeSentMessageRepository();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        await EmailSendPipeline.RunAsync(
             evt,
             new FakeIdempotencyGuard(),
             providerResolver,
@@ -1110,7 +1233,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         FakeEmailSender emailSender,
         FakeOutboundAttachmentFetcher attachmentFetcher
     ) =>
-        NotificationsEmailSendRequestedConsumer.Handle(
+        EmailSendPipeline.RunAsync(
             evt,
             new FakeIdempotencyGuard(),
             new FakeProviderResolver

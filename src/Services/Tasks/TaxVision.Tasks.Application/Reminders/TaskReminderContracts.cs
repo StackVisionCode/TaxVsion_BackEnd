@@ -13,7 +13,12 @@ public static class TaskReminderContracts
     /// <summary>Lo que Reminder usa para deduplicar reintentos del bus.</summary>
     public const string Category = "Task";
 
-    public static string RequestKey(Guid taskId, Guid userId) => $"task-created:{taskId:N}:{userId:N}";
+    /// <summary>
+    /// Reminder ignora una clave existente en cualquier estado (REM-1), así que cada reapertura usa
+    /// la suya. El ciclo 0 conserva el formato original para no cambiar las claves vivas.
+    /// </summary>
+    public static string RequestKey(Guid taskId, Guid userId, int lifecycle) =>
+        lifecycle == 0 ? $"task-created:{taskId:N}:{userId:N}" : $"task-created:{taskId:N}:{userId:N}:r{lifecycle}";
 
     public static ReminderRequestedIntegrationEvent Requested(
         TaskItem task,
@@ -33,7 +38,7 @@ public static class TaskReminderContracts
             TimeZoneId = task.Due!.TimeZoneId,
             AnchorAtUtc = task.Due.DueAtUtc,
             LeadMinutes = leadMinutes,
-            RequestKey = RequestKey(task.Id, userId),
+            RequestKey = RequestKey(task.Id, userId, task.ReopenCount),
         };
 
     public static ReminderTargetMovedIntegrationEvent Moved(TaskItem task, string correlationId) =>

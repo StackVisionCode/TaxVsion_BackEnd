@@ -155,10 +155,14 @@ internal sealed class FakeReminderRepository : IReminderRepository
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task<IReadOnlyList<ReminderAggregate>> ListScheduledWithinHorizonAsync(
+    // No replica el filtro de estado: eso lo prueba la T-INT de la reconciliación.
+    public Task<IReadOnlyList<ReminderAggregate>> ListPendingWithinHorizonAsync(
         DateTime horizonUtc,
         CancellationToken ct = default
-    ) => throw new NotSupportedException("Lo usa el job de reconciliación, no los handlers.");
+    ) =>
+        Task.FromResult<IReadOnlyList<ReminderAggregate>>(
+            Stored.Where(r => r.Schedule.FireAtUtc <= horizonUtc).ToList()
+        );
 
     public IUnitOfWork AsUnitOfWork() => new CommitUnitOfWork(this);
 

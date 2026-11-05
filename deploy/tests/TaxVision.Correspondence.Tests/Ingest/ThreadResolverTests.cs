@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Options;
 using TaxVision.Correspondence.Application.Ingest;
+using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Domain.ValueObjects;
+using TaxVision.Correspondence.Tests.Compose;
 
 namespace TaxVision.Correspondence.Tests.Ingest;
 
@@ -10,11 +12,13 @@ public sealed class ThreadResolverTests
     private static ThreadResolver NewResolver(
         FakeEmailThreadRepository threads,
         FakeIncomingEmailRepository incomingEmails,
-        bool enableSubjectThreadingFallback = false
+        bool enableSubjectThreadingFallback = false,
+        FakeDraftRepository? drafts = null
     ) =>
         new(
             threads,
             incomingEmails,
+            drafts ?? new FakeDraftRepository(),
             Options.Create(
                 new CorrespondenceIngestOptions { EnableSubjectThreadingFallback = enableSubjectThreadingFallback }
             )
@@ -186,5 +190,189 @@ public sealed class ThreadResolverTests
 
         Assert.Equal(ThreadMatchLayer.SubjectFallback, resolution.MatchedLayer);
         Assert.Equal(recent.Id, resolution.MatchedThread?.Id);
+    }
+
+    // COR-02: un hilo por cliente; ninguna capa empareja con el hilo de otro cliente.
+    [Fact]
+    public async Task Resolve_ProviderThreadIdOfOtherCustomer_ReturnsNoMatch()
+    {
+        var tenantId = Guid.NewGuid();
+        var threads = new FakeEmailThreadRepository();
+        var incomingEmails = new FakeIncomingEmailRepository();
+        var customerA = Guid.NewGuid();
+        var threadA = EmailThread.NewFromMessage(tenantId, customerA, "Subject", "T1", DateTime.UtcNow).Value;
+        await threads.AddAsync(threadA);
+
+        var resolution = await NewResolver(threads, incomingEmails)
+            .ResolveAsync(
+                tenantId,
+                Guid.NewGuid(),
+                "T1",
+                null,
+                null,
+                "Subject",
+                DateTime.UtcNow,
+                CancellationToken.None
+            );
+
+        Assert.Same(EmailThreadResolution.NoMatch, resolution);
+    }
+
+    [Fact]
+    public async Task Resolve_InReplyToEmailOfOtherCustomer_ReturnsNoMatch()
+    {
+        var tenantId = Guid.NewGuid();
+        var threads = new FakeEmailThreadRepository();
+        var incomingEmails = new FakeIncomingEmailRepository();
+        var customerA = Guid.NewGuid();
+        var threadA = EmailThread.NewFromMessage(tenantId, customerA, "Subject", null, DateTime.UtcNow).Value;
+        await threads.AddAsync(threadA);
+        await SeedIncomingEmailAsync(incomingEmails, tenantId, customerA, threadA.Id, "<a1>", DateTime.UtcNow);
+
+        var resolution = await NewResolver(threads, incomingEmails)
+            .ResolveAsync(
+                tenantId,
+                Guid.NewGuid(),
+                null,
+                "<a1>",
+                null,
+                "Subject",
+                DateTime.UtcNow,
+                CancellationToken.None
+            );
+
+        Assert.Same(EmailThreadResolution.NoMatch, resolution);
+    }
+
+    [Fact]
+    public async Task Resolve_ReferencesToOtherCustomer_ReturnsNoMatch()
+    {
+        var tenantId = Guid.NewGuid();
+        var threads = new FakeEmailThreadRepository();
+        var incomingEmails = new FakeIncomingEmailRepository();
+        var customerA = Guid.NewGuid();
+        var threadA = EmailThread.NewFromMessage(tenantId, customerA, "Subject", null, DateTime.UtcNow).Value;
+        await threads.AddAsync(threadA);
+        await SeedIncomingEmailAsync(incomingEmails, tenantId, customerA, threadA.Id, "<a1>", DateTime.UtcNow);
+
+        var resolution = await NewResolver(threads, incomingEmails)
+            .ResolveAsync(
+                tenantId,
+                Guid.NewGuid(),
+                null,
+                null,
+                ["<a1>"],
+                "Subject",
+                DateTime.UtcNow,
+                CancellationToken.None
+            );
+
+        Assert.Same(EmailThreadResolution.NoMatch, resolution);
+    }
+
+    /// <summary>Correo nuevo del CRM ya enviado, con el Message-ID que devolvió Postmaster.</summary>
+    internal static async Task<Draft> SeedSentDraftAsync(
+        FakeDraftRepository drafts,
+        Guid tenantId,
+        Guid customerId,
+        string internetMessageId
+    )
+    {
+        var draft = Draft.CreateNew(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var saved = draft.AutoSave(
+            "Hello",
+            "<p>body</p>",
+            null,
+            [new DraftRecipientData(EmailAddress.Create("customer@example.com").Value, EmailRecipientType.To, null)]
+        );
+        Assert.True(saved.IsSuccess);
+        Assert.True(draft.MarkSending().IsSuccess);
+        Assert.True(draft.MarkSent(Guid.NewGuid(), internetMessageId).IsSuccess);
+        await drafts.AddAsync(draft);
+        return draft;
+    }
+
+    // COR-16: la respuesta a un enviado del CRM vuelve al hilo de ese enviado.
+    [Fact]
+    public async Task ReplyToSentMessage_ResolvesToOriginalThread()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var threads = new FakeEmailThreadRepository();
+        var drafts = new FakeDraftRepository();
+        var draft = await SeedSentDraftAsync(drafts, tenantId, customerId, "<pm.x@tenant.test>");
+        var thread = EmailThread.NewForSentEmail(draft.Id, tenantId, customerId, "Hello", DateTime.UtcNow).Value;
+        Assert.True(draft.LinkToThread(thread.Id).IsSuccess);
+        await threads.AddAsync(thread);
+
+        var resolution = await NewResolver(threads, new FakeIncomingEmailRepository(), drafts: drafts)
+            .ResolveAsync(
+                tenantId,
+                customerId,
+                "G1",
+                "<pm.x@tenant.test>",
+                null,
+                "Re: Hello",
+                DateTime.UtcNow,
+                CancellationToken.None
+            );
+
+        Assert.Equal(thread.Id, resolution.MatchedThread?.Id);
+        Assert.Equal(ThreadMatchLayer.InReplyTo, resolution.MatchedLayer);
+    }
+
+    [Fact]
+    public async Task ReplyToUnthreadedSentMessage_ReturnsTheSentDraft()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var drafts = new FakeDraftRepository();
+        var draft = await SeedSentDraftAsync(drafts, tenantId, customerId, "pm.y@tenant.test");
+
+        var resolution = await NewResolver(
+                new FakeEmailThreadRepository(),
+                new FakeIncomingEmailRepository(),
+                drafts: drafts
+            )
+            .ResolveAsync(
+                tenantId,
+                customerId,
+                null,
+                null,
+                ["<other@x>", "<pm.y@tenant.test>"],
+                "Re: Hello",
+                DateTime.UtcNow,
+                CancellationToken.None
+            );
+
+        Assert.Null(resolution.MatchedThread);
+        Assert.Same(draft, resolution.UnthreadedSentDraft);
+        Assert.Equal(ThreadMatchLayer.References, resolution.MatchedLayer);
+    }
+
+    [Fact]
+    public async Task ReplyToSentMessageOfOtherCustomer_ReturnsNoMatch()
+    {
+        var tenantId = Guid.NewGuid();
+        var drafts = new FakeDraftRepository();
+        await SeedSentDraftAsync(drafts, tenantId, Guid.NewGuid(), "pm.z@tenant.test");
+
+        var resolution = await NewResolver(
+                new FakeEmailThreadRepository(),
+                new FakeIncomingEmailRepository(),
+                drafts: drafts
+            )
+            .ResolveAsync(
+                tenantId,
+                Guid.NewGuid(),
+                null,
+                "<pm.z@tenant.test>",
+                null,
+                "Re: Hello",
+                DateTime.UtcNow,
+                CancellationToken.None
+            );
+
+        Assert.Same(EmailThreadResolution.NoMatch, resolution);
     }
 }

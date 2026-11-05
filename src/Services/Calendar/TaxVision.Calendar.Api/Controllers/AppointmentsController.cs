@@ -50,7 +50,8 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
                 request.RecurrenceRule,
                 request.CustomerId,
                 request.TaxYear,
-                request.IsVirtual
+                request.IsVirtual,
+                request.ReminderLeadMinutes
             ),
             ct
         );
@@ -238,7 +239,8 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
                 request.Duration,
                 request.TimeZoneId,
                 request.RecurrenceRule,
-                canManageAll
+                canManageAll,
+                request.ReminderLeadMinutes
             ),
             ct
         );

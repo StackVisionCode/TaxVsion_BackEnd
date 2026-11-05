@@ -26,6 +26,9 @@ public sealed class PayableReferenceConfiguration : IEntityTypeConfiguration<Pay
 
         builder.Property(p => p.Reference).HasMaxLength(64).IsRequired();
         builder.Property(p => p.CreatedAtUtc).IsRequired();
+        builder.Property(p => p.LastLinkMintedAtUtc);
+        builder.Property(p => p.AmountUpdatedAtUtc);
+        builder.Property(p => p.RowVersion).IsRowVersion();
 
         // La referencia opaca es la clave de lookup del resolver público — única.
         builder.HasIndex(p => p.Reference).IsUnique().HasDatabaseName("UX_PayableReferences_Reference");

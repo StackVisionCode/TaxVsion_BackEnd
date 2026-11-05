@@ -120,6 +120,20 @@ public sealed class TenantController(IMessageBus bus) : ControllerBase
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    /// <summary>Vuelve a publicar el estado actual de la oficina para reparar proyecciones. Idempotente.</summary>
+    [HttpPost("{tenantId:guid}/status/republish")]
+    [Authorize]
+    [HasPermission(TenantPermissions.StatusChange)]
+    [RateLimit("tenant.g.status_change")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RepublishStatus(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var result = await bus.InvokeAsync<Result>(new RepublishTenantStatusCommand(tenantId), cancellationToken);
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 }
 
 public sealed record ChangeTenantStatusRequest(EnumTenantStatus.TenantStatus Status);

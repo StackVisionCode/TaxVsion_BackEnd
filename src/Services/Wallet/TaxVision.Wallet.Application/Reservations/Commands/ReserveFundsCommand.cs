@@ -33,16 +33,22 @@ public static class ReserveFundsHandler
         CancellationToken ct
     )
     {
+        // Wolverine guarda el DbContext aunque el handler devuelva Failure: las validaciones que pueden
+        // fallar van antes de la primera mutación de un agregado rastreado.
+        var referenceResult = ReservationReference.Create(command.ReferenceType, command.ReferenceId);
+        if (referenceResult.IsFailure)
+            return Result.Failure<ReservationView>(referenceResult.Error);
+        var reference = referenceResult.Value;
+
         // Idempotencia: una referencia ya reservada devuelve su reserva sin apartar fondos de nuevo.
-        var existing = await reservations.GetByReferenceAsync(
-            command.TenantId,
-            command.ReferenceType,
-            command.ReferenceId,
-            ct
-        );
+        var existing = await reservations.GetByReferenceAsync(command.TenantId, reference.Type, reference.Id, ct);
         if (existing is not null)
         {
-            var wallet0 = await wallets.GetByTenantAsync(command.TenantId, ct);
+            // Vencida: sus fondos ya se liberaron; un reintento no puede enviar sin reserva.
+            if (existing.Status == ReservationStatus.Expired)
+                return Result.Failure<ReservationView>(ReservationErrors.Expired);
+
+            var wallet0 = await wallets.GetByTenantAsync(command.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
             return Result.Success(
                 new ReservationView(
                     Authorized: true,
@@ -72,7 +78,7 @@ public static class ReserveFundsHandler
             units += (int)channelUnits;
         }
 
-        var wallet = await wallets.GetByTenantAsync(command.TenantId, ct);
+        var wallet = await wallets.GetByTenantAsync(command.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
         if (wallet is null)
         {
             var created = Domain.Wallet.Wallet.Create(command.TenantId);
@@ -89,9 +95,20 @@ public static class ReserveFundsHandler
         if (cost <= 0)
             return Result.Success(new ReservationView(true, null, active.Version, 0, availableBefore, 0, currency));
 
+        var reservationResult = WalletReservation.Open(
+            command.TenantId,
+            reference,
+            currency,
+            cost,
+            units,
+            active.Version
+        );
+        if (reservationResult.IsFailure)
+            return Result.Failure<ReservationView>(reservationResult.Error);
+
         // Reserva atómica: el aggregate rechaza si Available < cost. No se persiste reserva en ese caso.
-        var opKey = $"wallet-reserve:{command.ReferenceType}:{command.ReferenceId:N}";
-        var reserved = wallet.Reserve(cost, opKey, referenceId: command.ReferenceId);
+        var opKey = $"wallet-reserve:{reference.Type}:{reference.Id:N}";
+        var reserved = wallet.Reserve(cost, opKey, referenceId: reference.Id);
         if (reserved.IsFailure)
             return Result.Success(
                 new ReservationView(
@@ -104,18 +121,6 @@ public static class ReserveFundsHandler
                     Currency: currency
                 )
             );
-
-        var reservationResult = WalletReservation.Open(
-            command.TenantId,
-            command.ReferenceType,
-            command.ReferenceId,
-            currency,
-            cost,
-            units,
-            active.Version
-        );
-        if (reservationResult.IsFailure)
-            return Result.Failure<ReservationView>(reservationResult.Error);
 
         await wallets.AddLedgerEntryAsync(reserved.Value, ct);
         await reservations.AddAsync(reservationResult.Value, ct);

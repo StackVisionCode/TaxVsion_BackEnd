@@ -1,7 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using TaxVision.Tasks.Application.Reminders;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 using Wolverine;
@@ -59,8 +58,7 @@ public static class CreateTaskHandler
             return Result.Failure<TaskResponse>(created.Error);
 
         tasks.Add(created.Value);
-        await bus.PublishAsync(TaskCreatedEventFactory.From(created.Value, correlation.CorrelationId));
-        await TaskDueReminder.PublishIfDueAsync(created.Value, bus, correlation);
+        await TaskBirthAnnouncements.PublishAsync(created.Value, bus, correlation, announceAssignment: true);
         await unitOfWork.SaveChangesAsync(ct);
         metrics.RecordCreated(created.Value.Reference.CustomerId is not null);
 

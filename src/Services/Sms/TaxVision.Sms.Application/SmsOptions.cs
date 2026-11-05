@@ -38,4 +38,10 @@ public sealed class SmsReconciliationOptions
 
     /// <summary>Tope de mensajes por corrida del job.</summary>
     public int BatchSize { get; set; } = 200;
+
+    /// <summary>Una fila Pending sin id del proveedor más vieja que esto se cierra como fallida, sin reenviar.</summary>
+    public int PendingTimeoutMinutes { get; set; } = 15;
+
+    /// <summary>Un resultado desconocido sin confirmación más viejo que esto se cierra sin cobro (TTL de la reserva).</summary>
+    public int OutcomeUnknownTimeoutMinutes { get; set; } = 60;
 }

@@ -15,6 +15,14 @@ public interface IInventoryStockClient
         IReadOnlyList<InvoiceSaleLine> lines,
         CancellationToken ct = default
     );
+
+    /// <summary>Verifica sin mover stock que las líneas alcanzan (delta contra lo ya descontado por la factura).</summary>
+    Task<Result> CheckInvoiceSaleAsync(
+        Guid tenantId,
+        Guid invoiceId,
+        IReadOnlyList<InvoiceSaleLine> lines,
+        CancellationToken ct = default
+    );
 }
 
 /// <summary>Una línea de producto de la factura enviada a Inventory (referencia débil por CatalogItemId).</summary>

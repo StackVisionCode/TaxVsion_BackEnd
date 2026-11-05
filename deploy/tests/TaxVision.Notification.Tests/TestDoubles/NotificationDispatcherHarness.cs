@@ -28,8 +28,10 @@ public sealed class NotificationDispatcherHarness
             pushSender ?? new NoOpPushSender(),
             pushDeviceTokens ?? new NoOpPushDeviceTokenRepository(),
             logs ?? new NoOpNotificationLogRepository(),
-            preferences ?? new AlwaysEnabledPreferences(),
-            userDirectory ?? new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                preferences ?? new AlwaysEnabledPreferences(),
+                userDirectory ?? new InMemoryUserEmailDirectoryRepository()
+            ),
             Publisher,
             new NoOpUnitOfWork(),
             metrics ?? new NoOpNotificationDispatchMetrics(),

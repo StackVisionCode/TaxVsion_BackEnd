@@ -33,12 +33,21 @@ public sealed class CustomerEmailAddress : ITenantOwned
     public DateTime UpdatedAtUtc { get; private set; }
     public DateTime? DeletedAtUtc { get; private set; }
 
+    // Marcas del último evento aplicado (hora de Customer); lo más viejo que llegue tarde se ignora.
+    public DateTime? LastEmailEventOnUtc { get; private set; }
+    public DateTime? LastStatusEventOnUtc { get; private set; }
+
     public bool IsActive => DeletedAtUtc is null;
 
     /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
     public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
-    public static CustomerEmailAddress Create(Guid tenantId, Guid customerId, ValueObjects.EmailAddress emailAddress)
+    public static CustomerEmailAddress Create(
+        Guid tenantId,
+        Guid customerId,
+        ValueObjects.EmailAddress emailAddress,
+        DateTime? occurredOnUtc = null
+    )
     {
         if (tenantId == Guid.Empty)
             throw new ArgumentException("TenantId is required.", nameof(tenantId));
@@ -58,41 +67,64 @@ public sealed class CustomerEmailAddress : ITenantOwned
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
             DeletedAtUtc = null,
+            LastEmailEventOnUtc = occurredOnUtc,
+            LastStatusEventOnUtc = occurredOnUtc,
         };
     }
 
-    /// <summary>Sincroniza el email con el valor actual del customer en origen. No-op si no cambió.</summary>
-    public void UpdateEmail(ValueObjects.EmailAddress newEmail)
+    /// <summary>
+    /// Sincroniza el email con el valor del customer en origen a <paramref name="occurredOnUtc"/>. Devuelve
+    /// <c>false</c> si el cambio es más viejo que el último aplicado (evento fuera de orden) y no toca nada.
+    /// </summary>
+    public bool UpdateEmail(ValueObjects.EmailAddress newEmail, DateTime occurredOnUtc)
     {
         ArgumentNullException.ThrowIfNull(newEmail);
-        if (EmailAddress == newEmail.NormalizedValue)
-            return;
+        if (IsOlder(occurredOnUtc, LastEmailEventOnUtc))
+            return false;
 
-        EmailAddress = newEmail.NormalizedValue;
-        UpdatedAtUtc = DateTime.UtcNow;
+        LastEmailEventOnUtc = occurredOnUtc;
+        if (EmailAddress != newEmail.NormalizedValue)
+        {
+            EmailAddress = newEmail.NormalizedValue;
+            UpdatedAtUtc = DateTime.UtcNow;
+        }
+        return true;
     }
 
-    /// <summary>Marca la fila como inactiva (customer desactivado/archivado). Idempotente.</summary>
-    public void SoftDelete()
+    /// <summary>Marca la fila como inactiva (customer desactivado/archivado). Idempotente; ignora lo más viejo.</summary>
+    public bool SoftDelete(DateTime occurredOnUtc)
     {
+        if (IsOlder(occurredOnUtc, LastStatusEventOnUtc))
+            return false;
+
+        LastStatusEventOnUtc = occurredOnUtc;
         if (DeletedAtUtc is not null)
-            return;
+            return true;
 
         var now = DateTime.UtcNow;
         DeletedAtUtc = now;
         UpdatedAtUtc = now;
+        return true;
     }
 
     /// <summary>
-    /// Revierte el soft-delete (customer reactivado). Acepta opcionalmente el email vigente
-    /// en origen por si cambió mientras el customer estaba inactivo.
+    /// Revierte el soft-delete (customer reactivado). Acepta opcionalmente el email vigente en origen por si
+    /// cambió mientras el customer estaba inactivo. Email y estado se ordenan por separado.
     /// </summary>
-    public void Reactivate(ValueObjects.EmailAddress? newEmail = null)
+    public bool Reactivate(DateTime occurredOnUtc, ValueObjects.EmailAddress? newEmail = null)
     {
-        DeletedAtUtc = null;
-        if (newEmail is not null && EmailAddress != newEmail.NormalizedValue)
-            EmailAddress = newEmail.NormalizedValue;
+        if (newEmail is not null)
+            UpdateEmail(newEmail, occurredOnUtc);
 
+        if (IsOlder(occurredOnUtc, LastStatusEventOnUtc))
+            return false;
+
+        LastStatusEventOnUtc = occurredOnUtc;
+        DeletedAtUtc = null;
         UpdatedAtUtc = DateTime.UtcNow;
+        return true;
     }
+
+    private static bool IsOlder(DateTime occurredOnUtc, DateTime? lastAppliedUtc) =>
+        lastAppliedUtc is not null && occurredOnUtc < lastAppliedUtc;
 }

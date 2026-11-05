@@ -50,6 +50,15 @@ public static class DependencyInjection
             Persistence.Repositories.ReservationRepository
         >();
 
+        // WAL-4 — vencimiento de reservas abiertas (TTL por tipo, apagado por defecto).
+        services
+            .AddOptions<Scheduling.ReservationExpiryOptions>()
+            .Bind(configuration.GetSection(Scheduling.ReservationExpiryOptions.SectionName))
+            .Validate(o => o.IsValid(), "Wallet:Reservations TTLs, interval and batch size must be positive.")
+            .ValidateOnStart();
+        services.AddSingleton<Scheduling.IDistributedLockFactory, Scheduling.RedisDistributedLockFactory>();
+        services.AddHostedService<Scheduling.ExpireStaleReservationsJob>();
+
         // SEC-M1.C — signer HMAC compartido con PaymentApp. Secret vive en env var
         // PurchaseIntentAmountSignature__Secret (misma en Wallet y PaymentApp).
         services.AddPurchaseIntentAmountSigning(configuration);

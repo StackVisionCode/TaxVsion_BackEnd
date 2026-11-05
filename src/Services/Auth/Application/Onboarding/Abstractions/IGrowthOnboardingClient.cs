@@ -20,6 +20,13 @@ public static class OnboardingPaymentReference
     }
 }
 
+/// <summary>Códigos de Growth que el cliente devuelve tal cual, sin envolverlos en un fallo genérico.</summary>
+public static class GrowthOnboardingErrors
+{
+    /// <summary>Commit tardío sobre una reserva vencida: Growth lo dejó en revisión manual (no se reintenta).</summary>
+    public const string LateCommitPendingReview = "Codes.CommitReservation.LateCommitPendingReview";
+}
+
 /// <summary>
 /// Puerto M2M hacia Growth para aplicar códigos (promo/gift) y calificar referidos DURANTE el onboarding
 /// (pre-tenant). Contrato pre-tenant aprobado: dueño = <c>PlatformTenant.Id</c>, sujeto =

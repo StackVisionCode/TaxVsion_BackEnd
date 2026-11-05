@@ -1,19 +1,24 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using TaxVision.Postmaster.Application.Abstractions;
+using TaxVision.Postmaster.Application.Sending;
+using TaxVision.Postmaster.Domain.Sending;
+using Wolverine;
 
 namespace TaxVision.Postmaster.Tests.Integration;
 
 /// <summary>
-/// Host real de Postmaster.Api (SQL Server + Redis + RabbitMQ locales, sin mocks) para los tests
-/// de integración de Fase 4.4 del plan de rate limiting — mismo patrón que
-/// <c>TaxVision.Tenant.Tests.Integration.TenantApiFactory</c> (Fase 4.2) y
-/// <c>TaxVision.Notification.Tests.Integration.NotificationApiFactory</c> (Fase 4.3). La única
-/// sustitución respecto al Program.cs real es la clave de firma JWT: appsettings.Development.json
-/// apunta a <c>dev-keys/jwt-public.pem</c> (RS256, clave real de Auth) — en vez de replicar el
-/// signing RS256 de Auth acá, se sobreescribe la config con un secreto HS256 generado en memoria
-/// SOLO para este proceso de test, nunca leído de ningún user-secret real ni escrito a disco.
+/// Host real de Postmaster.Api (SQL Server + Redis locales) para los tests de integración de Fase 4.4
+/// del plan de rate limiting — mismo patrón que <c>TaxVision.Tenant.Tests.Integration.TenantApiFactory</c>
+/// (Fase 4.2) y <c>TaxVision.Notification.Tests.Integration.NotificationApiFactory</c> (Fase 4.3). La
+/// clave de firma JWT se sobreescribe con un secreto HS256 generado en memoria SOLO para este proceso de
+/// test, nunca leído de ningún user-secret real ni escrito a disco.
 /// </summary>
 public sealed class PostmasterApiFactory : WebApplicationFactory<Program>
 {
@@ -37,5 +42,54 @@ public sealed class PostmasterApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Sin transportes externos ni persistencia de mensajes, el host de prueba no le roba correos a la
+        // cola postmaster-events ni sobres a las tablas de Wolverine del Postmaster local. Los jobs consultan
+        // SMTP2GO, siembran proveedores y limpian la base: fuera. Y nunca sale un correo real: los dos
+        // remitentes se reemplazan por uno que se niega.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            services.DisableAllWolverineMessagePersistence();
+            foreach (
+                var job in services
+                    .Where(descriptor =>
+                        descriptor.ServiceType == typeof(IHostedService)
+                        && descriptor.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal)
+                            == true
+                    )
+                    .ToList()
+            )
+                services.Remove(job);
+
+            services.RemoveAll<IEmailSender>();
+            services.RemoveAll<IConnectedMailboxSender>();
+            services.AddSingleton<IEmailSender, RefusingSender>();
+            services.AddSingleton<IConnectedMailboxSender, RefusingSender>();
+        });
+    }
+
+    private sealed class RefusingSender : IEmailSender, IConnectedMailboxSender
+    {
+        public Task<SendResult> SendAsync(
+            SentMessage message,
+            RenderedContent content,
+            ResolvedEmailProvider provider,
+            IReadOnlyList<InlineAssetBytes> inlineAssets,
+            IReadOnlyList<OutboundAttachmentBytes> attachments,
+            CancellationToken ct
+        ) => throw new InvalidOperationException("Integration tests never send real email.");
+
+        public Task<SendResult> SendAsync(
+            SentMessage message,
+            RenderedContent content,
+            ResolvedMailbox provider,
+            string? inReplyToInternetMessageId,
+            IReadOnlyList<string>? references,
+            string? replyToProviderMessageId,
+            IReadOnlyList<OutboundAttachmentBytes> attachments,
+            IReadOnlyList<InlineAssetBytes> inlineAssets,
+            CancellationToken ct
+        ) => throw new InvalidOperationException("Integration tests never send real email.");
     }
 }

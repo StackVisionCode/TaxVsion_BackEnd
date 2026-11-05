@@ -39,4 +39,7 @@ public enum PaymentAuditAction
     TenantRecurringPaymentSuspended = 31,
     TenantRecurringPaymentCompleted = 32,
     TenantRecurringPaymentCancelled = 33,
+    PaymentLinkClosedBeforePayment = 36,
+    TenantPaymentSignalRepublished = 37,
+    TenantPaymentProviderSuccessNeedsReview = 38,
 }

@@ -23,6 +23,9 @@ namespace TaxVision.Notification.Application.Consumers;
 // lanza ScribeRenderFailedException para que la política global de retry+cooldown
 // de Wolverine (Program.cs) reintente el mensaje, en vez de descartar el email
 // (bienvenida, reset de password, invitación) sin dejar rastro.
+//
+// Invitación, reset y confirmación de cambio de correo llevan un token en el enlace: van como
+// Confidential (directo a la cola de Postmaster, nunca al fanout taxvision-events).
 // ---------------------------------------------------------------------------
 
 public static class InvitationCreatedConsumer
@@ -70,7 +73,10 @@ public static class InvitationCreatedConsumer
                     templateKey: "auth.invitation",
                     relatedEventId: evt.EventId,
                     correlationId: correlation.CorrelationId
-                ),
+                ) with
+                {
+                    Confidential = true,
+                },
                 ct
             );
         }
@@ -126,7 +132,10 @@ public static class PasswordResetRequestedConsumer
                     templateKey: "auth.password_reset",
                     relatedEventId: evt.EventId,
                     correlationId: correlation.CorrelationId
-                ),
+                ) with
+                {
+                    Confidential = true,
+                },
                 ct
             );
         }
@@ -298,7 +307,10 @@ public static class EmailChangeRequestedConsumer
                     templateKey: "auth.email_change",
                     relatedEventId: evt.EventId,
                     correlationId: correlation.CorrelationId
-                ),
+                ) with
+                {
+                    Confidential = true,
+                },
                 ct
             );
 

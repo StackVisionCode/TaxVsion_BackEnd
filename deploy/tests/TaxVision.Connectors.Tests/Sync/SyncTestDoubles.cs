@@ -35,6 +35,9 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
     public Func<Guid, string, RawMessage>? OnGetMessage { get; set; }
     public Exception? ThrowOnGetHistory { get; set; }
     public HashSet<string> ThrowOnGetMessageFor { get; } = [];
+
+    /// <summary>El proveedor responde que el mensaje ya no existe (borrado entre history y fetch).</summary>
+    public HashSet<string> NotFoundOnGetMessageFor { get; } = [];
     public List<string?> ReceivedCursors { get; } = [];
 
     /// <summary>Falla el lote entero (ej. se cortó la conexión IMAP a mitad del FETCH).</summary>
@@ -67,6 +70,27 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
 
     public List<DateTime?> ReceivedFirstSyncFrom { get; } = [];
 
+    public Func<DateTime, DateTime, string?, InboxMessageIdPage>? OnListInbox { get; set; }
+    public Exception? ThrowOnListInbox { get; set; }
+    public List<(DateTime FromUtc, DateTime ToUtc, string? PageToken)> ListInboxCalls { get; } = [];
+    public int GetMessageCalls { get; private set; }
+
+    public Task<InboxMessageIdPage> ListInboxMessageIdsAsync(
+        Guid accountId,
+        Guid tenantId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string? pageToken,
+        CancellationToken ct = default
+    )
+    {
+        ListInboxCalls.Add((fromUtc, toUtc, pageToken));
+        if (ThrowOnListInbox is not null)
+            throw ThrowOnListInbox;
+
+        return Task.FromResult(OnListInbox?.Invoke(fromUtc, toUtc, pageToken) ?? new InboxMessageIdPage([], null));
+    }
+
     public Task<HistoryPage> GetHistoryAsync(
         Guid accountId,
         Guid tenantId,
@@ -90,8 +114,11 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
         CancellationToken ct = default
     )
     {
+        GetMessageCalls++;
         if (ThrowOnGetMessageFor.Contains(providerMessageId))
             throw new EmailProviderException($"Could not fetch {providerMessageId}.");
+        if (NotFoundOnGetMessageFor.Contains(providerMessageId))
+            throw new EmailProviderException($"{providerMessageId} was not found.", isNotFound: true);
 
         return Task.FromResult(
             OnGetMessage?.Invoke(accountId, providerMessageId)
@@ -166,6 +193,58 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
         var bytes = OnGetAttachment?.Invoke(accountId, providerMessageId, attachmentId) ?? [1, 2, 3];
         return Task.FromResult<Stream>(new MemoryStream(bytes, writable: false));
     }
+}
+
+internal sealed class FakeProviderMessageFetchFailureRepository : IProviderMessageFetchFailureRepository
+{
+    public List<ProviderMessageFetchFailure> Failures { get; } = [];
+
+    public Task<IReadOnlyList<ProviderMessageFetchFailure>> ListPendingAsync(
+        Guid accountId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<ProviderMessageFetchFailure>>(
+            Failures
+                .Where(f => f.AccountId == accountId && f.Status == ProviderMessageFetchFailureStatus.Pending)
+                .ToList()
+        );
+
+    public Task<ProviderMessageFetchFailure?> GetAsync(
+        Guid accountId,
+        string providerMessageId,
+        CancellationToken ct = default
+    ) => Task.FromResult(Failures.Find(f => f.AccountId == accountId && f.ProviderMessageId == providerMessageId));
+
+    public Task AddAsync(ProviderMessageFetchFailure failure, CancellationToken ct = default)
+    {
+        Failures.Add(failure);
+        return Task.CompletedTask;
+    }
+}
+
+internal sealed class FakeSyncMetrics : ISyncMetrics
+{
+    public int Abandoned { get; private set; }
+
+    public void MessageAbandoned(ProviderCode providerCode) => Abandoned++;
+}
+
+internal static class FetchFailures
+{
+    /// <summary>Tracker con repositorio vacío: para las pruebas que no miran los fallos por mensaje.</summary>
+    public static MessageFetchFailureTracker None() =>
+        Tracker(new FakeProviderMessageFetchFailureRepository(), new FakeSyncMetrics());
+
+    public static MessageFetchFailureTracker Tracker(
+        FakeProviderMessageFetchFailureRepository repository,
+        FakeSyncMetrics metrics
+    ) =>
+        new(
+            repository,
+            MessageFetchFailureLimits.Default,
+            metrics,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MessageFetchFailureTracker>.Instance
+        );
 }
 
 internal sealed class FakeEmailProviderClientFactory(IEmailProviderClient client) : IEmailProviderClientFactory

@@ -315,6 +315,29 @@ public sealed class TenantPayment : TenantEntity
         return Result.Success();
     }
 
+    public const string AbandonedAttemptReason = "abandoned-3ds-ttl";
+
+    /// <summary>Verificación (3DS) sin cambios hace al menos <paramref name="ttl"/>.</summary>
+    public bool IsAbandoned(TimeSpan ttl, DateTime nowUtc) =>
+        Status == PaymentStatus.RequiresAction && UpdatedAtUtc <= nowUtc - ttl;
+
+    /// <summary>Cierra un 3DS abandonado (D-PCL-1) tras <paramref name="ttl"/> sin cambios. El cobro ya se
+    /// canceló en el proveedor; lo cierra el sistema, no un admin.</summary>
+    public Result CancelAbandoned(TimeSpan ttl, DateTime nowUtc)
+    {
+        if (Status != PaymentStatus.RequiresAction)
+            return Result.Failure(
+                new Error("TenantPayment.InvalidTransition", $"Cannot close an abandoned attempt from {Status}.")
+            );
+
+        if (!IsAbandoned(ttl, nowUtc))
+            return Result.Failure(
+                new Error("TenantPayment.AttemptNotAbandoned", "The verification has not been abandoned long enough.")
+            );
+
+        return CancelByAdmin(AbandonedAttemptReason, Guid.Empty, nowUtc);
+    }
+
     public Result CancelByAdmin(string reason, Guid actorUserId, DateTime nowUtc)
     {
         if (IsLegalHeld)

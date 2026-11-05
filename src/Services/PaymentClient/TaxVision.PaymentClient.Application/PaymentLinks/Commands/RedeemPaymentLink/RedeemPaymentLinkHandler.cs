@@ -10,6 +10,7 @@ using TaxVision.PaymentClient.Application.Common;
 using TaxVision.PaymentClient.Application.TenantPayments.Common;
 using TaxVision.PaymentClient.Domain.Audit;
 using TaxVision.PaymentClient.Domain.PaymentLinks;
+using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
 using TaxVision.PaymentClient.Domain.TenantPayments;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 using Wolverine;
@@ -18,11 +19,11 @@ namespace TaxVision.PaymentClient.Application.PaymentLinks.Commands.RedeemPaymen
 
 /// <summary>
 /// Cobra el monto fijado en el <c>PaymentLink</c> contra el método de pago que el taxpayer
-/// tokenizó en la página de checkout. Cada llamada crea un <c>TenantPayment</c> nuevo (con
-/// idempotency key propia) en vez de reusar uno anterior — así un intento fallido (tarjeta
-/// declinada) no deja al taxpayer sin forma de reintentar con otra tarjeta; el guardrail
-/// contra doble-cobro es <see cref="PaymentLink.IsRedeemable"/>, no la idempotencia del
-/// charge.
+/// tokenizó en la página de checkout. Tras un intento fallido (tarjeta declinada) se crea un
+/// <c>TenantPayment</c> nuevo para reintentar con otra tarjeta. Resguardos contra doble cobro:
+/// <see cref="PaymentLink.IsRedeemable"/>, <see cref="PaymentLink.AttachPaymentAttempt"/> (no abre
+/// otro intento si hay uno vivo o cobrado), la clave fija por intento
+/// (<c>paymentlink-redeem:{linkId}:attempt:{n}</c>) y el <c>RowVersion</c> del link.
 /// </summary>
 public static class RedeemPaymentLinkHandler
 {
@@ -76,9 +77,22 @@ public static class RedeemPaymentLinkHandler
         if (config is null || !config.IsActive || config.SecretKeyEncrypted is null)
             return Result.Failure<RedeemPaymentLinkResponse>(notFound);
 
+        var current = link.RelatedTenantPaymentId is Guid currentId
+            ? await payments.GetByIdAsync(currentId, link.TenantId, ct)
+            : null;
+
+        // 3DS pendiente: se devuelve el mismo intento para terminarlo, sin cobrar de nuevo. El clientSecret se
+        // vuelve a pedir al proveedor (solo lectura) porque no se guarda.
+        if (current?.Status == PaymentStatus.RequiresAction)
+        {
+            var freshSecret = await FreshClientSecretAsync(current, config, configs, providerFactory, secretProtector, ct);
+            return Result.Success(ToResponse(current, freshSecret));
+        }
+
+        // Clave fija por intento: dos canjes simultáneos llegan al proveedor con la misma clave.
         var preparedResult = TenantPayment.Create(
             link.TenantId,
-            IdempotencyKey.Create($"paymentlink-redeem:{link.Id:N}:{Guid.NewGuid():N}").Value,
+            IdempotencyKey.Create($"paymentlink-redeem:{link.Id:N}:attempt:{link.AttemptSequence + 1}").Value,
             link.Amount,
             link.TaxpayerId,
             link.Purpose,
@@ -92,12 +106,14 @@ public static class RedeemPaymentLinkHandler
             return Result.Failure<RedeemPaymentLinkResponse>(preparedResult.Error);
 
         var payment = preparedResult.Value;
-        await payments.AddAsync(payment, ct);
 
-        var attachResult = link.AttachPaymentAttempt(payment.Id, nowUtc);
+        var attachResult = link.AttachPaymentAttempt(payment.Id, current?.Status, nowUtc);
         if (attachResult.IsFailure)
             return Result.Failure<RedeemPaymentLinkResponse>(attachResult.Error);
 
+        await payments.AddAsync(payment, ct);
+
+        string? clientSecret = null;
         if (!secretProtector.TryUnprotect(config.SecretKeyEncrypted.CipherText, out var secretKey, out _))
         {
             TenantPaymentChargeOutcome.FailPayment(
@@ -115,7 +131,7 @@ public static class RedeemPaymentLinkHandler
                 ApiBaseUrl: config.ApiBaseUrl
             );
             var adapter = providerFactory.Resolve(config.ProviderCode);
-            await ExecuteChargeAsync(payment, adapter, credentials, command, ct);
+            clientSecret = await ExecuteChargeAsync(payment, adapter, credentials, command, ct);
         }
 
         if (payment.Status == PaymentStatus.Failed)
@@ -141,13 +157,18 @@ public static class RedeemPaymentLinkHandler
             ct
         );
 
-        if (payment.Status == PaymentStatus.Succeeded)
+        PaymentLinkUsedIntegrationEvent? linkUsed = null;
+        var succeeded = payment.Status == PaymentStatus.Succeeded;
+        if (succeeded)
         {
             metrics.RecordPaymentSucceeded(payment.Amount.AmountCents, payment.Amount.Currency);
-            await MarkLinkUsedAsync(link, payment, audit, bus, metrics, correlation, nowUtc, ct);
+            linkUsed = await MarkLinkUsedAsync(link, payment, audit, metrics, correlation, nowUtc, ct);
         }
 
+        // Guardar antes de publicar: si el guardado falla, no sale nada del intento revertido.
         await unitOfWork.SaveChangesAsync(ct);
+        if (succeeded)
+            await TenantPaymentProviderUpdate.PublishSucceededAsync(bus, payment, linkUsed, correlation.CorrelationId);
 
         logger.LogInformation(
             "PaymentLink {PaymentLinkId} redemption produced TenantPayment {TenantPaymentId} with status {Status}.",
@@ -156,19 +177,54 @@ public static class RedeemPaymentLinkHandler
             payment.Status
         );
 
-        return Result.Success(
-            new RedeemPaymentLinkResponse(
-                payment.Id,
-                payment.Status.ToString(),
-                payment.NextActionType,
-                payment.NextActionUrl,
-                payment.FailureCode,
-                payment.FailureReason
-            )
-        );
+        return Result.Success(ToResponse(payment, clientSecret));
     }
 
-    private static async Task ExecuteChargeAsync(
+    private static RedeemPaymentLinkResponse ToResponse(TenantPayment payment, string? clientSecret) =>
+        new(
+            payment.Id,
+            payment.Status.ToString(),
+            payment.NextActionType,
+            payment.NextActionUrl,
+            payment.FailureCode,
+            payment.FailureReason,
+            payment.Status == PaymentStatus.RequiresAction ? clientSecret : null
+        );
+
+    /// <summary>clientSecret vigente del intento en 3DS, pedido al proveedor. Null si no se puede obtener: la
+    /// página no podrá completar la verificación y el intento se cierra solo por TTL (PCL-1b).</summary>
+    private static async Task<string?> FreshClientSecretAsync(
+        TenantPayment attempt,
+        TenantPaymentConfig requestedConfig,
+        ITenantPaymentConfigRepository configs,
+        IPaymentAdapterFactory providerFactory,
+        ISecretProtector secretProtector,
+        CancellationToken ct
+    )
+    {
+        if (attempt.ExternalChargeReference is not { } reference || string.IsNullOrWhiteSpace(reference.Value))
+            return null;
+
+        var config =
+            attempt.ProviderCode == requestedConfig.ProviderCode
+                ? requestedConfig
+                : await configs.GetByTenantAndProviderAsync(attempt.TenantId, attempt.ProviderCode, ct);
+        if (
+            config?.SecretKeyEncrypted is null
+            || !secretProtector.TryUnprotect(config.SecretKeyEncrypted.CipherText, out var secretKey, out _)
+        )
+            return null;
+
+        var credentials = new TenantProviderCredentials(secretKey, null, config.PublishableKey, config.ApiBaseUrl);
+        var status = await providerFactory
+            .Resolve(attempt.ProviderCode)
+            .GetChargeStatusAsync(credentials, new ChargeStatusLookup(reference.Value), ct);
+        return status.IsSuccess && status.Value.Status == PaymentStatus.RequiresAction
+            ? status.Value.NextActionClientSecret
+            : null;
+    }
+
+    private static async Task<string?> ExecuteChargeAsync(
         TenantPayment payment,
         IPaymentProvider adapter,
         TenantProviderCredentials credentials,
@@ -193,20 +249,20 @@ public static class RedeemPaymentLinkHandler
         if (chargeResult.IsFailure)
         {
             TenantPaymentChargeOutcome.FailPayment(payment, chargeResult.Error, Guid.Empty);
-            return;
+            return null;
         }
 
         TenantPaymentChargeOutcome.ApplyChargeOutcome(payment, chargeResult.Value, Guid.Empty);
+        return chargeResult.Value.NextActionClientSecret;
     }
 
-    /// <summary>Confirmación síncrona rápida — la ruta async (3DS que se resuelve más tarde
-    /// por webhook) la completa <c>ProcessTenantWebhookHandler</c> llamando a este mismo
-    /// método de dominio.</summary>
-    private static async Task MarkLinkUsedAsync(
+    /// <summary>Confirmación síncrona rápida — la ruta async (3DS que se resuelve más tarde por webhook)
+    /// la completa <c>TenantPaymentProviderUpdate.CompletePaymentLinkIfAnyAsync</c>. Devuelve el evento sin
+    /// publicarlo.</summary>
+    private static async Task<PaymentLinkUsedIntegrationEvent?> MarkLinkUsedAsync(
         PaymentLink link,
         TenantPayment payment,
         IPaymentAuditLogWriter audit,
-        IMessageBus bus,
         IPaymentClientMetrics metrics,
         ICorrelationContext correlation,
         DateTime nowUtc,
@@ -215,7 +271,7 @@ public static class RedeemPaymentLinkHandler
     {
         var markUsedResult = link.MarkAsUsed(nowUtc);
         if (markUsedResult.IsFailure)
-            return;
+            return null;
 
         metrics.RecordPaymentLinkUsed();
 
@@ -234,34 +290,15 @@ public static class RedeemPaymentLinkHandler
             ct
         );
 
-        await bus.PublishAsync(
-            new PaymentLinkUsedIntegrationEvent
-            {
-                TenantId = link.TenantId,
-                PaymentLinkId = link.Id,
-                TenantPaymentId = payment.Id,
-                AmountCents = link.Amount.AmountCents,
-                Currency = link.Amount.Currency,
-                UsedAtUtc = nowUtc,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
-        // Fase 3: señal "pagado" con la referencia externa (id de factura) — Billing la consume para
-        // marcar la factura Paid. Distinta de PaymentLinkUsed ("redimido"): esta afirma cobro exitoso.
-        await bus.PublishAsync(
-            new TenantPaymentSucceededIntegrationEvent
-            {
-                TenantId = payment.TenantId,
-                TenantPaymentId = payment.Id,
-                ProviderCode = payment.ProviderCode.ToString(),
-                PurposeKind = payment.Purpose.Kind.ToString(),
-                ExternalReferenceId = payment.Purpose.ExternalReferenceId,
-                AmountCents = payment.Amount.AmountCents,
-                Currency = payment.Amount.Currency,
-                PaidAtUtc = nowUtc,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
+        return new PaymentLinkUsedIntegrationEvent
+        {
+            TenantId = link.TenantId,
+            PaymentLinkId = link.Id,
+            TenantPaymentId = payment.Id,
+            AmountCents = link.Amount.AmountCents,
+            Currency = link.Amount.Currency,
+            UsedAtUtc = nowUtc,
+            CorrelationId = correlation.CorrelationId,
+        };
     }
 }

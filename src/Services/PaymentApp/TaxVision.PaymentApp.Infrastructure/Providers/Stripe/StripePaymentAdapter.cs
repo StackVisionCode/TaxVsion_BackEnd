@@ -39,8 +39,12 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         ILogger<StripePaymentAdapter> logger,
         IPaymentAppMetrics metrics
     )
+        : this(new StripeClient(options.Value.SecretKey), logger, metrics) { }
+
+    // Para pruebas: un StripeClient con HttpClient falso.
+    internal StripePaymentAdapter(StripeClient client, ILogger<StripePaymentAdapter> logger, IPaymentAppMetrics metrics)
     {
-        _client = new StripeClient(options.Value.SecretKey);
+        _client = client;
         _logger = logger;
         _metrics = metrics;
     }
@@ -365,6 +369,7 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     )
     {
@@ -379,7 +384,8 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                     Amount = amount.AmountCents,
                     Metadata = new Dictionary<string, string> { ["reason"] = reason },
                 },
-                cancellationToken: ct
+                new RequestOptions { IdempotencyKey = idempotencyKey },
+                ct
             );
 
             var status = refund.Status == "succeeded" ? PaymentStatus.Refunded : PaymentStatus.Processing;

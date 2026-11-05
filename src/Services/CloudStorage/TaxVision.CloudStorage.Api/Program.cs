@@ -27,6 +27,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.CloudStorage.Api.Messaging;
 using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Domain.Sharing;
 using TaxVision.CloudStorage.Infrastructure;
@@ -256,9 +257,8 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CloudStorageDbContext>();
     options.Policies.AutoApplyTransactions();
 
-    // Cada escaneo actualiza la proyección de cuota del tenant. Se procesan en serie para
-    // evitar que dos archivos compitan por el mismo RowVersion después de mover el objeto.
-    options.LocalQueueFor<ScanFileCommand>().Sequential();
+    // Cola local del escaneo (en serie y durable): ver ScanQueueConfiguration.
+    options.ConfigureScanQueue();
 
     options.PublishMessage<FileAvailableIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerDocumentUploadedIntegrationEvent>().ToRabbitExchange("taxvision-events");

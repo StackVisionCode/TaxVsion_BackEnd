@@ -152,6 +152,9 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("AmountUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -162,6 +165,9 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("LastLinkMintedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("PurposeKind")
                         .IsRequired()
@@ -175,6 +181,12 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateTime?>("SettledAtUtc")
                         .HasColumnType("datetime2");
@@ -201,6 +213,11 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("AttemptSequence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -217,6 +234,12 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("RelatedTenantPaymentId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Status")
                         .IsRequired()

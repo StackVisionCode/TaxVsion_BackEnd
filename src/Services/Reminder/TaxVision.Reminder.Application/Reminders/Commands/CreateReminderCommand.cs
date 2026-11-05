@@ -37,6 +37,15 @@ public sealed record CreateReminderCommand(
 /// </para>
 ///
 /// <para>
+/// <b>Contrato con publicadores:</b> una clave existente se devuelve tal cual en cualquier estado
+/// (también <c>Cancelled</c>, <c>Fired</c>, <c>Dismissed</c> o <c>Missed</c>); no se rearma. Quien
+/// necesite un aviso nuevo cambia la clave por ciclo de vida: Tasks <c>task-created:{t}:{u}[:r{n}]</c>,
+/// Calendar <c>calendar:{occurrenceTargetId}</c>. Lo fijan
+/// <c>ReminderCommandHandlerTests.Create_ExistingKeyInTerminalState_ReturnsExistingWithoutRearming</c>
+/// y <c>Create_NewLifecycleKey_CreatesNewReminder</c>.
+/// </para>
+///
+/// <para>
 /// <b>La clave es por destinatario.</b> Si el emisor reasigna el objetivo a otra persona (p. ej. el
 /// organizador de una cita al retirar al anterior) y vuelve a pedir con la misma clave, nace el aviso
 /// del nuevo; el del anterior sigue su propio ciclo (lo cancela su retiro).

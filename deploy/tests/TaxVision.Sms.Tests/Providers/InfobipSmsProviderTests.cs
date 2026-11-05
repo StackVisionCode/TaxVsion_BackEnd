@@ -60,8 +60,8 @@ public sealed class InfobipSmsProviderTests
     private static SmsSendRequest Send(string to = "+18095551234", string body = "hola") =>
         new(Guid.NewGuid(), Guid.NewGuid(), to, body, [], "corr", "idem", null);
 
-    /// <summary>Lanza <see cref="HttpRequestException"/> en los primeros <c>throwFirst</c> envíos (transitorio
-    /// que el pipeline de resiliencia reintenta) y luego responde 200. Cuenta cuántas veces se le llamó.</summary>
+    /// <summary>Lanza <see cref="HttpRequestException"/> en los primeros <c>throwFirst</c> envíos y luego
+    /// responde 200. Cuenta cuántas veces se le llamó.</summary>
     private sealed class FlakyHandler(int throwFirst) : HttpMessageHandler
     {
         public int Calls { get; private set; }
@@ -100,11 +100,9 @@ public sealed class InfobipSmsProviderTests
         );
     }
 
-    // Regresión: un transitorio reintentado NO debe reusar el mismo HttpRequestMessage (eso lanzaba
-    // "The request message was already sent"). Con el request reconstruido por intento, el reintento
-    // reenvía y el envío termina Accepted. Dos llamadas al handler: la que falla + la que acierta.
+    // Un corte de conexión puede llegar con el SMS ya recibido: no se reintenta el POST.
     [Fact]
-    public async Task Send_rebuilds_request_and_succeeds_after_a_transient_retry()
+    public async Task Send_connection_drop_is_outcome_unknown_without_retry()
     {
         var handler = new FlakyHandler(throwFirst: 1);
         var provider = BuildWith(handler);
@@ -112,9 +110,9 @@ public sealed class InfobipSmsProviderTests
         var result = await provider.SendAsync(Send());
 
         Assert.True(result.IsSuccess);
-        Assert.True(result.Value.Accepted);
-        Assert.Equal("ibx-retry", result.Value.ProviderMessageId);
-        Assert.Equal(2, handler.Calls);
+        Assert.False(result.Value.Accepted);
+        Assert.Equal(SmsSendFailure.OutcomeUnknown, result.Value.ErrorCode);
+        Assert.Equal(1, handler.Calls);
     }
 
     [Fact]

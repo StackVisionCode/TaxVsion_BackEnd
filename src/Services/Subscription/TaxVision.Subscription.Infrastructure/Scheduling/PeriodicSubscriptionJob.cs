@@ -22,6 +22,9 @@ public abstract class PeriodicSubscriptionJob(
 {
     protected abstract string JobName { get; }
 
+    // Para abrir un scope por ítem dentro de la pasada.
+    protected IServiceScopeFactory ScopeFactory => scopeFactory;
+
     protected abstract Task RunOnceAsync(IServiceProvider services, CancellationToken ct);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

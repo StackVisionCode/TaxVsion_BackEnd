@@ -702,6 +702,9 @@ public sealed class CentralLoginHandlersTests
 
     private sealed class FakeUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         // email → (tenantId → user)
         private readonly Dictionary<string, Dictionary<Guid, User>> _byEmail = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<Guid, User> _byId = [];

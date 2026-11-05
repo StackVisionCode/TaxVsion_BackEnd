@@ -1,5 +1,7 @@
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
 using Microsoft.Extensions.Logging;
+using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Application.Email.Sending.Campaign;
 
 namespace TaxVision.Notification.Application.Email.Sending.Consumers;
@@ -22,6 +24,7 @@ public static class CampaignEmailDispatchConsumer
     public static async Task<CampaignDispatchResultIntegrationEvent?> Handle(
         CampaignDispatchRequestedIntegrationEvent evt,
         ICampaignEmailProvider emailProvider,
+        ICustomerContactPolicyRepository contactPolicies,
         ILogger<CampaignEmailMessage> logger,
         CancellationToken ct
     )
@@ -31,6 +34,19 @@ public static class CampaignEmailDispatchConsumer
 
         if (string.IsNullOrWhiteSpace(evt.Email))
             return ToResult(evt, "Skipped", providerRef: null, reason: "no_destination");
+
+        // Política de contacto del cliente (D-CMP-3). Un contacto que no es cliente no tiene fila y pasa.
+        if (
+            Guid.TryParse(evt.ContactRef, out var customerId)
+            && !await CustomerContactPolicyFilter.AllowsAsync(
+                evt.TenantId,
+                customerId,
+                CustomerContactChannel.Email,
+                contactPolicies,
+                ct
+            )
+        )
+            return ToResult(evt, "Skipped", providerRef: null, reason: "contact_policy");
 
         // Personalización por destinatario: {{first_name}}/{{full_name}}/{{email}}/… → datos del cliente.
         var subject = CampaignPersonalization.Render(evt.Subject, evt.RecipientName, evt.Email, evt.PhoneE164);

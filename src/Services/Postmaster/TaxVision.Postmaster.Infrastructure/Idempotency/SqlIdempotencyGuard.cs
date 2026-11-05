@@ -8,11 +8,11 @@ using TaxVision.Postmaster.Infrastructure.Persistence;
 namespace TaxVision.Postmaster.Infrastructure.Idempotency;
 
 /// <summary>
-/// <see cref="IIdempotencyGuard"/> respaldado por la tabla <c>EmailIdempotency</c>. Persiste la
-/// reserva de inmediato (no espera al SaveChanges del handler completo) para que un evento
-/// duplicado que llega a otra instancia del servicio, en paralelo, la vea. Una carrera real entre
-/// dos inserts simultáneos se resuelve por la PK compuesta — el perdedor recibe
-/// <see cref="ConflictException"/> y se trata igual que "reserva ya tomada".
+/// <see cref="IIdempotencyGuard"/> respaldado por la tabla <c>EmailIdempotency</c>. La reserva se
+/// confirma con la transacción del paso de preparación (junto al <c>SentMessage</c>), antes de que el
+/// correo salga; hasta entonces otra instancia no la ve. Una carrera real entre dos inserts simultáneos
+/// se resuelve por la PK compuesta — el perdedor recibe <see cref="ConflictException"/> y se trata igual
+/// que "reserva ya tomada".
 /// </summary>
 public sealed class SqlIdempotencyGuard(PostmasterDbContext dbContext, ILogger<SqlIdempotencyGuard> logger)
     : IIdempotencyGuard
@@ -35,6 +35,10 @@ public sealed class SqlIdempotencyGuard(PostmasterDbContext dbContext, ILogger<S
 
         var isWithinRetryWindow = DateTime.UtcNow - existing.CreatedAtUtc < ReservationRetryWindow;
         if (isWithinRetryWindow)
+            return IdempotencyReservationResult.InProgress();
+
+        // Con SentMessage la reserva no está abandonada: su envío está pendiente o ya se intentó.
+        if (await HasSentMessageAsync(tenantId, idempotencyKey, ct))
             return IdempotencyReservationResult.InProgress();
 
         await RemoveAbandonedReservationAsync(existing, ct);
@@ -73,7 +77,12 @@ public sealed class SqlIdempotencyGuard(PostmasterDbContext dbContext, ILogger<S
             ct
         );
 
-    /// <summary>Reserva sin completar y fuera de la ventana de retry — el proceso original probablemente crasheó; se limpia para reintentar.</summary>
+    private Task<bool> HasSentMessageAsync(Guid tenantId, string idempotencyKey, CancellationToken ct) =>
+        dbContext
+            .SentMessages.IgnoreQueryFilters()
+            .AnyAsync(m => m.TenantId == tenantId && m.IdempotencyKey == idempotencyKey, ct);
+
+    /// <summary>Reserva sin completar, fuera de la ventana de retry y sin SentMessage — el proceso murió antes de prepararlo; se limpia para reintentar.</summary>
     private async Task RemoveAbandonedReservationAsync(EmailIdempotency existing, CancellationToken ct)
     {
         dbContext.EmailIdempotencies.Remove(existing);

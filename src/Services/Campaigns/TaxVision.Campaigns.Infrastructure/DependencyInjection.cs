@@ -101,7 +101,14 @@ public static class DependencyInjection
         services.AddScoped<ICustomerDirectoryStore, Customers.Directory.CustomerDirectoryStore>();
 
         // Scheduler durable (SendMode Scheduled/Recurring): lease-based claim + fan-out por disparo.
+        services
+            .AddOptions<Application.Scheduling.CampaignSchedulerOptions>()
+            .Bind(configuration.GetSection(Application.Scheduling.CampaignSchedulerOptions.SectionName));
         services.AddHostedService<CampaignSchedulerService>();
+
+        // Barrido de runs que no cierran (apagado por defecto, ver CampaignRunSweepOptions.Enabled).
+        services.AddOptions<CampaignRunSweepOptions>().Bind(configuration.GetSection(CampaignRunSweepOptions.SectionName));
+        services.AddHostedService<CampaignRunSweepJob>();
 
         AddRbacProjection(services, configuration);
         AddRateLimitTierQuotas(services, configuration);

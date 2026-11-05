@@ -146,6 +146,12 @@ builder.Host.UseWolverine(options =>
 
     options.ApplyStandardFailurePolicies();
 
+    // PMS-01: el paso de envío va por una cola local durable; su sobre se confirma con la reserva y el
+    // SentMessage, y sobrevive a un reinicio.
+    options
+        .LocalQueueFor<TaxVision.Postmaster.Application.Sending.Commands.DispatchSentMessage.DispatchSentMessageCommand>()
+        .UseDurableInbox();
+
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
     options

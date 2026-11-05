@@ -142,6 +142,9 @@ public sealed class UserSlotPriorityAdminTests
 
     private sealed class Users(IReadOnlyList<User> values) : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult(values.FirstOrDefault(user => user.Id == id));
 

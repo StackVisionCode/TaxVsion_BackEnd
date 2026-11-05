@@ -53,28 +53,49 @@ public sealed class NoteAttachment
         DateTime linkedAtUtc
     ) => new(Guid.NewGuid(), noteId, cloudStorageFileId, displayName, contentType, sizeBytes, linkedAtUtc);
 
-    /// <summary>Idempotente: no-op si ya está <see cref="NoteAttachmentStatus.Available"/>.</summary>
-    internal void MarkAvailable()
+    // D-NTS-2: rechazos que un reescaneo o una reinstalación de CloudStorage pueden revertir (infected nunca).
+    private static readonly HashSet<string> RecoverableRejectionReasons =
+    [
+        "scan-failed",
+        "file-missing",
+        "blocked-by-policy",
+    ];
+
+    /// <summary>
+    /// Desde Pending/UnderReview o desde un Rejected recuperable; Detached no lo pisa nada. Devuelve si cambió.
+    /// </summary>
+    internal bool MarkAvailable()
     {
-        if (Status == NoteAttachmentStatus.Available)
-            return;
+        var recoverable =
+            Status == NoteAttachmentStatus.Rejected
+            && RejectionReason is not null
+            && RecoverableRejectionReasons.Contains(RejectionReason);
+        if (Status is not (NoteAttachmentStatus.Pending or NoteAttachmentStatus.UnderReview) && !recoverable)
+            return false;
         Status = NoteAttachmentStatus.Available;
+        RejectionReason = null;
+        return true;
     }
 
-    /// <summary>T-20: solo desde Pending (un veredicto final no vuelve atrás). Idempotente.</summary>
-    internal void MarkUnderReview()
+    /// <summary>T-20: solo desde Pending (un veredicto final no vuelve atrás). Devuelve si cambió.</summary>
+    internal bool MarkUnderReview()
     {
-        if (Status == NoteAttachmentStatus.Pending)
-            Status = NoteAttachmentStatus.UnderReview;
+        if (Status != NoteAttachmentStatus.Pending)
+            return false;
+        Status = NoteAttachmentStatus.UnderReview;
+        return true;
     }
 
-    /// <summary>Idempotente: no-op si ya está <see cref="NoteAttachmentStatus.Rejected"/> con la misma razón.</summary>
-    internal void MarkRejected(string reason)
+    /// <summary>Idempotente con la misma razón y nunca pisa un Detached. Devuelve si cambió.</summary>
+    internal bool MarkRejected(string reason)
     {
+        if (Status == NoteAttachmentStatus.Detached)
+            return false;
         if (Status == NoteAttachmentStatus.Rejected && RejectionReason == reason)
-            return;
+            return false;
         Status = NoteAttachmentStatus.Rejected;
         RejectionReason = reason;
+        return true;
     }
 
     /// <summary>Idempotente: no-op si ya está <see cref="NoteAttachmentStatus.Detached"/>.</summary>

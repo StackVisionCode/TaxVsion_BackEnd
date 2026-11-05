@@ -68,6 +68,36 @@ public sealed class FileObject : TenantEntity
     /// </summary>
     public string? MultipartUploadId { get; private set; }
 
+    /// <summary>Cuándo se encoló el último escaneo; el rescate de atascados mide desde aquí.</summary>
+    public DateTime? ScanQueuedAtUtc { get; private set; }
+
+    /// <summary>Reencolados hechos por el rescate de escaneos atascados.</summary>
+    public int ScanAttemptCount { get; private set; }
+
+    public const string TakedownReport = "Blocked by DMCA takedown notice.";
+
+    /// <summary>Estado real del objeto: el previo al borrado si está en la papelera (igual que Restore).</summary>
+    public FileStatus EffectiveStatus => EffectiveStatusOf(Status, StatusBeforeSoftDelete);
+
+    public static FileStatus EffectiveStatusOf(FileStatus status, FileStatus? statusBeforeSoftDelete) =>
+        status == FileStatus.SoftDeleted ? statusBeforeSoftDelete ?? FileStatus.Available : status;
+
+    /// <summary>Lo que cuenta contra la cuota según el estado efectivo.</summary>
+    public QuotaFootprint QuotaFootprint => FootprintOf(EffectiveStatus, ScanReport);
+
+    /// <summary>
+    /// Regla única de cuota (CST-5): Available y el bloqueo DMCA (venía de Available) usan; lo pendiente
+    /// reserva; infectado, revisión, ScanFailed y bloqueo de moderación no cuentan.
+    /// </summary>
+    public static QuotaFootprint FootprintOf(FileStatus effectiveStatus, string? scanReport) =>
+        effectiveStatus switch
+        {
+            FileStatus.Available => QuotaFootprint.Used,
+            FileStatus.BlockedByPolicy when scanReport == TakedownReport => QuotaFootprint.Used,
+            FileStatus.PendingUpload or FileStatus.PendingScan or FileStatus.Scanning => QuotaFootprint.Reserved,
+            _ => QuotaFootprint.None,
+        };
+
     public static Result<FileObject> Register(
         Guid id,
         Guid tenantId,
@@ -120,11 +150,46 @@ public sealed class FileObject : TenantEntity
         return Result.Success();
     }
 
-    public Result MarkPendingScan()
+    public Result MarkPendingScan(DateTime nowUtc)
     {
         if (Status != FileStatus.PendingUpload)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.PendingScan;
+        ScanQueuedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>El rescate vuelve a encolar un escaneo atascado, con tope de intentos.</summary>
+    public Result RequeueScan(DateTime nowUtc, int maxAttempts)
+    {
+        if (Status is not (FileStatus.PendingScan or FileStatus.Scanning))
+            return Result.Failure(FileErrors.InvalidTransition);
+        if (ScanAttemptCount >= maxAttempts)
+            return Result.Failure(FileErrors.ScanAttemptsExhausted);
+        ScanAttemptCount++;
+        ScanQueuedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>PlatformAdmin vuelve a pedir el escaneo de un ScanFailed (el handler ya reservó la cuota).</summary>
+    public Result RequestRescan(DateTime nowUtc)
+    {
+        if (Status != FileStatus.ScanFailed)
+            return Result.Failure(FileErrors.InvalidTransition);
+        Status = FileStatus.PendingScan;
+        ScanQueuedAtUtc = nowUtc;
+        ScanAttemptCount = 0;
+        return Result.Success();
+    }
+
+    /// <summary>El rescate da por perdido un escaneo (sin blob o sin intentos); queda ScanFailed.</summary>
+    public Result MarkScanAbandoned(string report, DateTime nowUtc)
+    {
+        if (Status is not (FileStatus.PendingScan or FileStatus.Scanning))
+            return Result.Failure(FileErrors.InvalidTransition);
+        Status = FileStatus.ScanFailed;
+        ScanReport = report;
+        ScannedAtUtc = nowUtc;
         return Result.Success();
     }
 
@@ -284,7 +349,7 @@ public sealed class FileObject : TenantEntity
         if (Status != FileStatus.Available)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.BlockedByPolicy;
-        ScanReport = "Blocked by DMCA takedown notice.";
+        ScanReport = TakedownReport;
         ScannedAtUtc = nowUtc;
         return Result.Success();
     }

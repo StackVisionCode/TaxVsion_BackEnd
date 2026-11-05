@@ -214,6 +214,12 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsDeliveryReportDetectedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
+    // Re-sincronización (CON-07): cada página encadena la siguiente; durable para que un reinicio no corte la cadena.
+    options
+        .PublishMessage<TaxVision.Connectors.Application.Sync.ResyncMailboxCommand>()
+        .ToLocalQueue("mailbox-resync")
+        .UseDurableInbox();
+
     // Cola propia desde el arranque (Fase 1) aunque todavía no haya ningún consumer — mismo
     // patrón que Postmaster/Scribe: el binding queda listo en Rabbit antes de que exista lógica.
     options

@@ -52,11 +52,17 @@ public static class RefundSaaSPaymentHandler
         if (amountResult.IsFailure)
             return Result.Failure(amountResult.Error);
 
+        // Validar antes de pedirle el dinero al proveedor.
+        var canRefund = payment.CanRefund(amountResult.Value, command.Reason);
+        if (canRefund.IsFailure)
+            return canRefund;
+
         var adapter = providerFactory.Resolve(payment.ProviderCode);
         var refundResult = await adapter.RefundAsync(
             payment.ExternalChargeReference.Value,
             amountResult.Value,
             command.Reason,
+            BuildIdempotencyKey(payment, amountResult.Value, command.ClientIdempotencyKey),
             ct
         );
         if (refundResult.IsFailure)
@@ -108,6 +114,12 @@ public static class RefundSaaSPaymentHandler
 
         return Result.Success();
     }
+
+    // Determinista: un reintento antes del commit repite la clave; con la cabecera del admin, también después.
+    private static string BuildIdempotencyKey(SaaSPayment payment, Money amount, string? clientKey) =>
+        string.IsNullOrWhiteSpace(clientKey)
+            ? $"refund:{payment.Id:N}:{payment.RefundedAmountCents}:{amount.AmountCents}"
+            : $"refund:{payment.Id:N}:{clientKey.Trim()}";
 
     private static PaymentAuditAction MapAuditAction(PaymentStatus status) =>
         status == PaymentStatus.Refunded

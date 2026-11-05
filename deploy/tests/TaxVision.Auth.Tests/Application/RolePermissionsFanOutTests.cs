@@ -206,6 +206,9 @@ public sealed class RolePermissionsFanOutTests
 
     private sealed class FanOutUserRepository(IReadOnlyList<User> holders) : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<User>> GetActiveByRoleAsync(
             Guid tenantId,
             Guid roleId,

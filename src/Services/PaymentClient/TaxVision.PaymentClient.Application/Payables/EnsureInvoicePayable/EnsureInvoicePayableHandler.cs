@@ -18,6 +18,8 @@ public static class EnsureInvoicePayableHandler
     public static async Task<Result<EnsureInvoicePayableResponse>> Handle(
         EnsureInvoicePayableCommand command,
         IPayableReferenceRepository payables,
+        IPaymentLinkRepository links,
+        ITenantPaymentRepository payments,
         ITenantRegistry tenants,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -42,10 +44,30 @@ public static class EnsureInvoicePayableHandler
         {
             // La factura pudo editarse y cambiar el total: refrescar el monto (misma URL estable).
             var changed = false;
-            if (existing.Amount.AmountCents != amountResult.Value.AmountCents)
+            // Billing (fuente de verdad del saldo) volvió a mandar saldo: la factura dejó de estar pagada.
+            if (existing.IsSettled && !existing.IsRevoked)
             {
-                existing.UpdateAmount(amountResult.Value);
+                var reopened = existing.Reopen(amountResult.Value, DateTime.UtcNow);
+                if (reopened.IsFailure)
+                    return Result.Failure<EnsureInvoicePayableResponse>(reopened.Error);
                 changed = true;
+            }
+            else if (existing.Amount.AmountCents != amountResult.Value.AmountCents)
+            {
+                existing.UpdateAmount(amountResult.Value, DateTime.UtcNow);
+                changed = true;
+
+                // El link ya acuñado no puede seguir cobrando el monto viejo; con un cobro en curso se deja.
+                var activeLink = await links.GetActiveByExternalReferenceAsync(
+                    existing.TenantId,
+                    existing.ExternalReferenceId,
+                    ct
+                );
+                if (
+                    activeLink is not null
+                    && !await payments.AnyInProgressForReferenceAsync(existing.TenantId, existing.ExternalReferenceId, ct)
+                )
+                    activeLink.Expire(DateTime.UtcNow);
             }
             // Backfill de la etiqueta (número de factura) si aún no la tenía.
             if (existing.Description is null && !string.IsNullOrWhiteSpace(command.Description))

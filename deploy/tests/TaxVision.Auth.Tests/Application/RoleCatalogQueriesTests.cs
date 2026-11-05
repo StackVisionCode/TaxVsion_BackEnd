@@ -244,6 +244,9 @@ public sealed class RoleCatalogQueriesTests
 
     private sealed class StubUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public List<User> Holders { get; } = [];
 
         public Task<IReadOnlyList<User>> GetActiveByRoleAsync(

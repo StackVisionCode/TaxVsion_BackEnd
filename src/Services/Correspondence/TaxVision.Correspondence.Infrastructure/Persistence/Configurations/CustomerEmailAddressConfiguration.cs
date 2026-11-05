@@ -21,6 +21,8 @@ internal sealed class CustomerEmailAddressConfiguration : IEntityTypeConfigurati
         builder.Property(x => x.CreatedAtUtc).IsRequired();
         builder.Property(x => x.UpdatedAtUtc).IsRequired();
         builder.Property(x => x.DeletedAtUtc);
+        builder.Property(x => x.LastEmailEventOnUtc);
+        builder.Property(x => x.LastStatusEventOnUtc);
 
         builder.Ignore(x => x.IsActive);
 

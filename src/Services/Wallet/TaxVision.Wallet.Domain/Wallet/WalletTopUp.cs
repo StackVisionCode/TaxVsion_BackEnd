@@ -14,6 +14,9 @@ public enum WalletTopUpStatus
 
     /// <summary>El cobro falló; no se acreditó.</summary>
     Failed = 3,
+
+    /// <summary>Cobrado pero no acreditado (moneda/monto no cuadra o crédito rechazado); revisión humana.</summary>
+    NeedsReview = 4,
 }
 
 /// <summary>
@@ -51,14 +54,19 @@ public sealed class WalletTopUp : TenantEntity
         if (amountCents <= 0)
             return Result.Failure<WalletTopUp>(WalletErrors.AmountNotPositive);
 
+        // Solo la moneda del monedero: el crédito se asienta en micros de USD.
+        var normalizedCurrency = string.IsNullOrWhiteSpace(currency)
+            ? Wallet.DefaultCurrency
+            : currency.Trim().ToUpperInvariant();
+        if (normalizedCurrency != Wallet.DefaultCurrency)
+            return Result.Failure<WalletTopUp>(WalletErrors.CurrencyMismatch);
+
         var id = Guid.NewGuid();
         var topUp = new WalletTopUp
         {
             Id = id,
             AmountCents = amountCents,
-            Currency = string.IsNullOrWhiteSpace(currency)
-                ? Wallet.DefaultCurrency
-                : currency.Trim().ToUpperInvariant(),
+            Currency = normalizedCurrency,
             Status = WalletTopUpStatus.Pending,
             // Clave idempotente estable por orden: un reintento continúa la misma operación, no re-cobra.
             IdempotencyKey = $"wallet-topup:{id:N}",
@@ -84,6 +92,16 @@ public sealed class WalletTopUp : TenantEntity
         if (Status == WalletTopUpStatus.Credited)
             return; // un pago confirmado nunca se degrada a Failed
         Status = WalletTopUpStatus.Failed;
+        FailureReason = reason;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>Cobrado pero no acreditado: queda visible para revisión humana. No pisa Credited.</summary>
+    public void MarkNeedsReview(string reason)
+    {
+        if (Status == WalletTopUpStatus.Credited)
+            return;
+        Status = WalletTopUpStatus.NeedsReview;
         FailureReason = reason;
         UpdatedAtUtc = DateTime.UtcNow;
     }

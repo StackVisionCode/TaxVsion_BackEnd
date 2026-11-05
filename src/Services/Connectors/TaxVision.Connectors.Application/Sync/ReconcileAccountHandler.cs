@@ -52,6 +52,7 @@ public static class ReconcileAccountHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger logger,
+        MessageFetchFailureTracker fetchFailures,
         CancellationToken ct
     )
     {
@@ -98,6 +99,7 @@ public static class ReconcileAccountHandler
                     bus,
                     correlation,
                     logger,
+                    fetchFailures,
                     ct
                 ),
             ct

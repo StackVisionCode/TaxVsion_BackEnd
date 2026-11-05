@@ -88,18 +88,22 @@ public sealed class InvoicePaidPublishingTests
         await InvoicePaymentSucceededConsumer.Handle(
             payment,
             repository,
+            new InMemoryUnappliedPaymentRepository(),
             new UnitOfWorkStub(),
             bus,
             correlation,
+            new NoopMetrics(),
             NullLogger<Invoice>.Instance,
             CancellationToken.None
         );
         await InvoicePaymentSucceededConsumer.Handle(
             payment,
             repository,
+            new InMemoryUnappliedPaymentRepository(),
             new UnitOfWorkStub(),
             bus,
             correlation,
+            new NoopMetrics(),
             NullLogger<Invoice>.Instance,
             CancellationToken.None
         );
@@ -199,6 +203,22 @@ public sealed class InvoicePaidPublishingTests
             IReadOnlyList<InvoiceSaleLine> lines,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success());
+
+        public Task<Result> CheckInvoiceSaleAsync(
+            Guid tenantId,
+            Guid invoiceId,
+            IReadOnlyList<InvoiceSaleLine> lines,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Success());
+    }
+
+    private sealed class NoopMetrics : IBillingMetrics
+    {
+        public void RecordOverpayment() { }
+
+        public void RecordPaymentRejected(string reason) { }
+
+        public void RecordStockSyncInsufficient() { }
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

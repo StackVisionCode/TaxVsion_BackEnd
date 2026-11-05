@@ -8372,15 +8372,11 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                                 .HasColumnType("uniqueidentifier");
 
                             b1.Property<bool>("EmailEnabled")
-                                .ValueGeneratedOnAdd()
                                 .HasColumnType("bit")
-                                .HasDefaultValue(true)
                                 .HasColumnName("ContactPolicy_EmailEnabled");
 
                             b1.Property<bool>("SmsEnabled")
-                                .ValueGeneratedOnAdd()
                                 .HasColumnType("bit")
-                                .HasDefaultValue(true)
                                 .HasColumnName("ContactPolicy_SmsEnabled");
 
                             b1.HasKey("CustomerId");

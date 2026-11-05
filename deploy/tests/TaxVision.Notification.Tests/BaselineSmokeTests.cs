@@ -42,6 +42,7 @@ public sealed class BaselineSmokeTests
             publisher,
             logRepo,
             uow,
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var portal = Options.Create(new PortalOptions { BaseUrl = "https://app.test" });
@@ -68,9 +69,11 @@ public sealed class BaselineSmokeTests
             CancellationToken.None
         );
 
-        var request = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(
-            Assert.Single(publisher.Published)
-        );
+        // El enlace lleva token: va directo a la cola de Postmaster, no al fanout (NOT-04).
+        Assert.Empty(publisher.Published);
+        var sent = Assert.Single(publisher.SentToQueue);
+        Assert.Equal(EventBasedEmailDispatchGateway.PostmasterQueue, sent.Queue);
+        var request = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(sent.Message);
         Assert.Equal("user@test.com", request.To);
         Assert.Single(logRepo.Logs);
         var log = logRepo.Logs[0];
@@ -94,6 +97,7 @@ public sealed class BaselineSmokeTests
             publisher,
             logRepo,
             uow,
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var correlation = new NoOpCorrelationContext();
@@ -158,8 +162,10 @@ public sealed class BaselineSmokeTests
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new InMemoryUserEmailDirectoryRepository()
+            ),
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
@@ -200,8 +206,10 @@ public sealed class BaselineSmokeTests
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new InMemoryUserEmailDirectoryRepository()
+            ),
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
@@ -238,8 +246,10 @@ public sealed class BaselineSmokeTests
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new InMemoryUserEmailDirectoryRepository()
+            ),
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
@@ -278,8 +288,10 @@ public sealed class BaselineSmokeTests
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new InMemoryUserEmailDirectoryRepository()
+            ),
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),

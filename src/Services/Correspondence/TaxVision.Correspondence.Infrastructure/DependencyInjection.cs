@@ -64,6 +64,7 @@ public static class DependencyInjection
         // Fase 6 — resuelve threading (4 capas) para RawMessageReceivedConsumer; Wolverine lo
         // inyecta como cualquier otro parámetro de Handle, igual que los repositorios de arriba.
         services.AddScoped<ThreadResolver>();
+        services.AddSingleton<IIngestMetrics, Observability.CorrespondenceIngestMetrics>();
 
         services
             .AddOptions<ServiceAuthClientOptions>()

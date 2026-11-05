@@ -1,19 +1,22 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.CreateInvoiceDraft;
 using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
-using TaxVision.Billing.Application.Invoices.GenerateInvoicePdf;
+using TaxVision.Billing.Application.Invoices.IntegrationEvents;
+using TaxVision.Billing.Application.Invoices.SyncInvoiceStock;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Billing.Application.Invoices.EditInvoice;
 
-/// <summary>Edita una factura editable (borrador, o emitida/enviada AÚN SIN PAGOS). Si estaba emitida,
-/// reconcilia el stock a las nuevas líneas de producto (bloquea si falta), refresca el ancla de cobro con
-/// el nuevo total y regenera el PDF. El tenant y el actor salen del JWT.</summary>
+/// <summary>Edita una factura (borrador o emitida, incluso con pagos; D-BIL-1). Si estaba emitida, verifica
+/// el stock de las nuevas líneas (bloquea si falta) y, después del commit, reconcilia el stock, refresca el
+/// ancla de cobro y regenera el PDF por comandos durables. Si la edición la deja pagada, publica InvoicePaid.
+/// El tenant y el actor salen del JWT.</summary>
 public sealed record EditInvoiceCommand(
     Guid TenantId,
     Guid InvoiceId,
@@ -34,9 +37,9 @@ public static class EditInvoiceHandler
         IInvoiceRepository invoices,
         IOptions<BillingVisibilityOptions> visibility,
         IInventoryStockClient inventory,
-        IInvoicePaymentLinkClient paymentLinks,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         TimeProvider clock,
         CancellationToken ct
     )
@@ -51,6 +54,7 @@ public static class EditInvoiceHandler
         // Toda factura ya EMITIDA (Issued/Sent/PartiallyPaid/Paid) descontó stock al emitir y tiene ancla
         // de cobro + PDF: hay que reconciliar. Solo un borrador no tocó nada aún.
         var wasIssued = invoice.Status is not InvoiceStatus.Draft;
+        var wasPaid = invoice.Status == InvoiceStatus.Paid;
 
         var customer = new CustomerSnapshot(
             command.Customer.CustomerId,
@@ -86,52 +90,32 @@ public static class EditInvoiceHandler
         if (edited.IsFailure)
             return Result.Failure<EditInvoiceResult>(edited.Error);
 
-        // Si estaba emitida, reconciliar el stock a las nuevas cantidades ANTES de persistir. Si falta
-        // stock, bloquear: no se guarda nada (la edición en memoria se descarta al no hacer SaveChanges).
+        // Si estaba emitida, verificar (solo lectura) que el stock alcanza para las nuevas cantidades. Si
+        // falta, bloquear: no se guarda nada (la edición en memoria se descarta al no hacer SaveChanges).
         if (wasIssued)
         {
             var saleLines = command
                 .Lines.Where(l => l.CatalogItemId is { } cid && cid != Guid.Empty && l.Quantity > 0)
                 .Select(l => new InvoiceSaleLine(l.CatalogItemId!.Value, l.Quantity))
                 .ToList();
-            var committed = await inventory.CommitInvoiceSaleAsync(command.TenantId, invoice.Id, saleLines, ct);
-            if (committed.IsFailure)
-                return Result.Failure<EditInvoiceResult>(committed.Error);
+            var checkedStock = await inventory.CheckInvoiceSaleAsync(command.TenantId, invoice.Id, saleLines, ct);
+            if (checkedStock.IsFailure)
+                return Result.Failure<EditInvoiceResult>(checkedStock.Error);
         }
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        // Emitida: el total/saldo pudo cambiar → refrescar el ancla de cobro y regenerar el PDF.
+        // Emitida: después del commit (outbox) se reconcilia el stock y se refresca el enlace con el
+        // saldo nuevo; EnsureInvoicePaymentLink encadena el PDF.
         if (wasIssued)
         {
             bus.TenantId = command.TenantId.ToString();
-            // El link SIEMPRE cobra el TOTAL de la factura (decisión del negocio), consistente con
-            // IssueInvoiceHandler / EnsureInvoicePaymentLinkHandler. Un cambio sobre una factura ya pagada
-            // se maneja por reemisión. Nada por cobrar (pagada/anulada o total 0) ⇒ no se toca el link.
-            var totalCents = invoice.Total.AmountCents;
-            if (invoice.Status != InvoiceStatus.Paid && invoice.Status != InvoiceStatus.Voided && totalCents > 0)
-            {
-                var ensured = await paymentLinks.EnsurePayableAsync(
-                    totalCents,
-                    invoice.Currency,
-                    invoice.Id,
-                    command.TenantId,
-                    invoice.InvoiceNumber,
-                    ct
-                );
-                if (ensured.IsFailure)
-                    throw new InvalidOperationException(
-                        $"Ensure payable failed: {ensured.Error.Code} - {ensured.Error.Message}"
-                    );
+            await bus.PublishAsync(new SyncInvoiceStockCommand(command.TenantId, invoice.Id));
+            await bus.PublishAsync(new EnsureInvoicePaymentLinkCommand(command.TenantId, invoice.Id));
 
-                invoice.AttachPaymentLink(
-                    ensured.Value.PayableId,
-                    ensured.Value.CheckoutUrl,
-                    clock.GetUtcNow().UtcDateTime
-                );
-                await unitOfWork.SaveChangesAsync(ct);
-            }
-            await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, invoice.Id));
+            // Bajó el total y quedó cubierta: igual que el pago manual, PaymentClient cierra el enlace.
+            if (invoice.Status == InvoiceStatus.Paid && !wasPaid)
+                await bus.PublishAsync(InvoicePaidEventFactory.Create(invoice, correlation.CorrelationId));
         }
 
         return Result.Success(new EditInvoiceResult(invoice.Id, invoice.Status.ToString()));

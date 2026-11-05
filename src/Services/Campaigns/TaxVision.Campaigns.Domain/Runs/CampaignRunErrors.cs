@@ -29,6 +29,12 @@ public static class CampaignRunErrors
         );
     }
 
+    // La fuente "Clients" no se pudo leer completa: fail-closed, no se envía a una parte. Transitorio (503).
+    public static readonly Error AudienceIncomplete = new(
+        "CampaignRun.AudienceIncomplete",
+        "The client directory did not respond completely; try again in a few seconds."
+    );
+
     // El Wallet no respondió al autorizar el cobro: fail-closed, el envío no sale. Transitorio (503).
     public static readonly Error WalletUnavailable = new(
         "CampaignRun.WalletUnavailable",

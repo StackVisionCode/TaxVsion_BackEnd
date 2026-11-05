@@ -1,7 +1,10 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using TaxVision.Connectors.Infrastructure.Jobs;
 
 namespace TaxVision.Connectors.Tests.Integration;
 
@@ -34,5 +37,23 @@ public sealed class ConnectorsApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Los jobs sincronizan y refrescan tokens de los buzones reales de la base local: no en pruebas.
+        builder.ConfigureTestServices(services =>
+        {
+            Type[] jobs =
+            [
+                typeof(ReconciliationJob),
+                typeof(WatchRenewalJob),
+                typeof(ProactiveTokenRefreshJob),
+                typeof(ConnectorsRetentionScheduler),
+            ];
+            foreach (
+                var descriptor in services
+                    .Where(d => d.ServiceType == typeof(IHostedService) && jobs.Contains(d.ImplementationType))
+                    .ToList()
+            )
+                services.Remove(descriptor);
+        });
     }
 }

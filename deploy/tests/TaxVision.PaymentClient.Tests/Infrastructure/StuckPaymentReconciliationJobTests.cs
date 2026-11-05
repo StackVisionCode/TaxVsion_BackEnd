@@ -62,6 +62,8 @@ public sealed class StuckPaymentReconciliationJobTests
             proxy.TenantsAtInvoke.Select(Guid.Parse)
         );
         Assert.Equal((NowUtc.AddMinutes(-30), NowUtc.AddDays(-30), 10), repository.LastQuery);
+        // El intento abandonado en 3DS se cierra con el mismo umbral (D-PCL-1).
+        Assert.All(proxy.Commands, c => Assert.Equal(TimeSpan.FromMinutes(30), c.AbandonRequiresActionAfter));
     }
 
     [Fact]
@@ -233,6 +235,24 @@ internal abstract class QueueOnlyTenantPaymentRepository : ITenantPaymentReposit
 
     public Task<IReadOnlySet<PaymentProviderCode>> GetConfiguredProvidersWithPaymentsAsync(
         Guid tenantId,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
+
+    public Task<bool> AnyInProgressForReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
+
+    public Task<bool> AnySucceededForReferenceSinceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        DateTime sinceUtc,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<TenantPayment>> GetByIdsAcrossTenantsAsync(
+        IReadOnlyCollection<Guid> tenantPaymentIds,
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 

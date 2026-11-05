@@ -32,6 +32,7 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(t => t.Depth).IsRequired();
         builder.Property(t => t.OpenSubtaskCount).IsRequired();
         builder.Property(t => t.OpenBlockerCount).IsRequired();
+        builder.Property(t => t.ReopenCount).IsRequired();
         builder.Property(t => t.SeriesId);
         builder.Property(t => t.TemplateId);
         builder.Property(t => t.OverdueNotifiedAtUtc);

@@ -23,6 +23,7 @@ public sealed class PaymentClientMetrics : IPaymentClientMetrics, IDisposable
     private readonly Counter<long> _webhookReceivedTotal;
     private readonly Counter<long> _webhookDuplicateTotal;
     private readonly Counter<long> _webhookSignatureFailedTotal;
+    private readonly Counter<long> _webhookNeedsReviewTotal;
 
     public PaymentClientMetrics()
     {
@@ -40,6 +41,7 @@ public sealed class PaymentClientMetrics : IPaymentClientMetrics, IDisposable
         _webhookReceivedTotal = _meter.CreateCounter<long>("paymentclient.webhook.received_total");
         _webhookDuplicateTotal = _meter.CreateCounter<long>("paymentclient.webhook.duplicate_total");
         _webhookSignatureFailedTotal = _meter.CreateCounter<long>("paymentclient.webhook.signature_failed_total");
+        _webhookNeedsReviewTotal = _meter.CreateCounter<long>("paymentclient.webhook.needs_review_total");
     }
 
     public void RecordPaymentSucceeded(long amountCents, string currency)
@@ -68,6 +70,13 @@ public sealed class PaymentClientMetrics : IPaymentClientMetrics, IDisposable
 
     public void RecordWebhookSignatureFailed(string provider) =>
         _webhookSignatureFailedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
+
+    public void RecordWebhookNeedsReview(string provider, string reason) =>
+        _webhookNeedsReviewTotal.Add(
+            1,
+            new KeyValuePair<string, object?>("provider", provider),
+            new KeyValuePair<string, object?>("reason", reason)
+        );
 
     public void Dispose() => _meter.Dispose();
 }

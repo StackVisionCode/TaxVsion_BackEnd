@@ -76,6 +76,17 @@ public sealed class SaaSPayment : TenantEntity
     // Opcional. Null para pagos legacy; el consumer de recibos cae al mapping por PaymentType cuando falta.
     public ChargeConcept? Concept { get; private set; }
 
+    // Revisión manual: éxito del proveedor que no se pudo aplicar. No cambia Status.
+    public DateTime? ReviewRequiredAtUtc { get; private set; }
+    public string? ReviewReasonCode { get; private set; }
+    public string? ReviewProviderReference { get; private set; }
+    public long? ReviewPaidAmountCents { get; private set; }
+    public string? ReviewPaidCurrency { get; private set; }
+    public DateTime? ReviewResolvedAtUtc { get; private set; }
+    [UserReference(UserReferenceKind.Provenance, Note = "Admin de plataforma que resolvió la revisión: historia.")]
+    public Guid? ReviewResolvedByUserId { get; private set; }
+    public string? ReviewResolution { get; private set; }
+
     public IReadOnlyCollection<SaaSPaymentAttempt> Attempts => _attempts;
     public IReadOnlyCollection<RefundLine> Refunds => _refunds;
 
@@ -523,7 +534,11 @@ public sealed class SaaSPayment : TenantEntity
         return Result.Success();
     }
 
-    public Result RefundPartial(Money refundAmount, string reason, Guid actorUserId, DateTime nowUtc)
+    /// <summary>Total ya reembolsado, en centavos.</summary>
+    public long RefundedAmountCents => SumOfRefunds();
+
+    /// <summary>Valida un reembolso sin mutar nada; se llama antes de pedirle el dinero al proveedor.</summary>
+    public Result CanRefund(Money refundAmount, string reason)
     {
         if (IsLegalHeld)
             return Result.Failure(
@@ -541,12 +556,32 @@ public sealed class SaaSPayment : TenantEntity
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("SaaSPayment.InvalidReason", "Reason is required."));
 
-        var totalRefunded = SumOfRefunds();
-        if (totalRefunded + refundAmount.AmountCents > Amount.AmountCents)
+        if (SumOfRefunds() + refundAmount.AmountCents > Amount.AmountCents)
             return Result.Failure(
                 new Error("SaaSPayment.RefundExceedsPrincipal", "Refund amount exceeds the original payment amount.")
             );
 
+        return Result.Success();
+    }
+
+    /// <summary>Saldo que un reembolso total devolvería, validado con las mismas reglas de <see cref="CanRefund"/>.</summary>
+    public Result<Money> CanRefundFull(string reason)
+    {
+        var remaining = Amount.Subtract(Money.Create(SumOfRefunds(), Amount.Currency).Value);
+        if (remaining.IsFailure)
+            return remaining;
+
+        var check = CanRefund(remaining.Value, reason);
+        return check.IsFailure ? Result.Failure<Money>(check.Error) : remaining;
+    }
+
+    public Result RefundPartial(Money refundAmount, string reason, Guid actorUserId, DateTime nowUtc)
+    {
+        var check = CanRefund(refundAmount, reason);
+        if (check.IsFailure)
+            return check;
+
+        var totalRefunded = SumOfRefunds();
         _refunds.Add(RefundLine.Create(Id, TenantId, refundAmount, reason, actorUserId, nowUtc));
 
         Status =
@@ -559,7 +594,7 @@ public sealed class SaaSPayment : TenantEntity
 
     public Result RefundFull(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        var remaining = Amount.Subtract(Money.Create(SumOfRefunds(), Amount.Currency).Value);
+        var remaining = CanRefundFull(reason);
         if (remaining.IsFailure)
             return Result.Failure(remaining.Error);
 
@@ -589,6 +624,68 @@ public sealed class SaaSPayment : TenantEntity
     {
         IsLegalHeld = isLegalHeld;
         Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    public const string ReviewReasonLateProviderSuccess = "LateProviderSuccess";
+    public const string ReviewReasonAmountMismatch = "AmountMismatch";
+
+    private static readonly HashSet<string> ReviewReasons =
+    [
+        ReviewReasonLateProviderSuccess,
+        ReviewReasonAmountMismatch,
+    ];
+    private static readonly HashSet<string> ReviewResolutions = ["Refunded", "BenefitApplied", "NoActionNeeded"];
+
+    /// <summary>Marca el pago para revisión manual: el proveedor confirmó un cobro que no se pudo aplicar.
+    /// No toca <see cref="Status"/> y es idempotente: si ya está marcado, conserva la primera marca.</summary>
+    public Result FlagForReview(
+        string reasonCode,
+        string? providerReference,
+        long? paidAmountCents,
+        string? paidCurrency,
+        DateTime nowUtc
+    )
+    {
+        if (!ReviewReasons.Contains(reasonCode))
+            return Result.Failure(
+                new Error("SaaSPayment.InvalidReviewReason", $"Unknown review reason '{reasonCode}'.")
+            );
+
+        if (ReviewRequiredAtUtc is not null)
+            return Result.Success();
+
+        var currency = paidCurrency?.Trim().ToUpperInvariant();
+        ReviewRequiredAtUtc = nowUtc;
+        ReviewReasonCode = reasonCode;
+        ReviewProviderReference = string.IsNullOrWhiteSpace(providerReference) ? null : providerReference.Trim();
+        ReviewPaidAmountCents = paidAmountCents;
+        ReviewPaidCurrency = currency is { Length: 3 } ? currency : null;
+        return Result.Success();
+    }
+
+    /// <summary>Registra la decisión que el admin tomó a mano (reembolso, beneficio o nada). No mueve dinero.</summary>
+    public Result ResolveReview(string resolution, Guid actorUserId, DateTime nowUtc)
+    {
+        if (ReviewRequiredAtUtc is null)
+            return Result.Failure(
+                new Error("SaaSPayment.ReviewNotRequired", "This payment is not flagged for review.")
+            );
+
+        if (ReviewResolvedAtUtc is not null)
+            return Result.Failure(new Error("SaaSPayment.ReviewAlreadyResolved", "This review was already resolved."));
+
+        if (!ReviewResolutions.Contains(resolution))
+            return Result.Failure(
+                new Error(
+                    "SaaSPayment.InvalidReviewResolution",
+                    "Resolution must be Refunded, BenefitApplied or NoActionNeeded."
+                )
+            );
+
+        ReviewResolvedAtUtc = nowUtc;
+        ReviewResolvedByUserId = actorUserId;
+        ReviewResolution = resolution;
         return Result.Success();
     }
 

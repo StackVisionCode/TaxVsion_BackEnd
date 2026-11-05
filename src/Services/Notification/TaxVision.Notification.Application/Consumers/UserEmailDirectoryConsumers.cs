@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,7 @@ public static class UserEmailDirectoryUpsertConsumer
         IUserEmailDirectoryRepository directory,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        ILogger<UserEmailDirectoryEntry> logger,
         CancellationToken ct
     )
     {
@@ -38,9 +40,15 @@ public static class UserEmailDirectoryUpsertConsumer
         {
             var existing = await directory.FindAsync(evt.TenantId, evt.UserId, ct);
             if (existing is null)
-                await directory.AddAsync(UserEmailDirectoryEntry.Create(evt.TenantId, evt.UserId, evt.Email), ct);
-            else
-                existing.UpdateEmail(evt.Email, isActive: true);
+                await directory.AddAsync(
+                    UserEmailDirectoryEntry.Create(evt.TenantId, evt.UserId, evt.Email, true, evt.OccurredOn),
+                    ct
+                );
+            else if (!existing.UpdateEmail(evt.Email, isActive: true, evt.OccurredOn))
+            {
+                UserEmailDirectoryConsumerHelpers.LogIgnored(logger, nameof(UserRegisteredIntegrationEvent), evt);
+                return;
+            }
 
             await unitOfWork.SaveChangesAsync(ct);
         }
@@ -67,7 +75,11 @@ public static class UserEmailDirectoryInvalidationConsumer
             if (existing is null)
                 return;
 
-            existing.MarkStale();
+            if (!existing.MarkStale(evt.OccurredOn))
+            {
+                UserEmailDirectoryConsumerHelpers.LogIgnored(logger, nameof(SecurityAlertIntegrationEvent), evt);
+                return;
+            }
             await unitOfWork.SaveChangesAsync(ct);
 
             logger.LogInformation(
@@ -87,15 +99,16 @@ public static class UserEmailDirectoryDeactivationConsumer
         IUserEmailDirectoryRepository directory,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        ILogger<UserEmailDirectoryEntry> logger,
         CancellationToken ct
     ) =>
         await UserEmailDirectoryConsumerHelpers.SetActiveAsync(
-            evt.TenantId,
+            evt,
             evt.UserId,
             false,
             directory,
             unitOfWork,
-            correlation,
+            logger,
             ct
         );
 }
@@ -107,6 +120,7 @@ public static class UserEmailDirectoryOffboardingConsumer
         IUserEmailDirectoryRepository directory,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        ILogger<UserEmailDirectoryEntry> logger,
         CancellationToken ct
     )
     {
@@ -114,10 +128,16 @@ public static class UserEmailDirectoryOffboardingConsumer
         {
             var existing = await directory.FindAsync(evt.TenantId, evt.UserId, ct);
             if (existing is not null)
-                existing.SetActive(false);
+            {
+                if (!existing.SetActive(false, evt.OccurredOn))
+                {
+                    UserEmailDirectoryConsumerHelpers.LogIgnored(logger, nameof(UserOffboardedIntegrationEvent), evt);
+                    return;
+                }
+            }
             else if (!string.IsNullOrWhiteSpace(evt.Email))
                 await directory.AddAsync(
-                    UserEmailDirectoryEntry.Create(evt.TenantId, evt.UserId, evt.Email, isActive: false),
+                    UserEmailDirectoryEntry.Create(evt.TenantId, evt.UserId, evt.Email, false, evt.OccurredOn),
                     ct
                 );
             else
@@ -135,15 +155,16 @@ public static class UserEmailDirectoryReactivationConsumer
         IUserEmailDirectoryRepository directory,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        ILogger<UserEmailDirectoryEntry> logger,
         CancellationToken ct
     ) =>
         await UserEmailDirectoryConsumerHelpers.SetActiveAsync(
-            evt.TenantId,
+            evt,
             evt.UserId,
             true,
             directory,
             unitOfWork,
-            correlation,
+            logger,
             ct
         );
 }
@@ -151,20 +172,33 @@ public static class UserEmailDirectoryReactivationConsumer
 internal static class UserEmailDirectoryConsumerHelpers
 {
     internal static async Task SetActiveAsync(
-        Guid tenantId,
+        IntegrationEvent evt,
         Guid userId,
         bool isActive,
         IUserEmailDirectoryRepository directory,
         IUnitOfWork unitOfWork,
-        ICorrelationContext correlation,
+        ILogger logger,
         CancellationToken ct
     )
     {
-        var existing = await directory.FindAsync(tenantId, userId, ct);
+        var existing = await directory.FindAsync(evt.TenantId, userId, ct);
         if (existing is null)
             return;
 
-        existing.SetActive(isActive);
+        if (!existing.SetActive(isActive, evt.OccurredOn))
+        {
+            LogIgnored(logger, evt.GetType().Name, evt);
+            return;
+        }
         await unitOfWork.SaveChangesAsync(ct);
     }
+
+    internal static void LogIgnored(ILogger logger, string eventName, IntegrationEvent evt) =>
+        logger.LogInformation(
+            "Ignored out-of-order {EventName} {EventId} for the email directory of tenant {TenantId}: a newer event "
+                + "was already applied.",
+            eventName,
+            evt.EventId,
+            evt.TenantId
+        );
 }

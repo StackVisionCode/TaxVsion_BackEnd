@@ -26,6 +26,8 @@ public sealed record ChargeAuthorizationRequest(
     Money? ApplicationFee = null
 );
 
+/// <summary><paramref name="NextActionClientSecret"/>: solo en RequiresAction de Stripe, para completar el 3DS
+/// con Stripe.js. Viaja a la página de pago; nunca se guarda ni se escribe en logs.</summary>
 public sealed record ChargeAuthorizationResult(
     string ProviderChargeReference,
     PaymentStatus Status,
@@ -33,8 +35,17 @@ public sealed record ChargeAuthorizationResult(
     string? NextActionUrl = null,
     string? FailureCode = null,
     string? FailureMessage = null,
-    ProviderPayerDetails? Payer = null
-);
+    ProviderPayerDetails? Payer = null,
+    string? NextActionClientSecret = null
+)
+{
+    // El secreto no sale en ToString (logs).
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append($"ProviderChargeReference = {ProviderChargeReference}, Status = {Status}");
+        return true;
+    }
+}
 
 /// <summary>Lo que el proveedor devuelve del pagador en el cobro; cualquier dato puede faltar. PII.</summary>
 public sealed record ProviderPayerDetails(string? Name, string? Email, string? CardBrand, string? CardLast4);
@@ -67,9 +78,18 @@ public sealed record WebhookEventPayload(
     // (compat). Cuando viene, el handler exige que coincida con el cargo esperado antes de marcar el
     // pago Succeeded (defense-in-depth: bloquea capturas parciales / misconfig).
     long? PaidAmountCents = null,
-    string? PaidCurrency = null
+    string? PaidCurrency = null,
+    // Solo en la consulta de un intento RequiresAction de Stripe (recarga del checkout). Nunca se guarda.
+    string? NextActionClientSecret = null
 )
 {
     /// <summary>Evento que el adaptador no procesa: se registra como rechazado y se responde 200.</summary>
     public const string UnsupportedEventTypeCode = "Webhook.UnsupportedEventType";
+
+    // El secreto no sale en ToString (logs).
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append($"ProviderChargeReference = {ProviderChargeReference}, Status = {Status}");
+        return true;
+    }
 }

@@ -77,7 +77,11 @@ public sealed class StuckPaymentReconciliationJob(
                 // Sin este stamp LocalCommandTenantMiddleware no tiene tenant que restaurar en el scope nuevo.
                 bus.TenantId = item.TenantId.ToString();
                 var result = await bus.InvokeAsync<Result<TenantPaymentReconciliation>>(
-                    new ReconcileTenantPaymentCommand(item.TenantId, item.TenantPaymentId),
+                    new ReconcileTenantPaymentCommand(
+                        item.TenantId,
+                        item.TenantPaymentId,
+                        TimeSpan.FromMinutes(settings.StuckAfterMinutes)
+                    ),
                     ct
                 );
 

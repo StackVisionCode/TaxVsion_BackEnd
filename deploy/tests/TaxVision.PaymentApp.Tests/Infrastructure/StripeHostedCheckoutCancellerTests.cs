@@ -28,6 +28,15 @@ public sealed class StripeHostedCheckoutCancellerTests
     [InlineData("session_completed", "whatever")]
     [InlineData(null, "The checkout session is already expired.")]
     [InlineData(null, "This session is already completed and cannot be expired.")]
+    // Mensaje real de Stripe (T-VIVO 2026-11-05) cuando la sesión ya la expiró la cancelación del usuario.
+    [InlineData(
+        null,
+        "Only Checkout Sessions with a status in [\"open\"] can be expired. This Checkout Session has a status of `expired`."
+    )]
+    [InlineData(
+        null,
+        "Only Checkout Sessions with a status in [\"open\"] can be expired. This Checkout Session has a status of `complete`."
+    )]
     public async Task Treats_already_terminal_errors_as_idempotent_success(string? code, string message)
     {
         var ex = new StripeException(

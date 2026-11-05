@@ -29,6 +29,17 @@ internal sealed class FakeDraftRepository : IDraftRepository
             )
         );
 
+    public Task<Draft?> FindSentByInternetMessageIdAsync(
+        Guid tenantId,
+        string internetMessageId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            _store.FirstOrDefault(x =>
+                x.TenantId == tenantId && x.Status == DraftStatus.Sent && x.InternetMessageId == internetMessageId
+            )
+        );
+
     public Task AddAsync(Draft entity, CancellationToken ct = default)
     {
         _store.Add(entity);

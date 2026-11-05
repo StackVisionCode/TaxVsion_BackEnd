@@ -1,7 +1,12 @@
 using System.Security.Cryptography;
+using BuildingBlocks.CustomerVisibility;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.Signature.Tests.Integration;
 
@@ -47,6 +52,26 @@ public class SignatureApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Los jobs corren contra la base local y llaman a Customer, Tenant y CloudStorage reales: fuera en pruebas.
+        // Sin transportes externos, el host de prueba no le roba mensajes de la cola al Signature local.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            foreach (
+                var job in services
+                    .Where(descriptor =>
+                        descriptor.ServiceType == typeof(IHostedService)
+                        && (
+                            descriptor.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal)
+                                == true
+                            || descriptor.ImplementationType == typeof(CustomerAssignmentReconciliationJob)
+                        )
+                    )
+                    .ToList()
+            )
+                services.Remove(job);
+        });
     }
 }
 

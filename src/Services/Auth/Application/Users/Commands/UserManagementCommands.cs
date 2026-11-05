@@ -40,6 +40,7 @@ public static class DeactivateUserHandler
     public static async Task<Result> Handle(
         DeactivateUserCommand command,
         IUserRepository users,
+        ITenantAdminLock adminLock,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
         ISessionRevocationPublisher revocations,
@@ -72,12 +73,16 @@ public static class DeactivateUserHandler
         }
 
         // Y nunca se queda el tenant sin ningún administrador activo — el mismo guard que ya tenía
-        // el retiro definitivo (Offboard), que la baja reversible no tenía.
-        if (
-            target.ActorType == UserActorType.TenantAdmin
-            && await users.CountActiveAdminsAsync(command.TenantId, ct) <= 1
-        )
-            return Result.Failure(new Error("User.LastAdmin", "You cannot deactivate the last active administrator."));
+        // el retiro definitivo (Offboard), que la baja reversible no tenía. Se cuenta bajo el candado
+        // del tenant: dos bajas en paralelo no pueden contar las dos el mismo número.
+        if (target.ActorType == UserActorType.TenantAdmin)
+        {
+            await adminLock.AcquireAsync(command.TenantId, ct);
+            if (await users.CountActiveAdminsAsync(command.TenantId, ct) <= 1)
+                return Result.Failure(
+                    new Error("User.LastAdmin", "You cannot deactivate the last active administrator.")
+                );
+        }
 
         target.Deactivate(DateTime.UtcNow);
 
@@ -223,6 +228,7 @@ public static class OffboardUserHandler
     public static async Task<Result> Handle(
         OffboardUserCommand command,
         IUserRepository users,
+        ITenantAdminLock adminLock,
         IMfaRepository mfa,
         IInvitationRepository invitations,
         IOffboardingRunRepository offboardingRuns,
@@ -263,13 +269,13 @@ public static class OffboardUserHandler
         }
 
         // No dejar al tenant sin ningún admin. Solo cuenta si el objetivo es un admin ACTIVO: retirar a uno
-        // ya suspendido no cambia cuántos admins activos quedan.
-        if (
-            target.ActorType == UserActorType.TenantAdmin
-            && target.IsActive
-            && await users.CountActiveAdminsAsync(command.TenantId, ct) <= 1
-        )
-            return Result.Failure(new Error("User.LastAdmin", "You cannot remove the last active administrator."));
+        // ya suspendido no cambia cuántos admins activos quedan. Se cuenta bajo el candado del tenant.
+        if (target.ActorType == UserActorType.TenantAdmin && target.IsActive)
+        {
+            await adminLock.AcquireAsync(command.TenantId, ct);
+            if (await users.CountActiveAdminsAsync(command.TenantId, ct) <= 1)
+                return Result.Failure(new Error("User.LastAdmin", "You cannot remove the last active administrator."));
+        }
 
         // Si viene sucesor, debe ser staff activo del mismo tenant.
         if (command.SuccessorUserId is { } successorId)

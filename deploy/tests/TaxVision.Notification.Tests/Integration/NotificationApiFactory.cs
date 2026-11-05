@@ -1,7 +1,10 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.Notification.Tests.Integration;
 
@@ -43,5 +46,22 @@ public sealed class NotificationApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Sin transportes externos el host de prueba no le roba mensajes a la cola del Notification local
+        // ni encola correos hacia Postmaster; los jobs llaman a Auth/Customer reales: fuera en pruebas.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            foreach (
+                var job in services
+                    .Where(descriptor =>
+                        descriptor.ServiceType == typeof(IHostedService)
+                        && descriptor.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal)
+                            == true
+                    )
+                    .ToList()
+            )
+                services.Remove(job);
+        });
     }
 }

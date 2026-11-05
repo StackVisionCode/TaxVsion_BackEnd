@@ -137,6 +137,11 @@ public sealed class UserManagementCommandsTests
             throw NotExpected();
     }
 
+    private sealed class NoopTenantAdminLock : ITenantAdminLock
+    {
+        public Task AcquireAsync(Guid tenantId, CancellationToken ct) => Task.CompletedTask;
+    }
+
     private sealed class ThrowingSessionRepository : ISessionRepository
     {
         private static InvalidOperationException NotExpected() =>
@@ -256,6 +261,7 @@ public sealed class UserManagementCommandsTests
         var result = await OffboardUserHandler.Handle(
             new OffboardUserCommand(tenantId, client.Id, Guid.NewGuid(), SuccessorUserId: null),
             new SingleUserRepository(client),
+            new NoopTenantAdminLock(),
             new InMemoryMfaRepository(),
             new InMemoryInvitationRepository(),
             new InMemoryOffboardingRunRepository(),
@@ -313,6 +319,7 @@ public sealed class UserManagementCommandsTests
         DeactivateUserHandler.Handle(
             new DeactivateUserCommand(tenantId, target.Id, Guid.NewGuid(), callerActorType),
             users,
+            new NoopTenantAdminLock(),
             new ThrowingSessionRepository(),
             new ThrowingDenylist(),
             new ThrowingSessionRevocationPublisher(),
@@ -375,6 +382,7 @@ public sealed class UserManagementCommandsTests
         var result = await DeactivateUserHandler.Handle(
             new DeactivateUserCommand(tenantId, target.Id, Guid.NewGuid(), UserActorType.TenantEmployee),
             new SingleUserRepository(target),
+            new NoopTenantAdminLock(),
             new QuietSessionRepository(),
             new QuietDenylist(),
             new RecordingSessionRevocationPublisher(),
@@ -531,6 +539,7 @@ public sealed class UserManagementCommandsTests
         var result = await OffboardUserHandler.Handle(
             new OffboardUserCommand(tenantId, target.Id, Guid.NewGuid(), SuccessorUserId: null),
             new SingleUserRepository(target),
+            new NoopTenantAdminLock(),
             new InMemoryMfaRepository(),
             new InMemoryInvitationRepository(),
             runs,
@@ -575,6 +584,7 @@ public sealed class UserManagementCommandsTests
         await OffboardUserHandler.Handle(
             new OffboardUserCommand(tenantId, target.Id, Guid.NewGuid(), SuccessorUserId: null),
             new SingleUserRepository(target),
+            new NoopTenantAdminLock(),
             new InMemoryMfaRepository(),
             new InMemoryInvitationRepository(),
             new InMemoryOffboardingRunRepository(),
@@ -708,6 +718,7 @@ public sealed class UserManagementCommandsTests
         var result = await OffboardUserHandler.Handle(
             new OffboardUserCommand(tenantId, target.Id, actor, successor.Id, OffboardingReason.Resigned, " New job "),
             new UsersByIdRepository(target, successor),
+            new NoopTenantAdminLock(),
             new InMemoryMfaRepository(),
             new InMemoryInvitationRepository(),
             runs,
@@ -746,6 +757,7 @@ public sealed class UserManagementCommandsTests
                 new string('a', OffboardingDetails.ReasonNoteMaxLength + 1)
             ),
             new UsersByIdRepository(target),
+            new NoopTenantAdminLock(),
             new InMemoryMfaRepository(),
             new InMemoryInvitationRepository(),
             new InMemoryOffboardingRunRepository(),
@@ -776,6 +788,7 @@ public sealed class UserManagementCommandsTests
         OffboardUserHandler.Handle(
             new OffboardUserCommand(tenantId, target.Id, actorId ?? Guid.NewGuid(), SuccessorUserId: null),
             users,
+            new NoopTenantAdminLock(),
             mfa,
             invitations,
             new InMemoryOffboardingRunRepository(),

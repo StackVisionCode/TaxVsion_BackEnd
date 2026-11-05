@@ -121,6 +121,34 @@ public static class NotesFileScanResultConsumer
             ct
         );
 
+    // Fallo definitivo del escaneo; "blob_missing" = el objeto ya no existe (el usuario debe volver a subirlo).
+    public static async Task Handle(
+        FileScanFailedIntegrationEvent evt,
+        INoteRepository notes,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<Note> logger,
+        CancellationToken ct
+    ) =>
+        await RejectAttachmentAsync(
+            evt.TenantId,
+            evt.FileId,
+            ScanFailedReason(evt.Reason),
+            notes,
+            unitOfWork,
+            correlation,
+            evt.CorrelationId,
+            evt.EventId,
+            logger,
+            ct
+        );
+
+    public const string ReasonScanFailed = "scan-failed";
+    public const string ReasonFileMissing = "file-missing";
+
+    private static string ScanFailedReason(string? reason) =>
+        string.Equals(reason, "blob_missing", StringComparison.Ordinal) ? ReasonFileMissing : ReasonScanFailed;
+
     /// <summary>
     /// Si CloudStorage borra el objeto por debajo (papelera/retención), el adjunto acá ya no tiene
     /// bytes reales — se mueve a <c>Detached</c> (mismo estado final que el detach manual del

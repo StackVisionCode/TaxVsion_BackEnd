@@ -594,6 +594,9 @@ public sealed class SessionTakeoverTests
 
     private sealed class StubUsers(User user) : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<User?>(user);
 
         public Task<User?> GetByEmailAsync(
@@ -647,6 +650,9 @@ public sealed class SessionTakeoverTests
 
     private sealed class ExplodingUsers : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task<User?> GetByEmailAsync(

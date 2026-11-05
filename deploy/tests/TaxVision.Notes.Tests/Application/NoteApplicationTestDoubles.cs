@@ -211,10 +211,16 @@ internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
 
+    // Opciones de cada publicación (p. ej. ScheduleDelay de ScheduleAsync).
+    public List<(object Message, DeliveryOptions? Options)> PublishedWithOptions { get; } = [];
+
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
         if (message is not null)
+        {
             Published.Add(message);
+            PublishedWithOptions.Add((message, options));
+        }
         return ValueTask.CompletedTask;
     }
 

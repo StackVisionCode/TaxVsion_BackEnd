@@ -1,8 +1,11 @@
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
+using TaxVision.Billing.Application.Invoices.ChangeInvoiceStatus;
 using TaxVision.Billing.Application.Invoices.DeleteInvoice;
+using TaxVision.Billing.Application.Invoices.ReissueInvoice;
 using TaxVision.Billing.Domain.Invoices;
+using TaxVision.Billing.Tests.Fakes;
 using Xunit;
 
 namespace TaxVision.Billing.Tests.Invoices;
@@ -11,7 +14,7 @@ namespace TaxVision.Billing.Tests.Invoices;
 /// A1 — la visibilidad por asignación ya filtraba las lecturas de facturas, pero emitir, editar,
 /// anular, borrar y registrar un pago entraban con solo tener <c>invoicing.manage</c>. Lo que se
 /// comprueba acá es la decisión del handler: con qué <c>assignedTo</c> llama al repositorio, que es
-/// donde vive el filtro (ya probado por el camino de lectura).
+/// donde vive el filtro (la lectura por Id lo prueba InvoiceRepositoryVisibilityIntegrationTests).
 /// </summary>
 public sealed class InvoiceWriteVisibilityTests
 {
@@ -90,9 +93,54 @@ public sealed class InvoiceWriteVisibilityTests
     }
 
     [Fact]
+    public async Task ChangeStatus_WithoutViewAll_AsksWithActorScope()
+    {
+        var invoices = new RecordingInvoices();
+        await ChangeInvoiceStatusHandler.Handle(
+            new ChangeInvoiceStatusCommand(Tenant, Guid.NewGuid(), "Sent", null, Actor, CanViewAll: false),
+            invoices,
+            Options.Create(new BillingVisibilityOptions { Enabled = true }),
+            new NoOpUnitOfWork(),
+            TimeProvider.System,
+            CancellationToken.None
+        );
+
+        Assert.True(invoices.WasAsked);
+        Assert.Equal(Actor, invoices.AskedFor);
+    }
+
+    [Fact]
+    public async Task Reissue_WithoutViewAll_AsksWithActorScope()
+    {
+        var invoices = new RecordingInvoices();
+        await ReissueInvoiceHandler.Handle(
+            new ReissueInvoiceCommand(Tenant, Guid.NewGuid(), Actor, null, CanViewAll: false),
+            invoices,
+            Options.Create(new BillingVisibilityOptions { Enabled = true }),
+            new NoOpUnitOfWork(),
+            new FakeMessageBus(),
+            new NoopCorrelationContext(),
+            TimeProvider.System,
+            CancellationToken.None
+        );
+
+        Assert.True(invoices.WasAsked);
+        Assert.Equal(Actor, invoices.AskedFor);
+    }
+
+    [Fact]
     public void Every_invoice_write_handler_scopes_by_assignment()
     {
-        string[] writes = ["IssueInvoice", "RecordManualPayment", "EditInvoice", "DeleteInvoice", "VoidInvoice"];
+        string[] writes =
+        [
+            "IssueInvoice",
+            "RecordManualPayment",
+            "EditInvoice",
+            "DeleteInvoice",
+            "VoidInvoice",
+            "ChangeInvoiceStatus",
+            "ReissueInvoice",
+        ];
 
         var root = RepositoryRoot();
         var missing = writes

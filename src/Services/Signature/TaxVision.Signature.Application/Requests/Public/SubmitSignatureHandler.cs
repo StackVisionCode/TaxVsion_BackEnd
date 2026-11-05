@@ -95,7 +95,7 @@ public static class SubmitSignatureHandler
         return Result.Success();
     }
 
-    private static Task PublishDocumentsReadyForSealingAsync(
+    internal static Task PublishDocumentsReadyForSealingAsync(
         SignatureRequest request,
         IReadOnlyList<Guid> documentIds,
         DateTime readyAtUtc,
@@ -227,7 +227,7 @@ public static class SubmitSignatureHandler
             )
             .AsTask();
 
-    private static Task PublishCompletedAsync(
+    internal static Task PublishCompletedAsync(
         SignatureRequest request,
         ICorrelationContext correlation,
         IMessageBus bus

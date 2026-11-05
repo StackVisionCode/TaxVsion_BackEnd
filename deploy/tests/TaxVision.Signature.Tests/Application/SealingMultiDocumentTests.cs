@@ -200,6 +200,7 @@ public sealed class SealingMultiDocumentTests
             bus,
             correlation,
             NullLogger<SignatureRequest>.Instance,
+            new Envelope(),
             CancellationToken.None
         );
 
@@ -254,6 +255,7 @@ public sealed class SealingMultiDocumentTests
             bus,
             correlation,
             NullLogger<SignatureRequest>.Instance,
+            new Envelope(),
             CancellationToken.None
         );
     }

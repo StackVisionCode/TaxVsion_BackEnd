@@ -6,8 +6,7 @@ namespace TaxVision.Calendar.Application.Appointments;
 
 /// <summary>
 /// Arma los pedidos a Reminder de una cita: uno por ocurrencia del horizonte, para el organizador
-/// VIGENTE. Lo comparten el job periódico y el retiro (que pide en el acto para el sucesor, sin
-/// esperar al próximo tick del job).
+/// VIGENTE. Lo comparten el alta, la reprogramación, el job periódico y el retiro.
 ///
 /// <para>
 /// Reminder deduplica por (tenant, destinatario, <c>RequestKey</c>): republicar es gratis, y al
@@ -22,14 +21,19 @@ public static class AppointmentReminderRequests
     /// <summary>Días hacia adelante que se piden por pasada.</summary>
     public const int HorizonDays = 60;
 
-    /// <summary>Clave estable por ocurrencia. No cambiarla: huerfanizaría los recordatorios vivos.</summary>
-    public static string RequestKey(Guid occurrenceTargetId) => $"calendar:{occurrenceTargetId:N}";
+    /// <summary>
+    /// Con generación 0 es la clave histórica, que no cambia para no huerfanizar avisos vivos.
+    /// Reminder ignora una clave existente en cualquier estado (REM-1): la generación abre una nueva.
+    /// </summary>
+    public static string RequestKey(Guid occurrenceTargetId, int generation) =>
+        generation == 0 ? $"calendar:{occurrenceTargetId:N}" : $"calendar:{occurrenceTargetId:N}:g{generation}";
 
     /// <summary>Vacío si la cita no pidió aviso, está cancelada o no se puede expandir.</summary>
     public static IReadOnlyList<ReminderRequestedIntegrationEvent> For(
         Appointment appointment,
         DateTime nowUtc,
-        string correlationId
+        string correlationId,
+        Func<Guid, bool>? include = null
     )
     {
         if (appointment.ReminderLeadMinutes is null || appointment.Status == AppointmentStatus.Cancelled)
@@ -43,6 +47,9 @@ public static class AppointmentReminderRequests
         foreach (var occurrence in occurrences.Value)
         {
             var targetId = OccurrenceTargetId.For(appointment.Id, occurrence.OriginalStartUtc);
+            if (include is not null && !include(targetId))
+                continue;
+
             requests.Add(
                 new ReminderRequestedIntegrationEvent
                 {
@@ -55,7 +62,7 @@ public static class AppointmentReminderRequests
                     TimeZoneId = appointment.Timing.TimeZone.Id,
                     AnchorAtUtc = occurrence.StartUtc,
                     LeadMinutes = appointment.ReminderLeadMinutes,
-                    RequestKey = RequestKey(targetId),
+                    RequestKey = RequestKey(targetId, appointment.ReminderGeneration),
                 }
             );
         }

@@ -1,4 +1,5 @@
 using TaxVision.Campaigns.Domain.Scheduling;
+using TaxVision.Campaigns.Tests.Fakes;
 
 namespace TaxVision.Campaigns.Tests.Domain;
 
@@ -370,5 +371,31 @@ public sealed class CampaignScheduleTests
         Assert.Equal(CampaignScheduleErrors.SuccessorRequired, schedule.ResumeTakingOver(Guid.Empty, true).Error);
         Assert.Equal(ScheduleStatus.Paused, schedule.Status);
         Assert.Equal(creator, schedule.EffectiveRunAsUserId);
+    }
+
+    [Fact]
+    public void HoldsLease_DifferentTokenOrSlot_ReturnsFalse()
+    {
+        var slot = DateTime.UtcNow.AddMinutes(-1);
+        var schedule = CampaignSchedule.CreateRecurring(Tenant, Campaign, slot, RecurrenceFrequency.Hourly, null, []).Value;
+        var tokenA = ScheduleLease.Take(schedule, DateTime.UtcNow.AddMinutes(2));
+
+        Assert.True(schedule.HoldsLease(tokenA, slot));
+        Assert.False(schedule.HoldsLease(Guid.NewGuid(), slot));
+        Assert.False(schedule.HoldsLease(tokenA, slot.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void MarkFired_RunAlreadyTerminal_DoesNotHoldActiveRun()
+    {
+        var slot = DateTime.UtcNow.AddMinutes(-1);
+        var schedule = CampaignSchedule.CreateRecurring(Tenant, Campaign, slot, RecurrenceFrequency.Hourly, null, []).Value;
+        var now = DateTime.UtcNow;
+
+        schedule.MarkFired(Guid.NewGuid(), now, runIsTerminal: true);
+
+        Assert.Null(schedule.ActiveRunId);
+        Assert.True(schedule.NextFireAtUtc > now);
+        Assert.True(schedule.IsClaimable(schedule.NextFireAtUtc!.Value));
     }
 }

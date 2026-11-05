@@ -100,6 +100,33 @@ public sealed class PurchaseSeatsHandlerTests
         Assert.Empty(bus.Published.OfType<SeatRenewalDueIntegrationEvent>());
     }
 
+    [Fact]
+    public async Task Handle_SavesBeforePublishingCharges()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var bus = new CapturingMessageBus();
+        var unitOfWork = new PurchaseAddOnHandlerTests.PublishedAtSaveUnitOfWork(bus);
+
+        var result = await PurchaseSeatsHandler.Handle(
+            new PurchaseSeatsCommand(subscription.TenantId, "Standard", Quantity: 2, AutoRenew: true, Guid.NewGuid()),
+            new FakeSubscriptionRepo(subscription),
+            new CapturingSeatRepo(),
+            new NullSettingsRepo(),
+            new FakeSeatPricingRepository(pricing),
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            new FakeSubscriptionAuditLogWriter(),
+            new FakeSubscriptionMetrics(),
+            NullLogger<SubscriptionSeat>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, unitOfWork.PublishedAtFirstSave);
+        Assert.Equal(2, bus.Published.OfType<SeatRenewalDueIntegrationEvent>().Count());
+    }
+
     private static (TenantSubscription Subscription, SeatPricing Pricing) ActiveSubscriptionWithPricing()
     {
         var now = DateTime.UtcNow;

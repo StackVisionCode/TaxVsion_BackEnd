@@ -112,6 +112,7 @@ public static class TenantBrandAssetScanResultConsumer
             "failed the security scan",
             msg.CorrelationId,
             msg.EventId,
+            pendingOnly: false,
             repo,
             unitOfWork,
             cache,
@@ -137,6 +138,34 @@ public static class TenantBrandAssetScanResultConsumer
             "was blocked by content policy",
             msg.CorrelationId,
             msg.EventId,
+            pendingOnly: false,
+            repo,
+            unitOfWork,
+            cache,
+            bus,
+            correlation,
+            logger,
+            ct
+        );
+
+    // CloudStorage no pudo escanear (blob_missing, scan_stalled): el upload nunca se confirmará.
+    public static Task Handle(
+        FileScanFailedIntegrationEvent msg,
+        ITenantBrandRepository repo,
+        IUnitOfWork unitOfWork,
+        ICacheService cache,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        ILogger<TenantBrand> logger,
+        CancellationToken ct
+    ) =>
+        DiscardAsync(
+            msg.TenantId,
+            msg.FileId,
+            $"could not be scanned ({msg.Reason})",
+            msg.CorrelationId,
+            msg.EventId,
+            pendingOnly: true,
             repo,
             unitOfWork,
             cache,
@@ -152,6 +181,7 @@ public static class TenantBrandAssetScanResultConsumer
         string reason,
         string? correlationId,
         Guid eventId,
+        bool pendingOnly,
         ITenantBrandRepository repo,
         IUnitOfWork unitOfWork,
         ICacheService cache,
@@ -168,9 +198,11 @@ public static class TenantBrandAssetScanResultConsumer
         if (brand is null || asset is null)
             return;
 
-        // Replay o asset ya reemplazado/confirmado: nada que guardar ni anunciar.
+        // Rechazado por el escaneo: se quita aunque ya figure confirmado; un fallo de escaneo solo descarta
+        // el pendiente. Replay o asset reemplazado: nada.
         var key = asset.Key;
-        if (!brand.DiscardPendingAsset(key, fileId))
+        var removed = pendingOnly ? brand.DiscardPendingAsset(key, fileId) : brand.RevokeAsset(key, fileId);
+        if (!removed)
             return;
 
         logger.LogWarning(

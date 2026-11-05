@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
@@ -32,42 +33,62 @@ public sealed class AddOnCheckoutReconciliationJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var intents = services.GetRequiredService<IAddOnPurchaseIntentRepository>();
-        var context = new ReconcileContext(
-            services.GetRequiredService<ISubscriptionRepository>(),
-            services.GetRequiredService<IAddOnDefinitionRepository>(),
-            services.GetRequiredService<ITenantAddOnRepository>(),
-            services.GetRequiredService<IAddOnCheckoutPaymentClient>(),
-            services.GetRequiredService<ISubscriptionAuditLogWriter>(),
-            services.GetRequiredService<ISubscriptionMetrics>(),
-            services.GetRequiredService<IUnitOfWork>(),
-            services.GetRequiredService<IMessageBus>(),
-            services.GetRequiredService<ILogger<AddOnCheckoutReconciliationJob>>()
-        );
+        var jobLogger = services.GetRequiredService<ILogger<AddOnCheckoutReconciliationJob>>();
 
         var nowUtc = DateTime.UtcNow;
         var stale = await intents.FindStalePendingWithPaymentAsync(nowUtc - StaleAfter, BatchSize, ct);
         if (stale.Count == 0)
             return;
 
-        var provisionedCount = 0;
-        foreach (var intent in stale)
-        {
-            try
-            {
-                if (await ReconcileOneAsync(intent, context, nowUtc, ct))
-                    provisionedCount++;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                context.Logger.LogError(ex, "Add-on checkout reconcile failed for intent {IntentId}.", intent.Id);
-            }
-        }
-
+        var provisionedCount = await ReconcileAsync([.. stale.Select(intent => intent.Id)], nowUtc, ct);
         if (provisionedCount > 0)
-            context.Logger.LogInformation(
+            jobLogger.LogInformation(
                 "AddOnCheckoutReconciliationJob activated {Count} paid-but-pending intent(s).",
                 provisionedCount
             );
+    }
+
+    // Cada intención en su propio scope: un fallo deja sucio solo su DbContext.
+    internal async Task<int> ReconcileAsync(IReadOnlyList<Guid> intentIds, DateTime nowUtc, CancellationToken ct)
+    {
+        var provisionedCount = 0;
+        foreach (var intentId in intentIds)
+        {
+            using var itemScope = ScopeFactory.CreateScope();
+            var services = itemScope.ServiceProvider;
+            var context = new ReconcileContext(
+                services.GetRequiredService<ISubscriptionRepository>(),
+                services.GetRequiredService<IAddOnDefinitionRepository>(),
+                services.GetRequiredService<ITenantAddOnRepository>(),
+                services.GetRequiredService<IAddOnCheckoutPaymentClient>(),
+                services.GetRequiredService<ISubscriptionAuditLogWriter>(),
+                services.GetRequiredService<ISubscriptionMetrics>(),
+                services.GetRequiredService<IUnitOfWork>(),
+                services.GetRequiredService<IMessageBus>(),
+                services.GetRequiredService<ILogger<AddOnCheckoutReconciliationJob>>()
+            );
+            try
+            {
+                var intent = await services
+                    .GetRequiredService<IAddOnPurchaseIntentRepository>()
+                    .GetByIdForProvisioningAsync(intentId, ct);
+                if (
+                    intent is { Status: AddOnPurchaseIntentStatus.Pending }
+                    && await ReconcileOneAsync(intent, context, nowUtc, ct)
+                )
+                    provisionedCount++;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                context.Logger.LogInformation("Add-on checkout intent {IntentId} changed by another writer.", intentId);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                context.Logger.LogError(ex, "Add-on checkout reconcile failed for intent {IntentId}.", intentId);
+            }
+        }
+
+        return provisionedCount;
     }
 
     private sealed record ReconcileContext(

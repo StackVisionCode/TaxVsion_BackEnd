@@ -37,7 +37,32 @@ public static class CustomerReactivatedConsumer
                 return;
             }
 
-            existing.Reactivate();
+            // Igual que el alta: un email ya activo para otro cliente se omite en vez de violar el índice (DLQ).
+            if (!existing.IsActive)
+            {
+                var emailOwner = await repository.FindActiveByAddressAsync(evt.TenantId, existing.EmailAddress, ct);
+                if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
+                {
+                    logger.LogWarning(
+                        "CustomerReactivated event {EventId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping reactivation.",
+                        evt.EventId,
+                        evt.CustomerId,
+                        emailOwner.CustomerId
+                    );
+                    return;
+                }
+            }
+
+            if (!existing.Reactivate(evt.OccurredOn))
+            {
+                logger.LogDebug(
+                    "{Event} {EventId} for customer {CustomerId} is older than the projection; ignored.",
+                    "CustomerReactivated",
+                    evt.EventId,
+                    evt.CustomerId
+                );
+                return;
+            }
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

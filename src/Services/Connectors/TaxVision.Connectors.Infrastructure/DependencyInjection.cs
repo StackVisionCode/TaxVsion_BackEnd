@@ -165,6 +165,28 @@ public static class DependencyInjection
 
         services.AddScoped<IProviderSyncCursorRepository, ProviderSyncCursorRepository>();
 
+        // Tope contra un mensaje veneno (CON-01): un fallo transitorio frena el cursor hasta el tope.
+        services.AddScoped<IProviderMessageFetchFailureRepository, ProviderMessageFetchFailureRepository>();
+        services.AddSingleton<ISyncMetrics, ConnectorsSyncMetrics>();
+        services.AddSingleton(
+            MessageFetchFailureLimits.Default with
+            {
+                MaxAttempts = configuration.GetValue(
+                    MessageFetchFailureLimits.MaxAttemptsKey,
+                    MessageFetchFailureLimits.Default.MaxAttempts
+                ),
+            }
+        );
+        services.AddScoped<MessageFetchFailureTracker>();
+        services.AddSingleton(
+            new MailboxResyncLimits(
+                configuration.GetValue(
+                    MailboxResyncLimits.MaxWindowDaysKey,
+                    MailboxResyncLimits.Default.MaxWindowDays
+                )
+            )
+        );
+
         // Reconciliación (safety net Gmail/Graph detrás del push, único mecanismo de sync IMAP) —
         // README §37.8. Reusa ITenantEmailAccountRepository/IProviderWatchSubscriptionRepository/
         // IProviderSyncCursorRepository/IEmailProviderClientFactory/IDistributedLock ya registrados

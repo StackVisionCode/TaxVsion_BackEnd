@@ -303,7 +303,7 @@ public sealed class TenantBrandAssetScanResultConsumerTests
     }
 
     [Fact]
-    public async Task An_infected_event_for_a_confirmed_logo_is_a_no_op()
+    public async Task FileInfected_ForConfirmedAsset_RemovesIt()
     {
         var repo = new InMemoryBrandRepository();
         var fileId = Guid.NewGuid();
@@ -319,7 +319,61 @@ public sealed class TenantBrandAssetScanResultConsumerTests
 
         var bus = await DiscardAsync(repo, fileId);
 
-        Assert.Equal(BrandAssetStatus.Confirmed, repo.All.Single().Assets.Single().Status);
+        // Red de seguridad: un archivo confirmado que resultó infectado deja de servirse.
+        Assert.Empty(repo.All.Single().Assets);
+        Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task FileInfected_ForReplacedAsset_KeepsTheNewFile()
+    {
+        var repo = new InMemoryBrandRepository();
+        var newFileId = Guid.NewGuid();
+        repo.Seed(
+            TenantId,
+            BrandSurface.Crm,
+            b => b.SetAssetPending(BrandAssetKey.Logo, newFileId, "image/png", 100, null, null)
+        );
+
+        var bus = await DiscardAsync(repo, Guid.NewGuid());
+
+        Assert.Equal(newFileId, repo.All.Single().Assets.Single().FileId);
         Assert.Empty(bus.Published);
+    }
+
+    [Theory]
+    [InlineData("blob_missing")]
+    [InlineData("scan_stalled")]
+    public async Task FileScanFailed_ForPendingAsset_DiscardsIt(string reason)
+    {
+        var repo = new InMemoryBrandRepository();
+        var bus = new RecordingMessageBus();
+        var fileId = Guid.NewGuid();
+        repo.Seed(
+            TenantId,
+            BrandSurface.Crm,
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+        );
+
+        await TenantBrandAssetScanResultConsumer.Handle(
+            new FileScanFailedIntegrationEvent
+            {
+                TenantId = TenantId,
+                FileId = fileId,
+                ObjectKey = $"tenant-branding/{fileId:N}/logo.png",
+                Reason = reason,
+            },
+            repo,
+            new CountingUnitOfWork(),
+            new NoopCache(),
+            bus,
+            new NoopCorrelationContext(),
+            NullLogger<TenantBrand>.Instance,
+            CancellationToken.None
+        );
+
+        // El CRM deja de ver "Pending" y puede volver a subir.
+        Assert.Empty(repo.All.Single().Assets);
+        Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
     }
 }

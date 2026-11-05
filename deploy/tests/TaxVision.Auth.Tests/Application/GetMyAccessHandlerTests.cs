@@ -247,6 +247,9 @@ public sealed class GetMyAccessHandlerTests
 
     private sealed class StubUsers(User user) : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult<User?>(user.Id == id ? user : null);
 

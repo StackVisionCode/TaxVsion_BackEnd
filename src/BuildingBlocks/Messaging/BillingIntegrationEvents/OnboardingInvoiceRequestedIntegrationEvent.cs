@@ -37,10 +37,12 @@ public sealed record OnboardingInvoiceRequestedIntegrationEvent : IntegrationEve
 }
 
 /// <summary>Línea de ajuste (descuento) para la factura de onboarding. <see cref="AmountCents"/> es la
-/// magnitud positiva del descuento. <see cref="Type"/> = "Referral" | "Promo" | "Gift".</summary>
+/// magnitud positiva del descuento. <see cref="Type"/> = "Referral" | "Promo" | "Gift".
+/// <see cref="PendingReview"/> = Growth dejó el canje en revisión manual (commit tardío sobre una reserva vencida).</summary>
 public sealed record OnboardingInvoiceAdjustmentDto(
     string Type,
     string? Code,
     Guid? GrowthReservationId,
-    long AmountCents
+    long AmountCents,
+    bool PendingReview = false
 );

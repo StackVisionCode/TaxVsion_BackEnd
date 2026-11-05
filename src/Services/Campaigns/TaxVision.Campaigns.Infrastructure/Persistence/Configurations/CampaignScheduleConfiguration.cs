@@ -33,6 +33,7 @@ public sealed class CampaignScheduleConfiguration : IEntityTypeConfiguration<Cam
         builder.Ignore(s => s.IsOpen);
         builder.Property(s => s.CreatedAtUtc).IsRequired();
         builder.Property(s => s.UpdatedAtUtc).IsRequired();
+        builder.Property(s => s.RowVersion).IsRowVersion();
 
         // Scan del claim: schedules Active vencidos por NextFireAtUtc.
         builder

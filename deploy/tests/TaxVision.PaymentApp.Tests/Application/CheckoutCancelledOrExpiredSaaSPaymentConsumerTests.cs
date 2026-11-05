@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.PaymentApp.Application.HostedCheckout.Commands;
 using TaxVision.PaymentApp.Application.SaaSPayments.IntegrationEvents;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -28,6 +29,7 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
             },
             payments,
             unitOfWork,
+            new CapturingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
@@ -35,6 +37,37 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
 
         Assert.Equal(PaymentStatus.Cancelled, payment.Status);
         Assert.Equal(1, unitOfWork.SaveCalls);
+    }
+
+    [Fact]
+    public async Task BuyerCancelled_with_session_publishes_ExpireProviderCheckoutSession()
+    {
+        var tenantId = Guid.NewGuid();
+        var payment = ProcessingPayment(tenantId);
+        var payments = new FakeSaaSPaymentRepository { ById = payment };
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new CapturingMessageBus();
+
+        await CheckoutCancelledOrExpiredSaaSPaymentConsumer.Handle(
+            new SeatCheckoutCancelledIntegrationEvent
+            {
+                TenantId = tenantId,
+                SeatPurchaseIntentId = Guid.NewGuid(),
+                SaaSPaymentId = payment.Id,
+            },
+            payments,
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+        var command = Assert.IsType<ExpireProviderCheckoutSessionCommand>(Assert.Single(bus.Published));
+        Assert.Equal(payment.Id, command.SaaSPaymentId);
+        Assert.Equal(payment.ProviderCode, command.ProviderCode);
+        Assert.Equal(payment.ProviderCheckoutSessionId, command.ProviderSessionId);
     }
 
     [Fact]
@@ -54,6 +87,7 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
             },
             payments,
             unitOfWork,
+            new CapturingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
@@ -81,6 +115,7 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
             evt,
             payments,
             unitOfWork,
+            new CapturingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
@@ -89,6 +124,7 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
             evt,
             payments,
             unitOfWork,
+            new CapturingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
@@ -128,6 +164,7 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
             },
             payments,
             unitOfWork,
+            new CapturingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
@@ -157,6 +194,7 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
             },
             payments,
             unitOfWork,
+            new CapturingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
@@ -182,6 +220,7 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
             },
             payments,
             unitOfWork,
+            new CapturingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None

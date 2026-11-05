@@ -1,4 +1,5 @@
 using TaxVision.PaymentClient.Domain.PaymentLinks;
+using TaxVision.PaymentClient.Domain.TenantPayments;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 
 namespace TaxVision.PaymentClient.Tests.Domain;
@@ -83,7 +84,7 @@ public sealed class PaymentLinkTests
         var link = CreateActiveLink();
         var paymentId = Guid.NewGuid();
 
-        var attach = link.AttachPaymentAttempt(paymentId, NowUtc);
+        var attach = link.AttachPaymentAttempt(paymentId, null, NowUtc);
         var used = link.MarkAsUsed(NowUtc.AddSeconds(1));
 
         Assert.True(attach.IsSuccess);
@@ -97,7 +98,7 @@ public sealed class PaymentLinkTests
     public void MarkAsUsed_a_second_time_is_rejected()
     {
         var link = CreateActiveLink();
-        link.AttachPaymentAttempt(Guid.NewGuid(), NowUtc);
+        link.AttachPaymentAttempt(Guid.NewGuid(), null, NowUtc);
         link.MarkAsUsed(NowUtc);
 
         var result = link.MarkAsUsed(NowUtc);
@@ -111,10 +112,40 @@ public sealed class PaymentLinkTests
     {
         var link = CreateActiveLink(TimeSpan.FromMinutes(1));
 
-        var result = link.AttachPaymentAttempt(Guid.NewGuid(), NowUtc.AddMinutes(2));
+        var result = link.AttachPaymentAttempt(Guid.NewGuid(), null, NowUtc.AddMinutes(2));
 
         Assert.True(result.IsFailure);
         Assert.Equal("PaymentLink.NotRedeemable", result.Error.Code);
+    }
+
+    [Fact]
+    public void AttachPaymentAttempt_WhileCurrentAttemptRequiresAction_Fails()
+    {
+        var link = CreateActiveLink();
+        var first = Guid.NewGuid();
+        link.AttachPaymentAttempt(first, null, NowUtc);
+
+        var result = link.AttachPaymentAttempt(Guid.NewGuid(), PaymentStatus.RequiresAction, NowUtc);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("PaymentLink.AttemptInProgress", result.Error.Code);
+        Assert.Equal(first, link.RelatedTenantPaymentId);
+    }
+
+    [Fact]
+    public void AttachPaymentAttempt_AfterFailedAttempt_IncrementsAttemptSequence()
+    {
+        var link = CreateActiveLink();
+        var second = Guid.NewGuid();
+
+        link.AttachPaymentAttempt(Guid.NewGuid(), null, NowUtc);
+        Assert.Equal(1, link.AttemptSequence);
+
+        var result = link.AttachPaymentAttempt(second, PaymentStatus.Failed, NowUtc);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, link.AttemptSequence);
+        Assert.Equal(second, link.RelatedTenantPaymentId);
     }
 
     [Fact]
@@ -144,7 +175,7 @@ public sealed class PaymentLinkTests
     public void Revoke_a_Used_link_is_rejected()
     {
         var link = CreateActiveLink();
-        link.AttachPaymentAttempt(Guid.NewGuid(), NowUtc);
+        link.AttachPaymentAttempt(Guid.NewGuid(), null, NowUtc);
         link.MarkAsUsed(NowUtc);
 
         var result = link.Revoke("too late", NowUtc);

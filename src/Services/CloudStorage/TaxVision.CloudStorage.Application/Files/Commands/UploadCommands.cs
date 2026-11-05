@@ -231,7 +231,7 @@ public static class CompleteUploadHandler
             return Result.Failure(FileErrors.UploadSizeMismatch);
         }
 
-        var transition = file.MarkPendingScan();
+        var transition = file.MarkPendingScan(clock.UtcNow);
         if (transition.IsFailure)
             return transition;
 
@@ -296,36 +296,66 @@ public static class ScanFileHandler
         CancellationToken ct
     )
     {
-        var file =
-            await files.GetAsync(command.TenantId, command.FileId, ct)
-            ?? throw new InvalidOperationException($"File {command.FileId} does not exist.");
+        var file = await files.GetAsync(command.TenantId, command.FileId, ct);
+        if (file is null)
+        {
+            // Purgado mientras esperaba en cola: no va a aparecer, reintentar no sirve.
+            logger.LogWarning("Scan skipped: file {FileId} no longer exists.", command.FileId);
+            return;
+        }
 
-        // Terminales — un redelivery de ScanFileCommand (retry de Wolverine tras
-        // un crash post-transition-pre-ack) no debe relanzar el scan.
+        // Terminales — un redelivery de ScanFileCommand no debe relanzar el scan. ScanFailed ya es
+        // definitivo (su reserva se liberó); el reescaneo pasa por RescanFileCommand.
         if (
             file.Status
             is FileStatus.Available
                 or FileStatus.Infected
                 or FileStatus.BlockedByPolicy
                 or FileStatus.PendingReview
+                or FileStatus.ScanFailed
+                or FileStatus.SoftDeleted
         )
             return;
 
+        // Sin SaveChanges intermedio: dentro de la transacción no confirma y solo alarga el bloqueo (CST-3).
         var transition = file.MarkScanning();
         if (transition.IsFailure)
             throw new InvalidOperationException(transition.Error.Message);
-        await unitOfWork.SaveChangesAsync(ct);
 
-        var sourceBucket = options.Value.TempBucket;
-        if (!await storage.ExistsAsync(sourceBucket, file.ObjectKey, ct))
+        var sourceBucket = await LocateStoredObjectAsync(storage, options.Value, file.ObjectKey, ct);
+        if (sourceBucket is null)
         {
-            // Un intento anterior pudo mover el objeto y perder después una concurrencia
-            // optimista al confirmar la cuota. Continuar desde el bucket principal hace
-            // que el reintento sea idempotente.
-            sourceBucket = options.Value.MainBucket;
-            if (!await storage.ExistsAsync(sourceBucket, file.ObjectKey, ct))
-                throw new InvalidOperationException($"Stored object for file {file.Id} does not exist.");
+            await RescueStuckScanHandler.AbandonAsync(
+                file,
+                RescueStuckScanHandler.BlobMissingReason,
+                "blob_missing: stored object not found during scan",
+                "scan",
+                command.CorrelationId,
+                limits,
+                audit,
+                clock,
+                unitOfWork,
+                bus,
+                ct
+            );
+            logger.LogWarning("Scan of file {FileId} found no stored object; marked blob_missing.", file.Id);
+            return;
         }
+
+        // Mover o borrar el objeto viaja en un comando que sale después de guardar el veredicto.
+        RelocateScannedBlobCommand? RelocateTo(string? targetBucket) =>
+            targetBucket == sourceBucket
+                ? null
+                : new RelocateScannedBlobCommand(
+                    command.TenantId,
+                    file.Id,
+                    file.ObjectKey,
+                    sourceBucket,
+                    targetBucket,
+                    file.CreatedBy,
+                    command.CorrelationId
+                );
+        RelocateScannedBlobCommand? relocation = null;
 
         var tempPath = Path.Combine(Path.GetTempPath(), $"taxvision-scan-{Guid.NewGuid():N}.tmp");
         try
@@ -372,7 +402,6 @@ public static class ScanFileHandler
             {
                 file.MarkScanFailed(inspected.RejectionReason ?? "Detected content type is not allowed.", clock.UtcNow);
                 (await limits.GetAsync(command.TenantId, ct))?.Release(file.SizeBytes);
-                await storage.DeleteAsync(sourceBucket, file.ObjectKey, ct);
                 audit.Add(
                     StorageAccessLog.Create(
                         command.TenantId,
@@ -402,6 +431,7 @@ public static class ScanFileHandler
                     }
                 );
                 await unitOfWork.SaveChangesAsync(ct);
+                await PublishRelocationAsync(bus, RelocateTo(null));
                 return;
             }
 
@@ -426,8 +456,6 @@ public static class ScanFileHandler
                 );
                 if (contentScan.Verdict != ContentScanVerdict.Clean)
                 {
-                    await storage.CopyAsync(sourceBucket, file.ObjectKey, options.Value.QuarantineBucket, ct);
-                    await storage.DeleteAsync(sourceBucket, file.ObjectKey, ct);
                     limit.Release(file.SizeBytes);
                     var reason = contentScan.Reason ?? "Content policy verdict without detail.";
 
@@ -502,6 +530,7 @@ public static class ScanFileHandler
                         );
                     }
                     await unitOfWork.SaveChangesAsync(ct);
+                    await PublishRelocationAsync(bus, RelocateTo(options.Value.QuarantineBucket));
                     return;
                 }
 
@@ -578,8 +607,7 @@ public static class ScanFileHandler
             }
             else if (scan.Verdict == VirusScanVerdict.Infected)
             {
-                await storage.CopyAsync(sourceBucket, file.ObjectKey, options.Value.QuarantineBucket, ct);
-                await storage.DeleteAsync(sourceBucket, file.ObjectKey, ct);
+                relocation = RelocateTo(options.Value.QuarantineBucket);
                 file.MarkInfected(scan.Report, inspected.ContentType, clock.UtcNow);
                 limit.Release(file.SizeBytes);
                 audit.Add(
@@ -612,58 +640,41 @@ public static class ScanFileHandler
             }
             else
             {
-                throw new InvalidOperationException($"ClamAV could not produce a verdict: {scan.Report}");
+                throw new VirusScanUnavailableException($"ClamAV could not produce a verdict: {scan.Report}");
             }
 
             await unitOfWork.SaveChangesAsync(ct);
+            await PublishRelocationAsync(bus, relocation);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // Este handler corre en background via Wolverine — sin ningun
-            // middleware HTTP que atrape la excepcion, un fallo transitorio
-            // (I/O de red, race del SDK de MinIO al copiar el stream
-            // descargado, etc.) tumbaba el proceso ENTERO de CloudStorage en
-            // vez de fallar solo este archivo. Se marca ScanFailed (no es
-            // terminal — ver el guard de redelivery arriba, un redelivery
-            // reintenta el scan) y se libera la reserva de cuota con
-            // CancellationToken.None por si `ct` ya esta cancelado.
-            logger.LogError(
-                ex,
-                "Unexpected error scanning file {FileId} for tenant {TenantId}.",
-                file.Id,
-                command.TenantId
-            );
-            try
-            {
-                var limit = await limits.GetAsync(command.TenantId, CancellationToken.None);
-                limit?.Release(file.SizeBytes);
-                file.MarkScanFailed($"Unexpected error: {ex.GetType().Name}: {ex.Message}", clock.UtcNow);
-                await bus.PublishAsync(
-                    new FileScanFailedIntegrationEvent
-                    {
-                        TenantId = command.TenantId,
-                        FileId = file.Id,
-                        ObjectKey = file.ObjectKey,
-                        Reason = "scan_error",
-                        OwnerType = file.OwnerType.ToString(),
-                        OwnerId = file.OwnerId,
-                        FolderType = file.FolderType.ToString(),
-                        CreatedBy = file.CreatedBy,
-                        CorrelationId = command.CorrelationId,
-                    }
-                );
-                await unitOfWork.SaveChangesAsync(CancellationToken.None);
-            }
-            catch (Exception recoveryEx)
-            {
-                logger.LogError(recoveryEx, "Failed to mark file {FileId} as ScanFailed after scan error.", file.Id);
-            }
-        }
+        // Sin catch: un fallo transitorio (ClamAV, MinIO, ContentScanner) sube a Wolverine, que reintenta y
+        // luego lo manda a la DLQ; el archivo conserva su reserva y StuckScanRescueService lo recoge.
         finally
         {
             if (File.Exists(tempPath))
                 File.Delete(tempPath);
         }
+    }
+
+    /// <summary>Busca el objeto en temp → main → cuarentena (un intento anterior pudo moverlo); null si no está.</summary>
+    internal static async Task<string?> LocateStoredObjectAsync(
+        IObjectStorage storage,
+        CloudStorageOptions options,
+        string objectKey,
+        CancellationToken ct
+    )
+    {
+        foreach (var bucket in new[] { options.TempBucket, options.MainBucket, options.QuarantineBucket })
+        {
+            if (await storage.ExistsAsync(bucket, objectKey, ct))
+                return bucket;
+        }
+        return null;
+    }
+
+    private static async Task PublishRelocationAsync(IMessageBus bus, RelocateScannedBlobCommand? relocation)
+    {
+        if (relocation is not null)
+            await bus.PublishAsync(relocation);
     }
 }
 

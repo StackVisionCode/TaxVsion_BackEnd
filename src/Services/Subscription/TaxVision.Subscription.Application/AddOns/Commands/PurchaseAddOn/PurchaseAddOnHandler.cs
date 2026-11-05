@@ -92,7 +92,15 @@ public static class PurchaseAddOnHandler
         if (initialCharge.IsFailure)
             return Result.Failure<Guid>(initialCharge.Error);
 
+        // Serializa compras simultáneas del tenant por la RowVersion de la suscripción.
+        var recorded = subscription.RecordPurchase(command.RequestedByUserId, nowUtc);
+        if (recorded.IsFailure)
+            return Result.Failure<Guid>(recorded.Error);
+
         await tenantAddOns.AddAsync(addOn, ct);
+
+        // Guardar antes de publicar: un reintento en línea no debe dejar salir el cobro del intento fallido.
+        await unitOfWork.SaveChangesAsync(ct);
 
         await bus.PublishAsync(
             new AddOnActivatedIntegrationEvent
@@ -107,7 +115,6 @@ public static class PurchaseAddOnHandler
         );
         if (initialCharge.Value is not null)
             await bus.PublishAsync(initialCharge.Value);
-        await unitOfWork.SaveChangesAsync(ct);
 
         metrics.RecordAddOnPurchased(addOn.AddOnCode);
         if (initialCharge.Value is not null)

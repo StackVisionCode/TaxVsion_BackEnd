@@ -256,6 +256,9 @@ public sealed class RefreshAccessTokenHandlerTests
 
     private sealed class ExplodingUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task<User?> GetByEmailAsync(

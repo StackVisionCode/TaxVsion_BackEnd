@@ -63,8 +63,7 @@ public sealed class NotificationDispatcher(
     IPushSender pushSender,
     IPushDeviceTokenRepository pushDeviceTokens,
     INotificationLogRepository logs,
-    IUserNotificationPreferenceRepository preferences,
-    IUserEmailDirectoryRepository userDirectory,
+    NotificationDeliveryGate deliveryGate,
     IIntegrationEventPublisher publisher,
     IUnitOfWork unitOfWork,
     INotificationDispatchMetrics metrics,
@@ -534,10 +533,7 @@ public sealed class NotificationDispatcher(
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
-    /// <summary>
-    /// Destinatario suspendido o retirado según el directorio local (lo mantienen los eventos de
-    /// ciclo de vida de Auth). Sin fila no hay señal de inactividad y se sigue: ausencia ≠ inactivo.
-    /// </summary>
+    // El gate vive en NotificationDeliveryGate (lo comparte el gateway de correo); acá solo la métrica.
     private async Task<bool> IsRecipientInactiveAsync(
         Guid tenantId,
         Guid? recipientUserId,
@@ -546,73 +542,18 @@ public sealed class NotificationDispatcher(
         CancellationToken ct
     )
     {
-        if (recipientUserId is not { } userId || userId == Guid.Empty)
+        if (!await deliveryGate.IsRecipientInactiveAsync(tenantId, recipientUserId, kind, channel, ct))
             return false;
-
-        var entry = await userDirectory.FindAsync(tenantId, userId, ct);
-        if (entry is null || entry.IsActive)
-            return false;
-
         metrics.RecordNoRecipient(kind, channel.ToString());
-        logger.LogInformation(
-            "Notification skipped: user {UserId} in tenant {TenantId} is inactive (channel {Channel}, kind {Kind}).",
-            userId,
-            tenantId,
-            channel,
-            kind
-        );
         return true;
     }
 
-    /// <summary>
-    /// Cuenta y seguridad nunca se filtra (locked). Sin un UserId resuelto no hay preferencia
-    /// que consultar — se permite el envío (comportamiento preexistente, sin regresión).
-    ///
-    /// <para>
-    /// <b>Cuando el gate apaga un envío deja rastro.</b> Antes no escribía nada: ni log ni fila en
-    /// <c>NotificationLogs</c> — apagaba en silencio. Con eso, un «no me llegan los recordatorios»
-    /// era literalmente indistinguible de un bug de entrega, porque no había dónde mirar. Se
-    /// registra en <c>Information</c> y no en <c>Debug</c> a propósito: es el <b>resultado</b> de una
-    /// decisión del usuario, no ruido de diagnóstico, y es lo que soporte necesita leer en el log del
-    /// request que ya está mirando.
-    /// </para>
-    /// </summary>
-    private async Task<bool> IsAllowedAsync(
+    private Task<bool> IsAllowedAsync(
         Guid tenantId,
         Guid? recipientUserId,
         NotificationCategory category,
         NotificationChannel channel,
         CancellationToken ct,
         string? templateKey = null
-    )
-    {
-        if (NotificationCategoryRules.IsLocked(category))
-            return true;
-        // D2: lo marcado IsMandatory en el catálogo nunca lo apaga la preferencia del
-        // usuario — la capacidad (resolver de audiencia) ya se validó aguas arriba.
-        if (
-            !string.IsNullOrWhiteSpace(templateKey)
-            && NotificationCatalog.TryGet(templateKey, out var catalogEntry)
-            && catalogEntry is not null
-            && catalogEntry.IsMandatoryFor(channel)
-        )
-            return true;
-        if (recipientUserId is null)
-            return true;
-
-        var enabled = await preferences.IsEnabledAsync(tenantId, recipientUserId.Value, category, channel, ct);
-        if (!enabled)
-        {
-            logger.LogInformation(
-                "Notification suppressed by user preference: tenant {TenantId}, user {UserId}, "
-                    + "category {Category}, channel {Channel}.",
-                tenantId,
-                recipientUserId.Value,
-                category,
-                channel
-            );
-        }
-
-        return enabled;
-    }
+    ) => deliveryGate.IsAllowedByPreferenceAsync(tenantId, recipientUserId, category, channel, templateKey, ct);
 }

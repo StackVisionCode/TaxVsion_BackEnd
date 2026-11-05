@@ -24,6 +24,25 @@ public sealed class ReservationRepository(WalletDbContext db) : IReservationRepo
                 ct
             );
 
+    public async Task<IReadOnlyList<WalletReservation>> ListOpenOlderThanAsync(
+        DateTime cutoffUtc,
+        int take,
+        string? referenceType,
+        IReadOnlyCollection<string>? excludedTypes,
+        CancellationToken ct = default
+    )
+    {
+        var query = db
+            .Reservations.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.Status == ReservationStatus.Open && r.CreatedAtUtc < cutoffUtc);
+        if (referenceType is not null)
+            query = query.Where(r => r.ReferenceType == referenceType);
+        if (excludedTypes is { Count: > 0 })
+            query = query.Where(r => !excludedTypes.Contains(r.ReferenceType));
+        return await query.OrderBy(r => r.CreatedAtUtc).Take(take).ToListAsync(ct);
+    }
+
     public async Task AddAsync(WalletReservation reservation, CancellationToken ct = default) =>
         await db.Reservations.AddAsync(reservation, ct);
 }

@@ -119,4 +119,85 @@ public sealed class CampaignRunTests
         var result = run.ApplyResult("does-not-exist", DispatchOutcome.Delivered, null, null);
         Assert.True(result.IsFailure);
     }
+
+    [Fact]
+    public void StartScheduled_SameScheduleAndSlot_ProducesSameRunId()
+    {
+        var scheduleId = Guid.NewGuid();
+        var slot = new DateTime(2026, 11, 5, 14, 30, 0, DateTimeKind.Utc);
+
+        var run1 = CampaignRun.StartScheduled(Tenant, Campaign, User, scheduleId, slot, [Email("a@x.com")]).Value;
+        // Mismo slot leído de SQL (Kind Unspecified) y otras unidades: mismo Id.
+        var run2 = CampaignRun
+            .StartScheduled(
+                Tenant,
+                Campaign,
+                User,
+                scheduleId,
+                DateTime.SpecifyKind(slot, DateTimeKind.Unspecified),
+                [Email("b@x.com"), Email("c@x.com")]
+            )
+            .Value;
+
+        Assert.Equal(run1.Id, run2.Id);
+        Assert.Equal(scheduleId, run1.ScheduleId);
+        Assert.Equal(slot, run1.ScheduledSlotUtc);
+        Assert.Equal("Scheduled", run1.TriggerKind);
+        Assert.NotEqual(run1.Id, CampaignRun.StartScheduled(Tenant, Campaign, User, scheduleId, slot.AddMinutes(5), [Email("a@x.com")]).Value.Id);
+    }
+
+    [Fact]
+    public void ExpireStaleUnits_DispatchedUnits_BecomeUnknownAndCloseRunOnce()
+    {
+        var run = Start(Email("a@x.com"), Email("b@x.com"), Email("c@x.com"));
+        foreach (var r in run.Recipients.ToList())
+            run.MarkDispatched(r.Id);
+        run.ApplyResult(run.Recipients.First().DispatchId, DispatchOutcome.Delivered, null, null);
+
+        var closed = run.ExpireStaleUnits(DateTime.UtcNow);
+
+        Assert.True(closed);
+        Assert.Equal(2, run.CounterUnknown);
+        Assert.Equal(CampaignRunStatus.PartiallyFailed, run.Status);
+        Assert.NotNull(run.FinishedAtUtc);
+        Assert.All(run.Recipients.Where(r => r.State == DispatchState.Unknown), r => Assert.Equal("stale_timeout", r.Reason));
+        Assert.False(run.ExpireStaleUnits(DateTime.UtcNow));
+    }
+
+    [Fact]
+    public void ApplyResult_LateUnknown_DoesNotOverwriteAcceptedOrSkipped()
+    {
+        var run = Start(Email("a@x.com"), Email("b@x.com"));
+        var units = run.Recipients.ToList();
+        run.ApplyResult(units[0].DispatchId, DispatchOutcome.Accepted, "p-1", null);
+        run.ApplyResult(units[1].DispatchId, DispatchOutcome.Skipped, null, "opt_out");
+
+        run.ApplyResult(units[0].DispatchId, DispatchOutcome.Unknown, null, "late");
+        run.ApplyResult(units[1].DispatchId, DispatchOutcome.Unknown, null, "late");
+
+        Assert.Equal(DispatchState.Accepted, units[0].State);
+        Assert.Equal(DispatchState.Skipped, units[1].State);
+        Assert.Equal(0, run.CounterUnknown);
+        Assert.Equal(CampaignRunStatus.Completed, run.Status);
+    }
+
+    [Fact]
+    public void ApplyResult_UnknownResolvedAfterClose_RecalculatesStatusAndCounters()
+    {
+        var run = Start(Email("a@x.com"), Email("b@x.com"));
+        var units = run.Recipients.ToList();
+        run.ApplyResult(units[0].DispatchId, DispatchOutcome.Delivered, null, null);
+        run.ApplyResult(units[1].DispatchId, DispatchOutcome.Unknown, null, "outcome_unknown");
+        Assert.Equal(CampaignRunStatus.PartiallyFailed, run.Status);
+        var finishedAt = run.FinishedAtUtc;
+
+        // D-CMP-4: la conciliación resuelve la unidad después del cierre.
+        var closedNow = run.ApplyResult(units[1].DispatchId, DispatchOutcome.Accepted, "p-2", null);
+
+        Assert.False(closedNow.Value); // no vuelve a publicar run.completed
+        Assert.Equal(CampaignRunStatus.Completed, run.Status);
+        Assert.Equal(0, run.CounterUnknown);
+        Assert.Equal(1, run.CounterAccepted);
+        Assert.Equal(finishedAt, run.FinishedAtUtc);
+    }
 }

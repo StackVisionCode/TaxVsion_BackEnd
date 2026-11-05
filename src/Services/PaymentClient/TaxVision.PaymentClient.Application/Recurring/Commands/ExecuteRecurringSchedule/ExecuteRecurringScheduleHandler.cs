@@ -42,7 +42,8 @@ public static class ExecuteRecurringScheduleHandler
         if (processingResult.IsFailure)
             return processingResult;
 
-        var idempotencyKey = $"recurring:{plan.Id:N}:{command.ScheduleId:N}";
+        var schedule = plan.Schedules.Single(s => s.Id == command.ScheduleId);
+        var idempotencyKey = schedule.ChargeIdempotencyKey(plan.Id);
         var chargeResult = await bus.InvokeAsync<Result<Guid>>(
             new ChargeTenantPaymentCommand(
                 plan.TenantId,

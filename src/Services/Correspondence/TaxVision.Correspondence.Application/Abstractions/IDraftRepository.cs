@@ -29,6 +29,13 @@ public interface IDraftRepository
 
     Task AddAsync(Draft entity, CancellationToken ct = default);
 
+    /// <summary>Enviado (Sent) con ese Message-ID ya normalizado (COR-16). Tracked: la ingesta puede enlazarle el hilo.</summary>
+    Task<Draft?> FindSentByInternetMessageIdAsync(
+        Guid tenantId,
+        string internetMessageId,
+        CancellationToken ct = default
+    );
+
     /// <summary>
     /// Fase 15 — "retomar un autoguardado": drafts en <see cref="DraftStatus.Draft"/> (nunca
     /// <c>Sent</c>/<c>Discarded</c>/<c>Failed</c>) de un customer, más reciente primero

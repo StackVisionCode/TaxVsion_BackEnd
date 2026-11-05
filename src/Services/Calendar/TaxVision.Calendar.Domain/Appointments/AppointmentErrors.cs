@@ -28,6 +28,11 @@ public static class AppointmentErrors
         "Every appointment needs an organizer."
     );
 
+    public static readonly Error ReminderLeadTooLong = new(
+        "Calendar.Appointment.ReminderLeadTooLong",
+        $"The reminder cannot be set more than {Appointment.MaxReminderLeadMinutes} minutes before the appointment."
+    );
+
     public static readonly Error TypeRequired = new(
         "Calendar.Appointment.TypeRequired",
         "Every appointment needs an appointment type."

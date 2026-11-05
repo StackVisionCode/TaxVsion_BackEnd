@@ -26,6 +26,9 @@ public sealed class RoleCommandsTests
     /// type miran los actor types de los titulares del rol).</summary>
     private sealed class FakeUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public List<User> Holders { get; } = [];
 
         public Task<IReadOnlyList<User>> GetActiveByRoleAsync(

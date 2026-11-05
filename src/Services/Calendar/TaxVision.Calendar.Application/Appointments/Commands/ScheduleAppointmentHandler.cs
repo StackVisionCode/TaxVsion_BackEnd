@@ -29,7 +29,8 @@ public sealed record ScheduleAppointmentCommand(
     string? RecurrenceRule,
     Guid? CustomerId,
     int? TaxYear,
-    bool IsVirtual
+    bool IsVirtual,
+    int? ReminderLeadMinutes = null
 );
 
 public static class ScheduleAppointmentHandler
@@ -66,6 +67,11 @@ public static class ScheduleAppointmentHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         await bus.PublishAsync(AppointmentEvents.Scheduled(appointment, correlation.CorrelationId));
+
+        // El aviso se pide en el acto; el job de 12 h queda como red de seguridad.
+        foreach (var request in AppointmentReminderRequests.For(appointment, DateTime.UtcNow, correlation.CorrelationId))
+            await bus.PublishAsync(request);
+
         metrics.RecordCreated(appointment.IsRecurring);
 
         return Result.Success(new AppointmentWithWarnings(AppointmentResponse.From(appointment), conflict.Value));

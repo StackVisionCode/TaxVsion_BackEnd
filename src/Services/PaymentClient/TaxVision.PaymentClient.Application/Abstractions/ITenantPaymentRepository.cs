@@ -54,6 +54,29 @@ public interface ITenantPaymentRepository
         CancellationToken ct = default
     );
 
+    /// <summary>¿Hay un cobro sin terminar (Pending/Processing/RequiresAction) para esta referencia externa
+    /// (factura)? Tenant explícito: lo llama el resolver público.</summary>
+    Task<bool> AnyInProgressForReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>¿Hay un pago <c>Succeeded</c> de esta referencia externa cobrado después de
+    /// <paramref name="sinceUtc"/>? Tenant explícito: lo llama el resolver público.</summary>
+    Task<bool> AnySucceededForReferenceSinceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        DateTime sinceUtc,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Pagos por id de todos los tenants (reposición de plataforma).</summary>
+    Task<IReadOnlyList<TenantPayment>> GetByIdsAcrossTenantsAsync(
+        IReadOnlyCollection<Guid> tenantPaymentIds,
+        CancellationToken ct = default
+    );
+
     Task AddAsync(TenantPayment payment, CancellationToken ct = default);
 }
 

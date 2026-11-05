@@ -1,6 +1,5 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
-using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
@@ -43,6 +42,9 @@ public static class CancelAppointmentHandler
         if (appointment.IsRecurring && command.Scope is null)
             return Result.Failure(AppointmentErrors.ScopeRequired);
 
+        // Los objetivos se calculan antes de cancelar: después la cita ya no los produce.
+        var targets = ReminderTargetsToClose(appointment, command, onlyOne);
+
         var cancelled = onlyOne
             ? CancelOccurrence(appointment, command)
             : appointment.Cancel(command.ActingUserId, command.CanManageAll, command.Reason, DateTime.UtcNow);
@@ -51,7 +53,7 @@ public static class CancelAppointmentHandler
             return cancelled;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishAsync(appointment, command, onlyOne, bus, correlation);
+        await PublishAsync(appointment, command, onlyOne, targets, bus, correlation);
         metrics.RecordCancelled(appointment.IsRecurring);
 
         return Result.Success();
@@ -62,6 +64,22 @@ public static class CancelAppointmentHandler
             ? Result.Failure(RecurrenceErrors.NotAnOccurrence)
             : appointment.CancelOccurrence(original, command.ActingUserId, command.CanManageAll, DateTime.UtcNow);
 
+    /// <summary>Sin aviso pedido no hay nada que cerrar en Reminder.</summary>
+    private static IReadOnlyCollection<Guid> ReminderTargetsToClose(
+        Appointment appointment,
+        CancelAppointmentCommand command,
+        bool onlyOneOccurrence
+    )
+    {
+        if (appointment.ReminderLeadMinutes is null)
+            return [];
+
+        if (onlyOneOccurrence)
+            return command.OriginalStartUtc is { } original ? [OccurrenceTargetId.For(appointment.Id, original)] : [];
+
+        return [.. AppointmentReminderTargets.Snapshot(appointment, DateTime.UtcNow)];
+    }
+
     /// <summary>
     /// Cancelar sin avisar a Reminder deja el aviso vivo: al cliente le llega un recordatorio de una
     /// cita que ya no existe.
@@ -70,6 +88,7 @@ public static class CancelAppointmentHandler
         Appointment appointment,
         CancelAppointmentCommand command,
         bool onlyOneOccurrence,
+        IReadOnlyCollection<Guid> reminderTargets,
         IMessageBus bus,
         ICorrelationContext correlation
     )
@@ -106,18 +125,14 @@ public static class CancelAppointmentHandler
             );
         }
 
-        await bus.PublishAsync(
-            new ReminderTargetClosedIntegrationEvent
-            {
-                TenantId = appointment.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                Category = "Calendar",
-                TargetId = OccurrenceTargetId.For(
-                    appointment.Id,
-                    command.OriginalStartUtc ?? appointment.Timing.StartUtc ?? DateTime.UtcNow
-                ),
-                Reason = command.Reason,
-            }
-        );
+        foreach (
+            var closed in AppointmentReminderTargets.Close(
+                appointment,
+                reminderTargets,
+                correlation.CorrelationId,
+                command.Reason
+            )
+        )
+            await bus.PublishAsync(closed);
     }
 }

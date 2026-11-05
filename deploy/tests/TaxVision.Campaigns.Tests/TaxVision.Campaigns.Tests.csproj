@@ -13,10 +13,18 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- T-INT contra el SQL Server local (namespace .Integration.). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+    <PackageReference Include="WolverineFx.EntityFrameworkCore" Version="6.14.0" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.14.0" />
+    <PackageReference Include="WolverineFx.SqlServer" Version="6.14.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Campaigns\TaxVision.Campaigns.Domain\TaxVision.Campaigns.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Campaigns\TaxVision.Campaigns.Application\TaxVision.Campaigns.Application.csproj" />
+    <ProjectReference Include="..\..\..\src\Services\Campaigns\TaxVision.Campaigns.Infrastructure\TaxVision.Campaigns.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
   </ItemGroup>

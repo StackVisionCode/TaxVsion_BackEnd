@@ -225,6 +225,7 @@
     <Project Path="deploy/tests/TaxVision.Calendar.Tests/TaxVision.Calendar.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Tasks.Tests/TaxVision.Tasks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Tenant.Tests/TaxVision.Tenant.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Wallet.Tests/TaxVision.Wallet.Tests.csproj" />
   </Folder>
   <Folder Name="/src/Services/Wallet/">
     <Project Path="src/Services/Wallet/TaxVision.Wallet.Domain/TaxVision.Wallet.Domain.csproj" />

@@ -25,6 +25,7 @@ public sealed class EventBasedEmailDispatchGateway(
     IIntegrationEventPublisher publisher,
     INotificationLogRepository logRepository,
     IUnitOfWork unitOfWork,
+    NotificationDeliveryGate deliveryGate,
     ILogger<EventBasedEmailDispatchGateway> logger
 ) : IEmailDispatchGateway
 {
@@ -56,6 +57,26 @@ public sealed class EventBasedEmailDispatchGateway(
                 Error: $"Inline attachments exceed {MaxInlineAttachmentBytes / 1024} KB."
             );
         }
+
+        // Gate de entrega del staff (inactivo + preferencia de correo); los externos no traen usuario.
+        if (
+            request is { RecipientUserId: { } recipientUserId, Category: { } category }
+            && !await deliveryGate.IsAllowedAsync(
+                request.TenantId,
+                recipientUserId,
+                category,
+                NotificationChannel.Email,
+                request.TemplateKey,
+                ct
+            )
+        )
+            return new EmailDispatchResult(
+                Guid.Empty,
+                Guid.Empty,
+                NotificationDispatchAttemptStatus.Suppressed,
+                ProviderMessageId: null,
+                Error: null
+            );
 
         // Idempotencia real (bug encontrado en la verificación E2E de PayFlow): si Wolverine
         // reintenta el consumer que invoca este gateway, sin este chequeo se creaba un

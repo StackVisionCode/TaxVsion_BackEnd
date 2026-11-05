@@ -2,8 +2,10 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.GenerateInvoicePdf;
+using TaxVision.Billing.Application.Invoices.SyncInvoiceStock;
 using TaxVision.Billing.Domain.Invoices;
 using Wolverine;
 
@@ -18,7 +20,13 @@ namespace TaxVision.Billing.Application.Invoices.ReissueInvoice;
 /// motivo que la enlaza al reemplazo, y ambas caras quedan cruzadas y auditadas. El tenant y el actor
 /// salen del JWT.
 /// </summary>
-public sealed record ReissueInvoiceCommand(Guid TenantId, Guid InvoiceId, Guid ActorUserId, string? Reason);
+public sealed record ReissueInvoiceCommand(
+    Guid TenantId,
+    Guid InvoiceId,
+    Guid ActorUserId,
+    string? Reason,
+    bool CanViewAll
+);
 
 public sealed record ReissueInvoiceResult(Guid OriginalInvoiceId, Guid ReplacementInvoiceId, string ReplacementStatus);
 
@@ -27,7 +35,7 @@ public static class ReissueInvoiceHandler
     public static async Task<Result<ReissueInvoiceResult>> Handle(
         ReissueInvoiceCommand command,
         IInvoiceRepository invoices,
-        IInventoryStockClient inventory,
+        IOptions<BillingVisibilityOptions> visibility,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -35,7 +43,8 @@ public static class ReissueInvoiceHandler
         CancellationToken ct
     )
     {
-        var original = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct);
+        var assignedTo = visibility.Value.Enabled && !command.CanViewAll ? command.ActorUserId : (Guid?)null;
+        var original = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct, assignedTo);
         if (original is null)
             return Result.Failure<ReissueInvoiceResult>(
                 new Error("Billing.Invoice.NotFound", "Invoice does not exist.")
@@ -80,12 +89,7 @@ public static class ReissueInvoiceHandler
         if (marked.IsFailure)
             return Result.Failure<ReissueInvoiceResult>(marked.Error);
 
-        // 3) Anular la original: reponer stock ANTES (reconciliación a vacío, idempotente). Un fallo aborta
-        //    toda la reemisión (nada se persiste) para reintentar sin dejar stock/estado a medias.
-        var restocked = await inventory.CommitInvoiceSaleAsync(command.TenantId, original.Id, [], ct);
-        if (restocked.IsFailure)
-            return Result.Failure<ReissueInvoiceResult>(restocked.Error);
-
+        // 3) Anular la original. Su stock se repone después del commit con SyncInvoiceStockCommand.
         var reason = string.IsNullOrWhiteSpace(command.Reason)
             ? "Replaced by a corrected invoice."
             : command.Reason.Trim();
@@ -96,8 +100,8 @@ public static class ReissueInvoiceHandler
         await invoices.AddAsync(replacement, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        // 4) Post-commit (outbox durable): la original anulada revoca su payable/link y regenera su PDF con
-        //    la marca "Void" — igual que una anulación normal. El reemplazo (borrador) no genera artefactos
+        // 4) Post-commit (outbox durable): la original anulada revoca su payable/link, regenera su PDF con
+        //    la marca "Void" y repone su stock — igual que una anulación normal. El reemplazo (borrador) no genera artefactos
         //    hasta que se emita.
         bus.TenantId = command.TenantId.ToString();
         await bus.PublishAsync(
@@ -111,6 +115,7 @@ public static class ReissueInvoiceHandler
             }
         );
         await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, original.Id));
+        await bus.PublishAsync(new SyncInvoiceStockCommand(command.TenantId, original.Id));
 
         return Result.Success(new ReissueInvoiceResult(original.Id, replacement.Id, replacement.Status.ToString()));
     }

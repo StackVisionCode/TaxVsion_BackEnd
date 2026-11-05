@@ -324,6 +324,9 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
 
     private sealed class FakeUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public User? Existing { get; set; }
         public User? Added { get; private set; }
 

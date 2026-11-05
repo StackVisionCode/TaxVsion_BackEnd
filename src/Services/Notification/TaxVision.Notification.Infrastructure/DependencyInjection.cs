@@ -161,6 +161,7 @@ public static class DependencyInjection
             services.AddScoped<IPushSender, LoggingPushSender>();
         }
         services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
+        services.AddScoped<NotificationDeliveryGate>();
         services.AddScoped<NotificationDispatcher>();
         services.AddScoped<ClientFormNotificationSender>();
         services.AddScoped<OffboardingNoticeSender>();

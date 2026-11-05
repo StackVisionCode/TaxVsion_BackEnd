@@ -116,6 +116,9 @@ public sealed class AcceptInvitationHandlerTests
 
     private sealed class FakeUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public User? Added { get; private set; }
 
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<User?>(null);

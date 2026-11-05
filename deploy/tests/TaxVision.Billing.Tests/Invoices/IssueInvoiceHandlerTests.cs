@@ -106,5 +106,12 @@ public sealed class IssueInvoiceHandlerTests
             IReadOnlyList<InvoiceSaleLine> lines,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success());
+
+        public Task<Result> CheckInvoiceSaleAsync(
+            Guid tenantId,
+            Guid invoiceId,
+            IReadOnlyList<InvoiceSaleLine> lines,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Success());
     }
 }

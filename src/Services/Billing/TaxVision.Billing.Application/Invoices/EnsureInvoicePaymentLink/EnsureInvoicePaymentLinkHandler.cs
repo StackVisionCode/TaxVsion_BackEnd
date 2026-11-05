@@ -29,15 +29,14 @@ public static class EnsureInvoicePaymentLinkHandler
         if (invoice is null || invoice.InvoiceNumber is null)
             return; // Borrador borrado o no emitido; nada que asegurar.
 
-        // El cobro es SIEMPRE por el TOTAL de la factura (decisión del negocio): el checkout cobra el importe
-        // completo en un solo pago. Un cambio sobre una factura ya pagada/parcial se maneja por REEMISIÓN
-        // (anular + crear nueva), no re-cobrando el saldo. EnsurePayableAsync es idempotente por invoice.Id.
-        // Nada por cobrar (ya pagada/anulada o total 0) ⇒ no se toca el link.
-        var totalCents = invoice.Total.AmountCents;
-        if (invoice.Status != InvoiceStatus.Paid && invoice.Status != InvoiceStatus.Voided && totalCents > 0)
+        // El enlace cobra el SALDO (AmountDue), no el total: una reemisión con crédito arrastrado o un pago
+        // parcial dejan saldo, y cobrar el total sería doble cobro. EnsurePayableAsync es idempotente por
+        // invoice.Id. Sin saldo o anulada ⇒ no se toca el link.
+        var dueCents = invoice.AmountDue.AmountCents;
+        if (dueCents > 0 && invoice.Status != InvoiceStatus.Voided)
         {
             var ensured = await paymentLinks.EnsurePayableAsync(
-                totalCents,
+                dueCents,
                 invoice.Currency,
                 invoice.Id,
                 command.TenantId,
@@ -56,6 +55,8 @@ public static class EnsureInvoicePaymentLinkHandler
                 ensured.Value.CheckoutUrl,
                 clock.GetUtcNow().UtcDateTime
             );
+            // Saldo confirmado: el job de reconciliación (BIL-3b) compara esta marca con AmountDue.
+            invoice.MarkPaymentLinkSynced(invoice.AmountDue);
             await unitOfWork.SaveChangesAsync(ct);
         }
 

@@ -42,7 +42,8 @@ public static class AdjustStockHandler
             return Result.Failure<StockLevelDto>(InventoryErrors.InvalidQuantity);
 
         var nowUtc = DateTime.UtcNow;
-        var level = await stock.GetByCatalogItemAsync(command.TenantId, command.CatalogItemId, ct);
+        // Con candado: un ajuste o venta concurrente espera y lee la cantidad ya confirmada.
+        var level = await stock.GetByCatalogItemForUpdateAsync(command.TenantId, command.CatalogItemId, ct);
         if (level is null)
         {
             // Primer movimiento de un ítem sin nivel aún: se crea en 0 y se aplica.

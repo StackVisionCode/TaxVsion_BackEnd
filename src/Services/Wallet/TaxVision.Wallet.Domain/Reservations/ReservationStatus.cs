@@ -12,4 +12,7 @@ public enum ReservationStatus
 
     /// <summary>Liquidada: se consumió lo usado y se liberó el remanente. Inmutable.</summary>
     Settled = 2,
+
+    /// <summary>Vencida por TTL sin liquidar: se liberó todo lo apartado. Inmutable.</summary>
+    Expired = 3,
 }

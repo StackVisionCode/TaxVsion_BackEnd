@@ -173,6 +173,7 @@ public sealed class PayPalPaymentAdapterTests
             "CAPTURE-123",
             Money.Create(4900, "USD").Value,
             "Admin approved onboarding refund.",
+            "refund:onboarding:abc",
             CancellationToken.None
         );
 
@@ -187,13 +188,37 @@ public sealed class PayPalPaymentAdapterTests
         Assert.Equal("/v2/payments/captures/CAPTURE-123/refund", refund.Path);
         Assert.Equal("Bearer", refund.AuthorizationScheme);
         Assert.Equal("token_123", refund.AuthorizationParameter);
-        Assert.Equal("paypal-refund-CAPTURE-123-4900-USD", refund.Headers["PayPal-Request-Id"]);
+        Assert.Equal("refund:onboarding:abc", refund.Headers["PayPal-Request-Id"]);
         Assert.Equal("return=representation", refund.Headers["Prefer"]);
 
         using var document = JsonDocument.Parse(refund.Body);
         var amount = document.RootElement.GetProperty("amount");
         Assert.Equal("USD", amount.GetProperty("currency_code").GetString());
         Assert.Equal("49.00", amount.GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task Two_equal_partial_refunds_with_different_requests_use_different_keys()
+    {
+        var handler = new CapturingHttpMessageHandler();
+        handler.EnqueueJson(
+            HttpStatusCode.OK,
+            """{"access_token":"token_123","token_type":"Bearer","expires_in":3600}"""
+        );
+        handler.EnqueueJson(HttpStatusCode.Created, """{"id":"REFUND-1","status":"COMPLETED"}""");
+        handler.EnqueueJson(HttpStatusCode.Created, """{"id":"REFUND-2","status":"COMPLETED"}""");
+        var adapter = CreateAdapter(handler);
+        var amount = Money.Create(1000, "USD").Value;
+
+        await adapter.RefundAsync("CAPTURE-123", amount, "first", "refund:p:0:1000", CancellationToken.None);
+        await adapter.RefundAsync("CAPTURE-123", amount, "second", "refund:p:1000:1000", CancellationToken.None);
+
+        var keys = handler
+            .Requests.Where(r => r.Path.EndsWith("/refund", StringComparison.Ordinal))
+            .Select(r => r.Headers["PayPal-Request-Id"])
+            .ToList();
+        Assert.Equal(2, keys.Count);
+        Assert.NotEqual(keys[0], keys[1]);
     }
 
     [Fact]

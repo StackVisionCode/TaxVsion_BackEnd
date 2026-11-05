@@ -17,6 +17,18 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
             .Include(d => d.Attachments)
             .FirstOrDefaultAsync(d => d.TenantId == tenantId && d.Id == id, ct);
 
+    public Task<Draft?> FindSentByInternetMessageIdAsync(
+        Guid tenantId,
+        string internetMessageId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .Drafts.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                d => d.TenantId == tenantId && d.InternetMessageId == internetMessageId && d.Status == DraftStatus.Sent,
+                ct
+            );
+
     /// <summary>
     /// <see cref="Draft.ReplyContext"/> vive en una columna JSON (plan §23) — no hay forma de
     /// filtrar por <c>ReplyContext.IncomingEmailId</c> en SQL sin recurrir a JSON_VALUE/OPENJSON.

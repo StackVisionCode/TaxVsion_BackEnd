@@ -141,7 +141,7 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
             DateTime cutoffUtc,
             int batchSize,
             CancellationToken ct = default
@@ -286,6 +286,7 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
             string providerChargeReference,
             Money amount,
             string reason,
+            string idempotencyKey,
             CancellationToken ct
         ) => throw new NotSupportedException();
 

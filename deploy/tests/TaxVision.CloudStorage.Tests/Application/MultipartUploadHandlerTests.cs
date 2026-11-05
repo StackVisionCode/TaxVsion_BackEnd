@@ -507,7 +507,7 @@ public sealed class MultipartUploadHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var file = PendingUploadFile(tenantId, sizeBytes: 12L * 1024 * 1024);
-        file.MarkPendingScan(); // ya no esta en PendingUpload
+        file.MarkPendingScan(DateTime.UtcNow); // ya no esta en PendingUpload
         var files = new FakeFileObjectRepository();
         files.Seed(file);
         var multipart = new FakeMultipartUploadStorage();

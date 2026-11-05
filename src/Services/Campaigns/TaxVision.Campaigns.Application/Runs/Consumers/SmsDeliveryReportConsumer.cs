@@ -89,6 +89,36 @@ public static class CampaignSmsDeliveredConsumer
         );
 }
 
+/// <summary>
+/// La conciliación de Sms resuelve como aceptado un envío que había quedado <c>Unknown</c> (proveedor sin DLR,
+/// como Textmaxx o Generic) y solo publica <c>SmsMessageAccepted</c>: la unidad pasa a <c>Accepted</c>.
+/// </summary>
+public static class CampaignSmsAcceptedConsumer
+{
+    public static Task Handle(
+        SmsMessageAcceptedIntegrationEvent evt,
+        ICampaignRunRepository runs,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        ILogger<CampaignRun> logger,
+        CancellationToken ct
+    ) =>
+        SmsDeliveryReport.ApplyAsync(
+            evt.TenantId,
+            evt.SourceContext,
+            DispatchOutcome.Accepted,
+            evt.ProviderMessageId,
+            null,
+            runs,
+            unitOfWork,
+            bus,
+            correlation,
+            logger,
+            ct
+        );
+}
+
 public static class CampaignSmsFailedConsumer
 {
     public static Task Handle(

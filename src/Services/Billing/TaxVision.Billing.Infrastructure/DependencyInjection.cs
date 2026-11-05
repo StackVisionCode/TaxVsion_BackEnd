@@ -16,6 +16,7 @@ using TaxVision.Billing.Infrastructure.Persistence;
 using TaxVision.Billing.Infrastructure.Persistence.Repositories;
 using TaxVision.Billing.Infrastructure.RateLimiting;
 using TaxVision.Billing.Infrastructure.Reconciliation;
+using TaxVision.Billing.Infrastructure.Scheduling;
 using TaxVision.Billing.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Billing.Infrastructure;
@@ -38,8 +39,10 @@ public static class DependencyInjection
         services.AddScoped<ITenantBillingSettingsRepository, TenantBillingSettingsRepository>();
         services.AddScoped<IInvoiceNumberSequenceRepository, InvoiceNumberSequenceRepository>();
         services.AddScoped<IPaymentReceiptRepository, PaymentReceiptRepository>();
+        services.AddScoped<IUnappliedPaymentRepository, UnappliedPaymentRepository>();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<BillingMetrics>();
+        services.AddSingleton<IBillingMetrics>(sp => sp.GetRequiredService<BillingMetrics>());
 
         // H-01 — proyección local de permisos. Una sola instancia scoped bajo los tres puertos: los
         // dos ricos que usan los consumers y el angosto que consulta ProjectionPermissionsSource.
@@ -131,6 +134,14 @@ public static class DependencyInjection
         );
 
         AddRateLimitTierQuotas(services, configuration);
+
+        // BIL-3b — reconciliación periódica del enlace de cobro y del stock.
+        services
+            .AddOptions<InvoiceSyncReconciliationOptions>()
+            .Bind(configuration.GetSection(InvoiceSyncReconciliationOptions.SectionName));
+        services.AddScoped<IInvoiceSyncCandidateQuery, InvoiceSyncCandidateQuery>();
+        services.AddScoped<SqlInvoiceSyncReconciliationLock>();
+        services.AddHostedService<InvoiceSyncReconciliationJob>();
 
         return services;
     }

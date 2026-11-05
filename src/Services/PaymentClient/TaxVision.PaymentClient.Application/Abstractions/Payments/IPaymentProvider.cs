@@ -61,4 +61,12 @@ public interface IPaymentProvider
         ChargeStatusLookup lookup,
         CancellationToken ct
     );
+
+    /// <summary>Cancela un cobro abandonado (D-PCL-1) y devuelve el estado en que quedó. Si el proveedor ya
+    /// lo completó, no cancela y devuelve <c>Succeeded</c>; si sigue en curso, <c>Processing</c>.</summary>
+    Task<Result<WebhookEventPayload>> CancelChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeStatusLookup lookup,
+        CancellationToken ct
+    );
 }

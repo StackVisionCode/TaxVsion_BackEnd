@@ -73,8 +73,15 @@ public sealed class SmsStatusReconciliationService(
     {
         using var scope = services.CreateScope();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-        await bus.InvokeAsync<Result<ReconcileSmsStatusesResponse>>(
-            new ReconcileSmsStatusesCommand(TenantId: null, config.BatchSize, config.MinAgeSeconds),
+        await SmsReconciliation.RunAsync(
+            bus,
+            new ReconcileSmsStatusesCommand(
+                TenantId: null,
+                config.BatchSize,
+                config.MinAgeSeconds,
+                config.PendingTimeoutMinutes,
+                config.OutcomeUnknownTimeoutMinutes
+            ),
             ct
         );
     }

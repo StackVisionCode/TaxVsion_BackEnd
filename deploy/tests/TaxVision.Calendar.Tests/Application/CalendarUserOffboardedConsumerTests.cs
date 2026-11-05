@@ -220,7 +220,10 @@ public sealed class CalendarUserOffboardedConsumerTests
         var request = Assert.Single(bus.Published.OfType<ReminderRequestedIntegrationEvent>());
         Assert.Equal(successor, request.UserId);
         Assert.Equal(AppointmentReminderRequests.Category, request.Category);
-        Assert.Equal(AppointmentReminderRequests.RequestKey(request.TargetId!.Value), request.RequestKey);
+        Assert.Equal(
+            AppointmentReminderRequests.RequestKey(request.TargetId!.Value, withReminder.ReminderGeneration),
+            request.RequestKey
+        );
         Assert.Equal(30, request.LeadMinutes);
     }
 
@@ -304,6 +307,46 @@ public sealed class CalendarUserOffboardedConsumerTests
 
         Assert.Equal(AppointmentStatus.Cancelled, appt.Status);
         Assert.Contains(appt.Attendees, a => a.UserId == leaver); // cancelada = historial
+    }
+
+    [Fact]
+    public async Task CancelledSeriesOfLeaver_ClosesEveryOccurrence()
+    {
+        var leaver = Guid.NewGuid();
+        var monday = ReminderTargetsTestData.Next(DayOfWeek.Monday);
+        var series = ReminderTargetsTestData.Weekly(Tenant, leaver, monday, leadMinutes: 30);
+        var expected = ReminderTargetsTestData.WeeklyTargets(series.Id, monday);
+        var bus = new FakeMessageBus();
+
+        await Run(new FakeAppointments(series), new FakeFeedTokens(), new RecordingCache(), bus, leaver, successor: null);
+
+        Assert.Equal(AppointmentStatus.Cancelled, series.Status);
+        var closed = bus.Published.OfType<ReminderTargetClosedIntegrationEvent>().Select(c => c.TargetId).ToList();
+        Assert.Equal(expected.Count, closed.Count);
+        Assert.Equal(expected, closed.ToHashSet());
+    }
+
+    [Fact]
+    public async Task TwoActiveFeedTokens_BothRevoked()
+    {
+        var leaver = Guid.NewGuid();
+        var (first, _) = CalendarFeedToken.Issue(Tenant, leaver, Now);
+        var (second, _) = CalendarFeedToken.Issue(Tenant, leaver, Now.AddMinutes(1));
+        var cache = new RecordingCache();
+
+        await Run(
+            new FakeAppointments(),
+            new FakeFeedTokens(first, second),
+            cache,
+            new FakeMessageBus(),
+            leaver,
+            successor: null
+        );
+
+        Assert.False(first.IsActive);
+        Assert.False(second.IsActive);
+        Assert.Contains(Convert.ToHexString(first.TokenHash), cache.Removed);
+        Assert.Contains(Convert.ToHexString(second.TokenHash), cache.Removed);
     }
 
     private sealed class FakeAvailability(
@@ -450,15 +493,24 @@ public sealed class CalendarUserOffboardedConsumerTests
         public void Remove(Appointment appointment) => _all.Remove(appointment);
     }
 
-    private sealed class FakeFeedTokens(CalendarFeedToken? seed = null) : ICalendarFeedTokenRepository
+    private sealed class FakeFeedTokens(params CalendarFeedToken[] seed) : ICalendarFeedTokenRepository
     {
-        private readonly List<CalendarFeedToken> _all = seed is null ? [] : [seed];
+        private readonly List<CalendarFeedToken> _all = [.. seed];
 
         public Task<CalendarFeedToken?> FindActiveForUserAsync(
             Guid tenantId,
             Guid userId,
             CancellationToken ct = default
         ) => Task.FromResult(_all.Find(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive));
+
+        public Task<IReadOnlyList<CalendarFeedToken>> ListActiveForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyList<CalendarFeedToken>>(
+                _all.FindAll(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive)
+            );
 
         public Task<CalendarFeedToken?> FindByHashAsync(byte[] tokenHash, CancellationToken ct = default) =>
             Task.FromResult(_all.Find(t => t.TokenHash.AsSpan().SequenceEqual(tokenHash)));

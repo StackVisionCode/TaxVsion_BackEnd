@@ -236,6 +236,9 @@ public sealed class TenantSubscriptionEmailConsumerTests
 
     private sealed class FakeUserRepository(User? admin) : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult(admin);
 

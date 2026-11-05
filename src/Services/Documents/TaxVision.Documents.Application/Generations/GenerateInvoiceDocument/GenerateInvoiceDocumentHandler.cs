@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Documents.Application.Abstractions;
 using TaxVision.Documents.Domain.Generations;
 using TaxVision.Documents.Domain.ValueObjects;
@@ -12,8 +13,9 @@ namespace TaxVision.Documents.Application.Generations.GenerateInvoiceDocument;
 /// <summary>
 /// Camino de request (202): registra la generación en estado Requested de forma idempotente y encola
 /// la ejecución asíncrona (<see cref="ProcessInvoiceGenerationCommand"/>). No renderiza nada acá — la
-/// llamada HTTP devuelve enseguida. El registro y el encolado se commitean juntos (outbox durable de
-/// Wolverine): si la inserción choca contra la unique constraint de idempotencia, no se encola nada.
+/// llamada HTTP devuelve enseguida. El comando va a la cola local durable "documents-generation"
+/// (Program.cs) y sale con la transacción del handler: si la inserción choca contra la unique constraint
+/// de idempotencia, no se encola nada. Misma clave con la generación fallida o atascada: se reencola.
 /// </summary>
 public static class GenerateInvoiceDocumentHandler
 {
@@ -27,6 +29,7 @@ public static class GenerateInvoiceDocumentHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         TimeProvider clock,
+        IOptions<GenerationRetryOptions> retryOptions,
         ILogger<GenerateInvoiceDocumentResult> logger,
         CancellationToken ct
     )
@@ -41,13 +44,37 @@ public static class GenerateInvoiceDocumentHandler
             if (validation.IsFailure)
                 return Result.Failure<GenerateInvoiceDocumentResult>(validation.Error);
 
-            // Idempotencia: una solicitud repetida devuelve la generación existente (mismo 202), sin
-            // volver a encolar el procesamiento.
+            // Idempotencia: una solicitud repetida devuelve la existente; si falló o quedó atascada, se reencola.
+            var nowUtc = clock.GetUtcNow().UtcDateTime;
             var existing = await repository.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
-            if (existing is not null)
+            if (
+                existing is not null
+                && !GenerationRetryPolicy.IsRetryable(existing, nowUtc, retryOptions.Value.StalledAfter)
+            )
                 return Result.Success(new GenerateInvoiceDocumentResult(existing.Id, existing.Status.ToString()));
 
-            var buildResult = BuildGeneration(command, clock.GetUtcNow().UtcDateTime);
+            if (existing is not null)
+            {
+                var retry = GenerationRetryPolicy.Requeue(existing, nowUtc);
+                if (retry.IsFailure)
+                    return Result.Failure<GenerateInvoiceDocumentResult>(retry.Error);
+
+                await unitOfWork.SaveChangesAsync(ct);
+                await bus.PublishAsync(ToProcessCommand(command, existing.Id, correlationId));
+
+                logger.LogInformation(
+                    "Invoice document generation {GenerationId} re-queued for invoice {InvoiceId} (tenant {TenantId}).",
+                    existing.Id,
+                    command.InvoiceId,
+                    command.TenantId
+                );
+
+                return Result.Success(
+                    new GenerateInvoiceDocumentResult(existing.Id, DocumentGenerationStatus.Queued.ToString())
+                );
+            }
+
+            var buildResult = BuildGeneration(command, nowUtc);
             if (buildResult.IsFailure)
                 return Result.Failure<GenerateInvoiceDocumentResult>(buildResult.Error);
 

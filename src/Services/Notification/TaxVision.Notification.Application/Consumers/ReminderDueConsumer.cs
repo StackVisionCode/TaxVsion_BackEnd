@@ -29,8 +29,8 @@ namespace TaxVision.Notification.Application.Consumers;
 /// </para>
 ///
 /// <para>
-/// El gate de <see cref="NotificationCategory.Reminders"/> lo aplica el propio dispatcher, así que
-/// apagar la categoría apaga los dos canales sin tocar este consumer.
+/// El gate de <see cref="NotificationCategory.Reminders"/> lo aplican el dispatcher (in-app y push) y
+/// el gateway de correo, así que apagar un canal lo apaga sin lógica en este consumer.
 /// </para>
 /// </summary>
 public static class ReminderDueConsumer
@@ -129,6 +129,7 @@ public static class ReminderDueConsumer
             )
         ).EnsureRendered("reminder.due.v1");
 
+        // El gateway aplica la preferencia (Reminders, Email) del usuario.
         await gateway.QueueEmailAsync(
             render.ToDispatchRequest(
                 tenantId: evt.TenantId,
@@ -136,7 +137,11 @@ public static class ReminderDueConsumer
                 templateKey: TemplateKey,
                 relatedEventId: evt.EventId,
                 correlationId: correlation.CorrelationId
-            ),
+            ) with
+            {
+                RecipientUserId = evt.UserId,
+                Category = NotificationCategory.Reminders,
+            },
             ct
         );
     }

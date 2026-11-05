@@ -31,6 +31,8 @@ public sealed class CloudStorageApiFactory : WebApplicationFactory<Program>
                         ["Jwt:PublicKeyPath"] = string.Empty,
                         ["Jwt:PublicKeyPem"] = string.Empty,
                         ["Jwt:Secret"] = JwtSecret,
+                        // El host de prueba comparte la base local: no debe rescatar archivos reales.
+                        ["CloudStorage:StuckScanRescueEnabled"] = "false",
                     }
                 )
         );

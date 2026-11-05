@@ -1,27 +1,27 @@
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Campaigns.Application.Runs;
-using TaxVision.Campaigns.Application.Runs.Commands;
+using TaxVision.Campaigns.Application.Scheduling;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
+using TaxVision.Campaigns.Application.Scheduling.Commands;
 using Wolverine;
 
 namespace TaxVision.Campaigns.Infrastructure.Jobs;
 
 /// <summary>
 /// Scheduler durable de campañas (SendMode Scheduled/Recurring). Cada tick reclama con <b>lease</b> los
-/// schedules vencidos (no poll-sin-lease, anti-patrón legado), dispara un <c>CampaignRun</c> nuevo por
-/// cada uno vía <see cref="StartCampaignRunFromAudienceCommand"/> (audiencia = ContactLists del schedule)
-/// y avanza el schedule (OneTime→Completed, Recurring→próximo slot con coalescing de misfires). El
+/// schedules vencidos y dispara cada uno con <see cref="FireCampaignScheduleCommand"/>, que crea el run y
+/// avanza el agendado en una sola transacción con outbox. El job no guarda ni publica por su cuenta. El
 /// <b>solape</b> se evita porque el claim excluye schedules con <c>ActiveRunId</c>, que se libera al
-/// consumir <c>run.completed</c>. SIN dinero (el cobro previo lo hará el PEP externo, diferido).
+/// consumir <c>run.completed</c>.
 /// </summary>
 public sealed class CampaignSchedulerService(IServiceProvider services, ILogger<CampaignSchedulerService> logger)
     : BackgroundService
 {
-    private static readonly Guid SchedulerActor = new("5c4ed011-0000-0000-0000-0000005c4ed0"); // "scheduler" system actor
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
     private const int LeaseSeconds = 120;
     private const int BatchSize = 20;
@@ -69,58 +69,66 @@ public sealed class CampaignSchedulerService(IServiceProvider services, ILogger<
         using var scope = services.CreateScope();
         var schedules = scope.ServiceProvider.GetRequiredService<ICampaignScheduleRepository>();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<CampaignSchedulerOptions>>().Value;
 
-        var now = DateTime.UtcNow;
-        var due = await schedules.ClaimDueAsync(now, LeaseSeconds, BatchSize, ct);
-        if (due.Count == 0)
-            return;
-
-        foreach (var schedule in due)
+        if (options.HealStuckSchedules)
         {
-            var fireTime = DateTime.UtcNow;
-            var result = await bus.InvokeAsync<Result<CampaignRunResponse>>(
-                new StartCampaignRunFromAudienceCommand(
-                    schedule.TenantId,
-                    schedule.CampaignId,
-                    // A1 — se atribuye a quien agendó (o al sucesor que lo heredó), no al actor de sistema, y
-                    // sobre todo se hereda SU visibilidad: si solo ve sus clientes asignados, el disparo tampoco.
-                    schedule.EffectiveRunAsUserId
-                        ?? SchedulerActor,
-                    schedule.ContactListIds(),
-                    [],
-                    TriggerKind: "Scheduled",
-                    IncludeCustomers: schedule.IncludeCustomers,
-                    CanViewAllCustomers: schedule.CreatorCanViewAllCustomers,
-                    CustomerIds: schedule.CustomerIds()
-                ),
-                ct
-            );
-
-            if (result.IsFailure)
-            {
-                // No pudo disparar (p.ej. sin audiencia resoluble). Avanza igual para no reintentar en bucle;
-                // el lease expira solo si no guardamos, así que registramos y seguimos.
+            var healed = await schedules.ReleaseStuckAsync(DateTime.UtcNow, options.HealGrace, ct);
+            if (healed.Released + healed.Paused > 0)
                 logger.LogWarning(
-                    "Schedule {ScheduleId} (campaign {CampaignId}) fire failed: {Error}. Advancing.",
-                    schedule.Id,
-                    schedule.CampaignId,
-                    result.Error.Code
+                    "Healed stuck schedules: {Released} released, {Paused} paused (slot already passed).",
+                    healed.Released,
+                    healed.Paused
                 );
-                schedule.MarkFired(Guid.Empty, fireTime);
-                await unitOfWork.SaveChangesAsync(ct);
-                continue;
-            }
+        }
 
-            schedule.MarkFired(result.Value.Id, fireTime);
-            await unitOfWork.SaveChangesAsync(ct);
-            logger.LogInformation(
-                "Fired schedule {ScheduleId} (campaign {CampaignId}) → run {RunId}; next={Next:o}.",
-                schedule.Id,
-                schedule.CampaignId,
-                result.Value.Id,
-                schedule.NextFireAtUtc
-            );
+        var due = await schedules.ClaimDueAsync(DateTime.UtcNow, LeaseSeconds, BatchSize, ct);
+        foreach (var claimed in due)
+        {
+            // Lease vencido mientras se disparaban los anteriores: lo toma el próximo tick.
+            if (claimed.LeasedUntilUtc <= DateTime.UtcNow)
+                continue;
+
+            // Un error en un agendado no corta el lote.
+            try
+            {
+                await bus.InvokeAsync<Result<CampaignRunResponse>>(
+                    new FireCampaignScheduleCommand(
+                        claimed.TenantId,
+                        claimed.Id,
+                        claimed.LeaseToken,
+                        claimed.NextFireAtUtc
+                    ),
+                    ct
+                );
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (CustomerAudienceUnavailableException)
+            {
+                // Transitorio: rollback; el lease vence y el próximo claim reintenta el slot.
+                logger.LogWarning("Schedule {ScheduleId} waits for the client directory; will retry.", claimed.Id);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // El agendado cambió mientras se disparaba (pausa, cancelación): rollback, nada salió.
+                logger.LogInformation("Schedule {ScheduleId} changed while firing; skipped.", claimed.Id);
+            }
+            catch (Exception ex) when (ex is ConflictException or DbUpdateException)
+            {
+                // Otro proceso ya creó el run de este slot (clave primaria / índice único).
+                logger.LogInformation(
+                    "Schedule {ScheduleId} slot {Slot:o} already fired by another process.",
+                    claimed.Id,
+                    claimed.NextFireAtUtc
+                );
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Schedule {ScheduleId} fire failed; the lease will expire and retry.", claimed.Id);
+            }
         }
     }
 }

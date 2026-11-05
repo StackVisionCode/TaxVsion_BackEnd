@@ -1,4 +1,5 @@
 ﻿using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
@@ -81,10 +82,10 @@ public sealed class ProcessTenantWebhookHandlerTests
     }
 
     [Fact]
-    public async Task Amount_mismatch_on_a_success_event_is_not_applied_and_the_event_is_marked_stale()
+    public async Task SucceededWebhook_AmountMismatch_MarksNeedsReview()
     {
         // F2: el pago espera 4900 USD; el provider reporta solo 100. Aunque el evento esté firmado,
-        // NO debe marcarse Succeeded por un importe distinto — queda Stale y el pago sin tocar.
+        // NO debe marcarse Succeeded por un importe distinto — queda para revisión y el pago sin tocar.
         var payment = CreateProcessingPayment();
         var provider = new FakePaymentProvider(
             new WebhookVerificationResult("evt_new", "payment_intent.succeeded", "{}"),
@@ -99,12 +100,81 @@ public sealed class ProcessTenantWebhookHandlerTests
             )
         );
         var webhooks = new FakeWebhookEventRepository();
+        var metrics = new FakePaymentClientMetrics();
 
-        var result = await InvokeAsync(payment, provider, webhooks);
+        var result = await InvokeAsync(payment, provider, webhooks, metrics: metrics);
 
         Assert.True(result.IsSuccess); // no reintenta en bucle: se registra y no se aplica
         Assert.Equal(PaymentStatus.Processing, payment.Status); // NO quedó Succeeded
+        Assert.Equal(WebhookEventStatus.NeedsReview, webhooks.Added!.Status);
+        Assert.Equal([("Stripe", "WebhookEvent.AmountMismatch")], metrics.NeedsReview);
+    }
+
+    [Fact]
+    public async Task SucceededWebhook_OnFailedPayment_MarksNeedsReviewAndRecordsMetric()
+    {
+        var payment = CreateProcessingPayment();
+        payment.MarkFailed("card_declined", "Declined.", willRetry: false, nextRetryAtUtc: null, Guid.Empty, Now());
+        var webhooks = new FakeWebhookEventRepository();
+        var metrics = new FakePaymentClientMetrics();
+        var audit = new FakePaymentAuditLogWriter();
+        var bus = new FakeMessageBus();
+
+        var result = await InvokeAsync(
+            payment,
+            SucceededProvider(),
+            webhooks,
+            bus: bus,
+            audit: audit,
+            metrics: metrics
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Failed, payment.Status);
+        Assert.Equal(WebhookEventStatus.NeedsReview, webhooks.Added!.Status);
+        Assert.Equal([("Stripe", "TenantPayment.InvalidTransition")], metrics.NeedsReview);
+        Assert.Contains(
+            audit.Entries,
+            entry =>
+                entry.AggregateId == payment.Id
+                && entry.Action == PaymentAuditAction.TenantPaymentProviderSuccessNeedsReview
+        );
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task SucceededWebhook_OnAlreadySucceededPayment_StaysStale()
+    {
+        // Un éxito repetido no inunda la revisión.
+        var payment = CreateProcessingPayment();
+        payment.MarkSucceeded(Now(), Guid.Empty);
+        var webhooks = new FakeWebhookEventRepository();
+        var metrics = new FakePaymentClientMetrics();
+
+        await InvokeAsync(payment, SucceededProvider(), webhooks, metrics: metrics);
+
         Assert.Equal(WebhookEventStatus.Stale, webhooks.Added!.Status);
+        Assert.Empty(metrics.NeedsReview);
+    }
+
+    [Fact]
+    public async Task RedeliveredNeedsReviewEvent_IsSkipped()
+    {
+        var payment = CreateProcessingPayment();
+        var existing = WebhookEvent
+            .Receive(TenantId, PaymentProviderCode.Stripe, "evt_3ds", "payment_intent.succeeded", "{}", "sig", Now())
+            .Value;
+        existing.MarkProcessing(Now());
+        existing.MarkNeedsReview(payment.Id, "WebhookEvent.AmountMismatch", Now());
+        var provider = (FakePaymentProvider)SucceededProvider();
+        var webhooks = new FakeWebhookEventRepository(existing);
+
+        var result = await InvokeAsync(payment, provider, webhooks);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(provider.ParseWasCalled);
+        Assert.Null(webhooks.Added);
+        Assert.Equal(WebhookEventStatus.NeedsReview, existing.Status);
     }
 
     [Fact]
@@ -153,12 +223,70 @@ public sealed class ProcessTenantWebhookHandlerTests
         Assert.Equal(PaymentStatus.Processing, payment.Status);
     }
 
+    [Fact]
+    public async Task SucceededWebhook_AfterLinkExpired_PublishesTenantPaymentSucceeded()
+    {
+        // El link venció durante el 3DS: el cobro llegó igual y la factura tiene que enterarse.
+        var payment = CreateRequiresActionPayment();
+        var link = CreateLinkFor(payment);
+        link.Expire(Now());
+        var bus = new FakeMessageBus();
+
+        var result = await InvokeAsync(
+            payment,
+            SucceededProvider(),
+            new FakeWebhookEventRepository(),
+            link: link,
+            bus: bus
+        );
+
+        Assert.True(result.IsSuccess);
+        var paid = Assert.Single(bus.Published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        Assert.Equal(payment.Id, paid.TenantPaymentId);
+        Assert.Equal("inv-1", paid.ExternalReferenceId);
+        Assert.Equal(PaymentLinkStatus.Used, link.Status);
+    }
+
+    [Fact]
+    public async Task SucceededWebhook_AfterLinkRevoked_PublishesSignalAndLinkStaysRevoked()
+    {
+        // Factura anulada mientras se pagaba: la señal sale igual y Billing decide (BIL-6).
+        var payment = CreateRequiresActionPayment();
+        var link = CreateLinkFor(payment);
+        link.Revoke("Invoice voided", Now());
+        var bus = new FakeMessageBus();
+        var audit = new FakePaymentAuditLogWriter();
+
+        var result = await InvokeAsync(
+            payment,
+            SucceededProvider(),
+            new FakeWebhookEventRepository(),
+            link: link,
+            bus: bus,
+            audit: audit
+        );
+
+        Assert.True(result.IsSuccess);
+        var paid = Assert.Single(bus.Published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        Assert.Equal(payment.Id, paid.TenantPaymentId);
+        Assert.Empty(bus.Published.OfType<PaymentLinkUsedIntegrationEvent>());
+        Assert.Equal(PaymentLinkStatus.Revoked, link.Status);
+        Assert.Contains(
+            audit.Entries,
+            entry => entry.AggregateId == link.Id && entry.Reason == "PaymentLink.ClosedBeforePayment"
+        );
+    }
+
     // Arma el handler con todos los fakes; por defecto el config lleva un WebhookSecretEncrypted válido.
     private static Task<Result> InvokeAsync(
         TenantPayment payment,
         IPaymentProvider provider,
         IWebhookEventRepository webhooks,
-        TenantPaymentConfig? config = null
+        TenantPaymentConfig? config = null,
+        PaymentLink? link = null,
+        IMessageBus? bus = null,
+        IPaymentAuditLogWriter? audit = null,
+        IPaymentClientMetrics? metrics = null
     ) =>
         ProcessTenantWebhookHandler.Handle(
             new ProcessTenantWebhookCommand(
@@ -172,15 +300,46 @@ public sealed class ProcessTenantWebhookHandlerTests
             new FakeSecretProtector(),
             webhooks,
             new FakeTenantPaymentRepository(payment),
-            new FakePaymentLinkRepository(),
-            new FakePaymentAuditLogWriter(),
+            new FakePaymentLinkRepository(link),
+            audit ?? new FakePaymentAuditLogWriter(),
             new FakeUnitOfWork(),
-            new FakeMessageBus(),
-            new FakePaymentClientMetrics(),
+            bus ?? new FakeMessageBus(),
+            metrics ?? new FakePaymentClientMetrics(),
             new FakeCorrelationContext(),
             NoOpLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
+
+    private static IPaymentProvider SucceededProvider() =>
+        new FakePaymentProvider(
+            new WebhookVerificationResult("evt_3ds", "payment_intent.succeeded", "{}"),
+            new WebhookEventPayload("pi_123", PaymentStatus.Succeeded, null, null, null)
+        );
+
+    private static TenantPayment CreateRequiresActionPayment()
+    {
+        var payment = CreateProcessingPayment();
+        payment.MarkRequiresAction("redirect_to_url", "https://3ds.test", Guid.Empty, Now());
+        return payment;
+    }
+
+    private static PaymentLink CreateLinkFor(TenantPayment payment)
+    {
+        var link = PaymentLink
+            .Create(
+                TenantId,
+                null,
+                Money.Create(4900, "USD").Value,
+                PaymentPurpose.Create(PaymentPurposeKind.InvoicePayment, "inv-1").Value,
+                PaymentLinkToken.Generate(),
+                TimeSpan.FromDays(7),
+                Guid.Empty,
+                Now()
+            )
+            .Value;
+        link.AttachPaymentAttempt(payment.Id, null, Now());
+        return link;
+    }
 
     // TenantPayment en Processing con Amount = 4900 USD y ExternalChargeReference.Value == "pi_123".
     private static TenantPayment CreateProcessingPayment()
@@ -273,6 +432,12 @@ file sealed class FakePaymentProvider(WebhookVerificationResult verification, We
         CancellationToken ct
     ) => throw new NotSupportedException();
 
+    public Task<Result<WebhookEventPayload>> CancelChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeStatusLookup lookup,
+        CancellationToken ct
+    ) => throw new NotSupportedException();
+
     public PaymentProviderCode Code => PaymentProviderCode.Stripe;
 
     public PaymentProviderDescriptor Descriptor { get; } =
@@ -325,11 +490,12 @@ file sealed class FakePaymentAdapterFactory(IPaymentProvider provider) : IPaymen
     public PaymentProviderDescriptor? FindDescriptor(PaymentProviderCode code) => provider.Descriptor;
 }
 
-file sealed class FakePaymentLinkRepository : IPaymentLinkRepository
+file sealed class FakePaymentLinkRepository(PaymentLink? link = null) : IPaymentLinkRepository
 {
     public Task<bool> AnyUsedForExternalReferenceAsync(
         Guid tenantId,
         string externalReferenceId,
+        DateTime? usedSinceUtc = null,
         CancellationToken ct = default
     ) => Task.FromResult(false);
 
@@ -340,7 +506,7 @@ file sealed class FakePaymentLinkRepository : IPaymentLinkRepository
         throw new NotImplementedException();
 
     public Task<PaymentLink?> GetByRelatedTenantPaymentIdAsync(Guid tenantPaymentId, CancellationToken ct = default) =>
-        Task.FromResult<PaymentLink?>(null);
+        Task.FromResult(link?.RelatedTenantPaymentId == tenantPaymentId ? link : null);
 
     public Task<PaymentLink?> GetActiveByExternalReferenceAsync(
         Guid tenantId,
@@ -433,6 +599,24 @@ file sealed class FakeTenantPaymentRepository(TenantPayment payment) : ITenantPa
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
+    public Task<bool> AnyInProgressForReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
+    public Task<bool> AnySucceededForReferenceSinceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        DateTime sinceUtc,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
+    public Task<IReadOnlyList<TenantPayment>> GetByIdsAcrossTenantsAsync(
+        IReadOnlyCollection<Guid> tenantPaymentIds,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
     public Task AddAsync(TenantPayment payment, CancellationToken ct = default) => throw new NotImplementedException();
 }
 
@@ -474,7 +658,13 @@ file sealed class FakeTenantPaymentConfigRepository(TenantPaymentConfig config) 
 
 file sealed class FakePaymentAuditLogWriter : IPaymentAuditLogWriter
 {
-    public Task AppendAsync(PaymentAuditEntry entry, CancellationToken ct = default) => Task.CompletedTask;
+    public List<PaymentAuditEntry> Entries { get; } = [];
+
+    public Task AppendAsync(PaymentAuditEntry entry, CancellationToken ct = default)
+    {
+        Entries.Add(entry);
+        return Task.CompletedTask;
+    }
 }
 
 file sealed class FakeUnitOfWork : IUnitOfWork
@@ -515,6 +705,10 @@ file sealed class FakePaymentClientMetrics : IPaymentClientMetrics
     public void RecordWebhookDuplicate(string provider) { }
 
     public void RecordWebhookSignatureFailed(string provider) { }
+
+    public List<(string Provider, string Reason)> NeedsReview { get; } = [];
+
+    public void RecordWebhookNeedsReview(string provider, string reason) => NeedsReview.Add((provider, reason));
 }
 
 file sealed class NoOpLogger<T> : ILogger<T>

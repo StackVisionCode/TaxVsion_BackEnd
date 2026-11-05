@@ -13,9 +13,15 @@ internal sealed class FakeEmailThreadRepository : IEmailThreadRepository
 
     public Task<EmailThread?> FindByProviderThreadIdAsync(
         Guid tenantId,
+        Guid customerId,
         string providerThreadId,
         CancellationToken ct = default
-    ) => Task.FromResult(_store.FirstOrDefault(x => x.TenantId == tenantId && x.ProviderThreadId == providerThreadId));
+    ) =>
+        Task.FromResult(
+            _store.FirstOrDefault(x =>
+                x.TenantId == tenantId && x.CustomerId == customerId && x.ProviderThreadId == providerThreadId
+            )
+        );
 
     public Task<EmailThread?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         Task.FromResult(_store.FirstOrDefault(x => x.TenantId == tenantId && x.Id == id));

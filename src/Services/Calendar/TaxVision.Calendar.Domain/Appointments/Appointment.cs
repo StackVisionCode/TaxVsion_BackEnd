@@ -63,6 +63,15 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     /// </summary>
     public int? ReminderLeadMinutes { get; private set; }
 
+    /// <summary>Tope del aviso: una semana antes.</summary>
+    public const int MaxReminderLeadMinutes = 7 * 24 * 60;
+
+    /// <summary>
+    /// Entra en la clave de los pedidos a Reminder. Sube cuando ningún aviso pedido sigue vigente,
+    /// para que volver a pedir un objetivo ya cerrado no choque con su clave vieja.
+    /// </summary>
+    public int ReminderGeneration { get; private set; }
+
     public string? CancellationReason { get; private set; }
 
     public DateTime CreatedAtUtc { get; private set; }
@@ -301,7 +310,17 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
-    public void RequestReminder(int? leadMinutes) => ReminderLeadMinutes = leadMinutes is > 0 ? leadMinutes : null;
+    /// <summary>Cero o null quita el aviso.</summary>
+    public Result RequestReminder(int? leadMinutes)
+    {
+        if (leadMinutes > MaxReminderLeadMinutes)
+            return Result.Failure(AppointmentErrors.ReminderLeadTooLong);
+
+        ReminderLeadMinutes = leadMinutes is > 0 ? leadMinutes : null;
+        return Result.Success();
+    }
+
+    public void StartNewReminderGeneration() => ReminderGeneration++;
 
     /// <summary>La sala llega por evento desde Communication; si divergen, manda la cita.</summary>
     public void LinkMeeting(Guid meetingId, string shortCode)
@@ -484,6 +503,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             CustomerId = CustomerId,
             TaxYear = TaxYear,
             IsVirtual = IsVirtual,
+            ReminderLeadMinutes = ReminderLeadMinutes,
             // No hereda MeetingId ni ShortCode: es otra serie y necesita su propia sala.
             CreatedAtUtc = nowUtc,
         };

@@ -193,7 +193,7 @@ public sealed class Reminder : AggregateRoot, IHasOwner
     /// se transiciona a <c>Missed</c>. Avisar de algo cuya hora ya pasó es ruido.
     /// </para>
     /// </summary>
-    public Result RescheduleToNewAnchor(DateTime newAnchorUtc, DateTime nowUtc)
+    public Result RescheduleToNewAnchor(DateTime newAnchorUtc, DateTime nowUtc, int? newLeadMinutes = null)
     {
         if (Status is not (ReminderStatus.Scheduled or ReminderStatus.Snoozed))
             return Result.Failure(ReminderErrors.InvalidTransition(Status, nameof(RescheduleToNewAnchor)));
@@ -201,7 +201,7 @@ public sealed class Reminder : AggregateRoot, IHasOwner
         if (!Schedule.IsAnchored)
             return Result.Success();
 
-        var recalculated = Schedule.WithNewAnchor(newAnchorUtc, nowUtc);
+        var recalculated = Schedule.WithNewAnchor(newAnchorUtc, nowUtc, newLeadMinutes);
         if (recalculated.IsFailure)
             return Result.Failure(recalculated.Error);
 

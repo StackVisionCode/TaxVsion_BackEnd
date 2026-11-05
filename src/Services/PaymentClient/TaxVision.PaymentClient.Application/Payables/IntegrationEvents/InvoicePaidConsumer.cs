@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.PaymentClient.Application.Payables.IntegrationEvents;
 
@@ -14,6 +15,7 @@ public static class InvoicePaidConsumer
 {
     public static async Task Handle(
         InvoicePaidIntegrationEvent evt,
+        Envelope envelope,
         IPayableReferenceRepository payables,
         IPaymentLinkRepository links,
         IUnitOfWork unitOfWork,
@@ -39,6 +41,23 @@ public static class InvoicePaidConsumer
             if (payable is null)
             {
                 logger.LogInformation("Invoice {InvoiceId} paid: no payable to settle.", evt.InvoiceId);
+                return;
+            }
+
+            // Publicado antes del último saldo que mandó Billing (p. ej. la factura se editó al alza después):
+            // es viejo y no puede cerrar el saldo vigente. Sin fecha de envío se liquida (PCL-14).
+            if (
+                envelope.SentAt != default
+                && payable.AmountUpdatedAtUtc is { } amountUpdatedAtUtc
+                && envelope.SentAt.UtcDateTime < amountUpdatedAtUtc
+            )
+            {
+                logger.LogInformation(
+                    "Invoice {InvoiceId} paid event sent at {SentAt} predates the balance of {AmountUpdatedAt}; ignored.",
+                    evt.InvoiceId,
+                    envelope.SentAt,
+                    amountUpdatedAtUtc
+                );
                 return;
             }
 

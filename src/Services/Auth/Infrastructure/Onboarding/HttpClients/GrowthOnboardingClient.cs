@@ -287,6 +287,10 @@ public sealed class GrowthOnboardingClient(
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException) { }
 
+        // Commit tardío en revisión: el finalizador lo distingue por el código de Growth.
+        if (error?.Code == GrowthOnboardingErrors.LateCommitPendingReview)
+            return new Error(error.Code, error.Message ?? "The late commit is pending manual review in Growth.");
+
         // Código de negocio "no encontrado/no aplica" → error específico para reportarlo al usuario.
         if (message.StatusCode == HttpStatusCode.NotFound || (error?.Code?.Contains("NotFound") ?? false))
             return new Error($"{prefix}.CodeNotFound", error?.Message ?? "The code was not found or does not apply.");

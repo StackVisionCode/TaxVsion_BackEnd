@@ -34,6 +34,24 @@ public sealed class ReminderTargetConsumerTests
         Assert.Single(scheduler.Scheduled);
     }
 
+    /// <summary>CAL-7: misma ancla y minutos nuevos; el aviso se recalcula con el ancla vigente.</summary>
+    [Fact]
+    public async Task TargetMoved_WithLeadMinutes_RecalculatesFireAtFromCurrentAnchor()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var nowUtc = DateTime.UtcNow;
+        var anchor = nowUtc.AddHours(5);
+        var reminder = Seed(reminders, ReminderSchedule.Anchored(anchor, 30, nowUtc).Value);
+
+        await MoveTarget(reminders, scheduler, anchor, leadMinutes: 60);
+
+        Assert.Equal(anchor.AddMinutes(-60), reminder.Schedule.FireAtUtc);
+        Assert.Equal(60, reminder.Schedule.LeadMinutes);
+        Assert.Equal(anchor, reminder.Schedule.AnchorAtUtc);
+        Assert.Single(scheduler.Scheduled);
+    }
+
     /// <summary>«El jueves a las 9 pase lo que pase»: el evento se ignora, y eso es éxito, no error.</summary>
     [Fact]
     public async Task TargetMoved_SobreUnAbsoluto_NoCambiaNadaNiTocaElScheduler()
@@ -177,7 +195,8 @@ public sealed class ReminderTargetConsumerTests
         FakeReminderRepository reminders,
         RecordingScheduler scheduler,
         DateTime newAnchorAtUtc,
-        RecordingReminderMetrics? metrics = null
+        RecordingReminderMetrics? metrics = null,
+        int? leadMinutes = null
     ) =>
         ReminderTargetMovedConsumer.Handle(
             new ReminderTargetMovedIntegrationEvent
@@ -186,6 +205,7 @@ public sealed class ReminderTargetConsumerTests
                 Category = nameof(ReminderCategory.Task),
                 TargetId = TargetId,
                 NewAnchorAtUtc = newAnchorAtUtc,
+                LeadMinutes = leadMinutes,
             },
             reminders,
             scheduler,

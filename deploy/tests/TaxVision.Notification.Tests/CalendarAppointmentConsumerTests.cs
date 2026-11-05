@@ -165,8 +165,10 @@ public sealed class CalendarAppointmentConsumerTests
                 new NoOpPushSender(),
                 new NoOpPushDeviceTokenRepository(),
                 new NoOpNotificationLogRepository(),
-                new SwitchablePreferences(preferencesEnabled),
-                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
+                TestDeliveryGates.For(
+                    new SwitchablePreferences(preferencesEnabled),
+                    new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
+                ),
                 new CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),

@@ -99,9 +99,11 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     )
     {
+        // Intellipay no acepta clave de idempotencia en el reembolso (SupportsIdempotencyKeys = false).
         var response = await gateway.RefundAsync(
             new IntellipayRefundRequest(
                 TransactionId: providerChargeReference,

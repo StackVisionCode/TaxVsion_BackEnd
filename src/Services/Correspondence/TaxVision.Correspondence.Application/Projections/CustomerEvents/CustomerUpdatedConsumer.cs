@@ -63,16 +63,15 @@ public static class CustomerUpdatedConsumer
             if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
             {
                 logger.LogWarning(
-                    "CustomerUpdated event {EventId}: email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping back-create.",
+                    "CustomerUpdated event {EventId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping back-create.",
                     evt.EventId,
-                    email.NormalizedValue,
                     evt.CustomerId,
                     emailOwner.CustomerId
                 );
                 return;
             }
 
-            var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email);
+            var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email, evt.OccurredOn);
             await repository.AddAsync(projection, ct);
             logger.LogInformation(
                 "CustomerEmailAddress back-created for {CustomerId} from Updated event.",
@@ -87,9 +86,8 @@ public static class CustomerUpdatedConsumer
             if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
             {
                 logger.LogWarning(
-                    "CustomerUpdated event {EventId}: new email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping email sync.",
+                    "CustomerUpdated event {EventId}: new email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping email sync.",
                     evt.EventId,
-                    email.NormalizedValue,
                     evt.CustomerId,
                     emailOwner.CustomerId
                 );
@@ -97,7 +95,15 @@ public static class CustomerUpdatedConsumer
             }
         }
 
-        existing.UpdateEmail(email);
+        if (!existing.UpdateEmail(email, evt.OccurredOn))
+        {
+            logger.LogDebug(
+                "CustomerUpdated event {EventId} for customer {CustomerId} is older than the projection; ignored.",
+                evt.EventId,
+                evt.CustomerId
+            );
+            return;
+        }
         logger.LogInformation("CustomerEmailAddress synced for {CustomerId} from Updated event.", evt.CustomerId);
     }
 }

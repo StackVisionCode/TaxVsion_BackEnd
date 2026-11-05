@@ -23,6 +23,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using StackExchange.Redis;
 using TaxVision.Documents.Api.Common;
+using TaxVision.Documents.Api.Messaging;
 using TaxVision.Documents.Infrastructure;
 using TaxVision.Documents.Infrastructure.Observability;
 using TaxVision.Documents.Infrastructure.Persistence;
@@ -144,6 +145,9 @@ builder.Host.UseWolverine(options =>
 
     // P-11 — comando punto a punto de Tasks: el Submission Summary de un formulario completado.
     options.ListenToRabbitQueue("documents-client-form-summary").UseDurableInbox();
+
+    // Comandos Process*Generation: cola local durable, sobreviven a un reinicio (DOC-1).
+    options.ConfigureGenerationQueue();
 
     // Eventos que Documents publica al bus compartido (guardrail #13: routing explícito por tipo).
     options.PublishMessage<DocumentGenerationStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");

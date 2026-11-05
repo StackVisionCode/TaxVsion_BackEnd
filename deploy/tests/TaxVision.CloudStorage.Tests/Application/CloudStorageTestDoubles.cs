@@ -32,6 +32,19 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
     public Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>
         Task.FromResult(_byId.TryGetValue(fileId, out var file) && file.TenantId == tenantId ? file : null);
 
+    public Task<IReadOnlyList<QuotaFootprintInput>> ListQuotaInputsAsync(Guid tenantId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<QuotaFootprintInput>>(
+            _byId
+                .Values.Where(file => file.TenantId == tenantId)
+                .Select(file => new QuotaFootprintInput(
+                    file.Status,
+                    file.StatusBeforeSoftDelete,
+                    file.ScanReport,
+                    file.SizeBytes
+                ))
+                .ToList()
+        );
+
     public int LockedReads { get; private set; }
 
     public Task<FileObject?> GetForUpdateAsync(Guid tenantId, Guid fileId, CancellationToken ct)
@@ -82,6 +95,18 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
 
     public Task<IReadOnlyList<FileObject>> ListExpiredUploadsAsync(DateTime nowUtc, int take, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<FileObject>>([]);
+
+    public Task<IReadOnlyList<FileObject>> ListStuckScansAsync(DateTime olderThanUtc, int take, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<FileObject>>(
+            _byId
+                .Values.Where(file =>
+                    file.Status is FileStatus.PendingScan or FileStatus.Scanning
+                    && (file.ScanQueuedAtUtc ?? file.CreatedAtUtc) <= olderThanUtc
+                )
+                .OrderBy(file => file.ScanQueuedAtUtc ?? file.CreatedAtUtc)
+                .Take(take)
+                .ToList()
+        );
 
     public Task<IReadOnlyList<Guid>> DistinctTenantsWithUnfiledFilesAsync(
         IReadOnlyCollection<FolderType> navigableTypes,
@@ -516,6 +541,8 @@ internal sealed class FakeStorageLimitRepository : IStorageLimitRepository
 
     public Task<TenantStorageLimit?> GetAsync(Guid tenantId, CancellationToken ct) =>
         Task.FromResult(_byTenant.GetValueOrDefault(tenantId));
+
+    public Task<TenantStorageLimit?> GetForUpdateAsync(Guid tenantId, CancellationToken ct) => GetAsync(tenantId, ct);
 }
 
 /// <summary>Fase C3 — resuelve por hash igual que la implementacion real (byte[] no tiene equality estructural, se compara con SequenceEqual).</summary>
@@ -758,9 +785,13 @@ internal sealed class FakeObjectStorage : IObjectStorage
         await destination.WriteAsync(DownloadContent, ct);
     }
 
+    /// <summary>Copias y borrados en orden ("copy:origen->destino", "delete:bucket").</summary>
+    public List<string> Operations { get; } = [];
+
     public Task CopyAsync(string sourceBucket, string objectKey, string destinationBucket, CancellationToken ct)
     {
         Copied.Add((sourceBucket, objectKey, destinationBucket, objectKey));
+        Operations.Add($"copy:{sourceBucket}->{destinationBucket}");
         return Task.CompletedTask;
     }
 
@@ -780,12 +811,14 @@ internal sealed class FakeObjectStorage : IObjectStorage
     )
     {
         Copied.Add((sourceBucket, sourceObjectKey, destinationBucket, destinationObjectKey));
+        Operations.Add($"copy:{sourceBucket}->{destinationBucket}");
         return Task.CompletedTask;
     }
 
     public Task DeleteAsync(string bucket, string objectKey, CancellationToken ct)
     {
         Deleted.Add((bucket, objectKey));
+        Operations.Add($"delete:{bucket}");
         return Task.CompletedTask;
     }
 
@@ -913,9 +946,14 @@ internal sealed class FakeUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
     /// </summary>
     public bool ThrowConflictOnNextSave { get; set; }
 
+    /// <summary>Simula que el guardado falla cuando se cumple la condición (p. ej. el último SaveChanges).</summary>
+    public Func<bool>? FailSaveWhen { get; set; }
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         SaveChangesCallCount++;
+        if (FailSaveWhen?.Invoke() == true)
+            throw new InvalidOperationException("Simulated save failure.");
         if (ThrowConflictOnNextSave)
         {
             ThrowConflictOnNextSave = false;

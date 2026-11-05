@@ -505,6 +505,12 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<Guid?>("ScheduleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ScheduledSlotUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -520,6 +526,11 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ScheduleId", "ScheduledSlotUtc")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CampaignRuns_ScheduleId_ScheduledSlotUtc_Unique")
+                        .HasFilter("[ScheduleId] IS NOT NULL");
 
                     b.HasIndex("TenantId", "CampaignId")
                         .HasDatabaseName("IX_CampaignRuns_TenantId_CampaignId");
@@ -597,6 +608,12 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(0);
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<Guid?>("RunAsUserId")
                         .HasColumnType("uniqueidentifier");

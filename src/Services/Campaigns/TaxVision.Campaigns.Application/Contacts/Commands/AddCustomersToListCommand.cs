@@ -44,7 +44,7 @@ public static class AddCustomersToListHandler
 
         // Resolución de los clientes elegidos desde el directorio de Customer (M2M). Se filtra a la selección.
         var active = await customerClient.GetActiveCustomersAsync(command.TenantId, ct);
-        var chosen = active.Where(c => selected.Contains(c.CustomerId)).ToList();
+        var chosen = active.Members.Where(c => selected.Contains(c.CustomerId)).ToList();
 
         int created = 0,
             reused = 0,

@@ -21,6 +21,11 @@ public static class SignatureStorage
 
     /// <summary>Código de error de <c>GetFileAsync</c> cuando CloudStorage responde 404 (el archivo no está registrado).</summary>
     public const string FileNotFoundCode = "Signature.Storage.FileNotFound";
+
+    /// <summary>Fallo que puede mejorar reintentando: red, timeout, 5xx/408/429 o token M2M ausente.</summary>
+    public const string TransientCode = "Signature.Storage.Transient";
+
+    public static bool IsTransient(Error error) => error.Code == TransientCode;
 }
 
 /// <summary>

@@ -69,7 +69,8 @@ public sealed class WebhookEvent : BaseEntity
             is WebhookEventStatus.Applied
                 or WebhookEventStatus.Rejected
                 or WebhookEventStatus.Duplicate
-                or WebhookEventStatus.Stale;
+                or WebhookEventStatus.Stale
+                or WebhookEventStatus.NeedsReview;
 
     public Result MarkProcessing(DateTime nowUtc)
     {
@@ -126,6 +127,22 @@ public sealed class WebhookEvent : BaseEntity
 
         Status = WebhookEventStatus.Failed;
         ProcessingError = error;
+        ProcessedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Éxito del proveedor que no se aplica al pago y queda para revisión manual. Terminal: una
+    /// nueva entrega no lo reprocesa ni lo duplica.</summary>
+    public Result MarkNeedsReview(Guid? relatedSaaSPaymentId, string reason, DateTime nowUtc)
+    {
+        if (Status != WebhookEventStatus.Processing)
+            return Result.Failure(
+                new Error("WebhookEvent.InvalidTransition", $"Cannot mark needs review from {Status}.")
+            );
+
+        Status = WebhookEventStatus.NeedsReview;
+        RelatedSaaSPaymentId = relatedSaaSPaymentId;
+        ProcessingError = reason;
         ProcessedAtUtc = nowUtc;
         return Result.Success();
     }

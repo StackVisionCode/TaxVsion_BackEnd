@@ -229,7 +229,7 @@ public sealed class ProcessProviderWebhookHandlerTests
     }
 
     [Fact]
-    public async Task Amount_mismatch_on_a_success_event_is_not_applied_and_the_event_is_marked_stale()
+    public async Task Amount_mismatch_on_a_success_event_is_not_applied_and_is_flagged_for_review()
     {
         // F2: el pago espera 4900 USD; el provider reporta que se cobró solo 100. Aunque el evento
         // esté firmado, NO debe marcarse Succeeded por un importe distinto.
@@ -270,7 +270,9 @@ public sealed class ProcessProviderWebhookHandlerTests
 
         Assert.True(result.IsSuccess); // no reintenta en bucle: se registra y no se aplica
         Assert.Equal(PaymentStatus.Processing, payment.Status); // NO quedó Succeeded
-        Assert.Equal(WebhookEventStatus.Stale, webhooks.Added!.Status);
+        Assert.Equal(WebhookEventStatus.NeedsReview, webhooks.Added!.Status);
+        Assert.Equal("AmountMismatch", payment.ReviewReasonCode);
+        Assert.Equal(100, payment.ReviewPaidAmountCents);
         Assert.Empty(bus.Published); // no se publicó éxito de onboarding
     }
 
@@ -421,6 +423,92 @@ public sealed class ProcessProviderWebhookHandlerTests
         Assert.Equal(WebhookEventStatus.Stale, webhooks.Added!.Status);
         Assert.Equal(retryBefore, payment.NextRetryAtUtc);
         Assert.Empty(bus.Published);
+        // Un fallo repetido no inunda la cola de revisión.
+        Assert.Null(payment.ReviewRequiredAtUtc);
+    }
+
+    [Fact]
+    public async Task Late_success_on_a_cancelled_payment_is_flagged_for_review_not_stale()
+    {
+        // Cancel and Start Over con la sesión de Stripe todavía viva: el cliente pagó igual.
+        var payment = CreateHostedCheckoutPayment("cs_late_1");
+        payment.MarkCancelled("BuyerCancelled", DateTime.UtcNow);
+        var webhooks = new FakeWebhookEventRepository();
+        var bus = new FakeMessageBus();
+        var metrics = new FakePaymentAppMetrics();
+
+        var result = await HandleStripeAsync(
+            payment,
+            new WebhookEventPayload(
+                "cs_late_1",
+                PaymentStatus.Succeeded,
+                null,
+                null,
+                null,
+                ReconciledChargeReference: "pi_late_1",
+                PaidAmountCents: payment.Amount.AmountCents,
+                PaidCurrency: "usd"
+            ),
+            bus,
+            webhooks,
+            metrics
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(WebhookEventStatus.NeedsReview, webhooks.Added!.Status);
+        Assert.Equal(payment.Id, webhooks.Added.RelatedSaaSPaymentId);
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+        Assert.Equal("LateProviderSuccess", payment.ReviewReasonCode);
+        Assert.Equal("pi_late_1", payment.ReviewProviderReference);
+        Assert.NotNull(payment.ReviewRequiredAtUtc);
+        Assert.Empty(bus.Published);
+        Assert.Equal(("Stripe", "LateProviderSuccess"), Assert.Single(metrics.ReviewRequired));
+    }
+
+    [Fact]
+    public async Task Late_success_on_a_locally_failed_offsession_payment_is_flagged_for_review()
+    {
+        var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SubscriptionRenewal);
+        payment.MarkFailed("Provider.Timeout", "Timed out.", willRetry: false, null, Guid.Empty, DateTime.UtcNow);
+        var webhooks = new FakeWebhookEventRepository();
+        var bus = new FakeMessageBus();
+        var metrics = new FakePaymentAppMetrics();
+
+        var result = await HandleStripeAsync(
+            payment,
+            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Succeeded, null, null, null),
+            bus,
+            webhooks,
+            metrics
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(WebhookEventStatus.NeedsReview, webhooks.Added!.Status);
+        Assert.Equal(PaymentStatus.Failed, payment.Status);
+        Assert.Equal("LateProviderSuccess", payment.ReviewReasonCode);
+        Assert.Empty(bus.Published);
+        Assert.Single(metrics.ReviewRequired);
+    }
+
+    [Fact]
+    public async Task Duplicate_success_on_an_already_succeeded_payment_stays_stale()
+    {
+        var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SeatRenewal);
+        payment.MarkSucceeded(DateTime.UtcNow, Guid.Empty);
+        var webhooks = new FakeWebhookEventRepository();
+        var metrics = new FakePaymentAppMetrics();
+
+        await HandleStripeAsync(
+            payment,
+            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Succeeded, null, null, null),
+            new FakeMessageBus(),
+            webhooks,
+            metrics
+        );
+
+        Assert.Equal(WebhookEventStatus.Stale, webhooks.Added!.Status);
+        Assert.Null(payment.ReviewRequiredAtUtc);
+        Assert.Empty(metrics.ReviewRequired);
     }
 
     [Fact]
@@ -459,7 +547,8 @@ public sealed class ProcessProviderWebhookHandlerTests
         SaaSPayment payment,
         WebhookEventPayload payload,
         FakeMessageBus bus,
-        FakeWebhookEventRepository? webhooks = null
+        FakeWebhookEventRepository? webhooks = null,
+        FakePaymentAppMetrics? metrics = null
     ) =>
         ProcessProviderWebhookHandler.Handle(
             new ProcessProviderWebhookCommand(
@@ -479,7 +568,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakeSaaSPaymentRepository(payment),
             new FakePaymentAuditLogWriter(),
             new FakeUnitOfWork(),
-            new FakePaymentAppMetrics(),
+            metrics ?? new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
@@ -509,6 +598,30 @@ public sealed class ProcessProviderWebhookHandlerTests
             "processing",
             providerResponseBody: null,
             Guid.Empty,
+            DateTime.UtcNow
+        );
+        return payment;
+    }
+
+    private static SaaSPayment CreateHostedCheckoutPayment(string sessionId)
+    {
+        var payment = SaaSPayment
+            .Create(
+                Guid.Parse("55555555-5555-5555-5555-555555555555"),
+                IdempotencyKey.Create($"seats-{sessionId}").Value,
+                Money.Create(1500, "USD").Value,
+                SaaSPaymentType.SeatsPurchaseCharge,
+                Guid.Parse("66666666-6666-6666-6666-666666666666"),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
+        payment.RecordHostedCheckoutSession(
+            sessionId,
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, sessionId).Value,
+            "https://checkout.stripe.test/session",
             DateTime.UtcNow
         );
         return payment;
@@ -620,6 +733,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             string providerChargeReference,
             Money amount,
             string reason,
+            string idempotencyKey,
             CancellationToken ct
         ) => throw new NotSupportedException();
 
@@ -748,7 +862,7 @@ public sealed class ProcessProviderWebhookHandlerTests
         public Task<SaaSPayment?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
             DateTime cutoffUtc,
             int batchSize,
             CancellationToken ct = default
@@ -865,6 +979,11 @@ public sealed class ProcessProviderWebhookHandlerTests
         public void RecordWebhookSignatureFailed(string provider) { }
 
         public void RecordProviderLatency(double milliseconds, string provider, string method) { }
+
+        public List<(string Provider, string Reason)> ReviewRequired { get; } = [];
+
+        public void RecordPaymentReviewRequired(string provider, string reason) =>
+            ReviewRequired.Add((provider, reason));
     }
 
     private sealed class FakePaymentAttemptThrottle(bool webhookThrottled = false) : IPaymentAttemptThrottle

@@ -11,6 +11,7 @@ using TaxVision.Codes.Application.Definitions.Common;
 using TaxVision.Codes.Application.Definitions.CreateCodeDefinition;
 using TaxVision.Codes.Application.Definitions.GetCodeDetails;
 using TaxVision.Codes.Application.Definitions.RevokeCode;
+using TaxVision.Codes.Application.Reservations.LateCommitReviews;
 using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Growth.Api.Common;
 using Wolverine;
@@ -164,6 +165,24 @@ public sealed class CodesController(
 
         var result = await bus.InvokeAsync<Result<CodeDefinitionStateResponse>>(
             new RevokeCodeCommand(tenantId, codeDefinitionId, actorId, idempotencyKey),
+            ct
+        );
+        return ToActionResult(result);
+    }
+
+    /// <summary>Commits tardíos pendientes de revisión (GRW-1). Solo PlatformAdmin; la resolución es manual.</summary>
+    [HttpGet("late-commit-reviews")]
+    [AllowActorTypes(ActorType.PlatformAdmin)]
+    [RateLimit("growth.f.codes_read")]
+    [HasPermission(GrowthPermissions.AdminCrossTenant)]
+    [ProducesResponseType<IReadOnlyList<LateCommitReviewResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListPendingLateCommitReviews(CancellationToken ct, [FromQuery] int take = 50)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _) || tenantId != PlatformTenant.Id)
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<LateCommitReviewResponse>>>(
+            new ListPendingLateCommitReviewsQuery(take),
             ct
         );
         return ToActionResult(result);

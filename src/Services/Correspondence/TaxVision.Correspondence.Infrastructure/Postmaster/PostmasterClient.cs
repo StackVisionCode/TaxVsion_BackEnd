@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -157,7 +158,8 @@ internal sealed class PostmasterClient(
         CorrespondenceMetrics.DraftSendDuration.Record(elapsed.TotalSeconds, tenantTag);
 
         var status =
-            result.IsSuccess ? "sent"
+            result is { IsSuccess: true, Value.InProgress: true } ? "in_progress"
+            : result.IsSuccess ? "sent"
             : result.Error.Code == AllRecipientsSuppressedErrorCode ? "suppressed"
             : "failed";
         CorrespondenceMetrics.DraftSendTotal.Add(1, tenantTag, new KeyValuePair<string, object?>("status", status));
@@ -222,11 +224,20 @@ internal sealed class PostmasterClient(
             body = null;
         }
 
+        // 202 = el envío ya está en curso en Postmaster (PMS-01): no es un enviado confirmado (COR-17).
+        var inProgress = response.StatusCode == HttpStatusCode.Accepted || body?.InProgress == true;
         return body is null
             ? Result.Failure<SendDraftPostmasterResult>(
                 new Error("PostmasterClient.EmptyResponse", "Postmaster returned an unreadable body response.")
             )
-            : Result.Success(new SendDraftPostmasterResult(body.SentMessageId, body.ProviderMessageId));
+            : Result.Success(
+                new SendDraftPostmasterResult(
+                    body.SentMessageId,
+                    body.ProviderMessageId,
+                    body.InternetMessageId,
+                    inProgress
+                )
+            );
     }
 
     private static async Task<Result<SendDraftPostmasterResult>> ReadFailureAsync(
@@ -253,5 +264,10 @@ internal sealed class PostmasterClient(
         );
     }
 
-    private sealed record SendResultDto(Guid SentMessageId, string? ProviderMessageId);
+    private sealed record SendResultDto(
+        Guid SentMessageId,
+        string? ProviderMessageId,
+        string? InternetMessageId = null,
+        bool InProgress = false
+    );
 }

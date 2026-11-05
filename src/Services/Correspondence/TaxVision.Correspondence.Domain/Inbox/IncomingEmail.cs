@@ -222,6 +222,16 @@ public sealed class IncomingEmail : ITenantOwned
         return true;
     }
 
+    /// <summary>Reposición (COR-02): el correo pasa al hilo de su propio cliente. Idempotente.</summary>
+    public Result MoveToThread(Guid emailThreadId)
+    {
+        if (emailThreadId == Guid.Empty)
+            return Result.Failure(new Error("IncomingEmail.EmailThreadIdRequired", "EmailThreadId is required."));
+
+        EmailThreadId = emailThreadId;
+        return Result.Success();
+    }
+
     /// <summary>Idempotente. Devuelve <c>true</c> solo si cambió el estado.</summary>
     public bool MarkUnread()
     {

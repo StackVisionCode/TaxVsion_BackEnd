@@ -386,8 +386,10 @@ public sealed class NotificationDispatcherPushTests
             pushSender,
             pushDeviceTokens,
             logs,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
+            ),
             new NoOpIntegrationEventPublisher(),
             new NoOpUnitOfWork(),
             metrics,
@@ -458,8 +460,10 @@ public sealed class NotificationDispatcherPushTests
             pushSender,
             pushDeviceTokens,
             logs,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
+            ),
             new NoOpIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),

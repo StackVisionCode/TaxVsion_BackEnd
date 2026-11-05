@@ -115,6 +115,9 @@ public sealed class OnboardingCancelRequestedConsumerTests
 
     private sealed class FakeOnboardingUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public User? Existing { get; set; }
 
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();

@@ -1,7 +1,10 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Series.Abstractions;
+using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Domain.Tasks;
+using Wolverine;
 
 namespace TaxVision.Tasks.Application.Series.Commands;
 
@@ -23,6 +26,8 @@ public static class ResumeTaskSeriesHandler
         ITaskSeriesRepository seriesRepository,
         ITaskSeriesMaterializer materializer,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -41,7 +46,11 @@ public static class ResumeTaskSeriesHandler
             return Result.Failure<TaskSeriesResponse>(resumed.Error);
 
         if (series.OpenInstanceId is null)
-            await materializer.MaterializeNextAsync(series, null, null, ct);
+        {
+            var materialized = await materializer.MaterializeNextAsync(series, null, null, ct);
+            if (materialized.IsSuccess)
+                await TaskBirthAnnouncements.PublishAsync(materialized.Value, bus, correlation, announceAssignment: false);
+        }
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(TaskSeriesResponse.From(series));

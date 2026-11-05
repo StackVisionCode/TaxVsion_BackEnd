@@ -22,8 +22,11 @@ public sealed class FakeSaaSPaymentRepository(SaaSPayment? existing = null) : IS
     public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(ById);
 
+    /// <summary>Lo que devuelve la búsqueda por Id sin tenant (admin, onboarding).</summary>
+    public SaaSPayment? ByIdAnyTenant { get; set; }
+
     public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, CancellationToken ct = default) =>
-        Task.FromResult<SaaSPayment?>(null);
+        Task.FromResult(ByIdAnyTenant);
 
     public Task<SaaSPayment?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default) =>
         Task.FromResult(Existing);
@@ -34,7 +37,7 @@ public sealed class FakeSaaSPaymentRepository(SaaSPayment? existing = null) : IS
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+    public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
         DateTime cutoffUtc,
         int batchSize,
         CancellationToken ct = default
@@ -191,6 +194,7 @@ public sealed class FakePaymentProvider(
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     ) => throw new NotSupportedException();
 
@@ -278,6 +282,10 @@ public sealed class FakePaymentAppMetrics : IPaymentAppMetrics
     public void RecordWebhookSignatureFailed(string provider) { }
 
     public void RecordProviderLatency(double milliseconds, string provider, string method) { }
+
+    public List<(string Provider, string Reason)> ReviewRequired { get; } = [];
+
+    public void RecordPaymentReviewRequired(string provider, string reason) => ReviewRequired.Add((provider, reason));
 }
 
 public sealed class FakeCorrelationContext : ICorrelationContext

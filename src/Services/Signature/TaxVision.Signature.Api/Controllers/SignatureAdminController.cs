@@ -7,6 +7,8 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Signature.Api.Requests;
+using TaxVision.Signature.Application.Admin;
+using TaxVision.Signature.Application.Audit;
 using TaxVision.Signature.Application.Delivery;
 using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Settings.Commands.ApplyPlanConstraints;
@@ -138,6 +140,74 @@ public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
     {
         var result = await bus.InvokeAsync<Result<PortalCopiesBackfillReport>>(
             new BackfillCustomerPortalCopiesCommand(tenantId, dryRun),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Reposición SIG-1: completa una solicitud con todos los firmantes firmados que quedó sin completar y
+    /// publica lo mismo que el camino normal. Idempotente. Las <c>Expired</c> solo con <c>allowExpired=true</c>
+    /// (D-SIG-1). <c>dryRun=true</c> (default) solo valida.
+    /// </summary>
+    [HttpPost("/signature/admin/requests/{requestId:guid}/reconcile-completion")]
+    [HasPermission(SignaturePermissions.PlanConstraintsManage)]
+    [RateLimit("signature.g.admin_constraints_manage")]
+    [ProducesResponseType<ReconcileCompletionReport>(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Error), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ReconcileCompletion(
+        Guid requestId,
+        [FromQuery] Guid tenantId,
+        [FromQuery] bool allowExpired = false,
+        [FromQuery] bool dryRun = true,
+        CancellationToken ct = default
+    )
+    {
+        var result = await bus.InvokeAsync<Result<ReconcileCompletionReport>>(
+            new ReconcileCompletionCommand(tenantId, requestId, allowExpired, dryRun),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// SIG-2: vuelve a pedir el sellado de una solicitud completada (después de corregir un fallo permanente).
+    /// Limpia la marca de fallo. Idempotente: lo ya sellado se salta.
+    /// </summary>
+    [HttpPost("/signature/admin/requests/{requestId:guid}/reseal")]
+    [HasPermission(SignaturePermissions.PlanConstraintsManage)]
+    [RateLimit("signature.g.admin_constraints_manage")]
+    [ProducesResponseType<ResealReport>(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Error), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Reseal(Guid requestId, [FromQuery] Guid tenantId, CancellationToken ct = default)
+    {
+        var result = await bus.InvokeAsync<Result<ResealReport>>(
+            new ResealSignatureRequestCommand(tenantId, requestId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Reposición SIG-2 (D-SIG-2): agrega la línea de auditoría <c>RequestSealed</c> que le falta a los documentos
+    /// ya sellados, sin publicar avisos. Sin <c>tenantId</c>, todas las oficinas. <c>dryRun=true</c> (default)
+    /// solo cuenta. Idempotente.
+    /// </summary>
+    [HttpPost("/signature/admin/backfill-sealed-audit-lines")]
+    [HasPermission(SignaturePermissions.PlanConstraintsManage)]
+    [RateLimit("signature.g.admin_constraints_manage")]
+    [ProducesResponseType<SealedAuditBackfillReport>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> BackfillSealedAuditLines(
+        [FromQuery] Guid? tenantId,
+        [FromQuery] bool dryRun = true,
+        CancellationToken ct = default
+    )
+    {
+        var result = await bus.InvokeAsync<Result<SealedAuditBackfillReport>>(
+            new BackfillSealedAuditLinesCommand(tenantId, dryRun),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

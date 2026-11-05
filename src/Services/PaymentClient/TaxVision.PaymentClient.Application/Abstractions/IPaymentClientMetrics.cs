@@ -24,4 +24,7 @@ public interface IPaymentClientMetrics
     void RecordWebhookDuplicate(string provider);
 
     void RecordWebhookSignatureFailed(string provider);
+
+    /// <summary>Éxito del proveedor que quedó para revisión manual; cualquier valor &gt; 0 alerta.</summary>
+    void RecordWebhookNeedsReview(string provider, string reason);
 }

@@ -40,10 +40,15 @@ public sealed class CustomerEmailReconciliationService(
         var created = 0;
         var updated = 0;
         var reactivated = 0;
+        var conflicts = 0;
+        // Un solo guardado al final: FindActiveByAddressAsync no ve lo activado en esta corrida.
+        var activatedInRun = new HashSet<string>();
 
         var page = 1;
         while (true)
         {
+            // Marca = hora de lectura del estado autoritativo: lo anterior que llegue después ya está reflejado.
+            var readAtUtc = DateTime.UtcNow;
             var result = await customerClient.ListActiveCustomersAsync(tenantId, page, PageSize, ct);
             if (result is null)
             {
@@ -53,12 +58,20 @@ public sealed class CustomerEmailReconciliationService(
                     page
                 );
                 await SaveIfAnyFixAsync(created, updated, reactivated, ct);
-                return new CustomerEmailReconciliationResult(created, updated, reactivated, CompletedFully: false);
+                return new CustomerEmailReconciliationResult(
+                    created,
+                    updated,
+                    reactivated,
+                    CompletedFully: false,
+                    conflicts
+                );
             }
 
             foreach (var customer in result.Items)
             {
-                var outcome = await ReconcileCustomerAsync(tenantId, customer, ct);
+                var outcome = await ReconcileCustomerAsync(tenantId, customer, readAtUtc, activatedInRun, ct);
+                if (outcome == ReconciliationOutcome.Conflict)
+                    conflicts++;
                 (created, updated, reactivated) = ApplyOutcome(outcome, created, updated, reactivated);
             }
 
@@ -68,7 +81,7 @@ public sealed class CustomerEmailReconciliationService(
         }
 
         await SaveIfAnyFixAsync(created, updated, reactivated, ct);
-        return new CustomerEmailReconciliationResult(created, updated, reactivated, CompletedFully: true);
+        return new CustomerEmailReconciliationResult(created, updated, reactivated, CompletedFully: true, conflicts);
     }
 
     private enum ReconciliationOutcome
@@ -77,11 +90,14 @@ public sealed class CustomerEmailReconciliationService(
         Created,
         Updated,
         Reactivated,
+        Conflict,
     }
 
     private async Task<ReconciliationOutcome> ReconcileCustomerAsync(
         Guid tenantId,
         RemoteCustomerSummary customer,
+        DateTime readAtUtc,
+        HashSet<string> activatedInRun,
         CancellationToken ct
     )
     {
@@ -96,64 +112,61 @@ public sealed class CustomerEmailReconciliationService(
             return ReconciliationOutcome.NoChange;
         }
 
+        var email = emailResult.Value;
         var existing = await emailRepository.GetByCustomerIdAsync(tenantId, customer.Id, ct);
+        var activates = existing is null || !existing.IsActive || existing.EmailAddress != email.NormalizedValue;
+
+        // IX_CustomerEmailAddresses_TenantId_EmailAddress_Active es única por email activo dentro del tenant:
+        // un email de otro cliente activo se omite (como los consumers) en vez de perder el guardado entero.
+        if (activates && await IsTakenAsync(tenantId, customer.Id, email, activatedInRun, ct))
+            return ReconciliationOutcome.Conflict;
+
         if (existing is null)
         {
-            // Mismo riesgo de colisión que CustomerCreatedConsumer: IX_CustomerEmailAddresses_TenantId_EmailAddress_Active
-            // es única por email activo dentro del tenant — dos customers distintos con el mismo email
-            // tirarían este job entero (ReconcileTenantAsync corta en el primer fallo de SaveChanges).
-            var emailOwner = await emailRepository.FindActiveByAddressAsync(
-                tenantId,
-                emailResult.Value.NormalizedValue,
-                ct
-            );
-            if (emailOwner is not null && emailOwner.CustomerId != customer.Id)
-            {
-                logger.LogWarning(
-                    "Reconciliation for tenant {TenantId}: email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipped.",
-                    tenantId,
-                    emailResult.Value.NormalizedValue,
-                    customer.Id,
-                    emailOwner.CustomerId
-                );
-                return ReconciliationOutcome.NoChange;
-            }
-
-            var projection = CustomerEmailAddress.Create(tenantId, customer.Id, emailResult.Value);
+            var projection = CustomerEmailAddress.Create(tenantId, customer.Id, email, readAtUtc);
             await emailRepository.AddAsync(projection, ct);
+            activatedInRun.Add(email.NormalizedValue);
             return ReconciliationOutcome.Created;
         }
 
         if (!existing.IsActive)
         {
-            existing.Reactivate(emailResult.Value);
+            if (!existing.Reactivate(readAtUtc, email))
+                return ReconciliationOutcome.NoChange;
+            activatedInRun.Add(existing.EmailAddress);
             return ReconciliationOutcome.Reactivated;
         }
 
-        if (existing.EmailAddress != emailResult.Value.NormalizedValue)
+        if (existing.EmailAddress != email.NormalizedValue)
         {
-            var emailOwner = await emailRepository.FindActiveByAddressAsync(
-                tenantId,
-                emailResult.Value.NormalizedValue,
-                ct
-            );
-            if (emailOwner is not null && emailOwner.CustomerId != customer.Id)
-            {
-                logger.LogWarning(
-                    "Reconciliation for tenant {TenantId}: new email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipped.",
-                    tenantId,
-                    emailResult.Value.NormalizedValue,
-                    customer.Id,
-                    emailOwner.CustomerId
-                );
+            if (!existing.UpdateEmail(email, readAtUtc))
                 return ReconciliationOutcome.NoChange;
-            }
-
-            existing.UpdateEmail(emailResult.Value);
+            activatedInRun.Add(email.NormalizedValue);
             return ReconciliationOutcome.Updated;
         }
 
         return ReconciliationOutcome.NoChange;
+    }
+
+    private async Task<bool> IsTakenAsync(
+        Guid tenantId,
+        Guid customerId,
+        EmailAddress email,
+        HashSet<string> activatedInRun,
+        CancellationToken ct
+    )
+    {
+        var owner = await emailRepository.FindActiveByAddressAsync(tenantId, email.NormalizedValue, ct);
+        if (!activatedInRun.Contains(email.NormalizedValue) && (owner is null || owner.CustomerId == customerId))
+            return false;
+
+        logger.LogWarning(
+            "Reconciliation for tenant {TenantId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipped.",
+            tenantId,
+            customerId,
+            owner?.CustomerId
+        );
+        return true;
     }
 
     private static (int Created, int Updated, int Reactivated) ApplyOutcome(

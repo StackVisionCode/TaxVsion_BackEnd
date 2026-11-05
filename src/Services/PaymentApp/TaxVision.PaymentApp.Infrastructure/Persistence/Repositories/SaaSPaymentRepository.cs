@@ -61,19 +61,25 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
 
     // IgnoreQueryFilters: job cross-tenant (RBAC Fase 5) — recorre pagos de todos los tenants
     // buscando reintentos/atascos vencidos, nunca sirve una request autenticada.
-    public async Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+    public async Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
         DateTime cutoffUtc,
         int batchSize,
         CancellationToken ct = default
-    ) =>
-        await WithChildren(db.SaaSPayments)
+    )
+    {
+        var rows = await db
+            .SaaSPayments.AsNoTracking()
             .IgnoreQueryFilters()
             .Where(payment => payment.Status == PaymentStatus.Processing && payment.UpdatedAtUtc < cutoffUtc)
             .OrderBy(payment => payment.UpdatedAtUtc)
             .Take(batchSize)
+            .Select(payment => new { payment.Id, payment.TenantId })
             .ToListAsync(ct);
 
-    // Mismo criterio cross-tenant que GetStuckProcessingAsync. El pago del onboarding queda fuera solo,
+        return rows.Select(row => (row.Id, row.TenantId)).ToList();
+    }
+
+    // Mismo criterio cross-tenant que GetStuckProcessingIdsAsync. El pago del onboarding queda fuera solo,
     // porque nace sin tenant: su recibo lo pide Auth.
     public async Task<IReadOnlyList<SaaSPayment>> GetSucceededWithoutReceiptAsync(
         DateTime cutoffUtc,

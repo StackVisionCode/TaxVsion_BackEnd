@@ -29,6 +29,16 @@ public sealed record InvoiceStatusHistoryEntry(
     DateTime ChangedAtUtc
 );
 
+/// <summary>Un pago aplicado a la factura. ExceedsDueCents &gt; 0 marca un sobrepago.</summary>
+public sealed record InvoicePaymentEntry(
+    string Source,
+    long AmountCents,
+    string Method,
+    DateTime PaidAtUtc,
+    Guid RecordedByUserId,
+    long ExceedsDueCents
+);
+
 public sealed record InvoiceDetailResponse(
     Guid Id,
     string? InvoiceNumber,
@@ -58,7 +68,11 @@ public sealed record InvoiceDetailResponse(
     /// <summary>Condiciones congeladas al crear la factura (null si es anterior a los ajustes de facturación).</summary>
     string? PaymentTerms = null,
     string? PaymentInstructions = null,
-    string? InvoiceFooter = null
+    string? InvoiceFooter = null,
+    /// <summary>Pagos aplicados, más reciente primero.</summary>
+    IReadOnlyList<InvoicePaymentEntry>? Payments = null,
+    /// <summary>Lo pagado por encima del total (0 si no hay sobrepago).</summary>
+    long OverpaidCents = 0
 );
 
 public static class GetInvoiceDetailHandler
@@ -112,6 +126,18 @@ public static class GetInvoiceDetailHandler
             ))
             .ToList();
 
+        var payments = invoice
+            .Payments.OrderByDescending(p => p.PaidAtUtc)
+            .Select(p => new InvoicePaymentEntry(
+                p.Source.ToString(),
+                p.Amount.AmountCents,
+                p.Method.ToString(),
+                p.PaidAtUtc,
+                p.RecordedByUserId,
+                p.ExceedsDueCents
+            ))
+            .ToList();
+
         return Result.Success(
             new InvoiceDetailResponse(
                 invoice.Id,
@@ -149,7 +175,9 @@ public static class GetInvoiceDetailHandler
                 invoice.ReplacedByInvoiceId,
                 invoice.PaymentTerms?.ToString(),
                 invoice.PaymentInstructions,
-                invoice.InvoiceFooter
+                invoice.InvoiceFooter,
+                payments,
+                Math.Max(0, invoice.AmountPaid.AmountCents - invoice.Total.AmountCents)
             )
         );
     }

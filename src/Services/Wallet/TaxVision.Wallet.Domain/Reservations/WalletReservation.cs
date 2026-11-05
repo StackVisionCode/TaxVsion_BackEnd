@@ -50,8 +50,7 @@ public sealed class WalletReservation : TenantEntity
 
     public static Result<WalletReservation> Open(
         Guid tenantId,
-        string referenceType,
-        Guid referenceId,
+        ReservationReference reference,
         string currency,
         long reservedMicros,
         int reservedUnits,
@@ -60,16 +59,14 @@ public sealed class WalletReservation : TenantEntity
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<WalletReservation>(ReservationErrors.TenantRequired);
-        if (string.IsNullOrWhiteSpace(referenceType) || referenceId == Guid.Empty)
-            return Result.Failure<WalletReservation>(ReservationErrors.ReferenceRequired);
         if (reservedMicros <= 0)
             return Result.Failure<WalletReservation>(ReservationErrors.AmountNotPositive);
 
         var reservation = new WalletReservation
         {
             Id = Guid.NewGuid(),
-            ReferenceType = referenceType,
-            ReferenceId = referenceId,
+            ReferenceType = reference.Type,
+            ReferenceId = reference.Id,
             Currency = currency,
             ReservedMicros = reservedMicros,
             ReservedUnits = reservedUnits,
@@ -90,6 +87,8 @@ public sealed class WalletReservation : TenantEntity
     {
         if (Status == ReservationStatus.Settled)
             return Result.Failure(ReservationErrors.AlreadySettled);
+        if (Status == ReservationStatus.Expired)
+            return Result.Failure(ReservationErrors.Expired);
         if (consumedMicros < 0 || releasedMicros < 0 || consumedMicros + releasedMicros != ReservedMicros)
             return Result.Failure(ReservationErrors.SettlementMismatch);
 
@@ -97,6 +96,21 @@ public sealed class WalletReservation : TenantEntity
         ReleasedMicros = releasedMicros;
         Status = ReservationStatus.Settled;
         SettledAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
+    /// <summary>Vence una reserva abierta que nadie liquidó: libera todo lo apartado y no consume nada.</summary>
+    public Result Expire(DateTime nowUtc)
+    {
+        if (Status == ReservationStatus.Settled)
+            return Result.Failure(ReservationErrors.AlreadySettled);
+        if (Status == ReservationStatus.Expired)
+            return Result.Failure(ReservationErrors.Expired);
+
+        ConsumedMicros = 0;
+        ReleasedMicros = ReservedMicros;
+        Status = ReservationStatus.Expired;
+        SettledAtUtc = nowUtc;
         return Result.Success();
     }
 }

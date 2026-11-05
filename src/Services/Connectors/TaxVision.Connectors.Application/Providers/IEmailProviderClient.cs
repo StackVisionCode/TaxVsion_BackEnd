@@ -6,11 +6,15 @@ namespace TaxVision.Connectors.Application.Providers;
 public sealed class EmailProviderException(
     string message,
     Exception? innerException = null,
-    bool requiresReconnect = false
+    bool requiresReconnect = false,
+    bool isNotFound = false
 ) : Exception(message, innerException)
 {
     /// <summary>No se pudo obtener un access token porque la cuenta necesita reconectarse (ver <c>OAuthTokenErrorCodes.RequiresReconnect</c>).</summary>
     public bool RequiresReconnect { get; } = requiresReconnect;
+
+    /// <summary>El proveedor dice que el mensaje no existe (borrado o expurgado): reintentar no lo trae.</summary>
+    public bool IsNotFound { get; } = isNotFound;
 }
 
 /// <summary>
@@ -35,6 +39,19 @@ public interface IEmailProviderClient
         Guid tenantId,
         string? sinceCursor,
         DateTime? firstSyncFromUtc = null,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Ids del INBOX recibidos en [fromUtc, toUtc), por páginas, sin tocar el cursor ni usar el history/delta
+    /// (su retención no limita la ventana). Solo para la re-sincronización (CON-07).
+    /// </summary>
+    Task<InboxMessageIdPage> ListInboxMessageIdsAsync(
+        Guid accountId,
+        Guid tenantId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string? pageToken,
         CancellationToken ct = default
     );
 

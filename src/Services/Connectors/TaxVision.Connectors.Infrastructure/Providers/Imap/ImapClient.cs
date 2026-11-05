@@ -187,6 +187,50 @@ public sealed class ImapClient(
             ct
         );
 
+    /// <summary>
+    /// SEARCH SINCE/BEFORE sobre INBOX (IMAP filtra por día: puede traer de más, Correspondence deduplica).
+    /// Páginas de UIDs ascendentes; el token es "UIDVALIDITY:último UID". Si UIDVALIDITY cambió, se empieza de nuevo.
+    /// </summary>
+    public Task<InboxMessageIdPage> ListInboxMessageIdsAsync(
+        Guid accountId,
+        Guid tenantId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string? pageToken,
+        CancellationToken ct = default
+    ) =>
+        ExecuteAsync(
+            accountId,
+            tenantId,
+            async (inbox, token) =>
+            {
+                var afterUid = ParseResyncToken(pageToken, inbox.UidValidity);
+                var query = SearchQuery.DeliveredAfter(fromUtc.Date).And(SearchQuery.DeliveredBefore(toUtc.Date.AddDays(1)));
+                var uids = (await inbox.SearchAsync(query, token))
+                    .Where(u => u.Id > afterUid)
+                    .OrderBy(u => u.Id)
+                    .Take(MaxMessagesPerSync + 1)
+                    .ToList();
+
+                var page = uids.Take(MaxMessagesPerSync).ToList();
+                var next = uids.Count > MaxMessagesPerSync ? $"{inbox.UidValidity}:{page[^1].Id}" : null;
+                return new InboxMessageIdPage(page.Select(u => u.Id.ToString()).ToList(), next);
+            },
+            ct
+        );
+
+    private static uint ParseResyncToken(string? pageToken, uint uidValidity)
+    {
+        var parts = pageToken?.Split(':');
+        return
+            parts is [var validity, var lastUid]
+            && uint.TryParse(validity, out var parsedValidity)
+            && parsedValidity == uidValidity
+            && uint.TryParse(lastUid, out var parsedUid)
+            ? parsedUid
+            : 0;
+    }
+
     public Task<RawMessage> GetMessageAsync(
         Guid accountId,
         Guid tenantId,
@@ -202,7 +246,10 @@ public sealed class ImapClient(
                 var summary = (await inbox.FetchAsync([uid], MetadataItems, token)).FirstOrDefault();
 
                 if (summary is null)
-                    throw new EmailProviderException($"IMAP message with UID {providerMessageId} was not found.");
+                    throw new EmailProviderException(
+                        $"IMAP message with UID {providerMessageId} was not found.",
+                        isNotFound: true
+                    );
 
                 return ToRawMessage(providerMessageId, summary);
             },
@@ -235,9 +282,10 @@ public sealed class ImapClient(
                     results.Add(
                         byUid.TryGetValue(ParseUid(id).Id, out var summary)
                             ? ProviderMessageFetch.Found(id, ToRawMessage(id, summary))
+                            // El UID no volvió en el FETCH: mensaje expurgado.
                             : ProviderMessageFetch.Failed(
                                 id,
-                                new EmailProviderException($"IMAP message with UID {id} was not found.")
+                                new EmailProviderException($"IMAP message with UID {id} was not found.", isNotFound: true)
                             )
                     );
                 }

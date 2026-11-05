@@ -61,13 +61,14 @@ internal sealed class FakeCustomerAudienceClient : ICustomerAudienceClient
 {
     public List<CustomerAudienceMember> Members { get; } = [];
 
+    /// <summary>false = la lectura del directorio se cortó (CMP-06).</summary>
+    public bool IsComplete { get; set; } = true;
+
     public void Seed(string? email, string? phone) =>
         Members.Add(new CustomerAudienceMember(Guid.NewGuid(), email, phone));
 
-    public Task<IReadOnlyList<CustomerAudienceMember>> GetActiveCustomersAsync(
-        Guid tenantId,
-        CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<CustomerAudienceMember>>(Members);
+    public Task<CustomerAudienceResult> GetActiveCustomersAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult(new CustomerAudienceResult(Members, IsComplete, IsComplete ? null : "test"));
 }
 
 internal sealed class FakeContactListRepository : IContactListRepository

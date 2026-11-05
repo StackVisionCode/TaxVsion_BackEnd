@@ -8,6 +8,16 @@ namespace TaxVision.Codes.Application.Reservations.CommitReservation;
 
 public static class CommitReservationHandler
 {
+    /// <summary>Commit tardío sin verificación posible: queda en LateCommitReviews para PlatformAdmin.</summary>
+    public const string LateCommitPendingReviewCode = "Codes.CommitReservation.LateCommitPendingReview";
+
+    // Códigos con que IPaymentOutcomeVerifier niega hoy el commit tardío (verificador fail-closed).
+    private static readonly HashSet<string> LateCommitDenialCodes =
+    [
+        "Codes.PaymentOutcomeVerifier.NotImplemented",
+        "Codes.PaymentOutcomeVerifier.Disabled",
+    ];
+
     public static async Task<Result<CommitReservationResponse>> Handle(
         CommitReservationCommand command,
         ICodeDefinitionRepository definitions,
@@ -15,6 +25,7 @@ public static class CommitReservationHandler
         ICodeRedemptionRepository redemptions,
         ICodeUsageCounterRepository usageCounters,
         IPaymentOutcomeVerifier paymentOutcomeVerifier,
+        ILateCommitReviewRepository lateCommitReviews,
         IBusinessIdempotencyExecutor idempotency,
         TimeProvider timeProvider,
         CancellationToken ct
@@ -50,7 +61,7 @@ public static class CommitReservationHandler
             command.SourceEventId
         );
 
-        return await idempotency.ExecuteAsync(
+        var result = await idempotency.ExecuteAsync(
             command.TenantId,
             "Codes.CommitReservation.v1",
             command.ReservationId,
@@ -154,6 +165,27 @@ public static class CommitReservationHandler
                 return Result.Success(CommitReservationResponse.From(redemptionResult.Value));
             },
             ct
+        );
+
+        if (result.IsSuccess || !LateCommitDenialCodes.Contains(result.Error.Code))
+            return result;
+
+        // El fallo revirtió la operación: la revisión se guarda aparte (idempotente por reserva + evento).
+        var review = LateCommitReview.Record(
+            command.TenantId,
+            command.ReservationId,
+            paymentResult.Value,
+            command.SourceEventId,
+            result.Error.Code,
+            timeProvider.GetUtcNow().UtcDateTime
+        );
+        if (review.IsFailure)
+            return Result.Failure<CommitReservationResponse>(review.Error);
+
+        await lateCommitReviews.RecordAsync(review.Value, ct);
+        return Failure(
+            LateCommitPendingReviewCode,
+            "The reservation expired before the payment succeeded; the late commit is pending manual review."
         );
     }
 

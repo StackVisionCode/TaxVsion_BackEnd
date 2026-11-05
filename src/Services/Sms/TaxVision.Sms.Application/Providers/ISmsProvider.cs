@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Sms.Application.Providers;
@@ -61,6 +62,9 @@ public interface ISmsAdapterFactory
 {
     /// <summary>Resuelve el adapter por su código. Un código no registrado es misconfiguración del host.</summary>
     ISmsProvider Resolve(string code);
+
+    /// <summary>Resuelve sin lanzar; para códigos que llegan de afuera (webhook anónimo).</summary>
+    bool TryResolve(string code, [NotNullWhen(true)] out ISmsProvider? provider);
 }
 
 /// <summary>Marca una clase <see cref="ISmsProvider"/> con su código para el registro reflexivo (keyed DI).</summary>
@@ -68,4 +72,7 @@ public interface ISmsAdapterFactory
 public sealed class SmsProviderAttribute(string code) : Attribute
 {
     public string Code { get; } = code;
+
+    /// <summary>Solo se registra con <c>Sms:Providers:{code}:Enabled = true</c> (adaptadores de prueba).</summary>
+    public bool RequiresOptIn { get; set; }
 }

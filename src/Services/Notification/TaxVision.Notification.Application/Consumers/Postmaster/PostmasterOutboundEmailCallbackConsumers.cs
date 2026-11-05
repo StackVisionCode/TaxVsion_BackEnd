@@ -32,7 +32,8 @@ public static class PostmasterOutboundEmailSucceededConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            // Un callback de otro tenant no toca el mensaje.
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             message.MarkSent("Postmaster", configurationId: null);
@@ -69,7 +70,7 @@ public static class PostmasterOutboundEmailFailedConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             await FailAsync(message, evt.Reason, publisher, uow, correlation, ct);
@@ -128,7 +129,7 @@ public static class PostmasterOutboundEmailDeliveredConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             message.MarkDelivered();
@@ -153,7 +154,7 @@ public static class PostmasterOutboundEmailComplainedConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             message.MarkComplained(evt.EventAtUtc);
@@ -179,7 +180,7 @@ public static class PostmasterOutboundEmailEngagementConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             var changed = evt.Signal switch
@@ -211,7 +212,7 @@ public static class PostmasterOutboundEmailBouncedConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             message.MarkBounced($"{evt.BounceType}: {evt.Reason}");
@@ -251,7 +252,7 @@ public static class PostmasterOutboundEmailSuppressedConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             await PostmasterOutboundEmailFailedConsumer.FailAsync(
@@ -286,7 +287,7 @@ public static class PostmasterOutboundEmailProviderNotConfiguredConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             await PostmasterOutboundEmailFailedConsumer.FailAsync(

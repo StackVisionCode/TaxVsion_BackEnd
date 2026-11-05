@@ -5,12 +5,13 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.GenerateInvoicePdf;
+using TaxVision.Billing.Application.Invoices.SyncInvoiceStock;
 using Wolverine;
 
 namespace TaxVision.Billing.Application.Invoices.VoidInvoice;
 
-/// <summary>Anula una factura emitida/pagada: la pasa a Voided con motivo y REPONE el stock que se
-/// descontó al emitir (reconciliación a cantidades vacías). El tenant y el actor salen del JWT.</summary>
+/// <summary>Anula una factura emitida/pagada: la pasa a Voided con motivo y, después del commit, REPONE el
+/// stock con SyncInvoiceStockCommand (reconciliación a cantidades vacías). El tenant y el actor salen del JWT.</summary>
 public sealed record VoidInvoiceCommand(
     Guid TenantId,
     Guid InvoiceId,
@@ -25,7 +26,6 @@ public static class VoidInvoiceHandler
         VoidInvoiceCommand command,
         IInvoiceRepository invoices,
         IOptions<BillingVisibilityOptions> visibility,
-        IInventoryStockClient inventory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -39,12 +39,6 @@ public static class VoidInvoiceHandler
         var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct, assignedTo);
         if (invoice is null)
             return Result.Failure(new Error("Billing.Invoice.NotFound", "Invoice does not exist."));
-
-        // Reponer el stock ANTES de anular: reconciliación a cantidades vacías (idempotente, nunca bloquea).
-        // Un fallo (Inventory inalcanzable) aborta la anulación para reintentar sin dejar stock sin reponer.
-        var restocked = await inventory.CommitInvoiceSaleAsync(command.TenantId, invoice.Id, [], ct);
-        if (restocked.IsFailure)
-            return restocked;
 
         var voided = invoice.Void(command.Reason, clock.GetUtcNow().UtcDateTime, command.ActorUserId);
         if (voided.IsFailure)
@@ -66,6 +60,9 @@ public static class VoidInvoiceHandler
         // Regenerar el PDF para que salga con la marca de agua "Void" (el template ya la contempla por
         // estado). Sin esto, el PDF de una factura anulada seguiría mostrándose como pendiente.
         await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, invoice.Id));
+
+        // Reponer el stock después del commit (outbox): si la anulación se revierte, Inventory no se entera.
+        await bus.PublishAsync(new SyncInvoiceStockCommand(command.TenantId, invoice.Id));
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();

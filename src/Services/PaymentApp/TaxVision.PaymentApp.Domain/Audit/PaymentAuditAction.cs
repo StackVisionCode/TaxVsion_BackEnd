@@ -26,4 +26,6 @@ public enum PaymentAuditAction
     // SaaSPayment) — AggregateType="RateLimitPolicy", AggregateId=Guid.Empty.
     RateLimitBlocked = 16,
     OnboardingPaymentMethodAvailabilityChanged = 17,
+    SaaSPaymentReviewRequired = 18,
+    SaaSPaymentReviewResolved = 19,
 }

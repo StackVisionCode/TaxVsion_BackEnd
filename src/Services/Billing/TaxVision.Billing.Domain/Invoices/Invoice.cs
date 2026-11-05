@@ -18,6 +18,7 @@ public sealed class Invoice : AggregateRoot
     private readonly List<InvoicePaymentLink> _paymentLinks = [];
     private readonly List<InvoiceAdjustmentLine> _adjustments = [];
     private readonly List<InvoiceStatusChange> _statusChanges = [];
+    private readonly List<InvoicePayment> _payments = [];
 
     public string? InvoiceNumber { get; private set; }
     public InvoiceStatus Status { get; private set; }
@@ -117,6 +118,13 @@ public sealed class Invoice : AggregateRoot
     /// normales. En centavos de la moneda de la factura.</summary>
     public long CarriedCreditCents { get; private set; }
 
+    /// <summary>Saldo que PaymentClient confirmó en el enlace. Si difiere de <see cref="AmountDue"/>, el
+    /// job de reconciliación vuelve a pedir el enlace. Null = nunca confirmado.</summary>
+    public Money? PaymentLinkSyncedDue { get; private set; }
+
+    /// <summary>Versión (<see cref="UpdatedAtUtc"/>) cuyo stock Inventory ya reconcilió. Null = nunca.</summary>
+    public DateTime? StockSyncedAtUtc { get; private set; }
+
     public byte[] RowVersion { get; private set; } = [];
 
     public IReadOnlyCollection<InvoiceLineItem> Lines => _lines;
@@ -125,6 +133,9 @@ public sealed class Invoice : AggregateRoot
 
     /// <summary>Rastro de auditoría de estado (item 6.2): append-only, una fila por transición.</summary>
     public IReadOnlyCollection<InvoiceStatusChange> StatusChanges => _statusChanges;
+
+    /// <summary>Pagos aplicados; AmountPaid = suma de Amount.</summary>
+    public IReadOnlyCollection<InvoicePayment> Payments => _payments;
 
     private Invoice() { }
 
@@ -250,10 +261,10 @@ public sealed class Invoice : AggregateRoot
         return Result.Success();
     }
 
-    /// <summary>Edita una factura editable: solo <see cref="InvoiceStatus.Draft"/> o una
-    /// <see cref="InvoiceStatus.Issued"/>/<see cref="InvoiceStatus.Sent"/> AÚN SIN PAGOS. Reemplaza
-    /// cliente/moneda/líneas/notas y recalcula totales; conserva número y estado. Una factura pagada,
-    /// parcialmente pagada, anulada o borrada no se edita (usar anulación + nueva factura).</summary>
+    /// <summary>Edita cualquier factura salvo una anulada o borrada, incluso con pagos (orden del senior).
+    /// Reemplaza cliente/moneda/líneas/notas y recalcula totales; conserva número y pagos aplicados. Con
+    /// pagos no se puede cambiar la moneda. Si estaba cobrada (Paid/PartiallyPaid), el estado se recalcula
+    /// contra el total nuevo: Paid emite recibo; PartiallyPaid (o Issued, sin pagos) anula el recibo.</summary>
     public Result Edit(
         CustomerSnapshot customer,
         string currency,
@@ -263,9 +274,9 @@ public sealed class Invoice : AggregateRoot
         Guid actorUserId
     )
     {
-        // Libertad total (decisión del usuario): se edita CUALQUIER factura, incluso pagada — solo se
-        // impide sobre una anulada o borrada (esas son estados terminales). Los pagos ya aplicados se
-        // CONSERVAN y el saldo se recalcula contra el nuevo total.
+        // Edición libre por orden del senior (confirmada 2026-11-04): se edita CUALQUIER factura, incluso
+        // pagada; solo se impide en una anulada o borrada (estados terminales). Los pagos aplicados se
+        // conservan y el saldo se recalcula contra el nuevo total.
         if (DeletedAtUtc is not null)
             return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot be edited."));
         if (Status == InvoiceStatus.Voided)
@@ -282,6 +293,15 @@ public sealed class Invoice : AggregateRoot
 
         var paidCents = AmountPaid.AmountCents; // preservar lo ya pagado
 
+        // "100 USD pagados" no pueden pasar a ser "100 EUR pagados".
+        if (paidCents > 0 && !string.Equals(cur, Currency, StringComparison.OrdinalIgnoreCase))
+            return Result.Failure(
+                new Error(
+                    "Billing.Invoice.CurrencyLockedByPayments",
+                    "The currency can't be changed because this invoice already has payments."
+                )
+            );
+
         Customer = customer;
         Currency = cur;
         Notes = notes;
@@ -295,7 +315,47 @@ public sealed class Invoice : AggregateRoot
         AmountDue = Money.Create(dueCents < 0 ? 0 : dueCents, cur).Value;
         UpdatedAtUtc = nowUtc;
         LastModifiedBy = actorUserId;
+        RecalculatePaymentStatusAfterEdit(paidCents, nowUtc, actorUserId);
         return Result.Success();
+    }
+
+    /// <summary>Misma regla que <see cref="ApplyPayment"/>, solo para facturas ya cobradas (Paid/PartiallyPaid).</summary>
+    private void RecalculatePaymentStatusAfterEdit(long paidCents, DateTime nowUtc, Guid actorUserId)
+    {
+        if (Status is not (InvoiceStatus.Paid or InvoiceStatus.PartiallyPaid))
+            return;
+
+        var from = Status;
+        var to =
+            paidCents >= Total.AmountCents ? InvoiceStatus.Paid
+            : paidCents > 0 ? InvoiceStatus.PartiallyPaid
+            : InvoiceStatus.Issued;
+        if (to == from)
+            return;
+
+        Status = to;
+        if (to == InvoiceStatus.Paid)
+        {
+            // El recibo lleva la fecha y el medio del último pago, como al cobrar.
+            var last = _payments.OrderBy(p => p.PaidAtUtc).LastOrDefault();
+            IssueReceipt(paidCents, last?.Method ?? PaymentMethod ?? ValueObjects.PaymentMethod.Other, last?.PaidAtUtc ?? nowUtc);
+        }
+        else
+        {
+            // Ya no está pagada: el recibo no vale.
+            PaidAtUtc = null;
+            ReceiptNumber = null;
+            ReceiptHash = null;
+        }
+        RecordStatusChange(from, to, StatusChangeTrigger.Edit, null, actorUserId, nowUtc);
+    }
+
+    private void IssueReceipt(long paidCents, ValueObjects.PaymentMethod method, DateTime paidAtUtc)
+    {
+        PaidAtUtc = paidAtUtc;
+        PaymentMethod = method;
+        ReceiptNumber = $"REC-{InvoiceNumber}";
+        ReceiptHash = ComputeReceiptHash(paidCents, method, paidAtUtc);
     }
 
     /// <summary>Borrado (soft) de un BORRADOR únicamente. Una factura emitida no se borra: se anula
@@ -467,6 +527,20 @@ public sealed class Invoice : AggregateRoot
         invoice.Total = Money.Create(netAmountCents, cur).Value;
         invoice.AmountPaid = Money.Create(netAmountCents, cur).Value;
         invoice.AmountDue = Money.Zero(cur);
+        // El pago real queda como fila para que AmountPaid = suma de pagos.
+        if (paymentId is { } realPaymentId)
+            invoice._payments.Add(
+                new InvoicePayment(
+                    invoice.Id,
+                    InvoicePaymentSource.Online,
+                    realPaymentId.ToString(),
+                    invoice.AmountPaid,
+                    ValueObjects.PaymentMethod.Online,
+                    nowUtc,
+                    Guid.Empty,
+                    0
+                )
+            );
         invoice.ReceiptNumber = $"REC-{invoiceNumber}";
         invoice.ReceiptHash = invoice.ComputeReceiptHash(netAmountCents, invoice.PaymentMethod.Value, nowUtc);
 
@@ -570,44 +644,74 @@ public sealed class Invoice : AggregateRoot
         return link;
     }
 
-    /// <summary>Registra un cobro exitoso (Fase 3). Idempotente: si ya está <see cref="InvoiceStatus.Paid"/>
-    /// es no-op — así reprocesar el mismo evento (o uno posterior) no duplica el pago. Valida que la moneda
-    /// coincida. Marca <see cref="InvoiceStatus.Paid"/> si cubre el total, o <see cref="InvoiceStatus.PartiallyPaid"/>
-    /// si no. El caller (consumer) valida además el monto contra el total antes de llamar.</summary>
-    public Result MarkPaid(long amountCents, string currency, DateTime paidAtUtc, ValueObjects.PaymentMethod method)
+    /// <summary>Registra el saldo que PaymentClient confirmó. No cambia <see cref="UpdatedAtUtc"/>.</summary>
+    public void MarkPaymentLinkSynced(Money due) => PaymentLinkSyncedDue = due;
+
+    /// <summary>Registra la versión cuyo stock reconcilió Inventory. No cambia <see cref="UpdatedAtUtc"/>.</summary>
+    public void MarkStockSynced(DateTime syncedVersionUtc) => StockSyncedAtUtc = syncedVersionUtc;
+
+    /// <summary>Aplica un pago y lo SUMA a lo ya pagado. Idempotente por (Source, SourceReference): repetir
+    /// el mismo pago es no-op. Sobre una factura Paid se registra igual, con el exceso en
+    /// <see cref="InvoicePayment.ExceedsDueCents"/> (sobrepago visible). Paid si cubre el total; si no, PartiallyPaid.</summary>
+    public Result ApplyPayment(
+        InvoicePaymentSource source,
+        string sourceReference,
+        Money amount,
+        ValueObjects.PaymentMethod method,
+        DateTime paidAtUtc,
+        Guid actorUserId
+    )
     {
-        if (Status == InvoiceStatus.Paid)
+        if (string.IsNullOrWhiteSpace(sourceReference) || sourceReference.Length > InvoicePayment.ReferenceMaxLength)
+            return Result.Failure(
+                new Error(
+                    "Billing.Invoice.InvalidPaymentReference",
+                    $"A payment reference of up to {InvoicePayment.ReferenceMaxLength} characters is required."
+                )
+            );
+
+        if (_payments.Any(p => p.Source == source && p.SourceReference == sourceReference))
             return Result.Success();
 
-        if (Status is not (InvoiceStatus.Issued or InvoiceStatus.Sent or InvoiceStatus.PartiallyPaid))
+        if (
+            Status
+            is not (InvoiceStatus.Issued or InvoiceStatus.Sent or InvoiceStatus.PartiallyPaid or InvoiceStatus.Paid)
+        )
             return Result.Failure(
                 new Error("Billing.Invoice.NotPayable", $"Cannot pay an invoice in status {Status}.")
             );
 
-        if (!string.Equals(currency, Currency, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(amount.Currency, Currency, StringComparison.OrdinalIgnoreCase))
             return Result.Failure(
                 new Error(
                     "Billing.Invoice.CurrencyMismatch",
-                    $"Payment currency {currency} does not match invoice currency {Currency}."
+                    $"Payment currency {amount.Currency} does not match invoice currency {Currency}."
                 )
             );
 
+        if (amount.AmountCents <= 0)
+            return Result.Failure(
+                new Error("Billing.Invoice.InvalidPaymentAmount", "Payment amount must be greater than zero.")
+            );
+
         var from = Status;
-        AmountPaid = Money.Create(amountCents, Currency).Value;
-        var dueCents = Total.AmountCents - amountCents;
-        AmountDue = Money.Create(dueCents < 0 ? 0 : dueCents, Currency).Value;
-        Status = amountCents >= Total.AmountCents ? InvoiceStatus.Paid : InvoiceStatus.PartiallyPaid;
-        if (Status == InvoiceStatus.Paid)
-        {
-            PaidAtUtc = paidAtUtc;
-            ReceiptNumber = $"REC-{InvoiceNumber}";
-            ReceiptHash = ComputeReceiptHash(amountCents, method, paidAtUtc);
-        }
+        var paidCents = AmountPaid.AmountCents + amount.AmountCents;
+        var totalCents = Total.AmountCents;
+        var exceedsCents = Math.Min(amount.AmountCents, Math.Max(0, paidCents - totalCents));
+
+        _payments.Add(
+            new InvoicePayment(Id, source, sourceReference, amount, method, paidAtUtc, actorUserId, exceedsCents)
+        );
+        AmountPaid = Money.Create(paidCents, Currency).Value;
+        AmountDue = Money.Create(Math.Max(0, totalCents - paidCents), Currency).Value;
+        Status = paidCents >= totalCents ? InvoiceStatus.Paid : InvoiceStatus.PartiallyPaid;
+        if (Status == InvoiceStatus.Paid && from != InvoiceStatus.Paid)
+            IssueReceipt(paidCents, method, paidAtUtc);
         PaymentMethod = method;
         UpdatedAtUtc = paidAtUtc;
         // Auditar solo si el estado efectivamente cambió (un pago parcial sobre otro parcial no transiciona).
         if (from != Status)
-            RecordStatusChange(from, Status, StatusChangeTrigger.Payment, null, Guid.Empty, paidAtUtc);
+            RecordStatusChange(from, Status, StatusChangeTrigger.Payment, null, actorUserId, paidAtUtc);
         return Result.Success();
     }
 
@@ -682,19 +786,26 @@ public sealed class Invoice : AggregateRoot
 
     /// <summary>Aplica el crédito arrastrado (item 6.3) tras emitir el reemplazo: traslada el pago ya
     /// cobrado a la factura nueva → queda Paid si cubre el total, o PartiallyPaid si el total nuevo es
-    /// mayor (queda saldo por cobrar con el link nuevo). No-op si no hay crédito. Reusa <see cref="MarkPaid"/>
-    /// (que ya audita la transición y calcula recibo/hash). El método de pago se marca Other (crédito interno).</summary>
+    /// mayor (queda saldo por cobrar con el link nuevo). No-op si no hay crédito. Se registra como pago
+    /// <see cref="InvoicePaymentSource.CarriedCredit"/> con referencia a la factura original.</summary>
     public Result ApplyCarriedCredit(DateTime nowUtc)
     {
         if (CarriedCreditCents <= 0)
             return Result.Success();
-        var credit = CarriedCreditCents;
+        var credit = Money.Create(CarriedCreditCents, Currency).Value;
         CarriedCreditCents = 0;
-        return MarkPaid(credit, Currency, nowUtc, ValueObjects.PaymentMethod.Other);
+        return ApplyPayment(
+            InvoicePaymentSource.CarriedCredit,
+            (ReplacesInvoiceId ?? Id).ToString(),
+            credit,
+            ValueObjects.PaymentMethod.Other,
+            nowUtc,
+            Guid.Empty
+        );
     }
 
     /// <summary>Anexa una fila al rastro de auditoría de estado. Lo llaman los métodos de transición
-    /// (fábrica, Issue, MarkPaid, Void, ChangeStatus) — así el historial queda completo en el dominio.</summary>
+    /// (fábrica, Issue, ApplyPayment, Void, ChangeStatus) — así el historial queda completo en el dominio.</summary>
     private void RecordStatusChange(
         InvoiceStatus? from,
         InvoiceStatus to,

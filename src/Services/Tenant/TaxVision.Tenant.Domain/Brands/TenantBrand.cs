@@ -38,6 +38,9 @@ public sealed class TenantBrand : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    // Token de concurrencia: Touch() modifica la raíz, así que todo cambio de un hijo lo verifica.
+    public byte[] RowVersion { get; private set; } = [];
+
     public IReadOnlyCollection<TenantBrandColor> Colors => _colors.AsReadOnly();
     public IReadOnlyCollection<TenantBrandAsset> Assets => _assets.AsReadOnly();
 
@@ -157,6 +160,19 @@ public sealed class TenantBrand : TenantEntity
     {
         var existing = FindAsset(key);
         if (existing is null || existing.FileId != fileId || existing.Status != BrandAssetStatus.Pending)
+            return false;
+
+        _assets.Remove(existing);
+        Touch();
+        return true;
+    }
+
+    /// <summary>Quita el asset si su fileId coincide, en cualquier estado: un archivo rechazado por el
+    /// escaneo no se sirve aunque ya figure confirmado. Devuelve true solo si lo quitó.</summary>
+    public bool RevokeAsset(BrandAssetKey key, Guid fileId)
+    {
+        var existing = FindAsset(key);
+        if (existing is null || existing.FileId != fileId)
             return false;
 
         _assets.Remove(existing);

@@ -197,6 +197,64 @@ public sealed class ReconcileHostedCheckoutHandlerTests
         Assert.Empty(bus.Published);
     }
 
+    [Fact]
+    public async Task Provider_succeeded_on_cancelled_payment_flags_for_review()
+    {
+        var payment = CreateProcessingPayment(SaaSPaymentType.SeatsPurchaseCharge);
+        payment.MarkCancelled("BuyerCancelled", DateTime.UtcNow);
+        // Solo consulta de estado: sobre un pago cerrado nunca se captura (PayPal capturaría en Finalize).
+        var provider = new StatusOnlyProvider(new ChargeAuthorizationResult("CAPTURE-LATE", PaymentStatus.Succeeded));
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+        var metrics = new TestDoubles.FakePaymentAppMetrics();
+
+        var result = await ReconcileHostedCheckoutHandler.Handle(
+            new ReconcileHostedCheckoutCommand(payment.Id, TenantId),
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAdapterFactory(provider),
+            unitOfWork,
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None,
+            metrics: metrics
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nameof(PaymentStatus.Cancelled), result.Value.Status);
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+        Assert.NotNull(payment.ReviewRequiredAtUtc);
+        Assert.Equal("LateProviderSuccess", payment.ReviewReasonCode);
+        Assert.Equal("CAPTURE-LATE", payment.ReviewProviderReference);
+        Assert.Equal(1, unitOfWork.SaveChangesCount);
+        Assert.Empty(bus.Published);
+        Assert.Single(metrics.ReviewRequired);
+    }
+
+    [Fact]
+    public async Task Cancelled_payment_without_provider_success_is_left_alone()
+    {
+        var payment = CreateProcessingPayment(SaaSPaymentType.SeatsPurchaseCharge);
+        payment.MarkCancelled("BuyerCancelled", DateTime.UtcNow);
+        var provider = new StatusOnlyProvider(new ChargeAuthorizationResult("ORDER-123", PaymentStatus.Failed));
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await ReconcileHostedCheckoutHandler.Handle(
+            new ReconcileHostedCheckoutCommand(payment.Id, TenantId),
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAdapterFactory(provider),
+            unitOfWork,
+            new FakeCorrelationContext(),
+            new FakeMessageBus(),
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(payment.ReviewRequiredAtUtc);
+        Assert.Equal(0, unitOfWork.SaveChangesCount);
+    }
+
     // ---------- Fakes ----------
 
     private static SaaSPayment CreateProcessingPayment(SaaSPaymentType type)
@@ -249,7 +307,7 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
             DateTime cutoffUtc,
             int batchSize,
             CancellationToken ct = default
@@ -394,6 +452,7 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             string providerChargeReference,
             Money amount,
             string reason,
+            string idempotencyKey,
             CancellationToken ct
         ) => throw new NotSupportedException();
 
@@ -437,6 +496,18 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             Money amount,
             CancellationToken ct
         ) => throw new InvalidOperationException("Provider should not be called.");
+    }
+
+    // Responde el estado del cobro; Finalize (que en PayPal captura) no debe llamarse.
+    private sealed class StatusOnlyProvider(ChargeAuthorizationResult chargeStatus)
+        : FakePaymentProvider(PaymentProviderCode.PayPal, chargeStatus),
+            IPaymentProvider
+    {
+        public new Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
+            string providerChargeReference,
+            Money amount,
+            CancellationToken ct
+        ) => throw new InvalidOperationException("A closed payment must not be finalized (captured).");
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

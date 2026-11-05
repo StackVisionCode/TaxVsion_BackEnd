@@ -79,6 +79,22 @@ public sealed class PaymentAppDeployConfigWiringTests
         );
     }
 
+    [Fact]
+    public void ExpireProviderCheckoutSession_routes_to_durable_local_queue()
+    {
+        var program = Regex.Replace(
+            ReadRepoFile("src/Services/PaymentApp/TaxVision.PaymentApp.Api/Program.cs"),
+            @"\s+",
+            ""
+        );
+
+        Assert.Contains(
+            "PublishMessage<ExpireProviderCheckoutSessionCommand>().ToLocalQueue(\"payment-app-provider-calls\")",
+            program
+        );
+        Assert.Contains("LocalQueue(\"payment-app-provider-calls\").UseDurableInbox()", program);
+    }
+
     public static IEnumerable<object[]> PaymentProviderVars() => PaymentProviderEnvVars.Select(v => new object[] { v });
 
     private static string ReadRepoFile(string relativePath)

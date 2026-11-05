@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Domain.ValueObjects;
 
@@ -16,7 +17,8 @@ public sealed record ChangeInvoiceStatusCommand(
     Guid InvoiceId,
     string ToStatus,
     string? Reason,
-    Guid ActorUserId
+    Guid ActorUserId,
+    bool CanViewAll
 );
 
 public sealed record ChangeInvoiceStatusResult(Guid InvoiceId, string Status);
@@ -26,6 +28,7 @@ public static class ChangeInvoiceStatusHandler
     public static async Task<Result<ChangeInvoiceStatusResult>> Handle(
         ChangeInvoiceStatusCommand command,
         IInvoiceRepository invoices,
+        IOptions<BillingVisibilityOptions> visibility,
         IUnitOfWork unitOfWork,
         TimeProvider clock,
         CancellationToken ct
@@ -36,7 +39,8 @@ public static class ChangeInvoiceStatusHandler
                 new Error("Billing.Invoice.UnknownStatus", $"'{command.ToStatus}' is not a valid invoice status.")
             );
 
-        var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct);
+        var assignedTo = visibility.Value.Enabled && !command.CanViewAll ? command.ActorUserId : (Guid?)null;
+        var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct, assignedTo);
         if (invoice is null)
             return Result.Failure<ChangeInvoiceStatusResult>(
                 new Error("Billing.Invoice.NotFound", "Invoice does not exist.")

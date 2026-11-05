@@ -359,6 +359,46 @@ namespace TaxVision.Connectors.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Connectors.Domain.Sync.ProviderMessageFetchFailure", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("FirstFailedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("LastFailedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProviderMessageId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "ProviderMessageId")
+                        .IsUnique();
+
+                    b.ToTable("ProviderMessageFetchFailures", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Connectors.Domain.Sync.ProviderSyncCursor", b =>
                 {
                     b.Property<Guid>("Id")

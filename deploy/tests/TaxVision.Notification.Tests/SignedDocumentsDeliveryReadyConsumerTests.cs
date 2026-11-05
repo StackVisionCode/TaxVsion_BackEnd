@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
@@ -80,6 +81,40 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         Assert.Empty(gateway.Queued);
     }
 
+    [Fact]
+    public async Task Transient_keyring_failure_is_retried()
+    {
+        var gateway = new Gateway();
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            Handle(
+                Event(purpose: "Completed", items: 1),
+                gateway,
+                new Scribe(),
+                new Sms(),
+                new Codec(new IOException("keyring"))
+            )
+        );
+
+        Assert.Empty(gateway.Queued);
+    }
+
+    [Fact]
+    public async Task Tampered_payload_is_dropped()
+    {
+        var gateway = new Gateway();
+
+        await Handle(
+            Event(purpose: "Completed", items: 1),
+            gateway,
+            new Scribe(),
+            new Sms(),
+            new Codec(new CryptographicException("tampered"))
+        );
+
+        Assert.Empty(gateway.Queued);
+    }
+
     // ------------------------------------------------------------------
 
     private static readonly Guid TenantId = Guid.NewGuid();
@@ -127,11 +162,12 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         SignedDocumentsDeliveryReadyIntegrationEvent evt,
         Gateway gateway,
         Scribe scribe,
-        Sms sms
+        Sms sms,
+        Codec? codec = null
     ) =>
         SignedDocumentsDeliveryReadyConsumer.Handle(
             evt,
-            new Codec(),
+            codec ?? new Codec(),
             gateway,
             scribe,
             sms,
@@ -145,7 +181,8 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
             CancellationToken.None
         );
 
-    private sealed class Codec : IProtectedPayloadCodec
+    // unprotectFailure simula un fallo del anillo de claves o un payload adulterado.
+    private sealed class Codec(Exception? unprotectFailure = null) : IProtectedPayloadCodec
     {
         public ProtectedPayload Protect<T>(string schema, ProtectedPayloadBinding binding, T content) =>
             new()
@@ -158,13 +195,15 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
 
         public T Unprotect<T>(ProtectedPayload payload, string expectedSchema, ProtectedPayloadBinding expectedBinding)
         {
+            if (unprotectFailure is not null)
+                throw unprotectFailure;
             var parts = payload.Cipher.Split('|', 3);
             if (
                 payload.Schema != expectedSchema
                 || parts[0] != expectedBinding.TenantId.ToString("N")
                 || parts[1] != expectedBinding.IdempotencyKey
             )
-                throw new InvalidOperationException("Binding mismatch.");
+                throw new CryptographicException("Binding mismatch.");
             return System.Text.Json.JsonSerializer.Deserialize<T>(parts[2])!;
         }
     }

@@ -253,6 +253,86 @@ public class NoteTests
     }
 
     [Fact]
+    public void MarkAttachmentAvailable_AfterDetach_StaysDetached()
+    {
+        var note = CreateValidNote();
+        var fileId = Guid.NewGuid();
+        note.AttachFile(fileId, "a.pdf", "application/pdf", 1024);
+        note.DetachFile(fileId);
+
+        var result = note.MarkAttachmentAvailable(fileId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(NoteAttachmentStatus.Detached, note.Attachments.Single().Status);
+    }
+
+    [Fact]
+    public void MarkAttachmentRejected_AfterDetach_StaysDetached()
+    {
+        var note = CreateValidNote();
+        var fileId = Guid.NewGuid();
+        note.AttachFile(fileId, "a.pdf", "application/pdf", 1024);
+        note.DetachFile(fileId);
+
+        var result = note.MarkAttachmentRejected(fileId, "infected");
+
+        Assert.True(result.IsSuccess);
+        var attachment = note.Attachments.Single();
+        Assert.Equal(NoteAttachmentStatus.Detached, attachment.Status);
+        Assert.Null(attachment.RejectionReason);
+    }
+
+    [Fact]
+    public void MarkAttachmentAvailable_AfterRejectedInfected_StaysRejected()
+    {
+        var note = CreateValidNote();
+        var fileId = Guid.NewGuid();
+        note.AttachFile(fileId, "a.pdf", "application/pdf", 1024);
+        note.MarkAttachmentRejected(fileId, "infected");
+
+        var result = note.MarkAttachmentAvailable(fileId);
+
+        Assert.True(result.IsSuccess);
+        var attachment = note.Attachments.Single();
+        Assert.Equal(NoteAttachmentStatus.Rejected, attachment.Status);
+        Assert.Equal("infected", attachment.RejectionReason);
+    }
+
+    [Theory]
+    [InlineData("scan-failed")]
+    [InlineData("file-missing")]
+    [InlineData("blocked-by-policy")]
+    public void MarkAttachmentAvailable_AfterRejectedScanFailed_BecomesAvailable(string reason)
+    {
+        // D-NTS-2: un FileAvailable posterior al rechazo solo existe si CloudStorage reescaneó o reinstaló.
+        var note = CreateValidNote();
+        var fileId = Guid.NewGuid();
+        note.AttachFile(fileId, "a.pdf", "application/pdf", 1024);
+        note.MarkAttachmentRejected(fileId, reason);
+
+        var result = note.MarkAttachmentAvailable(fileId);
+
+        Assert.True(result.IsSuccess);
+        var attachment = note.Attachments.Single();
+        Assert.Equal(NoteAttachmentStatus.Available, attachment.Status);
+        Assert.Null(attachment.RejectionReason);
+    }
+
+    [Fact]
+    public void MarkAttachmentAvailable_AfterDetach_DoesNotTouchTheNote()
+    {
+        var note = CreateValidNote();
+        var fileId = Guid.NewGuid();
+        note.AttachFile(fileId, "a.pdf", "application/pdf", 1024);
+        note.DetachFile(fileId);
+        var updatedAt = note.UpdatedAtUtc;
+
+        note.MarkAttachmentAvailable(fileId);
+
+        Assert.Equal(updatedAt, note.UpdatedAtUtc);
+    }
+
+    [Fact]
     public void DetachFile_MovesToDetachedStatus()
     {
         var note = CreateValidNote();

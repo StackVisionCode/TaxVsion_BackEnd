@@ -59,9 +59,22 @@ public static class CustomerCreatedConsumer
         var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
         if (existing is not null)
         {
-            existing.UpdateEmail(email);
+            // Igual que COR-06: un email activo de otro cliente se omite en vez de violar el índice (DLQ).
+            var owner = await repository.FindActiveByAddressAsync(evt.TenantId, email.NormalizedValue, ct);
+            if (owner is not null && owner.CustomerId != evt.CustomerId)
+            {
+                logger.LogWarning(
+                    "CustomerCreated event {EventId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping reconcile.",
+                    evt.EventId,
+                    evt.CustomerId,
+                    owner.CustomerId
+                );
+                return;
+            }
+
+            existing.UpdateEmail(email, evt.OccurredOn);
             if (!existing.IsActive)
-                existing.Reactivate();
+                existing.Reactivate(evt.OccurredOn);
 
             logger.LogInformation(
                 "CustomerEmailAddress already exists for {CustomerId}; reconciled from Created event.",
@@ -79,16 +92,15 @@ public static class CustomerCreatedConsumer
         if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
         {
             logger.LogWarning(
-                "CustomerCreated event {EventId}: email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping projection.",
+                "CustomerCreated event {EventId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping projection.",
                 evt.EventId,
-                email.NormalizedValue,
                 evt.CustomerId,
                 emailOwner.CustomerId
             );
             return;
         }
 
-        var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email);
+        var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email, evt.OccurredOn);
         await repository.AddAsync(projection, ct);
         logger.LogInformation("CustomerEmailAddress created for {CustomerId}.", evt.CustomerId);
     }

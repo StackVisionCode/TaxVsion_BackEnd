@@ -122,6 +122,9 @@ public sealed class GetUsersHandlerTests
 
     private sealed class FakeUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public IReadOnlyList<User> Page { get; init; } = [];
 
         public Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(

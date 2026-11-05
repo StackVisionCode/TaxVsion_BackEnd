@@ -101,6 +101,39 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Take(take)
             .ToListAsync(ct);
 
+    // Solo el tenant pedido (incluye la papelera); ScanReport solo hace falta para distinguir el bloqueo DMCA.
+    public async Task<IReadOnlyList<QuotaFootprintInput>> ListQuotaInputsAsync(Guid tenantId, CancellationToken ct) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file => file.TenantId == tenantId)
+            .Select(file => new QuotaFootprintInput(
+                file.Status,
+                file.StatusBeforeSoftDelete,
+                file.Status == FileStatus.BlockedByPolicy || file.StatusBeforeSoftDelete == FileStatus.BlockedByPolicy
+                    ? file.ScanReport
+                    : null,
+                file.SizeBytes
+            ))
+            .ToListAsync(ct);
+
+    // Cross-tenant (StuckScanRescueService). Las filas viejas sin ScanQueuedAtUtc miden desde CreatedAtUtc.
+    public async Task<IReadOnlyList<FileObject>> ListStuckScansAsync(
+        DateTime olderThanUtc,
+        int take,
+        CancellationToken ct
+    ) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file =>
+                (file.Status == FileStatus.PendingScan || file.Status == FileStatus.Scanning)
+                && (file.ScanQueuedAtUtc ?? file.CreatedAtUtc) <= olderThanUtc
+            )
+            .OrderBy(file => file.ScanQueuedAtUtc ?? file.CreatedAtUtc)
+            .Take(take)
+            .ToListAsync(ct);
+
     // Backfill (barrido de plataforma): tenants con archivos sin carpeta navegable. Cross-tenant intencional.
     public async Task<IReadOnlyList<Guid>> DistinctTenantsWithUnfiledFilesAsync(
         IReadOnlyCollection<FolderType> navigableTypes,
@@ -639,6 +672,19 @@ public sealed class StorageLimitRepository(CloudStorageDbContext db) : IStorageL
 
     public Task<TenantStorageLimit?> GetAsync(Guid tenantId, CancellationToken ct) =>
         db.StorageLimits.IgnoreQueryFilters().SingleOrDefaultAsync(limit => limit.TenantId == tenantId, ct);
+
+    public Task<TenantStorageLimit?> GetForUpdateAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Locked quota reads require an open transaction.");
+
+        return db
+            .StorageLimits.FromSql(
+                $"SELECT * FROM [TenantStorageLimits] WITH (UPDLOCK, HOLDLOCK) WHERE [TenantId] = {tenantId}"
+            )
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(ct);
+    }
 }
 
 public sealed class StoragePolicyRepository(CloudStorageDbContext db) : IStoragePolicyRepository

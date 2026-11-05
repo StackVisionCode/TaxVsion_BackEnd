@@ -16,7 +16,7 @@ public static class GetWalletHandler
         CancellationToken ct
     )
     {
-        var wallet = await wallets.GetByTenantAsync(query.TenantId, ct);
+        var wallet = await wallets.GetByTenantAsync(query.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
         if (wallet is not null)
             return Result.Success(WalletView.From(wallet));
 

@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
@@ -37,10 +38,6 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var intents = services.GetRequiredService<IRenewalCheckoutIntentRepository>();
-        var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
-        var payments = services.GetRequiredService<IRenewalCheckoutPaymentClient>();
-        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
-        var bus = services.GetRequiredService<IMessageBus>();
         var jobLogger = services.GetRequiredService<ILogger<SubscriptionRenewalCheckoutReconciliationJob>>();
 
         var nowUtc = DateTime.UtcNow;
@@ -48,25 +45,54 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
         if (stale.Count == 0)
             return;
 
-        var reactivatedCount = 0;
-        foreach (var intent in stale)
-        {
-            try
-            {
-                if (await ReconcileOneAsync(intent, subscriptions, payments, unitOfWork, bus, jobLogger, nowUtc, ct))
-                    reactivatedCount++;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                jobLogger.LogError(ex, "Renewal checkout reconcile failed for intent {IntentId}.", intent.Id);
-            }
-        }
-
+        var reactivatedCount = await ReconcileAsync([.. stale.Select(intent => intent.Id)], nowUtc, ct);
         if (reactivatedCount > 0)
             jobLogger.LogInformation(
                 "SubscriptionRenewalCheckoutReconciliationJob reactivated {Count} paid-but-pending intent(s).",
                 reactivatedCount
             );
+    }
+
+    // Cada intención en su propio scope: un fallo deja sucio solo su DbContext.
+    internal async Task<int> ReconcileAsync(IReadOnlyList<Guid> intentIds, DateTime nowUtc, CancellationToken ct)
+    {
+        var reactivatedCount = 0;
+        foreach (var intentId in intentIds)
+        {
+            using var itemScope = ScopeFactory.CreateScope();
+            var services = itemScope.ServiceProvider;
+            var jobLogger = services.GetRequiredService<ILogger<SubscriptionRenewalCheckoutReconciliationJob>>();
+            try
+            {
+                var intent = await services
+                    .GetRequiredService<IRenewalCheckoutIntentRepository>()
+                    .GetByIdForProvisioningAsync(intentId, ct);
+                if (
+                    intent is { Status: SubscriptionRenewalIntentStatus.Pending }
+                    && await ReconcileOneAsync(
+                        intent,
+                        services.GetRequiredService<ISubscriptionRepository>(),
+                        services.GetRequiredService<IRenewalCheckoutPaymentClient>(),
+                        services.GetRequiredService<IUnitOfWork>(),
+                        services.GetRequiredService<IMessageBus>(),
+                        jobLogger,
+                        nowUtc,
+                        ct
+                    )
+                )
+                    reactivatedCount++;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                jobLogger.LogInformation("Renewal checkout intent {IntentId} changed by another writer.", intentId);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                jobLogger.LogError(ex, "Renewal checkout reconcile failed for intent {IntentId}.", intentId);
+            }
+        }
+
+        return reactivatedCount;
     }
 
     private static async Task<bool> ReconcileOneAsync(

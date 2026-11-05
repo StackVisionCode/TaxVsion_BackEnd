@@ -87,6 +87,63 @@ public sealed class SaaSPaymentTests
         Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
     }
 
+    [Fact]
+    public void FlagForReview_KeepsStatus_AndIsIdempotent()
+    {
+        var payment = FailedOnboardingPayment();
+        payment.MarkCancelled("BuyerCancelled", DateTime.UtcNow);
+        var firstFlag = new DateTime(2026, 11, 5, 10, 0, 0, DateTimeKind.Utc);
+
+        var first = payment.FlagForReview("LateProviderSuccess", "pi_123", 4900, "usd", firstFlag);
+        var second = payment.FlagForReview("AmountMismatch", "pi_456", 100, "USD", firstFlag.AddMinutes(5));
+
+        Assert.True(first.IsSuccess);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+        Assert.Equal(firstFlag, payment.ReviewRequiredAtUtc);
+        Assert.Equal("LateProviderSuccess", payment.ReviewReasonCode);
+        Assert.Equal("pi_123", payment.ReviewProviderReference);
+        Assert.Equal(4900, payment.ReviewPaidAmountCents);
+        Assert.Equal("USD", payment.ReviewPaidCurrency);
+
+        var admin = Guid.NewGuid();
+        var resolved = payment.ResolveReview("Refunded", admin, firstFlag.AddHours(1));
+        Assert.True(resolved.IsSuccess);
+        Assert.Equal(firstFlag.AddHours(1), payment.ReviewResolvedAtUtc);
+        Assert.Equal(admin, payment.ReviewResolvedByUserId);
+        Assert.Equal("Refunded", payment.ReviewResolution);
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+
+        var again = payment.ResolveReview("NoActionNeeded", admin, firstFlag.AddHours(2));
+        Assert.True(again.IsFailure);
+        Assert.Equal("SaaSPayment.ReviewAlreadyResolved", again.Error.Code);
+    }
+
+    [Fact]
+    public void FlagForReview_rejects_an_unknown_reason()
+    {
+        var payment = FailedOnboardingPayment();
+
+        var result = payment.FlagForReview("Whatever", null, null, null, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Null(payment.ReviewRequiredAtUtc);
+    }
+
+    [Fact]
+    public void ResolveReview_requires_a_pending_review_and_a_known_resolution()
+    {
+        var payment = FailedOnboardingPayment();
+
+        var notFlagged = payment.ResolveReview("Refunded", Guid.NewGuid(), DateTime.UtcNow);
+        payment.FlagForReview("LateProviderSuccess", "pi_1", 4900, "USD", DateTime.UtcNow);
+        var unknown = payment.ResolveReview("Ignored", Guid.NewGuid(), DateTime.UtcNow);
+
+        Assert.Equal("SaaSPayment.ReviewNotRequired", notFlagged.Error.Code);
+        Assert.Equal("SaaSPayment.InvalidReviewResolution", unknown.Error.Code);
+        Assert.Null(payment.ReviewResolvedAtUtc);
+    }
+
     private static SaaSPayment PendingOnboardingPayment() =>
         SaaSPayment
             .CreateForOnboarding(
@@ -223,6 +280,20 @@ public sealed class SaaSPaymentTests
         Assert.True(result.IsFailure);
         Assert.Equal("Payment.LegalHeld", result.Error.Code);
         Assert.Empty(payment.Refunds);
+    }
+
+    [Fact]
+    public void CanRefund_rejects_legal_hold_without_mutating()
+    {
+        var payment = CreateSucceededPayment();
+        payment.SetLegalHold(true, Guid.Empty, DateTime.UtcNow);
+
+        var result = payment.CanRefund(Money.Create(1000, "USD").Value, "customer request");
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Payment.LegalHeld", result.Error.Code);
+        Assert.Empty(payment.Refunds);
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
     }
 
     [Fact]

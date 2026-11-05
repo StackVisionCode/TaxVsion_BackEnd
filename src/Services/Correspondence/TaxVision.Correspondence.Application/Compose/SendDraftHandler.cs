@@ -58,6 +58,14 @@ public static class SendDraftHandler
 
         var sendResult = await SendViaPostmasterAsync(draft, postmaster, ct);
 
+        // 202 de Postmaster: el envío sigue en curso; el borrador queda en Sending y no se marca enviado.
+        if (sendResult is { IsSuccess: true, Value.InProgress: true })
+        {
+            await RecordAuditLogAsync(command, "Send in progress.", auditLogs, correlation, logger, ct);
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success(new SendDraftResult(sendResult.Value.SentMessageId, null, InProgress: true));
+        }
+
         return sendResult.IsSuccess
             ? await HandleSendSuccessAsync(
                 command,
@@ -196,7 +204,7 @@ public static class SendDraftHandler
         CancellationToken ct
     )
     {
-        var markSentResult = draft.MarkSent(postmasterResult.SentMessageId);
+        var markSentResult = draft.MarkSent(postmasterResult.SentMessageId, postmasterResult.InternetMessageId);
         if (markSentResult.IsFailure)
             return Result.Failure<SendDraftResult>(markSentResult.Error);
 

@@ -25,11 +25,13 @@ public interface IPaymentLinkRepository
     /// ¿Hubo ya un link CONSUMIDO para esta factura? Es prueba de cobro consumado:
     /// <c>MarkAsUsed</c> exige que haya un pago asociado. Lo usa el resolver para no acuñar un link
     /// nuevo sobre algo ya pagado — cubre también las facturas cobradas ANTES de que existiera
-    /// <c>InvoicePaidConsumer</c>, que no tienen evento que reemitir.
+    /// <c>InvoicePaidConsumer</c>, que no tienen evento que reemitir. Con <paramref name="usedSinceUtc"/>
+    /// solo cuentan los links usados después de esa fecha (el último saldo que mandó Billing, PCL-14).
     /// </summary>
     Task<bool> AnyUsedForExternalReferenceAsync(
         Guid tenantId,
         string externalReferenceId,
+        DateTime? usedSinceUtc = null,
         CancellationToken ct = default
     );
 

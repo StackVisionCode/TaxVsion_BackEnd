@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
 using TaxVision.Tasks.Application.Hierarchy.Abstractions;
 using TaxVision.Tasks.Application.Permissions.Abstractions;
+using TaxVision.Tasks.Application.Reminders;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 using Wolverine;
@@ -46,6 +47,8 @@ public static class ReopenTaskHandler
             return Result.Failure<TaskResponse>(reopened.Error);
 
         await DropInactiveAssigneeAsync(task, users, command.ByUserId, nowUtc, ct);
+        // El cierre canceló el aviso; la clave del ciclo nuevo (:r{n}) lo vuelve a pedir.
+        await TaskDueReminder.PublishIfDueAsync(task, bus, correlation);
         await unblocking.ApplyPredecessorReopenedAsync(command.TenantId, task.Id, ct);
         await hierarchy.ApplyChildReopenedAsync(command.TenantId, task.ParentTaskId, ct);
         await bus.PublishAsync(BuildEvent(task, command.ByUserId, nowUtc, correlation.CorrelationId));

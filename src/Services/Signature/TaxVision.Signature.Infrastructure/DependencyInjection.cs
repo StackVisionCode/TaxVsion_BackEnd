@@ -6,6 +6,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Minio;
 using StackExchange.Redis;
@@ -108,6 +109,8 @@ public static class DependencyInjection
         services.AddScoped<ISignatureAuditRepository, SignatureAuditRepository>();
         services.AddScoped<IAuditChainAppender, HmacAuditChainAppender>();
         services.AddScoped<IAuditChainVerifier, HmacAuditChainVerifier>();
+        services.AddScoped<SqlAuditChainLock>();
+        services.AddScoped<ISealedAuditGapQuery, SealedAuditGapQuery>();
 
         // CMS signer (BouncyCastle). Registrado sólo si hay certificado configurado —
         // permite arrancar en dev sin PFX. En producción es obligatorio para PAdES-B.
@@ -156,6 +159,12 @@ public static class DependencyInjection
             .AddOptions<DraftRetentionSchedulerOptions>()
             .Bind(configuration.GetSection(DraftRetentionSchedulerOptions.SectionName));
         services.AddHostedService<DraftRetentionScheduler>();
+        // SIG-2 — vuelve a pedir el sellado de las completadas que quedaron sin sellar.
+        services
+            .AddOptions<SealingReconciliationOptions>()
+            .Bind(configuration.GetSection(SealingReconciliationOptions.SectionName));
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddHostedService<SealingReconciliationScheduler>();
 
         // Distributed lock + cache (Redis). Si no hay connection string se degrada a no-op.
         var redisConnectionString = configuration.GetConnectionString("Redis");

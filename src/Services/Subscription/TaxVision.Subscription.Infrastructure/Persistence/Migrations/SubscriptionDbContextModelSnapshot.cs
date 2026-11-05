@@ -239,6 +239,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid?>("SaaSPaymentId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1318,6 +1324,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid?>("SaaSPaymentId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1799,6 +1811,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<Guid?>("SaaSPaymentId")
                         .HasColumnType("uniqueidentifier");

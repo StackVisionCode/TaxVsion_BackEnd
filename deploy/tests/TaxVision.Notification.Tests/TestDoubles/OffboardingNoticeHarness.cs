@@ -51,6 +51,7 @@ internal sealed class OffboardingNoticeHarness
             _gatewayPublisher,
             logs,
             new NoOpUnitOfWork(),
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         Correlation = new TestCorrelationContext();

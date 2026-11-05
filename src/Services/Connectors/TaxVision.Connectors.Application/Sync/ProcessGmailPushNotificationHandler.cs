@@ -33,6 +33,7 @@ public static class ProcessGmailPushNotificationHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger logger,
+        MessageFetchFailureTracker fetchFailures,
         CancellationToken ct
     )
     {
@@ -109,6 +110,7 @@ public static class ProcessGmailPushNotificationHandler
                     bus,
                     correlation,
                     logger,
+                    fetchFailures,
                     ct
                 ),
             ct

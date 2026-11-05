@@ -8,6 +8,7 @@ using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Audience;
 using TaxVision.Campaigns.Application.Senders.Abstractions;
 using TaxVision.Campaigns.Domain.Campaigns;
+using TaxVision.Campaigns.Domain.Runs;
 using Wolverine;
 
 namespace TaxVision.Campaigns.Application.Runs.Commands;
@@ -62,37 +63,29 @@ public static class StartCampaignRunFromAudienceHandler
         if (campaign.Status == CampaignStatus.Archived)
             return Result.Failure<CampaignRunResponse>(CampaignErrors.Archived);
 
-        // Alcance de la fuente "Clients": selección explícita (CustomerIds) y/o "todos", acotado por la
-        // visibilidad por asignación (P2) cuando el actor no ve todo. Ver AudienceResolver.ResolveCustomerScopeAsync.
-        var (includeCustomers, restrictCustomerIds) = await AudienceResolver.ResolveCustomerScopeAsync(
-            command.TenantId,
+        var resolved = await ResolveUnitsAsync(
+            campaign,
             command.TriggeredByUserId,
+            command.ContactListIds ?? [],
+            command.Manual ?? [],
             command.IncludeCustomers,
             command.CustomerIds,
             command.CanViewAllCustomers,
-            visibility.Value.Enabled,
-            assignmentReader,
-            ct
-        );
-
-        var units = await AudienceResolver.ResolveAsync(
-            command.TenantId,
-            campaign.Channels,
-            command.ContactListIds ?? [],
-            command.Manual ?? [],
             contacts,
             lists,
-            includeCustomers,
             customerClient,
-            restrictCustomerIds,
+            assignmentReader,
+            visibility.Value,
             ct
         );
+        if (resolved.IsFailure)
+            return Result.Failure<CampaignRunResponse>(resolved.Error);
 
         return await StartCampaignRunHandler.StartAndDispatchAsync(
             campaign,
             command.TriggerKind,
             command.TriggeredByUserId,
-            units,
+            resolved.Value,
             runs,
             senderProfiles,
             wallet,
@@ -100,6 +93,53 @@ public static class StartCampaignRunFromAudienceHandler
             unitOfWork,
             bus,
             correlation,
+            ct
+        );
+    }
+
+    /// <summary>
+    /// Resuelve la audiencia del run (listas, manual y fuente "Clients" acotada por visibilidad). La usa
+    /// también el disparo del agendado.
+    /// </summary>
+    internal static async Task<Result<IReadOnlyList<RunRecipientDraft>>> ResolveUnitsAsync(
+        Campaign campaign,
+        Guid actorUserId,
+        IReadOnlyCollection<Guid> contactListIds,
+        IReadOnlyCollection<ManualAudienceEntry> manual,
+        bool includeCustomersRequested,
+        IReadOnlyCollection<Guid>? customerIds,
+        bool canViewAllCustomers,
+        IContactRepository contacts,
+        IContactListRepository lists,
+        ICustomerAudienceClient customerClient,
+        ICampaignCustomerAssignmentReader assignmentReader,
+        CampaignsVisibilityOptions visibility,
+        CancellationToken ct
+    )
+    {
+        // Alcance de la fuente "Clients": selección explícita (CustomerIds) y/o "todos", acotado por la
+        // visibilidad por asignación (P2) cuando el actor no ve todo. Ver AudienceResolver.ResolveCustomerScopeAsync.
+        var (includeCustomers, restrictCustomerIds) = await AudienceResolver.ResolveCustomerScopeAsync(
+            campaign.TenantId,
+            actorUserId,
+            includeCustomersRequested,
+            customerIds,
+            canViewAllCustomers,
+            visibility.Enabled,
+            assignmentReader,
+            ct
+        );
+
+        return await AudienceResolver.ResolveAsync(
+            campaign.TenantId,
+            campaign.Channels,
+            contactListIds,
+            manual,
+            contacts,
+            lists,
+            includeCustomers,
+            customerClient,
+            restrictCustomerIds,
             ct
         );
     }

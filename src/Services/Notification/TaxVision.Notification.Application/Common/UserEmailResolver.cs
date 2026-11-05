@@ -46,13 +46,15 @@ public sealed class UserEmailResolver(
             return null;
         }
 
+        // La respuesta de Auth es la verdad más reciente: se aplica con la hora actual.
+        var now = DateTime.UtcNow;
         if (local is null)
             await directory.AddAsync(
-                Domain.Directory.UserEmailDirectoryEntry.Create(tenantId, userId, remote.Email, remote.IsActive),
+                Domain.Directory.UserEmailDirectoryEntry.Create(tenantId, userId, remote.Email, remote.IsActive, now),
                 ct
             );
         else
-            local.UpdateEmail(remote.Email, remote.IsActive);
+            local.UpdateEmail(remote.Email, remote.IsActive, now);
 
         await unitOfWork.SaveChangesAsync(ct);
 

@@ -87,6 +87,11 @@ internal sealed class InMemorySessionRepository : ISessionRepository
 
 internal sealed class InMemoryUserRepository : IUserRepository
 {
+    public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult(
+            _users.Values.Count(u => u.TenantId == tenantId && u.IsActive && u.ActorType == UserActorType.TenantAdmin)
+        );
+
     private readonly Dictionary<Guid, User> _users = [];
 
     public void Add(User user) => _users[user.Id] = user;

@@ -62,6 +62,12 @@ public sealed record ReminderTargetMovedIntegrationEvent : IntegrationEvent
     public required string Category { get; init; }
     public required Guid TargetId { get; init; }
     public required DateTime NewAnchorAtUtc { get; init; }
+
+    /// <summary>
+    /// Opcional (CAL-7): minutos de aviso nuevos. Si viene, el anclado se recalcula con
+    /// <see cref="NewAnchorAtUtc"/> y este valor; si no, conserva los suyos. Los consumidores viejos lo ignoran.
+    /// </summary>
+    public int? LeadMinutes { get; init; }
 }
 
 /// <summary>

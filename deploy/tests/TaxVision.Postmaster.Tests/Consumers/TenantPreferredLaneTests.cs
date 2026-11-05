@@ -194,7 +194,7 @@ public sealed class TenantPreferredLaneTests
         public FakeTenantDirectoryRepository TenantDirectory { get; } = new();
 
         public Task HandleAsync(NotificationsEmailSendRequestedIntegrationEvent evt) =>
-            NotificationsEmailSendRequestedConsumer.Handle(
+            EmailSendPipeline.RunAsync(
                 evt,
                 new FakeIdempotencyGuard(),
                 providerResolver,

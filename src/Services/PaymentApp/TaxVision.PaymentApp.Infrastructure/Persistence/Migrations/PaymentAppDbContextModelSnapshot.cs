@@ -475,6 +475,34 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ReceiptFileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<long?>("ReviewPaidAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ReviewPaidCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("ReviewProviderReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ReviewReasonCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ReviewRequiredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReviewResolution")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ReviewResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReviewResolvedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -523,6 +551,15 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("UX_SaaSPayments_OnboardingId")
                         .HasFilter("[OnboardingId] IS NOT NULL");
+
+                    b.HasIndex("ProviderCheckoutSessionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SaaSPayments_ProviderCheckoutSessionId")
+                        .HasFilter("[ProviderCheckoutSessionId] IS NOT NULL");
+
+                    b.HasIndex("ReviewRequiredAtUtc")
+                        .HasDatabaseName("IX_SaaSPayments_ReviewPending")
+                        .HasFilter("[ReviewRequiredAtUtc] IS NOT NULL AND [ReviewResolvedAtUtc] IS NULL");
 
                     b.HasIndex("TenantId", "CreatedAtUtc")
                         .HasDatabaseName("IX_SaaSPayments_TenantId_CreatedAtUtc");
@@ -851,6 +888,11 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                                 .HasColumnName("ExternalChargeReference");
 
                             b1.HasKey("SaaSPaymentId");
+
+                            b1.HasIndex("Provider", "Value")
+                                .IsUnique()
+                                .HasDatabaseName("UX_SaaSPayments_ExternalChargeProvider_Reference")
+                                .HasFilter("[ExternalChargeReference] IS NOT NULL");
 
                             b1.ToTable("SaaSPayments");
 

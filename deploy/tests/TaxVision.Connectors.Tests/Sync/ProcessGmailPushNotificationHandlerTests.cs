@@ -61,6 +61,7 @@ public class ProcessGmailPushNotificationHandlerTests
             bus,
             correlation,
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -111,6 +112,7 @@ public class ProcessGmailPushNotificationHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -151,6 +153,7 @@ public class ProcessGmailPushNotificationHandlerTests
             bus,
             correlation,
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -173,6 +176,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -204,6 +208,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -246,6 +251,7 @@ public class ProcessGmailPushNotificationHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -281,6 +287,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -289,7 +296,7 @@ public class ProcessGmailPushNotificationHandlerTests
     }
 
     [Fact]
-    public async Task Handle_WhenOneMessageFetchFails_SkipsItAndPublishesTheRest()
+    public async Task Handle_WhenOneMessageFetchFails_PublishesTheRestAndKeepsTheCursor()
     {
         var account = CreateActiveAccount();
         var accountRepository = new FakeTenantEmailAccountRepository();
@@ -314,10 +321,13 @@ public class ProcessGmailPushNotificationHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
-        Assert.True(result.IsSuccess);
+        // CON-01: el fallido no se salta; la próxima pasada lo repite desde el mismo cursor.
+        Assert.True(result.IsFailure);
+        Assert.Equal("RawMessageSync.MessageFetchPartiallyFailed", result.Error.Code);
         var published = Assert.Single(bus.Published);
         var evt = Assert.IsType<ConnectorsRawMessageReceivedIntegrationEvent>(published);
         Assert.Equal("msg-good", evt.ProviderMessageId);
@@ -383,6 +393,7 @@ public class ProcessGmailPushNotificationHandlerTests
                 bus,
                 correlation,
                 NullLogger.Instance,
+                FetchFailures.None(),
                 CancellationToken.None
             )
         );
@@ -402,6 +413,7 @@ public class ProcessGmailPushNotificationHandlerTests
             bus,
             correlation,
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 

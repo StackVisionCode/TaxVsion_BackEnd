@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using BuildingBlocks.Results;
 using TaxVision.Sms.Application.Providers;
 
@@ -43,6 +44,19 @@ internal sealed class FakeSmsProvider : ISmsProvider
             ? Result.Failure<SmsDeliveryUpdate>(new Error("fake.noDlr", "No DLR configured."))
             : Result.Success(DeliveryUpdate);
 
+    /// <summary>Estados que devuelve el pull de estado (conciliación).</summary>
+    public List<SmsDeliveryUpdate> Reports { get; } = [];
+
+    public Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([
+                .. Reports.Where(r => providerMessageIds.Contains(r.ProviderMessageId)),
+            ])
+        );
+
     public Result<SmsInboundMessage> ParseInbound(string rawPayload) =>
         InboundMessage is null
             ? Result.Failure<SmsInboundMessage>(new Error("fake.noInbound", "No inbound configured."))
@@ -66,4 +80,10 @@ internal sealed class FakeSmsProvider : ISmsProvider
 internal sealed class FakeSmsAdapterFactory(ISmsProvider provider) : ISmsAdapterFactory
 {
     public ISmsProvider Resolve(string code) => provider;
+
+    public bool TryResolve(string code, [NotNullWhen(true)] out ISmsProvider? resolved)
+    {
+        resolved = provider;
+        return true;
+    }
 }

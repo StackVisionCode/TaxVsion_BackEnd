@@ -216,6 +216,10 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId", "Reference")
+                        .HasDatabaseName("IX_StockMovements_Tenant_Reference")
+                        .HasFilter("[Reference] IS NOT NULL");
+
                     b.HasIndex("TenantId", "CatalogItemId", "MovedAtUtc");
 
                     b.ToTable("StockMovements", (string)null);

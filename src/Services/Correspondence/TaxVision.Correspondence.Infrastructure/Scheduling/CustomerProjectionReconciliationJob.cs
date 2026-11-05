@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
-using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,8 @@ using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
 using TaxVision.Correspondence.Infrastructure.Customers;
+using TaxVision.Correspondence.Infrastructure.Observability;
+using TaxVision.Correspondence.Infrastructure.Persistence;
 
 namespace TaxVision.Correspondence.Infrastructure.Scheduling;
 
@@ -60,7 +63,7 @@ public sealed class CustomerProjectionReconciliationJob(
         }
     }
 
-    private async Task RunOnceSafeAsync(int pageSize, CancellationToken ct)
+    internal async Task RunOnceSafeAsync(int pageSize, CancellationToken ct)
     {
         try
         {
@@ -77,7 +80,7 @@ public sealed class CustomerProjectionReconciliationJob(
         using var scope = serviceProvider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<ICustomerReconciliationClient>();
         var repository = scope.ServiceProvider.GetRequiredService<ICustomerEmailAddressRepository>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var db = scope.ServiceProvider.GetRequiredService<CorrespondenceDbContext>();
         var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
 
         using (correlation.Push(Guid.NewGuid().ToString("N")))
@@ -88,6 +91,8 @@ public sealed class CustomerProjectionReconciliationJob(
 
             while (true)
             {
+                // Marca = hora de lectura del estado autoritativo: lo anterior que llegue después ya está reflejado.
+                var readAtUtc = DateTime.UtcNow;
                 var result = await client.ListPageAsync(page, pageSize, ct);
                 if (result is null)
                 {
@@ -98,17 +103,33 @@ public sealed class CustomerProjectionReconciliationJob(
                     return;
                 }
 
+                // FindActiveByAddressAsync no ve lo agregado en la página todavía sin guardar.
+                var activatedInPage = new HashSet<(Guid TenantId, string Email)>();
+                var pageInserted = 0;
+                var pageUpdated = 0;
                 foreach (var customer in result.Items)
                 {
-                    var applied = await UpsertAsync(repository, customer, logger, ct);
+                    var applied = await UpsertAsync(repository, customer, readAtUtc, activatedInPage, logger, ct);
                     if (applied == UpsertOutcome.Inserted)
-                        inserted++;
+                        pageInserted++;
                     else if (applied == UpsertOutcome.Updated)
-                        updated++;
+                        pageUpdated++;
                 }
 
                 // Persistir por página para acotar el tamaño del change-tracker en catálogos grandes.
-                await unitOfWork.SaveChangesAsync(ct);
+                try
+                {
+                    await db.SaveChangesAsync(ct);
+                    inserted += pageInserted;
+                    updated += pageUpdated;
+                }
+                // El DbContext traduce la violación de índice único a ConflictException.
+                catch (Exception ex) when (ex is DbUpdateException or ConflictException)
+                {
+                    // Una página mala no corta las siguientes; la próxima corrida la reintenta.
+                    logger.LogError(ex, "CustomerProjectionReconciliationJob could not save page {Page}; skipping it.", page);
+                    db.ChangeTracker.Clear();
+                }
 
                 if (!result.HasMore)
                     break;
@@ -132,12 +153,14 @@ public sealed class CustomerProjectionReconciliationJob(
     private static async Task<UpsertOutcome> UpsertAsync(
         ICustomerEmailAddressRepository repository,
         RemoteCustomerRecord customer,
+        DateTime readAtUtc,
+        HashSet<(Guid TenantId, string Email)> activatedInPage,
         ILogger logger,
         CancellationToken ct
     )
     {
         if (!customer.IsActive)
-            return await DeactivateAsync(repository, customer, ct);
+            return await DeactivateAsync(repository, customer, readAtUtc, ct);
 
         var emailResult = EmailAddress.Create(customer.PrimaryEmail);
         if (emailResult.IsFailure)
@@ -145,47 +168,65 @@ public sealed class CustomerProjectionReconciliationJob(
 
         var email = emailResult.Value;
         var existing = await repository.GetByCustomerIdAsync(customer.TenantId, customer.CustomerId, ct);
+        var activates = existing is null || !existing.IsActive || existing.EmailAddress != email.NormalizedValue;
+
+        // IX_CustomerEmailAddresses_TenantId_EmailAddress_Active es única por email activo dentro del
+        // tenant: si el email ya es de otro cliente activo, se omite (como los consumers) en vez de
+        // romper el guardado de la página. A quién pertenece un email compartido lo decide el negocio.
+        if (activates && await IsTakenAsync(repository, customer, email, activatedInPage, logger, ct))
+            return UpsertOutcome.Skipped;
+
         if (existing is not null)
         {
             var changed = false;
             if (existing.EmailAddress != email.NormalizedValue)
-            {
-                existing.UpdateEmail(email);
-                changed = true;
-            }
+                changed = existing.UpdateEmail(email, readAtUtc);
             if (!existing.IsActive)
-            {
-                existing.Reactivate();
-                changed = true;
-            }
+                changed |= existing.Reactivate(readAtUtc);
+            if (changed && existing.IsActive)
+                activatedInPage.Add((customer.TenantId, existing.EmailAddress));
             return changed ? UpsertOutcome.Updated : UpsertOutcome.Unchanged;
         }
 
-        // IX_CustomerEmailAddresses_TenantId_EmailAddress_Active es única por email activo dentro del
-        // tenant — dos customers distintos con el mismo email activo violarían el índice. Igual que el
-        // consumer (CustomerCreatedConsumer.UpsertProjection): se registra y se omite la proyección en
-        // vez de crashear (SaveChanges de la página) — resolver a quién pertenece un email compartido
-        // es una decisión de negocio pendiente.
-        var emailOwner = await repository.FindActiveByAddressAsync(customer.TenantId, email.NormalizedValue, ct);
-        if (emailOwner is not null && emailOwner.CustomerId != customer.CustomerId)
-        {
-            logger.LogWarning(
-                "CustomerProjectionReconciliationJob: email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping projection.",
-                email.NormalizedValue,
-                customer.CustomerId,
-                emailOwner.CustomerId
-            );
-            return UpsertOutcome.Skipped;
-        }
-
-        var projection = CustomerEmailAddress.Create(customer.TenantId, customer.CustomerId, email);
+        var projection = CustomerEmailAddress.Create(customer.TenantId, customer.CustomerId, email, readAtUtc);
         await repository.AddAsync(projection, ct);
+        activatedInPage.Add((customer.TenantId, email.NormalizedValue));
         return UpsertOutcome.Inserted;
+    }
+
+    private static async Task<bool> IsTakenAsync(
+        ICustomerEmailAddressRepository repository,
+        RemoteCustomerRecord customer,
+        EmailAddress email,
+        HashSet<(Guid TenantId, string Email)> activatedInPage,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        var owner = await repository.FindActiveByAddressAsync(customer.TenantId, email.NormalizedValue, ct);
+        var taken =
+            activatedInPage.Contains((customer.TenantId, email.NormalizedValue))
+            || (owner is not null && owner.CustomerId != customer.CustomerId);
+        if (!taken)
+            return false;
+
+        CorrespondenceMetrics.ProjectionReconcileConflictsTotal.Add(
+            1,
+            new KeyValuePair<string, object?>("source", "projection_job")
+        );
+        logger.LogWarning(
+            "CustomerProjectionReconciliationJob: email for customer {CustomerId} (tenant {TenantId}) is already active for a different customer {ExistingCustomerId}; skipping projection.",
+            customer.CustomerId,
+            customer.TenantId,
+            owner?.CustomerId
+        );
+        return true;
     }
 
     private static async Task<UpsertOutcome> DeactivateAsync(
         ICustomerEmailAddressRepository repository,
         RemoteCustomerRecord customer,
+        DateTime readAtUtc,
         CancellationToken ct
     )
     {
@@ -195,8 +236,7 @@ public sealed class CustomerProjectionReconciliationJob(
         if (existing is null || !existing.IsActive)
             return UpsertOutcome.Unchanged;
 
-        existing.SoftDelete();
-        return UpsertOutcome.Updated;
+        return existing.SoftDelete(readAtUtc) ? UpsertOutcome.Updated : UpsertOutcome.Unchanged;
     }
 
     private enum UpsertOutcome

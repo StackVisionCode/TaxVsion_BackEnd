@@ -1,7 +1,11 @@
 using System.Security.Cryptography;
+using BuildingBlocks.CustomerVisibility;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using TaxVision.Notes.Infrastructure.Jobs;
 
 namespace TaxVision.Notes.Tests.Integration;
 
@@ -34,5 +38,23 @@ public sealed class NotesApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Los jobs llaman a Customer y CloudStorage reales con datos de la base local: no en pruebas.
+        builder.ConfigureTestServices(services =>
+        {
+            Type[] jobs =
+            [
+                typeof(CustomerDirectoryReconciliationJob),
+                typeof(TenantCustomerFullReconciliationJob),
+                typeof(PendingAttachmentReconciliationJob),
+                typeof(CustomerAssignmentReconciliationJob),
+            ];
+            foreach (
+                var descriptor in services
+                    .Where(d => d.ServiceType == typeof(IHostedService) && jobs.Contains(d.ImplementationType))
+                    .ToList()
+            )
+                services.Remove(descriptor);
+        });
     }
 }

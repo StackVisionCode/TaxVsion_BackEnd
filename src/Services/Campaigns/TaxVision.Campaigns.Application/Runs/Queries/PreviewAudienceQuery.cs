@@ -58,7 +58,7 @@ public static class PreviewAudienceHandler
             ct
         );
 
-        var units = await AudienceResolver.ResolveAsync(
+        var resolved = await AudienceResolver.ResolveAsync(
             query.TenantId,
             campaign.Channels,
             query.ContactListIds ?? [],
@@ -70,6 +70,9 @@ public static class PreviewAudienceHandler
             restrictCustomerIds,
             ct
         );
+        if (resolved.IsFailure)
+            return Result.Failure<AudiencePreviewResponse>(resolved.Error);
+        var units = resolved.Value;
 
         long email = 0,
             sms = 0,

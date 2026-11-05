@@ -92,6 +92,28 @@ public sealed class CancelHostedCheckoutSessionHandlerTests
     }
 
     [Fact]
+    public async Task Calls_provider_even_when_local_payment_is_cancelled()
+    {
+        // "Cancel and Start Over": el pago local ya es Cancelled pero la sesión del provider puede seguir viva.
+        var payment = PaymentWithSession(PaymentProviderCode.Stripe, PaymentStatus.Cancelled);
+        var payments = new FakeSaaSPaymentRepository { BySessionId = payment };
+        var canceller = new FakeCanceller(alreadyExpired: false);
+
+        var result = await CancelHostedCheckoutSessionHandler.Handle(
+            new CancelHostedCheckoutSessionCommand("cs_existing", ProviderCode: null),
+            payments,
+            canceller,
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, canceller.Calls);
+        Assert.Equal("cs_existing", canceller.LastSessionId);
+        Assert.False(result.Value.AlreadyExpired);
+    }
+
+    [Fact]
     public async Task Honors_the_explicit_provider_code_without_a_lookup()
     {
         // Si el caller trae el code, no hace falta el fetch — útil para onboarding pre-tenant donde la fila
@@ -153,6 +175,8 @@ public sealed class CancelHostedCheckoutSessionHandlerTests
 
         if (targetStatus == PaymentStatus.Succeeded)
             payment.MarkSucceeded(DateTime.UtcNow, Guid.Empty);
+        if (targetStatus == PaymentStatus.Cancelled)
+            payment.MarkCancelled("BuyerCancelled", DateTime.UtcNow);
 
         return payment;
     }
@@ -161,6 +185,7 @@ public sealed class CancelHostedCheckoutSessionHandlerTests
     {
         public PaymentProviderCode? LastCode { get; private set; }
         public string? LastSessionId { get; private set; }
+        public int Calls { get; private set; }
 
         public Task<Result<CancelHostedCheckoutResult>> CancelAsync(
             PaymentProviderCode providerCode,
@@ -168,6 +193,7 @@ public sealed class CancelHostedCheckoutSessionHandlerTests
             CancellationToken ct = default
         )
         {
+            Calls++;
             LastCode = providerCode;
             LastSessionId = providerSessionId;
             return Task.FromResult(Result.Success(new CancelHostedCheckoutResult(alreadyExpired)));

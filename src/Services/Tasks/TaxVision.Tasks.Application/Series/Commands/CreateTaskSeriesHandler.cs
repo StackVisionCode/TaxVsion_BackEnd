@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Series.Abstractions;
@@ -5,6 +6,7 @@ using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.Tasks.Application.Series.Commands;
 
@@ -29,7 +31,8 @@ public sealed record CreateTaskSeriesCommand(
 
 /// <summary>
 /// Crear la serie materializa su primera ocurrencia en la misma transacción: una serie activa sin
-/// tarea abierta es un estado que nadie sabría interpretar.
+/// tarea abierta es un estado que nadie sabría interpretar. La primera ocurrencia pide su
+/// recordatorio; sin <c>TaskAssigned</c> mientras D-TSK-1 siga abierta.
 /// </summary>
 public static class CreateTaskSeriesHandler
 {
@@ -38,6 +41,8 @@ public static class CreateTaskSeriesHandler
         ITaskSeriesRepository seriesRepository,
         ITaskSeriesMaterializer materializer,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -68,6 +73,7 @@ public static class CreateTaskSeriesHandler
         if (first.IsFailure)
             return Result.Failure<TaskSeriesResponse>(first.Error);
 
+        await TaskBirthAnnouncements.PublishAsync(first.Value, bus, correlation, announceAssignment: false);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(TaskSeriesResponse.From(created.Value));
     }

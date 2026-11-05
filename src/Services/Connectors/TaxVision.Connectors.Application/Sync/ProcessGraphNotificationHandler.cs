@@ -29,6 +29,7 @@ public static class ProcessGraphNotificationHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger logger,
+        MessageFetchFailureTracker fetchFailures,
         CancellationToken ct
     )
     {
@@ -116,6 +117,7 @@ public static class ProcessGraphNotificationHandler
                     bus,
                     correlation,
                     logger,
+                    fetchFailures,
                     ct
                 ),
             ct

@@ -30,6 +30,7 @@ public sealed class AppointmentConfiguration : IEntityTypeConfiguration<Appointm
         builder.Property(a => a.MeetingId);
         builder.Property(a => a.MeetingShortCode).HasMaxLength(64);
         builder.Property(a => a.ReminderLeadMinutes);
+        builder.Property(a => a.ReminderGeneration).IsRequired();
         builder.Property(a => a.CancellationReason).HasMaxLength(500);
         builder.Property(a => a.SplitFromSeriesId);
         builder.Property(a => a.CreatedAtUtc).IsRequired();

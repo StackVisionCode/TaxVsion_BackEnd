@@ -32,6 +32,7 @@ public sealed class AddOnPurchaseIntentConfiguration : IEntityTypeConfiguration<
         builder.Property(intent => intent.CancelledByUserId);
         builder.Property(intent => intent.CancelReason).HasMaxLength(500);
         builder.Property(intent => intent.FailureReason).HasMaxLength(1000);
+        builder.Property(intent => intent.RowVersion).IsRowVersion();
 
         builder.OwnsOne(
             intent => intent.UnitPrice,

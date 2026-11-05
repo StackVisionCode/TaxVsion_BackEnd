@@ -208,6 +208,7 @@ public sealed class StripeHostedCheckoutSessionCreatorTests
             string providerChargeReference,
             Money amount,
             string reason,
+            string idempotencyKey,
             CancellationToken ct
         ) => throw new NotSupportedException();
 

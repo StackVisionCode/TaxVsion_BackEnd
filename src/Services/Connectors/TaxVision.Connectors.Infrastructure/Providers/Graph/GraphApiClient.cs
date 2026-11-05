@@ -40,6 +40,11 @@ public sealed class GraphApiClient(
         + "/mailFolders/inbox/messages/delta?$select=id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,hasAttachments,internetMessageId,internetMessageHeaders,bodyPreview";
     private const int MaxDeltaPages = 10;
 
+    private const string GraphOrigin = "https://graph.microsoft.com/";
+
+    /// <summary>Ids por página de la re-sincronización por fecha (CON-07).</summary>
+    private const int ResyncPageSize = 50;
+
     private static readonly JsonSerializerOptions SendRequestJsonOptions = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -106,6 +111,34 @@ public sealed class GraphApiClient(
             // Las fechas del dominio ya son UTC (EF las lee como Unspecified: no convertir de zona).
             ? $"{InboxDeltaBaseUrl}&$filter=receivedDateTime+ge+{from.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)}"
             : InboxDeltaBaseUrl;
+
+    /// <summary>
+    /// Lista del INBOX por fecha de recepción, sin delta. El token de página es el @odata.nextLink completo;
+    /// solo se sigue si apunta a Graph (el bearer token no sale a otro host).
+    /// </summary>
+    public async Task<InboxMessageIdPage> ListInboxMessageIdsAsync(
+        Guid accountId,
+        Guid tenantId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string? pageToken,
+        CancellationToken ct = default
+    )
+    {
+        if (pageToken is not null && !pageToken.StartsWith(GraphOrigin, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("The resync page token does not point to Microsoft Graph.", nameof(pageToken));
+
+        var url =
+            pageToken
+            ?? $"{BaseUrl}/mailFolders/inbox/messages?$filter=receivedDateTime ge {ToGraphDate(fromUtc)} and receivedDateTime lt {ToGraphDate(toUtc)}&$select=id&$top={ResyncPageSize}";
+        var payload = await SendAsync<GraphDeltaResponse>(accountId, tenantId, url, ct);
+
+        var ids = (payload.Value ?? []).Select(m => m.Id).ToList();
+        return new InboxMessageIdPage(ids, string.IsNullOrEmpty(payload.NextLink) ? null : payload.NextLink);
+    }
+
+    private static string ToGraphDate(DateTime utc) =>
+        utc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
     public async Task<RawMessage> GetMessageAsync(
         Guid accountId,
@@ -544,7 +577,11 @@ public sealed class GraphApiClient(
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("Graph API request to {Url} returned HTTP {Status}.", url, (int)response.StatusCode);
-            throw new EmailProviderException($"Graph API returned HTTP {(int)response.StatusCode}.");
+            // 404 (ErrorItemNotFound): el mensaje ya no existe; lo demás es transitorio.
+            throw new EmailProviderException(
+                $"Graph API returned HTTP {(int)response.StatusCode}.",
+                isNotFound: response.StatusCode == HttpStatusCode.NotFound
+            );
         }
 
         var parsed = await response.Content.ReadFromJsonAsync<T>(cancellationToken: ct);

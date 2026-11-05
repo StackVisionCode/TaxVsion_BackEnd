@@ -43,6 +43,7 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.Property(m => m.Activity).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(m => m.QueuedAtUtc).IsRequired();
         builder.Property(m => m.SentAtUtc);
+        builder.Property(m => m.SendAttemptedAtUtc);
         builder.Property(m => m.LastEventAtUtc);
         builder.Property(m => m.ErrorReason).HasMaxLength(500);
         builder.Property(m => m.TemplateKey).HasMaxLength(200);

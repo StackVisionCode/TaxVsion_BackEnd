@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -97,6 +98,35 @@ public sealed class ReminderDueConsumerTests
         Assert.Empty(harness.Logs.Logs);
         Assert.Empty(harness.PushSender.Sent);
         Assert.Equal(NotificationCategory.Reminders, harness.Preferences.LastAskedCategory);
+    }
+
+    /// <summary>Con el gateway real: la preferencia (Reminders, Email) apagada también corta el correo.</summary>
+    [Fact]
+    public async Task Email_is_not_queued_when_user_disabled_reminders_email()
+    {
+        var harness = new Harness(preferencesEnabled: false, withActiveDevice: true);
+        harness.Directory.Seed(TenantId, UserId, "perez@example.com");
+        var publisher = new CapturingIntegrationEventPublisher();
+        var gateway = harness.RealGateway(publisher);
+
+        await ReminderDueConsumer.Handle(
+            Due(),
+            harness.Dispatcher,
+            harness.EmailResolver,
+            gateway,
+            new StubScribeRenderClient(),
+            Options.Create(new PortalOptions()),
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.DoesNotContain(
+            publisher.Published,
+            message => message is NotificationsEmailSendRequestedIntegrationEvent
+        );
+        Assert.Empty(publisher.SentToQueue);
+        Assert.Empty(harness.Logs.Logs);
+        Assert.Empty(harness.PushSender.Sent);
     }
 
     /// <summary>
@@ -202,14 +232,22 @@ public sealed class ReminderDueConsumerTests
                 PushSender,
                 devices,
                 Logs,
-                Preferences,
-                Directory,
+                TestDeliveryGates.For(Preferences, Directory),
                 new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
                 NullLogger<NotificationDispatcher>.Instance
             );
         }
+
+        internal EventBasedEmailDispatchGateway RealGateway(CapturingIntegrationEventPublisher publisher) =>
+            new(
+                publisher,
+                Logs,
+                new NoOpUnitOfWork(),
+                TestDeliveryGates.For(Preferences, Directory),
+                NullLogger<EventBasedEmailDispatchGateway>.Instance
+            );
     }
 
     private sealed class RecordingPushSender : IPushSender

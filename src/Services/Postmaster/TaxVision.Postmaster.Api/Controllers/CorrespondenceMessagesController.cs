@@ -50,7 +50,10 @@ public sealed class CorrespondenceMessagesController(IMessageBus bus) : Controll
         );
 
         var result = await bus.InvokeAsync<Result<SendCorrespondenceMessageResult>>(command, ct);
-        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        // En curso o sin resultado registrado: no se reenvía; Correspondence sigue el estado por eventos.
+        return result.Value.InProgress ? Accepted(result.Value) : Ok(result.Value);
     }
 
     private static Result<IReadOnlyList<OutboundAttachmentRef>> BuildAttachments(

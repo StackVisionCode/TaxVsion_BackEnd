@@ -4,8 +4,10 @@ using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Application.TenantPayments.Commands.ReconcileTenantPayment;
+using TaxVision.PaymentClient.Domain.Audit;
 using TaxVision.PaymentClient.Domain.Connect;
 using TaxVision.PaymentClient.Domain.PaymentLinks;
 using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
@@ -59,6 +61,44 @@ public sealed class ReconcileTenantPaymentHandlerTests
         Assert.Equal("sk_test_office", credentials.SecretKey);
         Assert.Equal("pi_stuck", lookup.ProviderChargeReference);
         Assert.Null(lookup.OnBehalfOf);
+    }
+
+    [Fact]
+    public async Task Reconcile_ProviderSucceeded_WithExpiredLink_PublishesSignal()
+    {
+        // El link venció mientras el cobro esperaba: el pago igual avisa a la factura.
+        var config = await SeedOfficeAsync();
+        var (payment, link) = await SeedStuckLinkPaymentAsync(config);
+        link.Expire(DateTime.UtcNow);
+        await _db.SaveChangesAsync();
+        _stripe.ChargeStatus = lookup => Ok(Paid(lookup.ProviderChargeReference, AmountCents, "usd"));
+
+        var result = await ReconcileAsync(payment.Id);
+
+        Assert.Equal(TenantPaymentReconciliation.Resolved, result.Value);
+        var paid = Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        Assert.Equal(payment.Id, paid.TenantPaymentId);
+        Assert.Equal("inv-1", paid.ExternalReferenceId);
+        await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
+        Assert.Equal(
+            PaymentLinkStatus.Used,
+            (await fresh.PaymentLinks.IgnoreQueryFilters().SingleAsync(l => l.Id == link.Id)).Status
+        );
+    }
+
+    [Fact]
+    public async Task Reconcile_ProviderSucceeded_WithoutLink_PublishesSignal()
+    {
+        // Cobro directo sin link: la señal no depende de que exista uno.
+        var config = await SeedOfficeAsync();
+        var payment = await SeedStuckPaymentAsync(config);
+        _stripe.ChargeStatus = lookup => Ok(Paid(lookup.ProviderChargeReference, AmountCents, "usd"));
+
+        await ReconcileAsync(payment.Id);
+
+        var paid = Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        Assert.Equal(payment.Id, paid.TenantPaymentId);
+        Assert.Empty(_published.OfType<PaymentLinkUsedIntegrationEvent>());
     }
 
     [Theory]
@@ -122,6 +162,27 @@ public sealed class ReconcileTenantPaymentHandlerTests
         Assert.Equal(PaymentStatus.Processing, saved.Status);
         Assert.NotNull(saved.LastProviderCheckAtUtc);
         Assert.Empty(_published);
+    }
+
+    [Fact]
+    public async Task Reconcile_ProviderSucceededWithDifferentAmount_RecordsNeedsReview()
+    {
+        var config = await SeedOfficeAsync();
+        var payment = await SeedStuckPaymentAsync(config);
+        _stripe.ChargeStatus = lookup => Ok(Paid(lookup.ProviderChargeReference, 100, "usd"));
+        var metrics = new NeedsReviewMetrics();
+
+        await ReconcileAsync(payment.Id, metrics: metrics);
+
+        Assert.Equal([("Stripe", "WebhookEvent.AmountMismatch")], metrics.NeedsReview);
+        await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
+        Assert.True(
+            await fresh.AuditEntries.AnyAsync(entry =>
+                entry.AggregateId == payment.Id
+                && entry.Action == PaymentAuditAction.TenantPaymentProviderSuccessNeedsReview
+            )
+        );
+        Assert.Equal(PaymentStatus.Processing, (await ReloadAsync(payment.Id)).Status);
     }
 
     [Fact]
@@ -217,9 +278,154 @@ public sealed class ReconcileTenantPaymentHandlerTests
         Assert.Equal("acct_office", lookup.OnBehalfOf);
     }
 
-    private Task<Result<TenantPaymentReconciliation>> ReconcileAsync(Guid paymentId) =>
+    [Fact]
+    public async Task AbandonedRequiresAction_AfterTtl_CancelsAtProviderBeforeClosing()
+    {
+        var config = await SeedOfficeAsync();
+        var (payment, link) = await SeedRequiresActionLinkPaymentAsync(config, LongAgo);
+        _stripe.ChargeStatus = lookup =>
+            Ok(new WebhookEventPayload(lookup.ProviderChargeReference, PaymentStatus.RequiresAction, null, null, null));
+        _stripe.CancelCharge = lookup =>
+            Ok(new WebhookEventPayload(lookup.ProviderChargeReference, PaymentStatus.Cancelled, "abandoned", null, null));
+
+        var result = await ReconcileAsync(payment.Id, Ttl);
+
+        Assert.Equal(TenantPaymentReconciliation.Resolved, result.Value);
+        var (credentials, lookup) = Assert.Single(_stripe.Cancellations);
+        Assert.Equal("sk_test_office", credentials.SecretKey);
+        Assert.Equal("pi_stuck", lookup.ProviderChargeReference);
+        var saved = await ReloadAsync(payment.Id);
+        Assert.Equal(PaymentStatus.Cancelled, saved.Status);
+        Assert.Equal("abandoned-3ds-ttl", saved.FailureReason);
+        Assert.Empty(_published);
+
+        await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
+        var audit = Assert.Single(
+            await fresh
+                .AuditEntries.IgnoreQueryFilters()
+                .Where(a => a.AggregateId == payment.Id && a.Action == PaymentAuditAction.TenantPaymentCancelled)
+                .ToListAsync()
+        );
+        Assert.Equal("System", audit.ActorType);
+        Assert.Equal(Guid.Empty, audit.ActorUserId);
+        Assert.Equal("abandoned-3ds-ttl", audit.Reason);
+
+        var savedLink = await fresh.PaymentLinks.IgnoreQueryFilters().SingleAsync(l => l.Id == link.Id);
+        Assert.Equal(PaymentLinkStatus.Active, savedLink.Status);
+        Assert.True(savedLink.AttachPaymentAttempt(Guid.NewGuid(), saved.Status, DateTime.UtcNow).IsSuccess);
+    }
+
+    [Fact]
+    public async Task AbandonedRequiresAction_WhenProviderCancelFails_StaysOpenForNextRound()
+    {
+        var config = await SeedOfficeAsync();
+        var (payment, _) = await SeedRequiresActionLinkPaymentAsync(config, LongAgo);
+        _stripe.ChargeStatus = lookup =>
+            Ok(new WebhookEventPayload(lookup.ProviderChargeReference, PaymentStatus.RequiresAction, null, null, null));
+        _stripe.CancelCharge = _ =>
+            Result.Failure<WebhookEventPayload>(new Error("Stripe.CancelCharge.Failed", "boom"));
+
+        var result = await ReconcileAsync(payment.Id, Ttl);
+
+        Assert.Equal("Stripe.CancelCharge.Failed", result.Error.Code);
+        var saved = await ReloadAsync(payment.Id);
+        Assert.Equal(PaymentStatus.RequiresAction, saved.Status);
+        Assert.NotNull(saved.LastProviderCheckAtUtc);
+    }
+
+    [Fact]
+    public async Task AbandonedButProviderSaysSucceeded_IsMarkedPaidNotCancelled()
+    {
+        var config = await SeedOfficeAsync();
+        var (payment, link) = await SeedRequiresActionLinkPaymentAsync(config, LongAgo);
+        _stripe.ChargeStatus = lookup => Ok(Paid(lookup.ProviderChargeReference, AmountCents, "usd"));
+
+        var result = await ReconcileAsync(payment.Id, Ttl);
+
+        Assert.Equal(TenantPaymentReconciliation.Resolved, result.Value);
+        Assert.Empty(_stripe.Cancellations);
+        Assert.Equal(PaymentStatus.Succeeded, (await ReloadAsync(payment.Id)).Status);
+        Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
+        Assert.Equal(
+            PaymentLinkStatus.Used,
+            (await fresh.PaymentLinks.IgnoreQueryFilters().SingleAsync(l => l.Id == link.Id)).Status
+        );
+    }
+
+    [Fact]
+    public async Task AbandonedCancelRace_ProviderCompletedMeanwhile_IsMarkedPaidNotCancelled()
+    {
+        var config = await SeedOfficeAsync();
+        var (payment, link) = await SeedRequiresActionLinkPaymentAsync(config, LongAgo);
+        _stripe.ChargeStatus = lookup =>
+            Ok(new WebhookEventPayload(lookup.ProviderChargeReference, PaymentStatus.RequiresAction, null, null, null));
+        // El adaptador vio que el cobro se completó al intentar cancelarlo.
+        _stripe.CancelCharge = lookup => Ok(Paid(lookup.ProviderChargeReference, AmountCents, "usd"));
+
+        var result = await ReconcileAsync(payment.Id, Ttl);
+
+        Assert.Equal(TenantPaymentReconciliation.Resolved, result.Value);
+        Assert.Single(_stripe.Cancellations);
+        Assert.Equal(PaymentStatus.Succeeded, (await ReloadAsync(payment.Id)).Status);
+        Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
+        Assert.Equal(
+            PaymentLinkStatus.Used,
+            (await fresh.PaymentLinks.IgnoreQueryFilters().SingleAsync(l => l.Id == link.Id)).Status
+        );
+    }
+
+    [Fact]
+    public async Task RequiresAction_BeforeTtl_IsNotCancelled()
+    {
+        var config = await SeedOfficeAsync();
+        var (payment, _) = await SeedRequiresActionLinkPaymentAsync(config, DateTime.UtcNow.AddMinutes(-5));
+        _stripe.ChargeStatus = lookup =>
+            Ok(new WebhookEventPayload(lookup.ProviderChargeReference, PaymentStatus.RequiresAction, null, null, null));
+
+        var result = await ReconcileAsync(payment.Id, Ttl);
+
+        Assert.Equal(TenantPaymentReconciliation.StillPending, result.Value);
+        Assert.Empty(_stripe.Cancellations);
+        Assert.Equal(PaymentStatus.RequiresAction, (await ReloadAsync(payment.Id)).Status);
+    }
+
+    [Fact]
+    public async Task Processing_AfterTtl_IsNotCancelled()
+    {
+        var config = await SeedOfficeAsync();
+        var payment = await SeedStuckPaymentAsync(config);
+        _stripe.ChargeStatus = lookup =>
+            Ok(new WebhookEventPayload(lookup.ProviderChargeReference, PaymentStatus.Processing, null, null, null));
+
+        var result = await ReconcileAsync(payment.Id, Ttl);
+
+        Assert.Equal(TenantPaymentReconciliation.StillPending, result.Value);
+        Assert.Empty(_stripe.Cancellations);
+        Assert.Equal(PaymentStatus.Processing, (await ReloadAsync(payment.Id)).Status);
+    }
+
+    private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(30);
+
+    private async Task<(TenantPayment Payment, PaymentLink Link)> SeedRequiresActionLinkPaymentAsync(
+        TenantPaymentConfig config,
+        DateTime atUtc
+    )
+    {
+        var (payment, link) = await SeedStuckLinkPaymentAsync(config);
+        payment.MarkRequiresAction("redirect_to_url", "https://3ds.test", Guid.Empty, atUtc);
+        await _db.SaveChangesAsync();
+        return (payment, link);
+    }
+
+    private Task<Result<TenantPaymentReconciliation>> ReconcileAsync(
+        Guid paymentId,
+        TimeSpan? abandonAfter = null,
+        IPaymentClientMetrics? metrics = null
+    ) =>
         ReconcileTenantPaymentHandler.Handle(
-            new ReconcileTenantPaymentCommand(_tenantId, paymentId),
+            new ReconcileTenantPaymentCommand(_tenantId, paymentId, abandonAfter),
             new TenantPaymentRepository(_db),
             new TenantPaymentConfigRepository(_db),
             new TenantConnectAccountRepository(_db),
@@ -232,7 +438,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
             new PaymentAuditLogWriter(_db),
             _db,
             InMemoryPaymentClient.RecordingBus(_published),
-            new NoOpPaymentClientMetrics(),
+            metrics ?? new NoOpPaymentClientMetrics(),
             new FixedCorrelationContext(),
             NullLogger<TenantPayment>.Instance,
             CancellationToken.None
@@ -294,7 +500,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
             )
             .Value;
         var payment = await SeedStuckPaymentAsync(config);
-        link.AttachPaymentAttempt(payment.Id, LongAgo);
+        link.AttachPaymentAttempt(payment.Id, null, LongAgo);
         _db.PaymentLinks.Add(link);
         await _db.SaveChangesAsync();
         return (payment, link);
@@ -327,4 +533,29 @@ public sealed class ReconcileTenantPaymentHandlerTests
         await _db.SaveChangesAsync();
         return config;
     }
+}
+
+file sealed class NeedsReviewMetrics : IPaymentClientMetrics
+{
+    public List<(string Provider, string Reason)> NeedsReview { get; } = [];
+
+    public void RecordWebhookNeedsReview(string provider, string reason) => NeedsReview.Add((provider, reason));
+
+    public void RecordPaymentSucceeded(long amountCents, string currency) { }
+
+    public void RecordPlatformFee(long feeCents, string currency) { }
+
+    public void RecordConnectOnboardingCompleted() { }
+
+    public void RecordPaymentLinkCreated() { }
+
+    public void RecordPaymentLinkUsed() { }
+
+    public void RecordRefund(string provider) { }
+
+    public void RecordWebhookReceived(string provider) { }
+
+    public void RecordWebhookDuplicate(string provider) { }
+
+    public void RecordWebhookSignatureFailed(string provider) { }
 }

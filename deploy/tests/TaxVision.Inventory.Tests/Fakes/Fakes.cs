@@ -41,16 +41,51 @@ internal sealed class FakeStockRepository : IStockRepository
     public List<StockLevel> Levels { get; } = [];
     public List<StockMovement> Movements { get; } = [];
 
+    /// <summary>Orden de las lecturas y candados pedidos (para verificar el orden de commit-sale).</summary>
+    public List<string> Calls { get; } = [];
+
     public void Seed(StockLevel level) => Levels.Add(level);
 
     public Task<StockLevel?> GetByCatalogItemAsync(Guid tenantId, Guid catalogItemId, CancellationToken ct = default) =>
         Task.FromResult(Levels.FirstOrDefault(s => s.TenantId == tenantId && s.CatalogItemId == catalogItemId));
+
+    public Task<StockLevel?> GetByCatalogItemForUpdateAsync(
+        Guid tenantId,
+        Guid catalogItemId,
+        CancellationToken ct = default
+    )
+    {
+        Calls.Add(nameof(GetByCatalogItemForUpdateAsync));
+        return GetByCatalogItemAsync(tenantId, catalogItemId, ct);
+    }
+
+    public Task<IReadOnlyList<StockLevel>> GetByCatalogItemsForUpdateAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> catalogItemIds,
+        CancellationToken ct = default
+    )
+    {
+        Calls.Add(nameof(GetByCatalogItemsForUpdateAsync));
+        return Select(tenantId, catalogItemIds);
+    }
+
+    public Task AcquireInvoiceSaleLockAsync(Guid tenantId, Guid invoiceId, CancellationToken ct = default)
+    {
+        Calls.Add(nameof(AcquireInvoiceSaleLockAsync));
+        return Task.CompletedTask;
+    }
 
     public Task<IReadOnlyList<StockLevel>> GetByCatalogItemsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> catalogItemIds,
         CancellationToken ct = default
     )
+    {
+        Calls.Add(nameof(GetByCatalogItemsAsync));
+        return Select(tenantId, catalogItemIds);
+    }
+
+    private Task<IReadOnlyList<StockLevel>> Select(Guid tenantId, IReadOnlyCollection<Guid> catalogItemIds)
     {
         IReadOnlyList<StockLevel> result =
             catalogItemIds.Count == 0
@@ -65,6 +100,7 @@ internal sealed class FakeStockRepository : IStockRepository
         CancellationToken ct = default
     )
     {
+        Calls.Add(nameof(GetMovementsByReferenceAsync));
         IReadOnlyList<StockMovement> result = Movements
             .Where(m => m.TenantId == tenantId && m.Reference == reference)
             .ToList();

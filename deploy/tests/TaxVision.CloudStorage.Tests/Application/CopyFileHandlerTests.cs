@@ -232,7 +232,7 @@ public sealed class CopyFileHandlerTests
                 now.AddHours(1)
             )
             .Value;
-        Assert.True(file.MarkPendingScan().IsSuccess);
+        Assert.True(file.MarkPendingScan(DateTime.UtcNow).IsSuccess);
         Assert.True(file.MarkScanning().IsSuccess);
         Assert.True(
             file.MarkAvailable(

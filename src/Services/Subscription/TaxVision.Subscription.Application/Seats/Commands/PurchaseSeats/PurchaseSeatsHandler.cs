@@ -63,13 +63,18 @@ public static class PurchaseSeatsHandler
         if (charges.IsFailure)
             return Result.Failure<IReadOnlyList<Guid>>(charges.Error);
 
+        // Serializa compras simultáneas del tenant (y el tope de asientos) por la RowVersion de la suscripción.
+        var recorded = subscription.RecordPurchase(command.RequestedByUserId, nowUtc);
+        if (recorded.IsFailure)
+            return Result.Failure<IReadOnlyList<Guid>>(recorded.Error);
+
         foreach (var seat in newSeats)
             await seats.AddAsync(seat, ct);
 
-        // Publish-before-save (outbox): el intent de cobro sale al confirmar la transacción.
+        // Guardar antes de publicar: un reintento en línea no debe dejar salir el cobro del intento fallido.
+        await unitOfWork.SaveChangesAsync(ct);
         foreach (var charge in charges.Value)
             await bus.PublishAsync(charge);
-        await unitOfWork.SaveChangesAsync(ct);
 
         await RecordPurchaseAsync(command, seatType, newSeats, charges.Value, audit, metrics, correlation, nowUtc, ct);
         await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);

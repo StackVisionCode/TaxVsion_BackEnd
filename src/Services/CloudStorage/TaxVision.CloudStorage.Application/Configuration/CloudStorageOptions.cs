@@ -28,4 +28,23 @@ public sealed class CloudStorageOptions
     /// ser mas chica) — no bajar de eso o InitiateMultipartUpload/UploadPart fallan.
     /// </summary>
     public long MultipartPartSizeBytes { get; set; } = 5L * 1024 * 1024;
+
+    // Rescate de escaneos atascados (CST-1).
+    public bool StuckScanRescueEnabled { get; set; } = true;
+
+    /// <summary>Antigüedad mínima en PendingScan/Scanning; mayor que el peor vaciado de la cola en serie.</summary>
+    public int StuckScanThresholdMinutes { get; set; } = 120;
+
+    public int StuckScanRescueIntervalMinutes { get; set; } = 15;
+
+    public int StuckScanRescueBatchSize { get; set; } = 100;
+
+    /// <summary>Reencolados antes de marcar el archivo ScanFailed con motivo scan_stalled.</summary>
+    public int MaxScanAttempts { get; set; } = 3;
+
+    /// <summary>
+    /// D-CST-5/CST-18: días que la regla de lifecycle de cuarentena conserva la evidencia bajo purged/,
+    /// contados desde la purga.
+    /// </summary>
+    public int QuarantinePurgedRetentionDays { get; set; } = 30;
 }

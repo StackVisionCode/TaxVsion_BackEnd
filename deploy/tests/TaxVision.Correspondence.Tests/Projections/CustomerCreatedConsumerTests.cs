@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Correspondence.Application.Projections.CustomerEvents;
 using TaxVision.Correspondence.Domain.Projections;
+using TaxVision.Correspondence.Domain.ValueObjects;
 
 namespace TaxVision.Correspondence.Tests.Projections;
 
@@ -112,5 +113,43 @@ public sealed class CustomerCreatedConsumerTests
 
         Assert.Empty(repository.All);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Handle_ExistingInactiveRowWithEmailActiveForOtherCustomer_SkipsWithoutReactivating()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var repository = new FakeCustomerEmailAddressRepository();
+        repository.Seed(
+            CustomerEmailAddress.Create(tenantId, Guid.NewGuid(), EmailAddress.Create("shared@example.com").Value)
+        );
+        var existing = CustomerEmailAddress.Create(tenantId, customerId, EmailAddress.Create("old@example.com").Value);
+        existing.SoftDelete(DateTime.UtcNow.AddDays(-1));
+        repository.Seed(existing);
+        var unitOfWork = new FakeUnitOfWork();
+
+        await CustomerCreatedConsumer.Handle(
+            new CustomerCreatedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                Kind = "Individual",
+                DisplayName = "Jane Doe",
+                PrimaryEmail = "shared@example.com",
+                Language = "en",
+                CreatedByUserId = Guid.NewGuid(),
+            },
+            repository,
+            new FakeTenantCustomerBackfillService(),
+            unitOfWork,
+            new FakeCorrelationContext(),
+            NullLogger<CustomerEmailAddress>.Instance,
+            CancellationToken.None
+        );
+
+        // Reactivarla con el email de otro cliente violaría el índice único (DLQ en la base real).
+        Assert.False(existing.IsActive);
+        Assert.Equal("old@example.com", existing.EmailAddress);
     }
 }

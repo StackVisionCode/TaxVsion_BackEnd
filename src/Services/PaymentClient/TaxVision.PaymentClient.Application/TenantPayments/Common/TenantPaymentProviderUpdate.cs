@@ -68,6 +68,8 @@ public static class TenantPaymentProviderUpdate
     // cobrado que reporta el provider coincida con el cargo esperado (y la moneda). Si no coincide, NO
     // se aplica: el caller lo marca Stale con este código y el pago no queda como "Succeeded" por un
     // importe distinto. Sin monto reportado (null) no se puede verificar → se aplica (compat).
+    public const string AmountMismatchCode = "WebhookEvent.AmountMismatch";
+
     private static Error? VerifyPaidAmount(TenantPayment payment, WebhookEventPayload payload)
     {
         if (payload.PaidAmountCents is not { } paidCents)
@@ -81,7 +83,7 @@ public static class TenantPaymentProviderUpdate
             return null;
 
         return new Error(
-            "WebhookEvent.AmountMismatch",
+            AmountMismatchCode,
             $"Provider reported {paidCents} {payload.PaidCurrency ?? "?"} paid but the charge expects "
                 + $"{payment.Amount.AmountCents} {payment.Amount.Currency}; not applying."
         );
@@ -89,11 +91,11 @@ public static class TenantPaymentProviderUpdate
 
     /// <summary>
     /// Completa el <c>PaymentLink</c> que originó este cobro, si lo hay — cubre el caso 3DS/SCA donde
-    /// <c>RedeemPaymentLinkHandler</c> no pudo confirmar el éxito sincrónicamente (§F.4). Devuelve los
-    /// eventos de integración SIN publicarlos: el caller guarda primero y publica después
-    /// (<see cref="PublishAsync"/>). Null = no había link que completar.
+    /// <c>RedeemPaymentLinkHandler</c> no pudo confirmar el éxito sincrónicamente (§F.4). Devuelve el
+    /// evento del link SIN publicarlo (el caller guarda y luego llama <see cref="PublishSucceededAsync"/>).
+    /// Null = no había link que completar o estaba revocado. La señal "pagado" no depende de esto.
     /// </summary>
-    public static async Task<PaymentLinkCompletionEvents?> CompletePaymentLinkIfAnyAsync(
+    public static async Task<PaymentLinkUsedIntegrationEvent?> CompletePaymentLinkIfAnyAsync(
         TenantPayment payment,
         IPaymentLinkRepository links,
         IPaymentAuditLogWriter audit,
@@ -108,9 +110,27 @@ public static class TenantPaymentProviderUpdate
             return null;
 
         var nowUtc = DateTime.UtcNow;
-        var markUsedResult = link.MarkAsUsed(nowUtc);
-        if (markUsedResult.IsFailure)
+        var completed = link.CompleteWithAttempt(payment.Id, nowUtc);
+        if (completed.IsFailure)
+        {
+            // Link revocado (factura anulada) antes de confirmar el pago: solo queda auditado.
+            if (completed.Error.Code == PaymentLink.ClosedBeforePaymentError.Code)
+                await AuditEntryFactory.AppendAsync(
+                    audit,
+                    link.TenantId,
+                    nameof(PaymentLink),
+                    link.Id,
+                    PaymentAuditAction.PaymentLinkClosedBeforePayment,
+                    actorUserId: Guid.Empty,
+                    correlation.CorrelationId,
+                    before: (object?)null,
+                    after: new { TenantPaymentId = payment.Id, Source = source },
+                    reason: completed.Error.Code,
+                    nowUtc,
+                    ct
+                );
             return null;
+        }
 
         metrics.RecordPaymentLinkUsed();
 
@@ -134,42 +154,72 @@ public static class TenantPaymentProviderUpdate
             ct
         );
 
-        return new PaymentLinkCompletionEvents(
-            new PaymentLinkUsedIntegrationEvent
-            {
-                TenantId = link.TenantId,
-                PaymentLinkId = link.Id,
-                TenantPaymentId = payment.Id,
-                AmountCents = link.Amount.AmountCents,
-                Currency = link.Amount.Currency,
-                UsedAtUtc = nowUtc,
-                CorrelationId = correlation.CorrelationId,
-            },
-            // Fase 3: señal "pagado" con la referencia externa (id de factura) — Billing la consume
-            // para marcar la factura Paid.
-            new TenantPaymentSucceededIntegrationEvent
-            {
-                TenantId = payment.TenantId,
-                TenantPaymentId = payment.Id,
-                ProviderCode = payment.ProviderCode.ToString(),
-                PurposeKind = payment.Purpose.Kind.ToString(),
-                ExternalReferenceId = payment.Purpose.ExternalReferenceId,
-                AmountCents = payment.Amount.AmountCents,
-                Currency = payment.Amount.Currency,
-                PaidAtUtc = nowUtc,
-                CorrelationId = correlation.CorrelationId,
-            }
+        return new PaymentLinkUsedIntegrationEvent
+        {
+            TenantId = link.TenantId,
+            PaymentLinkId = link.Id,
+            TenantPaymentId = payment.Id,
+            AmountCents = link.Amount.AmountCents,
+            Currency = link.Amount.Currency,
+            UsedAtUtc = nowUtc,
+            CorrelationId = correlation.CorrelationId,
+        };
+    }
+
+    /// <summary>Éxito del proveedor que no se pudo aplicar y que el dueño revisa a mano: pago ya cerrado
+    /// sin éxito (Failed/Cancelled) o monto distinto. Un éxito repetido sobre un pago pagado sigue Stale.</summary>
+    public static bool IsUnappliedProviderSuccess(TenantPayment payment, WebhookEventPayload payload, Error error) =>
+        payload.Status == PaymentStatus.Succeeded
+        && (
+            error.Code == AmountMismatchCode
+            || (
+                error.Code == "TenantPayment.InvalidTransition"
+                && payment.Status is PaymentStatus.Failed or PaymentStatus.Cancelled
+            )
+        );
+
+    /// <summary>Métrica (alerta) y auditoría del éxito sin aplicar. Sin reembolso ni cambio de estado.</summary>
+    public static async Task RecordNeedsReviewAsync(
+        TenantPayment payment,
+        string reason,
+        string source,
+        IPaymentAuditLogWriter audit,
+        IPaymentClientMetrics metrics,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        metrics.RecordWebhookNeedsReview(payment.ProviderCode.ToString(), reason);
+        await AuditEntryFactory.AppendAsync(
+            audit,
+            payment.TenantId,
+            nameof(TenantPayment),
+            payment.Id,
+            PaymentAuditAction.TenantPaymentProviderSuccessNeedsReview,
+            actorUserId: Guid.Empty,
+            correlation.CorrelationId,
+            before: (object?)null,
+            after: new { payment.Status, Source = source },
+            reason: reason,
+            DateTime.UtcNow,
+            ct
         );
     }
 
-    /// <summary>Publica los eventos de un link completado; llamar solo después de guardar.</summary>
-    public static async Task PublishAsync(IMessageBus bus, PaymentLinkCompletionEvents? events)
+    /// <summary>Publica el link usado (si hubo) y la señal "pagado"; llamar solo después de guardar.</summary>
+    public static async Task PublishSucceededAsync(
+        IMessageBus bus,
+        TenantPayment payment,
+        PaymentLinkUsedIntegrationEvent? linkUsed,
+        string? correlationId
+    )
     {
-        if (events is null)
-            return;
+        if (linkUsed is not null)
+            await bus.PublishAsync(linkUsed);
 
-        await bus.PublishAsync(events.LinkUsed);
-        await bus.PublishAsync(events.PaymentSucceeded);
+        await bus.PublishAsync(
+            TenantPaymentSucceededSignal.Build(payment, payment.PaidAtUtc ?? DateTime.UtcNow, correlationId)
+        );
     }
 
     /// <summary><paramref name="totalRefundedCents"/> es el acumulado en el charge del
@@ -218,9 +268,3 @@ public static class TenantPaymentProviderUpdate
             _ => PaymentAuditAction.TenantPaymentMarkedProcessing,
         };
 }
-
-/// <summary>Eventos de un <c>PaymentLink</c> completado por un pago confirmado, listos para publicar.</summary>
-public sealed record PaymentLinkCompletionEvents(
-    PaymentLinkUsedIntegrationEvent LinkUsed,
-    TenantPaymentSucceededIntegrationEvent PaymentSucceeded
-);

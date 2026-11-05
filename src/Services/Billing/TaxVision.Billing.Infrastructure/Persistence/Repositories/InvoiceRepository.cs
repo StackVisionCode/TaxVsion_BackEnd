@@ -23,12 +23,26 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
         Guid invoiceId,
         CancellationToken ct = default,
         Guid? assignedToUserId = null
-    ) =>
-        _dbContext
+    )
+    {
+        var query = _dbContext
             .Invoices.IgnoreQueryFilters()
             .Include(i => i.PaymentLinks)
             .Include(i => i.StatusChanges)
-            .FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Id == invoiceId, ct);
+            // Payments: sin ellos ApplyPayment no ve los pagos ya aplicados y pierde la idempotencia.
+            .Include(i => i.Payments)
+            .Where(i => i.TenantId == tenantId && i.Id == invoiceId);
+
+        // Visibilidad por asignación, igual que en ListByTenantAsync. null = sin restricción (sistema o view_all).
+        if (assignedToUserId is { } assignee)
+            query = query.Where(i =>
+                _dbContext
+                    .CustomerAssignmentProjections.IgnoreQueryFilters()
+                    .Any(a => a.TenantId == tenantId && a.CustomerId == i.CustomerId && a.UserId == assignee)
+            );
+
+        return query.FirstOrDefaultAsync(ct);
+    }
 
     // Onboarding: la factura vive bajo PlatformTenant.Id hasta el backfill; se localiza por OnboardingId
     // (índice único filtrado), no por tenant → IgnoreQueryFilters obligatorio.

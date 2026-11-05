@@ -1,12 +1,13 @@
 namespace BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 
 /// <summary>
-/// Publicado cuando un cobro de PaymentClient (TenantPayment de un link) llega a <c>Succeeded</c> —
-/// tanto por el redeem síncrono como por confirmación async del webhook (3DS/SCA). El dueño del
-/// recurso lo consume para reconciliar: para <c>PurposeKind = InvoicePayment</c>, Billing marca la
-/// factura pagada. Semántica "pagado" (a diferencia de <c>PaymentLinkUsedIntegrationEvent</c>, que es
-/// "link redimido"). Lleva la referencia externa (id de factura) + monto/moneda/proveedor para
-/// correlacionar y validar; el consumer debe ser idempotente (dedup por factura ya pagada / EventId).
+/// Publicado cuando cualquier <c>TenantPayment</c> de PaymentClient llega a <c>Succeeded</c>, con link o
+/// sin él: canje síncrono, webhook (3DS/SCA), reconciliación, cobro directo o recurrente. También puede
+/// republicarse por reposición (con <c>EventId</c> nuevo). El dueño del recurso lo consume para
+/// reconciliar: para <c>PurposeKind = InvoicePayment</c>, Billing aplica el pago a la factura. Semántica
+/// "pagado" (a diferencia de <c>PaymentLinkUsedIntegrationEvent</c>, que es "link redimido"). Lleva la
+/// referencia externa (id de factura) + monto/moneda/proveedor para correlacionar y validar; el
+/// consumidor debe ser idempotente por <c>TenantPaymentId</c>.
 /// </summary>
 public sealed record TenantPaymentSucceededIntegrationEvent : IntegrationEvent
 {

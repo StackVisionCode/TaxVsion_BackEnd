@@ -1039,7 +1039,16 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<int>("RevocationEpoch")
                         .HasColumnType("int");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<DateTime?>("ScheduledSendAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("SealingFailedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<bool>("SendCertificateToSigners")

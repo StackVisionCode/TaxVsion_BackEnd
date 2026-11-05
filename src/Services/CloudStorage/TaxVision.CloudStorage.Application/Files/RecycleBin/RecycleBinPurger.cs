@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Logging;
 using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
+using TaxVision.CloudStorage.Domain.Quotas;
 
 namespace TaxVision.CloudStorage.Application.Files.RecycleBin;
 
@@ -23,11 +25,12 @@ public static class RecycleBinPurger
     public static async Task<bool> PurgeAsync(
         FileObject file,
         string trigger,
-        string mainBucket,
+        CloudStorageOptions options,
         IFileObjectRepository files,
         IStorageLimitRepository limits,
         IStorageAuditRepository audit,
         IObjectStorage storage,
+        IMultipartUploadStorage multipartStorage,
         ISystemClock clock,
         Guid? actorId,
         string correlationId,
@@ -54,11 +57,30 @@ public static class RecycleBinPurger
             return false;
         }
 
+        // CST-5: el blob se borra en el bucket donde vive según el estado previo al borrado.
+        var bucket = StoredObjectLocation.BucketFor(file, options);
+        if (bucket == options.QuarantineBucket)
+        {
+            // CST-18: evidencia; se copia a purged/ (los días cuentan desde aquí) y luego se borra el original.
+            if (await storage.ExistsAsync(bucket, file.ObjectKey, ct))
+            {
+                await storage.CopyAsync(
+                    bucket,
+                    file.ObjectKey,
+                    bucket,
+                    QuarantinePurgedObjects.KeyFor(file.ObjectKey),
+                    ct
+                );
+                await storage.DeleteAsync(bucket, file.ObjectKey, ct);
+            }
+        }
+        else if (file.EffectiveStatus == FileStatus.PendingUpload && file.MultipartUploadId is { } uploadId)
+            await multipartStorage.AbortAsync(options.TempBucket, file.ObjectKey, uploadId, ct);
         // Foto de perfil = dato personal: se borran todas las versiones, no solo se deja un delete marker.
-        if (file.FolderType == FolderType.Avatars)
-            await storage.DeleteAllVersionsAsync(mainBucket, file.ObjectKey, ct);
+        else if (file.FolderType == FolderType.Avatars && bucket == options.MainBucket)
+            await storage.DeleteAllVersionsAsync(bucket, file.ObjectKey, ct);
         else
-            await storage.DeleteAsync(mainBucket, file.ObjectKey, ct);
+            await storage.DeleteAsync(bucket, file.ObjectKey, ct);
 
         var limit = await limits.GetAsync(file.TenantId, ct);
         if (limit is null)
@@ -72,7 +94,7 @@ public static class RecycleBinPurger
             // y seguir (el borrado fisico ya se hizo, no tiene sentido revertirlo).
             logger.LogError(
                 "RecycleBinPurger: tenant {TenantId} has no quota row — file {FileId} ({SizeBytes} bytes) "
-                    + "was purged from storage but UsedBytes was NOT released. Quota accounting for this "
+                    + "was purged from storage but its quota was NOT released. Quota accounting for this "
                     + "tenant is now stale.",
                 file.TenantId,
                 file.Id,
@@ -81,7 +103,7 @@ public static class RecycleBinPurger
         }
         else
         {
-            limit.ReleaseUsed(file.SizeBytes);
+            QuotaRelease.Apply(limit, file);
         }
 
         audit.Add(
@@ -94,7 +116,7 @@ public static class RecycleBinPurger
                 null,
                 null,
                 correlationId,
-                $"trigger={trigger};size={file.SizeBytes}",
+                $"trigger={trigger};size={file.SizeBytes};quota={file.QuotaFootprint}",
                 clock.UtcNow
             )
         );

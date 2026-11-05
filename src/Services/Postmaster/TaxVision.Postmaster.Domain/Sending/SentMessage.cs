@@ -60,6 +60,9 @@ public sealed class SentMessage : TenantEntity
     public SentMessageActivity Activity { get; private set; }
     public DateTime QueuedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
+
+    /// <summary>Cuándo se llamó al proveedor. Con valor y sin resultado, el correo pudo haber salido: no se reenvía.</summary>
+    public DateTime? SendAttemptedAtUtc { get; private set; }
     public DateTime? LastEventAtUtc { get; private set; }
     public string? ErrorReason { get; private set; }
     public string? TemplateKey { get; private set; }
@@ -209,6 +212,34 @@ public sealed class SentMessage : TenantEntity
 
         Status = SentMessageStatus.Sending;
         RefreshActivity();
+        return Result.Success();
+    }
+
+    /// <summary>Se graba (y confirma) justo antes de llamar al proveedor. Solo un intento por mensaje.</summary>
+    public Result MarkSendAttempted(DateTime attemptedAtUtc)
+    {
+        if (Status != SentMessageStatus.Sending)
+            return Result.Failure(
+                new Error("SentMessage.NotSending", "Only a message being sent can record a send attempt.")
+            );
+        if (SendAttemptedAtUtc is not null)
+            return Result.Failure(
+                new Error("SentMessage.SendAlreadyAttempted", "The provider was already called for this message.")
+            );
+
+        SendAttemptedAtUtc = attemptedAtUtc;
+        return Result.Success();
+    }
+
+    /// <summary>El proveedor contestó que no salió y conviene reintentar (cupo): se libera el intento.</summary>
+    public Result ReleaseSendAttempt()
+    {
+        if (Status != SentMessageStatus.Sending)
+            return Result.Failure(
+                new Error("SentMessage.NotSending", "Only a message being sent can release its send attempt.")
+            );
+
+        SendAttemptedAtUtc = null;
         return Result.Success();
     }
 

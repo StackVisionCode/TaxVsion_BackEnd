@@ -1,5 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using TaxVision.Reminder.Application.Reminders.Abstractions;
 using TaxVision.Reminder.Domain.Reminders;
 using TaxVision.Reminder.Domain.ValueObjects;
+using TaxVision.Reminder.Infrastructure.Scheduling;
+using TaxVision.Reminder.Tests.Reminders;
 
 namespace TaxVision.Reminder.Tests.Scheduling;
 
@@ -86,6 +92,35 @@ public sealed class ReminderSchedulingTests
         Assert.True(result.IsFailure);
         Assert.Equal("Reminder.InvalidTransition", result.Error.Code);
         Assert.Equal(ReminderStatus.Cancelled, reminder.Status);
+    }
+
+    // REM-2: un pospuesto sin trigger vivo se vuelve a agendar en la pasada de reconciliación.
+    [Fact]
+    public async Task ReconciliationJob_SnoozedWithoutTrigger_SchedulesIt()
+    {
+        var reminder = Build();
+        Assert.True(reminder.FireOrMiss(FireAtUtc, Grace).IsSuccess);
+        Assert.True(reminder.Snooze(TimeSpan.FromMinutes(10), FireAtUtc).IsSuccess);
+        var repository = new FakeReminderRepository();
+        repository.Seed(reminder);
+        var scheduler = new RecordingScheduler();
+        using var provider = new ServiceCollection()
+            .AddSingleton<IReminderRepository>(repository)
+            .BuildServiceProvider();
+        var job = new ReminderScheduleReconciliationJob(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            scheduler,
+            Options.Create(new ReminderSchedulingOptions()),
+            NullLogger<ReminderScheduleReconciliationJob>.Instance
+        );
+
+        await job.StartAsync(CancellationToken.None);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!scheduler.Scheduled.Contains(reminder.Id) && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        await job.StopAsync(CancellationToken.None);
+
+        Assert.Equal([reminder.Id], scheduler.Scheduled);
     }
 
     private static ReminderAggregate Build() =>

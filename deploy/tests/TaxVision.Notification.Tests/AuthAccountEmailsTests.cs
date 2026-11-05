@@ -1,11 +1,15 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Tests.Lifecycle;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -151,6 +155,115 @@ public sealed class AuthAccountEmailsTests
         var variables = scribe.Rendered.Single().Variables;
         Assert.Equal("portal", variables["account_kind"]);
         Assert.Equal("Acme Tax", variables["inviter"]);
+    }
+
+    // NOT-04: el enlace con token no viaja por el fanout taxvision-events, va directo a la cola de Postmaster.
+    [Fact]
+    public async Task Password_reset_email_is_sent_confidential()
+    {
+        var publisher = new CapturingIntegrationEventPublisher();
+
+        await PasswordResetRequestedConsumer.Handle(
+            new PasswordResetRequestedIntegrationEvent
+            {
+                TenantId = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                Email = "ana@example.com",
+                RawToken = "tok",
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(30),
+                ActorType = "TenantEmployee",
+            },
+            RealGateway(publisher),
+            new CapturingScribe(),
+            Portal,
+            TestPlatform.Settings,
+            new FakeTenantHostResolver(Host),
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        AssertOnlyPostmasterQueue(publisher, expected: 1);
+    }
+
+    [Fact]
+    public async Task Invitation_email_is_sent_confidential()
+    {
+        var publisher = new CapturingIntegrationEventPublisher();
+
+        await InvitationCreatedConsumer.Handle(
+            new InvitationCreatedIntegrationEvent
+            {
+                TenantId = Guid.NewGuid(),
+                InvitationId = Guid.NewGuid(),
+                Email = "ana@example.com",
+                ActorType = "TenantEmployee",
+                RawToken = "tok",
+                ExpiresAtUtc = DateTime.UtcNow.AddDays(7),
+            },
+            RealGateway(publisher),
+            new CapturingScribe(),
+            Portal,
+            TestPlatform.Settings,
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        AssertOnlyPostmasterQueue(publisher, expected: 1);
+    }
+
+    [Fact]
+    public async Task Email_change_confirmation_is_sent_confidential()
+    {
+        var publisher = new CapturingIntegrationEventPublisher();
+
+        await EmailChangeRequestedConsumer.Handle(
+            new EmailChangeRequestedIntegrationEvent
+            {
+                TenantId = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                CurrentEmail = "ana@example.com",
+                NewEmail = "ana.new@example.com",
+                RawToken = "tok",
+                ExpiresAtUtc = DateTime.UtcNow.AddHours(1),
+                ActorType = "TenantEmployee",
+            },
+            RealGateway(publisher),
+            new CapturingScribe(),
+            Portal,
+            TestPlatform.Settings,
+            new FakeTenantHostResolver(Host),
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        var confirmation = Assert.Single(publisher.SentToQueue);
+        Assert.Equal(EventBasedEmailDispatchGateway.PostmasterQueue, confirmation.Queue);
+        Assert.Equal(
+            "ana.new@example.com",
+            Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(confirmation.Message).To
+        );
+    }
+
+    private static EventBasedEmailDispatchGateway RealGateway(CapturingIntegrationEventPublisher publisher) =>
+        new(
+            publisher,
+            new RecordingNotificationLogs(),
+            new CountingUnitOfWork(),
+            TestDeliveryGates.Open(),
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+
+    private static void AssertOnlyPostmasterQueue(CapturingIntegrationEventPublisher publisher, int expected)
+    {
+        Assert.DoesNotContain(
+            publisher.Published,
+            message => message is NotificationsEmailSendRequestedIntegrationEvent
+        );
+        Assert.Equal(expected, publisher.SentToQueue.Count);
+        Assert.All(
+            publisher.SentToQueue,
+            sent => Assert.Equal(EventBasedEmailDispatchGateway.PostmasterQueue, sent.Queue)
+        );
     }
 
     private sealed record Render(

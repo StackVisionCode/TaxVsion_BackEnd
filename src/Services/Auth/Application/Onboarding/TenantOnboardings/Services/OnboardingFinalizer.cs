@@ -29,7 +29,9 @@ public sealed class OnboardingFinalizer(
         // El OnboardingId es un source-event estable para el commit/qualify (idempotencia + fingerprint).
         var sourceEventId = cmd.OnboardingId;
 
-        // 1) Commit de todas las reservas (idempotente por reserva). Un fallo se propaga → Wolverine reintenta.
+        // 1) Commit de todas las reservas (idempotente por reserva). Un fallo se propaga → Wolverine reintenta,
+        // salvo el commit tardío que Growth dejó en revisión: no se reintenta y no corta la factura.
+        var pendingReview = new HashSet<Guid>();
         foreach (var reservation in cmd.Reservations)
         {
             var commit = await growth.CommitAsync(
@@ -41,6 +43,16 @@ public sealed class OnboardingFinalizer(
                 idempotencyKey: $"onb-commit:{cmd.OnboardingId:N}:{reservation.CodeReservationId:N}",
                 ct
             );
+            if (commit.IsFailure && commit.Error.Code == GrowthOnboardingErrors.LateCommitPendingReview)
+            {
+                logger.LogWarning(
+                    "Code reservation {ReservationId} of onboarding {OnboardingId} is pending review in Growth (late commit); invoice not blocked.",
+                    reservation.CodeReservationId,
+                    cmd.OnboardingId
+                );
+                pendingReview.Add(reservation.CodeReservationId);
+                continue;
+            }
             if (commit.IsFailure)
                 return commit;
         }
@@ -74,7 +86,8 @@ public sealed class OnboardingFinalizer(
                 r.BenefitType,
                 r.Code,
                 r.CodeReservationId,
-                r.DiscountCents
+                r.DiscountCents,
+                PendingReview: pendingReview.Contains(r.CodeReservationId)
             ))
             .ToList();
 

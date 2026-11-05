@@ -25,10 +25,15 @@ internal sealed class FakeCampaignScheduleRepository : ICampaignScheduleReposito
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task<CampaignSchedule?> GetByActiveRunIdAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+    /// <summary>Simula que la búsqueda por ActiveRunId no encuentra el agendado.</summary>
+    public bool ActiveRunLookupMisses { get; set; }
 
-    public Task<IReadOnlyList<CampaignSchedule>> ClaimDueAsync(
+    public Task<CampaignSchedule?> GetByActiveRunIdAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
+        Task.FromResult(
+            ActiveRunLookupMisses ? null : Schedules.Find(s => s.TenantId == tenantId && s.ActiveRunId == runId)
+        );
+
+    public Task<IReadOnlyList<ClaimedSchedule>> ClaimDueAsync(
         DateTime nowUtc,
         int leaseSeconds,
         int batchSize,
@@ -40,6 +45,12 @@ internal sealed class FakeCampaignScheduleRepository : ICampaignScheduleReposito
         Schedules.Add(schedule);
         return Task.CompletedTask;
     }
+
+    public Task<StuckScheduleRelease> ReleaseStuckAsync(
+        DateTime nowUtc,
+        TimeSpan grace,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
 
     public Task<IReadOnlyList<CampaignSchedule>> ListOpenRunAsUserAsync(
         Guid tenantId,
@@ -125,4 +136,16 @@ internal sealed class FakeUserPermissionsProjectionRepository : IUserPermissions
         Guid roleId,
         CancellationToken ct = default
     ) => throw new NotSupportedException();
+}
+
+/// <summary>Toma el lease como lo hace el UPDATE atómico del repositorio real (no hay método de dominio para eso).</summary>
+internal static class ScheduleLease
+{
+    public static Guid Take(CampaignSchedule schedule, DateTime untilUtc)
+    {
+        var token = Guid.NewGuid();
+        typeof(CampaignSchedule).GetProperty(nameof(CampaignSchedule.LeaseToken))!.SetValue(schedule, token);
+        typeof(CampaignSchedule).GetProperty(nameof(CampaignSchedule.LeasedUntilUtc))!.SetValue(schedule, untilUtc);
+        return token;
+    }
 }

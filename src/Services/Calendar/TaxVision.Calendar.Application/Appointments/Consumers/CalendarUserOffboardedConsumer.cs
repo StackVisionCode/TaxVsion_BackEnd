@@ -44,26 +44,36 @@ public static class CalendarUserOffboardedConsumer
 
         var now = DateTime.UtcNow;
 
-        // 1. Revocar el feed token (secreto por-usuario). Se recuerda el hash para desalojar la caché
+        // 1. Revocar TODOS sus feed tokens activos. Se recuerdan los hashes para desalojar la caché
         //    DESPUÉS del SaveChanges (si no, el camino degradado seguiría sirviendo el token muerto).
-        var token = await feedTokens.FindActiveForUserAsync(msg.TenantId, msg.UserId, ct);
-        var revokedTokenHashHex =
-            token is not null && token.Revoke(now).IsSuccess ? Convert.ToHexString(token.TokenHash) : null;
+        var revokedTokenHashes = new List<string>();
+        foreach (var token in await feedTokens.ListActiveForUserAsync(msg.TenantId, msg.UserId, ct))
+        {
+            if (token.Revoke(now).IsSuccess)
+                revokedTokenHashes.Add(Convert.ToHexString(token.TokenHash));
+        }
 
         // 2. Reasignar (al sucesor) o cancelar (sin sucesor) las citas vigentes del que se va.
         var successor = msg.SuccessorUserId is { } candidate && candidate != msg.UserId ? candidate : (Guid?)null;
         var vigentes = await appointments.ListFutureByOrganizerAsync(msg.TenantId, msg.UserId, now, ct);
         var reassigned = new List<Appointment>();
-        var cancelled = new List<Appointment>();
+        var cancelled = new List<(Appointment Appointment, IReadOnlySet<Guid> ReminderTargets)>();
         foreach (var appointment in vigentes)
         {
             if (successor is { } newOrganizer)
             {
                 if (appointment.ReassignOrganizer(newOrganizer).IsSuccess)
                     reassigned.Add(appointment);
+                continue;
             }
-            else if (appointment.Cancel(msg.UserId, canManageAll: true, CancelReason, now).IsSuccess)
-                cancelled.Add(appointment);
+
+            // Los objetivos se calculan antes de cancelar: después la cita ya no los produce.
+            var targets =
+                appointment.ReminderLeadMinutes is null
+                    ? new HashSet<Guid>()
+                    : AppointmentReminderTargets.Snapshot(appointment, now);
+            if (appointment.Cancel(msg.UserId, canManageAll: true, CancelReason, now).IsSuccess)
+                cancelled.Add((appointment, targets));
         }
 
         // 3. Sacarlo como asistente interno de las citas vigentes (las recién canceladas se saltan solas).
@@ -81,12 +91,12 @@ public static class CalendarUserOffboardedConsumer
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        // 5. Desalojar la caché del feed revocado (tras persistir).
-        if (revokedTokenHashHex is not null)
-            await feedCache.RemoveAsync(revokedTokenHashHex, ct);
+        // 5. Desalojar la caché de los feeds revocados (tras persistir).
+        foreach (var hash in revokedTokenHashes)
+            await feedCache.RemoveAsync(hash, ct);
 
         // 6. Avisar de las cancelaciones (a asistentes y a Reminder) — mismo contrato que CancelAppointmentHandler.
-        foreach (var appointment in cancelled)
+        foreach (var (appointment, reminderTargets) in cancelled)
         {
             await bus.PublishAsync(
                 new AppointmentCancelledIntegrationEvent
@@ -100,16 +110,15 @@ public static class CalendarUserOffboardedConsumer
                     Recipients = AppointmentEvents.RecipientsOf(appointment),
                 }
             );
-            await bus.PublishAsync(
-                new ReminderTargetClosedIntegrationEvent
-                {
-                    TenantId = msg.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    Category = AppointmentReminderRequests.Category,
-                    TargetId = OccurrenceTargetId.For(appointment.Id, appointment.Timing.StartUtc ?? now),
-                    Reason = CancelReason,
-                }
-            );
+            foreach (
+                var closed in AppointmentReminderTargets.Close(
+                    appointment,
+                    reminderTargets,
+                    correlation.CorrelationId,
+                    CancelReason
+                )
+            )
+                await bus.PublishAsync(closed);
         }
 
         // 7. Pedir ya el aviso del sucesor (sin esperar al job). Reminder deduplica por destinatario: crea
@@ -124,11 +133,11 @@ public static class CalendarUserOffboardedConsumer
             }
         }
 
-        if (vigentes.Count > 0 || removedAsAttendee > 0 || revokedTokenHashHex is not null)
+        if (vigentes.Count > 0 || removedAsAttendee > 0 || revokedTokenHashes.Count > 0)
             logger.LogInformation(
-                "Offboarded user {UserId}: feed token revoked={Revoked}, {Reassigned} appointment(s) reassigned ({Reminders} reminder(s) requested for the successor), {Cancelled} cancelled, removed as attendee from {Attended} in tenant {TenantId}.",
+                "Offboarded user {UserId}: {Revoked} feed token(s) revoked, {Reassigned} appointment(s) reassigned ({Reminders} reminder(s) requested for the successor), {Cancelled} cancelled, removed as attendee from {Attended} in tenant {TenantId}.",
                 msg.UserId,
-                revokedTokenHashHex is not null,
+                revokedTokenHashes.Count,
                 reassigned.Count,
                 remindersRequested,
                 cancelled.Count,

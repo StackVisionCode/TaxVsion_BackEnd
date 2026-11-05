@@ -66,6 +66,9 @@ public sealed class SeatPurchaseIntent : TenantEntity
     public string? CancelReason { get; private set; }
     public string? FailureReason { get; private set; }
 
+    /// <summary>Token de concurrencia: el consumidor del pago y el job de reconciliación no aprovisionan dos veces.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     private SeatPurchaseIntent() { }
 
     public static Result<SeatPurchaseIntent> Create(

@@ -192,8 +192,10 @@ public sealed class T44ConsumersTests
             new NoOpPushSender(),
             new NoOpPushDeviceTokenRepository(),
             new NoOpNotificationLogRepository(),
-            new AlwaysEnabledPreferences(),
-            new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                new AlwaysEnabledPreferences(),
+                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
+            ),
             publisher,
             new NoOpUnitOfWork(),
             new NoOpNotificationDispatchMetrics(),

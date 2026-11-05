@@ -565,4 +565,52 @@ public class GmailApiClientTests
         Assert.Equal("doc.pdf", part.FileName);
         Assert.Equal("application/pdf", part.ContentType.MimeType);
     }
+
+    [Fact]
+    public async Task GetMessage_404_ThrowsNotFound()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.NotFound, """{ "error": { "code": 404 } }""");
+
+        var ex = await Assert.ThrowsAsync<EmailProviderException>(() =>
+            CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1")
+        );
+
+        Assert.True(ex.IsNotFound);
+    }
+
+    [Fact]
+    public async Task GetMessage_503_ThrowsTransient()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.ServiceUnavailable, "{}");
+
+        var ex = await Assert.ThrowsAsync<EmailProviderException>(() =>
+            CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1")
+        );
+
+        Assert.False(ex.IsNotFound);
+    }
+
+    [Fact]
+    public async Task ListInboxMessageIds_FiltersInboxByDateAndFollowsThePageToken()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            HttpStatusCode.OK,
+            """{ "messages": [ { "id": "newest" }, { "id": "oldest" } ], "nextPageToken": "p2" }"""
+        );
+        var from = new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc);
+        var to = new DateTime(2026, 11, 4, 0, 0, 0, DateTimeKind.Utc);
+
+        var page = await CreateClient(handler).ListInboxMessageIdsAsync(Guid.NewGuid(), Guid.NewGuid(), from, to, "p1");
+
+        Assert.Equal(["oldest", "newest"], page.MessageIds);
+        Assert.Equal("p2", page.NextPageToken);
+        var url = Uri.UnescapeDataString(handler.Requests[0].RequestUri!.ToString());
+        Assert.Contains("/messages?labelIds=INBOX", url);
+        Assert.Contains($"after:{new DateTimeOffset(from).ToUnixTimeSeconds()}", url);
+        Assert.Contains($"before:{new DateTimeOffset(to).ToUnixTimeSeconds()}", url);
+        Assert.Contains("pageToken=p1", url);
+    }
 }

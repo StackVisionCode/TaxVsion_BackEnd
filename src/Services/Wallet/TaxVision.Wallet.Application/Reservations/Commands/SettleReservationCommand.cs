@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Wallet.Application.Reservations.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Domain.Reservations;
+using TaxVision.Wallet.Domain.Wallet;
 using Wolverine;
 
 namespace TaxVision.Wallet.Application.Reservations.Commands;
@@ -49,6 +50,19 @@ public static class SettleReservationHandler
                 new SettlementView(reservation.ConsumedMicros, reservation.ReleasedMicros, reservation.Currency)
             );
 
+        // Vencida por TTL: ya se liberó todo; el consumo tardío no se cobra (lo absorbe la plataforma).
+        if (reservation.Status == ReservationStatus.Expired)
+        {
+            logger.LogWarning(
+                "Late settle for expired reservation {RefType}:{RefId} (tenant {TenantId}, {ConsumedUnits} units); not charged.",
+                command.ReferenceType,
+                command.ReferenceId,
+                command.TenantId,
+                command.ConsumedUnits
+            );
+            return Result.Failure<SettlementView>(ReservationErrors.Expired);
+        }
+
         var reserved = reservation.ReservedMicros;
         var reservedUnits = reservation.ReservedUnits;
         // Prorrateo estimado por unidades usadas (clamp 0..reservadas). Entero en micros, sin pérdida.
@@ -56,7 +70,7 @@ public static class SettleReservationHandler
         var consumed = reservedUnits > 0 ? reserved * usedUnits / reservedUnits : 0;
         var released = reserved - consumed;
 
-        var wallet = await wallets.GetByTenantAsync(command.TenantId, ct);
+        var wallet = await wallets.GetByTenantAsync(command.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
         if (wallet is null)
         {
             logger.LogError(
@@ -67,6 +81,13 @@ public static class SettleReservationHandler
             );
             return Result.Failure<SettlementView>(ReservationErrors.NotFound);
         }
+
+        // Validar todo antes de mutar: después de tocar un agregado rastreado no se devuelve Failure.
+        if (wallet.HeldMicros < consumed + released)
+            return Result.Failure<SettlementView>(WalletErrors.InsufficientHold);
+        var settled = reservation.Settle(consumed, released);
+        if (settled.IsFailure)
+            return Result.Failure<SettlementView>(settled.Error);
 
         if (consumed > 0)
         {
@@ -91,10 +112,6 @@ public static class SettleReservationHandler
                 return Result.Failure<SettlementView>(release.Error);
             await wallets.AddLedgerEntryAsync(release.Value, ct);
         }
-
-        var settled = reservation.Settle(consumed, released);
-        if (settled.IsFailure)
-            return Result.Failure<SettlementView>(settled.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
 

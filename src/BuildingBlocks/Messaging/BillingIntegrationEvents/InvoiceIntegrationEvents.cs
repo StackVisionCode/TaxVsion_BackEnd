@@ -1,4 +1,6 @@
-﻿namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
+﻿using Wolverine.Attributes;
+
+namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
 
 /// <summary>Publicado cuando una factura se emite (Draft → Issued).</summary>
 public sealed record InvoiceIssuedIntegrationEvent : BillingIntegrationEvent
@@ -102,6 +104,21 @@ public sealed record InvoiceVoidedIntegrationEvent : BillingIntegrationEvent
     public required Guid InvoiceId { get; init; }
     public required string InvoiceNumber { get; init; }
     public string? Reason { get; init; }
+}
+
+/// <summary>Un cobro confirmado no se pudo aplicar a una factura; queda como UnappliedPayment para la oficina.</summary>
+[MessageIdentity("billing.invoice.payment_rejected.v1")]
+public sealed record InvoicePaymentRejectedIntegrationEvent : BillingIntegrationEvent
+{
+    public override string EventType => "billing.invoice.payment_rejected";
+    public required Guid UnappliedPaymentId { get; init; }
+    public required Guid TenantPaymentId { get; init; }
+    public Guid? InvoiceId { get; init; }
+    public required string ExternalReferenceId { get; init; }
+    public required long AmountCents { get; init; }
+    public required string Currency { get; init; }
+    public required string Reason { get; init; }
+    public required DateTime PaidAtUtc { get; init; }
 }
 
 /// <summary>Publicado cuando se emite un comprobante de pago. Notification lo consume para el email.</summary>

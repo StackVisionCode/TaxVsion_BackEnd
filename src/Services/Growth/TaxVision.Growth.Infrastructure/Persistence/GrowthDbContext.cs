@@ -40,6 +40,7 @@ public sealed class GrowthDbContext(
     public DbSet<CodeRedemption> CodeRedemptions => Set<CodeRedemption>();
     public DbSet<CodeCompensation> CodeCompensations => Set<CodeCompensation>();
     public DbSet<CodeUsageCounter> CodeUsageCounters => Set<CodeUsageCounter>();
+    public DbSet<LateCommitReview> LateCommitReviews => Set<LateCommitReview>();
 
     public DbSet<ReferralProgram> ReferralPrograms => Set<ReferralProgram>();
     public DbSet<ReferralCode> ReferralCodes => Set<ReferralCode>();

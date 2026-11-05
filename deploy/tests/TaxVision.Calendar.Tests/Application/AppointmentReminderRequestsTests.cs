@@ -57,6 +57,15 @@ public sealed class AppointmentReminderRequestsTests
     }
 
     [Fact]
+    public void RequestKey_GenerationZero_KeepsLegacyFormat()
+    {
+        var target = Guid.NewGuid();
+
+        Assert.Equal($"calendar:{target:N}", AppointmentReminderRequests.RequestKey(target, 0));
+        Assert.EndsWith(":g2", AppointmentReminderRequests.RequestKey(target, 2));
+    }
+
+    [Fact]
     public void Without_lead_minutes_there_is_nothing_to_request()
     {
         Assert.Empty(AppointmentReminderRequests.For(PointInTime(Guid.NewGuid(), leadMinutes: null), Now, "corr"));

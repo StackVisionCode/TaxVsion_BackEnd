@@ -370,6 +370,12 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<int>("ScanAttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ScanQueuedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("ScanReport")
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");

@@ -36,6 +36,9 @@ public sealed class RecurringSchedule : BaseEntity
             Amount = amount,
         };
 
+    /// <summary>Clave de cobro por intento: cada reintento llega al proveedor como un cobro nuevo.</summary>
+    public string ChargeIdempotencyKey(Guid planId) => $"recurring:{planId:N}:{Id:N}:attempt:{RetryCount}";
+
     public Result MarkProcessing()
     {
         if (Status is not (RecurringScheduleStatus.Pending or RecurringScheduleStatus.RetryPending))

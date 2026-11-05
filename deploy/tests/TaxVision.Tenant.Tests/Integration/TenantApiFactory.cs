@@ -1,7 +1,10 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.Tenant.Tests.Integration;
 
@@ -36,5 +39,21 @@ public sealed class TenantApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+        // Sin transportes externos el host de prueba no le roba mensajes a la cola del Tenant local;
+        // los jobs propios tampoco corren contra la base de desarrollo.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            foreach (
+                var job in services
+                    .Where(descriptor =>
+                        descriptor.ServiceType == typeof(IHostedService)
+                        && descriptor.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal)
+                            == true
+                    )
+                    .ToList()
+            )
+                services.Remove(job);
+        });
     }
 }

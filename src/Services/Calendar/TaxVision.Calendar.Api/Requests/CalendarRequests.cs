@@ -2,6 +2,7 @@ using TaxVision.Calendar.Domain.Appointments;
 
 namespace TaxVision.Calendar.Api.Requests;
 
+/// <param name="ReminderLeadMinutes">Minutos del aviso antes de la cita; null o 0 = sin aviso.</param>
 public sealed record ScheduleAppointmentRequest(
     string? Title,
     string? Description,
@@ -16,10 +17,12 @@ public sealed record ScheduleAppointmentRequest(
     string? RecurrenceRule,
     Guid? CustomerId,
     int? TaxYear,
-    bool IsVirtual
+    bool IsVirtual,
+    int? ReminderLeadMinutes = null
 );
 
 /// <param name="Scope">Sobre una serie es obligatorio; sin el se responde 400.</param>
+/// <param name="ReminderLeadMinutes">Null deja el aviso como estaba; 0 lo quita.</param>
 public sealed record RescheduleAppointmentRequest(
     EditScope? Scope,
     DateTime? OriginalStartUtc,
@@ -29,7 +32,8 @@ public sealed record RescheduleAppointmentRequest(
     TimeOnly? LocalStartTime,
     TimeSpan? Duration,
     string? TimeZoneId,
-    string? RecurrenceRule
+    string? RecurrenceRule,
+    int? ReminderLeadMinutes = null
 );
 
 public sealed record AddAttendeeRequest(

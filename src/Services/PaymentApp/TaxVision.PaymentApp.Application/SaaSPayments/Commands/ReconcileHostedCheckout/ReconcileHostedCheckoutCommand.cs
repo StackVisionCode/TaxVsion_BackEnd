@@ -52,7 +52,8 @@ public static class ReconcileHostedCheckoutHandler
         IMessageBus bus,
         ILogger<SaaSPayment> logger,
         CancellationToken ct,
-        ITenantRegistry? tenants = null
+        ITenantRegistry? tenants = null,
+        IPaymentAppMetrics? metrics = null
     )
     {
         var payment = await payments.GetByIdAsync(command.PaymentId, command.TenantId, ct);
@@ -75,6 +76,10 @@ public static class ReconcileHostedCheckoutHandler
                     "This payment type does not support hosted-checkout reconcile."
                 )
             );
+
+        // Cerrado sin cobro: solo se consulta si el proveedor cobró igual (éxito tardío → revisión).
+        if (payment.Status is PaymentStatus.Failed or PaymentStatus.Cancelled)
+            return await CheckLateSuccessAsync(payment, providerFactory, unitOfWork, metrics, logger, ct);
 
         // Idempotente: si ya es terminal (webhook llegó antes) devolvemos el estado actual.
         if (IsTerminal(payment.Status))
@@ -113,6 +118,50 @@ public static class ReconcileHostedCheckoutHandler
         var changed = await ApplyOutcomeAsync(payment, outcome, bus, correlation.CorrelationId, nowUtc, tenants, ct);
         if (changed)
             await unitOfWork.SaveChangesAsync(ct);
+
+        return Result.Success(BuildResponse(payment));
+    }
+
+    // Lectura de estado, nunca Finalize: en PayPal Finalize captura una orden aprobada, y sobre un pago
+    // cerrado eso cobraría al cliente. Si el proveedor ya cobró, el pago queda marcado para revisión.
+    private static async Task<Result<ReconcileHostedCheckoutResponse>> CheckLateSuccessAsync(
+        SaaSPayment payment,
+        IPaymentAdapterFactory providerFactory,
+        IUnitOfWork unitOfWork,
+        IPaymentAppMetrics? metrics,
+        ILogger<SaaSPayment> logger,
+        CancellationToken ct
+    )
+    {
+        if (payment.ReviewRequiredAtUtc is not null || payment.ExternalChargeReference is null)
+            return Result.Success(BuildResponse(payment));
+
+        IPaymentProvider adapter;
+        try
+        {
+            adapter = providerFactory.Resolve(payment.ProviderCode);
+        }
+        catch (InvalidOperationException)
+        {
+            return Result.Success(BuildResponse(payment));
+        }
+
+        var statusResult = await adapter.GetChargeStatusAsync(payment.ExternalChargeReference.Value, ct);
+        if (statusResult.IsSuccess && statusResult.Value.Status == PaymentStatus.Succeeded)
+        {
+            var flagged = LateProviderSuccessPolicy.Flag(
+                payment,
+                SaaSPayment.ReviewReasonLateProviderSuccess,
+                statusResult.Value.ProviderChargeReference,
+                paidAmountCents: null,
+                paidCurrency: null,
+                metrics,
+                logger,
+                DateTime.UtcNow
+            );
+            if (flagged)
+                await unitOfWork.SaveChangesAsync(ct);
+        }
 
         return Result.Success(BuildResponse(payment));
     }

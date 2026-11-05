@@ -41,6 +41,16 @@ public sealed record SmsSendRequest(
 /// <summary>Resultado de un envío. <see cref="ProviderMessageId"/> liga el DLR posterior con este envío.</summary>
 public sealed record SmsSendResult(bool Accepted, string? ProviderMessageId, string? ErrorCode, string? ErrorMessage);
 
+/// <summary>Códigos canónicos de rechazo que el adapter traduce desde el código propio del proveedor.</summary>
+public static class SmsSendFailure
+{
+    /// <summary>El carrier ya bloqueó el número por STOP (p. ej. Twilio 21610).</summary>
+    public const string RecipientOptedOut = "recipientOptedOut";
+
+    /// <summary>Timeout después de enviar la petición: no se sabe si salió. Corta el failover.</summary>
+    public const string OutcomeUnknown = "sms.providerOutcomeUnknown";
+}
+
 /// <summary>Resultado de verificar la firma del webhook.</summary>
 public sealed record SmsSignatureCheck(bool IsValid, string? Reason);
 
@@ -69,6 +79,19 @@ public enum SmsInboundKeyword
     Start,
     Help,
     Unknown,
+}
+
+/// <summary>Los adaptadores clasifican el texto entrante con el parser único del dominio.</summary>
+public static class SmsInboundKeywords
+{
+    public static SmsInboundKeyword Parse(string? body) =>
+        TaxVision.Sms.Domain.Consent.SmsKeywordParser.Parse(body) switch
+        {
+            TaxVision.Sms.Domain.Consent.SmsKeyword.Stop => SmsInboundKeyword.Stop,
+            TaxVision.Sms.Domain.Consent.SmsKeyword.Start => SmsInboundKeyword.Start,
+            TaxVision.Sms.Domain.Consent.SmsKeyword.Help => SmsInboundKeyword.Help,
+            _ => SmsInboundKeyword.Unknown,
+        };
 }
 
 /// <summary>Mensaje inbound del proveedor ya normalizado (STOP/START/HELP). El teléfono viene del

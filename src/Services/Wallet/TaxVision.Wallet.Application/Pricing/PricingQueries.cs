@@ -65,7 +65,7 @@ public static class EstimateHandler
             lines.Add(new EstimateLine(channel.ToString(), units, price.Value, subtotal));
         }
 
-        var wallet = await wallets.GetByTenantAsync(query.TenantId, ct);
+        var wallet = await wallets.GetByTenantAsync(query.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
         var available = wallet?.AvailableMicros ?? 0;
         var currency = wallet?.Currency ?? Domain.Wallet.Wallet.DefaultCurrency;
         var sufficient = available >= cost;

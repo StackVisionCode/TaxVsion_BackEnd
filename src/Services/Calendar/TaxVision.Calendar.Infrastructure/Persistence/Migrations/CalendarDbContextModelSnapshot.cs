@@ -97,6 +97,9 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(500)")
                         .HasColumnName("RecurrenceRule");
 
+                    b.Property<int>("ReminderGeneration")
+                        .HasColumnType("int");
+
                     b.Property<int?>("ReminderLeadMinutes")
                         .HasColumnType("int");
 
@@ -331,6 +334,10 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("TenantId", "UserId");
+
+                    b.HasIndex(new[] { "TenantId", "UserId" }, "UX_CalendarFeedTokens_ActivePerUser")
+                        .IsUnique()
+                        .HasFilter("[RevokedAtUtc] IS NULL");
 
                     b.ToTable("CalendarFeedTokens", (string)null);
                 });

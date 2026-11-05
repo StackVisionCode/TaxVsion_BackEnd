@@ -83,6 +83,10 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.Property(request => request.CreatedAtUtc).IsRequired();
         builder.Property(request => request.UpdatedAtUtc).IsRequired();
 
+        // Firmas, expiración y rechazo en paralelo: el segundo guardado choca en vez de pisar al primero.
+        builder.Property(request => request.RowVersion).IsRowVersion();
+        builder.Property(request => request.SealingFailedAtUtc);
+
         // Practitioner PIN — sólo el hash serializado. Sin índices; nunca se busca por PIN.
         builder.Property(request => request.PractitionerPinHash).HasMaxLength(512);
         builder.Property(request => request.PractitionerPinSetByUserId);

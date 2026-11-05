@@ -42,4 +42,21 @@ public sealed class InternalStockController(IMessageBus bus, ITenantContext tena
 
         return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    // Solo lectura: Billing verifica antes de emitir o editar; el descuento llega después por commit-sale.
+    [HttpPost("check-sale")]
+    [RateLimit("inventory.g.adjust")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CheckSale([FromBody] CommitInvoiceSaleRequest request, CancellationToken ct)
+    {
+        var lines = (request.Lines ?? []).Select(l => new CommitSaleLine(l.CatalogItemId, l.Quantity)).ToList();
+
+        var result = await bus.InvokeAsync<Result>(
+            new CheckInvoiceSaleQuery(tenant.TenantId, request.InvoiceId, lines),
+            ct
+        );
+
+        return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 }

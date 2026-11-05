@@ -63,18 +63,25 @@ public sealed class SendCorrespondenceMessageHandlerTests
     private static Task<Result<SendCorrespondenceMessageResult>> HandleAsync(
         Fixture fixture,
         SendCorrespondenceMessageCommand command
-    ) =>
-        SendCorrespondenceMessageHandler.Handle(
-            command,
+    )
+    {
+        var bus = new FakeMessageBus();
+        EmailSendPipeline.RouteSendCommands(
+            bus,
+            fixture.IdempotencyGuard,
+            fixture.SentMessages,
+            fixture.UnitOfWork,
             fixture.ProviderResolver,
-            fixture.SuppressionList,
+            fixture.SuppressionList
+        );
+        return SendCorrespondenceMessageHandler.Handle(
+            command,
             fixture.AttachmentFetcher,
             fixture.EmailSender,
-            fixture.SentMessages,
-            fixture.IdempotencyGuard,
-            fixture.UnitOfWork,
+            bus,
             CancellationToken.None
         );
+    }
 
     [Fact]
     public async Task Handle_ValidCommand_SendsAndReturnsProviderMessageId()
@@ -202,6 +209,50 @@ public sealed class SendCorrespondenceMessageHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("SendCorrespondenceMessageHandler.SendInProgress", result.Error.Code);
         Assert.Null(fixture.EmailSender.LastMessage);
+    }
+
+    /// <summary>
+    /// El buzón aceptó el correo y la primera confirmación posterior falla; el mismo draft se reintenta en
+    /// línea. La reserva tiene que haber quedado confirmada antes del envío para que no salga dos veces.
+    /// </summary>
+    [Fact]
+    public async Task Retry_after_mailbox_accepted_does_not_resend()
+    {
+        var fixture = CreateFixture();
+        fixture.IdempotencyGuard.Stateful = true;
+        fixture.UnitOfWork.FailOnceWhen = () => fixture.EmailSender.SendCount > 0;
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        await Assert.ThrowsAnyAsync<Exception>(() => InvokeLikeWolverineAsync(fixture, command));
+        await InvokeLikeWolverineAsync(fixture, command);
+
+        Assert.Equal(1, fixture.EmailSender.SendCount);
+    }
+
+    /// <summary>
+    /// Como Wolverine: un handler sin <c>[NonTransactional]</c> corre en una transacción y, si lanza, se
+    /// revierte lo que confirmó (acá, las reservas del guard).
+    /// </summary>
+    private static async Task<Result<SendCorrespondenceMessageResult>> InvokeLikeWolverineAsync(
+        Fixture fixture,
+        SendCorrespondenceMessageCommand command
+    )
+    {
+        var transactional =
+            typeof(SendCorrespondenceMessageHandler)
+                .GetMethod(nameof(SendCorrespondenceMessageHandler.Handle))!
+                .GetCustomAttributes(typeof(Wolverine.Attributes.NonTransactionalAttribute), false)
+                .Length == 0;
+        var snapshot = fixture.IdempotencyGuard.Snapshot();
+        try
+        {
+            return await HandleAsync(fixture, command);
+        }
+        catch when (transactional)
+        {
+            fixture.IdempotencyGuard.Restore(snapshot);
+            throw;
+        }
     }
 
     [Fact]

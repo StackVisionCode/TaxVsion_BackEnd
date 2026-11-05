@@ -155,6 +155,7 @@ public sealed class MultipleActiveProvidersTests
             ),
             new PaymentAuditLogWriter(_db),
             _db,
+            InMemoryPaymentClient.RecordingBus(_published),
             new NoOpPaymentClientMetrics(),
             new FixedCorrelationContext(),
             NullLogger<TenantPayment>.Instance,

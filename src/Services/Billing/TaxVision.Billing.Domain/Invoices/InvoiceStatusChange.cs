@@ -7,7 +7,7 @@ namespace TaxVision.Billing.Domain.Invoices;
 /// Rastro de auditoría (item 6.2): una fila por cada transición de estado de la factura — quién, cuándo,
 /// de qué estado a cuál y por qué (razón + disparador). Entidad NORMAL (no owned), hija de la factura:
 /// se busca/lista por InvoiceId, es append-only (nunca se edita ni borra) y sobrevive a la factura.
-/// El dominio la escribe desde cada método de transición (Issue/MarkPaid/Void/ChangeStatus) — así el
+/// El dominio la escribe desde cada método de transición (Issue/ApplyPayment/Void/ChangeStatus) — así el
 /// historial es completo sin depender de que cada handler se acuerde de auditar.
 /// </summary>
 public sealed class InvoiceStatusChange : BaseEntity
@@ -60,4 +60,7 @@ public static class StatusChangeTrigger
     public const string Payment = "Payment";
     public const string Void = "Void";
     public const string ManualChange = "ManualChange";
+
+    /// <summary>La edición cambió el total y con él el estado de cobro (Paid ↔ PartiallyPaid).</summary>
+    public const string Edit = "Edit";
 }

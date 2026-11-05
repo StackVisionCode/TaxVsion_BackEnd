@@ -144,6 +144,8 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
 {
     private readonly List<TaskItem> _tasks = [.. seed];
 
+    public IReadOnlyList<TaskItem> Stored => _tasks;
+
     public void Add(TaskItem task) => _tasks.Add(task);
 
     public void Remove(TaskItem task) => _tasks.Remove(task);
@@ -459,4 +461,34 @@ internal sealed class RecordingTaskMetrics : ITaskMetrics
     public void RecordTimeToCompleteSeconds(double seconds) { }
 
     public void RecordOverdue(int count) => Overdue += count;
+}
+
+/// <summary>Series en memoria: el pendiente es la activa sin instancia abierta, como en SQL.</summary>
+internal sealed class InMemoryTaskSeriesRepository(params TaskSeries[] seed) : ITaskSeriesRepository
+{
+    public List<TaskSeries> Stored { get; } = [.. seed];
+
+    public void Add(TaskSeries series) => Stored.Add(series);
+
+    public Task<Result<TaskSeries>> GetByIdAsync(Guid tenantId, Guid seriesId, CancellationToken ct = default)
+    {
+        var found = Stored.FirstOrDefault(s => s.TenantId == tenantId && s.Id == seriesId);
+        return Task.FromResult(
+            found is null ? Result.Failure<TaskSeries>(TaskErrors.Series.NotFound) : Result.Success(found)
+        );
+    }
+
+    public Task<IReadOnlyList<TaskSeries>> ListAsync(
+        Guid tenantId,
+        SeriesStatus? status,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<TaskSeries>>(
+            Stored.Where(s => s.TenantId == tenantId && (status is null || s.Status == status)).ToList()
+        );
+
+    public Task<IReadOnlyList<TaskSeries>> ListPendingMaterializationAsync(int take, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<TaskSeries>>(
+            Stored.Where(s => s.Status == SeriesStatus.Active && s.OpenInstanceId == null).Take(take).ToList()
+        );
 }

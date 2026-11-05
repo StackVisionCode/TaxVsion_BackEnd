@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<ICodeRedemptionRepository, CodeRedemptionRepository>();
         services.AddScoped<ICodeCompensationRepository, CodeCompensationRepository>();
         services.AddScoped<ICodeUsageCounterRepository, CodeUsageCounterRepository>();
+        services.AddScoped<ILateCommitReviewRepository, LateCommitReviewRepository>();
         services.AddScoped<SqlBusinessIdempotencyExecutor>();
         services.AddScoped<IBusinessIdempotencyExecutor>(provider =>
             provider.GetRequiredService<SqlBusinessIdempotencyExecutor>()

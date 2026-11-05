@@ -14,7 +14,7 @@ namespace TaxVision.Reminder.Infrastructure.Scheduling;
 ///
 /// <para>
 /// <b>El detalle que hace o rompe este job es <c>IgnoreQueryFilters()</c></b> dentro de
-/// <c>ListScheduledWithinHorizonAsync</c>: acá no hay tenant en contexto, el filtro global es
+/// <c>ListPendingWithinHorizonAsync</c>: acá no hay tenant en contexto, el filtro global es
 /// fail-closed y sin él la consulta devuelve <b>0 filas siempre</b> — el job se ve perfectamente
 /// sano en los logs mientras no repara nada. Es el mismo bug que ya se evitó en
 /// <c>CodeReservationRepository.GetActiveExpiredAsync</c> de Growth.
@@ -60,7 +60,7 @@ public sealed class ReminderScheduleReconciliationJob(
         var reminders = scope.ServiceProvider.GetRequiredService<IReminderRepository>();
 
         var horizonUtc = DateTime.UtcNow.Add(options.Value.ReconciliationHorizon);
-        var pending = await reminders.ListScheduledWithinHorizonAsync(horizonUtc, ct);
+        var pending = await reminders.ListPendingWithinHorizonAsync(horizonUtc, ct);
         if (pending.Count == 0)
             return;
 
@@ -74,9 +74,10 @@ public sealed class ReminderScheduleReconciliationJob(
             repaired++;
 
             logger.LogWarning(
-                "Reminder {ReminderId} of tenant {TenantId} was Scheduled without a live trigger; rescheduled for {FireAtUtc:O}.",
+                "Reminder {ReminderId} of tenant {TenantId} was {Status} without a live trigger; rescheduled for {FireAtUtc:O}.",
                 reminder.Id,
                 reminder.TenantId,
+                reminder.Status,
                 reminder.Schedule.FireAtUtc
             );
         }

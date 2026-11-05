@@ -212,6 +212,9 @@ public sealed class SetUserPermissionOverridesHandlerTests
 
     private sealed class FakeUserRepository : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public User? Seeded { get; set; }
 
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>

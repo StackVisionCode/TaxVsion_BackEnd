@@ -187,6 +187,14 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
         {
             return await base.SaveChangesAsync(cancellationToken);
         }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The resource was modified by someone else. Reload and try again.",
+                ex
+            );
+        }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {
             throw new ConflictException(

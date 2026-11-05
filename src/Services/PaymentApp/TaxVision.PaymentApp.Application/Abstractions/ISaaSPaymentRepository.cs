@@ -25,10 +25,10 @@ public interface ISaaSPaymentRepository
         CancellationToken ct = default
     );
 
-    /// <summary>Pagos atascados en Processing más allá de <paramref name="cutoffUtc"/> —
+    /// <summary>Id y tenant de los pagos atascados en Processing más allá de <paramref name="cutoffUtc"/> —
     /// batch job query, cross-tenant por diseño, solo la llama
-    /// <c>PendingChargeReconciliationJob</c> (§1714 del diseño).</summary>
-    Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+    /// <c>PendingChargeReconciliationJob</c> (§1714 del diseño). Cada pago se resuelve en su comando.</summary>
+    Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
         DateTime cutoffUtc,
         int batchSize,
         CancellationToken ct = default

@@ -26,6 +26,7 @@ public static class GmailPushReceivedHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger logger,
+        MessageFetchFailureTracker fetchFailures,
         CancellationToken ct
     )
     {
@@ -43,6 +44,7 @@ public static class GmailPushReceivedHandler
                 bus,
                 correlation,
                 logger,
+                fetchFailures,
                 ct
             );
 

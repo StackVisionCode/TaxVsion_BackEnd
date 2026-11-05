@@ -57,6 +57,7 @@ public class ProcessGraphNotificationHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -83,6 +84,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -123,6 +125,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -188,6 +191,7 @@ public class ProcessGraphNotificationHandlerTests
                 bus,
                 correlation,
                 NullLogger.Instance,
+                FetchFailures.None(),
                 CancellationToken.None
             )
         );
@@ -207,6 +211,7 @@ public class ProcessGraphNotificationHandlerTests
             bus,
             correlation,
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -326,6 +331,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
     }
@@ -358,6 +364,7 @@ public class ProcessGraphNotificationHandlerTests
             bus,
             correlation,
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -381,6 +388,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
     }

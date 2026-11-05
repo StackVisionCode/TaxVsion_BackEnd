@@ -27,6 +27,7 @@ public static class GraphNotificationReceivedHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger logger,
+        MessageFetchFailureTracker fetchFailures,
         CancellationToken ct
     )
     {
@@ -44,6 +45,7 @@ public static class GraphNotificationReceivedHandler
                 bus,
                 correlation,
                 logger,
+                fetchFailures,
                 ct
             );
 

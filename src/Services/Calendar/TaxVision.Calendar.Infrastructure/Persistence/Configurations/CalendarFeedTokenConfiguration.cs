@@ -19,5 +19,11 @@ internal sealed class CalendarFeedTokenConfiguration : IEntityTypeConfiguration<
         builder.HasIndex(t => t.TokenHash).IsUnique();
 
         builder.HasIndex(t => new { t.TenantId, t.UserId });
+
+        // Un solo token activo por usuario: dos emisiones a la vez dejan que una falle con 409.
+        builder
+            .HasIndex(t => new { t.TenantId, t.UserId }, "UX_CalendarFeedTokens_ActivePerUser")
+            .IsUnique()
+            .HasFilter("[RevokedAtUtc] IS NULL");
     }
 }

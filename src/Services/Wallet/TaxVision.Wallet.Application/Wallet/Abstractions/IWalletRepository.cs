@@ -10,8 +10,8 @@ namespace TaxVision.Wallet.Application.Wallet.Abstractions;
 /// </summary>
 public interface IWalletRepository
 {
-    /// <summary>El monedero del tenant, o <c>null</c> si aún no existe.</summary>
-    Task<Domain.Wallet.Wallet?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default);
+    /// <summary>El monedero del tenant en esa moneda, o <c>null</c> si aún no existe.</summary>
+    Task<Domain.Wallet.Wallet?> GetByTenantAsync(Guid tenantId, string currency, CancellationToken ct = default);
 
     Task AddAsync(Domain.Wallet.Wallet wallet, CancellationToken ct = default);
 

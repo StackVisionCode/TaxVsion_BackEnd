@@ -29,8 +29,10 @@ namespace TaxVision.Signature.Application.Sealing;
 ///   <item>Publica el resultado de sellado por documento y el cierre de la solicitud.</item>
 /// </list>
 /// Cada fase vive en un método privado con nombre autoexplicativo — no acumulan lógica.
-/// Ante cualquier fallo emite <see cref="SignatureRequestSealingFailedIntegrationEvent"/>
-/// y no re-lanza, para no bloquear al bus (los reintentos los gobierna Wolverine).
+/// Un fallo transitorio lanza <see cref="SealingTransientException"/> y Wolverine reintenta; uno
+/// permanente (o el transitorio del último intento) emite
+/// <see cref="SignatureRequestSealingFailedIntegrationEvent"/>, marca la solicitud y avisa los documentos
+/// que sí quedaron sellados.
 /// </summary>
 public static class SignatureRequestCompletedConsumer
 {
@@ -66,6 +68,7 @@ public static class SignatureRequestCompletedConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SignatureRequest> logger,
+        Envelope envelope,
         CancellationToken ct
     ) =>
         HandleCore(
@@ -87,6 +90,7 @@ public static class SignatureRequestCompletedConsumer
             bus,
             correlation,
             logger,
+            envelope.Attempts,
             ct
         );
 
@@ -104,6 +108,7 @@ public static class SignatureRequestCompletedConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SignatureRequest> logger,
+        Envelope envelope,
         CancellationToken ct
     ) =>
         HandleCore(
@@ -125,6 +130,7 @@ public static class SignatureRequestCompletedConsumer
             bus,
             correlation,
             logger,
+            envelope.Attempts,
             ct
         );
 
@@ -147,6 +153,7 @@ public static class SignatureRequestCompletedConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SignatureRequest> logger,
+        int attempt,
         CancellationToken ct
     )
     {
@@ -154,33 +161,24 @@ public static class SignatureRequestCompletedConsumer
         using (correlation.Push(correlationId))
         {
             // Lock por request para evitar que dos réplicas del worker sellen la misma
-            // solicitud en paralelo (double-processing en clúster). Si otro nodo lo tomó,
-            // salimos limpiamente — el idempotency-check del pipeline evita duplicados
-            // aunque el lock se salte por TTL prematuro.
+            // solicitud en paralelo (double-processing en clúster). Si otro nodo lo tomó, se
+            // reintenta (SIG-3); el idempotency-check del pipeline evita duplicados.
             await using var lockHandle = await distributedLock.AcquireAsync(
                 SealingLockKey(signatureRequestId),
                 SealingLockTtl,
                 ct
             );
             if (!lockHandle.IsAcquired)
-            {
-                logger.LogInformation(
-                    "Sealing skipped: another node already holds the lock for request {RequestId}.",
-                    signatureRequestId
+                throw new SealingLockBusyException(
+                    $"Another node holds the sealing lock for request {signatureRequestId}."
                 );
-                return;
-            }
 
-            var request = await LoadOrSkipAsync(
-                tenantId,
-                signatureRequestId,
-                requestedDocumentIds,
-                repository,
-                logger,
-                ct
-            );
+            var request = await LoadOrSkipAsync(tenantId, signatureRequestId, repository, logger, ct);
             if (request is null)
                 return;
+
+            // SIG-3: también los documentos listos que no pidió el mensaje (por si se perdió el suyo).
+            var documentIds = SealableDocumentIds(request, requestedDocumentIds);
 
             // Gate anti-carrera con ClamAV: si algún PNG de firma aún no pasó el scan (proyección
             // ausente/Pending), lanza SignatureImageNotReadyException → Wolverine redelivera con
@@ -188,18 +186,27 @@ public static class SignatureRequestCompletedConsumer
             // Available (los Infected/Deleted se excluyen: sellan con fallback tipográfico).
             var readyImageSignerIds = await ResolveScannedSignatureImagesAsync(
                 request,
-                requestedDocumentIds,
+                documentIds,
                 evidenceAtUtc,
                 fileRefRepository,
+                storage,
                 logger,
                 ct
             );
+            // SIG-14: la imagen no existe en CloudStorage; esperar no la trae.
+            if (readyImageSignerIds.IsFailure)
+            {
+                await FailSealingAsync(request, [], readyImageSignerIds.Error, correlationId, unitOfWork, bus, ct);
+                return;
+            }
 
+            var sealedDocuments = new List<DocumentSealOutcome>();
             var pipeline = await SealAndPersistAsync(
                 request,
-                requestedDocumentIds,
+                documentIds,
                 evidenceAtUtc,
-                readyImageSignerIds,
+                readyImageSignerIds.Value,
+                sealedDocuments,
                 storage,
                 brandingRepository,
                 sealer,
@@ -211,7 +218,13 @@ public static class SignatureRequestCompletedConsumer
             );
             if (pipeline.IsFailure)
             {
-                await PublishFailedAsync(request, pipeline.Error, correlationId, bus);
+                // Transitorio: la excepción revierte el intento y Wolverine lo vuelve a entregar.
+                if (SignatureStorage.IsTransient(pipeline.Error) && attempt < SealingTransientException.FinalAttempt)
+                    throw new SealingTransientException(
+                        $"Sealing of request {request.Id} failed transiently ({pipeline.Error.Code}); attempt {attempt} of {SealingTransientException.FinalAttempt}."
+                    );
+
+                await FailSealingAsync(request, sealedDocuments, pipeline.Error, correlationId, unitOfWork, bus, ct);
                 return;
             }
 
@@ -246,7 +259,6 @@ public static class SignatureRequestCompletedConsumer
     private static async Task<SignatureRequest?> LoadOrSkipAsync(
         Guid tenantId,
         Guid signatureRequestId,
-        IReadOnlyList<Guid> requestedDocumentIds,
         ISignatureRequestRepository repository,
         ILogger logger,
         CancellationToken ct
@@ -273,11 +285,8 @@ public static class SignatureRequestCompletedConsumer
             return null;
         }
 
-        var requested = requestedDocumentIds.ToHashSet();
         var hasReadyDocument = request.Documents.Any(document =>
-            requested.Contains(document.Id)
-            && document.SealedFileId is null
-            && request.IsDocumentReadyForSealing(document.Id)
+            document.SealedFileId is null && request.IsDocumentReadyForSealing(document.Id)
         );
         var needsCertificate =
             request.Status == SignatureRequestStatus.Completed
@@ -296,6 +305,22 @@ public static class SignatureRequestCompletedConsumer
         return request;
     }
 
+    // Los pedidos más todos los listos y sin sellar de la solicitud.
+    private static IReadOnlyList<Guid> SealableDocumentIds(
+        SignatureRequest request,
+        IReadOnlyList<Guid> requestedDocumentIds
+    ) =>
+        requestedDocumentIds
+            .Concat(
+                request
+                    .Documents.Where(document =>
+                        document.SealedFileId is null && request.IsDocumentReadyForSealing(document.Id)
+                    )
+                    .Select(document => document.Id)
+            )
+            .Distinct()
+            .ToList();
+
     // ============== Fase 2..6: pipeline de sellado ==============
 
     // ============== Gate anti-carrera ClamAV ==============
@@ -305,7 +330,8 @@ public static class SignatureRequestCompletedConsumer
     /// (<see cref="FileMetadataRef"/>, alimentada por FileAvailable/FileInfected de CloudStorage):
     /// <list type="bullet">
     ///   <item><description>Ausente o <c>Pending</c> → aún escaneando: lanza
-    ///     <see cref="SignatureImageNotReadyException"/> para que Wolverine reintente el sellado.</description></item>
+    ///     <see cref="SignatureImageNotReadyException"/> para que Wolverine reintente el sellado. Si CloudStorage
+    ///     no la tiene (404) o su escaneo falló, devuelve <see cref="SignatureImageMissingCode"/>.</description></item>
     ///   <item><description><c>Available</c> → el id del firmante entra al set descargable.</description></item>
     ///   <item><description><c>Infected</c>/<c>Deleted</c>/<c>Rejected</c> → se excluye (nunca se embebe): ese campo
     ///     cae al sello tipográfico. No se reintenta porque no va a mejorar.</description></item>
@@ -341,11 +367,12 @@ public static class SignatureRequestCompletedConsumer
         return projection;
     }
 
-    private static async Task<IReadOnlySet<Guid>> ResolveScannedSignatureImagesAsync(
+    private static async Task<Result<IReadOnlySet<Guid>>> ResolveScannedSignatureImagesAsync(
         SignatureRequest request,
         IReadOnlyList<Guid> requestedDocumentIds,
         DateTime evidenceAtUtc,
         IFileMetadataRefRepository fileRefRepository,
+        ISignatureCloudStorageClient storage,
         ILogger logger,
         CancellationToken ct
     )
@@ -380,6 +407,32 @@ public static class SignatureRequestCompletedConsumer
                     break;
 
                 default:
+                    // Proyección ausente/Pending: CloudStorage dice si sigue escaneando o si no existe.
+                    var remote = await storage.GetFileAsync(request.TenantId, imageFileId, ct);
+                    if (IsSignatureImageMissing(remote))
+                    {
+                        logger.LogWarning(
+                            "Signature image {FileId} for signer {SignerId} does not exist or failed scanning in CloudStorage; sealing fails.",
+                            imageFileId,
+                            signer.Id
+                        );
+                        return Result.Failure<IReadOnlySet<Guid>>(
+                            new Error(
+                                SignatureImageMissingCode,
+                                $"The signature image of signer {signer.Id} is missing in storage; the signer must sign again."
+                            )
+                        );
+                    }
+
+                    if (
+                        remote.IsSuccess
+                        && string.Equals(remote.Value.Status, "Available", StringComparison.OrdinalIgnoreCase)
+                    )
+                    {
+                        ready.Add(signer.Id);
+                        break;
+                    }
+
                     // Aún escaneando (proyección ausente/Pending). Reintentar da tiempo al scan, PERO con
                     // un tope: si tras MaxScanWait el archivo sigue sin estar Available (scan roto/atascado,
                     // o la subida nunca se registró), NO se bloquea la entrega para siempre — se sella con
@@ -404,14 +457,24 @@ public static class SignatureRequestCompletedConsumer
             }
         }
 
-        return ready;
+        return Result.Success<IReadOnlySet<Guid>>(ready);
     }
+
+    /// <summary>Código del fallo definitivo por imagen de firma inexistente o con escaneo fallido.</summary>
+    public const string SignatureImageMissingCode = "Signature.Sealing.SignatureImageMissing";
+
+    // Permanente: 404 o escaneo fallido. Un error de red o un estado de escaneo sigue siendo transitorio.
+    private static bool IsSignatureImageMissing(Result<SignatureFileMetadata> remote) =>
+        remote.IsFailure
+            ? remote.Error.Code == SignatureStorage.FileNotFoundCode
+            : string.Equals(remote.Value.Status, "ScanFailed", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<Result<PipelineOutcome>> SealAndPersistAsync(
         SignatureRequest request,
         IReadOnlyList<Guid> requestedDocumentIds,
         DateTime evidenceAtUtc,
         IReadOnlySet<Guid> readyImageSignerIds,
+        List<DocumentSealOutcome> sealedDocuments,
         ISignatureCloudStorageClient storage,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
@@ -432,7 +495,6 @@ public static class SignatureRequestCompletedConsumer
         // crear el perfil (F1), así que ya está Available; si por lo que sea no baja, cae al sello tipográfico.
         var preparerImage = await DownloadPreparerSignatureAsync(request, storage, ct);
 
-        var sealedDocuments = new List<DocumentSealOutcome>();
         var requested = requestedDocumentIds.ToHashSet();
         foreach (var document in request.Documents.OrderBy(document => document.Order))
         {
@@ -447,7 +509,7 @@ public static class SignatureRequestCompletedConsumer
             if (originalBytesResult.IsFailure)
                 return Result.Failure<PipelineOutcome>(originalBytesResult.Error);
 
-            var sealResult = ApplySeal(
+            var sealResult = TryApplySeal(
                 request,
                 evidenceAtUtc,
                 document,
@@ -455,14 +517,18 @@ public static class SignatureRequestCompletedConsumer
                 signatureImages,
                 preparerImage,
                 stampStyle,
-                sealer
+                sealer,
+                logger
             );
-            var sealedUpload = BuildSealedUpload(request, document, sealResult);
+            if (sealResult.IsFailure)
+                return Result.Failure<PipelineOutcome>(sealResult.Error);
+
+            var sealedUpload = BuildSealedUpload(request, document, sealResult.Value);
             var sealedFileIdResult = await storage.UploadAsync(request.TenantId, sealedUpload, ct);
             if (sealedFileIdResult.IsFailure)
                 return Result.Failure<PipelineOutcome>(sealedFileIdResult.Error);
 
-            var hashResult = DocumentHash.Create(sealResult.ChecksumSha256);
+            var hashResult = DocumentHash.Create(sealResult.Value.ChecksumSha256);
             if (hashResult.IsFailure)
                 return Result.Failure<PipelineOutcome>(hashResult.Error);
 
@@ -477,7 +543,12 @@ public static class SignatureRequestCompletedConsumer
                 return Result.Failure<PipelineOutcome>(marked.Error);
 
             sealedDocuments.Add(
-                new DocumentSealOutcome(document.Id, sealedFileIdResult.Value, sealResult.ChecksumSha256, sealedAtUtc)
+                new DocumentSealOutcome(
+                    document.Id,
+                    sealedFileIdResult.Value,
+                    sealResult.Value.ChecksumSha256,
+                    sealedAtUtc
+                )
             );
         }
 
@@ -607,6 +678,51 @@ public static class SignatureRequestCompletedConsumer
 
         var download = await storage.DownloadAsync(request.TenantId, fileId, ct);
         return download.IsSuccess ? download.Value : null;
+    }
+
+    /// <summary>
+    /// PdfSharp lanza <c>Exception</c> genérica ante un PDF ilegible: es permanente. La red (TSA) es
+    /// transitoria.
+    /// </summary>
+    private static Result<SealingResult> TryApplySeal(
+        SignatureRequest request,
+        DateTime evidenceAtUtc,
+        RequestDocument document,
+        byte[] originalBytes,
+        IReadOnlyDictionary<Guid, byte[]> signatureImages,
+        byte[]? preparerImage,
+        StampStyle stampStyle,
+        IDocumentSealingEngine sealer,
+        ILogger logger
+    )
+    {
+        try
+        {
+            return Result.Success(
+                ApplySeal(
+                    request,
+                    evidenceAtUtc,
+                    document,
+                    originalBytes,
+                    signatureImages,
+                    preparerImage,
+                    stampStyle,
+                    sealer
+                )
+            );
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException or TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Sealing of document {DocumentId} failed transiently.", document.Id);
+            return Result.Failure<SealingResult>(new Error(SignatureStorage.TransientCode, ex.Message));
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Sealing of document {DocumentId} failed permanently.", document.Id);
+            return Result.Failure<SealingResult>(
+                new Error("Signature.Sealing.InvalidPdf", "The document could not be sealed.")
+            );
+        }
     }
 
     private static SealingResult ApplySeal(
@@ -1030,6 +1146,42 @@ public static class SignatureRequestCompletedConsumer
                 SealedAtUtc = outcome.CompletedAtUtc,
             }
         );
+    }
+
+    /// <summary>
+    /// Fallo definitivo: guarda lo sellado y la marca, avisa cada documento que sí quedó sellado (su línea
+    /// RequestSealed y su correo) y después el fallo.
+    /// </summary>
+    private static async Task FailSealingAsync(
+        SignatureRequest request,
+        IReadOnlyList<DocumentSealOutcome> sealedDocuments,
+        Error error,
+        string correlationId,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        CancellationToken ct
+    )
+    {
+        request.MarkSealingFailed(DateTime.UtcNow);
+        await unitOfWork.SaveChangesAsync(ct);
+
+        if (sealedDocuments.Count > 0)
+            await PublishSealedAsync(
+                request,
+                new PipelineOutcome(
+                    sealedDocuments,
+                    request.CertificateFileId,
+                    request
+                        .Documents.Where(document => document.CertificateFileId is not null)
+                        .ToDictionary(document => document.Id, document => document.CertificateFileId!.Value),
+                    DateTime.UtcNow,
+                    RequestSealingCompleted: false
+                ),
+                correlationId,
+                bus
+            );
+
+        await PublishFailedAsync(request, error, correlationId, bus);
     }
 
     private static Task PublishFailedAsync(

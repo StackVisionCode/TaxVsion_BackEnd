@@ -60,6 +60,7 @@ public sealed class PaymentLinkRepository(PaymentClientDbContext db) : IPaymentL
     public Task<bool> AnyUsedForExternalReferenceAsync(
         Guid tenantId,
         string externalReferenceId,
+        DateTime? usedSinceUtc = null,
         CancellationToken ct = default
     ) =>
         db
@@ -68,7 +69,9 @@ public sealed class PaymentLinkRepository(PaymentClientDbContext db) : IPaymentL
                 link =>
                     link.TenantId == tenantId
                     && link.Purpose.ExternalReferenceId == externalReferenceId
-                    && link.Status == PaymentLinkStatus.Used,
+                    && link.Status == PaymentLinkStatus.Used
+                    // Sin fecha de uso se toma como reciente: bloquear es lo seguro.
+                    && (usedSinceUtc == null || link.UsedAtUtc == null || link.UsedAtUtc > usedSinceUtc),
                 ct
             );
 

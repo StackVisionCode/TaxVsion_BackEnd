@@ -242,6 +242,9 @@ public sealed class RecomputeTenantSeatSlotsHandlerTests
 
     internal sealed class UsersRepo : IUserRepository
     {
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         private readonly List<User> _values = [];
 
         public void Add(User user) => _values.Add(user);

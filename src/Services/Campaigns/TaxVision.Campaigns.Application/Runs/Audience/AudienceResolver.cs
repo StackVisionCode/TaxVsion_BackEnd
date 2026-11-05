@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Domain;
 using TaxVision.Campaigns.Domain.Campaigns;
@@ -66,7 +67,11 @@ public static class AudienceResolver
         return (true, restrict);
     }
 
-    public static async Task<IReadOnlyList<RunRecipientDraft>> ResolveAsync(
+    /// <summary>
+    /// Falla con <see cref="CampaignRunErrors.AudienceIncomplete"/> si se pidió la fuente "Clients" y el
+    /// directorio no se leyó completo (fail-closed: no se envía a una parte).
+    /// </summary>
+    public static async Task<Result<IReadOnlyList<RunRecipientDraft>>> ResolveAsync(
         Guid tenantId,
         CampaignChannel channels,
         IReadOnlyCollection<Guid> contactListIds,
@@ -122,8 +127,11 @@ public static class AudienceResolver
         // (no son contactos guardados de Campaigns); la supresión sigue aplicando por dedupe de destino.
         if (includeCustomers && customerClient is not null)
         {
-            var customers = await customerClient.GetActiveCustomersAsync(tenantId, ct);
-            foreach (var customer in customers)
+            var directory = await customerClient.GetActiveCustomersAsync(tenantId, ct);
+            if (!directory.IsComplete)
+                return Result.Failure<IReadOnlyList<RunRecipientDraft>>(CampaignRunErrors.AudienceIncomplete);
+
+            foreach (var customer in directory.Members)
             {
                 // Visibilidad por asignación (P2): si hay restricción, solo clientes asignados al actor.
                 if (restrictCustomerIds is not null && !restrictCustomerIds.Contains(customer.CustomerId))
@@ -185,6 +193,6 @@ public static class AudienceResolver
             }
         }
 
-        return units;
+        return Result.Success<IReadOnlyList<RunRecipientDraft>>(units);
     }
 }

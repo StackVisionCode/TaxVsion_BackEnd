@@ -1,7 +1,13 @@
 namespace TaxVision.PaymentClient.Application.TenantPayments.Commands.ReconcileTenantPayment;
 
-/// <summary>Pregunta al proveedor por un pago atascado y aplica lo que responda (revisión periódica).</summary>
-public sealed record ReconcileTenantPaymentCommand(Guid TenantId, Guid TenantPaymentId);
+/// <summary>Pregunta al proveedor por un pago atascado y aplica lo que responda (revisión periódica).
+/// Con <see cref="AbandonRequiresActionAfter"/>, un 3DS abandonado más tiempo que eso se cancela en el
+/// proveedor y se cierra (D-PCL-1).</summary>
+public sealed record ReconcileTenantPaymentCommand(
+    Guid TenantId,
+    Guid TenantPaymentId,
+    TimeSpan? AbandonRequiresActionAfter = null
+);
 
 /// <summary>Qué pasó con el pago en esta vuelta (los errores viajan como <c>Result.Failure</c>).</summary>
 public enum TenantPaymentReconciliation

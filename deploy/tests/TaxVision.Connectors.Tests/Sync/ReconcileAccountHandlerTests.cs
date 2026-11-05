@@ -40,6 +40,7 @@ public class ReconcileAccountHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -78,6 +79,7 @@ public class ReconcileAccountHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -124,6 +126,7 @@ public class ReconcileAccountHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -171,6 +174,7 @@ public class ReconcileAccountHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -209,6 +213,7 @@ public class ReconcileAccountHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -260,6 +265,7 @@ public class ReconcileAccountHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -295,6 +301,7 @@ public class ReconcileAccountHandlerTests
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -337,6 +344,7 @@ public class ReconcileAccountHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
         return (result, client, bus);
@@ -399,6 +407,7 @@ public class ReconcileAccountHandlerTests
                 bus,
                 new FakeCorrelationContext(),
                 NullLogger.Instance,
+                FetchFailures.None(),
                 CancellationToken.None
             );
 
@@ -443,6 +452,7 @@ public class ReconcileAccountHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -500,6 +510,7 @@ public class ReconcileAccountHandlerTests
             bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 

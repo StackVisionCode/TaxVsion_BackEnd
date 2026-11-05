@@ -44,6 +44,7 @@ internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
         builder.Property(d => d.TextBody).HasColumnType("nvarchar(max)");
         builder.Property(d => d.Status).IsRequired().HasConversion<string>().HasMaxLength(16);
         builder.Property(d => d.SentMessageId);
+        builder.Property(d => d.InternetMessageId).HasMaxLength(Draft.InternetMessageIdMaxLength);
         builder.Property(d => d.FailureReason).HasMaxLength(Draft.FailureReasonMaxLength);
         builder.Property(d => d.CreatedAtUtc).IsRequired();
         builder.Property(d => d.UpdatedAtUtc).IsRequired();
@@ -90,6 +91,12 @@ internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
             })
             .IsDescending(false, false, false, true)
             .HasDatabaseName("IX_Drafts_TenantId_CustomerId_Status_UpdatedAtUtc");
+
+        // COR-16: la respuesta del cliente cita el Message-ID del enviado.
+        builder
+            .HasIndex(d => new { d.TenantId, d.InternetMessageId })
+            .HasFilter("[InternetMessageId] IS NOT NULL")
+            .HasDatabaseName("IX_Drafts_TenantId_InternetMessageId");
 
         // Job de limpieza de drafts abandonados (Fase 16, plan §24/§30).
         builder.HasIndex(d => new { d.Status, d.UpdatedAtUtc }).HasDatabaseName("IX_Drafts_Status_UpdatedAtUtc");

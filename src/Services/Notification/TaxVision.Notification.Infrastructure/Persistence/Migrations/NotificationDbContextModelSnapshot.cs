@@ -239,6 +239,9 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsStale")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("LastSourceEventAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 

@@ -260,4 +260,26 @@ public sealed class TenantBrandTests
 
         Assert.Empty(brand.Assets);
     }
+
+    [Fact]
+    public void RevokeAsset_ConfirmedWithSameFileId_RemovesAsset()
+    {
+        var brand = NewBrand();
+        var fileId = Guid.NewGuid();
+        brand.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null);
+        brand.ConfirmAsset(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow);
+
+        Assert.True(brand.RevokeAsset(BrandAssetKey.Logo, fileId));
+        Assert.Empty(brand.Assets);
+    }
+
+    [Fact]
+    public void RevokeAsset_WithDifferentFileId_KeepsAsset()
+    {
+        var brand = NewBrand();
+        brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null);
+
+        Assert.False(brand.RevokeAsset(BrandAssetKey.Logo, Guid.NewGuid()));
+        Assert.Single(brand.Assets);
+    }
 }

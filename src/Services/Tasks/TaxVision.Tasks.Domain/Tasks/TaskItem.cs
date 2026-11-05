@@ -52,6 +52,9 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
     /// <summary>Derivado del contador, no una columna de estado.</summary>
     public bool IsBlocked => OpenBlockerCount > 0;
 
+    /// <summary>Veces reabierta: da la clave del recordatorio por ciclo de vida.</summary>
+    public int ReopenCount { get; private set; }
+
     public Guid? SeriesId { get; private set; }
     public int? OccurrenceNumber { get; private set; }
 
@@ -236,6 +239,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
 
         Status = StartedAtUtc is null ? TaskItemStatus.NotStarted : TaskItemStatus.InProgress;
         CompletedAtUtc = null;
+        ReopenCount++;
 
         AddDomainEvent(new TaskReopenedDomainEvent(Id, TenantId, ParentTaskId, Status, byUserId, nowUtc));
         return Result.Success();

@@ -561,6 +561,9 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<DateTime?>("SendAttemptedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("SentAtUtc")
                         .HasColumnType("datetime2");
 

@@ -253,6 +253,15 @@ public sealed class CalendarFeedTokenTests
             CancellationToken ct = default
         ) => Task.FromResult(All.Find(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive));
 
+        public Task<IReadOnlyList<CalendarFeedToken>> ListActiveForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyList<CalendarFeedToken>>(
+                All.FindAll(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive)
+            );
+
         public Task<CalendarFeedToken?> FindByHashAsync(byte[] tokenHash, CancellationToken ct = default) =>
             Task.FromResult(All.Find(t => t.TokenHash.AsSpan().SequenceEqual(tokenHash)));
 

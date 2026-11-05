@@ -9,4 +9,7 @@ public enum WebhookEventStatus
     Rejected = 5,
     Failed = 6,
     Stale = 7,
+
+    // Éxito del proveedor que no se pudo aplicar (pago cerrado o monto distinto): lo revisa un admin.
+    NeedsReview = 8,
 }

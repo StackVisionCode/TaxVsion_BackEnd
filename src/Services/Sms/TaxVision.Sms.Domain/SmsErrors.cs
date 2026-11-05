@@ -32,6 +32,10 @@ public static class SmsErrors
     public static Error ProviderRejected => new("providerRejected", "The provider rejected the message.");
     public static Error ProviderUnavailable => new("providerUnavailable", "The provider is unavailable.");
 
+    // Timeout después de pedir el envío: no se sabe si salió. Sin failover ni cobro hasta que se confirme.
+    public static Error ProviderOutcomeUnknown =>
+        new("sms.providerOutcomeUnknown", "The provider did not confirm whether the message was sent.");
+
     // Estado
     public static Error InvalidTransition => new("sms.invalidTransition", "Invalid status transition.");
 

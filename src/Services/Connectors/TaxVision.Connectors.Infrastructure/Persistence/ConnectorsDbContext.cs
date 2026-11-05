@@ -33,6 +33,7 @@ public sealed class ConnectorsDbContext(DbContextOptions<ConnectorsDbContext> op
     public DbSet<SmtpCredentials> SmtpCredentials => Set<SmtpCredentials>();
     public DbSet<ProviderWatchSubscription> ProviderWatchSubscriptions => Set<ProviderWatchSubscription>();
     public DbSet<ProviderSyncCursor> ProviderSyncCursors => Set<ProviderSyncCursor>();
+    public DbSet<ProviderMessageFetchFailure> ProviderMessageFetchFailures => Set<ProviderMessageFetchFailure>();
     public DbSet<ProviderConnectionAuditLog> ProviderConnectionAuditLogs => Set<ProviderConnectionAuditLog>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();

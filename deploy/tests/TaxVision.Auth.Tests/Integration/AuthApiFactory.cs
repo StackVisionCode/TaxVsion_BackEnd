@@ -1,12 +1,15 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.Auth.Tests.Integration;
 
 /// <summary>
-/// Host real de Auth.Api (SQL Server + Redis + RabbitMQ locales, sin mocks) para los tests de
+/// Host real de Auth.Api (SQL Server + Redis locales, sin transportes externos ni jobs) para los tests de
 /// integración de Fase 4.12 del plan de rate limiting — mismo patrón que
 /// <c>TaxVision.Billing.Tests.Integration.BillingApiFactory</c> (Fase 4.11). La única
 /// sustitución respecto al Program.cs real es la clave de firma JWT: appsettings.Development.json
@@ -34,5 +37,22 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Sin transportes externos el host de prueba no le roba mensajes a la cola del Auth local; los jobs
+        // (bootstrap de PlatformAdmin, backfills, onboarding, retiros) tocan la base y otros servicios: fuera.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            foreach (
+                var job in services
+                    .Where(descriptor =>
+                        descriptor.ServiceType == typeof(IHostedService)
+                        && descriptor.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal)
+                            == true
+                    )
+                    .ToList()
+            )
+                services.Remove(job);
+        });
     }
 }

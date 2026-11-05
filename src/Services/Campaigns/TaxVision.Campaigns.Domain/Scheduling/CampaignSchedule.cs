@@ -113,6 +113,9 @@ public sealed class CampaignSchedule : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Concurrencia optimista: scheduler, consumers y la oficina escriben el mismo agendado.</summary>
+    public byte[] RowVersion { get; private set; } = default!;
+
     public static Result<CampaignSchedule> CreateOneTime(
         Guid tenantId,
         Guid campaignId,
@@ -289,12 +292,12 @@ public sealed class CampaignSchedule : TenantEntity
     /// Registra un disparo: guarda el run activo (guard de solape) y avanza. OneTime → Completed; Recurring
     /// → próximo slot FUTURO (coalescing de slots perdidos = misfire). Libera el lease.
     /// </summary>
-    public void MarkFired(Guid runId, DateTime nowUtc)
+    public void MarkFired(Guid runId, DateTime nowUtc, bool runIsTerminal = false)
     {
         LastFiredAtUtc = nowUtc;
-        // runId vacío = el disparo no produjo run (p.ej. audiencia no resoluble): avanzar sin activar el
-        // guard de solape (si no, quedaría bloqueado esperando un run.completed que nunca llega).
-        if (runId != Guid.Empty)
+        // Sin run, o run que ya cerró al arrancar (todo Skipped): no activar el guard de solape, porque su
+        // run.completed ya salió y el agendado quedaría esperando para siempre.
+        if (runId != Guid.Empty && !runIsTerminal)
             ActiveRunId = runId;
 
         OccurrenceCount++;
@@ -346,6 +349,12 @@ public sealed class CampaignSchedule : TenantEntity
         && next <= nowUtc
         && ActiveRunId is null
         && (LeasedUntilUtc is null || LeasedUntilUtc < nowUtc);
+
+    /// <summary>
+    /// Este claim sigue siendo el dueño del slot: nadie más lo tomó ni el usuario lo cambió desde el claim.
+    /// </summary>
+    public bool HoldsLease(Guid leaseToken, DateTime slotUtc) =>
+        Status == ScheduleStatus.Active && LeaseToken == leaseToken && NextFireAtUtc == slotUtc;
 
     public IReadOnlyList<Guid> ContactListIds() => ParseCsvGuids(ContactListIdsCsv);
 

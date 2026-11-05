@@ -4,6 +4,7 @@ using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using TaxVision.PaymentClient.Api.Common;
 using TaxVision.PaymentClient.Application.Payables.ResolvePayable;
@@ -39,7 +40,16 @@ public sealed class PayableResolverController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Resolve(string reference, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<ResolvePayableResponse>>(new ResolvePayableCommand(reference), ct);
+        Result<ResolvePayableResponse> result;
+        try
+        {
+            result = await bus.InvokeAsync<Result<ResolvePayableResponse>>(new ResolvePayableCommand(reference), ct);
+        }
+        catch (Exception ex) when (ex is DbUpdateException or ConflictException)
+        {
+            // Otra apertura acuñó el link a la vez; el reintento (scope nuevo) encuentra el del ganador.
+            result = await bus.InvokeAsync<Result<ResolvePayableResponse>>(new ResolvePayableCommand(reference), ct);
+        }
 
         if (result.IsFailure)
         {

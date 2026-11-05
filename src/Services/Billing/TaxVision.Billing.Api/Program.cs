@@ -158,6 +158,11 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaidIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
+    // Cobro que no se pudo aplicar (factura anulada, desconocida, otra moneda) → UnappliedPayment.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaymentRejectedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
     // Envío de la factura al cliente → Notification la renderiza con la plantilla de Scribe y la manda.
     options
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent>()
@@ -167,6 +172,18 @@ builder.Host.UseWolverine(options =>
         .ListenToRabbitQueue("billing-events", queue => queue.BindExchange("taxvision-events", string.Empty))
         .UseDurableInbox();
 
+    // Asegurar el enlace de cobro (emisión y pagos parciales): cola local durable, un reinicio no lo pierde.
+    options
+        .PublishMessage<TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink.EnsureInvoicePaymentLinkCommand>()
+        .ToLocalQueue("billing-payment-link")
+        .UseDurableInbox();
+
+    // Reconciliar el stock de la factura en Inventory después del commit (BIL-3): cola local durable.
+    options
+        .PublishMessage<TaxVision.Billing.Application.Invoices.SyncInvoiceStock.SyncInvoiceStockCommand>()
+        .ToLocalQueue("billing-stock-sync")
+        .UseDurableInbox();
+
     // Restaura el TenantContext dentro del scope que Wolverine crea para cada handler: desde el
     // envelope para integration events (consumer de documents.generation.completed) y desde el
     // comando local (GenerateInvoicePdf despachado post-commit por IssueInvoice).
@@ -174,6 +191,10 @@ builder.Host.UseWolverine(options =>
         .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
         .AddMiddleware(typeof(IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(LocalCommandTenantMiddleware));
+
+    // BIL-3b — enlace de cobro y sync de stock: reintentos largos y guardados (5 s … 1 h) antes de la cola
+    // de errores. Es por cadena, así que los demás mensajes siguen con la política estándar.
+    options.Policies.Add(TaxVision.Billing.Infrastructure.Messaging.LongRetryHandlerPolicy.ForSyncCommands());
 
     options.ApplyStandardFailurePolicies();
 });

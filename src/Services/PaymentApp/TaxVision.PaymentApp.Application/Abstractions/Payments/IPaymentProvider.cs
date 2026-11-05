@@ -33,10 +33,13 @@ public interface IPaymentProvider
 
     Task<Result<CaptureResult>> CaptureAsync(string providerChargeReference, Money amount, CancellationToken ct);
 
+    /// <summary><paramref name="idempotencyKey"/> es estable por solicitud: un reintento con la misma clave
+    /// no crea un segundo reembolso en el proveedor.</summary>
     Task<Result<RefundResult>> RefundAsync(
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     );
 

@@ -26,7 +26,7 @@ public sealed class RecycleBinDomainTests
                 DateTime.UtcNow.AddHours(24)
             )
             .Value;
-        file.MarkPendingScan();
+        file.MarkPendingScan(DateTime.UtcNow);
         file.MarkScanning();
         file.MarkAvailable(ChecksumSha256.Create(new string('a', 64)).Value, "application/pdf", DateTime.UtcNow);
         return file;
@@ -77,7 +77,7 @@ public sealed class RecycleBinDomainTests
                 DateTime.UtcNow.AddHours(24)
             )
             .Value;
-        file.MarkPendingScan();
+        file.MarkPendingScan(DateTime.UtcNow);
         file.MarkScanning();
         file.MarkInfected("EICAR test signature", "text/plain", DateTime.UtcNow);
         return file;

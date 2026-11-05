@@ -18,6 +18,10 @@ public static class ReservationErrors
         "Reservation.AlreadySettled",
         "The reservation is already settled."
     );
+    public static readonly Error Expired = new(
+        "Reservation.Expired",
+        "The reservation expired and its funds were released."
+    );
     public static readonly Error SettlementMismatch = new(
         "Reservation.SettlementMismatch",
         "Consumed + released must equal the reserved amount."

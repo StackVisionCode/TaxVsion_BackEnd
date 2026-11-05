@@ -14,4 +14,7 @@ public interface IPaymentAppMetrics
     void RecordWebhookDuplicate(string provider);
     void RecordWebhookSignatureFailed(string provider);
     void RecordProviderLatency(double milliseconds, string provider, string method);
+
+    /// <summary>Éxito del proveedor que quedó para revisión manual (<c>paymentapp.payments.review_required</c>); se alerta sobre él.</summary>
+    void RecordPaymentReviewRequired(string provider, string reason);
 }

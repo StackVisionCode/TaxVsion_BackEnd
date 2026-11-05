@@ -230,6 +230,7 @@ public sealed class OfficeWispReviewDueConsumerTests
                 _gatewayPublisher,
                 _logs,
                 new NoOpUnitOfWork(),
+                TestDeliveryGates.Open(),
                 NullLogger<EventBasedEmailDispatchGateway>.Instance
             );
             Queued = new List<EmailDispatchRequest>();
@@ -255,7 +256,6 @@ public sealed class OfficeWispReviewDueConsumerTests
                 _dispatcher.Dispatcher,
                 Resolver,
                 new FakeEmails(_withEmails),
-                new AllowAllPreferences(),
                 new RecordingGateway(_gateway, Queued),
                 Scribe,
                 _hosts,
@@ -415,34 +415,6 @@ public sealed class OfficeWispReviewDueConsumerTests
         ) => Task.FromResult<IReadOnlyList<PushDeviceToken>>(_devices.Where(d => d.UserId == userId).ToList());
 
         public Task RevokeAsync(Guid tenantId, Guid id, CancellationToken ct = default) => Task.CompletedTask;
-    }
-
-    private sealed class AllowAllPreferences : IUserNotificationPreferenceRepository
-    {
-        public Task<bool> IsEnabledAsync(
-            Guid tenantId,
-            Guid userId,
-            NotificationCategory category,
-            NotificationChannel channel,
-            CancellationToken ct = default
-        ) => Task.FromResult(true);
-
-        public Task<UserNotificationPreference?> GetAsync(
-            Guid tenantId,
-            Guid userId,
-            NotificationCategory category,
-            NotificationChannel channel,
-            CancellationToken ct = default
-        ) => Task.FromResult<UserNotificationPreference?>(null);
-
-        public Task<IReadOnlyList<UserNotificationPreference>> ListForUserAsync(
-            Guid tenantId,
-            Guid userId,
-            CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyList<UserNotificationPreference>>([]);
-
-        public Task AddAsync(UserNotificationPreference preference, CancellationToken ct = default) =>
-            Task.CompletedTask;
     }
 
     private sealed class NoOpUnitOfWork : IUnitOfWork

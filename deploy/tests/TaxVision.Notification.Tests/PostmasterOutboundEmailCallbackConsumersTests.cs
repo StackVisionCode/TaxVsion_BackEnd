@@ -56,6 +56,34 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
     }
 
     [Fact]
+    public async Task SucceededCallback_with_other_tenant_does_not_touch_the_message()
+    {
+        var message = CreateSendingMessage();
+        var publisher = new RecordingIntegrationEventPublisher();
+        var uow = new NoOpUnitOfWork();
+
+        await PostmasterOutboundEmailSucceededConsumer.Handle(
+            new PostmasterEmailDeliverySucceededIntegrationEvent
+            {
+                TenantId = Guid.NewGuid(),
+                NotificationLogId = message.Id,
+                DispatchAttemptId = Guid.NewGuid(),
+                SentMessageId = Guid.NewGuid(),
+                EventAtUtc = DateTime.UtcNow,
+            },
+            new RecordingOutboundEmailRepository(message),
+            publisher,
+            uow,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.NotEqual(EmailStatus.Sent, message.Status);
+        Assert.Equal(0, uow.SaveCount);
+        Assert.Empty(publisher.Published);
+    }
+
+    [Fact]
     public async Task FailedCallback_marks_message_Failed_and_publishes_failure_event()
     {
         var message = CreateSendingMessage();

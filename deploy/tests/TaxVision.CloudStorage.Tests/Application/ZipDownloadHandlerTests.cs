@@ -37,7 +37,7 @@ public sealed class ZipDownloadHandlerTests
                 DateTime.UtcNow.AddHours(24)
             )
             .Value;
-        file.MarkPendingScan();
+        file.MarkPendingScan(DateTime.UtcNow);
         file.MarkScanning();
         file.MarkAvailable(ChecksumSha256.Create(new string('a', 64)).Value, "application/pdf", DateTime.UtcNow);
         if (folderId is { } id)

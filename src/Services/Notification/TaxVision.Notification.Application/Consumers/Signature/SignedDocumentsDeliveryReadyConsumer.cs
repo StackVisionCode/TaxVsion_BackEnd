@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text.Json;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
@@ -52,7 +54,9 @@ public static class SignedDocumentsDeliveryReadyConsumer
                     )
                     .Token;
             }
+            // Solo lo permanente se descarta; un fallo transitorio del anillo de claves sube y Wolverine reintenta.
             catch (Exception ex)
+                when (ex is CryptographicException or FormatException or JsonException or ArgumentException)
             {
                 // Payload adulterado o de otra entrega: reintentar no lo arregla.
                 logger.LogError(ex, "Delivery {DeliveryId}: the link token could not be decrypted.", evt.DeliveryId);

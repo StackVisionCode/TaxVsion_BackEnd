@@ -63,7 +63,7 @@ public sealed class CustomerEmailReconciliationServiceTests
             customerId,
             EmailAddress.Create("resurfaced@example.com").Value
         );
-        deleted.SoftDelete();
+        deleted.SoftDelete(DateTime.UtcNow);
         emailRepository.Seed(deleted);
         var sut = CreateSut(client, emailRepository, new FakeUnitOfWork());
 
@@ -112,4 +112,65 @@ public sealed class CustomerEmailReconciliationServiceTests
         ICustomerEmailAddressRepository emailRepository,
         FakeUnitOfWork unitOfWork
     ) => new(client, emailRepository, unitOfWork, NullLogger<CustomerEmailReconciliationService>.Instance);
+
+    [Fact]
+    public async Task Reconcile_ReactivationWithEmailOwnedByOtherCustomer_SkipsAndContinues()
+    {
+        var tenantId = Guid.NewGuid();
+        var ownerId = Guid.NewGuid();
+        var conflictingId = Guid.NewGuid();
+        var healthyId = Guid.NewGuid();
+        var emailRepository = new FakeCustomerEmailAddressRepository();
+        emailRepository.Seed(
+            CustomerEmailAddress.Create(tenantId, ownerId, EmailAddress.Create("shared@example.com").Value)
+        );
+        var conflicting = CustomerEmailAddress.Create(
+            tenantId,
+            conflictingId,
+            EmailAddress.Create("shared@example.com").Value
+        );
+        conflicting.SoftDelete(DateTime.UtcNow.AddDays(-1));
+        emailRepository.Seed(conflicting);
+        var client = new FakeCorrespondenceCustomerClient();
+        client.Seed(
+            tenantId,
+            new RemoteCustomerSummary(ownerId, "shared@example.com", true),
+            new RemoteCustomerSummary(conflictingId, "shared@example.com", true),
+            new RemoteCustomerSummary(healthyId, "healthy@example.com", true)
+        );
+        var unitOfWork = new UniqueActiveEmailUnitOfWork(emailRepository);
+        var sut = new CustomerEmailReconciliationService(
+            client,
+            emailRepository,
+            unitOfWork,
+            NullLogger<CustomerEmailReconciliationService>.Instance
+        );
+
+        var result = await sut.ReconcileTenantAsync(tenantId, CancellationToken.None);
+
+        Assert.True(result.CompletedFully);
+        Assert.Equal(1, result.Created);
+        Assert.Equal(1, unitOfWork.CommittedSaves);
+        Assert.Single(emailRepository.All, x => x.CustomerId == healthyId && x.IsActive);
+        Assert.False(conflicting.IsActive);
+    }
+
+    // Simula el índice único filtrado IX_CustomerEmailAddresses_TenantId_EmailAddress_Active.
+    private sealed class UniqueActiveEmailUnitOfWork(FakeCustomerEmailAddressRepository repository)
+        : BuildingBlocks.Persistence.IUnitOfWork
+    {
+        public int CommittedSaves { get; private set; }
+
+        public Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            var duplicated = repository
+                .All.Where(x => x.IsActive)
+                .GroupBy(x => (x.TenantId, x.EmailAddress))
+                .Any(g => g.Count() > 1);
+            if (duplicated)
+                throw new InvalidOperationException("Unique index IX_CustomerEmailAddresses_TenantId_EmailAddress_Active violated.");
+            CommittedSaves++;
+            return Task.FromResult(0);
+        }
+    }
 }

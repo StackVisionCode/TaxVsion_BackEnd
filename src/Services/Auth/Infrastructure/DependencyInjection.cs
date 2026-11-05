@@ -100,6 +100,10 @@ public static class DependencyInjection
         services.AddScoped<ITenantDomainRebaser, TenantDomainRebaser>();
         services.AddScoped<ITenantTermsAcceptanceRepository, TenantTermsAcceptanceRepository>();
 
+        // Regla del último admin: candado por oficina dentro de la transacción del handler.
+        services.Configure<TenantAdminLockOptions>(configuration.GetSection(TenantAdminLockOptions.SectionName));
+        services.AddScoped<ITenantAdminLock, SqlTenantAdminLock>();
+
         // Acuse por servicio del retiro: corridas, try-lock del barrido y opciones validadas al arrancar.
         services.AddScoped<IOffboardingRunRepository, OffboardingRunRepository>();
         services.AddScoped<IOffboardingSweepLock, SqlOffboardingSweepLock>();

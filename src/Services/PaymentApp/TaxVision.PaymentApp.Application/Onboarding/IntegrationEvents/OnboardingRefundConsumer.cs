@@ -14,8 +14,8 @@ namespace TaxVision.PaymentApp.Application.Onboarding.IntegrationEvents;
 /// (publicado por Auth's <c>CancelAndRefundOnboardingAdminHandler</c> tras una acción admin
 /// explícita con confirmación textual). Carga el <see cref="SaaSPayment"/> directo por
 /// <c>PaymentId</c> (ver doc-comment del evento) y aplica el mismo patrón de
-/// <c>RefundSaaSPaymentHandler</c>: provider primero, dominio después — nunca al revés, para no
-/// dejar el aggregate en <c>Refunded</c> si Stripe rechaza el refund.</summary>
+/// <c>RefundSaaSPaymentHandler</c>: valida, llama al proveedor con clave de idempotencia y después
+/// aplica el dominio, para no dejar el aggregate en <c>Refunded</c> si Stripe rechaza el refund.</summary>
 public static class OnboardingRefundConsumer
 {
     public static async Task Handle(
@@ -54,11 +54,19 @@ public static class OnboardingRefundConsumer
             return;
         }
 
+        // Si no procede, va a DLQ (ArgumentException no se reintenta) en vez de perderse en silencio.
+        var refundable = payment.CanRefundFull(evt.Reason);
+        if (refundable.IsFailure)
+            throw new ArgumentException(
+                $"Onboarding refund for SaaSPayment {payment.Id} rejected: {refundable.Error.Code}."
+            );
+
         var adapter = providerFactory.Resolve(payment.ProviderCode);
         var refundResult = await adapter.RefundAsync(
             payment.ExternalChargeReference.Value,
-            payment.Amount,
+            refundable.Value,
             evt.Reason,
+            $"refund:onboarding:{payment.Id:N}",
             ct
         );
         if (refundResult.IsFailure)

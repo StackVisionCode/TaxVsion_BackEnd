@@ -7,6 +7,7 @@ using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TaxVision.Campaigns.Api.Requests;
 using TaxVision.Campaigns.Application.Campaigns;
 using TaxVision.Campaigns.Application.Campaigns.Commands;
@@ -19,6 +20,7 @@ using TaxVision.Campaigns.Application.Scheduling;
 using TaxVision.Campaigns.Application.Scheduling.Commands;
 using TaxVision.Campaigns.Application.Scheduling.Queries;
 using TaxVision.Campaigns.Domain.Campaigns;
+using TaxVision.Campaigns.Domain.Runs;
 using TaxVision.Campaigns.Domain.Scheduling;
 using Wolverine;
 
@@ -253,7 +255,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
         );
         return result.IsSuccess
             ? AcceptedAtAction(nameof(GetRun), new { runId = result.Value.Id }, result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+            : StatusCode(AudienceStatusCode(result.Error), result.Error);
     }
 
     /// <summary>
@@ -286,8 +288,14 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
             ),
             ct
         );
-        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(AudienceStatusCode(result.Error), result.Error);
     }
+
+    // CMP-06: el directorio de clientes no respondió completo → 503 transitorio (el front ofrece reintentar).
+    private static int AudienceStatusCode(Error error) =>
+        error == CampaignRunErrors.AudienceIncomplete
+            ? StatusCodes.Status503ServiceUnavailable
+            : error.ToHttpStatusCode();
 
     /// <summary>Agenda la campaña (una vez o recurrente). La audiencia se resuelve en cada disparo desde las listas.</summary>
     [HttpPost("{id:guid}/schedule")]
@@ -374,10 +382,25 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 new { code = "Schedule.UnknownAction", message = "Action must be pause, resume or cancel." }
             );
 
-        var result = await bus.InvokeAsync<Result<CampaignScheduleResponse>>(
-            new SetScheduleStateCommand(tenantId, scheduleId, parsed, userId),
-            ct
-        );
+        Result<CampaignScheduleResponse> result;
+        try
+        {
+            result = await bus.InvokeAsync<Result<CampaignScheduleResponse>>(
+                new SetScheduleStateCommand(tenantId, scheduleId, parsed, userId),
+                ct
+            );
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // El agendado cambió mientras tanto (disparo del scheduler, otro usuario): RowVersion → 409.
+            return Conflict(
+                new
+                {
+                    code = "Persistence.ConcurrencyConflict",
+                    message = "The schedule changed meanwhile. Reload and try again.",
+                }
+            );
+        }
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

@@ -28,6 +28,7 @@ public sealed class SubscriptionRenewalIntentConfiguration : IEntityTypeConfigur
         builder.Property(intent => intent.CancelledByUserId);
         builder.Property(intent => intent.CancelReason).HasMaxLength(500);
         builder.Property(intent => intent.FailureReason).HasMaxLength(1000);
+        builder.Property(intent => intent.RowVersion).IsRowVersion();
 
         builder.HasIndex(intent => intent.TenantId);
         builder.HasIndex(intent => intent.SaaSPaymentId);

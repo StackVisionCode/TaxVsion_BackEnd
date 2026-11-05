@@ -26,6 +26,7 @@ using Serilog;
 using TaxVision.PaymentApp.Api.Common;
 using TaxVision.PaymentApp.Api.RateLimiting;
 using TaxVision.PaymentApp.Application.Consumers;
+using TaxVision.PaymentApp.Application.HostedCheckout.Commands;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ChargeSaaSPayment;
 using TaxVision.PaymentApp.Infrastructure;
 using TaxVision.PaymentApp.Infrastructure.Observability;
@@ -215,6 +216,10 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<PaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Pide a Documents el recibo de cualquier cobro confirmado del tenant.
     options.PublishMessage<SaaSPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    // Llamadas al provider fuera de la transacción que las origina, en cola local durable (sobrevive reinicios).
+    options.LocalQueue("payment-app-provider-calls").UseDurableInbox();
+    options.PublishMessage<ExpireProviderCheckoutSessionCommand>().ToLocalQueue("payment-app-provider-calls");
 
     // Consume TenantCreated/TenantStatusChanged (proyección local) y
     // SubscriptionRenewalDue/SeatRenewalDue/AddOnRenewalDue/SubscriptionPlanChangeDue

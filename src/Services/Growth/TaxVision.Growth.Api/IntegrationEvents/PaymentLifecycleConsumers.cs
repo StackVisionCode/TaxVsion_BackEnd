@@ -79,8 +79,12 @@ public static class PaymentSucceededConsumer
 
     private static void EnsureApplied<T>(Result<T> result)
     {
-        if (result.IsFailure)
-            throw new GrowthFinancialEventException(result.Error.Code, result.Error.Message);
+        if (result.IsSuccess)
+            return;
+        // Regla fija: reintentar no cambia nada; queda en LateCommitReviews y va a la cola de errores.
+        if (result.Error.Code == CommitReservationHandler.LateCommitPendingReviewCode)
+            throw new GrowthBusinessRuleException(result.Error.Code, result.Error.Message);
+        throw new GrowthFinancialEventException(result.Error.Code, result.Error.Message);
     }
 }
 
@@ -136,6 +140,12 @@ internal static class PaymentReservationCancellation
 
 public sealed class GrowthFinancialEventException(string errorCode, string message)
     : Exception($"{errorCode}: {message}")
+{
+    public string ErrorCode { get; } = errorCode;
+}
+
+/// <summary>Regla de negocio fija: reintentar no cambia el resultado. Va a la cola de errores sin reintentos.</summary>
+public sealed class GrowthBusinessRuleException(string errorCode, string message) : Exception($"{errorCode}: {message}")
 {
     public string ErrorCode { get; } = errorCode;
 }

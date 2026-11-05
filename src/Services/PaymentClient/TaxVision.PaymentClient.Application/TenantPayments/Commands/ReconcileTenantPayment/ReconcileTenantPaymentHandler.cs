@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
@@ -8,6 +9,7 @@ using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Application.Common;
 using TaxVision.PaymentClient.Application.TenantPayments.Common;
+using TaxVision.PaymentClient.Domain.Audit;
 using TaxVision.PaymentClient.Domain.TenantPayments;
 using Wolverine;
 
@@ -69,6 +71,23 @@ public static class ReconcileTenantPaymentHandler
             return await StampAndFailAsync(statusResult.Error);
 
         var reported = statusResult.Value;
+        // D-PCL-1: 3DS abandonado → se cancela en el proveedor antes de cerrarlo; si ya se cobró, se registra pagado.
+        if (
+            reported.Status == PaymentStatus.RequiresAction
+            && command.AbandonRequiresActionAfter is { } ttl
+            && payment.IsAbandoned(ttl, nowUtc)
+        )
+        {
+            var cancelled = await adapter.CancelChargeAsync(target.Value.Credentials, target.Value.Lookup, ct);
+            if (cancelled.IsFailure)
+                return await StampAndFailAsync(cancelled.Error);
+
+            if (cancelled.Value.Status == PaymentStatus.Cancelled)
+                return await CloseAbandonedAsync(ttl);
+
+            reported = cancelled.Value;
+        }
+
         if (reported.Status is PaymentStatus.Processing or PaymentStatus.RequiresAction or PaymentStatus.Pending)
         {
             await unitOfWork.SaveChangesAsync(ct);
@@ -78,7 +97,29 @@ public static class ReconcileTenantPaymentHandler
         var statusBefore = payment.Status;
         var applied = TenantPaymentProviderUpdate.Apply(payment, reported, metrics);
         if (applied.IsFailure)
+        {
+            // Éxito con monto distinto: misma métrica y auditoría que el webhook (no hay evento que marcar).
+            if (TenantPaymentProviderUpdate.IsUnappliedProviderSuccess(payment, reported, applied.Error))
+            {
+                await TenantPaymentProviderUpdate.RecordNeedsReviewAsync(
+                    payment,
+                    applied.Error.Code,
+                    $"{payment.ProviderCode}Reconciliation",
+                    audit,
+                    metrics,
+                    correlation,
+                    ct
+                );
+                logger.LogWarning(
+                    "Reconciliation of TenantPayment {TenantPaymentId} for tenant {TenantId}: provider reported a success that was not applied ({ErrorCode}). Needs review.",
+                    payment.Id,
+                    payment.TenantId,
+                    applied.Error.Code
+                );
+            }
+
             return await StampAndFailAsync(applied.Error);
+        }
 
         await AuditEntryFactory.AppendAsync(
             audit,
@@ -95,11 +136,12 @@ public static class ReconcileTenantPaymentHandler
             ct
         );
 
-        PaymentLinkCompletionEvents? linkEvents = null;
-        if (payment.Status == PaymentStatus.Succeeded)
+        var succeeded = payment.Status == PaymentStatus.Succeeded;
+        PaymentLinkUsedIntegrationEvent? linkUsed = null;
+        if (succeeded)
         {
             metrics.RecordPaymentSucceeded(payment.Amount.AmountCents, payment.Amount.Currency);
-            linkEvents = await TenantPaymentProviderUpdate.CompletePaymentLinkIfAnyAsync(
+            linkUsed = await TenantPaymentProviderUpdate.CompletePaymentLinkIfAnyAsync(
                 payment,
                 links,
                 audit,
@@ -112,7 +154,8 @@ public static class ReconcileTenantPaymentHandler
 
         // Guardar antes de publicar: un reintento en línea no debe filtrar eventos del intento revertido.
         await unitOfWork.SaveChangesAsync(ct);
-        await TenantPaymentProviderUpdate.PublishAsync(bus, linkEvents);
+        if (succeeded)
+            await TenantPaymentProviderUpdate.PublishSucceededAsync(bus, payment, linkUsed, correlation.CorrelationId);
 
         logger.LogInformation(
             "Reconciled TenantPayment {TenantPaymentId} for tenant {TenantId} with {Provider}: {Before} -> {Status}.",
@@ -129,6 +172,38 @@ public static class ReconcileTenantPaymentHandler
         {
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<TenantPaymentReconciliation>(error);
+        }
+
+        // Lo cierra el sistema (actor vacío = "System" en la auditoría); el link vuelve a aceptar intentos.
+        async Task<Result<TenantPaymentReconciliation>> CloseAbandonedAsync(TimeSpan ttl)
+        {
+            var closed = payment.CancelAbandoned(ttl, nowUtc);
+            if (closed.IsFailure)
+                return await StampAndFailAsync(closed.Error);
+
+            await AuditEntryFactory.AppendAsync(
+                audit,
+                payment.TenantId,
+                nameof(TenantPayment),
+                payment.Id,
+                PaymentAuditAction.TenantPaymentCancelled,
+                actorUserId: Guid.Empty,
+                correlation.CorrelationId,
+                before: new { Status = PaymentStatus.RequiresAction },
+                after: new { payment.Status, Source = $"{payment.ProviderCode}Reconciliation" },
+                reason: TenantPayment.AbandonedAttemptReason,
+                nowUtc,
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+
+            logger.LogInformation(
+                "Closed abandoned TenantPayment {TenantPaymentId} for tenant {TenantId} after cancelling it at {Provider}.",
+                payment.Id,
+                payment.TenantId,
+                payment.ProviderCode
+            );
+            return Result.Success(TenantPaymentReconciliation.Resolved);
         }
     }
 

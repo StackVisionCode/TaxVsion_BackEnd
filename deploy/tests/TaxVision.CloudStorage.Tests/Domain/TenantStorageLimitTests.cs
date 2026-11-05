@@ -42,4 +42,27 @@ public sealed class TenantStorageLimitTests
 
         Assert.Equal(QuotaErrors.Suspended, limit.Reserve(1 * MB).Error);
     }
+
+    [Fact]
+    public void Recalculate_SetsAbsoluteCountersAndIsIdempotent()
+    {
+        var limit = TenantStorageLimit.Create(Guid.NewGuid(), "starter", maxBytes: 100 * MB, maxFileSizeBytes: 10 * MB);
+        limit.Reserve(40 * MB);
+        limit.Commit(30 * MB);
+
+        Assert.True(limit.Recalculate(usedBytes: 5 * MB, reservedBytes: 2 * MB).IsSuccess);
+        Assert.True(limit.Recalculate(usedBytes: 5 * MB, reservedBytes: 2 * MB).IsSuccess);
+
+        Assert.Equal(5 * MB, limit.UsedBytes);
+        Assert.Equal(2 * MB, limit.ReservedBytes);
+    }
+
+    [Fact]
+    public void Recalculate_NegativeCounters_Fails()
+    {
+        var limit = TenantStorageLimit.Create(Guid.NewGuid(), "starter", maxBytes: 100 * MB, maxFileSizeBytes: 10 * MB);
+
+        Assert.True(limit.Recalculate(usedBytes: -1, reservedBytes: 0).IsFailure);
+        Assert.Equal(0, limit.UsedBytes);
+    }
 }

@@ -105,8 +105,9 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
             c => c.ContactPolicy,
             cp =>
             {
-                cp.Property(x => x.EmailEnabled).HasColumnName("ContactPolicy_EmailEnabled").HasDefaultValue(true);
-                cp.Property(x => x.SmsEnabled).HasColumnName("ContactPolicy_SmsEnabled").HasDefaultValue(true);
+                // Sin HasDefaultValue: EF omitía el valor igual al default y el true no se guardaba.
+                cp.Property(x => x.EmailEnabled).HasColumnName("ContactPolicy_EmailEnabled");
+                cp.Property(x => x.SmsEnabled).HasColumnName("ContactPolicy_SmsEnabled");
             }
         );
         b.Navigation(c => c.ContactPolicy).IsRequired();
