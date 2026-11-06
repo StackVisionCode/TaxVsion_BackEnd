@@ -54,7 +54,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
             PaymentLinkStatus.Used,
             (await fresh.PaymentLinks.IgnoreQueryFilters().SingleAsync(l => l.Id == link.Id)).Status
         );
-        var paid = Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        var paid = Assert.Single((await EmittedAsync()).OfType<TenantPaymentSucceededIntegrationEvent>());
         Assert.Equal(payment.Id, paid.TenantPaymentId);
         Assert.Single(_published.OfType<PaymentLinkUsedIntegrationEvent>());
         var (credentials, lookup) = Assert.Single(_stripe.StatusLookups);
@@ -76,7 +76,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
         var result = await ReconcileAsync(payment.Id);
 
         Assert.Equal(TenantPaymentReconciliation.Resolved, result.Value);
-        var paid = Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        var paid = Assert.Single((await EmittedAsync()).OfType<TenantPaymentSucceededIntegrationEvent>());
         Assert.Equal(payment.Id, paid.TenantPaymentId);
         Assert.Equal("inv-1", paid.ExternalReferenceId);
         await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
@@ -96,7 +96,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
 
         await ReconcileAsync(payment.Id);
 
-        var paid = Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        var paid = Assert.Single((await EmittedAsync()).OfType<TenantPaymentSucceededIntegrationEvent>());
         Assert.Equal(payment.Id, paid.TenantPaymentId);
         Assert.Empty(_published.OfType<PaymentLinkUsedIntegrationEvent>());
     }
@@ -120,7 +120,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
         Assert.Equal(PaymentStatus.Processing, saved.Status);
         Assert.NotNull(saved.LastProviderCheckAtUtc);
         Assert.Equal(payment.UpdatedAtUtc, saved.UpdatedAtUtc);
-        Assert.Empty(_published);
+        Assert.Empty(await EmittedAsync());
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
         var saved = await ReloadAsync(payment.Id);
         Assert.Equal(PaymentStatus.Failed, saved.Status);
         Assert.Equal("card_declined", saved.FailureCode);
-        Assert.Empty(_published);
+        Assert.Empty(await EmittedAsync());
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
         var saved = await ReloadAsync(payment.Id);
         Assert.Equal(PaymentStatus.Processing, saved.Status);
         Assert.NotNull(saved.LastProviderCheckAtUtc);
-        Assert.Empty(_published);
+        Assert.Empty(await EmittedAsync());
     }
 
     [Fact]
@@ -297,7 +297,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
         var saved = await ReloadAsync(payment.Id);
         Assert.Equal(PaymentStatus.Cancelled, saved.Status);
         Assert.Equal("abandoned-3ds-ttl", saved.FailureReason);
-        Assert.Empty(_published);
+        Assert.Empty(await EmittedAsync());
 
         await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
         var audit = Assert.Single(
@@ -345,7 +345,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
         Assert.Equal(TenantPaymentReconciliation.Resolved, result.Value);
         Assert.Empty(_stripe.Cancellations);
         Assert.Equal(PaymentStatus.Succeeded, (await ReloadAsync(payment.Id)).Status);
-        Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        Assert.Single((await EmittedAsync()).OfType<TenantPaymentSucceededIntegrationEvent>());
         await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
         Assert.Equal(
             PaymentLinkStatus.Used,
@@ -368,7 +368,7 @@ public sealed class ReconcileTenantPaymentHandlerTests
         Assert.Equal(TenantPaymentReconciliation.Resolved, result.Value);
         Assert.Single(_stripe.Cancellations);
         Assert.Equal(PaymentStatus.Succeeded, (await ReloadAsync(payment.Id)).Status);
-        Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        Assert.Single((await EmittedAsync()).OfType<TenantPaymentSucceededIntegrationEvent>());
         await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
         Assert.Equal(
             PaymentLinkStatus.Used,
@@ -443,6 +443,9 @@ public sealed class ReconcileTenantPaymentHandlerTests
             NullLogger<TenantPayment>.Instance,
             CancellationToken.None
         );
+
+    // Lo publicado más la señal "pagado" que devuelve el handler del evento de dominio del pago.
+    private Task<IReadOnlyList<object>> EmittedAsync() => DomainEventReplay.EmittedAsync(_published, _db);
 
     private static Result<WebhookEventPayload> Ok(WebhookEventPayload payload) => Result.Success(payload);
 

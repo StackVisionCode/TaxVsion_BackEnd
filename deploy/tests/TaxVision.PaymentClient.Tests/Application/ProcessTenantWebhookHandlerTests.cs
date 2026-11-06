@@ -241,7 +241,7 @@ public sealed class ProcessTenantWebhookHandlerTests
         );
 
         Assert.True(result.IsSuccess);
-        var paid = Assert.Single(bus.Published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        var paid = Assert.Single((await EmittedAsync(bus.Published, payment)).OfType<TenantPaymentSucceededIntegrationEvent>());
         Assert.Equal(payment.Id, paid.TenantPaymentId);
         Assert.Equal("inv-1", paid.ExternalReferenceId);
         Assert.Equal(PaymentLinkStatus.Used, link.Status);
@@ -267,7 +267,7 @@ public sealed class ProcessTenantWebhookHandlerTests
         );
 
         Assert.True(result.IsSuccess);
-        var paid = Assert.Single(bus.Published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        var paid = Assert.Single((await EmittedAsync(bus.Published, payment)).OfType<TenantPaymentSucceededIntegrationEvent>());
         Assert.Equal(payment.Id, paid.TenantPaymentId);
         Assert.Empty(bus.Published.OfType<PaymentLinkUsedIntegrationEvent>());
         Assert.Equal(PaymentLinkStatus.Revoked, link.Status);
@@ -309,6 +309,10 @@ public sealed class ProcessTenantWebhookHandlerTests
             NoOpLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
+
+    // Lo publicado más la señal "pagado" que devuelve el handler del evento de dominio del pago.
+    private static Task<IReadOnlyList<object>> EmittedAsync(IEnumerable<object> published, TenantPayment payment) =>
+        DomainEventReplay.EmittedAsync(published, new FakeTenantPaymentRepository(payment), [payment]);
 
     private static IPaymentProvider SucceededProvider() =>
         new FakePaymentProvider(
@@ -546,7 +550,7 @@ file sealed class FakeSecretProtector : ISecretProtector
 file sealed class FakeTenantPaymentRepository(TenantPayment payment) : ITenantPaymentRepository
 {
     public Task<TenantPayment?> GetByIdAsync(Guid tenantPaymentId, Guid tenantId, CancellationToken ct = default) =>
-        throw new NotImplementedException();
+        Task.FromResult(payment.Id == tenantPaymentId && payment.TenantId == tenantId ? payment : null);
 
     public Task<TenantPayment?> GetByIdempotencyKeyAsync(
         Guid tenantId,

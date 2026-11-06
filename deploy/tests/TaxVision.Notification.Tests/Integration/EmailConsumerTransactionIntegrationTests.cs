@@ -199,6 +199,13 @@ public sealed class EmailConsumerTransactionIntegrationTests : IAsyncLifetime
     // Responde bien hasta el render número FailOnRender, que lanza (fallo después del primer correo).
     private sealed class FlakyScribe : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
         private int _renders;
         public int? FailOnRender { get; set; }
 

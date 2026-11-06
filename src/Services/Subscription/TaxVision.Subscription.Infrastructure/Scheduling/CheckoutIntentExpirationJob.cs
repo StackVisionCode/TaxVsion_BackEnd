@@ -1,6 +1,5 @@
-using BuildingBlocks.Common;
+using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
-using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -9,7 +8,6 @@ using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Infrastructure.Persistence;
-using Wolverine;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -31,9 +29,8 @@ public sealed class CheckoutIntentExpirationJob(
 
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
-        var correlation = services.GetRequiredService<ICorrelationContext>();
-        using var _ = correlation.Push(Guid.NewGuid().ToString("N"));
-
+        // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
+        var correlationId = Guid.NewGuid().ToString("N");
         var db = services.GetRequiredService<SubscriptionDbContext>();
         var jobLogger = services.GetRequiredService<ILogger<CheckoutIntentExpirationJob>>();
 
@@ -86,7 +83,7 @@ public sealed class CheckoutIntentExpirationJob(
                 .ToListAsync(ct)
         );
 
-        var total = await ExpireAsync(batch, correlation.CorrelationId, nowUtc, ct);
+        var total = await ExpireAsync(batch, correlationId, nowUtc, ct);
 
         if (total > 50)
             jobLogger.LogWarning(
@@ -104,6 +101,9 @@ public sealed class CheckoutIntentExpirationJob(
         IReadOnlyList<Guid> UpgradeRequestIds
     );
 
+    /// <summary>Lo que hace falta para cancelar la sesión en el proveedor antes de expirar.</summary>
+    private sealed record PendingCheckout(Guid TenantId, Guid? SaaSPaymentId);
+
     internal async Task<int> ExpireAsync(
         CheckoutExpirationBatch batch,
         string correlationId,
@@ -115,86 +115,114 @@ public sealed class CheckoutIntentExpirationJob(
         total += await ExpireEachAsync(
             batch.SeatIntentIds,
             "Seat intent",
-            correlationId,
-            (services, id) => ExpireSeatAsync(services, id, correlationId, nowUtc, ct)
+            async (db, id) =>
+                await db.SeatPurchaseIntents.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Id == id, ct)
+                    is { Status: SeatPurchaseIntentStatus.Pending } intent
+                    ? new PendingCheckout(intent.TenantId, intent.SaaSPaymentId)
+                    : null,
+            (unit, id) => ExpireSeatAsync(unit, id, correlationId, nowUtc, ct),
+            ct
         );
         total += await ExpireEachAsync(
             batch.AddOnIntentIds,
             "Add-on intent",
-            correlationId,
-            (services, id) => ExpireAddOnAsync(services, id, correlationId, nowUtc, ct)
+            async (db, id) =>
+                await db.AddOnPurchaseIntents.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Id == id, ct)
+                    is { Status: AddOnPurchaseIntentStatus.Pending } intent
+                    ? new PendingCheckout(intent.TenantId, intent.SaaSPaymentId)
+                    : null,
+            (unit, id) => ExpireAddOnAsync(unit, id, correlationId, nowUtc, ct),
+            ct
         );
         total += await ExpireEachAsync(
             batch.RenewalIntentIds,
             "Renewal intent",
-            correlationId,
-            (services, id) => ExpireRenewalAsync(services, id, correlationId, nowUtc, ct)
+            async (db, id) =>
+                await db.SubscriptionRenewalIntents.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Id == id, ct)
+                    is { Status: SubscriptionRenewalIntentStatus.Pending } intent
+                    ? new PendingCheckout(intent.TenantId, intent.SaaSPaymentId)
+                    : null,
+            (unit, id) => ExpireRenewalAsync(unit, id, correlationId, nowUtc, ct),
+            ct
         );
         total += await ExpireEachAsync(
             batch.UpgradeRequestIds,
             "Upgrade request",
-            correlationId,
-            (services, id) => ExpireUpgradeAsync(services, id, correlationId, nowUtc, ct)
+            async (db, id) =>
+                await db
+                    .Subscriptions.IgnoreQueryFilters()
+                    .SelectMany(s => s.PlanChangeRequests)
+                    .FirstOrDefaultAsync(r => r.Id == id, ct)
+                    is { Status: PlanChangeRequestStatus.AwaitingPayment } request
+                    ? new PendingCheckout(request.TenantId, request.SaaSPaymentId)
+                    : null,
+            (unit, id) => ExpireUpgradeAsync(unit, id, correlationId, nowUtc, ct),
+            ct
         );
         return total;
     }
 
-    // Cada ítem en su propio scope: un fallo deja sucio solo su DbContext.
+    // Por ítem: la sesión se cancela en el proveedor fuera de la transacción (cancelar es idempotente); después,
+    // una unidad (BB-3) expira la intención y publica su evento juntos. Un fallo no arrastra a los demás.
     private async Task<int> ExpireEachAsync(
         IReadOnlyList<Guid> ids,
         string kind,
-        string correlationId,
-        Func<IServiceProvider, Guid, Task<bool>> expireOne
+        Func<SubscriptionDbContext, Guid, Task<PendingCheckout?>> readPending,
+        Func<JobUnitContext<SubscriptionDbContext>, Guid, Task<bool>> expireOne,
+        CancellationToken ct
     )
     {
         var expired = 0;
         foreach (var id in ids)
         {
-            using var itemScope = ScopeFactory.CreateScope();
-            var services = itemScope.ServiceProvider;
-            using var _ = services.GetRequiredService<ICorrelationContext>().Push(correlationId);
-            var jobLogger = services.GetRequiredService<ILogger<CheckoutIntentExpirationJob>>();
             try
             {
-                if (await expireOne(services, id))
-                    expired++;
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                jobLogger.LogInformation("{Kind} {Id} changed by another writer; not expired.", kind, id);
+                await using var scope = ScopeFactory.CreateAsyncScope();
+                var pending = await readPending(scope.ServiceProvider.GetRequiredService<SubscriptionDbContext>(), id);
+                if (pending is null)
+                    continue;
+
+                if (pending.SaaSPaymentId is { } paymentId)
+                    await scope
+                        .ServiceProvider.GetRequiredService<IHostedCheckoutCancellationClient>()
+                        .CancelAsync(pending.TenantId, paymentId, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                jobLogger.LogError(ex, "{Kind} expiration failed for {Id}.", kind, id);
+                Logger.LogError(ex, "{Kind} expiration failed for {Id}.", kind, id);
+                continue;
             }
+
+            var result = await RunUnitAsync((unit, _) => expireOne(unit, id), ct);
+            if (result.Outcome == JobUnitOutcome.Committed)
+                expired++;
+            else if (result.Outcome == JobUnitOutcome.Conflict)
+                Logger.LogInformation("{Kind} {Id} changed by another writer; not expired.", kind, id);
+            else if (result.Outcome == JobUnitOutcome.Failed)
+                Logger.LogWarning("{Kind} expiration failed for {Id}.", kind, id);
         }
         return expired;
     }
 
     private static async Task<bool> ExpireSeatAsync(
-        IServiceProvider services,
+        JobUnitContext<SubscriptionDbContext> unit,
         Guid id,
         string correlationId,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
-        var db = services.GetRequiredService<SubscriptionDbContext>();
-        var intent = await db.SeatPurchaseIntents.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Id == id, ct);
+        var intent = await unit
+            .DbContext.SeatPurchaseIntents.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i => i.Id == id, ct);
         if (intent is null || intent.Status != SeatPurchaseIntentStatus.Pending)
             return false;
-
-        if (intent.SaaSPaymentId is { } paymentId)
-            await services.GetRequiredService<IHostedCheckoutCancellationClient>().CancelAsync(intent.TenantId, paymentId, ct);
 
         var result = intent.Expire(nowUtc);
         if (result.IsFailure || intent.Status != SeatPurchaseIntentStatus.Expired)
             return false;
 
-        await services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
-        var bus = services.GetRequiredService<IMessageBus>();
-        bus.TenantId = intent.TenantId.ToString();
-        await bus.PublishAsync(
+        await unit.PublishAsync(
             new SeatCheckoutExpiredIntegrationEvent
             {
                 TenantId = intent.TenantId,
@@ -207,29 +235,24 @@ public sealed class CheckoutIntentExpirationJob(
     }
 
     private static async Task<bool> ExpireAddOnAsync(
-        IServiceProvider services,
+        JobUnitContext<SubscriptionDbContext> unit,
         Guid id,
         string correlationId,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
-        var db = services.GetRequiredService<SubscriptionDbContext>();
-        var intent = await db.AddOnPurchaseIntents.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Id == id, ct);
+        var intent = await unit
+            .DbContext.AddOnPurchaseIntents.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i => i.Id == id, ct);
         if (intent is null || intent.Status != AddOnPurchaseIntentStatus.Pending)
             return false;
-
-        if (intent.SaaSPaymentId is { } paymentId)
-            await services.GetRequiredService<IHostedCheckoutCancellationClient>().CancelAsync(intent.TenantId, paymentId, ct);
 
         var result = intent.Expire(nowUtc);
         if (result.IsFailure || intent.Status != AddOnPurchaseIntentStatus.Expired)
             return false;
 
-        await services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
-        var bus = services.GetRequiredService<IMessageBus>();
-        bus.TenantId = intent.TenantId.ToString();
-        await bus.PublishAsync(
+        await unit.PublishAsync(
             new AddOnCheckoutExpiredIntegrationEvent
             {
                 TenantId = intent.TenantId,
@@ -242,29 +265,24 @@ public sealed class CheckoutIntentExpirationJob(
     }
 
     private static async Task<bool> ExpireRenewalAsync(
-        IServiceProvider services,
+        JobUnitContext<SubscriptionDbContext> unit,
         Guid id,
         string correlationId,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
-        var db = services.GetRequiredService<SubscriptionDbContext>();
-        var intent = await db.SubscriptionRenewalIntents.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Id == id, ct);
+        var intent = await unit
+            .DbContext.SubscriptionRenewalIntents.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i => i.Id == id, ct);
         if (intent is null || intent.Status != SubscriptionRenewalIntentStatus.Pending)
             return false;
-
-        if (intent.SaaSPaymentId is { } paymentId)
-            await services.GetRequiredService<IHostedCheckoutCancellationClient>().CancelAsync(intent.TenantId, paymentId, ct);
 
         var result = intent.Expire(nowUtc);
         if (result.IsFailure || intent.Status != SubscriptionRenewalIntentStatus.Expired)
             return false;
 
-        await services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
-        var bus = services.GetRequiredService<IMessageBus>();
-        bus.TenantId = intent.TenantId.ToString();
-        await bus.PublishAsync(
+        await unit.PublishAsync(
             new SubscriptionRenewalCheckoutExpiredIntegrationEvent
             {
                 TenantId = intent.TenantId,
@@ -277,32 +295,25 @@ public sealed class CheckoutIntentExpirationJob(
     }
 
     private static async Task<bool> ExpireUpgradeAsync(
-        IServiceProvider services,
+        JobUnitContext<SubscriptionDbContext> unit,
         Guid id,
         string correlationId,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
-        var db = services.GetRequiredService<SubscriptionDbContext>();
-        var request = await db
-            .Subscriptions.IgnoreQueryFilters()
+        var request = await unit
+            .DbContext.Subscriptions.IgnoreQueryFilters()
             .SelectMany(s => s.PlanChangeRequests)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
         if (request is null || request.Status != PlanChangeRequestStatus.AwaitingPayment)
             return false;
 
-        if (request.SaaSPaymentId is { } paymentId)
-            await services.GetRequiredService<IHostedCheckoutCancellationClient>().CancelAsync(request.TenantId, paymentId, ct);
-
         var result = request.Expire(nowUtc);
         if (result.IsFailure || request.Status != PlanChangeRequestStatus.Expired)
             return false;
 
-        await services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
-        var bus = services.GetRequiredService<IMessageBus>();
-        bus.TenantId = request.TenantId.ToString();
-        await bus.PublishAsync(
+        await unit.PublishAsync(
             new PlanChangeUpgradeExpiredIntegrationEvent
             {
                 TenantId = request.TenantId,

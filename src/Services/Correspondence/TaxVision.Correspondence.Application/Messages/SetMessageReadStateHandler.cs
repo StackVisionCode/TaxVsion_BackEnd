@@ -2,7 +2,6 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Threads;
-using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Messages;
 
@@ -19,7 +18,6 @@ public static class SetMessageReadStateHandler
         IIncomingEmailRepository incomingEmails,
         IEmailThreadRepository emailThreads,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -41,15 +39,8 @@ public static class SetMessageReadStateHandler
         var changed = command.IsRead ? email.MarkRead(DateTime.UtcNow) : email.MarkUnread();
         if (changed)
         {
+            thread.NotifyStateChanged(command.ActorUserId, command.CorrelationId);
             await unitOfWork.SaveChangesAsync(ct);
-            await ThreadStateNotifier.PublishAsync(
-                bus,
-                incomingEmails,
-                thread,
-                command.ActorUserId,
-                command.CorrelationId,
-                ct
-            );
         }
 
         return Result.Success();

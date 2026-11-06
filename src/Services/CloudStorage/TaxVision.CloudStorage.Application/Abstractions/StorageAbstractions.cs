@@ -389,10 +389,8 @@ public interface IShareLinkRepository
     Task<IReadOnlyList<ShareLink>> ListActiveWithUserRecipientAsync(Guid tenantId, Guid userId, CancellationToken ct);
 
     /// <summary>Cuántos links ACTIVOS creó el empleado (mismo filtro que ListActiveByCreatorAsync, sin
-    /// materializar) — pre-flight de impacto al retirarlo. Default 0 para no romper los fakes; el repo
-    /// real lo implementa con COUNT.</summary>
-    Task<int> CountActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct) =>
-        Task.FromResult(0);
+    /// materializar) — pre-flight de impacto al retirarlo.</summary>
+    Task<int> CountActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct);
 }
 
 /// <summary>Fase C3 — hash de la contrasena opcional de un link publico. Mismo esquema PBKDF2 que Auth.IPasswordHasher.</summary>

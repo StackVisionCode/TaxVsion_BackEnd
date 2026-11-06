@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.CampaignsIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.CampaignsIntegrationEvents;
 /// sigan enviando en su nombre. Notification avisa a quienes administran campañas para que decidan qué
 /// hacer con ellos (cancelarlos o volver a agendarlos). Un evento por retiro, con todos los agendados.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignSchedulesPausedOnOffboardingIntegrationEvent")]
 public sealed record CampaignSchedulesPausedOnOffboardingIntegrationEvent : IntegrationEvent
 {
     /// <summary>Empleado retirado en cuyo nombre disparaban.</summary>

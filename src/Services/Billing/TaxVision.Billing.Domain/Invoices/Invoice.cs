@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Billing.Domain.Invoices.Events;
 using TaxVision.Billing.Domain.ValueObjects;
 
 namespace TaxVision.Billing.Domain.Invoices;
@@ -339,6 +340,7 @@ public sealed class Invoice : AggregateRoot
             // El recibo lleva la fecha y el medio del último pago, como al cobrar.
             var last = _payments.OrderBy(p => p.PaidAtUtc).LastOrDefault();
             IssueReceipt(paidCents, last?.Method ?? PaymentMethod ?? ValueObjects.PaymentMethod.Other, last?.PaidAtUtc ?? nowUtc);
+            RaisePaid(null);
         }
         else
         {
@@ -712,8 +714,26 @@ public sealed class Invoice : AggregateRoot
         // Auditar solo si el estado efectivamente cambió (un pago parcial sobre otro parcial no transiciona).
         if (from != Status)
             RecordStatusChange(from, Status, StatusChangeTrigger.Payment, null, actorUserId, paidAtUtc);
+        if (Status == InvoiceStatus.Paid && from != InvoiceStatus.Paid)
+            RaisePaid(source);
         return Result.Success();
     }
+
+    private void RaisePaid(InvoicePaymentSource? source) =>
+        AddDomainEvent(
+            new InvoicePaidDomainEvent(
+                Id,
+                TenantId,
+                InvoiceNumber,
+                CustomerId,
+                AmountPaid.AmountCents,
+                Currency,
+                PaymentMethod ?? ValueObjects.PaymentMethod.Other,
+                PaidAtUtc,
+                PaidPdfFileId,
+                source
+            )
+        );
 
     /// <summary>
     /// Cambio de estado MANUAL por un usuario autorizado (item 6.2). Solo permite transiciones legales

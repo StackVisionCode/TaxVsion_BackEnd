@@ -9,6 +9,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.9" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
@@ -23,5 +24,6 @@
     <ProjectReference Include="..\..\..\src\Services\Tenant\TaxVision.Tenant.Application\TaxVision.Tenant.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Tenant\TaxVision.Tenant.Api\TaxVision.Tenant.Api.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" Aliases="BbTesting" />
   </ItemGroup>
 </Project>

@@ -141,6 +141,9 @@ public sealed class SupportOpenedConsumerTests
 
     private sealed class FakeDeviceRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         private readonly List<PushDeviceToken> _devices = [];
 
         public void AddActiveDevice(Guid tenantId, Guid userId, string token) =>
@@ -172,6 +175,15 @@ public sealed class SupportOpenedConsumerTests
 
     private sealed class RecordingLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public List<NotificationLog> Logs { get; } = [];
 
         public Task AddAsync(NotificationLog log, CancellationToken ct = default)

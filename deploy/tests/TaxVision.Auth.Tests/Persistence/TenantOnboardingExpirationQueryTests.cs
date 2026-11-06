@@ -25,7 +25,6 @@ public sealed class TenantOnboardingExpirationQueryTests
     private static AuthDbContext CreateContext(string databaseName) =>
         new(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,
-            new FakeMessageBus(),
             new FakeTenantContext()
         );
 

@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>Publicado por Subscription cuando el owner cancela una renovación antes de pagar.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionRenewalCheckoutCancelledIntegrationEvent")]
 public sealed record SubscriptionRenewalCheckoutCancelledIntegrationEvent : IntegrationEvent
 {
     public required Guid RenewalIntentId { get; init; }

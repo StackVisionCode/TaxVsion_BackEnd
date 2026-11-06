@@ -1,11 +1,11 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Web.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Infrastructure.Persistence;
-using Wolverine;
 
 namespace TaxVision.Auth.Api.Bootstrap;
 
@@ -50,61 +50,43 @@ public sealed class PermissionsBackfillService(
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            await using var scope = scopeFactory.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-            var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
-            var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-            var tenantContext = scope.ServiceProvider.GetRequiredService<TenantContext>();
-            var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
+            List<Guid> pending;
+            await using (var scope = scopeFactory.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
 
-            // RBAC Fase 5 — este job recorre usuarios de TODOS los tenants en un mismo batch, no
-            // uno solo — IgnoreQueryFilters() explícito porque es el descubrimiento cross-tenant
-            // que el job existe para hacer, no un descuido.
-            var pending = await db
-                .Users.IgnoreQueryFilters()
-                .Where(user => user.IsActive && user.PermissionsBackfilledAt == null)
-                .OrderBy(user => user.Id)
-                .Take(BatchSize)
-                .ToListAsync(cancellationToken);
+                // RBAC Fase 5 — este job recorre usuarios de TODOS los tenants en un mismo batch, no
+                // uno solo — IgnoreQueryFilters() explícito porque es el descubrimiento cross-tenant
+                // que el job existe para hacer, no un descuido.
+                pending = await db
+                    .Users.IgnoreQueryFilters()
+                    .Where(user => user.IsActive && user.PermissionsBackfilledAt == null)
+                    .OrderBy(user => user.Id)
+                    .Select(user => user.Id)
+                    .Take(BatchSize)
+                    .ToListAsync(cancellationToken);
+            }
 
             if (pending.Count == 0)
                 break;
 
-            foreach (var user in pending)
-            {
-                // RBAC Fase 5 — cada usuario procesado es de su propio tenant real; sin esto,
-                // GetUserRolesAsync/GetEffectivePermissionCodesAsync (que consultan Role, sí
-                // tenant-owned) devolverían 0 filas bajo el filtro fail-closed sin tenant seteado.
-                tenantContext.SetTenant(user.TenantId);
-
-                var userRoles = await roles.GetUserRolesAsync(user.Id, cancellationToken);
-                var permissionCodes = await roles.GetEffectivePermissionCodesAsync(user.Id, cancellationToken);
-
-                await bus.PublishAsync(
-                    new UserRolesChangedIntegrationEvent
-                    {
-                        TenantId = user.TenantId,
-                        CorrelationId = correlation.CorrelationId,
-                        UserId = user.Id,
-                        PermissionsVersion = user.PermissionsVersion,
-                        RoleNames = userRoles.Select(role => role.Name).ToArray(),
-                        RoleIds = userRoles.Select(role => role.Id).ToArray(),
-                        PermissionCodes = permissionCodes.ToArray(),
-                        ActorType = user.ActorType.ToString(),
-                    }
-                );
-                user.MarkPermissionsBackfilled(DateTime.UtcNow);
-            }
-
-            await db.SaveChangesAsync(cancellationToken);
-            totalRepublished += pending.Count;
+            // Una unidad por usuario: el aviso y su cursor (PermissionsBackfilledAt) se confirman juntos.
+            var summary = await TransactionalJobUnit.RunEachAsync<Guid, AuthDbContext>(
+                scopeFactory,
+                pending,
+                RepublishAsync,
+                logger,
+                cancellationToken
+            );
+            totalRepublished += summary.Committed;
             logger.LogInformation(
                 "PermissionsBackfill: re-published {Count} UserRolesChanged event(s) this batch ({Total} total so far).",
-                pending.Count,
+                summary.Committed,
                 totalRepublished
             );
 
-            if (pending.Count < BatchSize)
+            // Sin avance (todas fallaron): el siguiente arranque lo reintenta, sin girar en vacío.
+            if (pending.Count < BatchSize || summary.Committed == 0)
                 break;
 
             await Task.Delay(DelayBetweenBatches, cancellationToken);
@@ -114,5 +96,44 @@ public sealed class PermissionsBackfillService(
         {
             logger.LogInformation("PermissionsBackfill: completed, {Total} user(s) re-published.", totalRepublished);
         }
+    }
+
+    private static async Task<bool> RepublishAsync(
+        Guid userId,
+        JobUnitContext<AuthDbContext> unit,
+        CancellationToken ct
+    )
+    {
+        var user = await unit
+            .DbContext.Users.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(u => u.Id == userId && u.IsActive && u.PermissionsBackfilledAt == null, ct);
+        if (user is null)
+            return false;
+
+        // RBAC Fase 5 — cada usuario procesado es de su propio tenant real; sin esto,
+        // GetUserRolesAsync/GetEffectivePermissionCodesAsync (que consultan Role, sí
+        // tenant-owned) devolverían 0 filas bajo el filtro fail-closed sin tenant seteado.
+        unit.Services.GetRequiredService<TenantContext>().SetTenant(user.TenantId);
+
+        var roles = unit.Services.GetRequiredService<IRoleRepository>();
+        var correlation = unit.Services.GetRequiredService<ICorrelationContext>();
+        var userRoles = await roles.GetUserRolesAsync(user.Id, ct);
+        var permissionCodes = await roles.GetEffectivePermissionCodesAsync(user.Id, ct);
+
+        await unit.PublishAsync(
+            new UserRolesChangedIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                CorrelationId = correlation.CorrelationId,
+                UserId = user.Id,
+                PermissionsVersion = user.PermissionsVersion,
+                RoleNames = userRoles.Select(role => role.Name).ToArray(),
+                RoleIds = userRoles.Select(role => role.Id).ToArray(),
+                PermissionCodes = permissionCodes.ToArray(),
+                ActorType = user.ActorType.ToString(),
+            }
+        );
+        user.MarkPermissionsBackfilled(DateTime.UtcNow);
+        return true;
     }
 }

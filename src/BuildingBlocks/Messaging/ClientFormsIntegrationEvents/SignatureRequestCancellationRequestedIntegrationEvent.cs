@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
+using Wolverine.Attributes;
 
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
@@ -7,6 +8,7 @@ namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 /// signature-client-form-commands. Tasks lo envía cuando una revisión nueva supera a una firma
 /// pendiente. Idempotente: si la solicitud ya está en estado terminal, Signature lo ignora.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.SignatureRequestCancellationRequestedIntegrationEvent")]
 public sealed record SignatureRequestCancellationRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

@@ -1,44 +1,44 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Tasks.Application.Reminders;
 using TaxVision.Tasks.Domain.Tasks;
+using TaxVision.Tasks.Domain.Tasks.Events;
 using Wolverine;
 
 namespace TaxVision.Tasks.Application.Tasks;
 
 /// <summary>
-/// Lo que se anuncia cuando nace una tarea, venga del alta manual, de una plantilla o de una serie:
-/// <c>TaskCreated</c>, su recordatorio de vencimiento y, si se pide, <c>TaskAssigned</c>. Se llama
-/// antes de guardar, para que todo salga por el outbox en la misma transacción.
+/// Lo que se anuncia cuando nace una tarea, venga del alta manual, de una subtarea, de una plantilla o de una
+/// serie: <c>TaskCreated</c>, su recordatorio de vencimiento y, solo en el alta manual de una raíz,
+/// <c>TaskAssigned</c>. Plantillas y series no avisan la asignación (decisión abierta del dueño).
 /// </summary>
 public static class TaskBirthAnnouncements
 {
-    /// <param name="announceAssignment">
-    /// Avisar al asignado. Notification ya descarta la autoasignación (asignado == quien asigna).
-    /// </param>
-    public static async Task PublishAsync(
-        TaskItem task,
-        IMessageBus bus,
-        ICorrelationContext correlation,
-        bool announceAssignment
-    )
+    public static OutgoingMessages For(TaskItem task, TaskCreatedDomainEvent born, string correlationId)
     {
-        await bus.PublishAsync(TaskCreatedEventFactory.From(task, correlation.CorrelationId));
-        await TaskDueReminder.PublishIfDueAsync(task, bus, correlation);
+        var messages = new OutgoingMessages { TaskCreatedEventFactory.From(task, correlationId) };
 
-        if (announceAssignment && task.AssigneeUserId is { } assignee)
-            await bus.PublishAsync(
+        if (TaskDueReminder.RequestFor(task, born.AssigneeUserId, lifecycle: 0, correlationId) is { } reminder)
+            messages.Add(reminder);
+
+        if (AnnouncesAssignment(task) && born.AssigneeUserId is { } assignee)
+            messages.Add(
                 new TaskAssignedIntegrationEvent
                 {
                     TenantId = task.TenantId,
-                    CorrelationId = correlation.CorrelationId,
+                    CorrelationId = correlationId,
                     TaskId = task.Id,
                     Title = task.Title.Value,
                     AssigneeUserId = assignee,
                     PreviousAssigneeUserId = null,
                     DueAtUtc = task.Due?.DueAtUtc,
-                    AssignedByUserId = task.CreatedByUserId,
+                    AssignedByUserId = born.CreatedByUserId,
                 }
             );
+
+        return messages;
     }
+
+    // Notification ya descarta la autoasignación (asignado == quien asigna).
+    private static bool AnnouncesAssignment(TaskItem task) =>
+        task.ParentTaskId is null && task.TemplateId is null && task.SeriesId is null;
 }

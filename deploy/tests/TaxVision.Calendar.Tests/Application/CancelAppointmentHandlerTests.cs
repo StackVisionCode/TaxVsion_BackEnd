@@ -44,19 +44,22 @@ public sealed class CancelAppointmentHandlerTests
         Assert.Equal(OccurrenceTargetId.For(appointment.Id, start), closed.TargetId);
     }
 
-    private Task<BuildingBlocks.Results.Result> Cancel(
+    private async Task<BuildingBlocks.Results.Result> Cancel(
         Appointment appointment,
         FakeMessageBus bus,
         EditScope? scope,
         DateTime? originalStartUtc
-    ) =>
-        CancelAppointmentHandler.Handle(
+    )
+    {
+        var appointments = new InMemoryAppointments(appointment);
+        var result = await CancelAppointmentHandler.Handle(
             new CancelAppointmentCommand(_tenant, appointment.Id, _organizer, scope, originalStartUtc, "test", false),
-            new InMemoryAppointments(appointment),
+            appointments,
             new CountingUnitOfWork(),
-            bus,
-            new FixedCorrelation(),
             new NullCalendarMetrics(),
             CancellationToken.None
         );
+        await CalendarDomainEventReplay.DispatchIntoAsync(bus, appointments, appointments.All);
+        return result;
+    }
 }

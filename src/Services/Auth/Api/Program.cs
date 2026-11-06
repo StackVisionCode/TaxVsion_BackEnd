@@ -510,6 +510,14 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, AuthDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    // Eventos de dominio de los agregados: se guardan con el commit del handler y sus handlers devuelven los
+    // avisos. En serie, para que los avisos de un mismo agregado salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // Toda cola local durable: lo publicado a un handler propio sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
+
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event), ver
     // JwtTenantContextMiddleware/LocalCommandTenantMiddleware para el porqué.

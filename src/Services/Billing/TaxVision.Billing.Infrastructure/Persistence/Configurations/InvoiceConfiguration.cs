@@ -80,6 +80,7 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
 
         // Descuento a nivel factura: Fase posterior (no se usa en Fase 1).
         b.Ignore(i => i.Discount);
+        b.Ignore(i => i.DomainEvents);
 
         // Líneas en tabla propia; cada Money como "cents|CUR".
         b.OwnsMany(

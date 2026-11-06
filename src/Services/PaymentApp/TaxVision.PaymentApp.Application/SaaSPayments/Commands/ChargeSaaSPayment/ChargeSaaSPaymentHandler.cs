@@ -10,7 +10,6 @@ using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.ChargeSaaSPayment;
 
@@ -25,7 +24,6 @@ public static class ChargeSaaSPaymentHandler
         IPaymentAdapterFactory providerFactory,
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
@@ -75,14 +73,7 @@ public static class ChargeSaaSPaymentHandler
             ct
         );
 
-        await SaaSPaymentResultPublisher.PublishAsync(
-            payment,
-            bus,
-            correlation.CorrelationId,
-            ct,
-            customers: providerCustomers
-        );
-
+        // El resultado lo avisa SaaSPaymentDomainEventHandler con el commit (evento de dominio).
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(

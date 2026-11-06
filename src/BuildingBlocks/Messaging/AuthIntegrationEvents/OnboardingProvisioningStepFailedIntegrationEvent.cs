@@ -1,4 +1,5 @@
 using Wolverine.Persistence.Sagas;
+using Wolverine.Attributes;
 
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
@@ -11,6 +12,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// <c>TenantOnboarding.MarkProvisioningFailed</c> y NO se auto-completa (permanece viva a la espera
 /// de un futuro comando de resume).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.OnboardingProvisioningStepFailedIntegrationEvent")]
 public sealed record OnboardingProvisioningStepFailedIntegrationEvent : IntegrationEvent
 {
     [SagaIdentity]

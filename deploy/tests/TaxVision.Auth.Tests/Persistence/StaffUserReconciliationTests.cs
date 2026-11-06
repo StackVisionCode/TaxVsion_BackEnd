@@ -32,7 +32,6 @@ public sealed class StaffUserReconciliationTests
         tenantContext.SetTenant(TenantA);
         return new AuthDbContext(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,
-            new FakeMessageBus(),
             tenantContext
         );
     }

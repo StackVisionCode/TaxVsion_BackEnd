@@ -1,14 +1,11 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
-using BuildingBlocks.Results;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Tasks.Application.Series.Abstractions;
-using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Infrastructure.Persistence;
-using Wolverine.EntityFrameworkCore;
 
 namespace TaxVision.Tasks.Infrastructure.Jobs;
 
@@ -72,51 +69,48 @@ public sealed class SeriesMaterializationJob(IServiceProvider serviceProvider, I
             return;
 
         var materialized = 0;
-        foreach (var (tenantId, seriesId) in pending)
-        {
-            if (await MaterializeSeriesAsync(tenantId, seriesId, ct))
-                materialized++;
-        }
+        var summary = await TransactionalJobUnit.RunEachAsync<(Guid TenantId, Guid SeriesId), TasksDbContext>(
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            pending,
+            async (item, unit, token) =>
+            {
+                var created = await MaterializeSeriesAsync(unit, item.TenantId, item.SeriesId, token);
+                materialized += created is true ? 1 : 0;
+                return created is not null;
+            },
+            logger,
+            ct
+        );
 
         logger.LogInformation(
-            "Series sweep materialized {Materialized} of {Pending} series without an open instance.",
+            "Series sweep materialized {Materialized} of {Pending} series without an open instance ({Conflicts} conflicts, {Failed} failed).",
             materialized,
-            pending.Count
+            pending.Count,
+            summary.Conflicts,
+            summary.Failed
         );
     }
 
     /// <summary>
-    /// Una unidad por serie: materializar, anunciar por el outbox y guardar juntos. Un conflicto en
-    /// una serie no arrastra a las demás; el barrido siguiente la reintenta.
+    /// Una unidad por serie (TransactionalJobUnit): la instancia y su evento de alta se guardan juntos, y el
+    /// handler del evento la anuncia. Devuelve null si no había nada que hacer; false si la regla se agotó
+    /// (se guarda el fin de la serie). Un conflicto en una serie no arrastra a las demás.
     /// </summary>
-    private async Task<bool> MaterializeSeriesAsync(Guid tenantId, Guid seriesId, CancellationToken ct)
+    private static async Task<bool?> MaterializeSeriesAsync(
+        JobUnitContext<TasksDbContext> unit,
+        Guid tenantId,
+        Guid seriesId,
+        CancellationToken ct
+    )
     {
-        using var scope = serviceProvider.CreateScope();
-        var services = scope.ServiceProvider;
-        var repository = services.GetRequiredService<ITaskSeriesRepository>();
-        var materializer = services.GetRequiredService<ITaskSeriesMaterializer>();
-        var outbox = services.GetRequiredService<IDbContextOutbox<TasksDbContext>>();
-        var correlation = services.GetRequiredService<ICorrelationContext>();
+        var repository = unit.Services.GetRequiredService<ITaskSeriesRepository>();
+        var materializer = unit.Services.GetRequiredService<ITaskSeriesMaterializer>();
 
         var found = await repository.GetByIdAsync(tenantId, seriesId, ct);
         if (found.IsFailure || found.Value is not { Status: SeriesStatus.Active, OpenInstanceId: null })
-            return false;
+            return null;
 
         var created = await materializer.MaterializeNextAsync(found.Value, null, null, ct);
-        if (created.IsSuccess)
-            await TaskBirthAnnouncements.PublishAsync(created.Value, outbox, correlation, announceAssignment: false);
-
-        try
-        {
-            // También guarda el fin de la serie cuando la regla se agotó.
-            await outbox.SaveChangesAndFlushMessagesAsync(ct);
-        }
-        catch (ConflictException ex) when (ex.Code == "Persistence.ConcurrencyConflict")
-        {
-            logger.LogDebug("Series sweep skipped series {SeriesId} modified concurrently.", seriesId);
-            return false;
-        }
-
         return created.IsSuccess;
     }
 }

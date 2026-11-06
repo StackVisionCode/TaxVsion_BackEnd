@@ -7,6 +7,7 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
@@ -25,7 +26,9 @@
     <ProjectReference Include="..\..\..\src\Services\Campaigns\TaxVision.Campaigns.Domain\TaxVision.Campaigns.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Campaigns\TaxVision.Campaigns.Application\TaxVision.Campaigns.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Campaigns\TaxVision.Campaigns.Infrastructure\TaxVision.Campaigns.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\src\Services\Campaigns\TaxVision.Campaigns.Api\TaxVision.Campaigns.Api.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
+    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" Aliases="BbTesting" />
   </ItemGroup>
 </Project>

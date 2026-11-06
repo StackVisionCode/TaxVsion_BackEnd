@@ -67,7 +67,7 @@ public interface IScribeRenderClient
 
     /// <summary>
     /// Render para una audiencia: <see cref="ScribeRenderAudience.Client"/> lleva el logo del portal de
-    /// la oficina. Default de interfaz = render de siempre, para los dobles que no lo implementan.
+    /// la oficina.
     /// </summary>
     Task<Result<ScribeRenderedEmail>> RenderAsync(
         string eventKey,
@@ -75,17 +75,12 @@ public interface IScribeRenderClient
         IReadOnlyDictionary<string, object?> variables,
         ScribeRenderAudience audience,
         CancellationToken ct = default
-    ) => RenderAsync(eventKey, tenantId, variables, ct);
+    );
 
     Task<Result<ScribeRenderedText>> RenderTextAsync(
         string eventKey,
         Guid tenantId,
         IReadOnlyDictionary<string, object?> variables,
         CancellationToken ct = default
-    ) =>
-        Task.FromResult(
-            Result.Failure<ScribeRenderedText>(
-                new Error("Notification.ScribeTextUnsupported", "Text rendering is not supported by this client.")
-            )
-        );
+    );
 }

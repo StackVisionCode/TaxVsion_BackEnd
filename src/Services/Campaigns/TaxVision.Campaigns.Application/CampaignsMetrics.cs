@@ -12,6 +12,13 @@ public static class CampaignsMetrics
         description: "Schedule slots skipped without a run"
     );
 
+    private static readonly Counter<long> DispatchResultUnmatched = Meter.CreateCounter<long>(
+        "campaigns_dispatch_result_unmatched_total",
+        description: "Dispatch results for a unit that does not exist in its run"
+    );
+
     public static void RecordScheduleFireSkipped(string reason) =>
         ScheduleFireSkipped.Add(1, new KeyValuePair<string, object?>("reason", reason));
+
+    public static void RecordDispatchResultUnmatched() => DispatchResultUnmatched.Add(1);
 }

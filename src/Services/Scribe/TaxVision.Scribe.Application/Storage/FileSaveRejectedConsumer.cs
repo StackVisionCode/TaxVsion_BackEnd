@@ -1,8 +1,10 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Scribe.Application.Abstractions;
 using TaxVision.Scribe.Application.Layouts;
 using TaxVision.Scribe.Application.Templates;
@@ -30,6 +32,7 @@ public static class FileSaveRejectedConsumer
         ISystemAssetRefRepository systemAssetRefRepository,
         IUnitOfWork unitOfWork,
         IMemoryCache l1Cache,
+        IOptions<FileSaveRejectedOptions> options,
         ICorrelationContext correlation,
         ILogger<FileSaveRejectedIntegrationEvent> logger,
         CancellationToken ct
@@ -87,6 +90,10 @@ public static class FileSaveRejectedConsumer
 
             if (!referenced)
             {
+                // Puede haber llegado antes de que se guarde la versión: se reintenta con espera (BB-7).
+                if (now - evt.OccurredOn < options.Value.EarlyRejectionWindow)
+                    throw new DependencyNotReadyException("ScribeFileReference", $"file {evt.FileId}");
+
                 logger.LogWarning(
                     "FileSaveRejected {FileId} ({Reason}): nothing in Scribe references it, nothing to release.",
                     evt.FileId,

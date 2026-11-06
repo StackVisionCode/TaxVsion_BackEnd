@@ -11,6 +11,7 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
     {
         builder.ToTable("SaaSPayments");
         builder.HasKey(payment => payment.Id);
+        builder.Ignore(payment => payment.DomainEvents);
 
         builder.Property(payment => payment.TenantId).IsRequired();
 

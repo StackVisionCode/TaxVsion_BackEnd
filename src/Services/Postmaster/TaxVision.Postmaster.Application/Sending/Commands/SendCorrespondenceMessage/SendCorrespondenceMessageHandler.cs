@@ -70,8 +70,7 @@ public static class SendCorrespondenceMessageHandler
                 message.Id,
                 sendResult,
                 "Unknown Connectors send failure.",
-                Fallback: null,
-                Request: null
+                Fallback: null
             ),
             CancellationToken.None
         );

@@ -177,6 +177,32 @@ internal sealed class ExtRequests(params FormRequest[] seed) : IFormRequestRepos
 
     public Task<IReadOnlyList<FormRequest>> ListByAttachmentFileIdAsync(Guid fileId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<FormRequest>>([]);
+
+    public Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
+        Task.FromResult(0);
+
+    public Task<int> CountOpenByEffectiveResponsibleAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(0);
+
+    public Task<FormRequest?> GetByPdfGenerationIdAsync(Guid generationId, CancellationToken ct = default) =>
+        Task.FromResult<FormRequest?>(null);
+
+    public Task<FormRequest?> GetForReminderAsync(Guid requestId, CancellationToken ct = default) =>
+        Task.FromResult<FormRequest?>(null);
+
+    public Task<IReadOnlyList<FormRequest>> ListOpenByEffectiveResponsibleAsync(
+        Guid tenantId,
+        Guid userId,
+        int take,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+
+    public Task<IReadOnlyList<FormRequest>> ListReminderCandidatesAsync(
+        DateTime dueThresholdUtc,
+        int maxReminders,
+        int take,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
 }
 
 internal sealed class ExtGrants(params FormAccessGrant[] seed) : IFormAccessGrantRepository

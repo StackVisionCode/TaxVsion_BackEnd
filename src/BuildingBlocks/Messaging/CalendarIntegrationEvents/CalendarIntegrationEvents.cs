@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.CalendarIntegrationEvents;
 
 /// <summary>
@@ -12,6 +14,7 @@ namespace BuildingBlocks.Messaging.CalendarIntegrationEvents;
 public sealed record AppointmentRecipient(string Email, Guid? UserId);
 
 /// <summary>Se agendó una cita. Si es serie, <c>StartUtc</c> es el de su primera ocurrencia.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentScheduledIntegrationEvent")]
 public sealed record AppointmentScheduledIntegrationEvent : IntegrationEvent
 {
     public required Guid AppointmentId { get; init; }
@@ -36,6 +39,7 @@ public sealed record AppointmentScheduledIntegrationEvent : IntegrationEvent
 /// movió la serie entera» y toma la decisión equivocada — típicamente Reminder, cancelando de más.
 /// </para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentRescheduledIntegrationEvent")]
 public sealed record AppointmentRescheduledIntegrationEvent : IntegrationEvent
 {
     public required Guid AppointmentId { get; init; }
@@ -52,6 +56,7 @@ public sealed record AppointmentRescheduledIntegrationEvent : IntegrationEvent
     public IReadOnlyList<AppointmentRecipient> Recipients { get; init; } = [];
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentCancelledIntegrationEvent")]
 public sealed record AppointmentCancelledIntegrationEvent : IntegrationEvent
 {
     public required Guid AppointmentId { get; init; }
@@ -63,6 +68,7 @@ public sealed record AppointmentCancelledIntegrationEvent : IntegrationEvent
 }
 
 /// <summary>Se canceló una ocurrencia suelta; la serie sigue viva.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.OccurrenceCancelledIntegrationEvent")]
 public sealed record OccurrenceCancelledIntegrationEvent : IntegrationEvent
 {
     public required Guid AppointmentId { get; init; }
@@ -73,6 +79,7 @@ public sealed record OccurrenceCancelledIntegrationEvent : IntegrationEvent
 /// La serie se partió en dos. Para el consumidor no es un update: es una serie que terminó y otra que
 /// empezó, y sin este evento Reminder no sabe que los avisos posteriores al corte cambian de dueño.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.CalendarSeriesSplitIntegrationEvent")]
 public sealed record CalendarSeriesSplitIntegrationEvent : IntegrationEvent
 {
     public required Guid OriginalSeriesId { get; init; }
@@ -89,6 +96,7 @@ public sealed record CalendarSeriesSplitIntegrationEvent : IntegrationEvent
 /// cuando todavía no hay a quién escribirle.
 /// </para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentAttendeeAddedIntegrationEvent")]
 public sealed record AppointmentAttendeeAddedIntegrationEvent : IntegrationEvent
 {
     public required Guid AppointmentId { get; init; }
@@ -103,6 +111,7 @@ public sealed record AppointmentAttendeeAddedIntegrationEvent : IntegrationEvent
     public required bool IsVirtual { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentAttendeeRespondedIntegrationEvent")]
 public sealed record AppointmentAttendeeRespondedIntegrationEvent : IntegrationEvent
 {
     public required Guid AppointmentId { get; init; }
@@ -120,6 +129,7 @@ public sealed record AppointmentAttendeeRespondedIntegrationEvent : IntegrationE
 /// la invitación a todo el mundo. Éste sólo pide la sala.
 /// </para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentMeetingRoomRequestedIntegrationEvent")]
 public sealed record AppointmentMeetingRoomRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid AppointmentId { get; init; }
@@ -128,6 +138,7 @@ public sealed record AppointmentMeetingRoomRequestedIntegrationEvent : Integrati
     public DateTime? StartUtc { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentStartingSoonIntegrationEvent")]
 public sealed record AppointmentStartingSoonIntegrationEvent : IntegrationEvent
 {
     public required Guid AppointmentId { get; init; }

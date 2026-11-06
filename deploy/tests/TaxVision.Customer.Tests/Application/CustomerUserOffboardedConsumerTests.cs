@@ -9,6 +9,7 @@ using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Domain.Employees;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -183,13 +184,17 @@ public sealed class CustomerUserOffboardedConsumerTests
         Assert.Empty(bus.Published);
     }
 
-    private static Task Consume(
+    // Lo sembrado ya está guardado; lo emitido por el consumer sale por el bus como en Wolverine.
+    private static async Task Consume(
         FakeDirectory directory,
         FakeCustomers customers,
         FakeMessageBus bus,
         Guid? successorUserId
-    ) =>
-        CustomerUserOffboardedConsumer.Handle(
+    )
+    {
+        foreach (var customer in customers.All)
+            customer.ClearDomainEvents();
+        await CustomerUserOffboardedConsumer.Handle(
             new UserOffboardedIntegrationEvent
             {
                 TenantId = TenantId,
@@ -208,6 +213,8 @@ public sealed class CustomerUserOffboardedConsumerTests
             NullLogger<TenantEmployeeDirectoryEntry>.Instance,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, customers, customers.All);
+    }
 
     private sealed class FakeDirectory : ITenantEmployeeDirectoryRepository
     {
@@ -336,6 +343,9 @@ public sealed class CustomerUserOffboardedConsumerTests
 
         public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
 
+        public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+            Task.FromResult(All.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));
+
         public Task<IReadOnlyList<DomainCustomer>> GetByIdsAsync(
             Guid tenantId,
             IReadOnlyCollection<Guid> ids,
@@ -357,6 +367,51 @@ public sealed class CustomerUserOffboardedConsumerTests
         ) => throw new NotImplementedException();
 
         public Task AddAsync(DomainCustomer customer, CancellationToken ct) => throw new NotImplementedException();
+
+        public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeCustomerId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindCustomerIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeCustomerId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeRelationId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindRelationIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeRelationId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public Task<int> CountActiveByAssignedPreparerAsync(Guid tenantId, Guid preparerUserId, CancellationToken ct) =>
+            Task.FromResult(0);
+
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
+            Task.FromResult(OffboardingClientCounts.None);
+
+        public Task<Guid?> FindIdByOriginAsync(
+            Guid tenantId,
+            string sourceService,
+            Guid sourceReferenceId,
+            CancellationToken ct
+        ) => Task.FromResult<Guid?>(null);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
     }
 
     private sealed class NoOpUnitOfWork : IUnitOfWork

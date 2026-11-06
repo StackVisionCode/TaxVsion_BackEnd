@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -140,7 +141,6 @@ public sealed class LastAdminGuardConcurrencyIntegrationTests : IAsyncLifetime
     private AuthDbContext NewContext() =>
         new(
             new DbContextOptionsBuilder<AuthDbContext>().UseSqlServer(_connectionString).Options,
-            new FakeMessageBus(),
             new FixedTenant(_tenantId)
         );
 
@@ -166,6 +166,41 @@ public sealed class LastAdminGuardConcurrencyIntegrationTests : IAsyncLifetime
     /// <summary>Repositorio real que espera al otro hilo justo después de contar, para forzar la carrera.</summary>
     private sealed class BarrierUserRepository(IUserRepository inner, Barrier barrier) : IUserRepository
     {
+        public Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<IReadOnlyList<User>> GetActiveByRoleAsync(
+            Guid tenantId,
+            Guid roleId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<TenantOwnerReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<CustomerPortalAccountReconciliationResponse>> ListPortalAccountsForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<StaffUserReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<UserDirectoryReconciliationResponse>> ListUsersForDirectoryReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<UserDirectoryReconciliationResponse>([], page, size, 0));
+
         public async Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default)
         {
             var count = await inner.CountActiveAdminsAsync(tenantId, ct);

@@ -1,5 +1,5 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,7 +8,6 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
 using TaxVision.Calendar.Infrastructure.Persistence;
-using Wolverine;
 
 namespace TaxVision.Calendar.Infrastructure.Jobs;
 
@@ -25,6 +24,10 @@ namespace TaxVision.Calendar.Infrastructure.Jobs;
 /// El conjunto en memoria cubre el único hueco que deja: un reinicio dentro de la ventana la
 /// recorrería otra vez. Se pierde al reiniciar, y está bien — repetir un aviso molesta, no avisar
 /// deja a alguien llegando tarde.
+/// </para>
+///
+/// <para>
+/// Cada aviso sale por el outbox de su propia unidad (BB-3): si uno falla, los demás siguen.
 /// </para>
 /// </summary>
 internal sealed class StartingSoonJob(IServiceScopeFactory scopeFactory, ILogger<StartingSoonJob> logger)
@@ -63,26 +66,46 @@ internal sealed class StartingSoonJob(IServiceScopeFactory scopeFactory, ILogger
 
     private async Task NotifyAsync(CancellationToken ct)
     {
+        var announcements = await CollectAsync(ct);
+        if (announcements.Count == 0)
+            return;
+
+        var summary = await TransactionalJobUnit.RunEachAsync<
+            AppointmentStartingSoonIntegrationEvent,
+            CalendarDbContext
+        >(
+            scopeFactory,
+            announcements,
+            async (announcement, unit, _) =>
+            {
+                await unit.PublishAsync(announcement);
+                return true;
+            },
+            logger,
+            ct
+        );
+
+        Forget();
+
+        if (summary.Committed > 0)
+            logger.LogInformation("StartingSoonJob announced {Count} appointment(s) starting soon.", summary.Committed);
+    }
+
+    /// <summary>Lectura sin escribir nada: lo que hay que anunciar en esta pasada.</summary>
+    private async Task<List<AppointmentStartingSoonIntegrationEvent>> CollectAsync(CancellationToken ct)
+    {
         using var scope = scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<CalendarDbContext>();
-        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-        var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
-
-        using var correlationScope = correlation.Push(Guid.NewGuid().ToString("N"));
+        var correlationId = Guid.NewGuid().ToString("N");
 
         var from = DateTime.UtcNow + Lead;
         var to = from + Interval;
 
-        var appointments = await Candidates(context).ToListAsync(ct);
+        var announcements = new List<AppointmentStartingSoonIntegrationEvent>();
+        foreach (var appointment in await Candidates(context).ToListAsync(ct))
+            announcements.AddRange(AnnouncementsFor(appointment, from, to, correlationId));
 
-        var sent = 0;
-        foreach (var appointment in appointments)
-            sent += await NotifyForAsync(appointment, from, to, bus, correlation);
-
-        Forget();
-
-        if (sent > 0)
-            logger.LogInformation("StartingSoonJob announced {Count} appointment(s) starting soon.", sent);
+        return announcements;
     }
 
     /// <summary>
@@ -96,14 +119,15 @@ internal sealed class StartingSoonJob(IServiceScopeFactory scopeFactory, ILogger
             .Include(a => a.Exceptions)
             .Where(a => a.Status != AppointmentStatus.Cancelled);
 
-    private async Task<int> NotifyForAsync(
+    private List<AppointmentStartingSoonIntegrationEvent> AnnouncementsFor(
         Appointment appointment,
         DateTime from,
         DateTime to,
-        IMessageBus bus,
-        ICorrelationContext correlation
+        string correlationId
     )
     {
+        var announcements = new List<AppointmentStartingSoonIntegrationEvent>();
+
         var userIds = new List<Guid>();
         foreach (var attendee in appointment.Attendees)
         {
@@ -112,34 +136,31 @@ internal sealed class StartingSoonJob(IServiceScopeFactory scopeFactory, ILogger
         }
 
         if (userIds.Count == 0)
-            return 0;
+            return announcements;
 
         var occurrences = OccurrenceExpander.Expand(appointment, from, to);
         if (occurrences.IsFailure)
-            return 0;
+            return announcements;
 
-        var sent = 0;
         foreach (var occurrence in occurrences.Value)
         {
             var targetId = OccurrenceTargetId.For(appointment.Id, occurrence.OriginalStartUtc);
             if (!published.Add(targetId))
                 continue;
 
-            await bus.PublishAsync(
+            announcements.Add(
                 new AppointmentStartingSoonIntegrationEvent
                 {
                     TenantId = appointment.TenantId,
-                    CorrelationId = correlation.CorrelationId,
+                    CorrelationId = correlationId,
                     AppointmentId = appointment.Id,
                     StartUtc = occurrence.StartUtc,
                     AttendeeUserIds = userIds,
                 }
             );
-
-            sent++;
         }
 
-        return sent;
+        return announcements;
     }
 
     /// <summary>

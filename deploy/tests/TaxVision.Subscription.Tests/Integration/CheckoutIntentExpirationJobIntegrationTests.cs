@@ -88,7 +88,9 @@ public sealed class CheckoutIntentExpirationJobIntegrationTests : IAsyncLifetime
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<SubscriptionDbContext>());
         services.AddScoped<ICorrelationContext, FakeCorrelationContext>();
         services.AddSingleton<IHostedCheckoutCancellationClient>(cancellation);
-        services.AddSingleton<IMessageBus>(new CapturingMessageBus());
+        // BB-3: cada intención es una unidad con outbox.
+        RecordingSubscriptionOutbox.AddTo(services, new OutboxRecording());
+        services.AddScoped<BuildingBlocks.Tenancy.ITenantContext, SettableTenantContext>();
         await using var provider = services.BuildServiceProvider();
         var job = new CheckoutIntentExpirationJob(
             provider.GetRequiredService<IServiceScopeFactory>(),

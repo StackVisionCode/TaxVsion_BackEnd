@@ -44,9 +44,7 @@ public static class DeleteTaskHandler
 
         // Borrar la instancia abierta libera la serie y siembra la siguiente: para cortar la serie hay
         // que pausarla o terminarla, no borrar su ocurrencia.
-        var next = await seriesMaterializer.ApplyInstanceClosedAsync(found.Value, null, ct);
-        if (next is not null)
-            await TaskDueReminder.PublishIfDueAsync(next, bus, correlation);
+        await seriesMaterializer.ApplyInstanceClosedAsync(found.Value, null, ct);
         await bus.PublishAsync(TaskReminderContracts.Closed(found.Value, "deleted", correlation.CorrelationId));
 
         await hierarchy.DeleteWithDescendantsAsync(command.TenantId, command.TaskId, command.ByUserId, ct);

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 /// consume para mantener una proyección local, de forma que el consumer del evento de
 /// renovación decida sin ir contra Subscription por M2M en cada cobro.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantBillingPreferenceChangedIntegrationEvent")]
 public sealed record TenantBillingPreferenceChangedIntegrationEvent : IntegrationEvent
 {
     /// <summary>"Automatic" o "Manual" — convención stringificada del enum del dominio para

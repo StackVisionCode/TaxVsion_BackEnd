@@ -70,28 +70,16 @@ public sealed class ReminderArchitectureTests
     /// El aggregate decide cuándo disparar y cuándo descartar; traducir eso a triggers es de
     /// Infrastructure. Si Domain llegara a referenciar Quartz o EF, esa decisión de negocio quedaría
     /// imposible de probar sin scheduler ni base de datos, que es justo lo que hoy la hace barata.
+    /// EF y Application→Infrastructure los vigila <see cref="ReminderLayeringTests"/> (BB-6).
     /// </summary>
     [Theory]
     [InlineData("Quartz")]
-    [InlineData("Microsoft.EntityFrameworkCore")]
     [InlineData("TaxVision.Reminder.Infrastructure")]
     public void Domain_should_not_depend_on_infrastructure_concerns(string forbiddenNamespace)
     {
         var result = Types.InAssembly(DomainAssembly).ShouldNot().HaveDependencyOn(forbiddenNamespace).GetResult();
 
         Assert.True(result.IsSuccessful, $"Domain types depending on {forbiddenNamespace}: " + Describe(result));
-    }
-
-    [Fact]
-    public void Application_should_not_depend_on_infrastructure()
-    {
-        var result = Types
-            .InAssembly(ApplicationAssembly)
-            .ShouldNot()
-            .HaveDependencyOn("TaxVision.Reminder.Infrastructure")
-            .GetResult();
-
-        Assert.True(result.IsSuccessful, "Application types depending on Infrastructure: " + Describe(result));
     }
 
     /// <summary>

@@ -55,16 +55,7 @@ public static class CreateCustomerHandler
                     )
                 );
 
-            return await OverwriteAsync(
-                match.ExistingCustomerId,
-                cmd,
-                vo,
-                repository,
-                unitOfWork,
-                bus,
-                correlation,
-                ct
-            );
+            return await OverwriteAsync(match.ExistingCustomerId, cmd, vo, repository, unitOfWork, ct);
         }
 
         var customerResult = RegisterCustomer(cmd, vo);
@@ -83,13 +74,10 @@ public static class CreateCustomerHandler
             && CanBeAutoAssigned(creator, cmd.TenantId)
             && customer.AssignPreparer(cmd.CreatedByUserId, cmd.CreatedByUserId).IsSuccess;
 
+        // CustomerCreated y el snapshot de asignaciones salen de los eventos de dominio.
         await PersistCustomerAsync(customer, repository, unitOfWork, ct);
-        await PublishCreatedEventAsync(customer, correlation, bus);
         if (autoAssigned)
-        {
             await PublishPreparerAssignedEventAsync(customer, cmd.CreatedByUserId, correlation, bus);
-            await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlation.CorrelationId));
-        }
 
         return Result.Success(MapToResponse(customer));
     }
@@ -98,7 +86,7 @@ public static class CreateCustomerHandler
     /// Le aplica los datos nuevos al cliente que ya estaba, en vez de crear otro.
     ///
     /// <para>
-    /// Publica <c>CustomerUpdated</c> y <b>no</b> <c>CustomerCreated</c>: los siete servicios que
+    /// Anuncia <c>CustomerUpdated</c> (evento de dominio) y <b>no</b> <c>CustomerCreated</c>: los siete servicios que
     /// proyectan el directorio de clientes aplican por fecha, y anunciar como alta lo que fue una
     /// edición les diría que existe un cliente que no nació hoy.
     /// </para>
@@ -109,8 +97,6 @@ public static class CreateCustomerHandler
         CustomerValueObjects vo,
         ICustomerRepository repository,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -123,8 +109,6 @@ public static class CreateCustomerHandler
             return Result.Failure<CustomerResponse>(applied.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-
-        await bus.PublishAsync(CustomerUpdatedEvents.From(existing, cmd.CreatedByUserId, correlation.CorrelationId));
 
         return Result.Success(MapToResponse(existing));
     }
@@ -275,33 +259,6 @@ public static class CreateCustomerHandler
         await repository.AddAsync(customer, ct);
         await unitOfWork.SaveChangesAsync(ct);
     }
-
-    // ============== Fase 4: publicar evento de integracion ==============
-
-    private static Task PublishCreatedEventAsync(
-        CustomerEntity customer,
-        ICorrelationContext correlation,
-        IMessageBus bus
-    ) =>
-        bus.PublishAsync(
-                new CustomerCreatedIntegrationEvent
-                {
-                    TenantId = customer.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    CustomerId = customer.Id,
-                    Kind = customer.Kind.ToString(),
-                    DisplayName = customer.DisplayName,
-                    PrimaryEmail = customer.PrimaryEmail.Value,
-                    PrimaryPhone = customer.PrimaryPhone?.E164Value,
-                    Language = customer.Language.ToString(),
-                    EmailEnabled = customer.ContactPolicy.EmailEnabled,
-                    SmsEnabled = customer.ContactPolicy.SmsEnabled,
-                    OccupationId = customer.OccupationId,
-                    AvatarFileId = customer.ProfilePictureFileId,
-                    CreatedByUserId = customer.CreatedByUserId,
-                }
-            )
-            .AsTask();
 
     // Anuncia el preparador auto-asignado en el alta (mismo evento que el endpoint de asignar), para que
     // chat y las proyecciones de visibilidad downstream conozcan al responsable del cliente nuevo.

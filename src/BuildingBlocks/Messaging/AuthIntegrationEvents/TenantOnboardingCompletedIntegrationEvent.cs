@@ -1,4 +1,5 @@
 using Wolverine.Persistence.Sagas;
+using Wolverine.Attributes;
 
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
@@ -11,6 +12,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// (fin de la saga de Wolverine) — otros servicios (p.ej. Notification, para el email de
 /// bienvenida) pueden suscribirse a este evento sin acoplarse a la Saga.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantOnboardingCompletedIntegrationEvent")]
 public sealed record TenantOnboardingCompletedIntegrationEvent : IntegrationEvent
 {
     [SagaIdentity]

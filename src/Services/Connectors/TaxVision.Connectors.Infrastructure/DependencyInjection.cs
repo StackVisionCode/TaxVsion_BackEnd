@@ -17,6 +17,7 @@ using TaxVision.Connectors.Application.RateLimiting.Abstractions;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Shared;
+using TaxVision.Connectors.Infrastructure.Accounts;
 using TaxVision.Connectors.Infrastructure.Jobs;
 using TaxVision.Connectors.Infrastructure.Locking;
 using TaxVision.Connectors.Infrastructure.OAuth;
@@ -136,6 +137,7 @@ public static class DependencyInjection
         // Admin-consent fallback (D3 §12.6) — solo Graph, mismo cliente HTTP tipado ya registrado arriba.
         services.AddScoped<IMicrosoftAdminConsentClient>(sp => sp.GetRequiredService<MicrosoftOAuthClient>());
 
+        services.AddScoped<IMailboxFailureUnit, MailboxFailureUnit>();
         services.AddScoped<IOAuthTokenManager, OAuthTokenManager>();
         services.AddHostedService<ProactiveTokenRefreshJob>();
 

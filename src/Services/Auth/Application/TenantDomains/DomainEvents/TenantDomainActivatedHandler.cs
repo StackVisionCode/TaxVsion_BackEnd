@@ -14,12 +14,11 @@ namespace TaxVision.Auth.Application.TenantDomains.DomainEvents;
 /// </summary>
 public static class TenantDomainActivatedHandler
 {
-    public static async Task Handle(
+    public static async Task<OutgoingMessages> Handle(
         TenantDomainActivated evt,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -40,23 +39,22 @@ public static class TenantDomainActivatedHandler
 
         // Verified + Activated: Cloudflare confirmó la validación DNS/TLS y, en el
         // mismo paso, el estado propio pasó a Active (ver ICloudflareProvisioningClient, ACL).
-        await bus.PublishAsync(
+        return
+        [
             new TenantDomainVerifiedIntegrationEvent
             {
                 TenantId = evt.TenantId,
                 DomainId = evt.DomainId,
                 Host = evt.Host,
                 CorrelationId = correlation.CorrelationId,
-            }
-        );
-        await bus.PublishAsync(
+            },
             new TenantDomainActivatedIntegrationEvent
             {
                 TenantId = evt.TenantId,
                 DomainId = evt.DomainId,
                 Host = evt.Host,
                 CorrelationId = correlation.CorrelationId,
-            }
-        );
+            },
+        ];
     }
 }

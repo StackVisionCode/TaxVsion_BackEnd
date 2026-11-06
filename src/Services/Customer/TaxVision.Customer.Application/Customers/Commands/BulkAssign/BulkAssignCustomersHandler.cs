@@ -85,12 +85,7 @@ public static class BulkAssignCustomersHandler
                 }
             );
 
-        // Snapshot por cliente afectado — fuente canónica para las proyecciones de visibilidad downstream.
-        var affected = new HashSet<Guid>(madePrimary);
-        affected.UnionWith(granted);
-        foreach (var customer in customers.Where(c => affected.Contains(c.Id)))
-            await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlation.CorrelationId));
-
+        // El snapshot por cliente afectado sale de su evento de dominio.
         var notFound = uniqueIds.Count - customers.Count;
         return Result.Success(
             new BulkAssignResponse(uniqueIds.Count, madePrimary.Count + granted.Count, already, notFound)

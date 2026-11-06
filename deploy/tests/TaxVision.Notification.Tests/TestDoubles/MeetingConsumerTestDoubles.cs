@@ -22,6 +22,21 @@ internal sealed class RecordingEmailGateway : IEmailDispatchGateway
 
 internal sealed class RecordingScribeRenderClient : IScribeRenderClient
 {
+    public Task<Result<ScribeRenderedEmail>> RenderAsync(
+        string eventKey,
+        Guid tenantId,
+        IReadOnlyDictionary<string, object?> variables,
+        ScribeRenderAudience audience,
+        CancellationToken ct = default
+    ) => RenderAsync(eventKey, tenantId, variables, ct);
+
+    public Task<Result<ScribeRenderedText>> RenderTextAsync(
+        string eventKey,
+        Guid tenantId,
+        IReadOnlyDictionary<string, object?> variables,
+        CancellationToken ct = default
+    ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
     public IReadOnlyDictionary<string, object?> LastVariables { get; private set; } = new Dictionary<string, object?>();
     public string? LastEventKey { get; private set; }
     public int Calls { get; private set; }
@@ -42,6 +57,15 @@ internal sealed class RecordingScribeRenderClient : IScribeRenderClient
 
 internal sealed class RecordingNotificationLogs : INotificationLogRepository
 {
+    public Task<NotificationLog?> GetByRelatedEventAsync(
+        Guid tenantId,
+        Guid relatedEventId,
+        string kind,
+        NotificationChannel channel,
+        string recipient,
+        CancellationToken ct = default
+    ) => Task.FromResult<NotificationLog?>(null);
+
     public List<NotificationLog> Logs { get; } = [];
 
     public Task AddAsync(NotificationLog log, CancellationToken ct = default)

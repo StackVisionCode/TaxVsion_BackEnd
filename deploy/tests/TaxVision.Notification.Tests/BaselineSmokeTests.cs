@@ -328,12 +328,36 @@ public sealed class BaselineSmokeTests
             string eventKey,
             Guid tenantId,
             IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ct);
+
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success(new ScribeRenderedEmail("Test subject", "<p>Test body</p>", "Test body")));
     }
 
     private sealed class RecordingNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public List<NotificationLog> Logs { get; } = new();
 
         public Task AddAsync(NotificationLog log, CancellationToken ct = default)
@@ -407,6 +431,9 @@ public sealed class BaselineSmokeTests
 
     private sealed class EmptyPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public static readonly EmptyPushDeviceTokenRepository Instance = new();
 
         public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;

@@ -1,5 +1,7 @@
+using BuildingBlocks.Common;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Roles.Queries;
+using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
@@ -171,6 +173,36 @@ public sealed class RoleCatalogQueriesTests
 
     private sealed class StubRoleRepository : IRoleRepository
     {
+        public Task<IReadOnlyList<UserPermissionDeny>> GetActiveDeniesAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserPermissionDeny>>([]);
+
+        public Task<IReadOnlyList<(Guid UserId, Guid TenantId)>> GetUsersWithExpiredDeniesAsync(
+            DateTime nowUtc,
+            int take,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<(Guid UserId, Guid TenantId)>>([]);
+
+        public Task<int> RemoveExpiredDeniesAsync(Guid userId, DateTime nowUtc, CancellationToken ct = default) =>
+            Task.FromResult(0);
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>> GetRolesByUsersAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>>(
+                new Dictionary<Guid, IReadOnlyList<Role>>()
+            );
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetDeniedPermissionIdsByUsersAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(
+                new Dictionary<Guid, IReadOnlyList<Guid>>()
+            );
+
         public IReadOnlyList<Permission> Catalog { get; init; } = [];
         public Role? Role { get; init; }
 
@@ -244,6 +276,35 @@ public sealed class RoleCatalogQueriesTests
 
     private sealed class StubUserRepository : IUserRepository
     {
+        public Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<TenantOwnerReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<CustomerPortalAccountReconciliationResponse>> ListPortalAccountsForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<StaffUserReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<UserDirectoryReconciliationResponse>> ListUsersForDirectoryReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<UserDirectoryReconciliationResponse>([], page, size, 0));
+
         public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

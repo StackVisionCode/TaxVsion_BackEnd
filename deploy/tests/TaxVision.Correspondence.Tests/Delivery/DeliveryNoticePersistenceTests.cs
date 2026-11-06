@@ -28,7 +28,6 @@ public sealed class DeliveryNoticePersistenceTests
             new DraftRepository(db),
             new EmailThreadRepository(db),
             new DeliveryNoticeRepository(db),
-            new IncomingEmailRepository(db),
             db,
             new FakeMessageBus(),
             new FakeCorrelationContext(),

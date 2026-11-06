@@ -1,12 +1,11 @@
-using BuildingBlocks.Persistence;
-using Microsoft.EntityFrameworkCore;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Application.Seats;
 using TaxVision.Subscription.Domain.Seats;
-using Wolverine;
+using TaxVision.Subscription.Infrastructure.Persistence;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -51,65 +50,91 @@ public sealed class SeatCheckoutReconciliationJob(
             );
     }
 
-    // Cada intención en su propio scope: un fallo deja sucio solo su DbContext.
+    // Por intención: la consulta a PaymentApp va fuera de la transacción; después, una unidad (BB-3) en la que los
+    // asientos, la intención y el recálculo se confirman juntos. Un fallo o un conflicto no arrastra a las demás.
     internal async Task<int> ReconcileAsync(IReadOnlyList<Guid> intentIds, DateTime nowUtc, CancellationToken ct)
     {
         var provisionedCount = 0;
         foreach (var intentId in intentIds)
         {
-            using var itemScope = ScopeFactory.CreateScope();
-            var services = itemScope.ServiceProvider;
-            var jobLogger = services.GetRequiredService<ILogger<SeatCheckoutReconciliationJob>>();
-            try
-            {
-                if (await ReconcileOneAsync(intentId, services, jobLogger, nowUtc, ct))
-                    provisionedCount++;
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                jobLogger.LogInformation("Seat checkout intent {IntentId} provisioned by another writer.", intentId);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                jobLogger.LogError(ex, "Seat checkout reconcile failed for intent {IntentId}.", intentId);
-            }
+            var payment = await ReadPaymentStatusAsync(intentId, ct);
+            if (payment is null)
+                continue;
+
+            var provisioned = false;
+            var result = await RunUnitAsync(
+                async (unit, token) =>
+                {
+                    var outcome = await ApplyAsync(unit, intentId, payment, nowUtc, token);
+                    provisioned = outcome == ReconcileOutcome.Provisioned;
+                    return outcome != ReconcileOutcome.Nothing;
+                },
+                ct
+            );
+
+            if (result.Outcome == JobUnitOutcome.Committed && provisioned)
+                provisionedCount++;
+            else if (result.Outcome == JobUnitOutcome.Conflict)
+                Logger.LogInformation("Seat checkout intent {IntentId} provisioned by another writer.", intentId);
+            else if (result.Outcome == JobUnitOutcome.Failed)
+                Logger.LogWarning("Seat checkout reconcile failed for intent {IntentId}.", intentId);
         }
 
         return provisionedCount;
     }
 
-    private static async Task<bool> ReconcileOneAsync(
+    private enum ReconcileOutcome
+    {
+        Nothing,
+        Provisioned,
+        MarkedFailed,
+    }
+
+    private async Task<SeatPaymentStatusResult?> ReadPaymentStatusAsync(Guid intentId, CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var intent = await scope
+                .ServiceProvider.GetRequiredService<ISeatPurchaseIntentRepository>()
+                .GetByIdForProvisioningAsync(intentId, ct);
+            if (intent is not { Status: SeatPurchaseIntentStatus.Pending, SaaSPaymentId: { } paymentId })
+                return null;
+
+            // null: PaymentApp no respondió — se reintenta el próximo tick.
+            return await scope
+                .ServiceProvider.GetRequiredService<ISeatCheckoutPaymentClient>()
+                .GetPaymentStatusAsync(intent.TenantId, paymentId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogError(ex, "Seat checkout reconcile failed for intent {IntentId}.", intentId);
+            return null;
+        }
+    }
+
+    private static async Task<ReconcileOutcome> ApplyAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
         Guid intentId,
-        IServiceProvider services,
-        ILogger logger,
+        SeatPaymentStatusResult status,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
+        var services = unit.Services;
+        var logger = services.GetRequiredService<ILogger<SeatCheckoutReconciliationJob>>();
         var intent = await services
             .GetRequiredService<ISeatPurchaseIntentRepository>()
             .GetByIdForProvisioningAsync(intentId, ct);
         if (intent is null || intent.Status != SeatPurchaseIntentStatus.Pending)
-            return false;
+            return ReconcileOutcome.Nothing;
 
-        if (intent.SaaSPaymentId is not { } paymentId)
-            return false;
-
-        var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
-        var seats = services.GetRequiredService<ISubscriptionSeatRepository>();
-        var payments = services.GetRequiredService<ISeatCheckoutPaymentClient>();
-        var audit = services.GetRequiredService<ISubscriptionAuditLogWriter>();
-        var metrics = services.GetRequiredService<ISubscriptionMetrics>();
-        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
-        var bus = services.GetRequiredService<IMessageBus>();
-
-        var status = await payments.GetPaymentStatusAsync(intent.TenantId, paymentId, ct);
-        if (status is null)
-            return false; // PaymentApp no respondió — se reintenta el próximo tick
-
+        unit.UseTenant(intent.TenantId);
         if (string.Equals(status.Status, "Succeeded", StringComparison.OrdinalIgnoreCase))
         {
-            var subscription = await subscriptions.GetByTenantIdAsync(intent.TenantId, ct);
+            var subscription = await services
+                .GetRequiredService<ISubscriptionRepository>()
+                .GetByTenantIdAsync(intent.TenantId, ct);
             if (subscription is null)
             {
                 logger.LogWarning(
@@ -117,15 +142,15 @@ public sealed class SeatCheckoutReconciliationJob(
                     intent.TenantId,
                     intent.Id
                 );
-                return false;
+                return ReconcileOutcome.Nothing;
             }
 
             var provisioned = await SeatCheckoutProvisioning.TryProvisionAsync(
                 intent,
                 subscription,
-                seats,
-                audit,
-                metrics,
+                services.GetRequiredService<ISubscriptionSeatRepository>(),
+                services.GetRequiredService<ISubscriptionAuditLogWriter>(),
+                services.GetRequiredService<ISubscriptionMetrics>(),
                 correlationId: intent.Id.ToString("N"),
                 provisioningMethod: "CheckoutReconcile",
                 paidAtUtc: status.PaidAtUtc ?? nowUtc,
@@ -133,12 +158,9 @@ public sealed class SeatCheckoutReconciliationJob(
                 ct
             );
             if (!provisioned)
-                return false;
+                return ReconcileOutcome.Nothing;
 
-            await unitOfWork.SaveChangesAsync(ct);
-            bus.TenantId = intent.TenantId.ToString();
-            await bus.RecalculateEntitlementsSafelyAsync(intent.TenantId, logger, ct);
-
+            await unit.PublishAsync(new RecalculateEntitlementsCommand(intent.TenantId));
             logger.LogInformation(
                 "Reconcile provisioned {Quantity} {SeatType} seat(s) for tenant {TenantId} from paid-but-pending intent {IntentId}.",
                 intent.Quantity,
@@ -146,7 +168,7 @@ public sealed class SeatCheckoutReconciliationJob(
                 intent.TenantId,
                 intent.Id
             );
-            return true;
+            return ReconcileOutcome.Provisioned;
         }
 
         if (
@@ -155,10 +177,9 @@ public sealed class SeatCheckoutReconciliationJob(
         )
         {
             var failed = intent.MarkFailed($"Payment {status.Status} (reconciled).", nowUtc);
-            if (failed.IsSuccess)
-                await unitOfWork.SaveChangesAsync(ct);
+            return failed.IsSuccess ? ReconcileOutcome.MarkedFailed : ReconcileOutcome.Nothing;
         }
 
-        return false;
+        return ReconcileOutcome.Nothing;
     }
 }

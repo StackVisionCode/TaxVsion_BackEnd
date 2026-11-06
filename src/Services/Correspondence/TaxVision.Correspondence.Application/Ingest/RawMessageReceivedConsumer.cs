@@ -1,15 +1,12 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Correspondence.Application.Abstractions;
-using TaxVision.Correspondence.Application.Threads;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Ingest;
 
@@ -31,7 +28,6 @@ public static class RawMessageReceivedConsumer
         IUnmatchedIncomingEmailRepository unmatched,
         IOptions<CorrespondenceIngestOptions> options,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         IIngestMetrics metrics,
         ICorrelationContext correlation,
         ILogger<IncomingEmail> logger,
@@ -92,7 +88,6 @@ public static class RawMessageReceivedConsumer
                 threadResolver,
                 unmatched,
                 unitOfWork,
-                bus,
                 metrics,
                 logger,
                 ct
@@ -248,7 +243,6 @@ public static class RawMessageReceivedConsumer
         ThreadResolver threadResolver,
         IUnmatchedIncomingEmailRepository unmatched,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         IIngestMetrics metrics,
         ILogger<IncomingEmail> logger,
         CancellationToken ct
@@ -400,23 +394,14 @@ public static class RawMessageReceivedConsumer
         if (evt.IsReplay)
             return;
 
-        await bus.PublishAsync(
-            new CorrespondenceCustomerEmailReceivedIntegrationEvent
-            {
-                TenantId = evt.TenantId,
-                CorrelationId = evt.CorrelationId,
-                CustomerId = customerId,
-                IncomingEmailId = email.Id,
-                EmailThreadId = thread.Id,
-                Subject = message.Subject,
-                AccountId = evt.MailboxOwnershipKnown ? evt.AccountId : null,
-                MailboxOwnerUserId = evt.MailboxOwnershipKnown ? evt.MailboxOwnerUserId : null,
-            }
+        email.NotifyReceived(
+            evt.MailboxOwnershipKnown ? evt.AccountId : null,
+            evt.MailboxOwnershipKnown ? evt.MailboxOwnerUserId : null,
+            evt.CorrelationId
         );
-
         // El hilo archivado volvió al Inbox: mismo aviso que el desarchivado manual.
         if (reopened)
-            await ThreadStateNotifier.PublishAsync(bus, incomingEmails, thread, null, evt.CorrelationId, ct);
+            thread.NotifyStateChanged(correlationId: evt.CorrelationId);
     }
 
     private static string? JoinReferences(IReadOnlyList<string>? references) =>

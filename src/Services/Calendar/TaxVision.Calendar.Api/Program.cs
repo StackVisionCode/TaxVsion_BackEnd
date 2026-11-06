@@ -123,6 +123,14 @@ builder.Host.UseWolverine(options =>
 
     options.ApplyStandardFailurePolicies();
 
+    // BB-1: los eventos de la cita salen con su transacción y sus handlers devuelven los avisos. En serie, para
+    // que los avisos de una misma cita salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // BB-2: lo que entra a una cola local sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
+
     // Restaura el TenantContext dentro del scope que Wolverine crea para cada handler.
     options
         .Policies.ForMessagesOfType<IIntegrationEvent>()

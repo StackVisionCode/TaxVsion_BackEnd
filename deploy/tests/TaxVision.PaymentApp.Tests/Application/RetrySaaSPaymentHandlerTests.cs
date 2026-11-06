@@ -21,7 +21,6 @@ public sealed class RetrySaaSPaymentHandlerTests
     {
         var payment = DueFailedPayment();
         var payments = new FakeSaaSPaymentRepository { ById = payment };
-        var bus = new CapturingMessageBus();
 
         // FakePaymentProvider lanza si se le pide crear customer o cobrar: el test falla si se llama.
         var result = await RetrySaaSPaymentHandler.Handle(
@@ -31,7 +30,6 @@ public sealed class RetrySaaSPaymentHandlerTests
             new FakePaymentAdapterFactory(new FakePaymentProvider()),
             new FakePaymentAuditLogWriter(),
             new FakeUnitOfWork(),
-            bus,
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
@@ -42,8 +40,11 @@ public sealed class RetrySaaSPaymentHandlerTests
         Assert.Equal(PaymentStatus.Failed, payment.Status);
         Assert.Equal(SaaSPaymentChargeOutcome.MissingPaymentMethodCode, payment.FailureCode);
         Assert.Null(payment.NextRetryAtUtc);
-        var failed = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
+        // PAY-BB1: un solo aviso de fallo por reintento, devuelto por el handler del evento de dominio.
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
+        var failed = Assert.IsType<SubscriptionRenewalPaymentFailedIntegrationEvent>(Assert.Single(emitted));
         Assert.False(failed.WillRetry);
+        Assert.Equal(2, failed.AttemptNumber);
     }
 
     [Theory]

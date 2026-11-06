@@ -1,6 +1,5 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
-using TaxVision.Reminder.Domain.Reminders.Events;
 using TaxVision.Reminder.Domain.ValueObjects;
 
 namespace TaxVision.Reminder.Domain.Reminders;
@@ -10,14 +9,14 @@ namespace TaxVision.Reminder.Domain.Reminders;
 /// y apunta a cero o un objetivo por ID opaco.
 ///
 /// <para>
-/// <b>El aggregate no conoce Quartz.</b> Sólo junta hechos de dominio; traducirlos a
+/// <b>El aggregate no conoce Quartz.</b> Sólo cambia de estado; traducirlo a
 /// <c>ScheduleJob</c>/<c>RescheduleJob</c>/<c>DeleteJob</c> es de Infrastructure. Eso es lo que lo
 /// mantiene testeable sin scheduler y sin base de datos.
 /// </para>
 ///
 /// <para>
-/// <b>Ningún método recibe un <see cref="ReminderStatus"/>.</b> Cada transición tiene su método, su
-/// validación de origen y su evento — el incidente que fundamenta esta regla en este monorepo es
+/// <b>Ningún método recibe un <see cref="ReminderStatus"/>.</b> Cada transición tiene su método y su
+/// validación de origen — el incidente que fundamenta esta regla en este monorepo es
 /// <c>Customer.ChangeStatus(...)</c>, que hubo que partir retroactivamente en tres porque escondía
 /// cinco reglas de negocio detrás de un <c>switch</c>.
 /// </para>
@@ -92,9 +91,6 @@ public sealed class Reminder : AggregateRoot, IHasOwner
         };
         reminder.SetTenant(tenantId);
 
-        reminder.AddDomainEvent(
-            new ReminderScheduledDomainEvent(reminder.Id, tenantId, userId, target.Category, schedule.FireAtUtc)
-        );
         return Result.Success(reminder);
     }
 
@@ -114,7 +110,6 @@ public sealed class Reminder : AggregateRoot, IHasOwner
 
         Status = ReminderStatus.Fired;
         FiredAtUtc = nowUtc;
-        AddDomainEvent(new ReminderFiredDomainEvent(Id, TenantId, UserId, Target.Category, nowUtc));
         return Result.Success();
     }
 
@@ -138,13 +133,10 @@ public sealed class Reminder : AggregateRoot, IHasOwner
         if (newSchedule.IsFailure)
             return Result.Failure(newSchedule.Error);
 
-        var previousFireAtUtc = Schedule.FireAtUtc;
         Schedule = newSchedule.Value;
         Status = ReminderStatus.Snoozed;
         SnoozeCount++;
 
-        AddDomainEvent(new ReminderSnoozedDomainEvent(Id, TenantId, SnoozeCount, Schedule.FireAtUtc));
-        AddDomainEvent(new ReminderRescheduledDomainEvent(Id, TenantId, previousFireAtUtc, Schedule.FireAtUtc));
         return Result.Success();
     }
 
@@ -156,7 +148,6 @@ public sealed class Reminder : AggregateRoot, IHasOwner
 
         Status = ReminderStatus.Dismissed;
         ResolvedAtUtc = nowUtc;
-        AddDomainEvent(new ReminderDismissedDomainEvent(Id, TenantId, nowUtc));
         return Result.Success();
     }
 
@@ -175,7 +166,6 @@ public sealed class Reminder : AggregateRoot, IHasOwner
         Status = ReminderStatus.Cancelled;
         CancellationReason = reason.Trim();
         ResolvedAtUtc = nowUtc;
-        AddDomainEvent(new ReminderCancelledDomainEvent(Id, TenantId, CancellationReason, nowUtc));
         return Result.Success();
     }
 
@@ -205,14 +195,12 @@ public sealed class Reminder : AggregateRoot, IHasOwner
         if (recalculated.IsFailure)
             return Result.Failure(recalculated.Error);
 
-        var previousFireAtUtc = Schedule.FireAtUtc;
         Schedule = recalculated.Value;
 
         if (Schedule.FireAtUtc <= nowUtc)
             return TransitionToMissed(nowUtc);
 
         Status = ReminderStatus.Scheduled;
-        AddDomainEvent(new ReminderRescheduledDomainEvent(Id, TenantId, previousFireAtUtc, Schedule.FireAtUtc));
         return Result.Success();
     }
 
@@ -252,10 +240,8 @@ public sealed class Reminder : AggregateRoot, IHasOwner
         if (Status is not (ReminderStatus.Scheduled or ReminderStatus.Snoozed))
             return Result.Failure(ReminderErrors.InvalidTransition(Status, nameof(ChangeSchedule)));
 
-        var previousFireAtUtc = Schedule.FireAtUtc;
         Schedule = newSchedule;
         Status = ReminderStatus.Scheduled;
-        AddDomainEvent(new ReminderRescheduledDomainEvent(Id, TenantId, previousFireAtUtc, Schedule.FireAtUtc));
         return Result.Success();
     }
 
@@ -271,10 +257,8 @@ public sealed class Reminder : AggregateRoot, IHasOwner
 
     private Result TransitionToMissed(DateTime nowUtc)
     {
-        var expectedFireAtUtc = Schedule.FireAtUtc;
         Status = ReminderStatus.Missed;
         ResolvedAtUtc = nowUtc;
-        AddDomainEvent(new ReminderMissedDomainEvent(Id, TenantId, expectedFireAtUtc, nowUtc));
         return Result.Success();
     }
 }

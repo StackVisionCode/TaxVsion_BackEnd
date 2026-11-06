@@ -1,7 +1,5 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
-using Wolverine;
 
 namespace TaxVision.Campaigns.Application.Runs.Commands;
 
@@ -9,7 +7,7 @@ namespace TaxVision.Campaigns.Application.Runs.Commands;
 public sealed record SweepStaleCampaignRunCommand(Guid TenantId, Guid RunId);
 
 /// <summary>
-/// Una unidad por transacción con outbox (CMP-03): si el run cierra, publica <c>run.completed</c> en la misma
+/// Una unidad por transacción con outbox (CMP-03): si el run cierra, <c>run.completed</c> sale con esa misma
 /// transacción, y eso liquida el Wallet y libera el agendado. Idempotente: un run ya cerrado no cambia.
 /// </summary>
 public static class SweepStaleCampaignRunHandler
@@ -18,8 +16,6 @@ public static class SweepStaleCampaignRunHandler
         SweepStaleCampaignRunCommand command,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -27,8 +23,6 @@ public static class SweepStaleCampaignRunHandler
         if (run is null || !run.ExpireStaleUnits(DateTime.UtcNow))
             return;
 
-        // Guardar antes de publicar: el sobre sale con el commit de la misma transacción.
         await unitOfWork.SaveChangesAsync(ct);
-        await StartCampaignRunHandler.PublishCompletedAsync(bus, run, correlation.CorrelationId);
     }
 }

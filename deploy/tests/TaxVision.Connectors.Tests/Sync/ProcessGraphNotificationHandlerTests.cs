@@ -257,7 +257,7 @@ public class ProcessGraphNotificationHandlerTests
     {
         var account = CreateActiveAccount();
         if (status == TenantEmailAccountStatus.Error)
-            account.MarkError(Now);
+            account.MarkError(AccountErrors.RefreshRejected, Now);
         else
             account.Disconnect(Now);
         var accountRepository = new FakeTenantEmailAccountRepository();

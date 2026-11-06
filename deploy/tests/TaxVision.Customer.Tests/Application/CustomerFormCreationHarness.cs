@@ -12,6 +12,7 @@ using TaxVision.Customer.Application.Imports.Dtos;
 using TaxVision.Customer.Domain.Employees;
 using TaxVision.Customer.Domain.Permissions;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -91,8 +92,10 @@ internal sealed class CustomerFormCreationHarness
         };
     }
 
-    public Task SendAsync(CustomerCreationFromFormRequestedIntegrationEvent command) =>
-        CustomerCreationFromFormRequestedConsumer.Handle(
+    // Lo emitido por el consumer (también lo de los eventos de dominio) sale por el bus como en Wolverine.
+    public async Task SendAsync(CustomerCreationFromFormRequestedIntegrationEvent command)
+    {
+        await CustomerCreationFromFormRequestedConsumer.Handle(
             command,
             Codec,
             Repository,
@@ -106,6 +109,8 @@ internal sealed class CustomerFormCreationHarness
             Logger,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(Bus, Repository, Repository.All);
+    }
 
     public static List<ClientFormTargetValue> IndividualValues(string email = "ada@example.com") =>
         [
@@ -132,6 +137,9 @@ internal sealed class CustomerFormCreationHarness
 
         public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct) =>
             Task.FromResult(All.Find(c => c.Id == id));
+
+        public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+            Task.FromResult(All.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));
 
         public Task<Guid?> FindIdByOriginAsync(
             Guid tenantId,
@@ -172,6 +180,60 @@ internal sealed class CustomerFormCreationHarness
             Guid preparerUserId,
             int batchSize,
             Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeCustomerId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindCustomerIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeCustomerId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeRelationId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindRelationIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeRelationId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public Task<IReadOnlyList<DomainCustomer>> ListNonPrimaryAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<int> CountActiveByAssignedPreparerAsync(Guid tenantId, Guid preparerUserId, CancellationToken ct) =>
+            Task.FromResult(0);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListArchivedAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
+            Task.FromResult(OffboardingClientCounts.None);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> ids,
             CancellationToken ct
         ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
     }

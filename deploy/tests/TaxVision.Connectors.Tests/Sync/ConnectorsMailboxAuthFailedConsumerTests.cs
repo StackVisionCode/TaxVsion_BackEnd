@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
+using TaxVision.Connectors.Tests.Accounts;
 using TaxVision.Connectors.Tests.OAuth;
 
 namespace TaxVision.Connectors.Tests.Sync;
@@ -37,7 +38,6 @@ public sealed class ConnectorsMailboxAuthFailedConsumerTests
             },
             _repository,
             _unitOfWork,
-            _bus,
             new FakeCorrelationContext(),
             NullLogger.Instance,
             CancellationToken.None
@@ -53,7 +53,9 @@ public sealed class ConnectorsMailboxAuthFailedConsumerTests
 
         Assert.Equal(TenantEmailAccountStatus.Error, account.Status);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
-        var notice = Assert.IsType<ConnectorsOAuthRefreshFailedIntegrationEvent>(Assert.Single(_bus.Published));
+        var notice = Assert.IsType<ConnectorsOAuthRefreshFailedIntegrationEvent>(
+            Assert.Single(DomainEventReplay.Emitted(_bus, account))
+        );
         Assert.Equal(account.Id, notice.AccountId);
         Assert.Equal("listener-1", notice.CorrelationId);
     }

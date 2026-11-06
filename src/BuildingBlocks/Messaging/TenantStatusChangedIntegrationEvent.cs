@@ -1,5 +1,8 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging;
 
+[MessageIdentity("BuildingBlocks.Messaging.TenantStatusChangedIntegrationEvent")]
 public sealed record TenantStatusChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid ChangedTenantId { get; init; }

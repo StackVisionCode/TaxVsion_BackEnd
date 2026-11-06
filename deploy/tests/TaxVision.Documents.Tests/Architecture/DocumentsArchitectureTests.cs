@@ -18,31 +18,26 @@ public sealed class DocumentsArchitectureTests
     private static readonly Assembly ApiAssembly =
         typeof(TaxVision.Documents.Api.Controllers.InternalDocumentBrandingController).Assembly;
 
+    // EF, Wolverine y Application→Infrastructure los vigila DocumentsLayeringTests (BB-6).
     [Fact]
-    public void Domain_should_not_depend_on_Infrastructure_or_EF_or_Wolverine()
+    public void Domain_should_not_depend_on_Infrastructure_or_Minio_or_Playwright()
     {
         var result = Types
             .InAssembly(Domain)
             .Should()
-            .NotHaveDependencyOnAny(
-                "TaxVision.Documents.Infrastructure",
-                "Microsoft.EntityFrameworkCore",
-                "Wolverine",
-                "Minio",
-                "Microsoft.Playwright"
-            )
+            .NotHaveDependencyOnAny("TaxVision.Documents.Infrastructure", "Minio", "Microsoft.Playwright")
             .GetResult();
 
         Assert.True(result.IsSuccessful, Fail(result));
     }
 
     [Fact]
-    public void Application_should_not_depend_on_Api_or_Infrastructure()
+    public void Application_should_not_depend_on_Api()
     {
         var result = Types
             .InAssembly(Application)
             .Should()
-            .NotHaveDependencyOnAny("TaxVision.Documents.Api", "TaxVision.Documents.Infrastructure")
+            .NotHaveDependencyOn("TaxVision.Documents.Api")
             .GetResult();
 
         Assert.True(result.IsSuccessful, Fail(result));

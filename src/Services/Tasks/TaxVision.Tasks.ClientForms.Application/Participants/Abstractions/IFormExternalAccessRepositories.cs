@@ -8,8 +8,7 @@ public interface IFormParticipantRepository
     Task<FormParticipant?> GetUnlinkedByEmailAsync(Guid tenantId, string email, CancellationToken ct = default);
 
     // Todos los participantes del email (vinculados o no): la misma persona puede tener varios.
-    async Task<IReadOnlyList<Guid>> ListIdsByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-        await GetUnlinkedByEmailAsync(tenantId, email, ct) is { } participant ? [participant.Id] : [];
+    Task<IReadOnlyList<Guid>> ListIdsByEmailAsync(Guid tenantId, string email, CancellationToken ct = default);
     void Add(FormParticipant participant);
 
     // Suelta un alta que perdió la carrera contra el índice único, para volver a leer la ganadora.
@@ -27,13 +26,13 @@ public interface IFormIntakeLinkRepository
         Guid tenantId,
         Guid responsibleUserId,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<FormIntakeLink>>([]);
+    );
 
     Task<int> CountNotRevokedByResponsibleAsync(
         Guid tenantId,
         Guid responsibleUserId,
         CancellationToken ct = default
-    ) => Task.FromResult(0);
+    );
     void Add(FormIntakeLink link);
 }
 

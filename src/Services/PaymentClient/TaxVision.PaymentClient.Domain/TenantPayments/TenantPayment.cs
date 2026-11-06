@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.PaymentClient.Domain.TenantPayments.Events;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 
 namespace TaxVision.PaymentClient.Domain.TenantPayments;
@@ -14,7 +15,7 @@ namespace TaxVision.PaymentClient.Domain.TenantPayments;
 /// importa un SDK de provider — solo conoce <see cref="PaymentProviderCode"/> y VOs de
 /// intercambio.
 /// </summary>
-public sealed class TenantPayment : TenantEntity
+public sealed class TenantPayment : AggregateRoot
 {
     private readonly List<TenantPaymentAttempt> _attempts = [];
     private readonly List<RefundLine> _refunds = [];
@@ -152,6 +153,7 @@ public sealed class TenantPayment : TenantEntity
             Payer = PayerDetails.FromReceiptEmail(receiptEmail),
         };
         payment.SetTenant(tenantId);
+        payment.AddDomainEvent(new TenantPaymentSucceededDomainEvent(tenantId, payment.Id, nowUtc));
         return Result.Success(payment);
     }
 
@@ -259,6 +261,7 @@ public sealed class TenantPayment : TenantEntity
         NextActionType = null;
         NextActionUrl = null;
         Touch(actorUserId, paidAtUtc);
+        AddDomainEvent(new TenantPaymentSucceededDomainEvent(TenantId, Id, paidAtUtc));
         return Result.Success();
     }
 

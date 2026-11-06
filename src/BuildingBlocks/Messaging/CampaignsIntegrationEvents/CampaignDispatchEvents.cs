@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.CampaignsIntegrationEvents;
 
 // ---------------------------------------------------------------------------
@@ -8,6 +10,7 @@ namespace BuildingBlocks.Messaging.CampaignsIntegrationEvents;
 // ---------------------------------------------------------------------------
 
 /// <summary><c>campaign.dispatch.requested.v1</c> — pedido de envío de UNA unidad (destinatario/canal).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchRequestedIntegrationEvent")]
 public sealed record CampaignDispatchRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid CampaignId { get; init; }
@@ -31,6 +34,7 @@ public sealed record CampaignDispatchRequestedIntegrationEvent : IntegrationEven
 }
 
 /// <summary><c>campaign.dispatch.result.v1</c> — resultado reportado por el ejecutor de canal.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchResultIntegrationEvent")]
 public sealed record CampaignDispatchResultIntegrationEvent : IntegrationEvent
 {
     public required Guid CampaignId { get; init; }
@@ -42,6 +46,7 @@ public sealed record CampaignDispatchResultIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>campaign.run.started.v1</c> — publicado al arrancar una ejecución.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignRunStartedIntegrationEvent")]
 public sealed record CampaignRunStartedIntegrationEvent : IntegrationEvent
 {
     public required Guid CampaignId { get; init; }
@@ -51,6 +56,7 @@ public sealed record CampaignRunStartedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>campaign.run.completed.v1</c> — publicado al cerrar una ejecución (alimenta reporting y consumidores externos).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignRunCompletedIntegrationEvent")]
 public sealed record CampaignRunCompletedIntegrationEvent : IntegrationEvent
 {
     public required Guid CampaignId { get; init; }

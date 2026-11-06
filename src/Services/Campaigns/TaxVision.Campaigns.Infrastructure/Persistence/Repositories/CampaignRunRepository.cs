@@ -62,6 +62,9 @@ public sealed class CampaignRunRepository(CampaignsDbContext db) : ICampaignRunR
             .Select(r => new StaleRunRef(r.TenantId, r.Id))
             .ToListAsync(ct);
 
+    public Task<bool> ExistsAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
+        db.CampaignRuns.IgnoreQueryFilters().AnyAsync(r => r.TenantId == tenantId && r.Id == runId, ct);
+
     public Task<Guid?> GetScheduleIdAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
         db
             .CampaignRuns.IgnoreQueryFilters()

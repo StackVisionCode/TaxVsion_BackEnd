@@ -45,6 +45,16 @@ public static class RecalculateEntitlementsHandler
             return Result.Failure(rebuilt.Error);
 
         var snapshot = rebuilt.Value;
+        if (command.OnlyIfChanged && previous is not null && HasSameContent(previous, snapshot))
+        {
+            logger.LogDebug(
+                "Entitlement snapshot of tenant {TenantId} is up to date at revision {Revision}.",
+                command.TenantId,
+                previous.RevisionNumber
+            );
+            return Result.Success();
+        }
+
         var changedKeys = ComputeChangedKeys(previous, snapshot);
         var maxStaffUsers = await ComputeMaxStaffUsersAsync(command.TenantId, snapshot, seats, ct);
 
@@ -124,6 +134,33 @@ public static class RecalculateEntitlementsHandler
             values[entry.Key.Value] = entry.Value;
 
         return values;
+    }
+
+    /// <summary>Mismo contenido salvo revisión y fecha de cálculo. El cupo de staff (MaxStaffUsers) no se guarda en el
+    /// snapshot; lo cubren SeatCount y los asientos que ya publicó el cambio que los movió.</summary>
+    private static bool HasSameContent(TenantEntitlementSnapshot previous, TenantEntitlementSnapshot current)
+    {
+        if (
+            previous.PlanCode != current.PlanCode
+            || previous.PlanVersionId != current.PlanVersionId
+            || previous.SubscriptionStatus != current.SubscriptionStatus
+            || previous.SeatCount != current.SeatCount
+            || previous.AvailableSeatCount != current.AvailableSeatCount
+            || previous.Entries.Count != current.Entries.Count
+        )
+            return false;
+
+        var previousEntries = new Dictionary<string, EntitlementEntry>();
+        foreach (var entry in previous.Entries)
+            previousEntries[entry.Key.Value] = entry;
+
+        foreach (var entry in current.Entries)
+        {
+            if (!previousEntries.TryGetValue(entry.Key.Value, out var before) || before != entry)
+                return false;
+        }
+
+        return true;
     }
 
     private static string[] ComputeChangedKeys(TenantEntitlementSnapshot? previous, TenantEntitlementSnapshot current)

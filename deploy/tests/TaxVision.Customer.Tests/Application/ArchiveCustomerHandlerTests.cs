@@ -25,6 +25,7 @@ public sealed class ArchiveCustomerHandlerTests
             new FixedCorrelationContext(),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, Repo(customer), customer);
 
         Assert.True(result.IsSuccess);
         Assert.Null(customer.ProfilePictureFileId);

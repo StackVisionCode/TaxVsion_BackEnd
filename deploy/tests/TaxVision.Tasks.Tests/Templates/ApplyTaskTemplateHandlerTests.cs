@@ -83,10 +83,11 @@ public sealed class ApplyTaskTemplateHandlerTests
         public InMemoryTaskRepository Tasks { get; } = new();
         public FakeMessageBus Bus { get; } = new();
 
-        public Task<Result<TemplateApplicationResponse>> ApplyAsync(Guid? assignee)
+        // Los anuncios salen del handler del evento de alta de cada tarea (el replay los deja en el bus).
+        public async Task<Result<TemplateApplicationResponse>> ApplyAsync(Guid? assignee)
         {
             var series = new InMemoryTaskSeriesRepository();
-            return ApplyTaskTemplateHandler.Handle(
+            var result = await ApplyTaskTemplateHandler.Handle(
                 new ApplyTaskTemplateCommand(
                     TenantId,
                     Manager,
@@ -103,10 +104,10 @@ public sealed class ApplyTaskTemplateHandlerTests
                 series,
                 new TaskSeriesMaterializer(Tasks, series),
                 new RecordingUnitOfWork(),
-                Bus,
-                new NoOpCorrelationContext(),
                 CancellationToken.None
             );
+            await DomainEventReplay.DispatchIntoAsync(Bus, Tasks);
+            return result;
         }
     }
 }

@@ -42,7 +42,11 @@ public sealed class SubscriptionDunningLadderTests
 
         Assert.Equal(SubscriptionStatus.Suspended, subscription.Status);
 
-        var evt = Assert.Single(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>());
+        var evt = Assert.Single(
+            SubscriptionDomainEventReplay
+                .Emitted(bus, subscription)
+                .OfType<TenantSubscriptionStatusChangedIntegrationEvent>()
+        );
         Assert.Equal("Active", evt.PreviousStatus);
         Assert.Equal("Suspended", evt.Status);
         Assert.Equal(nameof(SubscriptionChangeReason.RenewalPaymentFailed), evt.Reason);
@@ -61,7 +65,11 @@ public sealed class SubscriptionDunningLadderTests
         await FailAutomatically(subscription, plan, bus, willRetry: true, nextRetry);
 
         Assert.Equal(SubscriptionStatus.Active, subscription.Status);
-        Assert.Empty(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>());
+        Assert.Empty(
+            SubscriptionDomainEventReplay
+                .Emitted(bus, subscription)
+                .OfType<TenantSubscriptionStatusChangedIntegrationEvent>()
+        );
         var email = Assert.Single(bus.Published.OfType<RenewalChargeFailedIntegrationEvent>());
         Assert.Equal(RenewalChargeKinds.Plan, email.ChargeKind);
         Assert.Equal("Starter plan", email.ItemDescription);
@@ -86,7 +94,11 @@ public sealed class SubscriptionDunningLadderTests
         var email = Assert.Single(bus.Published.OfType<RenewalChargeFailedIntegrationEvent>());
         Assert.True(email.IsFinal);
         Assert.Equal(RenewalChargeConsequences.SubscriptionSuspended, email.Consequence);
-        var status = Assert.Single(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>());
+        var status = Assert.Single(
+            SubscriptionDomainEventReplay
+                .Emitted(bus, subscription)
+                .OfType<TenantSubscriptionStatusChangedIntegrationEvent>()
+        );
         Assert.True(status.NotifiedByChargeFailedEmail);
     }
 
@@ -103,7 +115,11 @@ public sealed class SubscriptionDunningLadderTests
         Assert.Empty(bus.Published.OfType<RenewalChargeFailedIntegrationEvent>());
         Assert.False(
             Assert
-                .Single(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>())
+                .Single(
+                    SubscriptionDomainEventReplay
+                        .Emitted(bus, subscription)
+                        .OfType<TenantSubscriptionStatusChangedIntegrationEvent>()
+                )
                 .NotifiedByChargeFailedEmail
         );
     }
@@ -173,7 +189,11 @@ public sealed class SubscriptionDunningLadderTests
 
         Assert.Equal(SubscriptionStatus.Active, subscription.Status);
 
-        var evt = Assert.Single(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>());
+        var evt = Assert.Single(
+            SubscriptionDomainEventReplay
+                .Emitted(bus, subscription)
+                .OfType<TenantSubscriptionStatusChangedIntegrationEvent>()
+        );
         Assert.Equal("PastDue", evt.PreviousStatus);
         Assert.Equal("Active", evt.Status);
         Assert.Equal(nameof(SubscriptionChangeReason.PaymentRecovered), evt.Reason);
@@ -207,6 +227,15 @@ public sealed class SubscriptionDunningLadderTests
 
     private sealed class FakeSubscriptionRepository(TenantSubscription subscription) : ISubscriptionRepository
     {
+        // Lo sembrado se considera ya guardado: sus eventos de dominio ya salieron.
+        private readonly bool _seeded = Seed(subscription);
+
+        private static bool Seed(TenantSubscription seeded)
+        {
+            seeded.ClearDomainEvents();
+            return true;
+        }
+
         public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<TenantSubscription?>(subscription.TenantId == tenantId ? subscription : null);
 

@@ -82,7 +82,6 @@ public static class SubscriptionRenewalDueConsumer
                     metrics,
                     bus,
                     unitOfWork,
-                    customers,
                     correlationId,
                     logger,
                     ct
@@ -156,7 +155,6 @@ public static class SubscriptionRenewalDueConsumer
         IPaymentAppMetrics metrics,
         IMessageBus bus,
         IUnitOfWork unitOfWork,
-        ITenantProviderCustomerRepository customers,
         string correlationId,
         ILogger logger,
         CancellationToken ct
@@ -203,7 +201,7 @@ public static class SubscriptionRenewalDueConsumer
             ApplyOffSessionOutcome(payment, chargeResult.Value, provider, metrics, logger);
         }
 
-        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, customers: customers);
+        // El resultado (succeeded/failed) lo avisa SaaSPaymentDomainEventHandler con el commit.
         // Email de confirmación del cobro recurrente. Viaja por el canal de status-changed (no mueve el
         // estado). El de fallo ya no sale de acá: lo manda Subscription en cada intento fallido
         // (RenewalChargeFailedIntegrationEvent), con el intento, la fecha del próximo y la tarjeta real.

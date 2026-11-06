@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
 
 /// <summary>
@@ -10,6 +12,7 @@ namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
 /// existe); la factura nace bajo ese dueño y se re-hospeda al tenant real cuando la saga lo activa.
 /// Regla: solo <c>NetAmountCents &gt; 0</c> lleva <see cref="PaymentId"/> (net = 0 ⇒ sin pago).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.OnboardingInvoiceRequestedIntegrationEvent")]
 public sealed record OnboardingInvoiceRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }

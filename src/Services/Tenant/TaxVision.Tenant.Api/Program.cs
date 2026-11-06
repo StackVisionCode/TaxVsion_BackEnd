@@ -199,6 +199,10 @@ builder.Host.UseWolverine(options =>
         .UseDurableInbox();
 
     options.ApplyStandardFailurePolicies();
+
+    // BB-1: eventos de dominio de Tenant; en serie para que los avisos salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
 });
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
 

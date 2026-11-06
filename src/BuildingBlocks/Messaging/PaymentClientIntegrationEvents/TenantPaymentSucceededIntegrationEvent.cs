@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 
 /// <summary>
@@ -9,6 +11,7 @@ namespace BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 /// referencia externa (id de factura) + monto/moneda/proveedor para correlacionar y validar; el
 /// consumidor debe ser idempotente por <c>TenantPaymentId</c>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantPaymentSucceededIntegrationEvent")]
 public sealed record TenantPaymentSucceededIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantPaymentId { get; init; }

@@ -15,7 +15,7 @@ namespace TaxVision.PaymentApp.Application.SaaSPayments.IntegrationEvents;
 /// <see cref="ChargeSaaSPaymentCommand"/> (cobro off-session Stripe contra la tarjeta guardada). Mismo
 /// mecanismo que <see cref="SubscriptionPlanChangeDueConsumer"/>:
 /// <see cref="ChargeSaaSPaymentCommand.TargetAggregateId"/> = <c>TopUpId</c>, para que
-/// <c>SaaSPaymentResultPublisher.PublishWalletTopUpResultAsync</c> lo devuelva en el round-trip.
+/// el aviso de resultado (<c>SaaSPaymentDomainEventHandler</c>) lo devuelva en el round-trip.
 /// </summary>
 public static class WalletTopUpDueConsumer
 {

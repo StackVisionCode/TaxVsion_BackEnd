@@ -23,9 +23,9 @@ public sealed class ArchiveThreadHandlerTests
             new FakeIncomingEmailRepository(),
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             new FakeUnitOfWork(),
-            bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, emailThreads, new FakeIncomingEmailRepository());
 
         var evt =
             Assert.IsType<BuildingBlocks.Messaging.CorrespondenceIntegrationEvents.CorrespondenceThreadStateChangedIntegrationEvent>(
@@ -51,9 +51,9 @@ public sealed class ArchiveThreadHandlerTests
             new FakeIncomingEmailRepository(),
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             new FakeUnitOfWork(),
-            bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, emailThreads, new FakeIncomingEmailRepository());
 
         Assert.True(result.IsFailure);
         Assert.Equal("EmailThread.NotFound", result.Error.Code);
@@ -76,7 +76,6 @@ public sealed class ArchiveThreadHandlerTests
             new FakeIncomingEmailRepository(),
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -106,7 +105,6 @@ public sealed class ArchiveThreadHandlerTests
             new FakeIncomingEmailRepository(),
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
-            new FakeMessageBus(),
             CancellationToken.None
         );
         var firstArchivedAt = thread.ArchivedAtUtc;
@@ -119,7 +117,6 @@ public sealed class ArchiveThreadHandlerTests
             new FakeIncomingEmailRepository(),
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -142,7 +139,6 @@ public sealed class ArchiveThreadHandlerTests
             new FakeIncomingEmailRepository(),
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -165,7 +161,6 @@ public sealed class ArchiveThreadHandlerTests
             new FakeIncomingEmailRepository(),
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
-            new FakeMessageBus(),
             CancellationToken.None
         );
 

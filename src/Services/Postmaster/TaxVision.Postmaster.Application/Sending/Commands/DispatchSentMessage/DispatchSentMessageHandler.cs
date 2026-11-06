@@ -335,13 +335,7 @@ public static class DispatchSentMessageHandler
         MailboxFallback? fallback
     ) =>
         bus.InvokeAsync(
-            new RecordSendResultCommand(
-                command.SentMessageId,
-                result,
-                fallbackFailureReason,
-                fallback,
-                command.Request
-            ),
+            new RecordSendResultCommand(command.SentMessageId, result, fallbackFailureReason, fallback),
             CancellationToken.None
         );
 

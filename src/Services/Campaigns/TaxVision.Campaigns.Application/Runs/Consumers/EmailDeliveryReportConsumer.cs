@@ -1,11 +1,9 @@
-using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
-using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Domain.Runs;
-using Wolverine;
 
 namespace TaxVision.Campaigns.Application.Runs.Consumers;
 
@@ -27,8 +25,6 @@ internal static class EmailDeliveryReport
         string? reason,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger logger,
         CancellationToken ct
     )
@@ -36,23 +32,13 @@ internal static class EmailDeliveryReport
         if (campaignSeam is not { } recipientId || recipientId == Guid.Empty)
             return; // no es un envío de campaña (correo transaccional/ad-hoc)
 
-        var run = await runs.GetByRecipientIdAsync(tenantId, recipientId, ct);
-        if (run is null)
-        {
-            logger.LogWarning(
-                "Email DLR for unknown recipient {RecipientId} (tenant {TenantId}); ignoring.",
-                recipientId,
-                tenantId
-            );
-            return;
-        }
+        var run =
+            await runs.GetByRecipientIdAsync(tenantId, recipientId, ct)
+            ?? throw new DependencyNotReadyException("CampaignRun", $"recipient {recipientId}");
 
         var applied = run.ApplyResultForRecipient(recipientId, outcome, providerRef, reason);
         if (applied.IsFailure)
             return;
-
-        if (applied.Value) // cerró en esta llamada (raro: sólo si aún estaba Dispatching)
-            await StartCampaignRunHandler.PublishCompletedAsync(bus, run, correlation.CorrelationId);
 
         await unitOfWork.SaveChangesAsync(ct);
     }
@@ -64,8 +50,6 @@ public static class CampaignEmailDeliveredConsumer
         PostmasterEmailDeliverySucceededIntegrationEvent evt,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
     ) =>
@@ -77,8 +61,6 @@ public static class CampaignEmailDeliveredConsumer
             null,
             runs,
             unitOfWork,
-            bus,
-            correlation,
             logger,
             ct
         );
@@ -90,8 +72,6 @@ public static class CampaignEmailFailedConsumer
         PostmasterEmailDeliveryFailedIntegrationEvent evt,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
     ) =>
@@ -103,8 +83,6 @@ public static class CampaignEmailFailedConsumer
             evt.Reason,
             runs,
             unitOfWork,
-            bus,
-            correlation,
             logger,
             ct
         );
@@ -121,8 +99,6 @@ public static class CampaignEmailProviderNotConfiguredConsumer
         PostmasterEmailDeliveryProviderNotConfiguredIntegrationEvent evt,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
     ) =>
@@ -134,8 +110,6 @@ public static class CampaignEmailProviderNotConfiguredConsumer
             "provider_not_configured",
             runs,
             unitOfWork,
-            bus,
-            correlation,
             logger,
             ct
         );
@@ -147,8 +121,6 @@ public static class CampaignEmailSuppressedConsumer
         PostmasterEmailDeliverySuppressedIntegrationEvent evt,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
     ) =>
@@ -160,8 +132,6 @@ public static class CampaignEmailSuppressedConsumer
             $"suppressed:{evt.SuppressionReason}",
             runs,
             unitOfWork,
-            bus,
-            correlation,
             logger,
             ct
         );

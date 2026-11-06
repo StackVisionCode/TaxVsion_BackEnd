@@ -81,7 +81,6 @@ public sealed class ExecuteRecurringScheduleHandlerTests
             ),
             new PaymentAuditLogWriter(db),
             db,
-            InMemoryPaymentClient.RecordingBus([]),
             new NoOpPaymentClientMetrics(),
             new FixedCorrelationContext(),
             NullLogger<TenantPayment>.Instance,

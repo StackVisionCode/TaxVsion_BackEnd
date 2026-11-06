@@ -41,7 +41,7 @@ public sealed class PortalCustomerContactHandlerTests
         var customer = NewCustomer();
         var current = Guid.NewGuid();
         customer.BeginProfilePictureChange(current, PortalUser, Now);
-        customer.ConfirmProfilePicture(current);
+        customer.ConfirmProfilePicture(current, Guid.Empty);
         var pending = Guid.NewGuid();
         customer.BeginProfilePictureChange(pending, PortalUser, Now);
 
@@ -178,20 +178,25 @@ public sealed class PortalCustomerContactHandlerTests
         Assert.Equal("Customer.NotFound", result.Error.Code);
     }
 
-    private static Task<BuildingBlocks.Results.Result> UpdateAsync(
+    // Lo sembrado ya está guardado; lo que emite el comando sale por el bus como en Wolverine.
+    private static async Task<BuildingBlocks.Results.Result> UpdateAsync(
         DomainCustomer customer,
         string? phone,
         FakeMessageBus bus,
         CountingUnitOfWork unitOfWork
-    ) =>
-        UpdateMyCustomerPhoneHandler.Handle(
+    )
+    {
+        customer.ClearDomainEvents();
+        var repo = Repo(customer);
+        var result = await UpdateMyCustomerPhoneHandler.Handle(
             new UpdateMyCustomerPhoneCommand(TenantId, customer.Id, PortalUser, phone),
-            Repo(customer),
-            bus,
-            new FixedCorrelation(),
+            repo,
             unitOfWork,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, repo, customer);
+        return result;
+    }
 
     private static InMemoryCustomers Repo(DomainCustomer customer)
     {

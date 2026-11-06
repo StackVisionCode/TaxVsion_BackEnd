@@ -13,6 +13,7 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
     {
         b.ToTable("Tenants");
         b.HasKey(t => t.Id);
+        b.Ignore(t => t.DomainEvents);
         b.Property(t => t.Name).HasMaxLength(DomainTenant.NameMaxLength).IsRequired();
         b.Property(t => t.SubDomain).HasMaxLength(40).IsRequired();
         b.Property(t => t.Kind).HasConversion<string>().HasMaxLength(20).IsRequired();

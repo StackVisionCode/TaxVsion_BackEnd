@@ -142,7 +142,14 @@ internal sealed class RecordingBackfillService : ITenantCustomerBackfillService
 
 internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepository
 {
-    private readonly List<TaskItem> _tasks = [.. seed];
+    // Lo sembrado ya está guardado: sus eventos de dominio ya se despacharon.
+    private readonly List<TaskItem> _tasks = [.. seed.Select(Persisted)];
+
+    private static TaskItem Persisted(TaskItem task)
+    {
+        task.ClearDomainEvents();
+        return task;
+    }
 
     public IReadOnlyList<TaskItem> Stored => _tasks;
 
@@ -333,6 +340,30 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
 
     public Task<IReadOnlyList<TaskItem>> ListOverdueAsync(DateTime nowUtc, int take, CancellationToken ct = default) =>
         throw new NotImplementedException();
+
+    // Misma regla de visibilidad que el repositorio real (P2).
+    public HashSet<(Guid CustomerId, Guid UserId)> CustomerAssignments { get; } = [];
+
+    public Task<Result<TaskItem>> GetByIdForReadAsync(
+        Guid tenantId,
+        Guid taskId,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        var task = _tasks.FirstOrDefault(t =>
+            t.TenantId == tenantId
+            && t.Id == taskId
+            && (
+                assignedToUserId is not { } user
+                || t.Reference.CustomerId is null
+                || t.AssigneeUserId == user
+                || t.CreatedByUserId == user
+                || CustomerAssignments.Contains((t.Reference.CustomerId.Value, user))
+            )
+        );
+        return Task.FromResult(task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task));
+    }
 }
 
 /// <summary>Sólo modela las aristas; el grafo recursivo y el cerrojo no aplican en memoria.</summary>

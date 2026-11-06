@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -71,16 +72,30 @@ public sealed class PostmasterDeliveryStatusConsumersTests
     }
 
     [Fact]
-    public async Task Delivered_before_Sent_is_retried_instead_of_lost()
+    public async Task Delivered_before_sent_throws_dependency_not_ready()
+    {
+        var log = NotificationLog
+            .Create(Guid.NewGuid(), NotificationChannel.Email, "to@test.com", "Subject", "auth.welcome", null, null)
+            .Value;
+        var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
+        var uow = new CountingUnitOfWork();
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() => DeliverAsync(log, attempt.Id, uow));
+
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task Bounced_before_sent_throws_dependency_not_ready()
     {
         var log = NotificationLog
             .Create(Guid.NewGuid(), NotificationChannel.Email, "to@test.com", "Subject", "auth.welcome", null, null)
             .Value;
         var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DeliverAsync(log, attempt.Id, new CountingUnitOfWork())
-        );
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() => BounceAsync(log, attempt.Id));
+
+        Assert.NotEqual(NotificationStatus.Bounced, log.Status);
     }
 
     [Fact]

@@ -13,7 +13,7 @@ public interface IProviderSyncCursorRepository
     /// Purga el cursor al switch de proveedor (IMAP↔Gmail/Graph): el formato del cursor cambia por
     /// proveedor (UIDVALIDITY:UID vs Gmail historyId numérico vs Graph deltaLink), así que un cursor
     /// stale enviado al proveedor nuevo revienta con HTTP 400 "invalid cursor/history id" y el
-    /// ReconciliationJob queda bloqueado hasta que se purgue. Default no-op para los fakes.
+    /// ReconciliationJob queda bloqueado hasta que se purgue.
     /// </summary>
-    void Remove(ProviderSyncCursor cursor) { }
+    void Remove(ProviderSyncCursor cursor);
 }

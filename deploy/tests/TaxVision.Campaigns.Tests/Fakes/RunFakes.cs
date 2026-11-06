@@ -50,6 +50,9 @@ internal sealed class FakeCampaignRunRepository : ICampaignRunRepository
     /// <summary>Agendado de runs que no están en <see cref="Runs"/> (solo se conoce su ScheduleId).</summary>
     public Dictionary<Guid, Guid> ScheduleIdByRun { get; } = [];
 
+    public Task<bool> ExistsAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
+        Task.FromResult(ScheduleIdByRun.ContainsKey(runId) || Runs.Exists(r => r.TenantId == tenantId && r.Id == runId));
+
     public Task<Guid?> GetScheduleIdAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
         Task.FromResult(
             ScheduleIdByRun.TryGetValue(runId, out var scheduleId)

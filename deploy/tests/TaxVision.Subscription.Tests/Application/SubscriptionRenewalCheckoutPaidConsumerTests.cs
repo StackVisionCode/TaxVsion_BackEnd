@@ -42,7 +42,11 @@ public sealed class SubscriptionRenewalCheckoutPaidConsumerTests
         Assert.Single(bus.Published.OfType<RecalculateEntitlementsCommand>());
         Assert.Equal("succeeded", Assert.Single(metrics.SelfServiceRenewals));
 
-        var statusChanged = Assert.Single(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>());
+        var statusChanged = Assert.Single(
+            SubscriptionDomainEventReplay
+                .Emitted(bus, subscription)
+                .OfType<TenantSubscriptionStatusChangedIntegrationEvent>()
+        );
         Assert.Equal("Active", statusChanged.Status);
         Assert.Equal(nameof(SubscriptionChangeReason.SelfServiceRenewed), statusChanged.Reason);
     }

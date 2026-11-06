@@ -42,7 +42,6 @@ public sealed class TrustedDeviceReadsTests
 
         return new AuthDbContext(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,
-            new FakeMessageBus(),
             tenantContext
         );
     }

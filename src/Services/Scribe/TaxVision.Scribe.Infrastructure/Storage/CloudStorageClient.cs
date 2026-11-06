@@ -86,6 +86,8 @@ public sealed class CloudStorageClient(
             return Result.Failure<string>(new Error("CloudStorageClient.Upload", "MinIO PUT failed."));
         }
 
+        // Sale antes del commit del handler, a propósito: el archivo debe existir antes de que una fila lo
+        // apunte (polling del logo). Peor caso: blob huérfano. Excepción BB-3, SCR-07.
         await bus.PublishAsync(
             new SaveFileRequestedIntegrationEvent
             {

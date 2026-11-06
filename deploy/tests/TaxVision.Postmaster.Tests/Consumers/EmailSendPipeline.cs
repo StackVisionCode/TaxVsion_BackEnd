@@ -68,6 +68,7 @@ internal static class EmailSendPipeline
                     ct,
                     envelope
                 );
+                await DomainEventReplay.DispatchIntoAsync(bus, sentMessages);
                 return null;
             }
         );
@@ -152,15 +153,12 @@ internal static class EmailSendPipeline
                         ReleaseSendAttemptCommand release => await Run(
                             ReleaseSendAttemptHandler.Handle(release, sentMessages, unitOfWork, CancellationToken.None)
                         ),
-                        RecordSendResultCommand record => await Run(
-                            RecordSendResultHandler.Handle(
-                                record,
-                                sentMessages,
-                                idempotencyGuard,
-                                unitOfWork,
-                                bus,
-                                CancellationToken.None
-                            )
+                        RecordSendResultCommand record => await RecordAsync(
+                            record,
+                            sentMessages,
+                            idempotencyGuard,
+                            unitOfWork,
+                            bus
                         ),
                         DiscardUnsentMessageCommand discard => await Run(
                             DiscardUnsentMessageHandler.Handle(
@@ -183,6 +181,25 @@ internal static class EmailSendPipeline
                         _ => throw new NotSupportedException(message.GetType().Name),
                     }
             );
+
+    private static async Task<object?> RecordAsync(
+        RecordSendResultCommand record,
+        ISentMessageRepository sentMessages,
+        IIdempotencyGuard idempotencyGuard,
+        IUnitOfWork unitOfWork,
+        FakeMessageBus bus
+    )
+    {
+        await RecordSendResultHandler.Handle(
+            record,
+            sentMessages,
+            idempotencyGuard,
+            unitOfWork,
+            CancellationToken.None
+        );
+        await DomainEventReplay.DispatchIntoAsync(bus, sentMessages);
+        return null;
+    }
 
     private static async Task<object?> Run(Task task)
     {

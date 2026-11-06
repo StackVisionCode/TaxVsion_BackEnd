@@ -45,13 +45,13 @@ public interface ISmsProvider
     /// (por su <c>ProviderMessageId</c>) y devuelve las actualizaciones canónicas. Es el backstop de los DLR
     /// por webhook (push) — para reconciliar cuando el webhook no llega (el proveedor no alcanza nuestra URL
     /// pública, típico en dev local) o se pierde. Solo aplica si <see cref="SmsProviderCapabilities.SupportsStatusPull"/>.
-    /// El default no soporta pull (lista vacía), así ningún adapter existente se rompe: agregar pull = override.
+    /// Un adapter sin pull devuelve lista vacía de forma explícita.
     /// Devuelve solo los mensajes de los que el proveedor tiene un estado; los ausentes se dejan igual.
     /// </summary>
     Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
         IReadOnlyList<string> providerMessageIds,
         CancellationToken ct = default
-    ) => Task.FromResult(Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]));
+    );
 
     /// <summary>Transforma un inbound (STOP/START/HELP) al modelo canónico.</summary>
     Result<SmsInboundMessage> ParseInbound(string rawPayload);

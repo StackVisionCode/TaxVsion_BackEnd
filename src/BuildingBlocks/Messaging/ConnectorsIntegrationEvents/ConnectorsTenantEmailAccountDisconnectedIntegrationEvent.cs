@@ -1,4 +1,6 @@
-﻿namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+﻿using Wolverine.Attributes;
+
+namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 
 /// <summary>
 /// Un tenant desconectó una cuenta de correo — conceptualmente
@@ -6,6 +8,7 @@
 /// lo consume para dar de baja su proyección local (D3 §4.3) — un envío vía TenantMailbox para esta
 /// cuenta debe fallar limpio después de esto, no intentar contra un token ya revocado.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsTenantEmailAccountDisconnectedIntegrationEvent")]
 public sealed record ConnectorsTenantEmailAccountDisconnectedIntegrationEvent : IntegrationEvent
 {
     public required Guid AccountId { get; init; }

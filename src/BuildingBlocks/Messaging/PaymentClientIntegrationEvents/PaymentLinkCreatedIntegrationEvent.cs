@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 /// checkout (<c>/payments-client/checkout/{token}</c>); no es un secreto de plataforma, es
 /// literalmente el contenido que se le envía al destinatario.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentClientIntegrationEvents.PaymentLinkCreatedIntegrationEvent")]
 public sealed record PaymentLinkCreatedIntegrationEvent : IntegrationEvent
 {
     public required Guid PaymentLinkId { get; init; }

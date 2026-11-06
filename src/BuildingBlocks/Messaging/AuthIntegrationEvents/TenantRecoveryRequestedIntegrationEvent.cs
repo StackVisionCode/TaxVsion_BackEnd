@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>Una oficina a la que el email pertenece — nombre + host del subdominio activo.</summary>
@@ -10,6 +12,7 @@ public sealed record TenantRecoveryMatch(string TenantName, string Host);
 /// no el de ninguna de las oficinas encontradas. Notification envía el correo con los
 /// enlaces; nunca se lista en pantalla (anti-enumeración).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantRecoveryRequestedIntegrationEvent")]
 public sealed record TenantRecoveryRequestedIntegrationEvent : IntegrationEvent
 {
     public required string Email { get; init; }

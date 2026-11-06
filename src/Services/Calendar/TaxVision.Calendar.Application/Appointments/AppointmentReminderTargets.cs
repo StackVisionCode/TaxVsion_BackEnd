@@ -27,31 +27,51 @@ public static class AppointmentReminderTargets
     }
 
     public static IEnumerable<ReminderTargetClosedIntegrationEvent> Close(
-        Appointment appointment,
+        Guid tenantId,
         IEnumerable<Guid> targets,
         string correlationId,
         string? reason
     ) =>
         targets.Select(target => new ReminderTargetClosedIntegrationEvent
         {
-            TenantId = appointment.TenantId,
+            TenantId = tenantId,
             CorrelationId = correlationId,
             Category = AppointmentReminderRequests.Category,
             TargetId = target,
             Reason = reason,
         });
 
+    /// <summary>Lo que se pide a Reminder al refrescar: lo nuevo, y los minutos nuevos a lo que sobrevive.</summary>
+    public static IReadOnlyList<IntegrationEvent> Refresh(
+        Appointment appointment,
+        IReadOnlyCollection<Guid> keptTargets,
+        bool leadChanged,
+        DateTime nowUtc,
+        string correlationId
+    )
+    {
+        var survivors = keptTargets.ToHashSet();
+        var messages = new List<IntegrationEvent>(
+            AppointmentReminderRequests.For(appointment, nowUtc, correlationId, t => !survivors.Contains(t))
+        );
+
+        // CAL-7: los que conservan su hora reciben los minutos nuevos sobre el mismo objetivo.
+        if (survivors.Count > 0 && leadChanged)
+            messages.AddRange(LeadChanged(appointment, survivors, nowUtc, correlationId));
+
+        return messages;
+    }
+
     /// <summary>
     /// Después de mover la cita o cambiar su aviso: cierra lo que ya no está y pide lo nuevo.
     /// La generación sube solo si ningún aviso pedido sobrevive; si alguno sobrevive, subirla haría
     /// que el job lo pidiera de nuevo con otra clave (aviso doble).
     /// </summary>
-    public static IReadOnlyList<IntegrationEvent> AfterChange(
+    public static void AfterChange(
         Appointment appointment,
         IReadOnlySet<Guid> before,
         int? previousLeadMinutes,
-        DateTime nowUtc,
-        string correlationId
+        DateTime nowUtc
     )
     {
         var after = Snapshot(appointment, nowUtc);
@@ -67,16 +87,14 @@ public static class AppointmentReminderTargets
         if (survivors.Count == 0)
             appointment.StartNewReminderGeneration();
 
-        var messages = new List<IntegrationEvent>(Close(appointment, closed, correlationId, "rescheduled"));
-        messages.AddRange(
-            AppointmentReminderRequests.For(appointment, nowUtc, correlationId, t => !survivors.Contains(t))
-        );
+        appointment.CloseReminderTargets([.. closed], "rescheduled", nowUtc);
 
-        // CAL-7: los que conservan su hora reciben los minutos nuevos sobre el mismo objetivo.
-        if (survivors.Count > 0 && previousLeadMinutes != appointment.ReminderLeadMinutes)
-            messages.AddRange(LeadChanged(appointment, survivors, nowUtc, correlationId));
-
-        return messages;
+        if (wantsReminders)
+            appointment.RefreshReminders(
+                [.. survivors],
+                previousLeadMinutes != appointment.ReminderLeadMinutes,
+                nowUtc
+            );
     }
 
     private static IEnumerable<ReminderTargetMovedIntegrationEvent> LeadChanged(

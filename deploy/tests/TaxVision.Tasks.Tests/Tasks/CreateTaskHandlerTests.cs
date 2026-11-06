@@ -39,11 +39,14 @@ public sealed class CreateTaskHandlerTests
         Assert.Empty(bus.Published.OfType<TaskAssignedIntegrationEvent>());
     }
 
-    private static Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> CreateAsync(
+    // El aviso sale del handler del evento de dominio de alta (DomainEventReplay lo deja en el bus).
+    private static async Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> CreateAsync(
         Guid? assignee,
         FakeMessageBus bus
-    ) =>
-        CreateTaskHandler.Handle(
+    )
+    {
+        var tasks = new InMemoryTaskRepository();
+        var result = await CreateTaskHandler.Handle(
             new CreateTaskCommand(
                 TenantId,
                 Creator,
@@ -58,11 +61,12 @@ public sealed class CreateTaskHandlerTests
                 false,
                 null
             ),
-            new InMemoryTaskRepository(),
+            tasks,
             new RecordingUnitOfWork(),
-            bus,
-            new NoOpCorrelationContext(),
             new RecordingTaskMetrics(),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, tasks);
+        return result;
+    }
 }

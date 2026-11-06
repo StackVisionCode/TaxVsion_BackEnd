@@ -1,10 +1,9 @@
-using BuildingBlocks.Persistence;
-using BuildingBlocks.Results;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
-using Wolverine;
+using TaxVision.Subscription.Infrastructure.Persistence;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -26,58 +25,51 @@ public sealed class SeatExpirationJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var seats = services.GetRequiredService<ISubscriptionSeatRepository>();
-        var bus = services.GetRequiredService<IMessageBus>();
-        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
         var logger = services.GetRequiredService<ILogger<SeatExpirationJob>>();
 
         var nowUtc = DateTime.UtcNow;
-        var expiredCount = 0;
-
         var suspendedTimedOut = await seats.GetSuspendedBeforeAsync(nowUtc - SuspensionTimeout, BatchSize, ct);
-        foreach (var seat in suspendedTimedOut)
-            expiredCount += await TryExpireAsync(
-                seat.ExpireAfterSuspensionTimeout(Guid.Empty, nowUtc),
-                seat.TenantId,
-                unitOfWork,
-                bus,
-                logger,
-                ct
-            );
-
         var cancelledPastPeriod = await seats.GetCancelledPastPeriodEndAsync(nowUtc, BatchSize, ct);
-        foreach (var seat in cancelledPastPeriod)
-            expiredCount += await TryExpireAsync(
-                seat.ExpireAfterCancellationPeriodEnded(Guid.Empty, nowUtc),
-                seat.TenantId,
-                unitOfWork,
-                bus,
-                logger,
-                ct
-            );
 
-        if (expiredCount > 0)
-            logger.LogInformation("SeatExpirationJob expired {Count} seat(s).", expiredCount);
+        List<(Guid SeatId, Guid TenantId, bool SuspensionTimedOut)> candidates =
+        [
+            .. suspendedTimedOut.Select(s => (s.Id, s.TenantId, true)),
+            .. cancelledPastPeriod.Select(s => (s.Id, s.TenantId, false)),
+        ];
+        if (candidates.Count == 0)
+            return;
+
+        var summary = await RunUnitsAsync(
+            candidates,
+            (candidate, unit, token) => ExpireOneAsync(unit, candidate, nowUtc, token),
+            ct
+        );
+        if (summary.Committed > 0)
+            logger.LogInformation("SeatExpirationJob expired {Count} seat(s).", summary.Committed);
     }
 
-    private static async Task<int> TryExpireAsync(
-        Result result,
-        Guid tenantId,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ILogger logger,
+    // Expiración y recálculo (cola local durable) en la misma unidad.
+    private static async Task<bool> ExpireOneAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
+        (Guid SeatId, Guid TenantId, bool SuspensionTimedOut) candidate,
+        DateTime nowUtc,
         CancellationToken ct
     )
     {
+        unit.UseTenant(candidate.TenantId);
+        var seat = await unit
+            .Services.GetRequiredService<ISubscriptionSeatRepository>()
+            .GetByIdAsync(candidate.SeatId, candidate.TenantId, ct);
+        if (seat is null)
+            return false;
+
+        var result = candidate.SuspensionTimedOut
+            ? seat.ExpireAfterSuspensionTimeout(Guid.Empty, nowUtc)
+            : seat.ExpireAfterCancellationPeriodEnded(Guid.Empty, nowUtc);
         if (result.IsFailure)
-            return 0;
+            return false;
 
-        await unitOfWork.SaveChangesAsync(ct);
-
-        // RBAC Fase 5 — RecalculateEntitlementsSafelyAsync despacha vía bus.InvokeAsync a un
-        // scope Wolverine nuevo; sin este stamp LocalCommandTenantMiddleware no tiene tenant
-        // que restaurar y el filtro fail-closed de SubscriptionDbContext bloquearía el handler.
-        bus.TenantId = tenantId.ToString();
-        await bus.RecalculateEntitlementsSafelyAsync(tenantId, logger, ct);
-        return 1;
+        await unit.PublishAsync(new RecalculateEntitlementsCommand(candidate.TenantId));
+        return true;
     }
 }

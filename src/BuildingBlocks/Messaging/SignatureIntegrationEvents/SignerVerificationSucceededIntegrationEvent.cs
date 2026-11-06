@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// Notification lo consume para actualizar el estado en el dashboard staff. Signature
 /// ya considera al firmante "verified" para el guard de <c>MarkSignerSigned</c>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerVerificationSucceededIntegrationEvent")]
 public sealed record SignerVerificationSucceededIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

@@ -1,6 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging;
-using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
@@ -35,7 +33,6 @@ public static class BulkChangeStatusHandler
 
         // Estrategias resueltas UNA vez fuera del loop
         var applyAction = ResolveActionRunner(cmd.Action);
-        var makeEvent = ResolveEventFactory(cmd.Action, cmd.TenantId, cmd.ModifiedByUserId, correlation.CorrelationId);
 
         var succeededIds = new List<Guid>(uniqueIds.Count);
         var failures = new List<BulkFailedItem>();
@@ -63,10 +60,8 @@ public static class BulkChangeStatusHandler
                 archivedPhotos.Add((id, fileId));
         }
 
+        // Cada cambio de estado anuncia su evento de dominio; aquí solo el borrado de fotos.
         await unitOfWork.SaveChangesAsync(ct);
-
-        foreach (var id in succeededIds)
-            await bus.PublishAsync(makeEvent(id));
 
         foreach (var (customerId, fileId) in archivedPhotos)
             await bus.PublishAsync(
@@ -108,54 +103,4 @@ public static class BulkChangeStatusHandler
             BulkStatusAction.Deactivate => (c, u) => c.Deactivate(u),
             _ => (_, _) => Result.Failure(new Error("Bulk.UnknownAction", $"Unknown action {action}.")),
         };
-
-    /// <summary>
-    /// Strategy: mapea el enum BulkStatusAction al factory de su evento de integracion.
-    /// Captura las variables del contexto (tenant, user, correlation, timestamp) una sola vez.
-    /// </summary>
-    private static Func<Guid, IntegrationEvent> ResolveEventFactory(
-        BulkStatusAction action,
-        Guid tenantId,
-        Guid userId,
-        string correlationId
-    )
-    {
-        var nowUtc = DateTime.UtcNow;
-
-        return action switch
-        {
-            BulkStatusAction.Archive => id => new CustomerArchivedIntegrationEvent
-            {
-                TenantId = tenantId,
-                CorrelationId = correlationId,
-                CustomerId = id,
-                ArchivedByUserId = userId,
-            },
-            BulkStatusAction.Reactivate => id => new CustomerReactivatedIntegrationEvent
-            {
-                TenantId = tenantId,
-                CorrelationId = correlationId,
-                CustomerId = id,
-                ReactivatedByUserId = userId,
-                ReactivatedAtUtc = nowUtc,
-            },
-            BulkStatusAction.Activate => id => new CustomerActivatedIntegrationEvent
-            {
-                TenantId = tenantId,
-                CorrelationId = correlationId,
-                CustomerId = id,
-                ActivatedByUserId = userId,
-                ActivatedAtUtc = nowUtc,
-            },
-            BulkStatusAction.Deactivate => id => new CustomerDeactivatedIntegrationEvent
-            {
-                TenantId = tenantId,
-                CorrelationId = correlationId,
-                CustomerId = id,
-                DeactivatedByUserId = userId,
-                DeactivatedAtUtc = nowUtc,
-            },
-            _ => throw new InvalidOperationException($"Unknown action {action}"),
-        };
-    }
 }

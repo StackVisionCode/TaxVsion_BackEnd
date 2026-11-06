@@ -27,6 +27,7 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
         builder.Property(subscription => subscription.CancellationScheduledAtUtc);
         builder.Property(subscription => subscription.SuspensionReason).HasMaxLength(500);
         builder.Property(subscription => subscription.RowVersion).IsRowVersion();
+        builder.Ignore(subscription => subscription.DomainEvents);
         builder.Property(subscription => subscription.OnboardingId);
 
         builder

@@ -241,7 +241,9 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         CompletedAtUtc = null;
         ReopenCount++;
 
-        AddDomainEvent(new TaskReopenedDomainEvent(Id, TenantId, ParentTaskId, Status, byUserId, nowUtc));
+        AddDomainEvent(
+            new TaskReopenedDomainEvent(Id, TenantId, ParentTaskId, Status, byUserId, nowUtc, ReopenCount)
+        );
         return Result.Success();
     }
 
@@ -283,7 +285,15 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         AssigneeUserId = assigneeUserId;
 
         AddDomainEvent(
-            new TaskAssignedDomainEvent(Id, TenantId, assigneeUserId, previousAssigneeUserId, byUserId, nowUtc)
+            new TaskAssignedDomainEvent(
+                Id,
+                TenantId,
+                assigneeUserId,
+                previousAssigneeUserId,
+                byUserId,
+                nowUtc,
+                ReopenCount
+            )
         );
         return Result.Success();
     }

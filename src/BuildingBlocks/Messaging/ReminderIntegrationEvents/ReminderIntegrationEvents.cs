@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ReminderIntegrationEvents;
 
 // ---------------------------------------------------------------------------
@@ -18,6 +20,7 @@ namespace BuildingBlocks.Messaging.ReminderIntegrationEvents;
 /// Calendar, o el propio frontend por el endpoint HTTP. El publicador no conoce a Reminder, conoce
 /// el contrato.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ReminderIntegrationEvents.ReminderRequestedIntegrationEvent")]
 public sealed record ReminderRequestedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Destinatario y solicitante: en v1 siempre la misma persona (los compartidos son non-goal).</summary>
@@ -57,6 +60,7 @@ public sealed record ReminderRequestedIntegrationEvent : IntegrationEvent
 /// <b>anclados</b> a él; los absolutos lo ignoran por diseño (invariante R6), y eso es un éxito, no
 /// un error.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ReminderIntegrationEvents.ReminderTargetMovedIntegrationEvent")]
 public sealed record ReminderTargetMovedIntegrationEvent : IntegrationEvent
 {
     public required string Category { get; init; }
@@ -75,6 +79,7 @@ public sealed record ReminderTargetMovedIntegrationEvent : IntegrationEvent
 /// todos sus recordatorios pendientes. Sin este evento se siguen recordando tareas ya hechas, que
 /// es la queja número uno de cualquier sistema de recordatorios.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ReminderIntegrationEvents.ReminderTargetClosedIntegrationEvent")]
 public sealed record ReminderTargetClosedIntegrationEvent : IntegrationEvent
 {
     public required string Category { get; init; }
@@ -94,6 +99,7 @@ public sealed record ReminderTargetClosedIntegrationEvent : IntegrationEvent
 /// el consumidor no necesita llamar de vuelta a Reminder para renderizar.
 /// </para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ReminderIntegrationEvents.ReminderDueIntegrationEvent")]
 public sealed record ReminderDueIntegrationEvent : IntegrationEvent
 {
     public required Guid ReminderId { get; init; }

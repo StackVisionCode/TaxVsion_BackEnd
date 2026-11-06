@@ -219,7 +219,6 @@ public sealed class MailSearchSqlServerTranslationTests
             new DraftRepository(db),
             new EmailThreadRepository(db),
             new DeliveryNoticeRepository(db),
-            new IncomingEmailRepository(db),
             db,
             new Ingest.FakeMessageBus(),
             new Projections.FakeCorrelationContext(),

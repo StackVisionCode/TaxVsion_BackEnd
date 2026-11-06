@@ -87,7 +87,8 @@ public sealed class MultipleActiveProvidersTests
 
         var payment = await _db.TenantPayments.IgnoreQueryFilters().SingleAsync();
         Assert.Equal(PaymentProviderCode.PayPal, payment.ProviderCode);
-        Assert.Equal("PayPal", Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>()).ProviderCode);
+        var emitted = await DomainEventReplay.EmittedAsync(_published, _db);
+        Assert.Equal("PayPal", Assert.Single(emitted.OfType<TenantPaymentSucceededIntegrationEvent>()).ProviderCode);
         Assert.Equal(PaymentLinkStatus.Used, (await ReloadAsync(link)).Status);
     }
 
@@ -155,7 +156,6 @@ public sealed class MultipleActiveProvidersTests
             ),
             new PaymentAuditLogWriter(_db),
             _db,
-            InMemoryPaymentClient.RecordingBus(_published),
             new NoOpPaymentClientMetrics(),
             new FixedCorrelationContext(),
             NullLogger<TenantPayment>.Instance,

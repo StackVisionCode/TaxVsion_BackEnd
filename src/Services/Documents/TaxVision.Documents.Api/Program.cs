@@ -138,6 +138,7 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, DocumentsDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionDurableLocalQueues();
 
     options
         .ListenToRabbitQueue("documents-events", queue => queue.BindExchange("taxvision-events", string.Empty))

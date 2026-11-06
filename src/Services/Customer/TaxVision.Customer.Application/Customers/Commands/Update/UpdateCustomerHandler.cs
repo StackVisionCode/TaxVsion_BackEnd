@@ -1,11 +1,9 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
-using Wolverine;
 using CustomerEntity = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Application.Customers.Commands.Update;
@@ -16,8 +14,6 @@ public static class UpdateCustomerHandler
         UpdateCustomerCommand cmd,
         ICustomerRepository repository,
         ICustomerDuplicateDetector duplicates,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -53,8 +49,8 @@ public static class UpdateCustomerHandler
         if (applyResult.IsFailure)
             return Result.Failure<CustomerResponse>(applyResult.Error);
 
+        // CustomerUpdated sale del evento de dominio.
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishUpdatedEventAsync(customer, cmd, correlation, bus);
 
         return Result.Success(MapToResponse(customer));
     }
@@ -176,17 +172,6 @@ public static class UpdateCustomerHandler
 
         return customer.ChangeBusinessIdentity(bizResult.Value, cmd.ModifiedByUserId);
     }
-
-    // ============== Fase 4: publicar evento de update ==============
-
-    private static Task PublishUpdatedEventAsync(
-        CustomerEntity customer,
-        UpdateCustomerCommand cmd,
-        ICorrelationContext correlation,
-        IMessageBus bus
-    ) =>
-        bus.PublishAsync(CustomerUpdatedEvents.From(customer, cmd.ModifiedByUserId, correlation.CorrelationId))
-            .AsTask();
 
     // ============== Mapeo ==============
 

@@ -12,6 +12,7 @@ using TaxVision.Scribe.Application.EventMappings;
 using TaxVision.Scribe.Application.Layouts;
 using TaxVision.Scribe.Application.RateLimiting.Abstractions;
 using TaxVision.Scribe.Application.Rendering;
+using TaxVision.Scribe.Application.Storage;
 using TaxVision.Scribe.Application.Templates;
 using TaxVision.Scribe.Application.Templates.Storage;
 using TaxVision.Scribe.Infrastructure.Persistence;
@@ -167,6 +168,9 @@ public static class DependencyInjection
         );
 
         services.AddScoped<ITemplateStorageService, TemplateStorageService>();
+        services
+            .AddOptions<FileSaveRejectedOptions>()
+            .Bind(configuration.GetSection(FileSaveRejectedOptions.SectionName));
 
         // Solo lo usa el backfill de arranque; el render lee la proyeccion local.
         services.Configure<TenantClientOptions>(configuration.GetSection(TenantClientOptions.SectionName));

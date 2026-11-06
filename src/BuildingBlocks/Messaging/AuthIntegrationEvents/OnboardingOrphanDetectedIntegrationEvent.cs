@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>OBF-2.7 — publicado por el sweeper OnboardingOrphanDetectorJob cuando un onboarding tiene
@@ -7,6 +9,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// (OnboardingAdminController.Reactivate/ResendRegistrationEmail). Se publica una vez por aggregate por
 /// tick: la dedup la hace el consumer, idealmente con un cache per OnboardingId para no spamear si el
 /// huérfano persiste varios ticks.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.OnboardingOrphanDetectedIntegrationEvent")]
 public sealed record OnboardingOrphanDetectedIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }

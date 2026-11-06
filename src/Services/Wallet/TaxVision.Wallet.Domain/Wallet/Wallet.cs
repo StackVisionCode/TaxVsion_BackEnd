@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Wallet.Domain.Wallet.Events;
 
 namespace TaxVision.Wallet.Domain.Wallet;
 
@@ -13,7 +14,7 @@ namespace TaxVision.Wallet.Domain.Wallet;
 /// (append-only); la idempotencia por <c>opKey</c> la garantiza el índice único
 /// <c>(TenantId, OperationKey)</c> del ledger.</para>
 /// </summary>
-public sealed class Wallet : TenantEntity
+public sealed class Wallet : AggregateRoot
 {
     public const string DefaultCurrency = "USD";
 
@@ -112,6 +113,7 @@ public sealed class Wallet : TenantEntity
 
         PostedMicros += deltaMicros;
         UpdatedAtUtc = DateTime.UtcNow;
+        RaiseBalanceChanged(MovementType.Adjustment);
         return Result.Success(
             LedgerEntry.Create(
                 TenantId,
@@ -148,9 +150,17 @@ public sealed class Wallet : TenantEntity
         PostedMicros += deltaPosted;
         HeldMicros += deltaHeld;
         UpdatedAtUtc = DateTime.UtcNow;
+        RaiseBalanceChanged(movement);
 
         return Result.Success(
             LedgerEntry.Create(TenantId, movement, deltaPosted, deltaHeld, PostedMicros, HeldMicros, opKey, referenceId)
         );
+    }
+
+    // Un aviso por unidad de trabajo: la liquidación consume y libera, pero el saldo cambió una vez.
+    private void RaiseBalanceChanged(MovementType movement)
+    {
+        if (!DomainEvents.OfType<WalletBalanceChangedDomainEvent>().Any())
+            AddDomainEvent(new WalletBalanceChangedDomainEvent(Id, TenantId, movement, UpdatedAtUtc));
     }
 }

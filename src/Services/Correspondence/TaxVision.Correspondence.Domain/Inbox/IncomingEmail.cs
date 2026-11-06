@@ -17,7 +17,7 @@ namespace TaxVision.Correspondence.Domain.Inbox;
 /// crudo a estos primitivos es responsabilidad del consumer de Fase 4.
 /// </para>
 /// </summary>
-public sealed class IncomingEmail : ITenantOwned
+public sealed class IncomingEmail : AggregateRoot
 {
     public const int ProviderCodeMaxLength = 20;
     public const int ProviderMessageIdMaxLength = 200;
@@ -33,13 +33,8 @@ public sealed class IncomingEmail : ITenantOwned
 
     private IncomingEmail() { }
 
-    public Guid Id { get; private set; }
-    public Guid TenantId { get; private set; }
     public Guid CustomerId { get; private set; }
     public Guid EmailThreadId { get; private set; }
-
-    /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
-    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     /// <summary>
     /// Referencia opaca al <c>TenantEmailAccount</c> de Connectors. Sin FK ni navegación a
@@ -132,7 +127,6 @@ public sealed class IncomingEmail : ITenantOwned
         var email = new IncomingEmail
         {
             Id = Guid.NewGuid(),
-            TenantId = tenantId,
             CustomerId = customerId,
             EmailThreadId = emailThreadId,
             AccountId = accountId,
@@ -152,6 +146,7 @@ public sealed class IncomingEmail : ITenantOwned
             AttachmentCount = attachmentCount,
             Authentication = authentication ?? SenderAuthentication.Unknown,
         };
+        email.SetTenant(tenantId);
 
         foreach (var recipient in recipients ?? [])
             email._recipients.Add(
@@ -180,6 +175,24 @@ public sealed class IncomingEmail : ITenantOwned
 
         return Result.Success(email);
     }
+
+    /// <summary>
+    /// Avisa que entró un correo nuevo. La ingesta lo llama salvo en una réplica (CON-07): el correo viejo recuperado
+    /// no genera campana. Los datos del buzón los trae el evento de Connectors; el agregado no los guarda.
+    /// </summary>
+    public void NotifyReceived(Guid? mailboxAccountId, Guid? mailboxOwnerUserId, string correlationId) =>
+        AddDomainEvent(
+            new IncomingEmailReceivedDomainEvent(
+                TenantId,
+                Id,
+                CustomerId,
+                EmailThreadId,
+                Subject,
+                mailboxAccountId,
+                mailboxOwnerUserId,
+                correlationId
+            )
+        );
 
     /// <summary>Idempotente: si el body ya se pidió al menos una vez, es un no-op.</summary>
     public void MarkBodyFetched()

@@ -85,7 +85,7 @@ public class StartMailboxResyncHandlerTests
     public async Task Start_AccountNotActive_IsRejected()
     {
         var account = CreateActiveAccount();
-        account.MarkError(Now);
+        account.MarkError(AccountErrors.RefreshRejected, Now);
         var bus = new FakeMessageBus();
 
         var result = await RunAsync(account, bus, Now.AddDays(-1), Now);

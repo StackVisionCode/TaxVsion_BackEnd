@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.WalletIntegrationEvents;
 
 /// <summary>
@@ -9,6 +11,7 @@ namespace BuildingBlocks.Messaging.WalletIntegrationEvents;
 /// Wallet acredita <c>AmountCents * 10_000</c> micros. <see cref="IdempotencyKey"/> = clave de la orden
 /// de recarga: un reintento continúa la misma operación, no genera un segundo cobro.</para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.WalletIntegrationEvents.WalletTopUpDueIntegrationEvent")]
 public sealed record WalletTopUpDueIntegrationEvent : IntegrationEvent
 {
     /// <summary>Id de la orden de recarga (aggregate <c>WalletTopUp</c> en Wallet). Correlación estable.</summary>

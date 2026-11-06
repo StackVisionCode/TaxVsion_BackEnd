@@ -87,22 +87,26 @@ public sealed class ReopenTaskHandlerTests
         Assert.EndsWith(":r2", keys[1]);
     }
 
-    private static Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> ReopenAsync(
+    // TaskReopened y el recordatorio salen del handler del evento de dominio (el replay los deja en el bus).
+    private static async Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> ReopenAsync(
         TaskItem task,
         IUserPermissionsProjectionRepository users,
         FakeMessageBus? bus = null
-    ) =>
-        ReopenTaskHandler.Handle(
+    )
+    {
+        var tasks = new InMemoryTaskRepository(task);
+        var result = await ReopenTaskHandler.Handle(
             new ReopenTaskCommand(TenantId, task.Id, Manager, HasManageAll: true),
-            new InMemoryTaskRepository(task),
+            tasks,
             new NoOpUnblocking(),
             new NoOpHierarchy(),
             users,
             new RecordingUnitOfWork(),
-            bus ?? new FakeMessageBus(),
-            new NoOpCorrelationContext(),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus ?? new FakeMessageBus(), tasks);
+        return result;
+    }
 
     private static TaskItem ClosedTask(Guid assignee, DueDate? due = null)
     {

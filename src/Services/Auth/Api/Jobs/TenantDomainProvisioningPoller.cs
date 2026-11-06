@@ -1,4 +1,5 @@
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Infrastructure.Persistence;
@@ -11,8 +12,8 @@ namespace TaxVision.Auth.Api.Jobs;
 /// (o a Failed si Cloudflare los bloqueó), sin que el tenant admin tenga que hacer
 /// clic en "verificar". PUT .../activate sigue disponible para que lo confirme
 /// manualmente sin esperar el siguiente ciclo. domain.MarkActive/MarkFailed encolan el
-/// domain event correspondiente; AuthDbContext.SaveChangesAsync lo audita y publica —
-/// el poller ya no necesita saber nada de auditoría ni de integration events (Fase A7).
+/// domain event correspondiente; la unidad del job (BB-3) lo guarda con el cambio y su handler
+/// audita y publica — el poller no sabe nada de auditoría ni de integration events.
 /// </summary>
 public sealed class TenantDomainProvisioningPoller(
     IServiceScopeFactory scopeFactory,
@@ -24,9 +25,8 @@ public sealed class TenantDomainProvisioningPoller(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Primer poll inmediato — sin esperar acá, domain.MarkActive/MarkFailed encola domain
-        // events que AuthDbContext.SaveChangesAsync publica por Wolverine; si el poll corre antes
-        // de que Wolverine termine de arrancar, revienta con WolverineHasNotStartedException.
+        // Primer poll inmediato — sin esperar acá, el outbox de Wolverine revienta con
+        // WolverineHasNotStartedException si el poll corre antes de que termine de arrancar.
         await lifetime.WaitForApplicationStartedAsync(stoppingToken);
 
         using var timer = new PeriodicTimer(Interval);
@@ -49,25 +49,35 @@ public sealed class TenantDomainProvisioningPoller(
 
     private async Task PollOnceAsync(CancellationToken ct)
     {
-        using var scope = scopeFactory.CreateScope();
-        var domains = scope.ServiceProvider.GetRequiredService<ITenantDomainRepository>();
-        var cloudflare = scope.ServiceProvider.GetRequiredService<ICloudflareProvisioningClient>();
-        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-
-        var pending = await domains.GetProvisioningCustomHostnamesAsync(ct);
+        List<Guid> pending;
+        await using (var scope = scopeFactory.CreateAsyncScope())
+        {
+            var domains = scope.ServiceProvider.GetRequiredService<ITenantDomainRepository>();
+            pending = (await domains.GetProvisioningCustomHostnamesAsync(ct)).Select(domain => domain.Id).ToList();
+        }
         if (pending.Count == 0)
             return;
 
-        var transitioned = 0;
-        foreach (var domain in pending)
-            transitioned += await TryAdvanceAsync(domain, cloudflare, ct) ? 1 : 0;
+        // Una unidad por dominio: el cambio de estado y su evento de dominio se confirman juntos.
+        var summary = await TransactionalJobUnit.RunEachAsync<Guid, AuthDbContext>(
+            scopeFactory,
+            pending,
+            async (domainId, unit, token) =>
+            {
+                var domains = unit.Services.GetRequiredService<ITenantDomainRepository>();
+                var cloudflare = unit.Services.GetRequiredService<ICloudflareProvisioningClient>();
+                return await domains.GetByIdAsync(domainId, token) is { Status: TenantDomainStatus.Provisioning } domain
+                    && await TryAdvanceAsync(domain, cloudflare, token);
+            },
+            logger,
+            ct
+        );
 
-        if (transitioned > 0)
+        if (summary.Committed > 0)
         {
-            await db.SaveChangesAsync(ct);
             logger.LogInformation(
                 "Tenant domain provisioning poll: {Transitioned}/{Checked} hostname(s) changed state.",
-                transitioned,
+                summary.Committed,
                 pending.Count
             );
         }

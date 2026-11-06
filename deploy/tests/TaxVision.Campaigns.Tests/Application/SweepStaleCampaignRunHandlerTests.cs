@@ -18,23 +18,27 @@ public sealed class SweepStaleCampaignRunHandlerTests
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 "Manual",
-                emails.Select(e => new RunRecipientDraft(Guid.NewGuid().ToString("N"), CampaignChannel.Email, e, null)).ToList()
+                emails
+                    .Select(e => new RunRecipientDraft(Guid.NewGuid().ToString("N"), CampaignChannel.Email, e, null))
+                    .ToList()
             )
             .Value;
         foreach (var r in run.Recipients.ToList())
             run.MarkDispatched(r.Id);
+        run.ClearDomainEvents();
         return run;
     }
 
-    private static Task SweepAsync(CampaignRun run, FakeCampaignRunRepository runs, FakeMessageBus bus) =>
-        SweepStaleCampaignRunHandler.Handle(
+    private static async Task SweepAsync(CampaignRun run, FakeCampaignRunRepository runs, FakeMessageBus bus)
+    {
+        await SweepStaleCampaignRunHandler.Handle(
             new SweepStaleCampaignRunCommand(Tenant, run.Id),
             runs,
             new FakeUnitOfWork(),
-            bus,
-            new FakeCorrelationContext(),
             CancellationToken.None
         );
+        CampaignDomainEventReplay.DispatchInto(bus, runs.Runs);
+    }
 
     [Fact]
     public async Task Sweep_StaleRun_PublishesRunCompletedOnce()
@@ -57,6 +61,7 @@ public sealed class SweepStaleCampaignRunHandlerTests
     {
         var run = DispatchedRun("a@x.com");
         run.ApplyResult(run.Recipients.Single().DispatchId, DispatchOutcome.Delivered, null, null);
+        run.ClearDomainEvents();
         var runs = new FakeCampaignRunRepository();
         runs.Runs.Add(run);
         var bus = new FakeMessageBus();

@@ -147,6 +147,36 @@ public sealed class RestoreTenantAdminHandlerTests
     /// <summary>Solo lo que usa el handler: el rol de sistema Tenant Admin con sus permisos.</summary>
     private sealed class FakeRoles : IRoleRepository
     {
+        public Task<IReadOnlyList<UserPermissionDeny>> GetActiveDeniesAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserPermissionDeny>>([]);
+
+        public Task<IReadOnlyList<(Guid UserId, Guid TenantId)>> GetUsersWithExpiredDeniesAsync(
+            DateTime nowUtc,
+            int take,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<(Guid UserId, Guid TenantId)>>([]);
+
+        public Task<int> RemoveExpiredDeniesAsync(Guid userId, DateTime nowUtc, CancellationToken ct = default) =>
+            Task.FromResult(0);
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>> GetRolesByUsersAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>>(
+                new Dictionary<Guid, IReadOnlyList<Role>>()
+            );
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetDeniedPermissionIdsByUsersAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(
+                new Dictionary<Guid, IReadOnlyList<Guid>>()
+            );
+
         private readonly List<Permission> _catalog = [];
 
         private FakeRoles(Role systemRole) => SystemRole = systemRole;

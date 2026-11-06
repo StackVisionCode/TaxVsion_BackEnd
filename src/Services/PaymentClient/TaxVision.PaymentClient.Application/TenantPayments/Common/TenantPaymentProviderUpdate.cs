@@ -92,7 +92,7 @@ public static class TenantPaymentProviderUpdate
     /// <summary>
     /// Completa el <c>PaymentLink</c> que originó este cobro, si lo hay — cubre el caso 3DS/SCA donde
     /// <c>RedeemPaymentLinkHandler</c> no pudo confirmar el éxito sincrónicamente (§F.4). Devuelve el
-    /// evento del link SIN publicarlo (el caller guarda y luego llama <see cref="PublishSucceededAsync"/>).
+    /// evento del link SIN publicarlo (el caller guarda y luego llama <see cref="PublishLinkUsedAsync"/>).
     /// Null = no había link que completar o estaba revocado. La señal "pagado" no depende de esto.
     /// </summary>
     public static async Task<PaymentLinkUsedIntegrationEvent?> CompletePaymentLinkIfAnyAsync(
@@ -206,20 +206,12 @@ public static class TenantPaymentProviderUpdate
         );
     }
 
-    /// <summary>Publica el link usado (si hubo) y la señal "pagado"; llamar solo después de guardar.</summary>
-    public static async Task PublishSucceededAsync(
-        IMessageBus bus,
-        TenantPayment payment,
-        PaymentLinkUsedIntegrationEvent? linkUsed,
-        string? correlationId
-    )
+    /// <summary>Publica el link usado, si hubo; llamar solo después de guardar. La señal "pagado" sale del
+    /// evento de dominio del pago (PCL-BB1).</summary>
+    public static async Task PublishLinkUsedAsync(IMessageBus bus, PaymentLinkUsedIntegrationEvent? linkUsed)
     {
         if (linkUsed is not null)
             await bus.PublishAsync(linkUsed);
-
-        await bus.PublishAsync(
-            TenantPaymentSucceededSignal.Build(payment, payment.PaidAtUtc ?? DateTime.UtcNow, correlationId)
-        );
     }
 
     /// <summary><paramref name="totalRefundedCents"/> es el acumulado en el charge del

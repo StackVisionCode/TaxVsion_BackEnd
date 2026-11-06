@@ -256,6 +256,7 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CloudStorageDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionDurableLocalQueues();
 
     // Cola local del escaneo (en serie y durable): ver ScanQueueConfiguration.
     options.ConfigureScanQueue();

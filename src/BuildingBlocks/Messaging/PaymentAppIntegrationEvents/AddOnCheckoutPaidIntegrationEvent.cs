@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -8,6 +10,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// Distinto de <see cref="AddOnRenewalPaymentSucceededIntegrationEvent"/>, que es la renovación off-session
 /// de un add-on que ya existe. Alias v1.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.AddOnCheckoutPaidIntegrationEvent")]
 public sealed record AddOnCheckoutPaidIntegrationEvent : IntegrationEvent
 {
     public required Guid AddOnPurchaseIntentId { get; init; }

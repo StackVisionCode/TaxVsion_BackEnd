@@ -172,6 +172,11 @@ builder.Host.UseWolverine(options =>
 
     options.ApplyStandardFailurePolicies();
 
+    // CON-11: "pasa a Error y avisa" sale del agregado por la cola domain-events, en orden de commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+    options.UseTaxVisionDurableLocalQueues();
+
     // Sin estas reglas, Wolverine no enruta el evento a RabbitMQ y bus.PublishAsync lo descarta en
     // silencio — ningun otro servicio llega a recibirlo.
     options

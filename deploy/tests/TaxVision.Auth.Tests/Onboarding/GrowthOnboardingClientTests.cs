@@ -68,6 +68,15 @@ public sealed class GrowthOnboardingClientTests
 
     private sealed class DummyTokenGenerator : IJwtTokenGenerator
     {
+        public AccessToken GenerateScopedServiceToken(
+            Guid tenantId,
+            string clientId,
+            IReadOnlyCollection<string> permissions,
+            IReadOnlyCollection<string> scopes,
+            string audience,
+            int lifetimeMinutes
+        ) => GenerateServiceToken(tenantId, clientId, permissions, lifetimeMinutes);
+
         public AccessToken GenerateServiceToken(
             Guid tenantId,
             string clientId,

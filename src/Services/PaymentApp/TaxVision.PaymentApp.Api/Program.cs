@@ -242,6 +242,14 @@ builder.Host.UseWolverine(options =>
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
     options.ApplyStandardFailurePolicies();
+
+    // Eventos de dominio de SaaSPayment: se guardan con el commit del handler y su handler devuelve los avisos
+    // de resultado (cascada por el outbox). En serie: los avisos salen en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // Toda cola local durable: lo publicado a un handler propio sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 });
 
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);

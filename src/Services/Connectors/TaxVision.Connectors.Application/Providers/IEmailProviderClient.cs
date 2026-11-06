@@ -63,31 +63,15 @@ public interface IEmailProviderClient
     );
 
     /// <summary>
-    /// Metadata de varios mensajes. Por defecto pide uno por uno; IMAP lo resuelve en un solo FETCH.
-    /// Un mensaje que falla queda con su error y no corta a los demás.
+    /// Metadata de varios mensajes. Gmail y Graph piden uno por uno (<see cref="EmailProviderClientExtensions.GetMessagesOneByOneAsync"/>);
+    /// IMAP lo resuelve en un solo FETCH. Un mensaje que falla queda con su error y no corta a los demás.
     /// </summary>
-    async Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
+    Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
         Guid accountId,
         Guid tenantId,
         IReadOnlyList<string> providerMessageIds,
         CancellationToken ct = default
-    )
-    {
-        var results = new List<ProviderMessageFetch>(providerMessageIds.Count);
-        foreach (var id in providerMessageIds)
-        {
-            try
-            {
-                results.Add(ProviderMessageFetch.Found(id, await GetMessageAsync(accountId, tenantId, id, ct)));
-            }
-            catch (EmailProviderException ex)
-            {
-                results.Add(ProviderMessageFetch.Failed(id, ex));
-            }
-        }
-
-        return results;
-    }
+    );
 
     /// <summary>Fetch completo bajo demanda (Fase 8, format=full/body select) — nunca se llama desde el pipeline de webhooks (metadata-first), solo desde el endpoint M2M de body fetch.</summary>
     Task<MessageBody> GetMessageBodyAsync(
@@ -115,4 +99,32 @@ public interface IEmailProviderClient
         string attachmentId,
         CancellationToken ct = default
     );
+}
+
+public static class EmailProviderClientExtensions
+{
+    /// <summary>Lectura de varios mensajes pidiendo uno por uno, para los proveedores sin lote nativo.</summary>
+    public static async Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesOneByOneAsync(
+        this IEmailProviderClient client,
+        Guid accountId,
+        Guid tenantId,
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    )
+    {
+        var results = new List<ProviderMessageFetch>(providerMessageIds.Count);
+        foreach (var id in providerMessageIds)
+        {
+            try
+            {
+                results.Add(ProviderMessageFetch.Found(id, await client.GetMessageAsync(accountId, tenantId, id, ct)));
+            }
+            catch (EmailProviderException ex)
+            {
+                results.Add(ProviderMessageFetch.Failed(id, ex));
+            }
+        }
+
+        return results;
+    }
 }

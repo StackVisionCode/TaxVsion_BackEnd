@@ -28,8 +28,6 @@ public static class CompleteTaskHandler
         ITaskHierarchyService hierarchy,
         ITaskSeriesMaterializer seriesMaterializer,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ITaskMetrics metrics,
         CancellationToken ct
     )
@@ -48,7 +46,7 @@ public static class CompleteTaskHandler
             return Result.Failure<TaskResponse>(completed.Error);
 
         if (wasOpen)
-            await CascadeAsync(command, task, unblocking, hierarchy, seriesMaterializer, bus, correlation, ct);
+            await CascadeAsync(command, task, unblocking, hierarchy, seriesMaterializer, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
         metrics.RecordCompleted(task.Reference.CustomerId is not null);
@@ -58,7 +56,8 @@ public static class CompleteTaskHandler
 
     /// <summary>
     /// Lo que arrastra cerrar una tarea: desbloquea sucesoras, baja el contador del padre, materializa
-    /// la siguiente ocurrencia de la serie y avisa a Reminder. Sólo la primera vez.
+    /// la siguiente ocurrencia de la serie. Los avisos los devuelve TaskCompletedDomainEventHandler. Sólo la
+    /// primera vez.
     /// </summary>
     private static async Task CascadeAsync(
         CompleteTaskCommand command,
@@ -66,38 +65,12 @@ public static class CompleteTaskHandler
         ITaskUnblockingService unblocking,
         ITaskHierarchyService hierarchy,
         ITaskSeriesMaterializer seriesMaterializer,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         await unblocking.ApplyPredecessorClosedAsync(command.TenantId, task.Id, ct);
         await hierarchy.ApplyChildClosedAsync(command.TenantId, task.ParentTaskId, ct);
 
-        var next = await seriesMaterializer.ApplyInstanceClosedAsync(task, task.CompletedAtUtc, ct);
-        if (next is not null)
-            await TaskDueReminder.PublishIfDueAsync(next, bus, correlation);
-
-        await bus.PublishAsync(BuildEvent(task, command.ByUserId, correlation.CorrelationId));
-        await bus.PublishAsync(
-            TaskReminderContracts.Closed(
-                task,
-                TaskReminderContracts.ClosureReasons.Completed,
-                correlation.CorrelationId
-            )
-        );
+        await seriesMaterializer.ApplyInstanceClosedAsync(task, task.CompletedAtUtc, ct);
     }
-
-    private static TaskCompletedIntegrationEvent BuildEvent(TaskItem task, Guid byUserId, string correlationId) =>
-        new()
-        {
-            TenantId = task.TenantId,
-            CorrelationId = correlationId,
-            TaskId = task.Id,
-            Title = task.Title.Value,
-            CompletedByUserId = byUserId,
-            CompletedAtUtc = task.CompletedAtUtc ?? DateTime.UtcNow,
-            CustomerId = task.Reference.CustomerId,
-            TaxYear = task.Reference.TaxYear,
-        };
 }

@@ -56,8 +56,6 @@ public sealed class ReservationExpiryIntegrationTests : IAsyncLifetime
                     new ReservationRepository(expireDb),
                     new WalletRepository(expireDb),
                     expireDb,
-                    new TestMessageContext(),
-                    new FakeCorrelationContext(),
                     NullLogger<WalletReservation>.Instance,
                     CancellationToken.None
                 )
@@ -68,8 +66,6 @@ public sealed class ReservationExpiryIntegrationTests : IAsyncLifetime
                     new ReservationRepository(settleDb),
                     new WalletRepository(settleDb),
                     settleDb,
-                    new TestMessageContext(),
-                    new FakeCorrelationContext(),
                     NullLogger<WalletReservation>.Instance,
                     CancellationToken.None
                 )

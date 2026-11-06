@@ -92,6 +92,12 @@ public sealed class ValidateInvitationHandlerTests
 
     private sealed class FakeInvitationRepo(Invitation? invitation) : IInvitationRepository
     {
+        public Task<IReadOnlyList<Invitation>> ListPendingStaffSentByAsync(
+            Guid tenantId,
+            Guid invitedByUserId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<Invitation>>([]);
+
         public Task<Invitation?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
             Task.FromResult(invitation);
 

@@ -19,5 +19,5 @@ public interface ICustomerImportRepository
         Guid tenantId,
         Guid userId,
         CancellationToken ct
-    ) => Task.FromResult<IReadOnlyList<CustomerImportAttempt>>([]);
+    );
 }

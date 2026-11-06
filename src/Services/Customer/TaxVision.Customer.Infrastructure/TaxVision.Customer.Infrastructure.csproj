@@ -7,6 +7,8 @@
     <ProjectReference Include="..\TaxVision.Customer.Application\TaxVision.Customer.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <!-- BB-3: cierre de la importación y su aviso en una sola transacción. -->
+    <ProjectReference Include="..\..\..\BuildingBlocks\Jobs\BuildingBlocks.Jobs.csproj" />
   </ItemGroup>
 
   <ItemGroup>

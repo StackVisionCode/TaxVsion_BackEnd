@@ -229,6 +229,14 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
 
     private sealed class Scribe : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ct);
+
         public string? EventKey { get; private set; }
         public IReadOnlyDictionary<string, object?> Variables { get; private set; } = new Dictionary<string, object?>();
 

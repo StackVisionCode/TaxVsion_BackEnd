@@ -1,3 +1,5 @@
+using BuildingBlocks.Messaging;
+
 namespace TaxVision.Signature.Application.Sealing;
 
 /// <summary>
@@ -13,11 +15,8 @@ namespace TaxVision.Signature.Application.Sealing;
 /// re-publicar el evento al exchange (no duplica notificaciones de otros servicios). Cuando el
 /// scan marca el archivo <c>Available</c>, un reintento sella con la firma dibujada real; nunca
 /// se produce un documento legal al que le falte, de forma inadvertida, la firma que el firmante
-/// trazó. La política de reintentos vive en <c>Program.cs</c>.
+/// trazó. Los reintentos son los de BB-7 (<see cref="DependencyNotReadyException"/>), programados.
 /// </para>
 /// </summary>
-public sealed class SignatureImageNotReadyException : Exception
-{
-    public SignatureImageNotReadyException(string message)
-        : base(message) { }
-}
+public sealed class SignatureImageNotReadyException(string message)
+    : DependencyNotReadyException("SignatureImageScan", message);

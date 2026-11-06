@@ -32,8 +32,6 @@ public static class CreateSubtaskHandler
         CreateSubtaskCommand command,
         ITaskRepository tasks,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -52,8 +50,8 @@ public static class CreateSubtaskHandler
         if (created.IsFailure)
             return Result.Failure<TaskResponse>(created.Error);
 
+        // Los anuncios del alta los devuelve TaskCreatedDomainEventHandler.
         tasks.Add(created.Value);
-        await bus.PublishAsync(TaskCreatedEventFactory.From(created.Value, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(TaskResponse.From(created.Value));

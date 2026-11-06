@@ -22,7 +22,6 @@ public sealed class TenantOnboardingConcurrencyModelTests
     {
         using var db = new AuthDbContext(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
-            new FakeMessageBus(),
             new NoTenantContext()
         );
 

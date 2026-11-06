@@ -1,12 +1,9 @@
-using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
-using BuildingBlocks.Persistence;
-using BuildingBlocks.Results;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
-using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
-using Wolverine;
+using TaxVision.Subscription.Infrastructure.Persistence;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -28,38 +25,49 @@ public sealed class TrialExpirationJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
-        var bus = services.GetRequiredService<IMessageBus>();
-        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
         var logger = services.GetRequiredService<ILogger<TrialExpirationJob>>();
 
         var nowUtc = DateTime.UtcNow;
         var expired = await subscriptions.GetExpiredTrialsAsync(nowUtc, BatchSize, ct);
+        if (expired.Count == 0)
+            return;
 
-        foreach (var subscription in expired)
+        var summary = await ExpireAsync([.. expired.Select(subscription => subscription.TenantId)], nowUtc, ct);
+        if (summary.Committed > 0)
+            logger.LogInformation("TrialExpirationJob expired {Count} trial(s).", summary.Committed);
+    }
+
+    internal Task<JobBatchSummary> ExpireAsync(IReadOnlyList<Guid> tenantIds, DateTime nowUtc, CancellationToken ct) =>
+        RunUnitsAsync(tenantIds, (tenantId, unit, token) => ExpireOneAsync(unit, tenantId, nowUtc, token), ct);
+
+    // El aviso TrialEnded sale del evento de dominio; el recálculo va por la cola local durable, en la misma unidad.
+    private static async Task<bool> ExpireOneAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
+        Guid tenantId,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        unit.UseTenant(tenantId);
+        var subscription = await unit
+            .Services.GetRequiredService<ISubscriptionRepository>()
+            .GetByTenantIdAsync(tenantId, ct);
+        if (subscription is null)
+            return false;
+
+        var result = subscription.ExpireTrialWithoutConversion(actorUserId: Guid.Empty, nowUtc);
+        if (result.IsFailure)
         {
-            var previousStatus = subscription.Status;
-            var result = subscription.ExpireTrialWithoutConversion(actorUserId: Guid.Empty, nowUtc);
-            if (result.IsFailure)
-            {
-                logger.LogWarning(
+            unit.Services.GetRequiredService<ILogger<TrialExpirationJob>>()
+                .LogWarning(
                     "Could not expire trial for subscription {SubscriptionId}: {Code}.",
                     subscription.Id,
                     result.Error.Code
                 );
-                continue;
-            }
-
-            await unitOfWork.SaveChangesAsync(ct);
-
-            // RBAC Fase 5 — RecalculateEntitlementsSafelyAsync despacha vía bus.InvokeAsync a un
-            // scope Wolverine nuevo; sin este stamp LocalCommandTenantMiddleware no tiene tenant
-            // que restaurar y el filtro fail-closed de SubscriptionDbContext bloquearía el handler.
-            bus.TenantId = subscription.TenantId.ToString();
-            await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
-            await bus.PublishStatusChangedAsync(subscription, previousStatus, SubscriptionChangeReason.TrialEnded);
+            return false;
         }
 
-        if (expired.Count > 0)
-            logger.LogInformation("TrialExpirationJob expired {Count} trial(s).", expired.Count);
+        await unit.PublishAsync(new RecalculateEntitlementsCommand(tenantId));
+        return true;
     }
 }

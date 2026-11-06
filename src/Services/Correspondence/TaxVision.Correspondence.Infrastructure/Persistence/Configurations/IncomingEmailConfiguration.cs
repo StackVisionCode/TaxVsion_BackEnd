@@ -38,6 +38,7 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
 
         // Veredicto derivado, no se persiste.
         builder.Ignore(x => x.SenderTrust);
+        builder.Ignore(x => x.DomainEvents);
 
         // SPF/DKIM/DMARC en 3 columnas (owned value object).
         builder.OwnsOne(

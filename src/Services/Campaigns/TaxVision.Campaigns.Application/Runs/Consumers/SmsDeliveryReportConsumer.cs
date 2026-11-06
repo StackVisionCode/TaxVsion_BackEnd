@@ -1,11 +1,9 @@
-using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
-using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Domain.Runs;
-using Wolverine;
 
 namespace TaxVision.Campaigns.Application.Runs.Consumers;
 
@@ -28,8 +26,6 @@ internal static class SmsDeliveryReport
         string? reason,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger logger,
         CancellationToken ct
     )
@@ -41,23 +37,13 @@ internal static class SmsDeliveryReport
             return; // no es un envío de campaña
 
         var dispatchId = sourceContext[CampaignPrefix.Length..];
-        var run = await runs.GetByDispatchIdAsync(tenantId, dispatchId, ct);
-        if (run is null)
-        {
-            logger.LogWarning(
-                "SMS DLR for unknown dispatch {DispatchId} (tenant {TenantId}); ignoring.",
-                dispatchId,
-                tenantId
-            );
-            return;
-        }
+        var run =
+            await runs.GetByDispatchIdAsync(tenantId, dispatchId, ct)
+            ?? throw new DependencyNotReadyException("CampaignRun", $"dispatch {dispatchId}");
 
         var applied = run.ApplyResult(dispatchId, outcome, providerRef, reason);
         if (applied.IsFailure)
             return;
-
-        if (applied.Value) // cerró en esta llamada (raro: sólo si aún estaba Dispatching)
-            await StartCampaignRunHandler.PublishCompletedAsync(bus, run, correlation.CorrelationId);
 
         await unitOfWork.SaveChangesAsync(ct);
     }
@@ -69,8 +55,6 @@ public static class CampaignSmsDeliveredConsumer
         SmsMessageDeliveredIntegrationEvent evt,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
     ) =>
@@ -82,8 +66,6 @@ public static class CampaignSmsDeliveredConsumer
             null,
             runs,
             unitOfWork,
-            bus,
-            correlation,
             logger,
             ct
         );
@@ -99,8 +81,6 @@ public static class CampaignSmsAcceptedConsumer
         SmsMessageAcceptedIntegrationEvent evt,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
     ) =>
@@ -112,8 +92,6 @@ public static class CampaignSmsAcceptedConsumer
             null,
             runs,
             unitOfWork,
-            bus,
-            correlation,
             logger,
             ct
         );
@@ -125,8 +103,6 @@ public static class CampaignSmsFailedConsumer
         SmsMessageFailedIntegrationEvent evt,
         ICampaignRunRepository runs,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
     ) =>
@@ -138,8 +114,6 @@ public static class CampaignSmsFailedConsumer
             evt.FailureCode,
             runs,
             unitOfWork,
-            bus,
-            correlation,
             logger,
             ct
         );

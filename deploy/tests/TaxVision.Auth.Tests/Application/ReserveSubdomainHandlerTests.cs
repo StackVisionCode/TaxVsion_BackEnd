@@ -15,6 +15,15 @@ public sealed class ReserveSubdomainHandlerTests
 {
     private sealed class FakeJwtTokenGenerator : IJwtTokenGenerator
     {
+        public AccessToken GenerateScopedServiceToken(
+            Guid tenantId,
+            string clientId,
+            IReadOnlyCollection<string> permissions,
+            IReadOnlyCollection<string> scopes,
+            string audience,
+            int lifetimeMinutes
+        ) => GenerateServiceToken(tenantId, clientId, permissions, lifetimeMinutes);
+
         public string? LastTicketSlug { get; private set; }
         public string? LastTicketEmail { get; private set; }
 

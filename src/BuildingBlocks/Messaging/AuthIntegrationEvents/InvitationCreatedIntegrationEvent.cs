@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// para enviar el email/SMS con el enlace de activación. El token viaja únicamente
 /// por el bus interno y nunca se persiste en claro.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.InvitationCreatedIntegrationEvent")]
 public sealed record InvitationCreatedIntegrationEvent : IntegrationEvent
 {
     public required Guid InvitationId { get; init; }

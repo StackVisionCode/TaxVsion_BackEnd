@@ -3,7 +3,6 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
-using Wolverine;
 
 namespace TaxVision.Tenant.Application.Tenants.Consumers;
 
@@ -24,7 +23,6 @@ public static class OnboardingCancelRequestedConsumer
         OnboardingCancelRequestedIntegrationEvent evt,
         ITenantRepository tenants,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TaxVision.Tenant.Domain.Tenant> logger,
         CancellationToken ct
@@ -63,8 +61,6 @@ public static class OnboardingCancelRequestedConsumer
             }
 
             await unitOfWork.SaveChangesAsync(ct);
-            // También en un replay: los consumidores fijan Closed, que es terminal.
-            await bus.PublishAsync(TenantStatusEvents.From(tenant, correlation.CorrelationId));
 
             logger.LogInformation(
                 "OnboardingCancelRequested: tenant {TenantId} for onboarding {OnboardingId} closed.",

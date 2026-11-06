@@ -4,6 +4,7 @@ using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Hosting;
 using JasperFx;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,7 @@ using Microsoft.Extensions.Hosting;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ReconcileStuckSaaSPayment;
+using TaxVision.PaymentApp.Application.SaaSPayments.DomainEventHandlers;
 using TaxVision.PaymentApp.Domain.ProviderCustomers;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -142,6 +144,7 @@ public sealed class ReconcileStuckSaaSPaymentIntegrationTests : IAsyncLifetime
                 options
                     .Discovery.DisableConventionalDiscovery()
                     .IncludeType(typeof(ReconcileStuckSaaSPaymentHandler))
+                    .IncludeType(typeof(SaaSPaymentDomainEventHandler))
                     .IncludeType(typeof(SinkHandler));
                 options.PersistMessagesWithSqlServer(_connectionString, Schema);
                 options.AutoBuildMessageStorageOnStartup = AutoCreate.CreateOrUpdate;
@@ -149,6 +152,8 @@ public sealed class ReconcileStuckSaaSPaymentIntegrationTests : IAsyncLifetime
                     .UseEntityFrameworkCoreTransactions()
                     .WithDbContextAbstraction<IUnitOfWork, PaymentAppDbContext>();
                 options.Policies.AutoApplyTransactions();
+                // PAY-BB1: el resultado sale del evento de dominio, guardado en la transacción del comando.
+                options.UseTaxVisionDomainEvents();
                 // Sin RabbitMQ: los eventos van a una cola local durable que los registra.
                 options
                     .PublishMessage<SubscriptionRenewalPaymentSucceededIntegrationEvent>()

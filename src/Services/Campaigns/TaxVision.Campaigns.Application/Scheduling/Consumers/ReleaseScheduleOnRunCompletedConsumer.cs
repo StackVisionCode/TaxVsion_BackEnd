@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,9 @@ public static class ReleaseScheduleOnRunCompletedConsumer
         var schedule = await schedules.GetByActiveRunIdAsync(evt.TenantId, evt.RunId, ct);
         if (schedule is null)
         {
+            if (!await runs.ExistsAsync(evt.TenantId, evt.RunId, ct))
+                throw new DependencyNotReadyException("CampaignRun", $"run {evt.RunId}");
+
             // Defensa: buscar el agendado por el ScheduleId del run.
             var scheduleId = await runs.GetScheduleIdAsync(evt.TenantId, evt.RunId, ct);
             if (scheduleId is null)

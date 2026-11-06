@@ -16,8 +16,25 @@ public sealed class FakeSaaSPaymentRepository(SaaSPayment? existing = null) : IS
 {
     public SaaSPayment? Added { get; private set; }
 
-    /// <summary>Lo que devuelve la búsqueda por clave de idempotencia: null fuerza el camino de creación.</summary>
-    public SaaSPayment? Existing { get; set; } = existing;
+    /// <summary>Lo que devuelve la búsqueda por clave de idempotencia: null fuerza el camino de creación. Lo
+    /// sembrado se considera ya guardado: sus eventos de dominio no cuentan para el comando.</summary>
+    public SaaSPayment? Existing
+    {
+        get => _existing;
+        set
+        {
+            value?.ClearDomainEvents();
+            _existing = value;
+        }
+    }
+
+    private SaaSPayment? _existing = Seeded(existing);
+
+    private static SaaSPayment? Seeded(SaaSPayment? payment)
+    {
+        payment?.ClearDomainEvents();
+        return payment;
+    }
 
     public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(ById);
@@ -78,8 +95,19 @@ public sealed class FakeSaaSPaymentRepository(SaaSPayment? existing = null) : IS
     /// <summary>El pago del onboarding, cuando el test lo necesita.</summary>
     public SaaSPayment? Onboarding { get; set; }
 
-    /// <summary>Lo que devuelve la búsqueda por Id.</summary>
-    public SaaSPayment? ById { get; set; }
+    /// <summary>Lo que devuelve la búsqueda por Id. Lo sembrado se considera ya guardado: sus eventos de dominio
+    /// no cuentan para el comando.</summary>
+    public SaaSPayment? ById
+    {
+        get => _byId;
+        set
+        {
+            value?.ClearDomainEvents();
+            _byId = value;
+        }
+    }
+
+    private SaaSPayment? _byId;
 
     public Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
         Task.FromResult(Onboarding);

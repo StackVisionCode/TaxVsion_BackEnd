@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
 /// <summary>customer.customer_profile_update_from_form_rejected.v1</summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerProfileUpdateFromFormRejectedIntegrationEvent")]
 public sealed record CustomerProfileUpdateFromFormRejectedIntegrationEvent : IntegrationEvent
 {
     public required Guid CommandId { get; init; }

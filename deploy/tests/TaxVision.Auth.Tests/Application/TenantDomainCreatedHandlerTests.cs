@@ -5,24 +5,22 @@ using TaxVision.Auth.Domain.TenantDomains.Events;
 
 namespace TaxVision.Auth.Tests.Application;
 
-/// <summary>Fase A7 — handler local del domain event TenantDomainCreated: audita y publica el integration event correspondiente.</summary>
+/// <summary>Fase A7 — handler local del domain event TenantDomainCreated: audita una vez y devuelve el integration event correspondiente (Wolverine lo manda por el outbox).</summary>
 public sealed class TenantDomainCreatedHandlerTests
 {
     [Fact]
-    public async Task Handle_writes_audit_log_and_publishes_integration_event()
+    public async Task Handle_writes_audit_log_once_and_returns_integration_event()
     {
         var tenantId = Guid.NewGuid();
         var domainId = Guid.NewGuid();
         var actingUserId = Guid.NewGuid();
         var audit = new FakeAuthAuditWriter();
-        var bus = new FakeMessageBus();
 
-        await TenantDomainCreatedHandler.Handle(
+        var published = await TenantDomainCreatedHandler.Handle(
             new TenantDomainCreated(tenantId, domainId, "archivos.suoficina.com", "CustomHostname", actingUserId),
             audit,
             new FakeRequestContext(),
             new FakeCorrelationContext(),
-            bus,
             CancellationToken.None
         );
 
@@ -32,7 +30,6 @@ public sealed class TenantDomainCreatedHandlerTests
         Assert.Equal(actingUserId, log.UserId);
         Assert.Equal(domainId, log.TargetId);
 
-        var published = Assert.Single(bus.Published.OfType<TenantDomainCreatedIntegrationEvent>());
         Assert.Equal(tenantId, published.TenantId);
         Assert.Equal(domainId, published.DomainId);
         Assert.Equal("archivos.suoficina.com", published.Host);

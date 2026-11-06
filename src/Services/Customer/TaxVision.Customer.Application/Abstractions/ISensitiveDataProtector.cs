@@ -25,16 +25,14 @@ public interface ISensitiveDataProtector
     string ComputeBlindIndex(string plainText, Guid tenantId);
 
     /// <summary>
-    /// Versión de la clave maestra actual, la que se estampa al cifrar (B-9/X-9). Default 1 para
-    /// implementaciones de prueba que no rotan.
+    /// Versión de la clave maestra actual, la que se estampa al cifrar (B-9/X-9).
     /// </summary>
-    short CurrentKeyVersion => 1;
+    short CurrentKeyVersion { get; }
 
     /// <summary>
     /// Blind indexes candidatos para el lookup dual durante la ventana de rotación: el de la clave actual
     /// (idéntico a <see cref="ComputeBlindIndex"/>, siempre primero) y el de la anterior si está configurada.
     /// Sin rotación devuelve un solo candidato, así que la búsqueda se comporta como hoy.
     /// </summary>
-    IReadOnlyCollection<string> ComputeBlindIndexCandidates(string plainText, Guid tenantId) =>
-        [ComputeBlindIndex(plainText, tenantId)];
+    IReadOnlyCollection<string> ComputeBlindIndexCandidates(string plainText, Guid tenantId);
 }

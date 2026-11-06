@@ -13,6 +13,9 @@
   <Folder Name="/src/BuildingBlocks/Imaging/">
     <Project Path="src/BuildingBlocks/Imaging/BuildingBlocks.Imaging.csproj" />
   </Folder>
+  <Folder Name="/src/BuildingBlocks/Jobs/">
+    <Project Path="src/BuildingBlocks/Jobs/BuildingBlocks.Jobs.csproj" />
+  </Folder>
   <Folder Name="/src/BuildingBlocks/Messaging/" />
   <Folder Name="/src/Gateway/">
     <Project Path="src/Gateway/TaxVision.Gateway/TaxVision.Gateway.csproj" />
@@ -199,6 +202,7 @@
   <Folder Name="/deploy/tests/">
     <Project Path="deploy/tests/TaxVision.DataCollection.Engine.Tests/TaxVision.DataCollection.Engine.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.BuildingBlocks.Tests/TaxVision.BuildingBlocks.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.BuildingBlocks.Testing/TaxVision.BuildingBlocks.Testing.csproj" />
     <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Billing.Tests/TaxVision.Billing.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Catalog.Tests/TaxVision.Catalog.Tests.csproj" />

@@ -1,11 +1,9 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
-using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Domain.Wallet;
-using Wolverine;
 
 namespace TaxVision.Wallet.Application.Wallet.Consumers;
 
@@ -26,7 +24,6 @@ public static class WalletTopUpResultConsumer
         WalletTopUpPaymentSucceededIntegrationEvent evt,
         IWalletRepository wallets,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<WalletTopUp> logger,
         CancellationToken ct
@@ -102,17 +99,8 @@ public static class WalletTopUpResultConsumer
             );
             topUp.MarkCredited(evt.SaaSPaymentId);
 
+            // El aviso de saldo sale del evento de dominio del monedero (BB-1).
             await unitOfWork.SaveChangesAsync(ct);
-
-            // Tiempo real: la recarga acreditó → avisa para que el front refresque saldo/historial.
-            await bus.PublishAsync(
-                new WalletBalanceChangedIntegrationEvent
-                {
-                    TenantId = evt.TenantId,
-                    Reason = "topup",
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
         }
     }
 

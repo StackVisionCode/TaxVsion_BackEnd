@@ -10,7 +10,7 @@ namespace TaxVision.PaymentApp.Application.SaaSPayments.Common;
 /// <summary>
 /// Aplicar un <see cref="ChargeAuthorizationResult"/> a un <see cref="SaaSPayment"/> es idéntico
 /// sin importar si el intento vino de <c>ChargeSaaSPaymentHandler</c> (primer intento) o de
-/// <c>RetrySaaSPaymentHandler</c> (dunning). El resultado lo publica <see cref="SaaSPaymentResultPublisher"/>.
+/// <c>RetrySaaSPaymentHandler</c> (dunning). El resultado lo avisa <c>SaaSPaymentDomainEventHandler</c>.
 /// </summary>
 public static class SaaSPaymentChargeOutcome
 {

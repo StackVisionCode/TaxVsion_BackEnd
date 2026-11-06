@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
 /// <summary>task.form_request_cancelled.v1</summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestCancelledIntegrationEvent")]
 public sealed record FormRequestCancelledIntegrationEvent : IntegrationEvent
 {
     public required Guid FormRequestId { get; init; }

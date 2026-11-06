@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Postmaster.Application.Abstractions;
@@ -47,12 +48,15 @@ public sealed class TenantProfileChangedConsumerTests
     }
 
     [Fact]
-    public async Task Unknown_tenant_is_a_noop()
+    public async Task Handle_TenantRowMissing_ThrowsDependencyNotReady()
     {
         var unitOfWork = new FakeUnitOfWork();
 
-        await HandleAsync(Event(Guid.NewGuid(), 1, "Acme DBA"), new InMemoryTenantDirectoryRepository(), unitOfWork);
+        var error = await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            HandleAsync(Event(Guid.NewGuid(), 1, "Acme DBA"), new InMemoryTenantDirectoryRepository(), unitOfWork)
+        );
 
+        Assert.Equal("Tenant", error.Dependency);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 

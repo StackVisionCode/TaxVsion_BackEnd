@@ -9,7 +9,7 @@ using TaxVision.Auth.Domain.Tenants;
 namespace TaxVision.Auth.Tests.Application;
 
 /// <summary>
-/// Fase A7 — handler local del domain event TenantSubdomainChanged: audita, publica el integration
+/// Fase A7 — handler local del domain event TenantSubdomainChanged: audita, devuelve el integration
 /// event (con los slugs, que es lo que guardan las réplicas), actualiza la réplica local del tenant si
 /// cambió el primario y olvida el host viejo en la cache de resolución.
 /// </summary>
@@ -52,20 +52,18 @@ public sealed class TenantSubdomainChangedHandlerTests
         );
 
     [Fact]
-    public async Task Handle_writes_audit_log_and_publishes_integration_event()
+    public async Task Handle_writes_audit_log_once_and_returns_integration_event()
     {
         var tenantId = Guid.NewGuid();
         var domainId = Guid.NewGuid();
         var actingUserId = Guid.NewGuid();
         var audit = new FakeAuthAuditWriter();
-        var bus = new FakeMessageBus();
 
-        await TenantSubdomainChangedHandler.Handle(
+        var published = await TenantSubdomainChangedHandler.Handle(
             Changed(tenantId, domainId, actingUserId, isPrimary: true),
             audit,
             new FakeRequestContext(),
             new FakeCorrelationContext(),
-            bus,
             new FakeTenantRegistry(null),
             new RecordingResolutionCache(),
             CancellationToken.None
@@ -78,7 +76,6 @@ public sealed class TenantSubdomainChangedHandlerTests
         Assert.Contains("oficina1.taxproffice.com", log.DetailsJson);
         Assert.Contains("oficina2.taxproffice.com", log.DetailsJson);
 
-        var published = Assert.Single(bus.Published.OfType<TenantSubdomainChangedIntegrationEvent>());
         Assert.Equal(domainId, published.DomainId);
         Assert.Equal("oficina1.taxproffice.com", published.OldHost);
         Assert.Equal("oficina2.taxproffice.com", published.NewHost);
@@ -99,7 +96,6 @@ public sealed class TenantSubdomainChangedHandlerTests
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),
-            new FakeMessageBus(),
             new FakeTenantRegistry(tenant),
             cache,
             CancellationToken.None
@@ -120,7 +116,6 @@ public sealed class TenantSubdomainChangedHandlerTests
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),
-            new FakeMessageBus(),
             new FakeTenantRegistry(tenant),
             new RecordingResolutionCache(),
             CancellationToken.None

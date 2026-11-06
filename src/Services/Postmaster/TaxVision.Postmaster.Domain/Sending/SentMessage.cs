@@ -26,7 +26,7 @@ public enum SentMessageStatus
 /// Nunca persiste el HTML/text del cuerpo — solo <see cref="RenderedHtmlChecksum"/> para audit;
 /// el contenido material vive en Scribe/CloudStorage. Ver Postmaster_Baseline_Audit.md §3.
 /// </summary>
-public sealed class SentMessage : TenantEntity
+public sealed class SentMessage : AggregateRoot
 {
     private readonly List<SentMessageRecipient> _recipients = [];
     private readonly List<SentMessageEvent> _events = [];
@@ -250,7 +250,12 @@ public sealed class SentMessage : TenantEntity
     /// conversationId, D3 Compose §11.3/§13) — null en el canal de notificaciones automáticas, que
     /// nunca continúa un hilo.
     /// </summary>
-    public Result MarkAsSent(string? providerMessageId, DateTime sentAtUtc, string? providerThreadId = null)
+    public Result MarkAsSent(
+        string? providerMessageId,
+        DateTime sentAtUtc,
+        string? providerThreadId = null,
+        string? reportedMessageId = null
+    )
     {
         if (Status != SentMessageStatus.Sending)
             return Result.Failure(InvalidTransition(SentMessageStatus.Sent));
@@ -270,11 +275,12 @@ public sealed class SentMessage : TenantEntity
         RefreshActivity();
 
         _events.Add(SentMessageEvent.Create(TenantId, Id, null, SentMessageEventType.Sent, sentAtUtc, null, null));
+        AddDomainEvent(new SentMessageSentDomainEvent(TenantId, Id, Callback, reportedMessageId, sentAtUtc));
         return Result.Success();
     }
 
     /// <summary>{Queued, Sending} → Failed. Cubre tanto fallo de resolución de provider como fallo de envío.</summary>
-    public Result MarkAsFailed(string reason, DateTime eventAtUtc)
+    public Result MarkAsFailed(string reason, DateTime eventAtUtc, string? reportedMessageId = null)
     {
         if (Status is not (SentMessageStatus.Queued or SentMessageStatus.Sending))
             return Result.Failure(InvalidTransition(SentMessageStatus.Failed));
@@ -289,6 +295,7 @@ public sealed class SentMessage : TenantEntity
         _events.Add(
             SentMessageEvent.Create(TenantId, Id, null, SentMessageEventType.Failed, eventAtUtc, null, ErrorReason)
         );
+        AddDomainEvent(new SentMessageFailedDomainEvent(TenantId, Id, Callback, reportedMessageId, reason, eventAtUtc));
         return Result.Success();
     }
 
@@ -348,6 +355,12 @@ public sealed class SentMessage : TenantEntity
         return Result.Success();
     }
 
+    // Solo los correos que pidió Notification tienen a quién avisar.
+    private SentMessageCallback? Callback =>
+        NotificationLogId is { } logId && DispatchAttemptId is { } attemptId
+            ? new SentMessageCallback(logId, attemptId, CampaignId, CorrelationId)
+            : null;
+
     private void RecordAttempt(bool succeeded, string? failureReason, DateTime attemptedAtUtc) =>
         _deliveryAttempts.Add(
             DeliveryAttempt.Create(TenantId, Id, DeliveryLane, ProviderCode, succeeded, failureReason, attemptedAtUtc)
@@ -366,6 +379,7 @@ public sealed class SentMessage : TenantEntity
         _events.Add(
             SentMessageEvent.Create(TenantId, Id, null, SentMessageEventType.Suppressed, eventAtUtc, null, ErrorReason)
         );
+        AddDomainEvent(new SentMessageSuppressedDomainEvent(TenantId, Id, Callback, reason, eventAtUtc));
         return Result.Success();
     }
 

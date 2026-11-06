@@ -142,18 +142,21 @@ internal sealed class RecordingPaymentProvider(PaymentProviderDescriptor descrip
         CancellationToken ct
     ) => throw new NotSupportedException();
 
+    /// <summary>Webhook ya verificado y su payload; sin configurar, lanza (el test no lo esperaba).</summary>
+    public (WebhookVerificationResult Verification, WebhookEventPayload Payload)? Webhook { get; set; }
+
     public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
         string rawPayload,
         IReadOnlyDictionary<string, string> headers,
         TenantProviderCredentials credentials,
         CancellationToken ct
-    ) => throw new NotSupportedException();
+    ) => Task.FromResult(Result.Success((Webhook ?? throw new NotSupportedException()).Verification));
 
     public Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(
         string rawPayload,
         string eventType,
         CancellationToken ct
-    ) => throw new NotSupportedException();
+    ) => Task.FromResult(Result.Success((Webhook ?? throw new NotSupportedException()).Payload));
 
     /// <summary>Consultas de estado recibidas (credenciales + cargo).</summary>
     public List<(TenantProviderCredentials Credentials, ChargeStatusLookup Lookup)> StatusLookups { get; } = [];

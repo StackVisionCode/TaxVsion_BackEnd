@@ -3,7 +3,6 @@ using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Threads;
 using TaxVision.Correspondence.Domain.Inbox;
-using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Messages;
 
@@ -73,7 +72,6 @@ public static class TrashIncomingMessageHandler
         IIncomingEmailRepository incomingEmails,
         IEmailThreadRepository emailThreads,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -92,15 +90,8 @@ public static class TrashIncomingMessageHandler
         if (email.SoftDelete(DateTime.UtcNow))
         {
             thread.DecrementMessageCount();
+            thread.NotifyStateChanged(command.ActorUserId, command.CorrelationId);
             await unitOfWork.SaveChangesAsync(ct);
-            await ThreadStateNotifier.PublishAsync(
-                bus,
-                incomingEmails,
-                thread,
-                command.ActorUserId,
-                command.CorrelationId,
-                ct
-            );
         }
 
         return Result.Success();
@@ -115,7 +106,6 @@ public static class RestoreIncomingMessageHandler
         IIncomingEmailRepository incomingEmails,
         IEmailThreadRepository emailThreads,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -134,15 +124,8 @@ public static class RestoreIncomingMessageHandler
         if (email.Restore())
         {
             thread.IncrementMessageCount();
+            thread.NotifyStateChanged(command.ActorUserId, command.CorrelationId);
             await unitOfWork.SaveChangesAsync(ct);
-            await ThreadStateNotifier.PublishAsync(
-                bus,
-                incomingEmails,
-                thread,
-                command.ActorUserId,
-                command.CorrelationId,
-                ct
-            );
         }
 
         return Result.Success();

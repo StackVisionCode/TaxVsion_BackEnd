@@ -95,7 +95,6 @@ public sealed class PayerDetailsPersistenceTests
             ),
             new PaymentAuditLogWriter(_db),
             _db,
-            InMemoryPaymentClient.RecordingBus([]),
             new NoOpPaymentClientMetrics(),
             new FixedCorrelationContext(),
             NullLogger<TenantPayment>.Instance,

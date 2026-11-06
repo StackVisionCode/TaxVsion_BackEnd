@@ -29,8 +29,6 @@ public sealed class SettleReservationHandlerTests
             reservations,
             wallets,
             unitOfWork,
-            new TestMessageContext(),
-            new FakeCorrelationContext(),
             NullLogger<WalletReservation>.Instance,
             CancellationToken.None
         );
@@ -51,10 +49,10 @@ public sealed class SettleReservationHandlerTests
         var wallets = new FakeWalletRepository();
         var reservations = new FakeReservationRepository();
         var unitOfWork = new FakeUnitOfWork();
-        var bus = new TestMessageContext();
         var wallet = WalletAggregate.Create(tenantId).Value;
         wallet.Credit(10_000_000, "topup:seed");
         wallet.Reserve(500_000, "reserve:other");
+        wallet.ClearDomainEvents();
         wallets.Wallets.Add(wallet);
         var reservation = ReservationBuilder.Open(tenantId, "campaign-run", referenceId, 500_000, 5);
         reservation.Expire(DateTime.UtcNow);
@@ -65,8 +63,6 @@ public sealed class SettleReservationHandlerTests
             reservations,
             wallets,
             unitOfWork,
-            bus,
-            new FakeCorrelationContext(),
             NullLogger<WalletReservation>.Instance,
             CancellationToken.None
         );
@@ -77,6 +73,6 @@ public sealed class SettleReservationHandlerTests
         Assert.Equal(500_000, wallet.HeldMicros);
         Assert.Empty(wallets.LedgerEntries);
         Assert.Equal(0, unitOfWork.SaveCount);
-        Assert.Empty(bus.Published);
+        Assert.Empty(wallet.DomainEvents);
     }
 }

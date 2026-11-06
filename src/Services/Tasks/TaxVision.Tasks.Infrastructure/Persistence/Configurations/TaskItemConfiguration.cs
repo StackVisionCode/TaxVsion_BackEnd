@@ -42,6 +42,7 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
 
         // Derivada de OpenBlockerCount: si EF la mapeara habría dos fuentes de verdad.
         builder.Ignore(t => t.IsBlocked);
+        builder.Ignore(t => t.DomainEvents);
 
         builder.HasMany(t => t.Timers).WithOne().HasForeignKey(t => t.TaskId).OnDelete(DeleteBehavior.Cascade);
 

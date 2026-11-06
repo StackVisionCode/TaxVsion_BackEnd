@@ -56,5 +56,10 @@ public sealed class FiscalTaxIdentifierServiceTests
         public string Unprotect(byte[] cipher) => Encoding.UTF8.GetString(cipher);
 
         public string ComputeBlindIndex(string plainText, Guid tenantId) => $"bi:{plainText}";
+
+        public IReadOnlyCollection<string> ComputeBlindIndexCandidates(string plainText, Guid tenantId) =>
+            [ComputeBlindIndex(plainText, tenantId)];
+
+        public short CurrentKeyVersion => 1;
     }
 }

@@ -86,7 +86,8 @@ public sealed class CodeReservation : AggregateRoot
                 reservation.TenantId,
                 reservation.QuoteId,
                 reservation.CodeDefinitionId,
-                reservation.Payment,
+                reservation.Payment.Source,
+                reservation.Payment.PaymentId,
                 nowUtc
             )
         );
@@ -148,10 +149,12 @@ public sealed class CodeReservation : AggregateRoot
                 Id,
                 TenantId,
                 redemptionResult.Value.Id,
-                Payment,
-                GrossAmount,
-                DiscountAmount,
-                NetAmount,
+                Payment.Source,
+                Payment.PaymentId,
+                GrossAmount.AmountCents,
+                DiscountAmount.AmountCents,
+                NetAmount.AmountCents,
+                NetAmount.Currency,
                 isLateCommit,
                 nowUtc
             )

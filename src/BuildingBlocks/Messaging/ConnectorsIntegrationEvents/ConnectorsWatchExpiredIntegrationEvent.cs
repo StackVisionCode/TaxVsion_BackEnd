@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 /// cuenta deja de recibir push notifications y el sync se congela hasta un reauth manual
 /// (POST /connectors/accounts/{id}/reauth).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsWatchExpiredIntegrationEvent")]
 public sealed record ConnectorsWatchExpiredIntegrationEvent : IntegrationEvent
 {
     public required Guid AccountId { get; init; }

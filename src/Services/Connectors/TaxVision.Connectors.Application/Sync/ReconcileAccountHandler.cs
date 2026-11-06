@@ -115,7 +115,6 @@ public static class ReconcileAccountHandler
                 account,
                 syncResult.Error.Message,
                 unitOfWork,
-                bus,
                 correlation,
                 logger,
                 ct

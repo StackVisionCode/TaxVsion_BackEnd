@@ -50,7 +50,7 @@ public sealed class WatchRenewalJob(IServiceProvider serviceProvider, ILogger<Wa
         }
     }
 
-    private async Task RunOnceAsync(CancellationToken ct)
+    public async Task RunOnceAsync(CancellationToken ct)
     {
         using var scope = serviceProvider.CreateScope();
         var subscriptionRepository = scope.ServiceProvider.GetRequiredService<IProviderWatchSubscriptionRepository>();
@@ -63,28 +63,40 @@ public sealed class WatchRenewalJob(IServiceProvider serviceProvider, ILogger<Wa
         var renewed = 0;
         foreach (var subscription in expiring)
         {
-            using var subscriptionScope = serviceProvider.CreateScope();
-            var renewalService = subscriptionScope.ServiceProvider.GetRequiredService<IWatchRenewalService>();
-            var correlation = subscriptionScope.ServiceProvider.GetRequiredService<ICorrelationContext>();
-
-            using (correlation.Push(Guid.NewGuid().ToString("N")))
-            {
-                var result = await renewalService.RenewAsync(subscription.Id, ct);
-                if (result.IsSuccess)
-                {
-                    renewed++;
-                }
-                else
-                {
-                    logger.LogWarning(
-                        "WatchRenewalJob could not renew subscription {SubscriptionId}: {Error}",
-                        subscription.Id,
-                        result.Error.Message
-                    );
-                }
-            }
+            if (await RenewOneAsync(subscription.Id, ct))
+                renewed++;
         }
 
         logger.LogInformation("WatchRenewalJob renewed {Renewed}/{Total} subscriptions.", renewed, expiring.Count);
+    }
+
+    // El proveedor se llama sin transacción; la falla se confirma en su propia unidad (IMailboxFailureUnit).
+    // Un error en una suscripción no corta el barrido.
+    private async Task<bool> RenewOneAsync(Guid subscriptionId, CancellationToken ct)
+    {
+        using var subscriptionScope = serviceProvider.CreateScope();
+        var renewalService = subscriptionScope.ServiceProvider.GetRequiredService<IWatchRenewalService>();
+        var correlation = subscriptionScope.ServiceProvider.GetRequiredService<ICorrelationContext>();
+
+        using (correlation.Push(Guid.NewGuid().ToString("N")))
+        {
+            try
+            {
+                var result = await renewalService.RenewAsync(subscriptionId, ct);
+                if (result.IsSuccess)
+                    return true;
+
+                logger.LogWarning(
+                    "WatchRenewalJob could not renew subscription {SubscriptionId}: {Error}",
+                    subscriptionId,
+                    result.Error.Message
+                );
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "WatchRenewalJob failed on subscription {SubscriptionId}.", subscriptionId);
+            }
+            return false;
+        }
     }
 }

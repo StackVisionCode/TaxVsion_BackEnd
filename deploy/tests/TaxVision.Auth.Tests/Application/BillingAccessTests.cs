@@ -166,6 +166,11 @@ public sealed class BillingAccessTests
 
     private sealed class RecordingSessionRepository : ISessionRepository
     {
+        public Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserSession>>([]);
+
         public string? RevokedReason { get; private set; }
 
         public Task<int> RevokeSurfaceTokensAsync(

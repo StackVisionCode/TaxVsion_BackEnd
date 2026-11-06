@@ -1,6 +1,7 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
 using TaxVision.Subscription.Infrastructure.Persistence;
@@ -37,13 +38,13 @@ internal sealed class SubscriptionIntegrationDb
         );
 
     // Suscripción activa sobre un plan ya existente en la base (FK a SubscriptionPlans); no toca el catálogo.
-    public async Task<TenantSubscription> SeedActiveSubscriptionAsync()
+    public async Task<TenantSubscription> SeedActiveSubscriptionAsync(bool publishedPlan = false)
     {
         await using var db = NewContext();
         var plan = await db
             .Plans.AsNoTracking()
             .Include(p => p.Versions)
-            .Where(p => p.Versions.Any())
+            .Where(p => publishedPlan ? p.Versions.Any(v => v.Status == PlanVersionStatus.Published) : p.Versions.Any())
             .OrderBy(p => p.Id)
             .FirstAsync();
         var nowUtc = DateTime.UtcNow;
@@ -51,7 +52,7 @@ internal sealed class SubscriptionIntegrationDb
             .ActivateImmediately(
                 TenantId,
                 plan,
-                plan.Versions.First(),
+                publishedPlan ? plan.GetPublishedVersion()! : plan.Versions.First(),
                 BillingCycle.Monthly,
                 nowUtc.AddDays(-1),
                 nowUtc.AddDays(29),
@@ -68,6 +69,7 @@ internal sealed class SubscriptionIntegrationDb
     {
         await using var db = NewContext();
         await db.AuditLogs.Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();
+        await db.EntitlementSnapshots.IgnoreQueryFilters().Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();
         await db.Seats.IgnoreQueryFilters().Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();
         await db.TenantAddOns.IgnoreQueryFilters().Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();
         await db.SeatPurchaseIntents.IgnoreQueryFilters().Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();

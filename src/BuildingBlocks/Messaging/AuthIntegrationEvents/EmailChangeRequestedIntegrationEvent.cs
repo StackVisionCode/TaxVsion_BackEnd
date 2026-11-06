@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
 /// Publicado por Auth al solicitar un cambio de email. Notification envía el enlace
 /// de confirmación a la dirección NUEVA y un aviso a la dirección anterior.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.EmailChangeRequestedIntegrationEvent")]
 public sealed record EmailChangeRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// pueda ejecutar <c>/sign</c>. Se emite para audit y para actualizar el estado en el
 /// dashboard staff.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerPinVerifiedIntegrationEvent")]
 public sealed record SignerPinVerifiedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

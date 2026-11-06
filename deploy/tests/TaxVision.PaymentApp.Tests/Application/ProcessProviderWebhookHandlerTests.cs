@@ -36,7 +36,6 @@ public sealed class ProcessProviderWebhookHandlerTests
             )
         );
         var webhooks = new FakeWebhookEventRepository();
-        var bus = new FakeMessageBus();
 
         var result = await ProcessProviderWebhookHandler.Handle(
             new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
@@ -49,18 +48,17 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
-            bus,
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Succeeded, payment.Status);
         Assert.Equal("CAPTURE-123", payment.ExternalChargeReference!.Value);
         Assert.Equal(WebhookEventStatus.Applied, webhooks.Added!.Status);
 
-        var published = Assert.IsType<OnboardingPaymentSucceededIntegrationEvent>(Assert.Single(bus.Published));
+        var published = Assert.IsType<OnboardingPaymentSucceededIntegrationEvent>(Assert.Single(emitted));
         Assert.Equal(payment.OnboardingId, published.OnboardingId);
         Assert.Equal("CAPTURE-123", published.ProviderPaymentReference);
     }
@@ -81,7 +79,6 @@ public sealed class ProcessProviderWebhookHandlerTests
             )
         );
         var webhooks = new FakeWebhookEventRepository();
-        var bus = new FakeMessageBus();
 
         var result = await ProcessProviderWebhookHandler.Handle(
             new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
@@ -94,16 +91,15 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
-            bus,
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Processing, payment.Status);
         Assert.Equal(WebhookEventStatus.Applied, webhooks.Added!.Status);
-        Assert.Empty(bus.Published);
+        Assert.Empty(emitted);
     }
 
     [Fact]
@@ -131,8 +127,6 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
-            new FakeMessageBus(),
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -163,7 +157,6 @@ public sealed class ProcessProviderWebhookHandlerTests
         );
         var existing = FailedEvent(PaymentProviderCode.PayPal, "paypal-event-retry");
         var webhooks = new FakeWebhookEventRepository(existing);
-        var bus = new FakeMessageBus();
 
         var result = await ProcessProviderWebhookHandler.Handle(
             new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
@@ -176,18 +169,17 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
-            bus,
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.True(provider.ParseWasCalled); // se re-procesó, NO se descartó
         Assert.Equal(PaymentStatus.Succeeded, payment.Status);
         Assert.Equal(WebhookEventStatus.Applied, existing.Status); // reusó la fila existente
         Assert.Null(webhooks.Added); // no insertó otra fila
-        Assert.Single(bus.Published.OfType<OnboardingPaymentSucceededIntegrationEvent>());
+        Assert.Single(emitted.OfType<OnboardingPaymentSucceededIntegrationEvent>());
     }
 
     [Fact]
@@ -201,7 +193,6 @@ public sealed class ProcessProviderWebhookHandlerTests
             new WebhookEventPayload("ORDER-123", PaymentStatus.Succeeded, null, null, null)
         );
         var webhooks = new FakeWebhookEventRepository();
-        var bus = new FakeMessageBus();
 
         var result = await ProcessProviderWebhookHandler.Handle(
             new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
@@ -214,18 +205,17 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(webhookThrottled: true),
             new FakeCorrelationContext(),
-            bus,
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsFailure);
         Assert.Equal(ProcessProviderWebhookHandler.WebhookThrottledCode, result.Error.Code);
         Assert.Equal(WebhookEventStatus.Failed, webhooks.Added!.Status);
         Assert.False(webhooks.Added.IsTerminal); // la próxima entrega lo re-procesa
         Assert.Equal(PaymentStatus.Processing, payment.Status);
-        Assert.Empty(bus.Published);
+        Assert.Empty(emitted);
     }
 
     [Fact]
@@ -249,7 +239,6 @@ public sealed class ProcessProviderWebhookHandlerTests
             )
         );
         var webhooks = new FakeWebhookEventRepository();
-        var bus = new FakeMessageBus();
 
         var result = await ProcessProviderWebhookHandler.Handle(
             new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
@@ -262,18 +251,17 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
-            bus,
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess); // no reintenta en bucle: se registra y no se aplica
         Assert.Equal(PaymentStatus.Processing, payment.Status); // NO quedó Succeeded
         Assert.Equal(WebhookEventStatus.NeedsReview, webhooks.Added!.Status);
         Assert.Equal("AmountMismatch", payment.ReviewReasonCode);
         Assert.Equal(100, payment.ReviewPaidAmountCents);
-        Assert.Empty(bus.Published); // no se publicó éxito de onboarding
+        Assert.Empty(emitted); // no se publicó éxito de onboarding
     }
 
     [Fact]
@@ -308,8 +296,6 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
-            new FakeMessageBus(),
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -345,8 +331,6 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
-            new FakeMessageBus(),
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -360,38 +344,60 @@ public sealed class ProcessProviderWebhookHandlerTests
     public async Task Late_success_of_an_off_session_renewal_publishes_the_renewal_result()
     {
         var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SubscriptionRenewal);
-        var bus = new FakeMessageBus();
 
         var result = await HandleStripeAsync(
             payment,
-            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Succeeded, null, null, null),
-            bus
+            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Succeeded, null, null, null)
+        );
+
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        var published = Assert.Single(emitted.OfType<SubscriptionRenewalPaymentSucceededIntegrationEvent>());
+        Assert.Equal(payment.TargetAggregateId, published.TenantSubscriptionId);
+        // Todo cobro confirmado de un tenant real pide además su recibo.
+        Assert.Single(emitted.OfType<SaaSPaymentSucceededIntegrationEvent>());
+    }
+
+    // PAY-BB1: el webhook aplicado emite un aviso por resultado (más el recibo), contando lo publicado a mano y lo
+    // devuelto por el handler del evento de dominio. Con los dos caminos activos salía ×2.
+    [Fact]
+    public async Task Applied_success_emits_exactly_one_integration_event()
+    {
+        var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.WalletTopUp);
+
+        var result = await HandleStripeAsync(
+            payment,
+            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Succeeded, null, null, null)
         );
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
-        var published = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentSucceededIntegrationEvent>());
-        Assert.Equal(payment.TargetAggregateId, published.TenantSubscriptionId);
-        // Todo cobro confirmado de un tenant real pide además su recibo.
-        Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
+        // Sin bus en el handler: lo único que sale es lo que devuelve el handler del evento de dominio.
+        Assert.DoesNotContain(
+            typeof(ProcessProviderWebhookHandler).GetMethods().SelectMany(m => m.GetParameters()),
+            p => p.ParameterType == typeof(IMessageBus)
+        );
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
+        Assert.Single(emitted.OfType<WalletTopUpPaymentSucceededIntegrationEvent>());
+        Assert.Single(emitted.OfType<SaaSPaymentSucceededIntegrationEvent>());
+        Assert.Equal(2, emitted.Count);
     }
 
     [Fact]
     public async Task Late_failure_of_a_seat_renewal_follows_dunning_and_says_it_will_retry()
     {
         var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SeatRenewal);
-        var bus = new FakeMessageBus();
 
         var result = await HandleStripeAsync(
             payment,
-            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Failed, "insufficient_funds", "No funds.", null),
-            bus
+            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Failed, "insufficient_funds", "No funds.", null)
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Failed, payment.Status);
         Assert.NotNull(payment.NextRetryAtUtc);
-        var published = Assert.IsType<SeatRenewalPaymentFailedIntegrationEvent>(Assert.Single(bus.Published));
+        var published = Assert.IsType<SeatRenewalPaymentFailedIntegrationEvent>(Assert.Single(emitted));
         Assert.True(published.WillRetry);
         Assert.Equal("insufficient_funds", published.FailureCode);
     }
@@ -410,19 +416,18 @@ public sealed class ProcessProviderWebhookHandlerTests
         );
         var retryBefore = payment.NextRetryAtUtc;
         var webhooks = new FakeWebhookEventRepository();
-        var bus = new FakeMessageBus();
 
         var result = await HandleStripeAsync(
             payment,
             new WebhookEventPayload("pi_offsession_1", PaymentStatus.Failed, "card_declined", "Declined.", null),
-            bus,
             webhooks
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(WebhookEventStatus.Stale, webhooks.Added!.Status);
         Assert.Equal(retryBefore, payment.NextRetryAtUtc);
-        Assert.Empty(bus.Published);
+        Assert.Empty(emitted);
         // Un fallo repetido no inunda la cola de revisión.
         Assert.Null(payment.ReviewRequiredAtUtc);
     }
@@ -434,7 +439,6 @@ public sealed class ProcessProviderWebhookHandlerTests
         var payment = CreateHostedCheckoutPayment("cs_late_1");
         payment.MarkCancelled("BuyerCancelled", DateTime.UtcNow);
         var webhooks = new FakeWebhookEventRepository();
-        var bus = new FakeMessageBus();
         var metrics = new FakePaymentAppMetrics();
 
         var result = await HandleStripeAsync(
@@ -449,11 +453,11 @@ public sealed class ProcessProviderWebhookHandlerTests
                 PaidAmountCents: payment.Amount.AmountCents,
                 PaidCurrency: "usd"
             ),
-            bus,
             webhooks,
             metrics
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(WebhookEventStatus.NeedsReview, webhooks.Added!.Status);
         Assert.Equal(payment.Id, webhooks.Added.RelatedSaaSPaymentId);
@@ -461,7 +465,7 @@ public sealed class ProcessProviderWebhookHandlerTests
         Assert.Equal("LateProviderSuccess", payment.ReviewReasonCode);
         Assert.Equal("pi_late_1", payment.ReviewProviderReference);
         Assert.NotNull(payment.ReviewRequiredAtUtc);
-        Assert.Empty(bus.Published);
+        Assert.Empty(emitted);
         Assert.Equal(("Stripe", "LateProviderSuccess"), Assert.Single(metrics.ReviewRequired));
     }
 
@@ -471,22 +475,21 @@ public sealed class ProcessProviderWebhookHandlerTests
         var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SubscriptionRenewal);
         payment.MarkFailed("Provider.Timeout", "Timed out.", willRetry: false, null, Guid.Empty, DateTime.UtcNow);
         var webhooks = new FakeWebhookEventRepository();
-        var bus = new FakeMessageBus();
         var metrics = new FakePaymentAppMetrics();
 
         var result = await HandleStripeAsync(
             payment,
             new WebhookEventPayload("pi_offsession_1", PaymentStatus.Succeeded, null, null, null),
-            bus,
             webhooks,
             metrics
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(WebhookEventStatus.NeedsReview, webhooks.Added!.Status);
         Assert.Equal(PaymentStatus.Failed, payment.Status);
         Assert.Equal("LateProviderSuccess", payment.ReviewReasonCode);
-        Assert.Empty(bus.Published);
+        Assert.Empty(emitted);
         Assert.Single(metrics.ReviewRequired);
     }
 
@@ -501,7 +504,6 @@ public sealed class ProcessProviderWebhookHandlerTests
         await HandleStripeAsync(
             payment,
             new WebhookEventPayload("pi_offsession_1", PaymentStatus.Succeeded, null, null, null),
-            new FakeMessageBus(),
             webhooks,
             metrics
         );
@@ -533,8 +535,6 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAppMetrics(),
             throttle,
             new FakeCorrelationContext(),
-            new FakeMessageBus(),
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -546,7 +546,6 @@ public sealed class ProcessProviderWebhookHandlerTests
     private static Task<Result> HandleStripeAsync(
         SaaSPayment payment,
         WebhookEventPayload payload,
-        FakeMessageBus bus,
         FakeWebhookEventRepository? webhooks = null,
         FakePaymentAppMetrics? metrics = null
     ) =>
@@ -571,8 +570,6 @@ public sealed class ProcessProviderWebhookHandlerTests
             metrics ?? new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
-            bus,
-            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -842,6 +839,14 @@ public sealed class ProcessProviderWebhookHandlerTests
 
     private sealed class FakeSaaSPaymentRepository(SaaSPayment payment) : ISaaSPaymentRepository
     {
+        private readonly bool _seeded = Seed(payment);
+
+        private static bool Seed(SaaSPayment seeded)
+        {
+            seeded.ClearDomainEvents();
+            return true;
+        }
+
         public Task<SaaSPayment?> GetByExternalReferenceAsync(
             PaymentProviderCode code,
             string providerChargeReference,

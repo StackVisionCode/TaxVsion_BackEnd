@@ -104,12 +104,12 @@ public sealed class RawMessageReceivedConsumerTests
             unmatched,
             options,
             unitOfWork,
-            bus,
             metrics ?? new FakeIngestMetrics(),
             new FakeCorrelationContext(),
             NullLogger<IncomingEmail>.Instance,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, threads, incomingEmails);
     }
 
     [Fact]
@@ -593,6 +593,7 @@ public sealed class RawMessageReceivedConsumerTests
         thread.AppendMessage(DateTime.UtcNow.AddDays(-2));
         thread.AppendMessage(DateTime.UtcNow.AddDays(-1));
         thread.Archive();
+        thread.ClearDomainEvents(); // ya guardado: su aviso salió antes de la prueba
         await threads.AddAsync(thread);
         return thread;
     }

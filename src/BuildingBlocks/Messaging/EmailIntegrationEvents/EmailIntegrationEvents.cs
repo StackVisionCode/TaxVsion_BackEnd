@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.EmailIntegrationEvents;
 
 /// <summary>
@@ -5,12 +7,14 @@ namespace BuildingBlocks.Messaging.EmailIntegrationEvents;
 /// envío y la consume el propio servicio Notification para entregar de forma asíncrona y durable
 /// (fuera del request HTTP). El cuerpo NO viaja en el evento: se lee de la BD por MessageId.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.EmailIntegrationEvents.EmailSendRequestedIntegrationEvent")]
 public sealed record EmailSendRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid MessageId { get; init; }
 }
 
 /// <summary>El correo se entregó al proveedor correctamente.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.EmailIntegrationEvents.EmailDeliverySucceededIntegrationEvent")]
 public sealed record EmailDeliverySucceededIntegrationEvent : IntegrationEvent
 {
     public required Guid MessageId { get; init; }
@@ -19,6 +23,7 @@ public sealed record EmailDeliverySucceededIntegrationEvent : IntegrationEvent
 }
 
 /// <summary>El correo falló al entregarse (tras agotar reintentos o error no recuperable).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.EmailIntegrationEvents.EmailDeliveryFailedIntegrationEvent")]
 public sealed record EmailDeliveryFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid MessageId { get; init; }

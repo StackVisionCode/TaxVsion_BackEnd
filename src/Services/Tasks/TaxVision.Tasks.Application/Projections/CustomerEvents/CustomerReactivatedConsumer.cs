@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -29,15 +30,12 @@ public static class CustomerReactivatedConsumer
             await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
 
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
+            // Llegó antes que Created: se reintenta con espera (y a la DLQ si nunca llega), no se descarta.
             if (existing is null)
-            {
-                logger.LogWarning(
-                    "CustomerReactivated received but no CustomerDirectoryEntry exists for tenant {TenantId}, customer {CustomerId} — nothing to reactivate.",
-                    evt.TenantId,
-                    evt.CustomerId
+                throw new DependencyNotReadyException(
+                    "CustomerDirectoryEntry",
+                    $"tenant {evt.TenantId}, customer {evt.CustomerId}"
                 );
-                return;
-            }
 
             existing.ApplyIfNewer(null, CustomerDirectoryStatus.Active, evt.ReactivatedAtUtc);
             await unitOfWork.SaveChangesAsync(ct);

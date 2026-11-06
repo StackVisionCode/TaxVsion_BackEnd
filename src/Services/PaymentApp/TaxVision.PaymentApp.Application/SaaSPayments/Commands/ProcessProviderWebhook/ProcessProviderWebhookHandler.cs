@@ -10,7 +10,6 @@ using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using TaxVision.PaymentApp.Domain.Webhooks;
-using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessProviderWebhook;
 
@@ -33,11 +32,8 @@ public static class ProcessProviderWebhookHandler
         IPaymentAppMetrics metrics,
         IPaymentAttemptThrottle throttle,
         ICorrelationContext correlation,
-        IMessageBus bus,
-        ITenantRegistry tenants,
         ILogger<WebhookEvent> logger,
-        CancellationToken ct,
-        ITenantProviderCustomerRepository? customers = null
+        CancellationToken ct
     ) =>
         ProcessAsync(
             command.Provider,
@@ -52,11 +48,8 @@ public static class ProcessProviderWebhookHandler
             metrics,
             throttle,
             correlation,
-            bus,
-            tenants,
             logger,
-            ct,
-            customers
+            ct
         );
 
     public static async Task<Result> ProcessAsync(
@@ -72,12 +65,8 @@ public static class ProcessProviderWebhookHandler
         IPaymentAppMetrics metrics,
         IPaymentAttemptThrottle throttle,
         ICorrelationContext correlation,
-        IMessageBus bus,
-        ITenantRegistry tenants,
         ILogger<WebhookEvent> logger,
-        CancellationToken ct,
-        // Solo para la tarjeta del correo de cobro fallido; sin él el evento sale sin tarjeta.
-        ITenantProviderCustomerRepository? customers = null
+        CancellationToken ct
     )
     {
         metrics.RecordWebhookReceived(provider.ToString());
@@ -293,8 +282,7 @@ public static class ProcessProviderWebhookHandler
             ct
         );
 
-        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct, tenants, customers);
-
+        // El resultado lo avisa SaaSPaymentDomainEventHandler con el commit (evento de dominio).
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(

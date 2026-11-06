@@ -1,4 +1,3 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -7,14 +6,13 @@ using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.ReconcileStuckSaaSPayment;
 
 /// <summary>
 /// Resuelve un pago atascado en <see cref="PaymentStatus.Processing"/> consultando al provider
-/// (nunca asume nada sobre un cobro que no se confirmó localmente). Guarda y después publica por el
-/// outbox del handler: si el guardado choca con el webhook, no sale ningún evento.
+/// (nunca asume nada sobre un cobro que no se confirmó localmente). El resultado sale del evento de dominio,
+/// guardado en la misma transacción: si el guardado choca con el webhook, no sale ningún evento.
 /// </summary>
 public static class ReconcileStuckSaaSPaymentHandler
 {
@@ -24,11 +22,7 @@ public static class ReconcileStuckSaaSPaymentHandler
         ReconcileStuckSaaSPaymentCommand command,
         ISaaSPaymentRepository payments,
         IPaymentAdapterFactory providerFactory,
-        ITenantRegistry tenants,
-        ITenantProviderCustomerRepository customers,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
     )
@@ -52,21 +46,11 @@ public static class ReconcileStuckSaaSPaymentHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         if (change == Change.Transitioned)
-        {
-            await SaaSPaymentResultPublisher.PublishAsync(
-                payment,
-                bus,
-                correlation.CorrelationId,
-                ct,
-                tenants,
-                customers
-            );
             logger.LogInformation(
                 "Stuck SaaSPayment {SaaSPaymentId} reconciled to {Status}.",
                 payment.Id,
                 payment.Status
             );
-        }
 
         return Result.Success();
     }

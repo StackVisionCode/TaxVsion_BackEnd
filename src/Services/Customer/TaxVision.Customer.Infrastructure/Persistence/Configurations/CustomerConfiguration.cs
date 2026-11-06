@@ -15,6 +15,7 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
     {
         b.ToTable("Customers");
         b.HasKey(c => c.Id);
+        b.Ignore(c => c.DomainEvents);
         b.Property(c => c.TenantId).IsRequired();
         b.Property(c => c.Kind).HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(c => c.Status).HasConversion<string>().HasMaxLength(20).IsRequired();

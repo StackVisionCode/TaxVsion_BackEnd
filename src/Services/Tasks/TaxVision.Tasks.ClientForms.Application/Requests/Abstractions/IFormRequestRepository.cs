@@ -28,7 +28,7 @@ public interface IFormRequestRepository
         Guid participantId,
         Guid templateId,
         CancellationToken ct = default
-    ) => Task.FromResult<FormRequest?>(null);
+    );
 
     // Otra request abierta del cliente para la plantilla: la que impide vincular esta.
     Task<Guid?> FindOpenRequestIdAsync(
@@ -37,14 +37,14 @@ public interface IFormRequestRepository
         Guid templateId,
         Guid exceptRequestId,
         CancellationToken ct = default
-    ) => Task.FromResult<Guid?>(null);
+    );
 
     // Requests abiertas del participante, rastreadas y con sus adjuntos: heredan su vínculo con un cliente.
     Task<IReadOnlyList<FormRequest>> ListOpenByParticipantAsync(
         Guid tenantId,
         Guid participantId,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+    );
 
     // Última request no cancelada de este enlace de captación para alguno de los participantes.
     Task<FormRequest?> GetLatestIntakeRequestAsync(
@@ -52,10 +52,9 @@ public interface IFormRequestRepository
         Guid intakeLinkId,
         IReadOnlyCollection<Guid> participantIds,
         CancellationToken ct = default
-    ) => Task.FromResult<FormRequest?>(null);
+    );
 
-    Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
-        Task.FromResult(0);
+    Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default);
     Task<IReadOnlyList<FormRequest>> ListOpenByCustomerAsync(
         Guid tenantId,
         Guid customerId,
@@ -76,16 +75,14 @@ public interface IFormRequestRepository
         int maxReminders,
         int take,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+    );
 
     // Fetch rastreado por id, sin tenant: el job de recordatorios corre entre tenants y valida en su propio scope.
-    Task<FormRequest?> GetForReminderAsync(Guid requestId, CancellationToken ct = default) =>
-        Task.FromResult<FormRequest?>(null);
+    Task<FormRequest?> GetForReminderAsync(Guid requestId, CancellationToken ct = default);
 
     // Request cuya revisión tiene este PdfGenerationId. Cross-tenant: el evento de Documents llega por el
     // fanout; el llamador valida el tenant contra la request encontrada.
-    Task<FormRequest?> GetByPdfGenerationIdAsync(Guid generationId, CancellationToken ct = default) =>
-        Task.FromResult<FormRequest?>(null);
+    Task<FormRequest?> GetByPdfGenerationIdAsync(Guid generationId, CancellationToken ct = default);
 
     // Abiertas cuyo responsable efectivo (ResponsibleUserId ?? RequestedByUserId) es el usuario; rastreadas,
     // para reasignarlas al retirarlo.
@@ -94,10 +91,9 @@ public interface IFormRequestRepository
         Guid userId,
         int take,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+    );
 
-    Task<int> CountOpenByEffectiveResponsibleAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
-        Task.FromResult(0);
+    Task<int> CountOpenByEffectiveResponsibleAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
 }
 
 public interface IFormFileScanVerdictRepository

@@ -124,6 +124,9 @@ public sealed class NotificationDispatcherInactiveRecipientTests
 
     private sealed class SingleDevice : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         private readonly PushDeviceToken _token = PushDeviceToken
             .Register(TenantId, UserId, PushPlatform.Fcm, "token-1", deviceId: null)
             .Value;

@@ -54,7 +54,7 @@ public static class CustomerAvatarScanResultConsumer
         if (customer.ProfilePictureFileId == msg.FileId)
             return;
 
-        var confirmed = customer.ConfirmProfilePicture(msg.FileId);
+        var confirmed = customer.ConfirmProfilePicture(msg.FileId, msg.CreatedBy);
         if (confirmed.IsFailure)
         {
             logger.LogInformation(
@@ -87,7 +87,7 @@ public static class CustomerAvatarScanResultConsumer
                 )
             );
 
-        await bus.PublishAsync(CustomerUpdatedEvents.From(customer, msg.CreatedBy, correlation.CorrelationId));
+        // CustomerUpdated sale del evento de dominio.
         logger.LogInformation("Avatar {FileId} confirmed for customer {CustomerId}.", msg.FileId, customerId);
     }
 

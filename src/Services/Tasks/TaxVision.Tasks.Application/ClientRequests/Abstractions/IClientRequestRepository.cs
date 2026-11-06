@@ -32,8 +32,7 @@ public interface IClientRequestRepository
         Guid tenantId,
         Guid userId,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<ClientRequest>>([]);
+    );
 
-    Task<int> CountOpenForStaffRecipientAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
-        Task.FromResult(0);
+    Task<int> CountOpenForStaffRecipientAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
 }

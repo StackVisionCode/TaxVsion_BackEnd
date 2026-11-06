@@ -49,7 +49,6 @@ public sealed class SetThreadReadStateHandlerTests
             incomingEmails,
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -80,7 +79,6 @@ public sealed class SetThreadReadStateHandlerTests
             incomingEmails,
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -110,7 +108,6 @@ public sealed class SetThreadReadStateHandlerTests
             incomingEmails,
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             unitOfWork,
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -127,7 +124,6 @@ public sealed class SetThreadReadStateHandlerTests
             new FakeIncomingEmailRepository(),
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             new FakeUnitOfWork(),
-            new FakeMessageBus(),
             CancellationToken.None
         );
 

@@ -167,9 +167,9 @@ public sealed class DeliveryNoticeHandlersTests
             w.Incoming,
             w.Notices,
             new FakeUnitOfWork(),
-            bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, w.Threads, w.Incoming);
         Assert.True(w.Notice.IsRead);
 
         await SetThreadReadStateHandler.Handle(
@@ -178,9 +178,9 @@ public sealed class DeliveryNoticeHandlersTests
             w.Incoming,
             w.Notices,
             new FakeUnitOfWork(),
-            bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, w.Threads, w.Incoming);
         Assert.False(w.Notice.IsRead);
         Assert.Equal(2, bus.Published.Count);
     }
@@ -196,7 +196,6 @@ public sealed class DeliveryNoticeHandlersTests
             w.Incoming,
             w.Notices,
             new FakeUnitOfWork(),
-            new FakeMessageBus(),
             CancellationToken.None
         );
 

@@ -57,7 +57,7 @@ public static class CreateTenantDomainHandler
 
         await domains.AddAsync(domain, ct);
         // domain.AddDomainEvent(TenantDomainCreated) ya quedó encolado en el factory;
-        // AuthDbContext.SaveChangesAsync lo drena y publica (auditoría + integration event).
+        // Wolverine lo saca al confirmar y su handler audita y avisa.
         await unitOfWork.SaveChangesAsync(ct);
 
         var cloudflareResult = provisionResult.Value;

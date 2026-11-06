@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -17,6 +19,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 ///      detectar discrepancias entre lo que se factura y lo que se entregó, y para
 ///      activar o desactivar funcionalidades según cambios de suscripción.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignaturePlanConstraintsUpdatedIntegrationEvent")]
 public sealed record SignaturePlanConstraintsUpdatedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Tenant al que se aplicaron las nuevas restricciones.</summary>

@@ -44,10 +44,9 @@ public sealed class CreateTaskSeriesHandlerTests
             series,
             new TaskSeriesMaterializer(tasks, series),
             new RecordingUnitOfWork(),
-            bus,
-            new NoOpCorrelationContext(),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, tasks);
 
         Assert.True(result.IsSuccess);
         var instance = Assert.Single(tasks.Stored);

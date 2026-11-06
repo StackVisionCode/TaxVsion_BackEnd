@@ -123,6 +123,11 @@ builder.Host.UseWolverine(options =>
     options.ApplyWalletFailureRules();
     options.ApplyStandardFailurePolicies();
 
+    // Eventos de dominio del monedero: se guardan con el commit del handler y su handler devuelve
+    // WalletBalanceChanged. En serie: los avisos salen en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
     // PUBLICADOS (guardrail 13) — un PublishMessage<T> por CADA evento de integración que Wallet publica.
     // Sin esto, bus.PublishAsync no tiene ruta y el evento se pierde (Notes no publicaba ninguno).
     options

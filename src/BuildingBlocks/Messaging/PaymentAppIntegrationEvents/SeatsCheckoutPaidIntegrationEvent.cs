@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// checkout. <see cref="SeatPurchaseIntentId"/> (= <c>SaaSPayment.TargetAggregateId</c>) correlaciona con la
 /// <c>SeatPurchaseIntent</c> de Subscription que guarda tipo/cantidad/auto-renovación/precio. Alias v1.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SeatsCheckoutPaidIntegrationEvent")]
 public sealed record SeatsCheckoutPaidIntegrationEvent : IntegrationEvent
 {
     public required Guid SeatPurchaseIntentId { get; init; }

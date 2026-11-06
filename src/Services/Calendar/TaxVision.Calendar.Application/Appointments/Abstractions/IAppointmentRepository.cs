@@ -11,14 +11,14 @@ public interface IAppointmentRepository
     /// Como <see cref="GetByIdAsync"/> pero aplicando visibilidad por asignación (P2) en el read del detalle:
     /// si <paramref name="assignedToUserId"/> no es null, devuelve NotFound cuando la cita es de un cliente NO
     /// asignado al actor (las citas sin cliente y las que él organiza siguen visibles). El path de MUTACIÓN sigue
-    /// usando <see cref="GetByIdAsync"/> sin filtrar. Default = sin filtro (fakes) → el repo real lo sobrescribe.
+    /// usando <see cref="GetByIdAsync"/> sin filtrar.
     /// </summary>
     Task<Result<Appointment>> GetByIdForReadAsync(
         Guid tenantId,
         Guid appointmentId,
         Guid? assignedToUserId,
         CancellationToken ct = default
-    ) => GetByIdAsync(tenantId, appointmentId, ct);
+    );
 
     /// <summary>
     /// Las puntuales del rango, por indice; y <b>todas</b> las series del tenant, que se expanden en
@@ -35,8 +35,7 @@ public interface IAppointmentRepository
     /// <summary>
     /// Como <see cref="ListForRangeAsync"/> pero aplicando visibilidad por asignación (P2): si
     /// <paramref name="assignedToUserId"/> no es null, excluye las citas de clientes NO asignados al actor (las
-    /// sin cliente y las que él organiza siguen visibles). Default = sin filtro (fakes/scheduling) → el repo real
-    /// lo sobrescribe con el JOIN a la proyección. El conflicto/availability siguen usando la versión sin filtrar.
+    /// sin cliente y las que él organiza siguen visibles). El conflicto/availability siguen usando la versión sin filtrar.
     /// </summary>
     Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
         Guid tenantId,
@@ -44,7 +43,7 @@ public interface IAppointmentRepository
         DateTime rangeEndUtc,
         Guid? assignedToUserId,
         CancellationToken ct = default
-    ) => ListForRangeAsync(tenantId, rangeStartUtc, rangeEndUtc, ct);
+    );
 
     /// <summary>
     /// Lo mismo, acotado a las citas de un usuario: las que organiza y aquellas a las que lo invitaron.
@@ -85,14 +84,13 @@ public interface IAppointmentRepository
     );
 
     /// <summary>Cuántas citas vigentes organiza (mismo filtro que ListFutureByOrganizerAsync, sin
-    /// materializar) — pre-flight de impacto al retirarlo. Default 0 para no romper los fakes; el repo
-    /// real lo implementa con COUNT.</summary>
+    /// materializar) — pre-flight de impacto al retirarlo.</summary>
     Task<int> CountFutureByOrganizerAsync(
         Guid tenantId,
         Guid organizerUserId,
         DateTime nowUtc,
         CancellationToken ct = default
-    ) => Task.FromResult(0);
+    );
 
     void Add(Appointment appointment);
 

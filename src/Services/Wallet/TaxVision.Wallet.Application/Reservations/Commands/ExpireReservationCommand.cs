@@ -1,5 +1,3 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -7,7 +5,6 @@ using TaxVision.Wallet.Application.Reservations.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Domain.Reservations;
 using TaxVision.Wallet.Domain.Wallet;
-using Wolverine;
 
 namespace TaxVision.Wallet.Application.Reservations.Commands;
 
@@ -28,8 +25,6 @@ public static class ExpireReservationHandler
         IReservationRepository reservations,
         IWalletRepository wallets,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<WalletReservation> logger,
         CancellationToken ct
     )
@@ -77,17 +72,8 @@ public static class ExpireReservationHandler
             return Result.Failure<ReservationExpiry>(release.Error);
         await wallets.AddLedgerEntryAsync(release.Value, ct);
 
+        // El aviso de saldo sale del evento de dominio del monedero (BB-1).
         await unitOfWork.SaveChangesAsync(ct);
-
-        // Tiempo real: se liberó el apartado → el front refresca el saldo.
-        await bus.PublishAsync(
-            new WalletBalanceChangedIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                Reason = "expire",
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
 
         return Result.Success(new ReservationExpiry(true, reserved));
     }

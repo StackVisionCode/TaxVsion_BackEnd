@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>Publicado por Auth al crear un dominio (custom hostname) del tenant — Fase A6.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantDomainCreatedIntegrationEvent")]
 public sealed record TenantDomainCreatedIntegrationEvent : IntegrationEvent
 {
     public required Guid DomainId { get; init; }

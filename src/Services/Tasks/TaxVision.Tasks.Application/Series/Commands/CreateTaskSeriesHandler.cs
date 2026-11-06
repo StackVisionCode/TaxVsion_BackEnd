@@ -41,8 +41,6 @@ public static class CreateTaskSeriesHandler
         ITaskSeriesRepository seriesRepository,
         ITaskSeriesMaterializer materializer,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -73,7 +71,6 @@ public static class CreateTaskSeriesHandler
         if (first.IsFailure)
             return Result.Failure<TaskSeriesResponse>(first.Error);
 
-        await TaskBirthAnnouncements.PublishAsync(first.Value, bus, correlation, announceAssignment: false);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(TaskSeriesResponse.From(created.Value));
     }

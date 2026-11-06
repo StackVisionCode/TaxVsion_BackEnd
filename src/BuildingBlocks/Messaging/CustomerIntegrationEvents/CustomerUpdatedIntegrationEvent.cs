@@ -1,5 +1,8 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.CustomerIntegrationEvents;
 
+[MessageIdentity("BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerUpdatedIntegrationEvent")]
 public sealed record CustomerUpdatedIntegrationEvent : IntegrationEvent
 {
     public required Guid CustomerId { get; init; }

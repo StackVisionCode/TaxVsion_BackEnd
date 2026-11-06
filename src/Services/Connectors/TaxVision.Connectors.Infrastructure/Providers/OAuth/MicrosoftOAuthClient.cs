@@ -111,6 +111,9 @@ public sealed class MicrosoftOAuthClient(
         return $"{config.AuthorizationEndpoint}?{query}";
     }
 
+    // Graph no tiene API de revocación: el usuario la revoca desde myaccount.microsoft.com/consents.
+    public Task RevokeAsync(string refreshToken, CancellationToken ct = default) => Task.CompletedTask;
+
     public string BuildAdminConsentUrl(string state)
     {
         var config = options.Value;

@@ -155,13 +155,31 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             attendee.ResetResponse();
 
         AddDomainEvent(
-            new AppointmentRescheduledDomainEvent(Id, TenantId, previousStartUtc, timing.StartUtc, actingUserId, nowUtc)
+            new AppointmentRescheduledDomainEvent(
+                Id,
+                TenantId,
+                previousStartUtc,
+                timing.StartUtc,
+                timing.EndUtc,
+                timing.TimeZone.Id,
+                actingUserId,
+                nowUtc
+            )
         );
 
         return Result.Success();
     }
 
-    public Result Cancel(Guid actingUserId, bool canManageAll, string? reason, DateTime nowUtc)
+    /// <param name="scope">Alcance que se anuncia; null es la cita entera.</param>
+    /// <param name="originalStartUtc">Ocurrencia que venía en el pedido, si la hubo.</param>
+    public Result Cancel(
+        Guid actingUserId,
+        bool canManageAll,
+        string? reason,
+        DateTime nowUtc,
+        EditScope? scope = null,
+        DateTime? originalStartUtc = null
+    )
     {
         if (Status == AppointmentStatus.Cancelled)
             return Result.Failure(AppointmentErrors.AlreadyCancelled);
@@ -173,7 +191,17 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         CancellationReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         CancelledAtUtc = nowUtc;
 
-        AddDomainEvent(new AppointmentCancelledDomainEvent(Id, TenantId, actingUserId, CancellationReason, nowUtc));
+        AddDomainEvent(
+            new AppointmentCancelledDomainEvent(
+                Id,
+                TenantId,
+                actingUserId,
+                CancellationReason,
+                nowUtc,
+                scope,
+                originalStartUtc
+            )
+        );
 
         return Result.Success();
     }
@@ -262,7 +290,18 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         var attendee = AppointmentAttendee.Invite(Id, kind, userId, customerId, snapshot, isRequired);
         _attendees.Add(attendee);
 
-        AddDomainEvent(new AppointmentAttendeeInvitedDomainEvent(Id, TenantId, attendee.Id, kind, nowUtc));
+        AddDomainEvent(
+            new AppointmentAttendeeInvitedDomainEvent(
+                Id,
+                TenantId,
+                attendee.Id,
+                kind,
+                nowUtc,
+                userId,
+                customerId,
+                snapshot.Email
+            )
+        );
 
         return Result.Success(attendee);
     }
@@ -305,7 +344,17 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
         attendee.Respond(response, nowUtc);
 
-        AddDomainEvent(new AppointmentAttendeeRespondedDomainEvent(Id, TenantId, attendee.Id, response, nowUtc));
+        AddDomainEvent(
+            new AppointmentAttendeeRespondedDomainEvent(
+                Id,
+                TenantId,
+                attendee.Id,
+                response,
+                nowUtc,
+                OrganizerUserId,
+                userId
+            )
+        );
 
         return Result.Success();
     }
@@ -321,6 +370,17 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     }
 
     public void StartNewReminderGeneration() => ReminderGeneration++;
+
+    /// <summary>Estos objetivos ya no valen. Se calculan antes del cambio: después la cita no los produce.</summary>
+    public void CloseReminderTargets(IReadOnlyList<Guid> targetIds, string? reason, DateTime nowUtc)
+    {
+        if (targetIds.Count > 0)
+            AddDomainEvent(new AppointmentReminderTargetsClosedDomainEvent(Id, TenantId, targetIds, reason, nowUtc));
+    }
+
+    /// <summary>Hay que volver a pedir los avisos, salvo los de <paramref name="keptTargetIds"/>, que siguen vivos.</summary>
+    public void RefreshReminders(IReadOnlyList<Guid> keptTargetIds, bool leadChanged, DateTime nowUtc) =>
+        AddDomainEvent(new AppointmentRemindersRefreshedDomainEvent(Id, TenantId, keptTargetIds, leadChanged, nowUtc));
 
     /// <summary>La sala llega por evento desde Communication; si divergen, manda la cita.</summary>
     public void LinkMeeting(Guid meetingId, string shortCode)
@@ -348,7 +408,13 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     }
 
     /// <summary>Cancela una ocurrencia sin tocar el resto de la serie.</summary>
-    public Result CancelOccurrence(DateTime originalStartUtc, Guid actingUserId, bool canManageAll, DateTime nowUtc)
+    public Result CancelOccurrence(
+        DateTime originalStartUtc,
+        Guid actingUserId,
+        bool canManageAll,
+        DateTime nowUtc,
+        string? reason = null
+    )
     {
         var allowed = EnsureCanEditOccurrence(originalStartUtc, actingUserId, canManageAll);
         if (allowed.IsFailure)
@@ -357,7 +423,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         _exceptions.Add(AppointmentException.Cancel(Id, TenantId, originalStartUtc, actingUserId, nowUtc));
 
         AddDomainEvent(
-            new AppointmentOccurrenceCancelledDomainEvent(Id, TenantId, originalStartUtc, actingUserId, nowUtc)
+            new AppointmentOccurrenceCancelledDomainEvent(Id, TenantId, originalStartUtc, actingUserId, nowUtc, reason)
         );
 
         return Result.Success();
@@ -403,7 +469,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 originalStartUtc,
                 newStartUtc,
                 actingUserId,
-                nowUtc
+                nowUtc,
+                newEndUtc
             )
         );
 
@@ -429,15 +496,26 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (!IsRecurring)
             return Result.Failure(RecurrenceErrors.NotASeries);
 
-        var previousStartUtc = Timing.StartUtc;
+        // Una serie no tiene StartUtc: lo que se anuncia es su primera ocurrencia.
+        var previousFirstUtc = OccurrenceExpander.FirstStart(this);
         Timing = timing;
         Recurrence = recurrence;
 
         foreach (var attendee in _attendees)
             attendee.ResetResponse();
 
+        var newFirstUtc = OccurrenceExpander.FirstStart(this) ?? nowUtc;
         AddDomainEvent(
-            new AppointmentRescheduledDomainEvent(Id, TenantId, previousStartUtc, timing.StartUtc, actingUserId, nowUtc)
+            new AppointmentRescheduledDomainEvent(
+                Id,
+                TenantId,
+                previousFirstUtc,
+                newFirstUtc,
+                newFirstUtc.Add(timing.Duration ?? TimeSpan.FromHours(1)),
+                timing.TimeZone.Id,
+                actingUserId,
+                nowUtc
+            )
         );
 
         return Result.Success();

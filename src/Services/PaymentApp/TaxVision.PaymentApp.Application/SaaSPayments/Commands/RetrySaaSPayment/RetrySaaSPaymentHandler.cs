@@ -7,7 +7,6 @@ using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
-using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.RetrySaaSPayment;
 
@@ -20,7 +19,6 @@ public static class RetrySaaSPaymentHandler
         IPaymentAdapterFactory providerFactory,
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
@@ -62,14 +60,7 @@ public static class RetrySaaSPaymentHandler
             ct
         );
 
-        await SaaSPaymentResultPublisher.PublishAsync(
-            payment,
-            bus,
-            correlation.CorrelationId,
-            ct,
-            customers: providerCustomers
-        );
-
+        // El resultado lo avisa SaaSPaymentDomainEventHandler con el commit (evento de dominio).
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(

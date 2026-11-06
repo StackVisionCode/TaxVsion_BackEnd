@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Wolverine;
 
 namespace TaxVision.Billing.Tests.Integration;
 
@@ -36,5 +38,7 @@ public sealed class BillingApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+        // Sin Rabbit: el host de pruebas no le quita mensajes de billing-events al Billing que está corriendo.
+        builder.ConfigureTestServices(services => services.DisableAllExternalWolverineTransports());
     }
 }

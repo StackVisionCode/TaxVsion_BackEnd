@@ -49,7 +49,12 @@ public sealed class SubscriptionRenewalDueConsumerTests
         Assert.True(charger.Called);
         Assert.NotNull(payments.Added);
         Assert.Equal(PaymentStatus.Succeeded, payments.Added!.Status);
-        Assert.Contains(bus.Published, m => m is SubscriptionRenewalPaymentSucceededIntegrationEvent);
+        // PAY-BB1: un solo aviso de resultado; por el bus solo sale el correo del cobro recurrente.
+        Assert.DoesNotContain(bus.Published, m => m is BuildingBlocks.Domain.IDomainEvent);
+        Assert.DoesNotContain(bus.Published, m => m is SubscriptionRenewalPaymentSucceededIntegrationEvent);
+        var emitted = await SaaSPaymentEventReplay.EmittedAsync(bus.Published, payments.Added, customers: customers);
+        Assert.Single(emitted.OfType<SubscriptionRenewalPaymentSucceededIntegrationEvent>());
+        Assert.Single(emitted.OfType<SaaSPaymentSucceededIntegrationEvent>());
     }
 
     [Fact]
@@ -197,7 +202,8 @@ public sealed class SubscriptionRenewalDueConsumerTests
         Assert.True(charger.Called);
         Assert.NotNull(payments.Added);
         Assert.Equal(PaymentStatus.Failed, payments.Added!.Status);
-        Assert.Contains(bus.Published, m => m is SubscriptionRenewalPaymentFailedIntegrationEvent);
+        var emitted = await SaaSPaymentEventReplay.EmittedAsync(bus.Published, payments.Added, customers: customers);
+        Assert.Single(emitted.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
     }
 
     [Fact]
@@ -234,7 +240,8 @@ public sealed class SubscriptionRenewalDueConsumerTests
         Assert.True(charger.Called);
         Assert.NotNull(payments.Added);
         Assert.Equal(PaymentStatus.Failed, payments.Added!.Status);
-        var failed = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
+        var emitted = await SaaSPaymentEventReplay.EmittedAsync(bus.Published, payments.Added, customers: customers);
+        var failed = Assert.Single(emitted.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
         Assert.True(failed.WillRetry);
         Assert.NotNull(failed.NextRetryAtUtc);
     }

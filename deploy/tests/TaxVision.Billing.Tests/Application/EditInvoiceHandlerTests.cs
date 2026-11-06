@@ -81,7 +81,7 @@ public sealed class EditInvoiceHandlerTests
         Assert.Equal(nameof(InvoiceStatus.PartiallyPaid), result.Value.Status);
         Assert.Equal(6_000, invoice.AmountDue.AmountCents);
         Assert.Single(_bus.Published.OfType<EnsureInvoicePaymentLinkCommand>());
-        Assert.Empty(_bus.Published.OfType<InvoicePaidIntegrationEvent>());
+        Assert.Empty(Emitted(invoice).OfType<InvoicePaidIntegrationEvent>());
     }
 
     [Fact]
@@ -95,7 +95,11 @@ public sealed class EditInvoiceHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(InvoiceStatus.Paid), result.Value.Status);
-        var paid = Assert.Single(_bus.Published.OfType<InvoicePaidIntegrationEvent>());
+        var emitted = Emitted(invoice);
+        var paid = Assert.Single(emitted.OfType<InvoicePaidIntegrationEvent>());
+        Assert.Empty(_bus.Published.OfType<InvoicePaidIntegrationEvent>());
+        // El PDF lo encadena EnsureInvoicePaymentLink; no se pide otro.
+        Assert.Empty(emitted.OfType<GenerateInvoicePdfCommand>());
         Assert.Equal(invoice.Id, paid.InvoiceId);
     }
 
@@ -107,10 +111,11 @@ public sealed class EditInvoiceHandlerTests
 
         await EditAsync(invoice, quantity: 2);
 
-        Assert.Empty(_bus.Published.OfType<InvoicePaidIntegrationEvent>());
+        Assert.Empty(Emitted(invoice).OfType<InvoicePaidIntegrationEvent>());
     }
 
-    private static void Pay(Invoice invoice, long cents) =>
+    private static void Pay(Invoice invoice, long cents)
+    {
         Assert.True(
             invoice
                 .ApplyPayment(
@@ -123,6 +128,12 @@ public sealed class EditInvoiceHandlerTests
                 )
                 .IsSuccess
         );
+        // Lo sembrado ya está guardado: sus eventos ya salieron.
+        invoice.ClearDomainEvents();
+    }
+
+    // Lo publicado a mano más lo que el commit despacharía por la cola domain-events.
+    private IReadOnlyList<object> Emitted(Invoice invoice) => [.. _bus.Published, .. DomainEventReplay.Dispatch([invoice])];
 
     private Task<Result<EditInvoiceResult>> EditAsync(Invoice invoice, int quantity) =>
         EditInvoiceHandler.Handle(
@@ -141,7 +152,6 @@ public sealed class EditInvoiceHandlerTests
             _inventory,
             _unitOfWork,
             _bus,
-            new NoopCorrelationContext(),
             new FixedClock(Now),
             CancellationToken.None
         );

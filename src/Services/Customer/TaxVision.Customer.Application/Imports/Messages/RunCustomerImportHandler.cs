@@ -76,7 +76,7 @@ public static class RunCustomerImportHandler
 
     // ============== Fase 1: cargar attempt + marcar Validating ==============
 
-    private sealed record StartInfo(
+    internal sealed record StartInfo(
         Guid TenantId,
         Guid CreatedByUserId,
         DuplicateStrategy Strategy,
@@ -213,7 +213,7 @@ public static class RunCustomerImportHandler
 
     // ============== Fase 5: procesar todos los chunks ==============
 
-    private sealed record ChunkAggregate(
+    internal sealed record ChunkAggregate(
         int Success,
         int Updated,
         int Skipped,
@@ -261,7 +261,7 @@ public static class RunCustomerImportHandler
 
     // ============== Fase 6: marcar terminal + borrar archivo + publicar evento ==============
 
-    private static async Task FinishAttemptAsync(
+    internal static async Task FinishAttemptAsync(
         IServiceScopeFactory sf,
         Guid attemptId,
         StartInfo info,
@@ -272,29 +272,54 @@ public static class RunCustomerImportHandler
     )
     {
         await using var scope = sf.CreateAsyncScope();
-        var sp = scope.ServiceProvider;
-        var repo = sp.GetRequiredService<ICustomerImportRepository>();
-        var uow = sp.GetRequiredService<IUnitOfWork>();
-        var bus = sp.GetRequiredService<IMessageBus>();
-        var correlation = sp.GetRequiredService<ICorrelationContext>();
-        var cloudStorage = sp.GetRequiredService<ICustomerImportCloudStorageClient>();
+        var runner = scope.ServiceProvider.GetRequiredService<ITransactionalUnitRunner>();
+        var cloudStorage = scope.ServiceProvider.GetRequiredService<ICustomerImportCloudStorageClient>();
 
-        var attempt = await repo.GetByIdAsync(attemptId, ct);
-        if (attempt is null)
+        // Estado terminal y aviso en la misma transacción (BB-3): quedan los dos o ninguno.
+        var closed = false;
+        await runner.RunAsync(
+            async (unit, token) =>
+            {
+                var repo = unit.Services.GetRequiredService<ICustomerImportRepository>();
+                var correlation = unit.Services.GetRequiredService<ICorrelationContext>();
+                var attempt = await repo.GetByIdAsync(attemptId, token);
+                if (attempt is null)
+                    return false;
+
+                if (attempt.Status == ImportStatus.Canceling)
+                    attempt.ConfirmCanceled();
+                else
+                    attempt.Complete();
+
+                await unit.PublishAsync(
+                    new CustomersBulkImportedIntegrationEvent
+                    {
+                        TenantId = info.TenantId,
+                        CorrelationId = correlation.CorrelationId,
+                        ImportJobId = attemptId,
+                        CreatedByUserId = info.CreatedByUserId,
+                        NotifyUserId = attempt.NotifyUserId,
+                        CompletedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
+                        TotalRows = total,
+                        SuccessCount = aggregate.Success,
+                        UpdatedCount = aggregate.Updated,
+                        SkippedCount = aggregate.Skipped,
+                        FailedCount = aggregate.Failed,
+                        CreatedCustomerIds = aggregate.CreatedIds,
+                        UpdatedCustomerIds = aggregate.UpdatedIds,
+                    }
+                );
+                closed = true;
+                return true;
+            },
+            ct
+        );
+        if (!closed)
             return;
 
-        if (attempt.Status == ImportStatus.Canceling)
-            attempt.ConfirmCanceled();
-        else
-            attempt.Complete();
-
-        var completedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow;
-
-        await uow.SaveChangesAsync(ct);
-
         // Borrar el archivo en CloudStorage: el reporte por fila queda en CustomerImportRows.
-        // Best-effort: si falla (red, CloudStorage caido), el import ya quedo terminal para el
-        // usuario; CustomerImportCleanupHostedService reintenta el borrado remoto mas tarde.
+        // Best-effort y después del commit: si falla (red, CloudStorage caido), el import ya quedo terminal
+        // para el usuario; CustomerImportCleanupHostedService reintenta el borrado remoto mas tarde.
         var deleteResult = await cloudStorage.DeleteAsync(info.TenantId, attemptId, ct);
         if (deleteResult.IsFailure)
             logger.LogWarning(
@@ -302,25 +327,6 @@ public static class RunCustomerImportHandler
                 attemptId,
                 deleteResult.Error.Message
             );
-
-        await bus.PublishAsync(
-            new CustomersBulkImportedIntegrationEvent
-            {
-                TenantId = info.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                ImportJobId = attemptId,
-                CreatedByUserId = info.CreatedByUserId,
-                NotifyUserId = attempt.NotifyUserId,
-                CompletedAtUtc = completedAtUtc,
-                TotalRows = total,
-                SuccessCount = aggregate.Success,
-                UpdatedCount = aggregate.Updated,
-                SkippedCount = aggregate.Skipped,
-                FailedCount = aggregate.Failed,
-                CreatedCustomerIds = aggregate.CreatedIds,
-                UpdatedCustomerIds = aggregate.UpdatedIds,
-            }
-        );
 
         logger.LogInformation(
             "Import {AttemptId} finished: total={Total} success={Success} updated={Updated} skipped={Skipped} failed={Failed}",
@@ -640,6 +646,8 @@ public static class RunCustomerImportHandler
             blindIndex,
             protector
         );
+        // La importación avisa con un solo CustomersBulkImported al final, no un CustomerUpdated por fila.
+        existing.ClearDomainEvents();
         attempt.RecordUpdated(raw.RowNumber, existing.Id, existing.DisplayName, match.MatchedBy);
         return new RowOutcome(RowOutcomeKind.Updated, existing.Id);
     }
@@ -715,6 +723,8 @@ public static class RunCustomerImportHandler
                 logger
             );
 
+        // La importación avisa con un solo CustomersBulkImported al final, no un CustomerCreated por fila.
+        newCustomer.ClearDomainEvents();
         await customerRepo.AddAsync(newCustomer, ct);
         attempt.RecordSuccess(raw.RowNumber, newCustomer.Id, newCustomer.DisplayName);
         return new RowOutcome(RowOutcomeKind.Success, newCustomer.Id);
@@ -799,7 +809,7 @@ public static class RunCustomerImportHandler
         return attempt is null || attempt.IsCancelRequested;
     }
 
-    private static async Task FailAttemptAsync(
+    internal static async Task FailAttemptAsync(
         IServiceScopeFactory sf,
         Guid attemptId,
         string reason,
@@ -807,27 +817,34 @@ public static class RunCustomerImportHandler
     )
     {
         await using var scope = sf.CreateAsyncScope();
-        var repo = scope.ServiceProvider.GetRequiredService<ICustomerImportRepository>();
-        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-        var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
-        var attempt = await repo.GetByIdAsync(attemptId, ct);
-        if (attempt is null)
-            return;
-        attempt.Fail(reason);
-        var failedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow;
-        await uow.SaveChangesAsync(ct);
-        await bus.PublishAsync(
-            new CustomerImportFailedIntegrationEvent
+        var runner = scope.ServiceProvider.GetRequiredService<ITransactionalUnitRunner>();
+
+        // Fallo visible y su aviso en la misma transacción (BB-3).
+        await runner.RunAsync(
+            async (unit, token) =>
             {
-                TenantId = attempt.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                ImportJobId = attempt.Id,
-                CreatedByUserId = attempt.CreatedByUserId,
-                NotifyUserId = attempt.NotifyUserId,
-                Reason = attempt.FailureReason ?? reason,
-                FailedAtUtc = failedAtUtc,
-            }
+                var repo = unit.Services.GetRequiredService<ICustomerImportRepository>();
+                var correlation = unit.Services.GetRequiredService<ICorrelationContext>();
+                var attempt = await repo.GetByIdAsync(attemptId, token);
+                if (attempt is null)
+                    return false;
+
+                attempt.Fail(reason);
+                await unit.PublishAsync(
+                    new CustomerImportFailedIntegrationEvent
+                    {
+                        TenantId = attempt.TenantId,
+                        CorrelationId = correlation.CorrelationId,
+                        ImportJobId = attempt.Id,
+                        CreatedByUserId = attempt.CreatedByUserId,
+                        NotifyUserId = attempt.NotifyUserId,
+                        Reason = attempt.FailureReason ?? reason,
+                        FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
+                    }
+                );
+                return true;
+            },
+            ct
         );
     }
 

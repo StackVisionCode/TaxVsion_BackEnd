@@ -450,6 +450,10 @@ internal sealed class InMemoryDistributedLock : IDistributedLock
         public bool IsAcquired => true;
         public string Key => key;
 
+        // Sigue siendo nuestro mientras no se libere.
+        public Task<bool> ExtendAsync(TimeSpan ttl, CancellationToken ct = default) =>
+            Task.FromResult(owner._held.ContainsKey(key));
+
         public ValueTask DisposeAsync()
         {
             owner._held.TryRemove(key, out _);
@@ -461,6 +465,8 @@ internal sealed class InMemoryDistributedLock : IDistributedLock
     {
         public bool IsAcquired => false;
         public string Key { get; } = key;
+
+        public Task<bool> ExtendAsync(TimeSpan ttl, CancellationToken ct = default) => Task.FromResult(false);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

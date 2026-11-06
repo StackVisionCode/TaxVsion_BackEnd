@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
 /// <summary>task.form_attachment_rejected.v1</summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormAttachmentRejectedIntegrationEvent")]
 public sealed record FormAttachmentRejectedIntegrationEvent : IntegrationEvent
 {
     public required Guid FormRequestId { get; init; }

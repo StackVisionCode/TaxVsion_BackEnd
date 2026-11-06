@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -7,6 +9,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// <see cref="RenewalIntentId"/> (= <c>SaaSPayment.TargetAggregateId</c>) correlaciona con la
 /// <c>SubscriptionRenewalIntent</c> de Subscription. Molde: <c>SeatsCheckoutPaidIntegrationEvent</c>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SubscriptionRenewalCheckoutPaidIntegrationEvent")]
 public sealed record SubscriptionRenewalCheckoutPaidIntegrationEvent : IntegrationEvent
 {
     public required Guid RenewalIntentId { get; init; }

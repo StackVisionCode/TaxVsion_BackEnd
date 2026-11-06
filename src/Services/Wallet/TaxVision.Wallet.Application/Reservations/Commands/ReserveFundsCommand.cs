@@ -1,12 +1,9 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Wallet.Application.Pricing;
 using TaxVision.Wallet.Application.Reservations.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Domain.Reservations;
-using Wolverine;
 
 namespace TaxVision.Wallet.Application.Reservations.Commands;
 
@@ -28,8 +25,6 @@ public static class ReserveFundsHandler
         IReservationRepository reservations,
         IWalletRepository wallets,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -124,17 +119,8 @@ public static class ReserveFundsHandler
 
         await wallets.AddLedgerEntryAsync(reserved.Value, ct);
         await reservations.AddAsync(reservationResult.Value, ct);
+        // El aviso de saldo sale del evento de dominio del monedero (BB-1).
         await unitOfWork.SaveChangesAsync(ct);
-
-        // Tiempo real: el saldo bajó (reserva) → avisa para que el front refresque el pill/apartado.
-        await bus.PublishAsync(
-            new WalletBalanceChangedIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                Reason = "reserve",
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
 
         return Result.Success(
             new ReservationView(

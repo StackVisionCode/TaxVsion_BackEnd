@@ -4,13 +4,14 @@ using BuildingBlocks.Tenancy;
 using TaxVision.Customer.Domain.Addresses;
 using TaxVision.Customer.Domain.Assignments;
 using TaxVision.Customer.Domain.ContactPoints;
+using TaxVision.Customer.Domain.Customers.Events;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Domain.FiscalProfiles;
 using TaxVision.Customer.Domain.Relations;
 
 namespace TaxVision.Customer.Domain.Customers;
 
-public sealed class Customer : TenantEntity
+public sealed class Customer : AggregateRoot
 {
     private readonly List<CustomerAddress> _addresses = [];
     private readonly List<CustomerContactPoint> _contactPoints = [];
@@ -136,6 +137,9 @@ public sealed class Customer : TenantEntity
             CreatedByUserId = createdByUserId,
         };
         customer.SetTenant(tenantId);
+        customer.AddDomainEvent(
+            new CustomerCreatedDomainEvent(customer.Id, tenantId, createdByUserId, customer.CreatedAtUtc)
+        );
         return Result.Success(customer);
     }
 
@@ -159,11 +163,28 @@ public sealed class Customer : TenantEntity
         LastModifiedByUserId = byUserId;
     }
 
+    // Un aviso de edición por transacción; si el alta está pendiente, ella ya anuncia el estado completo.
+    private void RaiseUpdated(Guid byUserId)
+    {
+        if (DomainEvents.Any(e => e is CustomerCreatedDomainEvent or CustomerUpdatedDomainEvent))
+            return;
+        AddDomainEvent(new CustomerUpdatedDomainEvent(Id, TenantId, byUserId, DateTime.UtcNow));
+    }
+
+    // Un snapshot de asignaciones por transacción: se arma con el cliente guardado.
+    private void RaiseAssignmentsChanged()
+    {
+        if (DomainEvents.Any(e => e is CustomerAssignmentsChangedDomainEvent))
+            return;
+        AddDomainEvent(new CustomerAssignmentsChangedDomainEvent(Id, TenantId, DateTime.UtcNow));
+    }
+
     public Result ChangePrimaryEmail(EmailAddress newEmail, Guid byUserId)
     {
         EnsureActive();
         PrimaryEmail = newEmail;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -172,6 +193,7 @@ public sealed class Customer : TenantEntity
         EnsureActive();
         PrimaryPhone = newPhone;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -180,6 +202,7 @@ public sealed class Customer : TenantEntity
         EnsureActive();
         Language = language;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -192,6 +215,7 @@ public sealed class Customer : TenantEntity
         EnsureActive();
         ContactPolicy = new ContactPolicy(emailEnabled, smsEnabled);
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -247,7 +271,7 @@ public sealed class Customer : TenantEntity
     /// El escaneo aprobó la foto: pasa a ser la vigente y devuelve la anterior (para borrarla). Si el
     /// fileId no es el pendiente (llegó tarde, se quitó o se archivó el cliente) falla con <c>Stale</c>.
     /// </summary>
-    public Result<Guid?> ConfirmProfilePicture(Guid fileId)
+    public Result<Guid?> ConfirmProfilePicture(Guid fileId, Guid byUserId)
     {
         if (Status == CustomerStatus.Archived || PendingProfilePictureFileId != fileId)
             return Result.Failure<Guid?>(CustomerProfilePictureErrors.Stale);
@@ -257,6 +281,7 @@ public sealed class Customer : TenantEntity
         ClearPendingProfilePicture();
         ClearProfilePictureModeration();
         UpdatedAtUtc = DateTime.UtcNow;
+        RaiseUpdated(byUserId);
         return Result.Success(previous);
     }
 
@@ -290,6 +315,9 @@ public sealed class Customer : TenantEntity
         ClearPendingProfilePicture();
         ClearProfilePictureModeration();
         Touch(byUserId);
+        // Solo cambia lo visible si había foto vigente.
+        if (removed is not null)
+            RaiseUpdated(byUserId);
         return Result.Success(removed);
     }
 
@@ -320,6 +348,7 @@ public sealed class Customer : TenantEntity
         PersonalName = newName;
         DisplayName = newName.DisplayName;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -336,6 +365,7 @@ public sealed class Customer : TenantEntity
         BusinessIdentity = newIdentity;
         DisplayName = newIdentity.LegalName;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -344,6 +374,7 @@ public sealed class Customer : TenantEntity
         EnsureActive();
         DateOfBirth = dateOfBirth;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -618,6 +649,7 @@ public sealed class Customer : TenantEntity
         EnsureActive();
         OccupationId = occupationId;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -642,6 +674,7 @@ public sealed class Customer : TenantEntity
 
         AssignedPreparerUserId = preparerUserId;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
@@ -667,6 +700,7 @@ public sealed class Customer : TenantEntity
 
         AssignedPreparerUserId = toUserId;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
@@ -681,6 +715,7 @@ public sealed class Customer : TenantEntity
         _assignments.RemoveAll(a => a.UserId == AssignedPreparerUserId);
         AssignedPreparerUserId = null;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
@@ -695,6 +730,7 @@ public sealed class Customer : TenantEntity
             _assignments.Add(CustomerAssignment.Create(TenantId, Id, userId, isPrimary: false, byUserId));
 
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
@@ -711,6 +747,7 @@ public sealed class Customer : TenantEntity
         if (wasPrimary)
             AssignedPreparerUserId = null;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
@@ -727,6 +764,7 @@ public sealed class Customer : TenantEntity
         if (wasPrimary)
             AssignedPreparerUserId = null;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success(wasPrimary);
     }
 
@@ -744,6 +782,7 @@ public sealed class Customer : TenantEntity
         ProfilePictureFileId = null;
         ClearPendingProfilePicture();
         Touch(byUserId);
+        AddDomainEvent(new CustomerArchivedDomainEvent(Id, TenantId, byUserId, ArchivedAtUtc.Value));
         return Result.Success();
     }
 
@@ -756,6 +795,7 @@ public sealed class Customer : TenantEntity
         ArchivedAtUtc = null;
         ArchivedByUserId = null;
         Touch(byUserId);
+        AddDomainEvent(new CustomerReactivatedDomainEvent(Id, TenantId, byUserId, UpdatedAtUtc!.Value));
         return Result.Success();
     }
 
@@ -770,6 +810,7 @@ public sealed class Customer : TenantEntity
 
         Status = CustomerStatus.Inactive;
         Touch(byUserId);
+        AddDomainEvent(new CustomerDeactivatedDomainEvent(Id, TenantId, byUserId, UpdatedAtUtc!.Value));
         return Result.Success();
     }
 
@@ -784,6 +825,7 @@ public sealed class Customer : TenantEntity
 
         Status = CustomerStatus.Active;
         Touch(byUserId);
+        AddDomainEvent(new CustomerActivatedDomainEvent(Id, TenantId, byUserId, UpdatedAtUtc!.Value));
         return Result.Success();
     }
 

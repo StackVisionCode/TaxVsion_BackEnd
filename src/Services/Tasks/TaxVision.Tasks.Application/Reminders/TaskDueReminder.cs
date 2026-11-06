@@ -1,13 +1,12 @@
-using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using TaxVision.Tasks.Domain.Tasks;
-using Wolverine;
 
 namespace TaxVision.Tasks.Application.Reminders;
 
 /// <summary>
-/// Pedir el recordatorio de vencimiento vive acá y no en cada handler porque hay dos caminos por los
-/// que nace una tarea con fecha —el alta manual y la materialización de una serie— y los dos deben
-/// pedirlo igual. <c>RequestKey</c> lo hace idempotente: reintentar no duplica el recordatorio.
+/// El recordatorio de vencimiento, armado igual para el alta, la asignación y la reapertura. Lo usan los
+/// handlers de eventos de dominio, que corren después del commit: por eso decide con la tarea recargada.
+/// <c>RequestKey</c> lo hace idempotente: reintentar no duplica el recordatorio.
 /// </summary>
 public static class TaskDueReminder
 {
@@ -15,14 +14,22 @@ public static class TaskDueReminder
     private const int LeadMinutes = 60;
 
     /// <summary>
-    /// Sin fecha no hay ancla y sin asignado no hay a quién avisarle; en cualquiera de los dos casos
-    /// no hay recordatorio que pedir y no es un error.
+    /// Nada que pedir si no hay fecha, si la tarea ya se cerró o si <paramref name="assignee"/> ya no es el
+    /// asignado: un evento posterior de la misma tarea pide el que corresponda.
     /// </summary>
-    public static async Task PublishIfDueAsync(TaskItem task, IMessageBus bus, ICorrelationContext correlation)
+    /// <param name="lifecycle">Ciclo de vida del evento que lo pide (la clave de Reminder).</param>
+    public static ReminderRequestedIntegrationEvent? RequestFor(
+        TaskItem task,
+        Guid? assignee,
+        int lifecycle,
+        string correlationId
+    )
     {
-        if (task.Due is null || task.AssigneeUserId is not { } assignee)
-            return;
+        if (task.Due is null || assignee is not { } userId || task.AssigneeUserId != userId)
+            return null;
+        if (task.Status is TaskItemStatus.Completed or TaskItemStatus.Cancelled)
+            return null;
 
-        await bus.PublishAsync(TaskReminderContracts.Requested(task, assignee, LeadMinutes, correlation.CorrelationId));
+        return TaskReminderContracts.Requested(task, userId, LeadMinutes, correlationId, lifecycle);
     }
 }

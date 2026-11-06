@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// <see cref="SubscriptionIntegrationEvents.SeatRenewalDueIntegrationEvent"/>) se confirma
 /// exitoso. Subscription lo consume para avanzar el período del seat.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SeatRenewalPaymentSucceededIntegrationEvent")]
 public sealed record SeatRenewalPaymentSucceededIntegrationEvent : IntegrationEvent
 {
     public required Guid SeatId { get; init; }

@@ -27,8 +27,14 @@ public sealed class SeatCheckoutReconciliationJobIntegrationTests : IAsyncLifeti
     [Fact]
     public async Task ConflictOnOneIntent_DoesNotBlockNext()
     {
-        var intentA = await SeatCheckoutProvisioningConcurrencyIntegrationTests.SeedPendingIntentAsync(_db, quantity: 2);
-        var intentB = await SeatCheckoutProvisioningConcurrencyIntegrationTests.SeedPendingIntentAsync(_db, quantity: 1);
+        var intentA = await SeatCheckoutProvisioningConcurrencyIntegrationTests.SeedPendingIntentAsync(
+            _db,
+            quantity: 2
+        );
+        var intentB = await SeatCheckoutProvisioningConcurrencyIntegrationTests.SeedPendingIntentAsync(
+            _db,
+            quantity: 1
+        );
 
         // Antes de responder por A, el "consumidor" la aprovisiona en otro contexto.
         var payments = new RacingPaymentClient(async () =>
@@ -65,7 +71,9 @@ public sealed class SeatCheckoutReconciliationJobIntegrationTests : IAsyncLifeti
     private async Task<Guid> PaymentIdOfAsync(Guid intentId)
     {
         await using var db = _db.NewContext();
-        return (await db.SeatPurchaseIntents.IgnoreQueryFilters().SingleAsync(i => i.Id == intentId)).SaaSPaymentId!.Value;
+        return (await db.SeatPurchaseIntents.IgnoreQueryFilters().SingleAsync(i => i.Id == intentId))
+            .SaaSPaymentId!
+            .Value;
     }
 
     private ServiceProvider BuildProvider(ISeatCheckoutPaymentClient payments)
@@ -79,7 +87,9 @@ public sealed class SeatCheckoutReconciliationJobIntegrationTests : IAsyncLifeti
         services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
         services.AddScoped<ISubscriptionAuditLogWriter, SubscriptionAuditLogWriter>();
         services.AddSingleton<ISubscriptionMetrics>(new FakeSubscriptionMetrics());
-        services.AddSingleton<IMessageBus>(new CapturingMessageBus());
+        // BB-3: cada intención es una unidad con outbox.
+        RecordingSubscriptionOutbox.AddTo(services, new OutboxRecording());
+        services.AddScoped<BuildingBlocks.Tenancy.ITenantContext, SettableTenantContext>();
         services.AddSingleton(payments);
         return services.BuildServiceProvider();
     }

@@ -1,11 +1,9 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.CreateInvoiceDraft;
 using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
-using TaxVision.Billing.Application.Invoices.IntegrationEvents;
 using TaxVision.Billing.Application.Invoices.SyncInvoiceStock;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.ValueObjects;
@@ -15,7 +13,7 @@ namespace TaxVision.Billing.Application.Invoices.EditInvoice;
 
 /// <summary>Edita una factura (borrador o emitida, incluso con pagos; D-BIL-1). Si estaba emitida, verifica
 /// el stock de las nuevas líneas (bloquea si falta) y, después del commit, reconcilia el stock, refresca el
-/// ancla de cobro y regenera el PDF por comandos durables. Si la edición la deja pagada, publica InvoicePaid.
+/// ancla de cobro y regenera el PDF por comandos durables. Si la edición la deja pagada, InvoicePaid sale del evento de dominio.
 /// El tenant y el actor salen del JWT.</summary>
 public sealed record EditInvoiceCommand(
     Guid TenantId,
@@ -39,7 +37,6 @@ public static class EditInvoiceHandler
         IInventoryStockClient inventory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        ICorrelationContext correlation,
         TimeProvider clock,
         CancellationToken ct
     )
@@ -54,7 +51,6 @@ public static class EditInvoiceHandler
         // Toda factura ya EMITIDA (Issued/Sent/PartiallyPaid/Paid) descontó stock al emitir y tiene ancla
         // de cobro + PDF: hay que reconciliar. Solo un borrador no tocó nada aún.
         var wasIssued = invoice.Status is not InvoiceStatus.Draft;
-        var wasPaid = invoice.Status == InvoiceStatus.Paid;
 
         var customer = new CustomerSnapshot(
             command.Customer.CustomerId,
@@ -112,10 +108,7 @@ public static class EditInvoiceHandler
             bus.TenantId = command.TenantId.ToString();
             await bus.PublishAsync(new SyncInvoiceStockCommand(command.TenantId, invoice.Id));
             await bus.PublishAsync(new EnsureInvoicePaymentLinkCommand(command.TenantId, invoice.Id));
-
-            // Bajó el total y quedó cubierta: igual que el pago manual, PaymentClient cierra el enlace.
-            if (invoice.Status == InvoiceStatus.Paid && !wasPaid)
-                await bus.PublishAsync(InvoicePaidEventFactory.Create(invoice, correlation.CorrelationId));
+            // Si bajó el total y quedó cubierta, InvoicePaid sale del evento de dominio (BB-1).
         }
 
         return Result.Success(new EditInvoiceResult(invoice.Id, invoice.Status.ToString()));

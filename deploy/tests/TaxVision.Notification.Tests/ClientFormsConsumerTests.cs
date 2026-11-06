@@ -1255,6 +1255,8 @@ public sealed class ClientFormsConsumerTests
 
     private sealed class NoOpMetrics : INotificationDispatchMetrics
     {
+        public void RecordClientFormPushFailure(string code) { }
+
         public void RecordSent(string kind, string channel) { }
 
         public void RecordSuppressedByPreference(string kind, string channel) { }
@@ -1382,6 +1384,9 @@ public sealed class ClientFormsConsumerTests
 
     private sealed class SinglePushDeviceRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         private readonly PushDeviceToken device;
         private PushDeviceToken? registered;
 

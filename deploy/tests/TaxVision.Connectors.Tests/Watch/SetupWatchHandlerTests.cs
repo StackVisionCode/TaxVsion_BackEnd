@@ -215,7 +215,7 @@ public class SetupWatchHandlerTests
     public async Task Handle_FromErrorStatus_ReconnectsAndActivates()
     {
         var account = CreateDraftAccount(ProviderCode.Gmail);
-        account.MarkError(Now);
+        account.MarkError(AccountErrors.RefreshRejected, Now);
         var accountRepository = new FakeTenantEmailAccountRepository();
         accountRepository.Accounts.Add(account);
         var subscriptionRepository = new FakeProviderWatchSubscriptionRepository();
@@ -243,7 +243,7 @@ public class SetupWatchHandlerTests
         var account = CreateDraftAccount(ProviderCode.Gmail);
         account.MarkConnected(Now);
         account.Activate(Now);
-        account.MarkError(Now);
+        account.MarkError(AccountErrors.RefreshRejected, Now);
         var accountRepository = new FakeTenantEmailAccountRepository();
         accountRepository.Accounts.Add(account);
 

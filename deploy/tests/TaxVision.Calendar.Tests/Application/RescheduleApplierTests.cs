@@ -118,61 +118,42 @@ public sealed class RescheduleApplierTests
             command,
             appointments,
             new CountingUnitOfWork(),
-            bus,
-            new FixedCorrelation(),
             new NullCalendarMetrics(),
             CancellationToken.None
         );
+        await CalendarDomainEventReplay.DispatchIntoAsync(bus, appointments, appointments.All);
 
         Assert.True(result.IsSuccess);
         var follower = Assert.Single(appointments.All, a => a.Id != series.Id);
         Assert.Equal(30, follower.ReminderLeadMinutes);
         var requested = bus.Published.OfType<ReminderRequestedIntegrationEvent>().ToList();
-        Assert.Equal(WeeklyTargets(follower.Id, monday.AddDays(15)), requested.Select(r => r.TargetId!.Value).ToHashSet());
-        Assert.Empty(bus.Published.OfType<ReminderTargetMovedIntegrationEvent>());
-    }
-
-    [Fact]
-    public async Task Reschedule_PublishesOnlyAfterSaving()
-    {
-        var start = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(3).AddHours(14), DateTimeKind.Utc);
-        var appointment = PointInTime(_tenant, _organizer, start, leadMinutes: 30);
-        var unitOfWork = new CountingUnitOfWork();
-        var bus = new FakeMessageBus();
-        var publishedBeforeSave = 0;
-        bus.OnPublish = () => publishedBeforeSave += unitOfWork.Saves == 0 ? 1 : 0;
-
-        await RescheduleAppointmentHandler.Handle(
-            OneOff(appointment, start.AddHours(5)),
-            new InMemoryAppointments(appointment),
-            unitOfWork,
-            bus,
-            new FixedCorrelation(),
-            new NullCalendarMetrics(),
-            CancellationToken.None
+        Assert.Equal(
+            WeeklyTargets(follower.Id, monday.AddDays(15)),
+            requested.Select(r => r.TargetId!.Value).ToHashSet()
         );
-
-        Assert.NotEmpty(bus.Published);
-        Assert.Equal(0, publishedBeforeSave);
+        Assert.Empty(bus.Published.OfType<ReminderTargetMovedIntegrationEvent>());
     }
 
     private static DateTime WeeklyTargetsStart(DateOnly date) =>
         TimeZoneInfo.ConvertTimeToUtc(date.ToDateTime(TenAm), TimeZoneInfo.FindSystemTimeZoneById(NewYork));
 
-    private Task<Result<AppointmentResponse>> Reschedule(
+    private async Task<Result<AppointmentResponse>> Reschedule(
         Appointment appointment,
         FakeMessageBus bus,
         RescheduleAppointmentCommand command
-    ) =>
-        RescheduleAppointmentHandler.Handle(
+    )
+    {
+        var appointments = new InMemoryAppointments(appointment);
+        var result = await RescheduleAppointmentHandler.Handle(
             command,
-            new InMemoryAppointments(appointment),
+            appointments,
             new CountingUnitOfWork(),
-            bus,
-            new FixedCorrelation(),
             new NullCalendarMetrics(),
             CancellationToken.None
         );
+        await CalendarDomainEventReplay.DispatchIntoAsync(bus, appointments, appointments.All);
+        return result;
+    }
 
     private RescheduleAppointmentCommand OneOff(Appointment appointment, DateTime newStartUtc) =>
         new(

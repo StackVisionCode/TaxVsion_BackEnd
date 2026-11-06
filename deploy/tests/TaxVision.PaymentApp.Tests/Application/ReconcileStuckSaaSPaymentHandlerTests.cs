@@ -121,25 +121,26 @@ public sealed class ReconcileStuckSaaSPaymentHandlerTests
         Guid? tenantId = null
     ) => HandleAsync(payment, new StatusPaymentProvider(providerResult), unitOfWork, bus, tenantId);
 
-    private Task<Result> HandleAsync(
+    // El bus recibe lo que devuelve el handler del evento de dominio, que corre después del commit del comando.
+    private async Task<Result> HandleAsync(
         SaaSPayment payment,
         StatusPaymentProvider provider,
         IUnitOfWork unitOfWork,
         CapturingMessageBus bus,
         Guid? tenantId = null
-    ) =>
-        ReconcileStuckSaaSPaymentHandler.Handle(
+    )
+    {
+        var result = await ReconcileStuckSaaSPaymentHandler.Handle(
             new ReconcileStuckSaaSPaymentCommand(tenantId ?? _tenantId, payment.Id),
             new FakeSaaSPaymentRepository { ById = payment },
             new FakePaymentAdapterFactory(provider),
-            new FakeTenantRegistry("Acme Tax"),
-            new NoSavedCustomers(),
             unitOfWork,
-            bus,
-            new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
+        bus.Published.AddRange(await SaaSPaymentEventReplay.DispatchAsync(payment));
+        return result;
+    }
 
     private static Result<ChargeAuthorizationResult> Succeeded() =>
         Result.Success(new ChargeAuthorizationResult("pi_done", PaymentStatus.Succeeded));
@@ -206,28 +207,5 @@ public sealed class ReconcileStuckSaaSPaymentHandlerTests
             PublishedAtEachSave.Add(bus.Published.Count);
             return Task.FromResult(1);
         }
-    }
-
-    private sealed class NoSavedCustomers : ITenantProviderCustomerRepository
-    {
-        public Task<TenantProviderCustomer?> GetByTenantAndProviderAsync(
-            Guid tenantId,
-            PaymentProviderCode code,
-            CancellationToken ct = default
-        ) => Task.FromResult<TenantProviderCustomer?>(null);
-
-        public Task<TenantProviderCustomer?> GetByIdAsync(
-            Guid tenantProviderCustomerId,
-            Guid tenantId,
-            CancellationToken ct = default
-        ) => Task.FromResult<TenantProviderCustomer?>(null);
-
-        public Task<IReadOnlyList<TenantProviderCustomer>> GetWithMethodsExpiringBeforeAsync(
-            DateTime cutoffUtc,
-            int batchSize,
-            CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyList<TenantProviderCustomer>>([]);
-
-        public Task AddAsync(TenantProviderCustomer added, CancellationToken ct = default) => Task.CompletedTask;
     }
 }

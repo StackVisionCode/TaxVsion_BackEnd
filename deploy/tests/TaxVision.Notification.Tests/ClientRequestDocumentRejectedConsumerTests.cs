@@ -87,6 +87,21 @@ public sealed class ClientRequestDocumentRejectedConsumerTests
             string eventKey,
             Guid tenantId,
             IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ct);
+
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
             CancellationToken ct = default
         ) => throw new InvalidOperationException("No render expected in this test.");
     }

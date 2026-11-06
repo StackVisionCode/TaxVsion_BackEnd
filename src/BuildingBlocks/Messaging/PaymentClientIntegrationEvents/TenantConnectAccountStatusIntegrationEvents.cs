@@ -1,8 +1,11 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 
 /// <summary>Publicado cuando <c>account.updated</c>/<c>capability.updated</c> deja la cuenta
 /// con requirements pendientes y todavía no habilitada para cobrar — Notification avisa al
 /// tenant qué le falta completar en Stripe.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantConnectAccountOnboardingRequiredIntegrationEvent")]
 public sealed record TenantConnectAccountOnboardingRequiredIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantConnectAccountId { get; init; }
@@ -11,6 +14,7 @@ public sealed record TenantConnectAccountOnboardingRequiredIntegrationEvent : In
 
 /// <summary>Publicado cuando la Connected Account queda lista para cobrar
 /// (<c>ChargesEnabled=true</c> y cero requirements pendientes).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantConnectAccountEnabledIntegrationEvent")]
 public sealed record TenantConnectAccountEnabledIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantConnectAccountId { get; init; }
@@ -18,6 +22,7 @@ public sealed record TenantConnectAccountEnabledIntegrationEvent : IntegrationEv
 
 /// <summary>Publicado cuando Stripe deshabilita los cobros de una cuenta previamente
 /// habilitada (KYC/AML continuo, disputa, etc.) — requiere intervención del tenant.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantConnectAccountRestrictedIntegrationEvent")]
 public sealed record TenantConnectAccountRestrictedIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantConnectAccountId { get; init; }

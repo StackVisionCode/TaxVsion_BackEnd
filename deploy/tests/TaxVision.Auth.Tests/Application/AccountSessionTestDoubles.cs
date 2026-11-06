@@ -1,4 +1,6 @@
+using BuildingBlocks.Common;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Mfa;
@@ -13,6 +15,11 @@ namespace TaxVision.Auth.Tests.Application;
 /// <summary>Sesiones y refresh tokens en memoria con la misma semántica de revocación que el repositorio real.</summary>
 internal sealed class InMemorySessionRepository : ISessionRepository
 {
+    public Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<UserSession>>([]);
+
     public List<UserSession> Sessions { get; } = [];
     public List<RefreshToken> Tokens { get; } = [];
 
@@ -87,6 +94,36 @@ internal sealed class InMemorySessionRepository : ISessionRepository
 
 internal sealed class InMemoryUserRepository : IUserRepository
 {
+    public Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<User>>([]);
+
+    public Task<IReadOnlyList<User>> GetActiveByRoleAsync(Guid tenantId, Guid roleId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<User>>([]);
+
+    public Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    ) => Task.FromResult(new PagedResult<TenantOwnerReconciliationResponse>([], page, size, 0));
+
+    public Task<PagedResult<CustomerPortalAccountReconciliationResponse>> ListPortalAccountsForReconciliationAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
+
+    public Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    ) => Task.FromResult(new PagedResult<StaffUserReconciliationResponse>([], page, size, 0));
+
+    public Task<PagedResult<UserDirectoryReconciliationResponse>> ListUsersForDirectoryReconciliationAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    ) => Task.FromResult(new PagedResult<UserDirectoryReconciliationResponse>([], page, size, 0));
+
     public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(
             _users.Values.Count(u => u.TenantId == tenantId && u.IsActive && u.ActorType == UserActorType.TenantAdmin)
@@ -215,6 +252,28 @@ internal sealed class InMemoryTenantRegistry : ITenantRegistry
 /// <summary>Usuario sin roles asignados: alcanza para resolver los claims de la sesión.</summary>
 internal sealed class NoRolesRepository : IRoleRepository
 {
+    public Task<IReadOnlyList<UserPermissionDeny>> GetActiveDeniesAsync(Guid userId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<UserPermissionDeny>>([]);
+
+    public Task<IReadOnlyList<(Guid UserId, Guid TenantId)>> GetUsersWithExpiredDeniesAsync(
+        DateTime nowUtc,
+        int take,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<(Guid UserId, Guid TenantId)>>([]);
+
+    public Task<int> RemoveExpiredDeniesAsync(Guid userId, DateTime nowUtc, CancellationToken ct = default) =>
+        Task.FromResult(0);
+
+    public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>> GetRolesByUsersAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>>(new Dictionary<Guid, IReadOnlyList<Role>>());
+
+    public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetDeniedPermissionIdsByUsersAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(new Dictionary<Guid, IReadOnlyList<Guid>>());
+
     public Task<IReadOnlyList<Role>> GetUserRolesAsync(Guid userId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<Role>>([]);
 
@@ -285,6 +344,15 @@ internal sealed class PredictableTokenService : ISecureTokenService
 /// <summary>Registra superficie y step-up de cada access token emitido.</summary>
 internal sealed class CapturingJwtTokenGenerator : IJwtTokenGenerator
 {
+    public AccessToken GenerateScopedServiceToken(
+        Guid tenantId,
+        string clientId,
+        IReadOnlyCollection<string> permissions,
+        IReadOnlyCollection<string> scopes,
+        string audience,
+        int lifetimeMinutes
+    ) => GenerateServiceToken(tenantId, clientId, permissions, lifetimeMinutes);
+
     public List<(
         Guid SessionId,
         SessionSurface Surface,

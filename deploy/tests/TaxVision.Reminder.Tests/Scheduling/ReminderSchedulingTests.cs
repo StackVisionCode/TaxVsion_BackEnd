@@ -67,14 +67,12 @@ public sealed class ReminderSchedulingTests
         var reminder = Build();
         reminder.FireOrMiss(FireAtUtc, Grace);
         var firstFiredAt = reminder.FiredAtUtc;
-        reminder.ClearDomainEvents();
 
         var result = reminder.FireOrMiss(FireAtUtc.AddMinutes(1), Grace);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ReminderStatus.Fired, reminder.Status);
         Assert.Equal(firstFiredAt, reminder.FiredAtUtc);
-        Assert.Empty(reminder.DomainEvents);
     }
 
     /// <summary>

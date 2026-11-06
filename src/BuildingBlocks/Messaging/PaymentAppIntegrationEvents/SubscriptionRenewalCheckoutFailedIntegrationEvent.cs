@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// Subscription lo consume para marcar fallida la <c>SubscriptionRenewalIntent</c> (no cambia el estado de la
 /// suscripción, que sigue en su lapso). Molde: <c>SeatsCheckoutFailedIntegrationEvent</c>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SubscriptionRenewalCheckoutFailedIntegrationEvent")]
 public sealed record SubscriptionRenewalCheckoutFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid RenewalIntentId { get; init; }

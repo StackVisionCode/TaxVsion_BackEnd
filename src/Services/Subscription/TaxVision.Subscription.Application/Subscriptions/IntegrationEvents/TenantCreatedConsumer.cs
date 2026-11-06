@@ -142,7 +142,11 @@ public static class TenantCreatedConsumer
                 defaultPlanCode,
                 tenantId
             );
-            throw new InvalidOperationException($"Default plan '{defaultPlanCode}' is missing or unpublished.");
+            // Prerrequisito que llega tarde (el reconciliador de catálogo aún no publicó): se reintenta con esperas largas.
+            throw new DependencyNotReadyException(
+                "DefaultPlan",
+                $"Default plan '{defaultPlanCode}' is missing or unpublished."
+            );
         }
 
         return (plan, version);

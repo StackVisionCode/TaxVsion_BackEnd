@@ -288,5 +288,17 @@ public sealed class IntakeLinkDuplicateRequestTests
             Task.FromResult<IReadOnlyList<FormIntakeLink>>(_items.Where(item => item.TenantId == tenantId).ToArray());
 
         public void Add(FormIntakeLink link) => _items.Add(link);
+
+        public Task<int> CountNotRevokedByResponsibleAsync(
+            Guid tenantId,
+            Guid responsibleUserId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<IReadOnlyList<FormIntakeLink>> ListNotRevokedByResponsibleAsync(
+            Guid tenantId,
+            Guid responsibleUserId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<FormIntakeLink>>([]);
     }
 }

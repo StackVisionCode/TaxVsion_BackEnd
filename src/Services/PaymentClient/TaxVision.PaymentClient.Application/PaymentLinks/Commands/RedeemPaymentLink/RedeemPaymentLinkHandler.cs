@@ -168,7 +168,7 @@ public static class RedeemPaymentLinkHandler
         // Guardar antes de publicar: si el guardado falla, no sale nada del intento revertido.
         await unitOfWork.SaveChangesAsync(ct);
         if (succeeded)
-            await TenantPaymentProviderUpdate.PublishSucceededAsync(bus, payment, linkUsed, correlation.CorrelationId);
+            await TenantPaymentProviderUpdate.PublishLinkUsedAsync(bus, linkUsed);
 
         logger.LogInformation(
             "PaymentLink {PaymentLinkId} redemption produced TenantPayment {TenantPaymentId} with status {Status}.",

@@ -1,4 +1,3 @@
-using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Domain.Sending;
@@ -6,15 +5,13 @@ using TaxVision.Postmaster.Domain.Sending;
 namespace TaxVision.Postmaster.Application.Sending.Commands.RecordSendResult;
 
 /// <summary>
-/// Resultado del proveedor, en su propia transacción (PMS-01). <paramref name="Request"/> es el pedido de
-/// Notification para los avisos de vuelta; null para Correspondence, que lee la respuesta HTTP.
+/// Resultado del proveedor, en su propia transacción (PMS-01).
 /// </summary>
 public sealed record RecordSendResultCommand(
     Guid SentMessageId,
     SendResult Result,
     string FallbackFailureReason,
-    MailboxFallback? Fallback,
-    NotificationsEmailSendRequestedIntegrationEvent? Request
+    MailboxFallback? Fallback
 );
 
 /// <summary>El buzón falló y el correo salió (o se intentó) por el proveedor del sistema.</summary>

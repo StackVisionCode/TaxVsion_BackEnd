@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.GrowthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Common;
@@ -145,6 +146,9 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, GrowthDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    // Primer evento que Growth publica. Hoy no tiene consumidor.
+    options.PublishMessage<CodeReservationCommittedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
     options
         .ListenToRabbitQueue(
             "growth-events",
@@ -158,6 +162,10 @@ builder.Host.UseWolverine(options =>
     // Antes de la estándar: gana la primera regla que matchea.
     options.ApplyGrowthFailurePolicies();
     options.ApplyStandardFailurePolicies();
+
+    // BB-1: eventos de dominio de CodeReservation; en serie para que los avisos salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
 });
 
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);

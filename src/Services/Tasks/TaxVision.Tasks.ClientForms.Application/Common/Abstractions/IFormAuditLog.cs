@@ -31,7 +31,7 @@ public interface IFormAuditLog
         string action,
         string outcome,
         string? detailsJson = null
-    ) => Record(tenantId, templateId, requestId, action, null, detailsJson);
+    );
     void RecordParticipant(Guid tenantId, Guid requestId, string action, FormActor actor, string? detailsJson = null);
     Task RecordAnswersViewedAsync(
         Guid tenantId,

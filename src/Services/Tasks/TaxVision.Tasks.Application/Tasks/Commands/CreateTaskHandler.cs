@@ -1,9 +1,7 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
-using Wolverine;
 
 namespace TaxVision.Tasks.Application.Tasks.Commands;
 
@@ -32,8 +30,6 @@ public static class CreateTaskHandler
         CreateTaskCommand command,
         ITaskRepository tasks,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ITaskMetrics metrics,
         CancellationToken ct
     )
@@ -57,8 +53,8 @@ public static class CreateTaskHandler
         if (created.IsFailure)
             return Result.Failure<TaskResponse>(created.Error);
 
+        // Los anuncios del alta los devuelve TaskCreatedDomainEventHandler.
         tasks.Add(created.Value);
-        await TaskBirthAnnouncements.PublishAsync(created.Value, bus, correlation, announceAssignment: true);
         await unitOfWork.SaveChangesAsync(ct);
         metrics.RecordCreated(created.Value.Reference.CustomerId is not null);
 

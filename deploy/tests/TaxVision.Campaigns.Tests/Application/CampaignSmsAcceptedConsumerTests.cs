@@ -44,8 +44,6 @@ public sealed class CampaignSmsAcceptedConsumerTests
             },
             runs,
             unitOfWork,
-            new FakeMessageBus(),
-            new FakeCorrelationContext(),
             NullLogger<CampaignRun>.Instance,
             CancellationToken.None
         );

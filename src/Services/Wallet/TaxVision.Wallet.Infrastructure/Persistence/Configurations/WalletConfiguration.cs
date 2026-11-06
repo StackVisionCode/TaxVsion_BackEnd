@@ -22,6 +22,7 @@ public sealed class WalletConfiguration : IEntityTypeConfiguration<Domain.Wallet
         builder.Property(w => w.UpdatedAtUtc).IsRequired();
         builder.Property(w => w.RowVersion).IsRowVersion();
         builder.Ignore(w => w.AvailableMicros); // computada: Posted − Held
+        builder.Ignore(w => w.DomainEvents);
 
         // Un monedero por (tenant, moneda).
         builder.HasIndex(w => new { w.TenantId, w.Currency }).IsUnique();

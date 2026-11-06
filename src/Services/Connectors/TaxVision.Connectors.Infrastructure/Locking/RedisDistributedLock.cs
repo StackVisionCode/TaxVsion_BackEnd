@@ -73,6 +73,9 @@ end";
         public bool IsAcquired => false;
         public string Key { get; } = key;
 
+        // Nunca se tomó: no hay nada que alargar.
+        public Task<bool> ExtendAsync(TimeSpan ttl, CancellationToken ct = default) => Task.FromResult(false);
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

@@ -1,7 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
-using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Threads;
 
@@ -11,9 +10,7 @@ public static class UnarchiveThreadHandler
     public static async Task<Result> Handle(
         UnarchiveThreadCommand command,
         IEmailThreadRepository emailThreads,
-        IIncomingEmailRepository incomingEmails,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -30,16 +27,8 @@ public static class UnarchiveThreadHandler
         )
             return Result.Failure(ThreadAccess.NotFound);
 
-        thread.Unarchive();
+        thread.Unarchive(command.ActorUserId, command.CorrelationId);
         await unitOfWork.SaveChangesAsync(ct);
-        await ThreadStateNotifier.PublishAsync(
-            bus,
-            incomingEmails,
-            thread,
-            command.ActorUserId,
-            command.CorrelationId,
-            ct
-        );
         return Result.Success();
     }
 }

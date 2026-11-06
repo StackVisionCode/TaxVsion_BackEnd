@@ -23,6 +23,8 @@
       folder más volátil y consumido casi solo por la capa Api.
     -->
     <Compile Remove="Authorization\**\*.cs" />
+    <!-- BB-3: unidad transaccional para jobs; ensamblado propio porque usa EF Core y el outbox. -->
+    <Compile Remove="Jobs\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>

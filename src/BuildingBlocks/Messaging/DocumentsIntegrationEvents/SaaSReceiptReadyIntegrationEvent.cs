@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.DocumentsIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.DocumentsIntegrationEvents;
 /// <c>FileId</c> del pago, que es lo que el historial del Account necesita para ofrecer la descarga.
 /// Alias v1.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.DocumentsIntegrationEvents.SaaSReceiptReadyIntegrationEvent")]
 public sealed record SaaSReceiptReadyIntegrationEvent : IntegrationEvent
 {
     public required Guid SaaSPaymentId { get; init; }

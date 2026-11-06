@@ -715,7 +715,8 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
                 "TaxVision",
                 replyTo: null,
                 evt.TemplateKey,
-                DateTime.UtcNow.AddMinutes(-5)
+                DateTime.UtcNow.AddMinutes(-5),
+                dispatchAttemptId: evt.DispatchAttemptId
             )
             .Value;
         inFlight.AddRecipient(evt.To, TaxVision.Postmaster.Domain.Sending.RecipientType.To, null);
@@ -786,7 +787,14 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var closed = await db.SentMessages.IgnoreQueryFilters().SingleAsync();
         Assert.Equal(TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Failed, closed.Status);
         Assert.StartsWith(SendOutcomeReasons.SendOutcomeUnknown, closed.ErrorReason);
-        Assert.IsType<PostmasterEmailDeliveryFailedIntegrationEvent>(Assert.Single(bus.Published));
+        // Repositorio real: el aviso sale del evento de dominio que quedó en el mensaje.
+        var failed = Assert.IsType<TaxVision.Postmaster.Domain.Sending.SentMessageFailedDomainEvent>(
+            Assert.Single(closed.DomainEvents)
+        );
+        Assert.IsType<PostmasterEmailDeliveryFailedIntegrationEvent>(
+            TaxVision.Postmaster.Application.Sending.DomainEvents.SentMessageFailedDomainEventHandler.Handle(failed)
+        );
+        Assert.Empty(bus.Published);
     }
 
     private sealed class NoTenantContext : BuildingBlocks.Tenancy.ITenantContext

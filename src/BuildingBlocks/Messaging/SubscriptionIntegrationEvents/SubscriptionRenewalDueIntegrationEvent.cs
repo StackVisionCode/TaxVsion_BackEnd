@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 /// cobrarse para renovarse. Subscription no conoce al payment provider — PaymentApp
 /// consume este evento y responde con SubscriptionRenewalPaymentSucceeded/FailedIntegrationEvent.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionRenewalDueIntegrationEvent")]
 public sealed record SubscriptionRenewalDueIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantSubscriptionId { get; init; }

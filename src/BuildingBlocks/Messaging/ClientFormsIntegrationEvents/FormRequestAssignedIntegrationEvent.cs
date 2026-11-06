@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
 /// <summary>task.form_request_assigned.v1</summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestAssignedIntegrationEvent")]
 public sealed record FormRequestAssignedIntegrationEvent : IntegrationEvent
 {
     public required Guid FormRequestId { get; init; }

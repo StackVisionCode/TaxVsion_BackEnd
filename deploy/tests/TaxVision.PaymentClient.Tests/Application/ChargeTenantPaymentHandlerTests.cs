@@ -82,7 +82,6 @@ public sealed class ChargeTenantPaymentHandlerTests
             ),
             audit,
             new FakeUnitOfWork(),
-            InMemoryPaymentClient.RecordingBus([]),
             metrics,
             new FakeCorrelationContext(),
             NoOpLogger<TenantPayment>.Instance,
@@ -160,7 +159,6 @@ public sealed class ChargeTenantPaymentHandlerTests
             ),
             audit,
             new FakeUnitOfWork(),
-            InMemoryPaymentClient.RecordingBus(published),
             metrics,
             new FakeCorrelationContext(),
             NoOpLogger<TenantPayment>.Instance,
@@ -170,8 +168,9 @@ public sealed class ChargeTenantPaymentHandlerTests
         Assert.True(result.IsSuccess);
         var payment = Assert.Single(payments.Added);
         Assert.Equal(PaymentStatus.Succeeded, payment.Status);
-        // Monto cero también es "pagado": la factura no puede quedar abierta.
-        var paid = Assert.Single(published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        // Monto cero también es "pagado": la factura no puede quedar abierta (sale del evento de dominio).
+        var emitted = await DomainEventReplay.EmittedAsync(published, payments, payments.Added);
+        var paid = Assert.Single(emitted.OfType<TenantPaymentSucceededIntegrationEvent>());
         Assert.Equal(payment.Id, paid.TenantPaymentId);
     }
 
@@ -185,7 +184,7 @@ public sealed class ChargeTenantPaymentHandlerTests
         var result = await office.ChargeAsync("direct-invoice-1", published);
 
         Assert.True(result.IsSuccess);
-        var paid = Assert.Single(published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        var paid = Assert.Single((await office.EmittedAsync(published)).OfType<TenantPaymentSucceededIntegrationEvent>());
         Assert.Equal(result.Value, paid.TenantPaymentId);
         Assert.Equal(nameof(PaymentPurposeKind.InvoicePayment), paid.PurposeKind);
         Assert.Equal("inv-direct", paid.ExternalReferenceId);
@@ -202,7 +201,7 @@ public sealed class ChargeTenantPaymentHandlerTests
         await office.ChargeAsync("direct-invoice-2", published);
         await office.ChargeAsync("direct-invoice-2", published);
 
-        Assert.Single(published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        Assert.Single((await office.EmittedAsync(published)).OfType<TenantPaymentSucceededIntegrationEvent>());
     }
 
     [Fact]
@@ -214,7 +213,7 @@ public sealed class ChargeTenantPaymentHandlerTests
 
         await office.ChargeAsync("direct-invoice-3", published);
 
-        Assert.Empty(published);
+        Assert.Empty(await office.EmittedAsync(published));
     }
 
     /// <summary>Oficina Stripe directa en una base en memoria, con proveedor falso.</summary>
@@ -251,6 +250,10 @@ public sealed class ChargeTenantPaymentHandlerTests
             return office;
         }
 
+        /// <summary>Lo publicado más lo que devuelven los handlers de dominio (la señal "pagado").</summary>
+        public Task<IReadOnlyList<object>> EmittedAsync(List<object> published) =>
+            DomainEventReplay.EmittedAsync(published, _db);
+
         public Task<BuildingBlocks.Results.Result<Guid>> ChargeAsync(string idempotencyKey, List<object> published) =>
             ChargeTenantPaymentHandler.Handle(
                 new ChargeTenantPaymentCommand(
@@ -276,7 +279,6 @@ public sealed class ChargeTenantPaymentHandlerTests
                 ),
                 new PaymentAuditLogWriter(_db),
                 _db,
-                InMemoryPaymentClient.RecordingBus(published),
                 new NoOpPaymentClientMetrics(),
                 new FixedCorrelationContext(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<TenantPayment>.Instance,
@@ -290,7 +292,7 @@ file sealed class FakeTenantPaymentRepository : ITenantPaymentRepository
     public List<TenantPayment> Added { get; } = [];
 
     public Task<TenantPayment?> GetByIdAsync(Guid tenantPaymentId, Guid tenantId, CancellationToken ct = default) =>
-        throw new NotImplementedException();
+        Task.FromResult(Added.SingleOrDefault(p => p.Id == tenantPaymentId && p.TenantId == tenantId));
 
     public Task<TenantPayment?> GetByIdempotencyKeyAsync(
         Guid tenantId,

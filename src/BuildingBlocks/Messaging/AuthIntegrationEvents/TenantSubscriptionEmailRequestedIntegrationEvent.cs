@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -7,6 +9,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// envíe — mismo patrón que <c>OnboardingPaymentFailedNotificationRequestedIntegrationEvent</c> (Auth es
 /// el dueño del contacto; Notification no conoce usuarios). El <see cref="Status"/> elige el template.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantSubscriptionEmailRequestedIntegrationEvent")]
 public sealed record TenantSubscriptionEmailRequestedIntegrationEvent : IntegrationEvent
 {
     public required string Email { get; init; }

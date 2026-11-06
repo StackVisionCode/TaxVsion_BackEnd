@@ -88,9 +88,28 @@ public static class WolverineFailurePolicies
     /// Aplica la política de fallo estándar. Se llama una vez por servicio, dentro de
     /// <c>UseWolverine(options =&gt; ...)</c>.
     /// </summary>
-    public static WolverineOptions ApplyStandardFailurePolicies(this WolverineOptions options)
+    public static WolverineOptions ApplyStandardFailurePolicies(this WolverineOptions options) =>
+        options.ApplyStandardFailurePolicies(new DependencyNotReadyRetryOptions());
+
+    /// <summary>
+    /// Igual que la sobrecarga sin parámetros, con las esperas de <see cref="DependencyNotReadyException"/>
+    /// configurables (BB-7).
+    /// </summary>
+    public static WolverineOptions ApplyStandardFailurePolicies(
+        this WolverineOptions options,
+        DependencyNotReadyRetryOptions dependencyNotReady
+    )
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(dependencyNotReady);
+        var notReadyDelays = dependencyNotReady.ResolveDelays();
+
+        // BB-7: va primero porque gana la primera regla que matchea. Solo alcanza a este tipo nuevo:
+        // reintento programado (no retiene el consumidor) y, al agotarse, cola de errores.
+        options
+            .Policies.OnException<DependencyNotReadyException>()
+            .ScheduleRetry(notReadyDelays)
+            .Then.MoveToErrorQueue();
 
         foreach (var permanent in PermanentFailures)
             options.Policies.OnExceptionOfType(permanent).MoveToErrorQueue();

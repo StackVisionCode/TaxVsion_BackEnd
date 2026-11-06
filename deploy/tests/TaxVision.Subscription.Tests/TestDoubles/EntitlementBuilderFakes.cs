@@ -12,6 +12,15 @@ namespace TaxVision.Subscription.Tests.TestDoubles;
 /// sin EF. Solo implementan lo que el builder consulta; el resto de la superficie lanza.</summary>
 public sealed class FakeSubscriptionRepo(TenantSubscription? subscription) : ISubscriptionRepository
 {
+    // Lo sembrado se considera ya guardado: sus eventos de dominio ya salieron.
+    private readonly bool _seeded = ClearSeededEvents(subscription);
+
+    private static bool ClearSeededEvents(TenantSubscription? seeded)
+    {
+        seeded?.ClearDomainEvents();
+        return true;
+    }
+
     public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(subscription);
 
@@ -211,12 +220,12 @@ public sealed class FakeTenantAddOnRepo(IReadOnlyList<TenantAddOn>? addOns = nul
     ) => throw new NotSupportedException();
 }
 
-public sealed class FakeSnapshotRepo : ITenantEntitlementSnapshotRepository
+public sealed class FakeSnapshotRepo(TenantEntitlementSnapshot? existing = null) : ITenantEntitlementSnapshotRepository
 {
     public TenantEntitlementSnapshot? Upserted { get; private set; }
 
     public Task<TenantEntitlementSnapshot?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
-        Task.FromResult<TenantEntitlementSnapshot?>(null);
+        Task.FromResult(existing);
 
     public Task UpsertAsync(TenantEntitlementSnapshot snapshot, CancellationToken ct = default)
     {

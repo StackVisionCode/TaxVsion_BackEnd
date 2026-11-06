@@ -8,6 +8,7 @@ using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Domain.Watch;
 using TaxVision.Connectors.Infrastructure.OAuth;
+using TaxVision.Connectors.Tests.Accounts;
 using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.OAuth;
@@ -68,15 +69,13 @@ public class OAuthTokenManagerTests
         correlation.Set("test-correlation");
 
         var manager = new OAuthTokenManager(
-            accountRepository,
             connectionRepository,
-            subscriptionRepository,
             new FakeOAuthProviderClientFactory(providerClient),
             new HttpResiliencePipelineRegistry(),
             protector,
             sharedLock ?? new InMemoryDistributedLock(),
             unitOfWork,
-            bus,
+            new InlineMailboxFailureUnit(accountRepository, subscriptionRepository, unitOfWork),
             correlation,
             NullLogger<OAuthTokenManager>.Instance
         );
@@ -188,7 +187,7 @@ public class OAuthTokenManagerTests
         Assert.True(result.IsFailure);
         Assert.Equal(TenantEmailAccountStatus.Error, fixture.Account.Status);
 
-        var published = Assert.Single(fixture.Bus.Published);
+        var published = Assert.Single(DomainEventReplay.Emitted(fixture.Bus, fixture.Account));
         var failedEvent = Assert.IsType<ConnectorsOAuthRefreshFailedIntegrationEvent>(published);
         Assert.Equal(fixture.Account.Id, failedEvent.AccountId);
         Assert.Equal("invalid_grant", failedEvent.Reason);
@@ -209,6 +208,25 @@ public class OAuthTokenManagerTests
         Assert.Equal(ProviderWatchStatus.Failed, fixture.Watch.Status);
     }
 
+    // CON-11: cuenta lo emitido por el comando (cascada + bus). Con los dos caminos daría 2.
+    [Fact]
+    public async Task RefreshRejected_EmitsExactlyOneRefreshFailed()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("invalid_grant", requiresReconnect: true);
+
+        await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        var notice = Assert.IsType<ConnectorsOAuthRefreshFailedIntegrationEvent>(
+            Assert.Single(DomainEventReplay.Emitted(fixture.Bus, fixture.Account))
+        );
+        Assert.Equal(fixture.Account.TenantId, notice.TenantId);
+        Assert.Equal("test-correlation", notice.CorrelationId);
+        Assert.Equal("Gmail", notice.ProviderCode);
+        Assert.Equal(OAuthTokenErrorCodes.RefreshFailed, notice.ErrorCode);
+        DomainEventReplay.AssertNoDomainEventOnBus(fixture.Bus);
+    }
+
     [Fact]
     public async Task GetValidAccessTokenAsync_WhenRefreshKeepsFailing_PublishesOnlyOnTransitionToError()
     {
@@ -221,7 +239,11 @@ public class OAuthTokenManagerTests
 
         // El rechazo de la cuenta no abre el breaker del proveedor: los 5 intentos llegan a Google.
         Assert.Equal(5, fixture.ProviderClient.CallCount);
-        Assert.Single(fixture.Bus.Published.OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>());
+        Assert.Single(
+            DomainEventReplay
+                .Emitted(fixture.Bus, fixture.Account)
+                .OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>()
+        );
         Assert.Equal(TenantEmailAccountStatus.Error, fixture.Account.Status);
     }
 

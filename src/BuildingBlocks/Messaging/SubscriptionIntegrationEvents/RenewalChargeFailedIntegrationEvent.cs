@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 /// enlace al Account, y Notification manda el correo. Solo cobros automáticos con la tarjeta guardada:
 /// un checkout hosteado no lo dispara.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.RenewalChargeFailedIntegrationEvent")]
 public sealed record RenewalChargeFailedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Motivo con el que viaja por el canal de correos de suscripción.</summary>

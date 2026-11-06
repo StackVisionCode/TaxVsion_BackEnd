@@ -231,7 +231,7 @@ public class ProcessGmailPushNotificationHandlerTests
         if (status != TenantEmailAccountStatus.Draft)
             account.MarkConnected(Now);
         if (status == TenantEmailAccountStatus.Error)
-            account.MarkError(Now);
+            account.MarkError(AccountErrors.RefreshRejected, Now);
         if (status == TenantEmailAccountStatus.Disconnected)
             account.Disconnect(Now);
         var accountRepository = new FakeTenantEmailAccountRepository();

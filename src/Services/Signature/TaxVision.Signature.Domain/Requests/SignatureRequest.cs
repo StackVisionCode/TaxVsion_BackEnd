@@ -498,17 +498,6 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             fieldsInvalidated += _preparerFields.RemoveAll(field => field.DocumentId == documentId);
         }
 
-        AddDomainEvent(
-            new DocumentReplaced(
-                documentId,
-                oldFileId,
-                newFileId,
-                oldPageCount,
-                newPageCount,
-                fieldsInvalidated,
-                DateTime.UtcNow
-            )
-        );
         Touch();
         return Result.Success(
             new DocumentReplaceOutcome(oldFileId, newFileId, oldPageCount, newPageCount, fieldsInvalidated)
@@ -1991,9 +1980,6 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         );
         if (recordResult.IsFailure)
             return Result.Failure<IReadOnlyList<Guid>>(recordResult.Error);
-
-        foreach (var documentId in recordResult.Value)
-            AddDomainEvent(new SignerCompletedDocument(signer.Id, documentId, signedAtUtc));
 
         // F7 — engancha la copia parcial una vez. El consumer la lee después via query y la emite.
         if (SendPartialCopyOnEachSignature && PartialCopyAudience.Includes(signer.Id))

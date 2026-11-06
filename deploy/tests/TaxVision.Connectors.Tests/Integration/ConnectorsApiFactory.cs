@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
-using TaxVision.Connectors.Infrastructure.Jobs;
+using Wolverine;
 
 namespace TaxVision.Connectors.Tests.Integration;
 
@@ -38,22 +38,20 @@ public sealed class ConnectorsApiFactory : WebApplicationFactory<Program>
                 )
         );
 
-        // Los jobs sincronizan y refrescan tokens de los buzones reales de la base local: no en pruebas.
+        // Sin transportes y sin jobs: el host de prueba no le roba mensajes a la flota local ni sincroniza o refresca
+        // tokens de los buzones reales. La persistencia queda: sin ella, todo handler con transacción EF lanza.
         builder.ConfigureTestServices(services =>
         {
-            Type[] jobs =
-            [
-                typeof(ReconciliationJob),
-                typeof(WatchRenewalJob),
-                typeof(ProactiveTokenRefreshJob),
-                typeof(ConnectorsRetentionScheduler),
-            ];
+            services.DisableAllExternalWolverineTransports();
             foreach (
-                var descriptor in services
-                    .Where(d => d.ServiceType == typeof(IHostedService) && jobs.Contains(d.ImplementationType))
+                var hosted in services
+                    .Where(d =>
+                        d.ServiceType == typeof(IHostedService)
+                        && d.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal) == true
+                    )
                     .ToList()
             )
-                services.Remove(descriptor);
+                services.Remove(hosted);
         });
     }
 }

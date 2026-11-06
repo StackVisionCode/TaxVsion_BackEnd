@@ -1,4 +1,5 @@
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -110,8 +111,7 @@ public sealed class SubscriptionCatalogReconciler(
     )
     {
         var plans = services.GetRequiredService<IPlanRepository>();
-        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
-        var bus = services.GetRequiredService<IMessageBus>();
+        var scopeFactory = services.GetRequiredService<IServiceScopeFactory>();
 
         foreach (var snapshot in await plans.GetAllAsync(ct))
         {
@@ -131,34 +131,45 @@ public sealed class SubscriptionCatalogReconciler(
             if (PlanEntitlementCatalogs.MissingFrom(published, snapshot.Tier).Count == 0)
                 continue;
 
-            var plan = await plans.GetByIdForUpdateAsync(snapshot.Id, ct);
-            if (plan is null)
-                continue;
+            // BB-3: la versión nueva del plan y su recálculo por plan se confirman juntos.
+            await TransactionalJobUnit.RunAsync<SubscriptionDbContext>(
+                scopeFactory,
+                async (unit, token) =>
+                {
+                    var plan = await unit
+                        .Services.GetRequiredService<IPlanRepository>()
+                        .GetByIdForUpdateAsync(snapshot.Id, token);
+                    if (plan is null)
+                        return false;
 
-            var result = plan.AddMissingEntitlements(
-                PlanEntitlementCatalogs.SeedsFor(plan.Tier),
-                Guid.Empty,
-                DateTime.UtcNow
-            );
-            if (result.IsFailure)
-            {
-                log.LogError(
-                    "Catalog reconciler could not add catalog entitlements to plan {PlanCode}: {ErrorCode}.",
-                    plan.Code.Value,
-                    result.Error.Code
-                );
-                continue;
-            }
+                    var result = plan.AddMissingEntitlements(
+                        PlanEntitlementCatalogs.SeedsFor(plan.Tier),
+                        Guid.Empty,
+                        DateTime.UtcNow
+                    );
+                    if (result.IsFailure)
+                    {
+                        log.LogError(
+                            "Catalog reconciler could not add catalog entitlements to plan {PlanCode}: {ErrorCode}.",
+                            plan.Code.Value,
+                            result.Error.Code
+                        );
+                        return false;
+                    }
 
-            if (result.Value == 0)
-                continue;
+                    if (result.Value == 0)
+                        return false;
 
-            await unitOfWork.SaveChangesAsync(ct);
-            await bus.PublishAsync(new RecalculateEntitlementsForPlanCommand(plan.Id));
-            log.LogInformation(
-                "Catalog reconciler added {Count} catalog entitlements to plan {PlanCode}.",
-                result.Value,
-                plan.Code.Value
+                    await unit.PublishAsync(new RecalculateEntitlementsForPlanCommand(plan.Id));
+                    log.LogInformation(
+                        "Catalog reconciler added {Count} catalog entitlements to plan {PlanCode}.",
+                        result.Value,
+                        plan.Code.Value
+                    );
+                    return true;
+                },
+                log,
+                ct
             );
         }
     }

@@ -6,6 +6,8 @@ namespace TaxVision.Notification.Tests.TestDoubles;
 /// los contadores de Fase 11 no son parte del contrato que estos tests validan.</summary>
 public sealed class NoOpNotificationDispatchMetrics : INotificationDispatchMetrics
 {
+    public void RecordClientFormPushFailure(string code) { }
+
     public void RecordSent(string kind, string channel) { }
 
     public void RecordSuppressedByPreference(string kind, string channel) { }

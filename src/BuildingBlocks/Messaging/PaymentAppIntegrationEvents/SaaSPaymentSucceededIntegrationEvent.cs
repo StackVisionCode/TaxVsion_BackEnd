@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -10,6 +12,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// </para>
 /// Alias v1.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSPaymentSucceededIntegrationEvent")]
 public sealed record SaaSPaymentSucceededIntegrationEvent : IntegrationEvent
 {
     public required Guid SaaSPaymentId { get; init; }

@@ -5,18 +5,17 @@ using TaxVision.Auth.Domain.TenantDomains.Events;
 
 namespace TaxVision.Auth.Tests.Application;
 
-/// <summary>Fase A7 — handler local del domain event TenantDomainProvisioningFailed: audita y publica el integration event correspondiente.</summary>
+/// <summary>Fase A7 — handler local del domain event TenantDomainProvisioningFailed: audita una vez y devuelve el integration event correspondiente (Wolverine lo manda por el outbox).</summary>
 public sealed class TenantDomainProvisioningFailedHandlerTests
 {
     [Fact]
-    public async Task Handle_writes_audit_log_and_publishes_integration_event()
+    public async Task Handle_writes_audit_log_once_and_returns_integration_event()
     {
         var tenantId = Guid.NewGuid();
         var domainId = Guid.NewGuid();
         var audit = new FakeAuthAuditWriter();
-        var bus = new FakeMessageBus();
 
-        await TenantDomainProvisioningFailedHandler.Handle(
+        var published = await TenantDomainProvisioningFailedHandler.Handle(
             new TenantDomainProvisioningFailed(
                 tenantId,
                 domainId,
@@ -27,7 +26,6 @@ public sealed class TenantDomainProvisioningFailedHandlerTests
             audit,
             new FakeRequestContext(),
             new FakeCorrelationContext(),
-            bus,
             CancellationToken.None
         );
 
@@ -37,7 +35,6 @@ public sealed class TenantDomainProvisioningFailedHandlerTests
         Assert.Null(log.UserId);
         Assert.Contains("cloudflare_blocked", log.DetailsJson);
 
-        var published = Assert.Single(bus.Published.OfType<TenantDomainProvisioningFailedIntegrationEvent>());
         Assert.Equal(domainId, published.DomainId);
         Assert.Equal("cloudflare_blocked", published.Reason);
     }

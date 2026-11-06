@@ -1,26 +1,25 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
-using BuildingBlocks.Persistence;
-using BuildingBlocks.Results;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Tenant.Application.Compliance.Abstractions;
 using TaxVision.Tenant.Application.Compliance.Reminders;
+using TaxVision.Tenant.Infrastructure.Persistence;
 using TaxVision.Tenant.Infrastructure.Scheduling;
-using Wolverine;
 
 namespace TaxVision.Tenant.Infrastructure.Compliance;
 
 /// <summary>
 /// Recordatorio anual del WISP. Recorre por lotes las oficinas activas que pueden estar en ventana y, una por
-/// una, deja que el agregado decida y anote el aviso; guarda y recién después publica.
+/// una, deja que el agregado decida y anote el aviso; la fila y el aviso se confirman juntos en una unidad.
 ///
 /// <para>
 /// Varias réplicas: el lock de Redis deja una sola pasada a la vez, y si dos llegaran a la misma oficina el
-/// token de concurrencia de <c>WispReminderSentOn</c> hace que la segunda reciba <c>ConflictException</c> y la
-/// salte sin publicar. Correr dos veces el mismo día no repite: el agregado ya lo tiene anotado.
+/// token de concurrencia de <c>WispReminderSentOn</c> hace que la segunda choque y la salte sin publicar.
+/// Correr dos veces el mismo día no repite: el agregado ya lo tiene anotado.
 /// </para>
 /// </summary>
 internal sealed class WispReviewReminderJob(
@@ -111,7 +110,7 @@ internal sealed class WispReviewReminderJob(
         return sent;
     }
 
-    // Un scope por oficina: una colisión o un fallo en una no arrastra a las demás.
+    // Una unidad por oficina: una colisión o un fallo en una no arrastra a las demás.
     private async Task<bool> TrySendAsync(
         WispReminderCandidate candidate,
         DateTime nowUtc,
@@ -119,37 +118,32 @@ internal sealed class WispReviewReminderJob(
         CancellationToken ct
     )
     {
-        using var scope = scopeFactory.CreateScope();
-        var services = scope.ServiceProvider;
-        var correlation = services.GetRequiredService<ICorrelationContext>();
-        using var correlationScope = correlation.Push(correlationId);
+        var result = await TransactionalJobUnit.RunAsync<TenantDbContext>(
+            scopeFactory,
+            async (unit, token) =>
+            {
+                using var correlationScope = unit.Services.GetRequiredService<ICorrelationContext>().Push(correlationId);
+                var reminder = await WispReviewReminders.RegisterIfDueAsync(
+                    candidate,
+                    nowUtc,
+                    correlationId,
+                    unit.Services.GetRequiredService<IOfficeComplianceRepository>(),
+                    token
+                );
+                if (reminder is null)
+                    return false;
 
-        try
-        {
-            var reminder = await WispReviewReminders.SendIfDueAsync(
-                candidate,
-                nowUtc,
-                correlationId,
-                services.GetRequiredService<IOfficeComplianceRepository>(),
-                services.GetRequiredService<IUnitOfWork>(),
-                services.GetRequiredService<IMessageBus>(),
-                ct
-            );
-            return reminder is not null;
-        }
-        catch (ConflictException ex) when (ex.Code == "Persistence.ConcurrencyConflict")
-        {
-            // Otra réplica (o un guardado del admin) ganó: no se publicó nada; la próxima pasada lo reevalúa.
-            logger.LogDebug(
-                "WispReviewReminderJob skipped tenant {TenantId} modified concurrently.",
-                candidate.TenantId
-            );
-            return false;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogError(ex, "WispReviewReminderJob failed for tenant {TenantId}.", candidate.TenantId);
-            return false;
-        }
+                await unit.PublishAsync(reminder);
+                return true;
+            },
+            logger,
+            ct
+        );
+
+        // Un conflicto es normal (otra réplica o un guardado del admin ganó): la próxima pasada lo reevalúa.
+        if (result.Outcome == JobUnitOutcome.Failed)
+            logger.LogError(result.Exception, "WispReviewReminderJob failed for tenant {TenantId}.", candidate.TenantId);
+
+        return result.Outcome == JobUnitOutcome.Committed;
     }
 }

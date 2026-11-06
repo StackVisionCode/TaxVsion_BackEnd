@@ -24,6 +24,7 @@ public sealed class TenantEmailAccountConfiguration : IEntityTypeConfiguration<T
         builder.Property(a => a.ReviewRequiredAtUtc);
         builder.Property(a => a.ReviewReason).HasMaxLength(TenantEmailAccount.ReviewReasonMaxLength);
         builder.Ignore(a => a.NeedsReview);
+        builder.Ignore(a => a.DomainEvents);
 
         builder.HasIndex(a => new { a.TenantId, a.EmailAddress }).IsUnique();
         // Listar los buzones visibles para un usuario (oficina + los suyos).

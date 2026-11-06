@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
 namespace TaxVision.PaymentApp.Domain.SaaSPayments;
@@ -15,7 +16,7 @@ namespace TaxVision.PaymentApp.Domain.SaaSPayments;
 /// ChangeStatus(...) genérico. El aggregate nunca importa un SDK de provider (guardrail
 /// §39.9): solo conoce <see cref="PaymentProviderCode"/> y VOs de intercambio.
 /// </summary>
-public sealed class SaaSPayment : TenantEntity
+public sealed class SaaSPayment : AggregateRoot
 {
     private readonly List<SaaSPaymentAttempt> _attempts = [];
     private readonly List<RefundLine> _refunds = [];
@@ -83,6 +84,7 @@ public sealed class SaaSPayment : TenantEntity
     public long? ReviewPaidAmountCents { get; private set; }
     public string? ReviewPaidCurrency { get; private set; }
     public DateTime? ReviewResolvedAtUtc { get; private set; }
+
     [UserReference(UserReferenceKind.Provenance, Note = "Admin de plataforma que resolvió la revisión: historia.")]
     public Guid? ReviewResolvedByUserId { get; private set; }
     public string? ReviewResolution { get; private set; }
@@ -360,6 +362,7 @@ public sealed class SaaSPayment : TenantEntity
         NextActionType = null;
         NextActionUrl = null;
         Touch(actorUserId, paidAtUtc);
+        AddDomainEvent(new SaaSPaymentSucceeded(Snapshot()));
         return Result.Success();
     }
 
@@ -397,6 +400,7 @@ public sealed class SaaSPayment : TenantEntity
         NextActionType = null;
         NextActionUrl = null;
         Touch(actorUserId, nowUtc);
+        AddDomainEvent(new SaaSPaymentFailed(Snapshot()));
         return Result.Success();
     }
 
@@ -504,6 +508,7 @@ public sealed class SaaSPayment : TenantEntity
         NextActionUrl = null;
         NextRetryAtUtc = null;
         Touch(Guid.Empty, cancelledAtUtc);
+        AddDomainEvent(new SaaSPaymentCancelled(Snapshot(), PropagatedFromOwner: true));
         return Result.Success();
     }
 
@@ -531,6 +536,7 @@ public sealed class SaaSPayment : TenantEntity
         Status = PaymentStatus.Cancelled;
         FailureReason = reason;
         Touch(actorUserId, nowUtc);
+        AddDomainEvent(new SaaSPaymentCancelled(Snapshot(), PropagatedFromOwner: false));
         return Result.Success();
     }
 
@@ -661,6 +667,17 @@ public sealed class SaaSPayment : TenantEntity
         ReviewProviderReference = string.IsNullOrWhiteSpace(providerReference) ? null : providerReference.Trim();
         ReviewPaidAmountCents = paidAmountCents;
         ReviewPaidCurrency = currency is { Length: 3 } ? currency : null;
+        AddDomainEvent(
+            new SaaSPaymentReviewRequired(
+                Id,
+                TenantId,
+                reasonCode,
+                ReviewProviderReference,
+                paidAmountCents,
+                ReviewPaidCurrency,
+                nowUtc
+            )
+        );
         return Result.Success();
     }
 
@@ -696,6 +713,37 @@ public sealed class SaaSPayment : TenantEntity
             total += line.Amount.AmountCents;
         return total;
     }
+
+    /// <summary>Foto del pago tal como está ahora; la llevan los eventos de dominio de resultado.</summary>
+    public SaaSPaymentSnapshot Snapshot() =>
+        new(
+            Id,
+            TenantId,
+            Type,
+            Status,
+            TargetAggregateId,
+            IdempotencyKey.Value,
+            Amount.AmountCents,
+            Amount.Currency,
+            ProviderCode,
+            ExternalChargeReference?.Value,
+            PaidAtUtc,
+            FailureCode,
+            FailureReason,
+            NextRetryAtUtc,
+            _attempts.Count,
+            ProviderCheckoutSessionId is not null,
+            CreatedBy,
+            OnboardingId,
+            CodeReservationId,
+            CodeReservationPaymentId,
+            DiscountAmountCents,
+            PromotionSnapshotHash,
+            Breakdown?.Quantity,
+            Breakdown?.UnitAmountCents,
+            Concept?.Code,
+            Concept?.DisplayName
+        );
 
     private void Touch(Guid actorUserId, DateTime nowUtc)
     {

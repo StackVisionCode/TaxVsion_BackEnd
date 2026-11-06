@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
@@ -29,17 +28,8 @@ public static class ArchiveCustomerHandler
         if (result.IsFailure)
             return result;
 
+        // CustomerArchived sale del evento de dominio; aquí solo el borrado de la foto.
         await unitOfWork.SaveChangesAsync(ct);
-
-        await bus.PublishAsync(
-            new CustomerArchivedIntegrationEvent
-            {
-                TenantId = customer.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                CustomerId = customer.Id,
-                ArchivedByUserId = cmd.ArchivedByUserId,
-            }
-        );
 
         if (photoFileId is { } fileId)
             await bus.PublishAsync(

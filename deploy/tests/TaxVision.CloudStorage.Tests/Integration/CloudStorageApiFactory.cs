@@ -1,7 +1,11 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.CloudStorage.Tests.Integration;
 
@@ -36,5 +40,28 @@ public sealed class CloudStorageApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Sin transportes externos el host de prueba no le roba mensajes a la cola del servicio local;
+        // los jobs y seeders corren contra la base local y llaman a servicios reales: fuera en pruebas.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            foreach (
+                var job in services
+                    .Where(descriptor =>
+                        descriptor.ServiceType == typeof(IHostedService)
+                        && (
+                            descriptor.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal)
+                                == true
+                            || descriptor.ImplementationType?.Namespace?.StartsWith(
+                                "BuildingBlocks.",
+                                StringComparison.Ordinal
+                            ) == true
+                        )
+                    )
+                    .ToList()
+            )
+                services.Remove(job);
+        });
     }
 }

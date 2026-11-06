@@ -208,5 +208,11 @@ public sealed class ImportFileScanResultConsumerTests
 
         public Task AddAsync(CustomerImportAttempt attempt, CancellationToken ct) =>
             throw new NotImplementedException();
+
+        public Task<IReadOnlyList<CustomerImportAttempt>> ListInFlightNotifyingAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<CustomerImportAttempt>>([]);
     }
 }

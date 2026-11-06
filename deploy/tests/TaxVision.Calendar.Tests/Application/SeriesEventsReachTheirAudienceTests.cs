@@ -1,14 +1,10 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Results;
-using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Appointments.Commands;
 using TaxVision.Calendar.Application.Observability;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.ValueObjects;
-using Wolverine;
 using Xunit;
 
 namespace TaxVision.Calendar.Tests.Application;
@@ -37,6 +33,7 @@ public sealed class SeriesEventsReachTheirAudienceTests
     public async Task Cancelling_one_occurrence_still_tells_the_attendees()
     {
         var series = SeriesWithAttendee();
+        var appointments = new InMemoryAppointments(series);
         var bus = new FakeMessageBus();
 
         var result = await CancelAppointmentHandler.Handle(
@@ -49,13 +46,12 @@ public sealed class SeriesEventsReachTheirAudienceTests
                 "feriado",
                 false
             ),
-            new SingleAppointmentRepository(series),
+            appointments,
             new NoOpUnitOfWork(),
-            bus,
-            new NoOpCorrelationContext(),
             new NoOpMetrics(),
             CancellationToken.None
         );
+        await CalendarDomainEventReplay.DispatchIntoAsync(bus, appointments, appointments.All);
 
         Assert.True(result.IsSuccess);
 
@@ -77,6 +73,7 @@ public sealed class SeriesEventsReachTheirAudienceTests
     public async Task Splitting_a_series_closes_the_orphaned_reminders_and_tells_the_attendees()
     {
         var series = SeriesWithAttendee();
+        var appointments = new InMemoryAppointments(series);
         var bus = new FakeMessageBus();
 
         var result = await RescheduleAppointmentHandler.Handle(
@@ -95,13 +92,12 @@ public sealed class SeriesEventsReachTheirAudienceTests
                 "FREQ=WEEKLY;BYDAY=MO",
                 false
             ),
-            new SingleAppointmentRepository(series),
+            appointments,
             new NoOpUnitOfWork(),
-            bus,
-            new NoOpCorrelationContext(),
             new NoOpMetrics(),
             CancellationToken.None
         );
+        await CalendarDomainEventReplay.DispatchIntoAsync(bus, appointments, appointments.All);
 
         Assert.True(result.IsSuccess);
         Assert.Single(bus.Published.OfType<CalendarSeriesSplitIntegrationEvent>());
@@ -153,53 +149,6 @@ public sealed class SeriesEventsReachTheirAudienceTests
         return series;
     }
 
-    private sealed class SingleAppointmentRepository(Appointment appointment) : IAppointmentRepository
-    {
-        public Task<IReadOnlyList<Appointment>> ListFutureByOrganizerAsync(
-            Guid tenantId,
-            Guid organizerUserId,
-            DateTime nowUtc,
-            CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
-
-        public Task<IReadOnlyList<Appointment>> ListFutureByStaffAttendeeAsync(
-            Guid tenantId,
-            Guid userId,
-            DateTime nowUtc,
-            CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
-
-        public Task<Result<Appointment>> GetByIdAsync(
-            Guid tenantId,
-            Guid appointmentId,
-            CancellationToken ct = default
-        ) =>
-            Task.FromResult(
-                appointmentId == appointment.Id
-                    ? Result.Success(appointment)
-                    : Result.Failure<Appointment>(AppointmentErrors.NotFound)
-            );
-
-        public Task<IReadOnlyList<Appointment>> ListForRangeAsync(
-            Guid tenantId,
-            DateTime rangeStartUtc,
-            DateTime rangeEndUtc,
-            CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyList<Appointment>>([appointment]);
-
-        public Task<IReadOnlyList<Appointment>> ListForUserRangeAsync(
-            Guid tenantId,
-            Guid userId,
-            DateTime rangeStartUtc,
-            DateTime rangeEndUtc,
-            CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyList<Appointment>>([appointment]);
-
-        public void Add(Appointment created) { }
-
-        public void Remove(Appointment removed) { }
-    }
-
     private sealed class NoOpUnitOfWork : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
@@ -220,19 +169,5 @@ public sealed class SeriesEventsReachTheirAudienceTests
         public void RecordIcsFeedRequest(bool found) { }
 
         public void RecordIcsFeedStale() { }
-    }
-
-    private sealed class NoOpCorrelationContext : ICorrelationContext
-    {
-        public string CorrelationId { get; private set; } = "test";
-
-        public void Set(string correlationId) => CorrelationId = correlationId;
-
-        public IDisposable Push(string correlationId) => new NoOpScope();
-
-        private sealed class NoOpScope : IDisposable
-        {
-            public void Dispose() { }
-        }
     }
 }

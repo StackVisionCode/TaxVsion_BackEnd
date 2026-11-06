@@ -1,5 +1,8 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.ModuleCategoryChangedIntegrationEvent")]
 public sealed record ModuleCategoryChangedIntegrationEvent : IntegrationEvent
 {
     public required string ModuleCode { get; init; }

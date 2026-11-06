@@ -1,14 +1,11 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
-using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.OnboardingCheckouts.Commands;
 
@@ -32,8 +29,6 @@ public static class ReconcileOnboardingCheckoutHandler
         ISaaSPaymentRepository payments,
         IPaymentAdapterFactory providerFactory,
         IUnitOfWork unitOfWork,
-        ICorrelationContext correlation,
-        IMessageBus bus,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
     )
@@ -81,43 +76,33 @@ public static class ReconcileOnboardingCheckoutHandler
         var outcome = statusResult.Value;
         ReconcileReferenceIfNeeded(payment, outcome.ProviderChargeReference, logger, nowUtc);
 
-        var changed = await ApplyOutcomeAsync(payment, outcome, bus, correlation.CorrelationId, nowUtc, ct);
+        // El resultado lo avisa SaaSPaymentDomainEventHandler con el commit (evento de dominio).
+        var changed = ApplyOutcome(payment, outcome, nowUtc);
         if (changed)
             await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(BuildResponse(payment));
     }
 
-    private static async Task<bool> ApplyOutcomeAsync(
-        SaaSPayment payment,
-        ChargeAuthorizationResult outcome,
-        IMessageBus bus,
-        string correlationId,
-        DateTime nowUtc,
-        CancellationToken ct
-    )
+    private static bool ApplyOutcome(SaaSPayment payment, ChargeAuthorizationResult outcome, DateTime nowUtc)
     {
         switch (outcome.Status)
         {
             case PaymentStatus.Succeeded:
-                var succeeded = payment.MarkSucceeded(nowUtc, Guid.Empty);
-                if (succeeded.IsSuccess)
-                    await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
-                return succeeded.IsSuccess;
+                return payment.MarkSucceeded(nowUtc, Guid.Empty).IsSuccess;
 
             case PaymentStatus.Failed
             or PaymentStatus.Cancelled:
-                var failed = payment.MarkFailed(
-                    outcome.FailureCode ?? "Provider.Unknown",
-                    outcome.FailureMessage ?? "The provider reported the charge as failed.",
-                    willRetry: false,
-                    nextRetryAtUtc: null,
-                    Guid.Empty,
-                    nowUtc
-                );
-                if (failed.IsSuccess)
-                    await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
-                return failed.IsSuccess;
+                return payment
+                    .MarkFailed(
+                        outcome.FailureCode ?? "Provider.Unknown",
+                        outcome.FailureMessage ?? "The provider reported the charge as failed.",
+                        willRetry: false,
+                        nextRetryAtUtc: null,
+                        Guid.Empty,
+                        nowUtc
+                    )
+                    .IsSuccess;
 
             default:
                 return false;

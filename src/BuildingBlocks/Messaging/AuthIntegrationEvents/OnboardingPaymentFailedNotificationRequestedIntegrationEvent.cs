@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -8,6 +10,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// alcanza para componer un email). <see cref="IntegrationEvent.TenantId"/> = PlatformTenant (el
 /// tenant aún no existe); <see cref="OnboardingId"/> es la clave de correlación real.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.OnboardingPaymentFailedNotificationRequestedIntegrationEvent")]
 public sealed record OnboardingPaymentFailedNotificationRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }

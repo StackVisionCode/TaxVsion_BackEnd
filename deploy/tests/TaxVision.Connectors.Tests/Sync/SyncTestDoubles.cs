@@ -11,6 +11,8 @@ internal sealed class FakeProviderSyncCursorRepository : IProviderSyncCursorRepo
 {
     public List<ProviderSyncCursor> Cursors { get; } = [];
 
+    public void Remove(ProviderSyncCursor cursor) => Cursors.Remove(cursor);
+
     public Task AddAsync(ProviderSyncCursor cursor, CancellationToken ct = default)
     {
         Cursors.Add(cursor);

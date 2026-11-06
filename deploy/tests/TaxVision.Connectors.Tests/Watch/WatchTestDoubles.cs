@@ -9,6 +9,8 @@ internal sealed class FakeProviderWatchSubscriptionRepository : IProviderWatchSu
 {
     public List<ProviderWatchSubscription> Subscriptions { get; } = [];
 
+    public void Remove(ProviderWatchSubscription subscription) => Subscriptions.Remove(subscription);
+
     public Task AddAsync(ProviderWatchSubscription subscription, CancellationToken ct = default)
     {
         Subscriptions.Add(subscription);

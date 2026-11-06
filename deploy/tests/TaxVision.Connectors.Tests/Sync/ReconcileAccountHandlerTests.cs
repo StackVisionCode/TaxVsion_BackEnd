@@ -7,6 +7,7 @@ using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Domain.Watch;
+using TaxVision.Connectors.Tests.Accounts;
 using TaxVision.Connectors.Tests.OAuth;
 using TaxVision.Connectors.Tests.Watch;
 
@@ -418,7 +419,9 @@ public class ReconcileAccountHandlerTests
         Assert.True(second.IsFailure);
         Assert.Equal(TenantEmailAccountStatus.Error, account.Status);
         // La segunda corrida ya encuentra la cuenta en Error: no se avisa otra vez.
-        var notified = Assert.Single(bus.Published.OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>());
+        var notified = Assert.Single(
+            DomainEventReplay.Emitted(bus, account).OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>()
+        );
         Assert.Equal("Imap.AuthenticationFailed", notified.ErrorCode);
         Assert.Equal(Guid.Empty, notified.ConnectionId);
     }

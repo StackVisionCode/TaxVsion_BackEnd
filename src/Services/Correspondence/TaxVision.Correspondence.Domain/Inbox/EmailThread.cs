@@ -9,7 +9,7 @@ namespace TaxVision.Correspondence.Domain.Inbox;
 /// cliente (solo entra correo de clientes); uno que nace de un aviso de no entrega puede no tenerlo (D-1):
 /// <see cref="CustomerId"/> null = "Not a client", y su visibilidad la decide solo el buzón.
 /// </summary>
-public sealed class EmailThread : ITenantOwned
+public sealed class EmailThread : AggregateRoot
 {
     public const int SubjectMaxLength = 1000;
     public const int ProviderThreadIdMaxLength = 200;
@@ -18,9 +18,6 @@ public sealed class EmailThread : ITenantOwned
     public const string NoSubject = "(no subject)";
 
     private EmailThread() { }
-
-    public Guid Id { get; private set; }
-    public Guid TenantId { get; private set; }
 
     /// <summary>Null = el destinatario no es cliente (solo hilos nacidos de un aviso de no entrega).</summary>
     public Guid? CustomerId { get; private set; }
@@ -31,9 +28,6 @@ public sealed class EmailThread : ITenantOwned
     public int MessageCount { get; private set; }
     public EmailThreadStatus Status { get; private set; }
     public DateTime? ArchivedAtUtc { get; private set; }
-
-    /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
-    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     public static Result<EmailThread> NewFromMessage(
         Guid tenantId,
@@ -47,21 +41,20 @@ public sealed class EmailThread : ITenantOwned
         if (validationError is not null)
             return Result.Failure<EmailThread>(validationError);
 
-        return Result.Success(
-            new EmailThread
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantId,
-                CustomerId = customerId,
-                Subject = subject,
-                ProviderThreadId = providerThreadId,
-                FirstMessageAtUtc = firstMessageAtUtc,
-                LastMessageAtUtc = firstMessageAtUtc,
-                MessageCount = 1,
-                Status = EmailThreadStatus.Active,
-                ArchivedAtUtc = null,
-            }
-        );
+        var thread = new EmailThread
+        {
+            Id = Guid.NewGuid(),
+            CustomerId = customerId,
+            Subject = subject,
+            ProviderThreadId = providerThreadId,
+            FirstMessageAtUtc = firstMessageAtUtc,
+            LastMessageAtUtc = firstMessageAtUtc,
+            MessageCount = 1,
+            Status = EmailThreadStatus.Active,
+            ArchivedAtUtc = null,
+        };
+        thread.SetTenant(tenantId);
+        return Result.Success(thread);
     }
 
     /// <summary>
@@ -92,21 +85,20 @@ public sealed class EmailThread : ITenantOwned
         if (tenantId == Guid.Empty)
             return Result.Failure<EmailThread>(new Error("EmailThread.TenantIdRequired", "TenantId is required."));
 
-        return Result.Success(
-            new EmailThread
-            {
-                Id = threadId,
-                TenantId = tenantId,
-                CustomerId = customerId,
-                Subject = normalizedSubject,
-                ProviderThreadId = null,
-                FirstMessageAtUtc = sentAtUtc,
-                LastMessageAtUtc = sentAtUtc,
-                MessageCount = 0,
-                Status = EmailThreadStatus.Active,
-                ArchivedAtUtc = null,
-            }
-        );
+        var thread = new EmailThread
+        {
+            Id = threadId,
+            CustomerId = customerId,
+            Subject = normalizedSubject,
+            ProviderThreadId = null,
+            FirstMessageAtUtc = sentAtUtc,
+            LastMessageAtUtc = sentAtUtc,
+            MessageCount = 0,
+            Status = EmailThreadStatus.Active,
+            ArchivedAtUtc = null,
+        };
+        thread.SetTenant(tenantId);
+        return Result.Success(thread);
     }
 
     /// <summary>
@@ -119,7 +111,7 @@ public sealed class EmailThread : ITenantOwned
             return false;
 
         var changed = Status == EmailThreadStatus.Archived;
-        Unarchive();
+        Reopen();
         if (noticeAtUtc > LastMessageAtUtc)
         {
             LastMessageAtUtc = noticeAtUtc;
@@ -135,7 +127,7 @@ public sealed class EmailThread : ITenantOwned
     public Result<bool> AppendMessage(DateTime receivedAtUtc)
     {
         var reopened = Status == EmailThreadStatus.Archived;
-        Unarchive();
+        Reopen();
         LastMessageAtUtc = receivedAtUtc;
         MessageCount++;
         return Result.Success(reopened);
@@ -182,17 +174,33 @@ public sealed class EmailThread : ITenantOwned
     /// <see cref="Projections.CustomerEmailAddress"/> usa en <c>SoftDelete</c>/<c>Reactivate</c>
     /// dentro de este mismo servicio.
     /// </summary>
-    public void Archive()
+    public void Archive(Guid? actorUserId = null, string correlationId = "")
     {
-        if (Status == EmailThreadStatus.Archived)
-            return;
+        if (Status != EmailThreadStatus.Archived)
+        {
+            Status = EmailThreadStatus.Archived;
+            ArchivedAtUtc = DateTime.UtcNow;
+        }
 
-        Status = EmailThreadStatus.Archived;
-        ArchivedAtUtc = DateTime.UtcNow;
+        // Aunque ya estuviera archivado: archivar también marca leído y eso cambia lo que se ve.
+        NotifyStateChanged(actorUserId, correlationId);
     }
 
     // Archived → Active. Idempotente.
-    public void Unarchive()
+    public void Unarchive(Guid? actorUserId = null, string correlationId = "")
+    {
+        Reopen();
+        NotifyStateChanged(actorUserId, correlationId);
+    }
+
+    /// <summary>
+    /// Cambió lo que se ve del hilo (archivado, no leídos, mensajes). Los que entran por el sistema lo llaman aparte:
+    /// una réplica (CON-07) no avisa.
+    /// </summary>
+    public void NotifyStateChanged(Guid? actorUserId = null, string correlationId = "") =>
+        AddDomainEvent(new EmailThreadStateChangedDomainEvent(TenantId, Id, actorUserId, correlationId));
+
+    private void Reopen()
     {
         if (Status != EmailThreadStatus.Archived)
             return;

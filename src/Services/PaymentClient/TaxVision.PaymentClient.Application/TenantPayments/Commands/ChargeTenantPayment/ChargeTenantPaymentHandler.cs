@@ -13,7 +13,6 @@ using TaxVision.PaymentClient.Domain.Connect;
 using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
 using TaxVision.PaymentClient.Domain.TenantPayments;
 using TaxVision.PaymentClient.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.PaymentClient.Application.TenantPayments.Commands.ChargeTenantPayment;
 
@@ -29,7 +28,6 @@ public static class ChargeTenantPaymentHandler
         IOptions<PlatformStripeCredentials> platformCredentials,
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         IPaymentClientMetrics metrics,
         ICorrelationContext correlation,
         ILogger<TenantPayment> logger,
@@ -110,13 +108,8 @@ public static class ChargeTenantPaymentHandler
             ct
         );
 
+        // La señal "pagado" (también la de monto cero) sale del evento de dominio del pago al confirmar.
         await unitOfWork.SaveChangesAsync(ct);
-
-        // Señal "pagado" también para cobros directos y recurrentes (sin link); después de guardar.
-        if (payment.Status == PaymentStatus.Succeeded)
-            await bus.PublishAsync(
-                TenantPaymentSucceededSignal.Build(payment, payment.PaidAtUtc ?? DateTime.UtcNow, correlation.CorrelationId)
-            );
 
         logger.LogInformation(
             "TenantPayment {TenantPaymentId} for tenant {TenantId} finished with status {Status}.",

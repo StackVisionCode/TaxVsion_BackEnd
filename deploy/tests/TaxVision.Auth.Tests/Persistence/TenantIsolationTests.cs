@@ -26,7 +26,6 @@ public sealed class TenantIsolationTests
     private static AuthDbContext CreateContext(string databaseName, FakeTenantContext tenantContext) =>
         new(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,
-            new FakeMessageBus(),
             tenantContext
         );
 

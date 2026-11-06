@@ -140,6 +140,14 @@ public sealed class GraphApiClient(
     private static string ToGraphDate(DateTime utc) =>
         utc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
+    // Sin lote nativo: uno por uno.
+    public Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
+        Guid accountId,
+        Guid tenantId,
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) => this.GetMessagesOneByOneAsync(accountId, tenantId, providerMessageIds, ct);
+
     public async Task<RawMessage> GetMessageAsync(
         Guid accountId,
         Guid tenantId,

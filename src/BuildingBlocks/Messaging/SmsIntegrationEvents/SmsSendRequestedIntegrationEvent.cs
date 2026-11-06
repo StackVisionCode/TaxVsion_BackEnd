@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SmsIntegrationEvents;
 
 /// <summary>
@@ -8,6 +10,7 @@ namespace BuildingBlocks.Messaging.SmsIntegrationEvents;
 /// <see cref="SourceContext"/>/<c>CorrelationId</c> sin que Sms conozca su dominio. TenantId/CorrelationId
 /// vienen de <see cref="IntegrationEvent"/>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SmsIntegrationEvents.SmsSendRequestedIntegrationEvent")]
 public sealed record SmsSendRequestedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Destino en formato E.164 (validación estricta en el servicio Sms).</summary>

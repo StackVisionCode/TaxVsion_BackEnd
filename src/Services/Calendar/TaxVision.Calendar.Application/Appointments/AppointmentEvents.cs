@@ -49,4 +49,51 @@ internal static class AppointmentEvents
             Recipients = RecipientsOf(appointment),
         };
     }
+
+    /// <summary>
+    /// Mover la cita sin avisar a los asistentes los deja presentándose a la hora vieja. Reminder se
+    /// entera aparte, por objetivo cerrado y pedido nuevo.
+    /// </summary>
+    public static AppointmentRescheduledIntegrationEvent Rescheduled(
+        Appointment appointment,
+        DateTime? previousStartUtc,
+        DateTime newStartUtc,
+        DateTime newEndUtc,
+        string timeZoneId,
+        string scope,
+        DateTime? originalStartUtc,
+        string correlationId
+    ) =>
+        new()
+        {
+            TenantId = appointment.TenantId,
+            CorrelationId = correlationId,
+            AppointmentId = appointment.Id,
+            Scope = scope,
+            OriginalStartUtc = originalStartUtc,
+            PreviousStartUtc = previousStartUtc,
+            NewStartUtc = newStartUtc,
+            NewEndUtc = newEndUtc,
+            TimeZoneId = timeZoneId,
+            MeetingId = appointment.MeetingId,
+            Recipients = RecipientsOf(appointment),
+        };
+
+    public static AppointmentCancelledIntegrationEvent Cancelled(
+        Appointment appointment,
+        string scope,
+        DateTime? originalStartUtc,
+        string? reason,
+        string correlationId
+    ) =>
+        new()
+        {
+            TenantId = appointment.TenantId,
+            CorrelationId = correlationId,
+            AppointmentId = appointment.Id,
+            Scope = scope,
+            OriginalStartUtc = originalStartUtc,
+            Reason = reason,
+            Recipients = RecipientsOf(appointment),
+        };
 }

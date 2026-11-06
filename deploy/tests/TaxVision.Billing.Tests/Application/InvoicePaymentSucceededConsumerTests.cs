@@ -72,7 +72,8 @@ public sealed class InvoicePaymentSucceededConsumerTests
 
         Assert.Equal(20_000, invoice.AmountPaid.AmountCents);
         Assert.Equal(1, metrics.Overpayments);
-        Assert.Single(bus.Published.OfType<InvoicePaidIntegrationEvent>());
+        Assert.Single(DomainEventReplay.Dispatch([invoice]).OfType<InvoicePaidIntegrationEvent>());
+        Assert.Empty(bus.Published.OfType<InvoicePaidIntegrationEvent>());
     }
 
     [Fact]
@@ -86,7 +87,8 @@ public sealed class InvoicePaymentSucceededConsumerTests
 
         Assert.Equal(InvoiceStatus.Paid, invoice.Status);
         Assert.Equal(15_000, invoice.AmountPaid.AmountCents);
-        Assert.Single(bus.Published.OfType<InvoicePaidIntegrationEvent>());
+        Assert.Single(DomainEventReplay.Dispatch([invoice]).OfType<InvoicePaidIntegrationEvent>());
+        Assert.Empty(bus.Published.OfType<InvoicePaidIntegrationEvent>());
     }
 
     [Fact]

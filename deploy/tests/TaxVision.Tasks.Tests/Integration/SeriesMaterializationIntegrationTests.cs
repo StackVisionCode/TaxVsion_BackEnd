@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
@@ -10,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TaxVision.Tasks.Application.Series;
 using TaxVision.Tasks.Application.Series.Abstractions;
 using TaxVision.Tasks.Domain.Series;
+using TaxVision.Tasks.Domain.Tasks.Events;
 using TaxVision.Tasks.Infrastructure.Persistence;
 using TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 using TaxVision.Tasks.Tests.Series;
@@ -57,8 +57,9 @@ public sealed class SeriesMaterializationIntegrationTests : IAsyncLifetime
         Assert.Null(series.Single(s => s.Id == failing.Id).OpenInstanceId);
         Assert.Equal(instance.Id, series.Single(s => s.Id == healthy.Id).OpenInstanceId);
 
-        var released = recorders.SelectMany(r => r.Flushed).OfType<ReminderRequestedIntegrationEvent>().ToList();
-        Assert.Equal(instance.Id, Assert.Single(released).TargetId);
+        // Solo la serie confirmada deja su evento de alta para el outbox; la del conflicto, nada.
+        var born = recorders.SelectMany(r => r.DomainEvents).OfType<TaskCreatedDomainEvent>().ToList();
+        Assert.Equal(instance.Id, Assert.Single(born).TaskId);
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -99,7 +100,7 @@ public sealed class SeriesMaterializationIntegrationTests : IAsyncLifetime
         );
 
     // El barrido real cruza tenants; acá solo ve el de la prueba para no tocar series ajenas.
-    private sealed class OwnTenantSeries(TasksDbContext context, Guid tenantId) : ITaskSeriesRepository
+    internal sealed class OwnTenantSeries(TasksDbContext context, Guid tenantId) : ITaskSeriesRepository
     {
         private readonly TaskSeriesRepository _inner = new(context);
 

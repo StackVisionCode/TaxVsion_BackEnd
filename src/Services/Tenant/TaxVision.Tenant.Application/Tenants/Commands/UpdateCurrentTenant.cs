@@ -1,11 +1,9 @@
 using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
-using Wolverine;
 
 namespace TaxVision.Tenant.Application.Tenants.Commands;
 
@@ -13,8 +11,8 @@ namespace TaxVision.Tenant.Application.Tenants.Commands;
 public sealed record UpdateCurrentTenantCommand(Guid TenantId, string Name, string DefaultTimeZoneId);
 
 /// <summary>
-/// Renombra la oficina y/o cambia su zona horaria. Si algo cambió, guarda y recién después publica
-/// <see cref="TenantUpdatedIntegrationEvent"/> con el estado completo (outbox de Wolverine) para que
+/// Renombra la oficina y/o cambia su zona horaria. Si algo cambió, guarda; el agregado levanta el evento de
+/// dominio y su handler devuelve <see cref="TenantUpdatedIntegrationEvent"/> con el estado completo para que
 /// cada proyección lo copie. Sin cambios no publica: un PUT repetido es idempotente.
 /// </summary>
 public static class UpdateCurrentTenantHandler
@@ -23,9 +21,7 @@ public static class UpdateCurrentTenantHandler
         UpdateCurrentTenantCommand command,
         ITenantRepository tenants,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         ICacheService cache,
-        ICorrelationContext correlation,
         ILogger<UpdateCurrentTenantCommand> logger,
         CancellationToken ct
     )
@@ -43,17 +39,6 @@ public static class UpdateCurrentTenantHandler
             return Result.Success(response);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(
-            new TenantUpdatedIntegrationEvent
-            {
-                TenantId = tenant.Id,
-                UpdatedTenantId = tenant.Id,
-                Name = tenant.Name,
-                DefaultTimeZoneId = tenant.DefaultTimeZoneId,
-                UpdatedAtUtc = tenant.UpdatedAtUtc,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
 
         // El directorio M2M (backfill de otros servicios) sale de esta caché: debe ver el nombre nuevo.
         try

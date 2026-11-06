@@ -85,7 +85,7 @@ public sealed class CustomerReadServiceAvatarTests
         var customer = NewCustomer("photo");
         var photo = Guid.NewGuid();
         customer.BeginProfilePictureChange(photo, Guid.NewGuid(), Now.AddDays(-1));
-        customer.ConfirmProfilePicture(photo);
+        customer.ConfirmProfilePicture(photo, Guid.Empty);
         if (pendingRequestedAt is { } requestedAt)
             customer.BeginProfilePictureChange(Guid.NewGuid(), Guid.NewGuid(), requestedAt);
 
@@ -140,5 +140,10 @@ public sealed class CustomerReadServiceAvatarTests
         public string Unprotect(byte[] cipher) => System.Text.Encoding.UTF8.GetString(cipher);
 
         public string ComputeBlindIndex(string plainText, Guid tenantId) => plainText;
+
+        public IReadOnlyCollection<string> ComputeBlindIndexCandidates(string plainText, Guid tenantId) =>
+            [ComputeBlindIndex(plainText, tenantId)];
+
+        public short CurrentKeyVersion => 1;
     }
 }

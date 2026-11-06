@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>Documentos cuyos participantes completaron todos sus campos y ya pueden sellarse.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureDocumentsReadyForSealingIntegrationEvent")]
 public sealed record SignatureDocumentsReadyForSealingIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

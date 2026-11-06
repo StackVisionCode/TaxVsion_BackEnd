@@ -8,6 +8,11 @@ namespace TaxVision.Auth.Tests.Application;
 /// exige takeover). Para los tests que solo materializan una sesión y no ejercen la revocación.</summary>
 internal sealed class EmptyUserSessionRepository : ISessionRepository
 {
+    public Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<UserSession>>([]);
+
     public Task<IReadOnlyList<UserSession>> GetActiveSessionsByUserAsync(Guid userId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<UserSession>>([]);
 

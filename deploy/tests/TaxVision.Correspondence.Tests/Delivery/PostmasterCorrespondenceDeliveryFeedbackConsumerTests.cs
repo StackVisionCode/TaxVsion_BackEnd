@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -27,19 +28,21 @@ public sealed class PostmasterCorrespondenceDeliveryFeedbackConsumerTests
         public FakeUnitOfWork UnitOfWork { get; } = new();
         public FakeMessageBus Bus { get; } = new();
 
-        public Task HandleAsync(PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent evt) =>
-            PostmasterCorrespondenceDeliveryFeedbackConsumer.Handle(
+        public async Task HandleAsync(PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent evt)
+        {
+            await PostmasterCorrespondenceDeliveryFeedbackConsumer.Handle(
                 evt,
                 Drafts,
                 Threads,
                 Notices,
-                Incoming,
                 UnitOfWork,
                 Bus,
                 new FakeCorrelationContext(),
                 NullLogger<DeliveryNotice>.Instance,
                 CancellationToken.None
             );
+            await DomainEventReplay.DispatchIntoAsync(Bus, Threads, Incoming);
+        }
     }
 
     private static PostmasterCorrespondenceDeliveryFeedbackIntegrationEvent Feedback(
@@ -234,17 +237,89 @@ public sealed class PostmasterCorrespondenceDeliveryFeedbackConsumerTests
     }
 
     [Fact]
-    public async Task An_unknown_draft_or_outcome_is_dropped()
+    public async Task An_unknown_outcome_is_dropped()
     {
         var h = new Harness();
         var draft = Sent(Tenant, null, Account, "Quote", "maria@x.com", Author);
-
-        await h.HandleAsync(Feedback(draft));
         await h.Drafts.AddAsync(draft);
+
         await h.HandleAsync(Feedback(draft, outcome: "Complained"));
 
         Assert.Empty(h.Notices.All);
         Assert.Empty(h.Bus.Published);
+        Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
+    }
+
+    // COR-14: Postmaster puede avisar antes de que el borrador quede Sent; el rebote no se pierde.
+    [Fact]
+    public async Task Handle_DraftStillSending_ThrowsDependencyNotReady()
+    {
+        var h = new Harness();
+        var draft = Open(Tenant, null, Account, "Quote", "maria@x.com", Author);
+        draft.MarkSending();
+        await h.Drafts.AddAsync(draft);
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            h.HandleAsync(Feedback(draft, sentMessageId: Guid.NewGuid()))
+        );
+
+        Assert.Empty(h.Notices.All);
+        Assert.Empty(h.Bus.Published);
+        Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Handle_DraftStillOpen_ThrowsDependencyNotReady()
+    {
+        var h = new Harness();
+        var draft = Open(Tenant, null, Account, "Quote", "maria@x.com", Author);
+        await h.Drafts.AddAsync(draft);
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            h.HandleAsync(Feedback(draft, sentMessageId: Guid.NewGuid()))
+        );
+
+        Assert.Empty(h.Notices.All);
+    }
+
+    [Fact]
+    public async Task Handle_DraftNotFound_ThrowsDependencyNotReady()
+    {
+        var h = new Harness();
+        var draft = Sent(Tenant, null, Account, "Quote", "maria@x.com", Author);
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() => h.HandleAsync(Feedback(draft)));
+
+        Assert.Empty(h.Notices.All);
+    }
+
+    // Estados terminales: no va a llegar a Sent, reintentar no sirve.
+    [Fact]
+    public async Task Handle_DraftDiscarded_IsDropped()
+    {
+        var h = new Harness();
+        var draft = Open(Tenant, null, Account, "Quote", "maria@x.com", Author);
+        draft.Discard();
+        await h.Drafts.AddAsync(draft);
+
+        await h.HandleAsync(Feedback(draft, sentMessageId: Guid.NewGuid()));
+
+        Assert.Empty(h.Notices.All);
+        Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Handle_DraftFailed_IsDropped()
+    {
+        var h = new Harness();
+        var draft = Open(Tenant, null, Account, "Quote", "maria@x.com", Author);
+        draft.MarkSending();
+        draft.MarkFailed("Provider rejected the message.");
+        await h.Drafts.AddAsync(draft);
+
+        await h.HandleAsync(Feedback(draft, sentMessageId: Guid.NewGuid()));
+
+        Assert.Empty(h.Notices.All);
         Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
     }
 }

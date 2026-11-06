@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 /// de ambos campos (no el delta): cada proyección los copia tal cual. <see cref="UpdatedAtUtc"/> ordena:
 /// un consumidor ignora un evento más viejo que lo que ya tiene.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TenantIntegrationEvents.TenantUpdatedIntegrationEvent")]
 public sealed record TenantUpdatedIntegrationEvent : IntegrationEvent
 {
     public required Guid UpdatedTenantId { get; init; }

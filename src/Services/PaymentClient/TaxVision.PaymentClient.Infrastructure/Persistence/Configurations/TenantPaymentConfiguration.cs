@@ -11,6 +11,7 @@ public sealed class TenantPaymentConfiguration : IEntityTypeConfiguration<Tenant
     {
         builder.ToTable("TenantPayments");
         builder.HasKey(payment => payment.Id);
+        builder.Ignore(payment => payment.DomainEvents);
 
         builder.Property(payment => payment.TenantId).IsRequired();
 

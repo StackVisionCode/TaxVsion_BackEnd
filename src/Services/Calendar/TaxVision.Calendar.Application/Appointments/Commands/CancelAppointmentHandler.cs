@@ -1,12 +1,9 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Observability;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
-using Wolverine;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
 
@@ -26,8 +23,6 @@ public static class CancelAppointmentHandler
         CancelAppointmentCommand command,
         IAppointmentRepository appointments,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ICalendarMetrics metrics,
         CancellationToken ct
     )
@@ -43,32 +38,54 @@ public static class CancelAppointmentHandler
             return Result.Failure(AppointmentErrors.ScopeRequired);
 
         // Los objetivos se calculan antes de cancelar: después la cita ya no los produce.
-        var targets = ReminderTargetsToClose(appointment, command, onlyOne);
+        var now = DateTime.UtcNow;
+        var targets = ReminderTargetsToClose(appointment, command, onlyOne, now);
 
         var cancelled = onlyOne
-            ? CancelOccurrence(appointment, command)
-            : appointment.Cancel(command.ActingUserId, command.CanManageAll, command.Reason, DateTime.UtcNow);
+            ? CancelOccurrence(appointment, command, now)
+            : appointment.Cancel(
+                command.ActingUserId,
+                command.CanManageAll,
+                command.Reason,
+                now,
+                command.Scope,
+                command.OriginalStartUtc
+            );
 
         if (cancelled.IsFailure)
             return cancelled;
 
+        // Cancelar sin avisar a Reminder deja el aviso vivo: al cliente le llega un recordatorio de una
+        // cita que ya no existe.
+        appointment.CloseReminderTargets(targets, command.Reason, now);
+
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishAsync(appointment, command, onlyOne, targets, bus, correlation);
         metrics.RecordCancelled(appointment.IsRecurring);
 
         return Result.Success();
     }
 
-    private static Result CancelOccurrence(Appointment appointment, CancelAppointmentCommand command) =>
-        command.OriginalStartUtc is not { } original
-            ? Result.Failure(RecurrenceErrors.NotAnOccurrence)
-            : appointment.CancelOccurrence(original, command.ActingUserId, command.CanManageAll, DateTime.UtcNow);
-
-    /// <summary>Sin aviso pedido no hay nada que cerrar en Reminder.</summary>
-    private static IReadOnlyCollection<Guid> ReminderTargetsToClose(
+    private static Result CancelOccurrence(
         Appointment appointment,
         CancelAppointmentCommand command,
-        bool onlyOneOccurrence
+        DateTime nowUtc
+    ) =>
+        command.OriginalStartUtc is not { } original
+            ? Result.Failure(RecurrenceErrors.NotAnOccurrence)
+            : appointment.CancelOccurrence(
+                original,
+                command.ActingUserId,
+                command.CanManageAll,
+                nowUtc,
+                command.Reason
+            );
+
+    /// <summary>Sin aviso pedido no hay nada que cerrar en Reminder.</summary>
+    private static IReadOnlyList<Guid> ReminderTargetsToClose(
+        Appointment appointment,
+        CancelAppointmentCommand command,
+        bool onlyOneOccurrence,
+        DateTime nowUtc
     )
     {
         if (appointment.ReminderLeadMinutes is null)
@@ -77,62 +94,6 @@ public static class CancelAppointmentHandler
         if (onlyOneOccurrence)
             return command.OriginalStartUtc is { } original ? [OccurrenceTargetId.For(appointment.Id, original)] : [];
 
-        return [.. AppointmentReminderTargets.Snapshot(appointment, DateTime.UtcNow)];
-    }
-
-    /// <summary>
-    /// Cancelar sin avisar a Reminder deja el aviso vivo: al cliente le llega un recordatorio de una
-    /// cita que ya no existe.
-    /// </summary>
-    private static async Task PublishAsync(
-        Appointment appointment,
-        CancelAppointmentCommand command,
-        bool onlyOneOccurrence,
-        IReadOnlyCollection<Guid> reminderTargets,
-        IMessageBus bus,
-        ICorrelationContext correlation
-    )
-    {
-        var scope = command.Scope?.ToString() ?? nameof(EditScope.EntireSeries);
-
-        // El aviso a los asistentes sale SIEMPRE, tambien al cancelar una sola ocurrencia. Antes solo
-        // salia al cancelar la cita entera, asi que a quien se le caia una reunion de una serie no se
-        // le decia nada: se presentaba a algo que ya no existia.
-        await bus.PublishAsync(
-            new AppointmentCancelledIntegrationEvent
-            {
-                TenantId = appointment.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                AppointmentId = appointment.Id,
-                Scope = scope,
-                OriginalStartUtc = command.OriginalStartUtc,
-                Reason = command.Reason,
-                Recipients = AppointmentEvents.RecipientsOf(appointment),
-            }
-        );
-
-        // Y ademas el hecho preciso, que dice cual de las N ocurrencias se cayo.
-        if (onlyOneOccurrence)
-        {
-            await bus.PublishAsync(
-                new OccurrenceCancelledIntegrationEvent
-                {
-                    TenantId = appointment.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    AppointmentId = appointment.Id,
-                    OriginalStartUtc = command.OriginalStartUtc!.Value,
-                }
-            );
-        }
-
-        foreach (
-            var closed in AppointmentReminderTargets.Close(
-                appointment,
-                reminderTargets,
-                correlation.CorrelationId,
-                command.Reason
-            )
-        )
-            await bus.PublishAsync(closed);
+        return [.. AppointmentReminderTargets.Snapshot(appointment, nowUtc)];
     }
 }

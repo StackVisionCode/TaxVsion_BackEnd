@@ -1,13 +1,12 @@
+using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
-using BuildingBlocks.Persistence;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.AddOns;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.AddOns;
-using Wolverine;
+using TaxVision.Subscription.Infrastructure.Persistence;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -48,77 +47,88 @@ public sealed class AddOnCheckoutReconciliationJob(
             );
     }
 
-    // Cada intención en su propio scope: un fallo deja sucio solo su DbContext.
+    // Por intención: la consulta a PaymentApp va fuera de la transacción; después, una unidad (BB-3) en la que el
+    // add-on, la intención, AddOnActivated y el recálculo se confirman juntos. Antes se publicaba antes de guardar.
     internal async Task<int> ReconcileAsync(IReadOnlyList<Guid> intentIds, DateTime nowUtc, CancellationToken ct)
     {
         var provisionedCount = 0;
         foreach (var intentId in intentIds)
         {
-            using var itemScope = ScopeFactory.CreateScope();
-            var services = itemScope.ServiceProvider;
-            var context = new ReconcileContext(
-                services.GetRequiredService<ISubscriptionRepository>(),
-                services.GetRequiredService<IAddOnDefinitionRepository>(),
-                services.GetRequiredService<ITenantAddOnRepository>(),
-                services.GetRequiredService<IAddOnCheckoutPaymentClient>(),
-                services.GetRequiredService<ISubscriptionAuditLogWriter>(),
-                services.GetRequiredService<ISubscriptionMetrics>(),
-                services.GetRequiredService<IUnitOfWork>(),
-                services.GetRequiredService<IMessageBus>(),
-                services.GetRequiredService<ILogger<AddOnCheckoutReconciliationJob>>()
+            var payment = await ReadPaymentStatusAsync(intentId, ct);
+            if (payment is null)
+                continue;
+
+            var provisioned = false;
+            var result = await RunUnitAsync(
+                async (unit, token) =>
+                {
+                    var outcome = await ApplyAsync(unit, intentId, payment, nowUtc, token);
+                    provisioned = outcome == ReconcileOutcome.Provisioned;
+                    return outcome != ReconcileOutcome.Nothing;
+                },
+                ct
             );
-            try
-            {
-                var intent = await services
-                    .GetRequiredService<IAddOnPurchaseIntentRepository>()
-                    .GetByIdForProvisioningAsync(intentId, ct);
-                if (
-                    intent is { Status: AddOnPurchaseIntentStatus.Pending }
-                    && await ReconcileOneAsync(intent, context, nowUtc, ct)
-                )
-                    provisionedCount++;
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                context.Logger.LogInformation("Add-on checkout intent {IntentId} changed by another writer.", intentId);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                context.Logger.LogError(ex, "Add-on checkout reconcile failed for intent {IntentId}.", intentId);
-            }
+
+            if (result.Outcome == JobUnitOutcome.Committed && provisioned)
+                provisionedCount++;
+            else if (result.Outcome == JobUnitOutcome.Conflict)
+                Logger.LogInformation("Add-on checkout intent {IntentId} changed by another writer.", intentId);
+            else if (result.Outcome == JobUnitOutcome.Failed)
+                Logger.LogWarning("Add-on checkout reconcile failed for intent {IntentId}.", intentId);
         }
 
         return provisionedCount;
     }
 
-    private sealed record ReconcileContext(
-        ISubscriptionRepository Subscriptions,
-        IAddOnDefinitionRepository Definitions,
-        ITenantAddOnRepository TenantAddOns,
-        IAddOnCheckoutPaymentClient Payments,
-        ISubscriptionAuditLogWriter Audit,
-        ISubscriptionMetrics Metrics,
-        IUnitOfWork UnitOfWork,
-        IMessageBus Bus,
-        ILogger Logger
-    );
+    private enum ReconcileOutcome
+    {
+        Nothing,
+        Provisioned,
+        MarkedFailed,
+    }
 
-    private static async Task<bool> ReconcileOneAsync(
-        AddOnPurchaseIntent intent,
-        ReconcileContext context,
+    private async Task<AddOnPaymentStatusResult?> ReadPaymentStatusAsync(Guid intentId, CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var intent = await scope
+                .ServiceProvider.GetRequiredService<IAddOnPurchaseIntentRepository>()
+                .GetByIdForProvisioningAsync(intentId, ct);
+            if (intent is not { Status: AddOnPurchaseIntentStatus.Pending, SaaSPaymentId: { } paymentId })
+                return null;
+
+            // null: PaymentApp no respondió — se reintenta el próximo tick.
+            return await scope
+                .ServiceProvider.GetRequiredService<IAddOnCheckoutPaymentClient>()
+                .GetPaymentStatusAsync(intent.TenantId, paymentId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogError(ex, "Add-on checkout reconcile failed for intent {IntentId}.", intentId);
+            return null;
+        }
+    }
+
+    private static async Task<ReconcileOutcome> ApplyAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
+        Guid intentId,
+        AddOnPaymentStatusResult status,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
-        if (intent.SaaSPaymentId is not { } paymentId)
-            return false;
+        var intent = await unit
+            .Services.GetRequiredService<IAddOnPurchaseIntentRepository>()
+            .GetByIdForProvisioningAsync(intentId, ct);
+        if (intent is null || intent.Status != AddOnPurchaseIntentStatus.Pending)
+            return ReconcileOutcome.Nothing;
 
-        var status = await context.Payments.GetPaymentStatusAsync(intent.TenantId, paymentId, ct);
-        if (status is null)
-            return false; // PaymentApp no respondió — se reintenta el próximo tick
-
+        unit.UseTenant(intent.TenantId);
         if (string.Equals(status.Status, "Succeeded", StringComparison.OrdinalIgnoreCase))
-            return await ProvisionAsync(intent, context, status.PaidAtUtc ?? nowUtc, nowUtc, ct);
+            return await ProvisionAsync(unit, intent, status.PaidAtUtc ?? nowUtc, nowUtc, ct)
+                ? ReconcileOutcome.Provisioned
+                : ReconcileOutcome.Nothing;
 
         if (
             string.Equals(status.Status, "Failed", StringComparison.OrdinalIgnoreCase)
@@ -126,25 +136,28 @@ public sealed class AddOnCheckoutReconciliationJob(
         )
         {
             var failed = intent.MarkFailed($"Payment {status.Status} (reconciled).", nowUtc);
-            if (failed.IsSuccess)
-                await context.UnitOfWork.SaveChangesAsync(ct);
+            return failed.IsSuccess ? ReconcileOutcome.MarkedFailed : ReconcileOutcome.Nothing;
         }
 
-        return false;
+        return ReconcileOutcome.Nothing;
     }
 
     private static async Task<bool> ProvisionAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
         AddOnPurchaseIntent intent,
-        ReconcileContext context,
         DateTime paidAtUtc,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
-        var subscription = await context.Subscriptions.GetByTenantIdAsync(intent.TenantId, ct);
+        var services = unit.Services;
+        var logger = services.GetRequiredService<ILogger<AddOnCheckoutReconciliationJob>>();
+        var subscription = await services
+            .GetRequiredService<ISubscriptionRepository>()
+            .GetByTenantIdAsync(intent.TenantId, ct);
         if (subscription is null)
         {
-            context.Logger.LogWarning(
+            logger.LogWarning(
                 "Reconcile: tenant {TenantId} has no subscription for intent {IntentId}.",
                 intent.TenantId,
                 intent.Id
@@ -152,10 +165,12 @@ public sealed class AddOnCheckoutReconciliationJob(
             return false;
         }
 
-        var definition = await context.Definitions.GetByIdAsync(intent.AddOnDefinitionId, ct);
+        var definition = await services
+            .GetRequiredService<IAddOnDefinitionRepository>()
+            .GetByIdAsync(intent.AddOnDefinitionId, ct);
         if (definition is null)
         {
-            context.Logger.LogWarning("Reconcile: intent {IntentId} points to an unknown add-on.", intent.Id);
+            logger.LogWarning("Reconcile: intent {IntentId} points to an unknown add-on.", intent.Id);
             return false;
         }
 
@@ -163,9 +178,9 @@ public sealed class AddOnCheckoutReconciliationJob(
             intent,
             subscription,
             definition,
-            context.TenantAddOns,
-            context.Audit,
-            context.Metrics,
+            services.GetRequiredService<ITenantAddOnRepository>(),
+            services.GetRequiredService<ISubscriptionAuditLogWriter>(),
+            services.GetRequiredService<ISubscriptionMetrics>(),
             correlationId: intent.Id.ToString("N"),
             provisioningMethod: "CheckoutReconcile",
             paidAtUtc,
@@ -175,7 +190,7 @@ public sealed class AddOnCheckoutReconciliationJob(
         if (addOn is null)
             return false;
 
-        await context.Bus.PublishAsync(
+        await unit.PublishAsync(
             new AddOnActivatedIntegrationEvent
             {
                 TenantId = intent.TenantId,
@@ -186,12 +201,9 @@ public sealed class AddOnCheckoutReconciliationJob(
                 CorrelationId = intent.Id.ToString("N"),
             }
         );
-        await context.UnitOfWork.SaveChangesAsync(ct);
+        await unit.PublishAsync(new RecalculateEntitlementsCommand(intent.TenantId));
 
-        context.Bus.TenantId = intent.TenantId.ToString();
-        await context.Bus.RecalculateEntitlementsSafelyAsync(intent.TenantId, context.Logger, ct);
-
-        context.Logger.LogInformation(
+        logger.LogInformation(
             "Reconcile activated add-on {AddOnCode} for tenant {TenantId} from paid-but-pending intent {IntentId}.",
             addOn.AddOnCode,
             intent.TenantId,

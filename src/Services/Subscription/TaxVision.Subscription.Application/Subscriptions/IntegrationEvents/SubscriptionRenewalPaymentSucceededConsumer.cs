@@ -56,7 +56,6 @@ public static class SubscriptionRenewalPaymentSucceededConsumer
 
             // Un cobro exitoso mientras la sub está PastDue la devuelve a Active ANTES de aplicar el renewal
             // (CompleteRenewal exige Active). Idempotente: si ya está Active, no hace nada.
-            var previousStatus = subscription.Status;
             var recovery = subscription.Status switch
             {
                 SubscriptionStatus.PastDue => subscription.RecoverFromPastDue(Guid.Empty, evt.PaidAtUtc),
@@ -88,19 +87,8 @@ public static class SubscriptionRenewalPaymentSucceededConsumer
                 return;
             }
 
+            // La recuperación (PastDue→Active) la anuncia el evento de dominio.
             await unitOfWork.SaveChangesAsync(ct);
-
-            // Publica la recuperación (PastDue→Active) para que dunning/UX se enteren.
-            if (previousStatus is SubscriptionStatus.PastDue && subscription.Status == SubscriptionStatus.Active)
-            {
-                bus.TenantId = evt.TenantId.ToString();
-                await bus.PublishStatusChangedAsync(
-                    subscription,
-                    previousStatus,
-                    SubscriptionChangeReason.PaymentRecovered,
-                    correlationId: correlationId
-                );
-            }
         }
     }
 

@@ -16,7 +16,7 @@ namespace TaxVision.PaymentApp.Application.SeatsCheckouts.Commands;
 
 /// <summary>Pipeline del checkout de reactivación: reusa <see cref="HostedCheckoutPipeline"/> con política
 /// específica — <see cref="SaaSPaymentType.SeatRenewal"/> + <see cref="SaaSPayment.TargetAggregateId"/> = seatId,
-/// para que el publisher global <see cref="SaaSPaymentResultPublisher"/> dispare el evento ya existente
+/// para que el aviso de resultado (<c>SaaSPaymentDomainEventHandler</c>) dispare el evento ya existente
 /// <c>SeatRenewalPaymentSucceededIntegrationEvent</c> y Subscription aplique la reactivación en el aggregate.</summary>
 public static class CreateSeatReactivationCheckoutHandler
 {

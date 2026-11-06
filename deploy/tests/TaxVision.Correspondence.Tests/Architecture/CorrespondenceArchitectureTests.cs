@@ -60,24 +60,7 @@ public sealed class CorrespondenceArchitectureTests
         Assert.True(result.IsSuccessful, Describe(result));
     }
 
-    [Fact]
-    public void Domain_should_not_depend_on_entity_framework()
-    {
-        var result = Types
-            .InAssembly(DomainAssembly)
-            .Should()
-            .NotHaveDependencyOn("Microsoft.EntityFrameworkCore")
-            .GetResult();
-        Assert.True(result.IsSuccessful, Describe(result));
-    }
-
-    [Fact]
-    public void Domain_should_not_depend_on_wolverine()
-    {
-        var result = Types.InAssembly(DomainAssembly).Should().NotHaveDependencyOn("Wolverine").GetResult();
-        Assert.True(result.IsSuccessful, Describe(result));
-    }
-
+    // Domain sin EF ni Wolverine y Application sin Infrastructure: CorrespondenceLayeringTests (BB-6).
     [Fact]
     public void Domain_should_not_depend_on_http_client()
     {
@@ -96,17 +79,6 @@ public sealed class CorrespondenceArchitectureTests
     public void Domain_should_not_depend_on_minio()
     {
         var result = Types.InAssembly(DomainAssembly).Should().NotHaveDependencyOn("Minio").GetResult();
-        Assert.True(result.IsSuccessful, Describe(result));
-    }
-
-    [Fact]
-    public void Application_should_not_depend_on_infrastructure()
-    {
-        var result = Types
-            .InAssembly(ApplicationAssembly)
-            .Should()
-            .NotHaveDependencyOn("TaxVision.Correspondence.Infrastructure")
-            .GetResult();
         Assert.True(result.IsSuccessful, Describe(result));
     }
 

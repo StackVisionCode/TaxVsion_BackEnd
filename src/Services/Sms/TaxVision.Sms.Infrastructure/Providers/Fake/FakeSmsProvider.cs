@@ -139,6 +139,12 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
         }
     }
 
+    // No soporta pull: los estados llegan solo por webhook.
+    public Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) => Task.FromResult(Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]));
+
     public Result<SmsInboundMessage> ParseInbound(string rawPayload)
     {
         try

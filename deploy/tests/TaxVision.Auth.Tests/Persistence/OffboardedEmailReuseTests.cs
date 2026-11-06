@@ -126,7 +126,6 @@ public sealed class OffboardedEmailReuseTests
         tenantContext.SetTenant(Tenant);
         return new AuthDbContext(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,
-            new FakeMessageBus(),
             tenantContext
         );
     }

@@ -1,9 +1,10 @@
-using BuildingBlocks.Common;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
-using Wolverine;
+using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
+using TaxVision.PaymentApp.Infrastructure.Persistence;
 
 namespace TaxVision.PaymentApp.Infrastructure.Scheduling;
 
@@ -16,6 +17,7 @@ namespace TaxVision.PaymentApp.Infrastructure.Scheduling;
 /// Solo se reenvía el pedido de recibo, nunca el evento por tipo de cobro: reaprovisionar asientos o add-ons
 /// ya entregados sería mucho peor que no tener el PDF. Del lado de Documents el pedido es idempotente por
 /// <c>saas-receipt:{paymentId}</c>, y una generación que se quedó a medias hace rato se reintenta.
+/// Cada pedido sale por el outbox de su propia unidad (BB-3); no guarda nada en el pago.
 /// </summary>
 public sealed class MissingReceiptBackfillJob(
     IServiceScopeFactory scopeFactory,
@@ -33,29 +35,36 @@ public sealed class MissingReceiptBackfillJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var payments = services.GetRequiredService<ISaaSPaymentRepository>();
-        var tenants = services.GetRequiredService<ITenantRegistry>();
-        var bus = services.GetRequiredService<IMessageBus>();
-        var correlation = services.GetRequiredService<ICorrelationContext>();
         var logger = services.GetRequiredService<ILogger<MissingReceiptBackfillJob>>();
 
         var pending = await payments.GetSucceededWithoutReceiptAsync(DateTime.UtcNow - Grace, BatchSize, ct);
         if (pending.Count == 0)
             return;
 
-        foreach (var payment in pending)
-        {
-            using (correlation.Push(Guid.NewGuid().ToString("N")))
-            {
-                await SaaSPaymentResultPublisher.PublishReceiptRequestAsync(
-                    payment,
-                    bus,
-                    correlation.CorrelationId,
-                    tenants,
-                    ct
-                );
-            }
-        }
+        var summary = await RequestAsync([.. pending.Select(payment => payment.Snapshot())], ct);
+        logger.LogInformation("MissingReceiptBackfillJob re-requested {Count} receipt(s).", summary.Committed);
+    }
 
-        logger.LogInformation("MissingReceiptBackfillJob re-requested {Count} receipt(s).", pending.Count);
+    internal Task<JobBatchSummary> RequestAsync(IReadOnlyList<SaaSPaymentSnapshot> payments, CancellationToken ct) =>
+        RunUnitsAsync(payments, RequestOneAsync, ct);
+
+    private static async Task<bool> RequestOneAsync(
+        SaaSPaymentSnapshot payment,
+        JobUnitContext<PaymentAppDbContext> unit,
+        CancellationToken ct
+    )
+    {
+        // Un id de traza por pedido: cada recibo se sigue por separado.
+        var receipt = await SaaSPaymentResultMessages.ReceiptRequestAsync(
+            payment,
+            Guid.NewGuid().ToString("N"),
+            unit.Services.GetRequiredService<ITenantRegistry>(),
+            ct
+        );
+        if (receipt is null)
+            return false;
+
+        await unit.PublishAsync(receipt);
+        return true;
     }
 }

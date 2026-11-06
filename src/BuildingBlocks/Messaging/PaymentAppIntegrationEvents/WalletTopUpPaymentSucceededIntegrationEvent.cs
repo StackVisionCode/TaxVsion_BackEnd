@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// para acreditar el saldo (<c>AmountCents * 10_000</c> micros), deduplicando por
 /// <c>(SourceService, SaaSPaymentId)</c> (FundingCredit) para no acreditar dos veces.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.WalletTopUpPaymentSucceededIntegrationEvent")]
 public sealed record WalletTopUpPaymentSucceededIntegrationEvent : IntegrationEvent
 {
     public required Guid TopUpId { get; init; }

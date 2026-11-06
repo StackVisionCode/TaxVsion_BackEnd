@@ -72,7 +72,7 @@ public static class StartCampaignRunHandler
 
     /// <summary>
     /// Núcleo compartido: arranca un <see cref="CampaignRun"/> sobre unidades ya materializadas, hace
-    /// fan-out del contrato <c>campaign.dispatch.requested.v1</c> por unidad Pending y publica
+    /// fan-out del contrato <c>campaign.dispatch.requested.v1</c> por unidad Pending y anuncia
     /// <c>run.started</c>/<c>run.completed</c>. Lo usan tanto el send-now manual como el basado en
     /// audiencia (contactos/listas). SIN dinero.
     /// </summary>
@@ -145,17 +145,8 @@ public static class StartCampaignRunHandler
         // Active cuentan; un canal sin selección va con SenderRef null (el ejecutor usa su default).
         var senderRefByChannel = await ResolveSenderRefsAsync(campaign, senderProfiles, ct);
 
-        await bus.PublishAsync(
-            new CampaignRunStartedIntegrationEvent
-            {
-                TenantId = run.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                CampaignId = run.CampaignId,
-                RunId = run.Id,
-                RecipientCount = run.RecipientCount,
-                TriggeredBy = run.TriggerKind,
-            }
-        );
+        // Run.started y, si ya cerró al materializar, run.completed: salen de sus handlers de dominio.
+        run.AnnounceStart();
 
         foreach (var recipient in run.Recipients.Where(r => r.State == DispatchState.Pending).ToList())
         {
@@ -185,10 +176,6 @@ public static class StartCampaignRunHandler
             );
             run.MarkDispatched(recipient.Id);
         }
-
-        // Caso borde: todas las unidades quedaron Skipped al materializar → el run ya cerró en Start.
-        if (run.Status is CampaignRunStatus.Completed or CampaignRunStatus.PartiallyFailed or CampaignRunStatus.Failed)
-            await PublishCompletedAsync(bus, run, correlation.CorrelationId);
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(CampaignRunResponse.From(run));
@@ -266,23 +253,4 @@ public static class StartCampaignRunHandler
 
         return units;
     }
-
-    internal static Task PublishCompletedAsync(IMessageBus bus, CampaignRun run, string correlationId) =>
-        bus.PublishAsync(
-                new CampaignRunCompletedIntegrationEvent
-                {
-                    TenantId = run.TenantId,
-                    CorrelationId = correlationId,
-                    CampaignId = run.CampaignId,
-                    RunId = run.Id,
-                    TerminalStatus = run.Status.ToString(),
-                    RecipientCount = run.RecipientCount,
-                    Delivered = run.CounterDelivered,
-                    Accepted = run.CounterAccepted,
-                    Failed = run.CounterFailed,
-                    Skipped = run.CounterSkipped,
-                    Unknown = run.CounterUnknown,
-                }
-            )
-            .AsTask();
 }

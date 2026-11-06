@@ -70,6 +70,7 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.Ignore(m => m.Attachments);
         builder.Ignore(m => m.References);
         builder.Ignore(m => m.DeliverySummary);
+        builder.Ignore(m => m.DomainEvents);
 
         var inlineAssetsConverter = new ValueConverter<List<InlineAsset>, string>(
             assets => JsonSerializer.Serialize(assets.Select(ToDto), (JsonSerializerOptions?)null),

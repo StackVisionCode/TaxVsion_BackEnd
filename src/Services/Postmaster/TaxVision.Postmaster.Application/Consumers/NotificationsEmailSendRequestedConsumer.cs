@@ -190,7 +190,7 @@ public static class NotificationsEmailSendRequestedConsumer
                 : null;
 
         var message = await QueueAndPersistAsync(evt, resolveResult, onBehalfOf, sentMessages, unitOfWork, ct);
-        if (await ApplySuppressionAsync(message, evt, suppressionList, idempotencyGuard, unitOfWork, bus, ct))
+        if (await ApplySuppressionAsync(message, evt, suppressionList, idempotencyGuard, unitOfWork, ct))
             return;
 
         if (
@@ -203,7 +203,6 @@ public static class NotificationsEmailSendRequestedConsumer
                 sentMessages,
                 idempotencyGuard,
                 unitOfWork,
-                bus,
                 ct
             )
         )
@@ -244,7 +243,7 @@ public static class NotificationsEmailSendRequestedConsumer
         };
 
         var message = await QueueAndPersistMailboxAsync(evt, provider, sentMessages, unitOfWork, ct);
-        if (await ApplySuppressionAsync(message, evt, suppressionList, idempotencyGuard, unitOfWork, bus, ct))
+        if (await ApplySuppressionAsync(message, evt, suppressionList, idempotencyGuard, unitOfWork, ct))
             return;
 
         await QueueDispatchAsync(message, evt, provider, unitOfWork, bus, ct);
@@ -280,7 +279,7 @@ public static class NotificationsEmailSendRequestedConsumer
     /// <summary>
     /// Marca como Suppressed los recipients cuya dirección está en la lista negra del tenant. Si TODOS
     /// quedan suprimidos, el mensaje entero pasa a <see cref="SentMessageStatus.Suppressed"/> sin
-    /// intentar el envío y se publica el callback correspondiente (devuelve true — el caller no debe
+    /// intentar el envío y el agregado levanta el aviso (devuelve true — el caller no debe
     /// seguir). Si solo ALGUNOS quedan suprimidos, el envío continúa para el resto — <c>MimeMessageBuilder</c>
     /// excluye los recipients Suppressed del MIME real (Fase 7).
     /// </summary>
@@ -290,7 +289,6 @@ public static class NotificationsEmailSendRequestedConsumer
         ISuppressionListRepository suppressionList,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -312,19 +310,6 @@ public static class NotificationsEmailSendRequestedConsumer
         message.MarkAsSuppressed("All recipients are in the suppression list.", now);
         await idempotencyGuard.CompleteAsync(evt.TenantId, evt.IdempotencyKey, message.Id, ct);
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(
-            new PostmasterEmailDeliverySuppressedIntegrationEvent
-            {
-                TenantId = evt.TenantId,
-                CorrelationId = evt.CorrelationId,
-                NotificationLogId = evt.NotificationLogId,
-                DispatchAttemptId = evt.DispatchAttemptId,
-                SentMessageId = message.Id,
-                SuppressionReason = "All recipients are in the suppression list.",
-                CampaignId = evt.CampaignId,
-                EventAtUtc = now,
-            }
-        );
         return true;
     }
 
@@ -346,20 +331,18 @@ public static class NotificationsEmailSendRequestedConsumer
         ISentMessageRepository sentMessages,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
         var quota = ResolveStreamQuota(message.Stream, provider);
         if (quota is null)
         {
-            await FailAndPublishAsync(
+            await FailAsync(
                 message,
                 evt,
                 $"BulkRateLimitNotConfigured: provider '{provider.ProviderCode}' has no BulkRateLimitPerMinute configured for the Bulk stream.",
                 idempotencyGuard,
                 unitOfWork,
-                bus,
                 ct
             );
             return true;
@@ -379,7 +362,7 @@ public static class NotificationsEmailSendRequestedConsumer
         await DeferOverQuotaAsync(message, evt, delivery, retryAfter, sentMessages, idempotencyGuard, unitOfWork, ct);
 
         var reason = $"RateLimited: still over the provider quota after {delivery} deliveries.";
-        await FailAndPublishAsync(message, evt, reason, idempotencyGuard, unitOfWork, bus, ct);
+        await FailAsync(message, evt, reason, idempotencyGuard, unitOfWork, ct);
         return true;
     }
 
@@ -413,13 +396,12 @@ public static class NotificationsEmailSendRequestedConsumer
     internal static int? ResolveStreamQuota(EmailStream stream, ResolvedEmailProvider provider) =>
         stream == EmailStream.Bulk ? provider.BulkRateLimitPerMinute : provider.RateLimitPerMinute;
 
-    private static async Task FailAndPublishAsync(
+    private static async Task FailAsync(
         SentMessage message,
         NotificationsEmailSendRequestedIntegrationEvent evt,
         string reason,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -427,7 +409,6 @@ public static class NotificationsEmailSendRequestedConsumer
         message.MarkAsFailed(reason, now);
         await idempotencyGuard.CompleteAsync(evt.TenantId, evt.IdempotencyKey, message.Id, ct);
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishFailedAsync(bus, evt, message.Id, providerMessageId: null, reason, now, ct);
     }
 
     private static async Task<SentMessage> QueueAndPersistAsync(
@@ -645,30 +626,6 @@ public static class NotificationsEmailSendRequestedConsumer
                 ProviderMessageId = providerMessageId,
                 CampaignId = evt.CampaignId,
                 EventAtUtc = DateTime.UtcNow,
-            }
-        );
-
-    internal static ValueTask PublishFailedAsync(
-        IMessageBus bus,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        Guid sentMessageId,
-        string? providerMessageId,
-        string reason,
-        DateTime eventAtUtc,
-        CancellationToken ct
-    ) =>
-        bus.PublishAsync(
-            new PostmasterEmailDeliveryFailedIntegrationEvent
-            {
-                TenantId = evt.TenantId,
-                CorrelationId = evt.CorrelationId,
-                NotificationLogId = evt.NotificationLogId,
-                DispatchAttemptId = evt.DispatchAttemptId,
-                SentMessageId = sentMessageId,
-                ProviderMessageId = providerMessageId,
-                Reason = reason,
-                CampaignId = evt.CampaignId,
-                EventAtUtc = eventAtUtc,
             }
         );
 

@@ -178,6 +178,12 @@ public sealed class TextmaxxSmsProvider(
         return Result.Success(new SmsDeliveryUpdate(providerMessageId!, eventType, status, errorCode, null));
     }
 
+    // No soporta pull: los estados llegan solo por webhook.
+    public Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) => Task.FromResult(Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]));
+
     public Result<SmsInboundMessage> ParseInbound(string rawPayload)
     {
         var w = Config.Webhook;

@@ -8,6 +8,8 @@ public sealed class CampaignRunConfiguration : IEntityTypeConfiguration<Campaign
 {
     public void Configure(EntityTypeBuilder<CampaignRun> builder)
     {
+        builder.Ignore(r => r.DomainEvents);
+
         builder.ToTable("CampaignRuns");
         builder.HasKey(r => r.Id);
 

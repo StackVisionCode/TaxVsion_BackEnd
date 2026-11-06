@@ -64,6 +64,13 @@ public sealed class MfaChallengeRequestedConsumerTests
 
     private sealed class AudienceScribe : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
         public ScribeRenderAudience? LastAudience { get; private set; }
 
         public Task<Result<ScribeRenderedEmail>> RenderAsync(

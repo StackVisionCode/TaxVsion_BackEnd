@@ -1,4 +1,5 @@
 using TaxVision.PaymentApp.Domain.SaaSPayments;
+using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
 namespace TaxVision.PaymentApp.Tests.Domain;
@@ -510,6 +511,87 @@ public sealed class SaaSPaymentTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
+    }
+
+    // PAY-BB1: cada transición de resultado registra su evento de dominio una sola vez.
+    [Fact]
+    public void MarkSucceeded_raises_SaaSPaymentSucceeded_once()
+    {
+        var payment = CreatePendingPayment();
+        var nowUtc = DateTime.UtcNow;
+        payment.MarkProcessing(
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_123").Value,
+            "200",
+            null,
+            Guid.Empty,
+            nowUtc
+        );
+        Assert.Empty(payment.DomainEvents);
+
+        Assert.True(payment.MarkSucceeded(nowUtc, Guid.Empty).IsSuccess);
+        Assert.True(payment.MarkSucceeded(nowUtc, Guid.Empty).IsFailure);
+
+        var raised = Assert.IsType<SaaSPaymentSucceeded>(Assert.Single(payment.DomainEvents));
+        Assert.Equal(payment.Id, raised.Payment.SaaSPaymentId);
+        Assert.Equal(PaymentStatus.Succeeded, raised.Payment.Status);
+        Assert.Equal("pi_123", raised.Payment.ExternalChargeReference);
+        Assert.Equal(nowUtc, raised.Payment.PaidAtUtc);
+    }
+
+    [Fact]
+    public void MarkFailed_raises_SaaSPaymentFailed_with_its_retry_and_attempt()
+    {
+        var payment = CreatePendingPayment();
+        var retryAtUtc = DateTime.UtcNow.AddHours(1);
+
+        Assert.True(
+            payment.MarkFailed("card_declined", "Declined.", true, retryAtUtc, Guid.Empty, DateTime.UtcNow).IsSuccess
+        );
+
+        var raised = Assert.IsType<SaaSPaymentFailed>(Assert.Single(payment.DomainEvents));
+        Assert.Equal("card_declined", raised.Payment.FailureCode);
+        Assert.Equal(retryAtUtc, raised.Payment.NextRetryAtUtc);
+        Assert.Equal(1, raised.Payment.AttemptCount);
+    }
+
+    [Fact]
+    public void CancelByAdmin_raises_an_announced_cancellation()
+    {
+        var payment = CreatePendingPayment();
+
+        Assert.True(payment.CancelByAdmin("ProviderCancelled", Guid.Empty, DateTime.UtcNow).IsSuccess);
+
+        var raised = Assert.IsType<SaaSPaymentCancelled>(Assert.Single(payment.DomainEvents));
+        Assert.False(raised.PropagatedFromOwner);
+        Assert.Equal(PaymentStatus.Cancelled, raised.Payment.Status);
+    }
+
+    // La cancelación que pide el dueño del cobro no se le vuelve a anunciar; una redelivery no agrega eventos.
+    [Fact]
+    public void MarkCancelled_raises_a_propagated_cancellation_once()
+    {
+        var payment = CreatePendingPayment();
+
+        Assert.True(payment.MarkCancelled("Superseded.", DateTime.UtcNow).IsSuccess);
+        Assert.True(payment.MarkCancelled("Superseded.", DateTime.UtcNow).IsSuccess);
+
+        var raised = Assert.IsType<SaaSPaymentCancelled>(Assert.Single(payment.DomainEvents));
+        Assert.True(raised.PropagatedFromOwner);
+    }
+
+    [Fact]
+    public void FlagForReview_raises_SaaSPaymentReviewRequired_once()
+    {
+        var payment = CreatePendingPayment();
+        payment.MarkFailed("card_declined", "Declined.", false, null, Guid.Empty, DateTime.UtcNow);
+        payment.ClearDomainEvents();
+
+        payment.FlagForReview(SaaSPayment.ReviewReasonLateProviderSuccess, "pi_late", 1999, "usd", DateTime.UtcNow);
+        payment.FlagForReview(SaaSPayment.ReviewReasonLateProviderSuccess, "pi_late", 1999, "usd", DateTime.UtcNow);
+
+        var raised = Assert.IsType<SaaSPaymentReviewRequired>(Assert.Single(payment.DomainEvents));
+        Assert.Equal(SaaSPayment.ReviewReasonLateProviderSuccess, raised.ReasonCode);
+        Assert.Equal("pi_late", raised.ProviderReference);
     }
 
     private static SaaSPayment CreateOnboardingPayment(Guid onboardingId, string idempotencyKey = "onboarding-1") =>

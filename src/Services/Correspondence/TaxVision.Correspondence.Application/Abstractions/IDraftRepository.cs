@@ -121,10 +121,8 @@ public interface IDraftRepository
     );
 
     /// <summary>Cuántos borradores ABIERTOS tiene el autor (mismo filtro que ListOpenByAuthorAsync, sin
-    /// materializar) — pre-flight de impacto al retirarlo. Default 0 para no romper los fakes; el repo
-    /// real lo implementa con COUNT.</summary>
-    Task<int> CountOpenByAuthorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct = default) =>
-        Task.FromResult(0);
+    /// materializar) — pre-flight de impacto al retirarlo.</summary>
+    Task<int> CountOpenByAuthorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct = default);
 
     // Borrado permanente (solo desde la papelera).
     void Remove(Draft entity);

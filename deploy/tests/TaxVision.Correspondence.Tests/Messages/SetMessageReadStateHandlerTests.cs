@@ -60,9 +60,9 @@ public sealed class SetMessageReadStateHandlerTests
             setup.Emails,
             setup.Threads,
             unitOfWork,
-            bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, setup.Threads, setup.Emails);
 
         Assert.True(result.IsSuccess);
         Assert.True(setup.Email.IsRead);
@@ -87,9 +87,9 @@ public sealed class SetMessageReadStateHandlerTests
             setup.Emails,
             setup.Threads,
             unitOfWork,
-            bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, setup.Threads, setup.Emails);
 
         Assert.True(result.IsSuccess);
         Assert.False(setup.Email.IsRead);
@@ -110,9 +110,9 @@ public sealed class SetMessageReadStateHandlerTests
             setup.Emails,
             setup.Threads,
             unitOfWork,
-            bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, setup.Threads, setup.Emails);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
@@ -135,9 +135,9 @@ public sealed class SetMessageReadStateHandlerTests
             setup.Emails,
             setup.Threads,
             new FakeUnitOfWork(),
-            bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, setup.Threads, setup.Emails);
 
         Assert.True(result.IsFailure);
         Assert.Equal("IncomingEmail.NotFound", result.Error.Code);
@@ -161,7 +161,6 @@ public sealed class SetMessageReadStateHandlerTests
             setup.Emails,
             setup.Threads,
             new FakeUnitOfWork(),
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -177,7 +176,6 @@ public sealed class SetMessageReadStateHandlerTests
             new FakeIncomingEmailRepository(),
             new FakeEmailThreadRepository(),
             new FakeUnitOfWork(),
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -195,7 +193,6 @@ public sealed class SetMessageReadStateHandlerTests
             setup.Emails,
             setup.Threads,
             new FakeUnitOfWork(),
-            new FakeMessageBus(),
             CancellationToken.None
         );
 

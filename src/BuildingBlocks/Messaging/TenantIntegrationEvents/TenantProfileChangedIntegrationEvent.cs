@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 /// seguridad, WISP). <see cref="Version"/> crece en cada cambio: un consumidor ignora una versión
 /// menor o igual a la que ya tiene. Todos los campos de texto son opcionales (null = sin dato).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TenantIntegrationEvents.TenantProfileChangedIntegrationEvent")]
 public sealed record TenantProfileChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid ProfileTenantId { get; init; }

@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
 /// Publicado por Auth al cambiar los roles de un usuario. Los servicios que cachean
 /// permisos deben invalidar entradas con versión anterior a PermissionsVersion.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.UserRolesChangedIntegrationEvent")]
 public sealed record UserRolesChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

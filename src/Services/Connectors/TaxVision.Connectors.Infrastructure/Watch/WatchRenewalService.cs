@@ -1,27 +1,24 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Watch;
-using TaxVision.Connectors.Domain.Watch;
-using Wolverine;
+using TaxVision.Connectors.Domain.Accounts;
 
 namespace TaxVision.Connectors.Infrastructure.Watch;
 
 /// <summary>
 /// Renueva una suscripción push antes de que expire. Mismo patrón que OAuthTokenManager (Fase 4):
 /// llamada al provider → persistencia → en el 3er fallo consecutivo, MarkFailed + TenantEmailAccount
-/// a Error + alerta (ConnectorsWatchExpiredIntegrationEvent). WatchRenewalJob es el consumer
-/// boundary — este servicio no pushea correlation propio, solo la lee ambient.
+/// a Error, y el agregado levanta la alerta. WatchRenewalJob es el consumer boundary — este servicio
+/// no pushea correlation propio, solo la lee ambient.
 /// </summary>
 public sealed class WatchRenewalService(
     IProviderWatchSubscriptionRepository subscriptionRepository,
-    ITenantEmailAccountRepository accountRepository,
     IWatchProviderClientFactory watchClientFactory,
     IUnitOfWork unitOfWork,
-    IMessageBus bus,
+    IMailboxFailureUnit failureUnit,
     ICorrelationContext correlation,
     ILogger<WatchRenewalService> logger
 ) : IWatchRenewalService
@@ -53,7 +50,7 @@ public sealed class WatchRenewalService(
         }
         catch (WatchProviderException ex)
         {
-            return await RecordFailureAsync(subscription, ex, now, ct);
+            return await RecordFailureAsync(subscriptionId, ex, now, ct);
         }
     }
 
@@ -78,70 +75,65 @@ public sealed class WatchRenewalService(
         }
         catch (WatchProviderException ex)
         {
-            return await RecordFailureAsync(subscription, ex, now, ct);
+            return await RecordFailureAsync(subscriptionId, ex, now, ct);
         }
     }
 
     private async Task<Result> RecordFailureAsync(
-        ProviderWatchSubscription subscription,
+        Guid subscriptionId,
         WatchProviderException ex,
         DateTime now,
         CancellationToken ct
     )
     {
-        subscription.RecordRenewalFailure();
-        logger.LogWarning(
-            "Watch renewal failed for subscription {SubscriptionId} (attempt {FailureCount}): {Message}",
-            subscription.Id,
-            subscription.FailureCount,
-            ex.Message
-        );
-
-        if (subscription.FailureCount < MaxFailuresBeforeExpired)
-        {
-            await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure(new Error("WatchRenewalService.RenewalFailed", ex.Message));
-        }
-
-        subscription.MarkFailed();
-
-        var tenantId = Guid.Empty;
-        var createdByUserId = Guid.Empty;
-        bool? isOfficeMailbox = null;
-        Guid? mailboxOwnerUserId = null;
-        var accountResult = await accountRepository.GetByIdAsync(subscription.AccountId, ct);
-        if (accountResult.IsSuccess)
-        {
-            accountResult.Value.MarkError(now);
-            tenantId = accountResult.Value.TenantId;
-            createdByUserId = accountResult.Value.CreatedByUserId;
-            isOfficeMailbox = accountResult.Value.IsOffice;
-            mailboxOwnerUserId = accountResult.Value.OwnerUserId;
-        }
-
-        await unitOfWork.SaveChangesAsync(ct);
-
-        await bus.PublishAsync(
-            new ConnectorsWatchExpiredIntegrationEvent
+        var failures = 0;
+        var correlationId = correlation.CorrelationId;
+        await failureUnit.RunAsync(
+            async (stores, token) =>
             {
-                TenantId = tenantId,
-                CorrelationId = correlation.CorrelationId,
-                AccountId = subscription.AccountId,
-                SubscriptionId = subscription.Id,
-                ProviderCode = subscription.ProviderCode.ToString(),
-                FailureCount = subscription.FailureCount,
-                ExpiredAtUtc = now,
-                CreatedByUserId = createdByUserId,
-                IsOfficeMailbox = isOfficeMailbox,
-                MailboxOwnerUserId = mailboxOwnerUserId,
-            }
+                var found = await stores.Subscriptions.GetByIdAsync(subscriptionId, token);
+                if (found.IsFailure)
+                    return false;
+
+                var subscription = found.Value;
+                subscription.RecordRenewalFailure();
+                failures = subscription.FailureCount;
+                logger.LogWarning(
+                    "Watch renewal failed for subscription {SubscriptionId} (attempt {FailureCount}): {Message}",
+                    subscriptionId,
+                    failures,
+                    ex.Message
+                );
+                if (failures < MaxFailuresBeforeExpired)
+                    return true;
+
+                subscription.MarkFailed();
+                var account = await stores.Accounts.GetByIdAsync(subscription.AccountId, token);
+                // Si ya estaba en Error o desconectada, el usuario ya fue avisado.
+                if (account.IsSuccess)
+                    account.Value.MarkError(
+                        new TenantEmailAccountErrorCause(
+                            TenantEmailAccountErrorSource.WatchRenewal,
+                            "WatchRenewalService.SubscriptionExpired",
+                            ex.Message,
+                            correlationId,
+                            SubscriptionId: subscription.Id,
+                            FailureCount: failures
+                        ),
+                        now
+                    );
+                return true;
+            },
+            ct
         );
 
-        return Result.Failure(
-            new Error(
-                "WatchRenewalService.SubscriptionExpired",
-                $"Watch subscription failed {subscription.FailureCount} consecutive times."
-            )
-        );
+        return failures < MaxFailuresBeforeExpired
+            ? Result.Failure(new Error("WatchRenewalService.RenewalFailed", ex.Message))
+            : Result.Failure(
+                new Error(
+                    "WatchRenewalService.SubscriptionExpired",
+                    $"Watch subscription failed {failures} consecutive times."
+                )
+            );
     }
 }

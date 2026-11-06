@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -31,6 +33,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 ///     evento el tiempo que tarda el consumer en entregarlo.</item>
 /// </list>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerVerificationChallengeIssuedIntegrationEvent")]
 public sealed record SignerVerificationChallengeIssuedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

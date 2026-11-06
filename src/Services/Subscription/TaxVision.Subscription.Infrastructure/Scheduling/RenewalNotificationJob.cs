@@ -1,12 +1,8 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
-using TaxVision.Subscription.Domain.Seats;
-using TaxVision.Subscription.Domain.Subscriptions;
-using Wolverine;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -14,7 +10,7 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 /// Una vez al día, avisa (vía evento — Notification decide plantilla y destinatario)
 /// cuando faltan exactamente 7, 3 o 1 día(s) para una renovación. No reintenta ni
 /// deduplica con una tabla de log: al correr una vez por día y comparar por día exacto,
-/// cada umbral se cruza una sola vez de forma natural.
+/// cada umbral se cruza una sola vez de forma natural. Cada aviso sale por el outbox en su propia unidad (BB-3).
 /// </summary>
 public sealed class RenewalNotificationJob(
     IServiceScopeFactory scopeFactory,
@@ -33,53 +29,59 @@ public sealed class RenewalNotificationJob(
     {
         var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
         var seats = services.GetRequiredService<ISubscriptionSeatRepository>();
-        var bus = services.GetRequiredService<IMessageBus>();
-        var correlation = services.GetRequiredService<ICorrelationContext>();
-        // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
-        using var correlationScope = correlation.Push(Guid.NewGuid().ToString("N"));
         var logger = services.GetRequiredService<ILogger<RenewalNotificationJob>>();
+        // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
+        var correlationId = Guid.NewGuid().ToString("N");
 
         var nowUtc = DateTime.UtcNow;
         var windowEndUtc = nowUtc.AddDays(NotifyThresholdDays[0] + 1);
 
-        var subscriptionCount = await NotifyUpcomingSubscriptionRenewalsAsync(
+        var subscriptionNotices = await UpcomingSubscriptionRenewalsAsync(
             subscriptions,
-            bus,
-            correlation,
+            correlationId,
             nowUtc,
             windowEndUtc,
             ct
         );
-        var seatCount = await NotifyUpcomingSeatRenewalsAsync(seats, bus, correlation, nowUtc, windowEndUtc, ct);
-        var endingCount = await NotifyAccessEndingAsync(subscriptions, bus, correlation, nowUtc, windowEndUtc, ct);
+        var seatNotices = await UpcomingSeatRenewalsAsync(seats, correlationId, nowUtc, windowEndUtc, ct);
+        var endingNotices = await AccessEndingAsync(subscriptions, correlationId, nowUtc, windowEndUtc, ct);
 
-        if (endingCount > 0)
+        await RunUnitsAsync(
+            [.. subscriptionNotices, .. seatNotices, .. endingNotices],
+            async (notice, unit, _) =>
+            {
+                await unit.PublishAsync(notice);
+                return true;
+            },
+            ct
+        );
+
+        if (endingNotices.Count > 0)
             logger.LogInformation(
                 "RenewalNotificationJob warned {Count} tenant(s) that their access ends soon.",
-                endingCount
+                endingNotices.Count
             );
 
-        if (subscriptionCount + seatCount > 0)
+        if (subscriptionNotices.Count + seatNotices.Count > 0)
         {
             logger.LogInformation(
                 "RenewalNotificationJob notified {Subscriptions} subscription(s) and {Seats} seat(s).",
-                subscriptionCount,
-                seatCount
+                subscriptionNotices.Count,
+                seatNotices.Count
             );
         }
     }
 
-    private static async Task<int> NotifyUpcomingSubscriptionRenewalsAsync(
+    private static async Task<List<object>> UpcomingSubscriptionRenewalsAsync(
         ISubscriptionRepository subscriptions,
-        IMessageBus bus,
-        ICorrelationContext correlation,
+        string correlationId,
         DateTime nowUtc,
         DateTime windowEndUtc,
         CancellationToken ct
     )
     {
         var candidates = await subscriptions.GetRenewingBetweenAsync(nowUtc, windowEndUtc, BatchSize, ct);
-        var count = 0;
+        var notices = new List<object>();
 
         foreach (var subscription in candidates)
         {
@@ -87,21 +89,20 @@ public sealed class RenewalNotificationJob(
             if (Array.IndexOf(NotifyThresholdDays, daysUntilDue) < 0)
                 continue;
 
-            await bus.PublishAsync(
+            notices.Add(
                 new SubscriptionRenewalUpcomingIntegrationEvent
                 {
                     TenantId = subscription.TenantId,
-                    CorrelationId = correlation.CorrelationId,
+                    CorrelationId = correlationId,
                     TenantSubscriptionId = subscription.Id,
                     DueAtUtc = subscription.NextRenewalAtUtc.Value,
                     DaysUntilDue = daysUntilDue,
                     PlanCode = subscription.PlanCode,
                 }
             );
-            count++;
         }
 
-        return count;
+        return notices;
     }
 
     /// <summary>
@@ -109,46 +110,44 @@ public sealed class RenewalNotificationJob(
     /// ciclo de vida (mismo destinatario, mismo envío) con motivo <see cref="SubscriptionChangeReason.AccessEnding"/>;
     /// la suscripción sigue Active, así que no hay transición real que publicar.
     /// </summary>
-    private static async Task<int> NotifyAccessEndingAsync(
+    private static async Task<List<object>> AccessEndingAsync(
         ISubscriptionRepository subscriptions,
-        IMessageBus bus,
-        ICorrelationContext correlation,
+        string correlationId,
         DateTime nowUtc,
         DateTime windowEndUtc,
         CancellationToken ct
     )
     {
         var candidates = await subscriptions.GetAccessEndingBetweenAsync(nowUtc, windowEndUtc, BatchSize, ct);
-        var count = 0;
+        var notices = new List<object>();
 
         foreach (var subscription in candidates)
         {
             if (Array.IndexOf(NotifyThresholdDays, DaysUntilDue(subscription.CurrentPeriodEndUtc, nowUtc)) < 0)
                 continue;
 
-            await bus.PublishStatusChangedAsync(
-                subscription,
-                subscription.Status,
-                SubscriptionChangeReason.AccessEnding,
-                correlationId: correlation.CorrelationId
+            notices.Add(
+                SubscriptionStatusChangedPublishing.Reannouncement(
+                    subscription,
+                    SubscriptionChangeReason.AccessEnding,
+                    correlationId
+                )
             );
-            count++;
         }
 
-        return count;
+        return notices;
     }
 
-    private static async Task<int> NotifyUpcomingSeatRenewalsAsync(
+    private static async Task<List<object>> UpcomingSeatRenewalsAsync(
         ISubscriptionSeatRepository seats,
-        IMessageBus bus,
-        ICorrelationContext correlation,
+        string correlationId,
         DateTime nowUtc,
         DateTime windowEndUtc,
         CancellationToken ct
     )
     {
         var candidates = await seats.GetRenewingBetweenAsync(nowUtc, windowEndUtc, BatchSize, ct);
-        var count = 0;
+        var notices = new List<object>();
 
         foreach (var seat in candidates)
         {
@@ -156,20 +155,19 @@ public sealed class RenewalNotificationJob(
             if (Array.IndexOf(NotifyThresholdDays, daysUntilDue) < 0)
                 continue;
 
-            await bus.PublishAsync(
+            notices.Add(
                 new SeatRenewalUpcomingIntegrationEvent
                 {
                     TenantId = seat.TenantId,
-                    CorrelationId = correlation.CorrelationId,
+                    CorrelationId = correlationId,
                     SeatId = seat.Id,
                     DueAtUtc = seat.NextRenewalAtUtc.Value,
                     DaysUntilDue = daysUntilDue,
                 }
             );
-            count++;
         }
 
-        return count;
+        return notices;
     }
 
     private static int DaysUntilDue(DateTime dueAtUtc, DateTime nowUtc) => (dueAtUtc.Date - nowUtc.Date).Days;

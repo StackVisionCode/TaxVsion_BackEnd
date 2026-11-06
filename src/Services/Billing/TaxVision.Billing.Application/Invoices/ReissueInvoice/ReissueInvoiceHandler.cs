@@ -100,7 +100,7 @@ public static class ReissueInvoiceHandler
         await invoices.AddAsync(replacement, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        // 4) Post-commit (outbox durable): la original anulada revoca su payable/link, regenera su PDF con
+        // 4) Post-commit (outbox y colas locales durables): la original anulada revoca su payable/link, regenera su PDF con
         //    la marca "Void" y repone su stock — igual que una anulación normal. El reemplazo (borrador) no genera artefactos
         //    hasta que se emita.
         bus.TenantId = command.TenantId.ToString();

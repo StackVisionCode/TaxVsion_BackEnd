@@ -1,10 +1,7 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Domain.Appointments;
-using Wolverine;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
 
@@ -21,8 +18,6 @@ public static class RespondToAppointmentHandler
         RespondToAppointmentCommand command,
         IAppointmentRepository appointments,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -43,19 +38,6 @@ public static class RespondToAppointmentHandler
             return responded;
 
         await unitOfWork.SaveChangesAsync(ct);
-
-        // Va al organizador: es quien decide si mueve la cita porque alguien no puede.
-        await bus.PublishAsync(
-            new AppointmentAttendeeRespondedIntegrationEvent
-            {
-                TenantId = appointment.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                AppointmentId = appointment.Id,
-                OrganizerUserId = appointment.OrganizerUserId,
-                UserId = command.RespondingUserId,
-                Response = command.Response.ToString(),
-            }
-        );
 
         return Result.Success();
     }

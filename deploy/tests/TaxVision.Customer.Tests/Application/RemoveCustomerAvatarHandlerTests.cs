@@ -113,14 +113,17 @@ public sealed class RemoveCustomerAvatarHandlerTests
         Assert.Equal("Customer.Archived", result.Error.Code);
     }
 
-    private static Task<Result> RunAsync(
+    // Lo sembrado ya está guardado; lo emitido por el comando sale por el bus como en Wolverine.
+    private static async Task<Result> RunAsync(
         DomainCustomer customer,
         CustomerAvatarCaller caller,
         FakeMessageBus bus,
         RecordingUnitOfWork unitOfWork,
         bool canViewAll = false
-    ) =>
-        RemoveCustomerAvatarHandler.Handle(
+    )
+    {
+        customer.ClearDomainEvents();
+        var result = await RemoveCustomerAvatarHandler.Handle(
             new RemoveCustomerAvatarCommand(TenantId, customer.Id, Actor, caller, canViewAll),
             Repo(customer),
             unitOfWork,
@@ -128,4 +131,7 @@ public sealed class RemoveCustomerAvatarHandlerTests
             new FixedCorrelationContext(),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, Repo(customer), customer);
+        return result;
+    }
 }

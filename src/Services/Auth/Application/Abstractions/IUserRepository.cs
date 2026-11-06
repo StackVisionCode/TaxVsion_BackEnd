@@ -34,8 +34,7 @@ public interface IUserRepository
     /// Los usuarios de portal (clientes) no cuentan — no consumen asientos del plan.</summary>
     Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default);
 
-    Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(Guid tenantId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<User>>([]);
+    Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(Guid tenantId, CancellationToken ct = default);
 
     /// <summary>Admin/owner primario del tenant (TenantAdmin activo más antiguo) — destinatario de las
     /// notificaciones de facturación/ciclo de vida de la suscripción. <c>null</c> si no hay ninguno.</summary>
@@ -46,10 +45,8 @@ public interface IUserRepository
     Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default);
 
     /// <summary>Usuarios activos que tienen asignado este rol — los titulares a los que hay que
-    /// avisarles cuando cambian los permisos del rol. Default vacío para no forzar a los fakes de
-    /// tests; el repositorio real lo implementa con una query.</summary>
-    Task<IReadOnlyList<User>> GetActiveByRoleAsync(Guid tenantId, Guid roleId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<User>>([]);
+    /// avisarles cuando cambian los permisos del rol.</summary>
+    Task<IReadOnlyList<User>> GetActiveByRoleAsync(Guid tenantId, Guid roleId, CancellationToken ct = default);
 
     Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,
@@ -62,35 +59,33 @@ public interface IUserRepository
         CancellationToken ct = default
     );
 
-    /// <summary>Backfill cross-tenant de owners (TenantAdmin activo) — siembra la proyección local de Notification.
-    /// Default vacío para no forzar a los fakes de tests; el repositorio real lo implementa con una query.</summary>
+    /// <summary>Backfill cross-tenant de owners (TenantAdmin activo) — siembra la proyección local de Notification.</summary>
     Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
         int page,
         int size,
         CancellationToken ct = default
-    ) => Task.FromResult(new PagedResult<TenantOwnerReconciliationResponse>([], page, size, 0));
+    );
 
-    /// <summary>Backfill cross-tenant de cuentas de portal activas — siembra la proyección local de Notification.
-    /// Default vacío para no forzar a los fakes de tests; el repositorio real lo implementa con una query.</summary>
+    /// <summary>Backfill cross-tenant de cuentas de portal activas — siembra la proyección local de Notification.</summary>
     Task<PagedResult<CustomerPortalAccountReconciliationResponse>> ListPortalAccountsForReconciliationAsync(
         int page,
         int size,
         CancellationToken ct = default
-    ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
+    );
 
     /// <summary>Backfill cross-tenant del staff (TenantAdmin y TenantEmployee, en cualquier estado) — siembra el
-    /// directorio de empleados de Customer. Default vacío para no forzar a los fakes de tests.</summary>
+    /// directorio de empleados de Customer.</summary>
     Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
         int page,
         int size,
         CancellationToken ct = default
-    ) => Task.FromResult(new PagedResult<StaffUserReconciliationResponse>([], page, size, 0));
+    );
 
     /// <summary>Backfill cross-tenant de todos los usuarios (cualquier actor type y estado) con nombre, email y
-    /// foto — repara el directorio de Communication. Default vacío para no forzar a los fakes de tests.</summary>
+    /// foto — repara el directorio de Communication.</summary>
     Task<PagedResult<UserDirectoryReconciliationResponse>> ListUsersForDirectoryReconciliationAsync(
         int page,
         int size,
         CancellationToken ct = default
-    ) => Task.FromResult(new PagedResult<UserDirectoryReconciliationResponse>([], page, size, 0));
+    );
 }

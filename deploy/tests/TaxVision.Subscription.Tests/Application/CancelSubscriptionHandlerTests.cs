@@ -48,7 +48,10 @@ public sealed class CancelSubscriptionHandlerTests
         Assert.True(result.IsSuccess);
         Assert.True(subscription.CancelAtPeriodEnd);
         Assert.Single(audit.Entries);
-        Assert.Contains(bus.Published, m => m is TenantSubscriptionStatusChangedIntegrationEvent);
+        Assert.Contains(
+            SubscriptionDomainEventReplay.Emitted(bus, subscription),
+            m => m is TenantSubscriptionStatusChangedIntegrationEvent
+        );
     }
 
     [Fact]
@@ -132,7 +135,10 @@ public sealed class CancelSubscriptionHandlerTests
             r => Assert.NotEqual(PlanChangeRequestStatus.AwaitingPayment, r.Status)
         );
         Assert.Contains(bus.Published, m => m is PlanChangeUpgradeCancelledIntegrationEvent);
-        Assert.Contains(bus.Published, m => m is TenantSubscriptionStatusChangedIntegrationEvent);
+        Assert.Contains(
+            SubscriptionDomainEventReplay.Emitted(bus, subscription),
+            m => m is TenantSubscriptionStatusChangedIntegrationEvent
+        );
     }
 
     [Fact]

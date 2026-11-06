@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 /// TenantEmailAccount.Status ya quedó en Error — este evento es la alerta operacional
 /// (failure #1 documentado de integraciones Gmail: ver Connectors_Service_Design_And_Implementation_Plan.md §29).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsOAuthRefreshFailedIntegrationEvent")]
 public sealed record ConnectorsOAuthRefreshFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid AccountId { get; init; }

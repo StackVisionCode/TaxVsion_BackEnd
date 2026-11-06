@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.GrowthIntegrationEvents;
 
 /// <summary>Comando dirigido a Subscription. No representa un hecho ocurrido.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.GrowthIntegrationEvents.GrantReferralRewardCommand")]
 public sealed record GrantReferralRewardCommand
 {
     public required Guid CommandId { get; init; }

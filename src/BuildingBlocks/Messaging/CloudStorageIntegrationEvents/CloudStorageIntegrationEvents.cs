@@ -1,5 +1,8 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileAvailableIntegrationEvent")]
 public sealed record FileAvailableIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -23,6 +26,7 @@ public sealed record FileAvailableIntegrationEvent : IntegrationEvent
     public int? TaxYear { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileInfectedDetectedIntegrationEvent")]
 public sealed record FileInfectedDetectedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -37,6 +41,7 @@ public sealed record FileInfectedDetectedIntegrationEvent : IntegrationEvent
 /// Publicado por IContentScanner (moderacion de contenido, no antivirus)
 /// cuando el verdict es PolicyViolation. Objeto ya movido a QuarantineBucket.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileBlockedByPolicyIntegrationEvent")]
 public sealed record FileBlockedByPolicyIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -48,6 +53,7 @@ public sealed record FileBlockedByPolicyIntegrationEvent : IntegrationEvent
     public string? FolderType { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileScanFailedIntegrationEvent")]
 public sealed record FileScanFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -65,6 +71,7 @@ public sealed record FileScanFailedIntegrationEvent : IntegrationEvent
 /// dispara); el evento existe para que Notification pueda alertar a
 /// compliance en cuanto exista un scanner real.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FilePendingReviewIntegrationEvent")]
 public sealed record FilePendingReviewIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -78,6 +85,7 @@ public sealed record FilePendingReviewIntegrationEvent : IntegrationEvent
     public string? FolderType { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileDeletedIntegrationEvent")]
 public sealed record FileDeletedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -90,12 +98,14 @@ public sealed record FileDeletedIntegrationEvent : IntegrationEvent
 /// que reaccionaron al borrado (ej. Communication marcando un adjunto como
 /// eliminado en el chat) puedan revertir ese estado cuando se conecte uno.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileRestoredIntegrationEvent")]
 public sealed record FileRestoredIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
     public required Guid CreatedBy { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.StorageLimitExceededIntegrationEvent")]
 public sealed record StorageLimitExceededIntegrationEvent : IntegrationEvent
 {
     public required long AttemptedFileSizeBytes { get; init; }
@@ -104,6 +114,7 @@ public sealed record StorageLimitExceededIntegrationEvent : IntegrationEvent
     public required long MaxBytes { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileAccessAuditedIntegrationEvent")]
 public sealed record FileAccessAuditedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -114,6 +125,7 @@ public sealed record FileAccessAuditedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary>Fase C3/C4 — publicado al crear un link de compartir (archivo o carpeta).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkCreatedIntegrationEvent")]
 public sealed record ShareLinkCreatedIntegrationEvent : IntegrationEvent
 {
     public required Guid ShareLinkId { get; init; }
@@ -130,6 +142,7 @@ public sealed record ShareLinkCreatedIntegrationEvent : IntegrationEvent
 /// riesgo que viaja solo por el bus interno (outbox durable) — no se persiste en claro ni se
 /// loggea por encima de Debug.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkExternalRecipientInvitedIntegrationEvent")]
 public sealed record ShareLinkExternalRecipientInvitedIntegrationEvent : IntegrationEvent
 {
     public required Guid ShareLinkId { get; init; }
@@ -146,6 +159,7 @@ public sealed record ShareLinkExternalRecipientInvitedIntegrationEvent : Integra
     public required string Language { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkRevokedIntegrationEvent")]
 public sealed record ShareLinkRevokedIntegrationEvent : IntegrationEvent
 {
     public required Guid ShareLinkId { get; init; }
@@ -159,6 +173,7 @@ public sealed record ShareLinkRevokedIntegrationEvent : IntegrationEvent
 /// recursivo). AutoCovered indica si AppliesToFutureItems ya lo deja accesible
 /// por ese link, o si solo es un aviso porque el link no cubre items nuevos.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkFolderItemAddedIntegrationEvent")]
 public sealed record ShareLinkFolderItemAddedIntegrationEvent : IntegrationEvent
 {
     public required Guid ShareLinkId { get; init; }
@@ -171,6 +186,7 @@ public sealed record ShareLinkFolderItemAddedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary>Publicado cada vez que un link se resuelve exitosamente (publico o privado) y sirve una presigned URL.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkAccessedIntegrationEvent")]
 public sealed record ShareLinkAccessedIntegrationEvent : IntegrationEvent
 {
     public required Guid ShareLinkId { get; init; }
@@ -189,6 +205,7 @@ public sealed record ShareLinkAccessedIntegrationEvent : IntegrationEvent
 /// generico al cliente (anti-enumeracion, ver ShareAccessResult.Denied); esto es
 /// solo para que un consumidor externo (SIEM/alertas) pueda reaccionar.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkAccessDeniedIntegrationEvent")]
 public sealed record ShareLinkAccessDeniedIntegrationEvent : IntegrationEvent
 {
     public required string Channel { get; init; }
@@ -203,6 +220,7 @@ public sealed record ShareLinkAccessDeniedIntegrationEvent : IntegrationEvent
 /// un job que la detecte proactivamente; este evento se dispara en el momento en
 /// que un acceso real la encuentra.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkExpiredIntegrationEvent")]
 public sealed record ShareLinkExpiredIntegrationEvent : IntegrationEvent
 {
     public required Guid ShareLinkId { get; init; }
@@ -220,6 +238,7 @@ public sealed record ShareLinkExpiredIntegrationEvent : IntegrationEvent
 }
 
 /// <summary>Fase C4 (completitud) — publicado al cambiar el Permission de un link ya creado.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkPermissionChangedIntegrationEvent")]
 public sealed record ShareLinkPermissionChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid ShareLinkId { get; init; }
@@ -234,6 +253,7 @@ public sealed record ShareLinkPermissionChangedIntegrationEvent : IntegrationEve
 /// QuarantineBucket (sigue en MainBucket, solo se bloquea el acceso a nivel de
 /// aplicacion) — evento propio para no mentirle a los consumidores sobre eso.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileBlockedByDmcaTakedownIntegrationEvent")]
 public sealed record FileBlockedByDmcaTakedownIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -242,6 +262,7 @@ public sealed record FileBlockedByDmcaTakedownIntegrationEvent : IntegrationEven
 }
 
 /// <summary>Fase L1.3 — publicado cuando el equipo legal reinstala un archivo tras resolver un expediente DMCA.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileReinstatedFromTakedownIntegrationEvent")]
 public sealed record FileReinstatedFromTakedownIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -254,6 +275,7 @@ public sealed record FileReinstatedFromTakedownIntegrationEvent : IntegrationEve
 /// (retencion obligatoria, bloquea borrado/expiracion). SetLegalHoldHandler no
 /// publicaba nada antes, solo dejaba audit interno.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.LegalHoldPlacedIntegrationEvent")]
 public sealed record LegalHoldPlacedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -263,6 +285,7 @@ public sealed record LegalHoldPlacedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary>Fase 1B — contraparte de LegalHoldPlacedIntegrationEvent, publicado al levantar el hold.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.LegalHoldLiftedIntegrationEvent")]
 public sealed record LegalHoldLiftedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -275,6 +298,7 @@ public sealed record LegalHoldLiftedIntegrationEvent : IntegrationEvent
 /// (contranotificacion). SubmitDmcaCounterNoticeHandler no publicaba nada antes; el
 /// equipo legal solo se enteraba si consultaba la UI a mano.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.DmcaCounterNoticeSubmittedIntegrationEvent")]
 public sealed record DmcaCounterNoticeSubmittedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -294,6 +318,7 @@ public sealed record DmcaCounterNoticeSubmittedIntegrationEvent : IntegrationEve
 /// FileId choca contra la unique constraint (Id/ObjectKey) y SaveFileFromSourceHandler
 /// lo trata como no-op.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent")]
 public sealed record SaveFileRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -321,6 +346,7 @@ public sealed record SaveFileRequestedIntegrationEvent : IntegrationEvent
 /// vacío, política de subida, cuota o registro): ese <see cref="FileId"/> nunca existirá. El servicio
 /// que lo pidió ya pudo apuntarlo en su aggregate (el FileId lo elige él), así que debe soltarlo.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileSaveRejectedIntegrationEvent")]
 public sealed record FileSaveRejectedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -342,6 +368,7 @@ public sealed record FileSaveRejectedIntegrationEvent : IntegrationEvent
 /// pasen a pertenecer al cliente y aparezcan bajo su carpeta en Documents. El consumer
 /// re-resuelve además la carpeta de sistema del nuevo dueño.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ReassignFileOwnerRequestedIntegrationEvent")]
 public sealed record ReassignFileOwnerRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -374,6 +401,7 @@ public sealed record FileDeletionTarget
 /// X-5 — comando de retención hacia CloudStorage. Sin <c>CustomerId</c> y sin bytes: solo
 /// <see cref="FileDeletionTarget.FileId"/> con el contexto de propiedad para verificar antes de borrar.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FilesDeletionRequestedIntegrationEvent")]
 public sealed record FilesDeletionRequestedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Servicio origen, p. ej. "tasks.client_forms".</summary>
@@ -391,6 +419,7 @@ public sealed record FilesDeletionRequestedIntegrationEvent : IntegrationEvent
 /// X-5 — CloudStorage salta un archivo del lote de borrado (no coincide dueño/carpeta/tenant,
 /// legal hold o ya no existe). El servicio origen reintenta en la corrida siguiente con el dueño nuevo.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileDeletionSkippedIntegrationEvent")]
 public sealed record FileDeletionSkippedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
@@ -403,6 +432,7 @@ public sealed record FileDeletionSkippedIntegrationEvent : IntegrationEvent
 /// consumidor, que avisa a quienes tengan <see cref="AudiencePermission"/>. Resolverla = reconectar con
 /// una cuenta de la oficina o desconectarla.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.CloudConnectionReviewRequiredIntegrationEvent")]
 public sealed record CloudConnectionReviewRequiredIntegrationEvent : IntegrationEvent
 {
     public required Guid ConnectionId { get; init; }

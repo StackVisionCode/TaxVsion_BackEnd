@@ -45,11 +45,10 @@ public sealed class UpdateCustomerHandlerTests
             ),
             Repo(customer),
             new NoDuplicates(),
-            bus,
-            new FixedCorrelationContext(),
             new RecordingUnitOfWork(bus),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, Repo(customer), customer);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(photo, customer.ProfilePictureFileId);
@@ -90,11 +89,10 @@ public sealed class UpdateCustomerHandlerTests
             ),
             Repo(customer),
             new NoDuplicates(),
-            bus,
-            new FixedCorrelationContext(),
             new RecordingUnitOfWork(bus),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, Repo(customer), customer);
 
         Assert.True(result.IsSuccess);
         var published = Assert.Single(bus.Published.OfType<CustomerUpdatedIntegrationEvent>());

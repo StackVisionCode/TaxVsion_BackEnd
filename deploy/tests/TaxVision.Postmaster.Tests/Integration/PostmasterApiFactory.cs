@@ -43,14 +43,13 @@ public sealed class PostmasterApiFactory : WebApplicationFactory<Program>
                 )
         );
 
-        // Sin transportes externos ni persistencia de mensajes, el host de prueba no le roba correos a la
-        // cola postmaster-events ni sobres a las tablas de Wolverine del Postmaster local. Los jobs consultan
+        // Sin transportes externos, el host de prueba no le roba correos a la cola postmaster-events. La persistencia
+        // queda: sin ella, todo handler con transacción EF lanza y los reintentos cuelgan la prueba. Los jobs consultan
         // SMTP2GO, siembran proveedores y limpian la base: fuera. Y nunca sale un correo real: los dos
         // remitentes se reemplazan por uno que se niega.
         builder.ConfigureTestServices(services =>
         {
             services.DisableAllExternalWolverineTransports();
-            services.DisableAllWolverineMessagePersistence();
             foreach (
                 var job in services
                     .Where(descriptor =>

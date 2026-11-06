@@ -6,7 +6,6 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
-using TaxVision.Billing.Application.Invoices.GenerateInvoicePdf;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.Payments;
 using TaxVision.Billing.Domain.ValueObjects;
@@ -62,7 +61,6 @@ public static class InvoicePaymentSucceededConsumer
             }
 
             var amount = Money.Create(evt.AmountCents, evt.Currency);
-            var wasPaid = invoice.Status == InvoiceStatus.Paid;
             var paymentsBefore = invoice.Payments.Count;
             var result = amount.IsFailure
                 ? Result.Failure(amount.Error)
@@ -99,13 +97,7 @@ public static class InvoicePaymentSucceededConsumer
                 metrics.RecordOverpayment();
             }
 
-            // Pagada → regenerar el PDF con estado Paid (marca de agua "Pagado" + recibo).
-            if (invoice.Status == InvoiceStatus.Paid && !wasPaid)
-            {
-                bus.TenantId = evt.TenantId.ToString();
-                await bus.PublishAsync(InvoicePaidEventFactory.Create(invoice, correlationId));
-                await bus.PublishAsync(new GenerateInvoicePdfCommand(evt.TenantId, invoiceId));
-            }
+            // Pagada: InvoicePaid y el PDF con la marca "Pagado" salen del evento de dominio (BB-1).
 
             // Cobro parcial: el enlace del cliente pasa a cobrar el saldo nuevo.
             if (invoice.Status == InvoiceStatus.PartiallyPaid)

@@ -1,13 +1,10 @@
 using System.Globalization;
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
-using TaxVision.Billing.Application.Invoices.IntegrationEvents;
 using TaxVision.Billing.Application.Invoices.SyncInvoiceStock;
-using TaxVision.Billing.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Billing.Application.Invoices.IssueInvoice;
@@ -22,7 +19,6 @@ public static class IssueInvoiceHandler
         IInventoryStockClient inventory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        ICorrelationContext correlation,
         TimeProvider clock,
         CancellationToken ct
     )
@@ -68,12 +64,11 @@ public static class IssueInvoiceHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        // Post-commit (outbox durable): asegurar el ancla de cobro y LUEGO generar el PDF, cada paso en
+        // Post-commit (colas locales durables): asegurar el ancla de cobro y LUEGO generar el PDF, cada paso en
         // su propia transacción con retry propio (punto 7 del review). Sellar el tenant para que
-        // LocalCommandTenantMiddleware lo restaure.
+        // LocalCommandTenantMiddleware lo restaure. Si el crédito la dejó pagada, InvoicePaid sale del
+        // evento de dominio (BB-1).
         bus.TenantId = command.TenantId.ToString();
-        if (invoice.Status == InvoiceStatus.Paid)
-            await bus.PublishAsync(InvoicePaidEventFactory.Create(invoice, correlation.CorrelationId));
         await bus.PublishAsync(new EnsureInvoicePaymentLinkCommand(command.TenantId, command.InvoiceId));
         if (saleLines.Count > 0)
             await bus.PublishAsync(new SyncInvoiceStockCommand(command.TenantId, command.InvoiceId));

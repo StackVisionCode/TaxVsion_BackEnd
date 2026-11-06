@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.CustomerIntegrationEvents;
 
 /// <summary>
@@ -9,6 +11,7 @@ namespace BuildingBlocks.Messaging.CustomerIntegrationEvents;
 ///
 /// Consumidores deben ser idempotentes: el mismo ImportJobId puede reentregarse por outbox.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent")]
 public sealed record CustomersBulkImportedIntegrationEvent : IntegrationEvent
 {
     public required Guid ImportJobId { get; init; }

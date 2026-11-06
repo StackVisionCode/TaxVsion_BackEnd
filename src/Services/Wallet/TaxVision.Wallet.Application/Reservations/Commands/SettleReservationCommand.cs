@@ -1,5 +1,3 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -7,7 +5,6 @@ using TaxVision.Wallet.Application.Reservations.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Domain.Reservations;
 using TaxVision.Wallet.Domain.Wallet;
-using Wolverine;
 
 namespace TaxVision.Wallet.Application.Reservations.Commands;
 
@@ -29,8 +26,6 @@ public static class SettleReservationHandler
         IReservationRepository reservations,
         IWalletRepository wallets,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<WalletReservation> logger,
         CancellationToken ct
     )
@@ -113,17 +108,8 @@ public static class SettleReservationHandler
             await wallets.AddLedgerEntryAsync(release.Value, ct);
         }
 
+        // El aviso de saldo sale del evento de dominio del monedero (BB-1).
         await unitOfWork.SaveChangesAsync(ct);
-
-        // Tiempo real: el saldo cambió (consumo + liberación) → avisa para refrescar el front.
-        await bus.PublishAsync(
-            new WalletBalanceChangedIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                Reason = "settle",
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
 
         return Result.Success(new SettlementView(consumed, released, reservation.Currency));
     }

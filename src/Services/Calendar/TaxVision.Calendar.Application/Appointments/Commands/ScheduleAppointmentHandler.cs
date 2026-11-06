@@ -1,5 +1,3 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
@@ -9,7 +7,6 @@ using TaxVision.Calendar.Application.Types.Abstractions;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
 using TaxVision.Calendar.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
 
@@ -41,8 +38,6 @@ public static class ScheduleAppointmentHandler
         IAppointmentTypeRepository types,
         IAvailabilityRepository availability,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ICalendarMetrics metrics,
         CancellationToken ct
     )
@@ -65,12 +60,6 @@ public static class ScheduleAppointmentHandler
 
         appointments.Add(appointment);
         await unitOfWork.SaveChangesAsync(ct);
-
-        await bus.PublishAsync(AppointmentEvents.Scheduled(appointment, correlation.CorrelationId));
-
-        // El aviso se pide en el acto; el job de 12 h queda como red de seguridad.
-        foreach (var request in AppointmentReminderRequests.For(appointment, DateTime.UtcNow, correlation.CorrelationId))
-            await bus.PublishAsync(request);
 
         metrics.RecordCreated(appointment.IsRecurring);
 

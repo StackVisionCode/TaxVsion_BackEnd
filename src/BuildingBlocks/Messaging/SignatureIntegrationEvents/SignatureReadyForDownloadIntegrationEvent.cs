@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -7,6 +9,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// exige que el archivo esté <c>Available</c>. Notification lo consume para mandar el correo de firma
 /// completada con el botón "descargar documento firmado".
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureReadyForDownloadIntegrationEvent")]
 public sealed record SignatureReadyForDownloadIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

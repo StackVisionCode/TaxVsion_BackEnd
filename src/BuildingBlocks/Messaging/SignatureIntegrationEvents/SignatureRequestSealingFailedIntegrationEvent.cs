@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// documento original, re-encolar manualmente, etc.). La solicitud sigue en estado
 /// <c>Completed</c> — no se rollback la firma; sólo el paso posterior falló.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestSealingFailedIntegrationEvent")]
 public sealed record SignatureRequestSealingFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

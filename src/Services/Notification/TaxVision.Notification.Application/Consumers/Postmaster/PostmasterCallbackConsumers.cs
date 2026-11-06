@@ -18,6 +18,7 @@ internal static class PostmasterCallbackHandling
 {
     public const string OrderingPendingCode = "NotificationDispatchAttempt.OrderingPending";
     public const string AlreadyInStatusCode = "NotificationDispatchAttempt.AlreadyInStatus";
+    public const string SentDependency = "NotificationDispatchAttempt.Sent";
 
     public static string ResolveCorrelation(string correlationId, Guid eventId) =>
         string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
@@ -165,9 +166,9 @@ public static class PostmasterEmailDeliveryBouncedConsumer
             {
                 if (result.Error.Code == PostmasterCallbackHandling.OrderingPendingCode)
                 {
-                    // Bounced llegó antes que Sent; dejar que Wolverine reintente con backoff
-                    // en vez de perder el bounce silenciosamente.
-                    throw new InvalidOperationException(
+                    // Bounced llegó antes que Sent: se reintenta con espera larga en vez de perderlo.
+                    throw new DependencyNotReadyException(
+                        PostmasterCallbackHandling.SentDependency,
                         $"Bounced callback for log {evt.NotificationLogId} attempt {evt.DispatchAttemptId} arrived before Sent; retrying."
                     );
                 }
@@ -210,9 +211,10 @@ public static class PostmasterEmailDeliveredConsumer
             );
             if (result.IsFailure)
             {
-                // Delivered llegó antes que Sent: se reintenta en vez de perderlo.
+                // Delivered llegó antes que Sent: se reintenta con espera larga en vez de perderlo.
                 if (result.Error.Code == PostmasterCallbackHandling.OrderingPendingCode)
-                    throw new InvalidOperationException(
+                    throw new DependencyNotReadyException(
+                        PostmasterCallbackHandling.SentDependency,
                         $"Delivered callback for log {evt.NotificationLogId} attempt {evt.DispatchAttemptId} arrived before Sent; retrying."
                     );
                 logger.LogDebug(

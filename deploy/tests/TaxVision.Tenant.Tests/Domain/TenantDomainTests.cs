@@ -1,4 +1,5 @@
 using TaxVision.Tenant.Domain.Enums;
+using TaxVision.Tenant.Domain.Events;
 
 namespace TaxVision.Tenant.Tests.Domain;
 
@@ -158,5 +159,85 @@ public sealed class TenantDomainTests
         Assert.True(tenant.UpdateNameAndTimeZone("Acme", "America/Chicago", nowUtc).Value);
         Assert.False(tenant.UpdateNameAndTimeZone("Acme", "America/Chicago", nowUtc.AddMinutes(1)).Value);
         Assert.Equal(nowUtc, tenant.UpdatedAtUtc);
+    }
+
+    [Fact]
+    public void Suspend_RaisesTenantStatusChanged()
+    {
+        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "Etc/UTC").Value;
+
+        tenant.Suspend();
+
+        var raised = Assert.IsType<TenantStatusChangedDomainEvent>(Assert.Single(tenant.DomainEvents));
+        Assert.Equal(tenant.Id, raised.TenantId);
+        Assert.Equal(EnumTenantStatus.TenantStatus.Suspended, raised.Status);
+        Assert.False(raised.IsActive);
+    }
+
+    [Fact]
+    public void CloseForOnboardingCancellation_RaisesTenantStatusChanged()
+    {
+        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "Etc/UTC").Value;
+
+        tenant.CloseForOnboardingCancellation();
+
+        var raised = Assert.IsType<TenantStatusChangedDomainEvent>(Assert.Single(tenant.DomainEvents));
+        Assert.Equal(EnumTenantStatus.TenantStatus.Closed, raised.Status);
+        Assert.False(raised.IsActive);
+    }
+
+    [Fact]
+    public void ChangeStatus_RaisesTenantStatusChanged_WithTheNewState()
+    {
+        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "Etc/UTC").Value;
+        tenant.Suspend();
+        tenant.ClearDomainEvents();
+
+        tenant.ChangeStatus(EnumTenantStatus.TenantStatus.Active);
+
+        var raised = Assert.IsType<TenantStatusChangedDomainEvent>(Assert.Single(tenant.DomainEvents));
+        Assert.Equal(EnumTenantStatus.TenantStatus.Active, raised.Status);
+        Assert.True(raised.IsActive);
+    }
+
+    [Fact]
+    public void A_rejected_transition_raises_nothing()
+    {
+        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "Etc/UTC").Value;
+        tenant.ChangeStatus(EnumTenantStatus.TenantStatus.Closed);
+        tenant.ClearDomainEvents();
+
+        Assert.True(tenant.ChangeStatus(EnumTenantStatus.TenantStatus.Active).IsFailure);
+        Assert.True(tenant.Suspend().IsFailure);
+
+        Assert.Empty(tenant.DomainEvents);
+    }
+
+    [Fact]
+    public void Update_name_and_time_zone_raises_one_event_with_the_full_state()
+    {
+        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "Etc/UTC").Value;
+        var nowUtc = tenant.UpdatedAtUtc.AddMinutes(1);
+
+        tenant.UpdateNameAndTimeZone("Acme", "America/Chicago", nowUtc);
+
+        var raised = Assert.IsType<TenantUpdatedDomainEvent>(Assert.Single(tenant.DomainEvents));
+        Assert.Equal("Acme", raised.Name);
+        Assert.Equal("America/Chicago", raised.DefaultTimeZoneId);
+        Assert.Equal(nowUtc, raised.UpdatedAtUtc);
+    }
+
+    [Fact]
+    public void Rename_and_change_time_zone_raise_only_when_something_changed()
+    {
+        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "Etc/UTC").Value;
+
+        tenant.Rename("Demo", DateTime.UtcNow);
+        tenant.ChangeTimeZone("Etc/UTC", DateTime.UtcNow);
+        Assert.Empty(tenant.DomainEvents);
+
+        tenant.Rename("Acme", DateTime.UtcNow);
+        tenant.ChangeTimeZone("America/Chicago", DateTime.UtcNow);
+        Assert.Equal(2, tenant.DomainEvents.OfType<TenantUpdatedDomainEvent>().Count());
     }
 }

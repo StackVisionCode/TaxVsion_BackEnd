@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>Publicado por Auth al solicitar recuperación de contraseña. Notification envía el email.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.PasswordResetRequestedIntegrationEvent")]
 public sealed record PasswordResetRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

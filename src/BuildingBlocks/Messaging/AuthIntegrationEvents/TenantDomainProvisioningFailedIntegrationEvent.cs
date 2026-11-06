@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -7,6 +9,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// detrás del ACL (ICloudflareProvisioningClient), así que el evento se nombra en
 /// vocabulario propio (TenantDomain), no en el de Cloudflare.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantDomainProvisioningFailedIntegrationEvent")]
 public sealed record TenantDomainProvisioningFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid DomainId { get; init; }

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// (Fase 4 en el diseño): el worker genera el PDF sellado con el certificado y
 /// el bloque de audit, y publica un evento por documento sellado y otro al completar la request.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestCompletedIntegrationEvent")]
 public sealed record SignatureRequestCompletedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

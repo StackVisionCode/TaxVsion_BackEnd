@@ -97,15 +97,7 @@ public static class CancelSubscriptionHandler
         }
 
         // El acceso NO cambia acá: sigue activo y pagado hasta el fin del período, así que no hay
-        // entitlements que recalcular. El job de renovación expira y recalcula cuando llegue la fecha.
-        await bus.PublishStatusChangedAsync(
-            subscription,
-            previousStatus,
-            SubscriptionChangeReason.CancellationScheduled,
-            command.RequestedByUserId,
-            correlationId: correlation.CorrelationId
-        );
-
+        // entitlements que recalcular. El aviso CancellationScheduled sale del evento de dominio.
         await AuditEntryFactory.AppendAsync(
             audit,
             command.TenantId,

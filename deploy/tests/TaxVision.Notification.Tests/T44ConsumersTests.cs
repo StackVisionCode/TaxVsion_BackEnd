@@ -230,6 +230,15 @@ public sealed class T44ConsumersTests
 
     private sealed class NoOpNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public Task AddAsync(NotificationLog log, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task<(IReadOnlyList<NotificationLog> Items, int TotalCount)> GetPagedAsync(
@@ -273,6 +282,9 @@ public sealed class T44ConsumersTests
 
     private sealed class NoOpPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task<PushDeviceToken?> FindByTokenAsync(Guid tenantId, string token, CancellationToken ct = default) =>

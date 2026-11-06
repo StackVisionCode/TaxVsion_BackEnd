@@ -18,7 +18,7 @@ public enum TenantEmailAccountStatus
 /// Connectors nunca decide si un mensaje entrante se guarda — eso es responsabilidad de Correspondence
 /// filtrando contra CustomerEmailAddresses (ver Connectors_Service_Design_And_Implementation_Plan.md).
 /// </summary>
-public sealed class TenantEmailAccount : TenantEntity
+public sealed class TenantEmailAccount : AggregateRoot
 {
     private TenantEmailAccount() { }
 
@@ -201,26 +201,46 @@ public sealed class TenantEmailAccount : TenantEntity
 
     /// <summary>
     /// Cualquier estado activo → Error (refresh de token o renewal de watch fallaron tras reintentos,
-    /// Fases 4/6). Transición unconditional — un error puede llegar desde Connected o Active por igual.
+    /// Fases 4/6). Falla si ya estaba en Error o Disconnected: el aviso al usuario sale solo en la transición.
     /// </summary>
-    public void MarkError(DateTime erroredAtUtc)
+    public Result MarkError(TenantEmailAccountErrorCause cause, DateTime erroredAtUtc)
     {
-        Status = TenantEmailAccountStatus.Error;
-        LastActivityAtUtc = erroredAtUtc;
+        if (Status is TenantEmailAccountStatus.Error or TenantEmailAccountStatus.Disconnected)
+            return Result.Failure(InvalidTransition(TenantEmailAccountStatus.Error));
+
+        EnterError(cause, erroredAtUtc);
+        return Result.Success();
     }
 
     /// <summary>
     /// Connected|Active → Error: el servidor IMAP rechazó usuario o contraseña. Falla si ya estaba en
     /// Error o Disconnected, así el aviso al usuario sale una sola vez.
     /// </summary>
-    public Result MarkCredentialsRejected(DateTime rejectedAtUtc)
+    public Result MarkCredentialsRejected(TenantEmailAccountErrorCause cause, DateTime rejectedAtUtc)
     {
         if (Status is not (TenantEmailAccountStatus.Connected or TenantEmailAccountStatus.Active))
             return Result.Failure(InvalidTransition(TenantEmailAccountStatus.Error));
 
-        Status = TenantEmailAccountStatus.Error;
-        LastActivityAtUtc = rejectedAtUtc;
+        EnterError(cause, rejectedAtUtc);
         return Result.Success();
+    }
+
+    private void EnterError(TenantEmailAccountErrorCause cause, DateTime erroredAtUtc)
+    {
+        Status = TenantEmailAccountStatus.Error;
+        LastActivityAtUtc = erroredAtUtc;
+        AddDomainEvent(
+            new TenantEmailAccountErroredDomainEvent(
+                TenantId,
+                Id,
+                ProviderCode,
+                cause,
+                CreatedByUserId,
+                IsOffice,
+                OwnerUserId,
+                erroredAtUtc
+            )
+        );
     }
 
     public void TouchActivity(DateTime activityAtUtc) => LastActivityAtUtc = activityAtUtc;

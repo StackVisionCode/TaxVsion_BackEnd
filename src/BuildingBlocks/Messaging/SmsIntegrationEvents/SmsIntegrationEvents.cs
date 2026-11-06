@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SmsIntegrationEvents;
 
 /// <summary>
@@ -7,6 +9,7 @@ namespace BuildingBlocks.Messaging.SmsIntegrationEvents;
 /// por <c>CorrelationId</c>/<c>SourceContext</c> sin que SMS conozca su dominio. TenantId/CorrelationId
 /// vienen de <see cref="IntegrationEvent"/>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageAcceptedIntegrationEvent")]
 public sealed record SmsMessageAcceptedIntegrationEvent : IntegrationEvent
 {
     public required Guid MessageId { get; init; }
@@ -15,6 +18,7 @@ public sealed record SmsMessageAcceptedIntegrationEvent : IntegrationEvent
     public string? ProviderMessageId { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageDeliveredIntegrationEvent")]
 public sealed record SmsMessageDeliveredIntegrationEvent : IntegrationEvent
 {
     public required Guid MessageId { get; init; }
@@ -23,6 +27,7 @@ public sealed record SmsMessageDeliveredIntegrationEvent : IntegrationEvent
     public string? ProviderMessageId { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageFailedIntegrationEvent")]
 public sealed record SmsMessageFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid MessageId { get; init; }
@@ -32,6 +37,7 @@ public sealed record SmsMessageFailedIntegrationEvent : IntegrationEvent
     public string? FailureCode { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageSuppressedIntegrationEvent")]
 public sealed record SmsMessageSuppressedIntegrationEvent : IntegrationEvent
 {
     public required Guid MessageId { get; init; }

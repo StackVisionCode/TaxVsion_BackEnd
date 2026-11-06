@@ -27,8 +27,6 @@ public sealed class ReserveFundsHandlerTests
             reservations,
             wallets,
             unitOfWork,
-            new TestMessageContext(),
-            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -93,8 +91,6 @@ public sealed class ReserveFundsHandlerTests
             reservations,
             wallets,
             new FakeUnitOfWork(),
-            new TestMessageContext(),
-            new FakeCorrelationContext(),
             CancellationToken.None
         );
 }

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 /// El sobre lleva sólo identificadores; el snapshot va cifrado en <see cref="Payload"/> (schema
 /// client-form-summary.v1), ligado a tenant, cliente y request.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormSubmissionSummaryRequestedIntegrationEvent")]
 public sealed record FormSubmissionSummaryRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid GenerationId { get; init; }

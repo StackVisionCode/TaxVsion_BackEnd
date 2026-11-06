@@ -36,7 +36,6 @@ public sealed class OnboardingCancelRequestedConsumerTests
             evt,
             repo,
             unitOfWork,
-            new RecordingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<TenantEntity>.Instance,
             CancellationToken.None
@@ -65,7 +64,6 @@ public sealed class OnboardingCancelRequestedConsumerTests
             evt,
             repo,
             unitOfWork,
-            new RecordingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<TenantEntity>.Instance,
             CancellationToken.None
@@ -96,7 +94,6 @@ public sealed class OnboardingCancelRequestedConsumerTests
             evt,
             repo,
             unitOfWork,
-            new RecordingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<TenantEntity>.Instance,
             CancellationToken.None
@@ -111,41 +108,23 @@ public sealed class OnboardingCancelRequestedConsumerTests
     {
         var onboardingId = Guid.NewGuid();
         var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", onboardingId).Value;
-        var bus = new RecordingMessageBus();
 
         await OnboardingCancelRequestedConsumer.Handle(
             CancelEvent(onboardingId, tenant.Id),
             new FakeTenantRepository { Existing = tenant },
             new FakeUnitOfWork(),
-            bus,
             new FakeCorrelationContext(),
             NullLogger<TenantEntity>.Instance,
             CancellationToken.None
         );
 
-        var published = Assert.Single(bus.Published.OfType<TenantStatusChangedIntegrationEvent>());
+        var published = Assert.Single(
+            TenantDomainEventReplay.Dispatch(tenant.DomainEvents).OfType<TenantStatusChangedIntegrationEvent>()
+        );
         Assert.Equal(tenant.Id, published.ChangedTenantId);
         Assert.Equal(tenant.Id, published.TenantId);
         Assert.Equal("Closed", published.Status);
         Assert.False(published.IsActive);
-    }
-
-    [Fact]
-    public async Task Handle_NoOnboardingTenantId_PublishesNothing()
-    {
-        var bus = new RecordingMessageBus();
-
-        await OnboardingCancelRequestedConsumer.Handle(
-            CancelEvent(Guid.NewGuid(), tenantId: null),
-            new FakeTenantRepository(),
-            new FakeUnitOfWork(),
-            bus,
-            new FakeCorrelationContext(),
-            NullLogger<TenantEntity>.Instance,
-            CancellationToken.None
-        );
-
-        Assert.Empty(bus.Published);
     }
 
     private static OnboardingCancelRequestedIntegrationEvent CancelEvent(Guid onboardingId, Guid? tenantId) =>

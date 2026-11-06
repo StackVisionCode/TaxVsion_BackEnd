@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>
@@ -9,6 +11,7 @@ namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 /// de <see cref="SubscriptionRenewalDueIntegrationEvent"/>, el plan de la suscripción NO
 /// cambió todavía cuando se publica este evento — recién cambia si el cobro se confirma.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionPlanChangeDueIntegrationEvent")]
 public sealed record SubscriptionPlanChangeDueIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantSubscriptionId { get; init; }

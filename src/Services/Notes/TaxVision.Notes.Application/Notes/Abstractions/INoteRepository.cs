@@ -69,14 +69,13 @@ public interface INoteRepository
     /// <summary>
     /// ¿El cliente <paramref name="customerId"/> está asignado a <paramref name="actorUserId"/> en la
     /// proyección local de asignaciones (P2)? Gate del detalle de una nota cuyo target es un Customer.
-    /// Default true (sin restricción) para no romper fakes; el repo real consulta la proyección.
     /// </summary>
     Task<bool> IsCustomerAssignedAsync(
         Guid tenantId,
         Guid customerId,
         Guid actorUserId,
         CancellationToken ct = default
-    ) => Task.FromResult(true);
+    );
 
     /// <summary>
     /// CustomerPortal (<c>ListClientVisibleNotesQuery</c>): solo <see cref="NoteVisibility.ClientVisible"/>,

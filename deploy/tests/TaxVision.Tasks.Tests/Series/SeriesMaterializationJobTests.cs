@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Tasks.Application.Series;
 using TaxVision.Tasks.Application.Series.Abstractions;
+using TaxVision.Tasks.Domain.Tasks.Events;
 using TaxVision.Tasks.Infrastructure.Jobs;
 using TaxVision.Tasks.Infrastructure.Persistence;
 using TaxVision.Tasks.Infrastructure.Persistence.Repositories;
@@ -16,7 +17,8 @@ using Wolverine.EntityFrameworkCore;
 
 namespace TaxVision.Tasks.Tests.Series;
 
-// El barrido de series anuncia la instancia por el outbox y solo la suelta si el guardado confirma.
+// El barrido de series guarda la instancia con su evento de alta en una unidad transaccional; el handler del
+// evento la anuncia. Si el guardado no confirma, no sale nada.
 public sealed class SeriesMaterializationJobTests
 {
     [Fact]
@@ -28,12 +30,15 @@ public sealed class SeriesMaterializationJobTests
 
         await RunOnceAsync(db, outbox);
 
-        Assert.Empty(recorder.Pending);
+        Assert.Empty(recorder.Flushed);
         Assert.Equal(1, recorder.Saves);
-        var reminder = Assert.Single(recorder.Flushed.OfType<ReminderRequestedIntegrationEvent>());
+        var born = Assert.Single(recorder.DomainEvents.OfType<TaskCreatedDomainEvent>());
         await using var check = NewContext(databaseName);
         var instance = Assert.Single(await check.Tasks.IgnoreQueryFilters().ToListAsync());
-        Assert.Equal(instance.Id, reminder.TargetId);
+        Assert.Equal(instance.Id, born.TaskId);
+
+        var emitted = await DomainEventReplay.DispatchEventsAsync(recorder.DomainEvents, new TaskRepository(check));
+        Assert.Equal(instance.Id, Assert.Single(emitted.OfType<ReminderRequestedIntegrationEvent>()).TargetId);
     }
 
     [Fact]
@@ -50,6 +55,7 @@ public sealed class SeriesMaterializationJobTests
 
         Assert.Equal(0, recorder.Saves);
         Assert.Empty(recorder.Flushed);
+        Assert.Empty(recorder.DomainEvents);
         await using var check = NewContext(databaseName);
         Assert.Empty(await check.Tasks.IgnoreQueryFilters().ToListAsync());
     }
@@ -94,6 +100,7 @@ public sealed class SeriesMaterializationJobTests
         new(
             new DbContextOptionsBuilder<TasksDbContext>()
                 .UseInMemoryDatabase(databaseName)
+                .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .AddInterceptors(interceptors)
                 .Options,
             new NoTenantContext()

@@ -274,6 +274,13 @@ public sealed class AuthAccountEmailsTests
 
     private sealed class CapturingScribe : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
         public List<Render> Rendered { get; } = [];
 
         public Task<Result<ScribeRenderedEmail>> RenderAsync(

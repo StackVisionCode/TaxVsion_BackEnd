@@ -26,8 +26,6 @@ public static class ResumeTaskSeriesHandler
         ITaskSeriesRepository seriesRepository,
         ITaskSeriesMaterializer materializer,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -45,12 +43,9 @@ public static class ResumeTaskSeriesHandler
         if (resumed.IsFailure)
             return Result.Failure<TaskSeriesResponse>(resumed.Error);
 
+        // La instancia nueva se anuncia por su evento de alta.
         if (series.OpenInstanceId is null)
-        {
-            var materialized = await materializer.MaterializeNextAsync(series, null, null, ct);
-            if (materialized.IsSuccess)
-                await TaskBirthAnnouncements.PublishAsync(materialized.Value, bus, correlation, announceAssignment: false);
-        }
+            await materializer.MaterializeNextAsync(series, null, null, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(TaskSeriesResponse.From(series));

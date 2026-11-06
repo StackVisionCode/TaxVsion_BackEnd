@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Scribe.Application.Abstractions;
@@ -64,16 +65,19 @@ public sealed class TenantProfileChangedConsumerTests
     }
 
     [Fact]
-    public async Task Handle_skips_when_no_profile_exists()
+    public async Task Handle_TenantRowMissing_ThrowsDependencyNotReady()
     {
         var unitOfWork = new FakeUnitOfWork();
 
-        await HandleAsync(
-            Event(Guid.NewGuid(), 1, "Acme DBA", Physical),
-            new InMemoryTenantProfileRefRepository(),
-            unitOfWork
+        var error = await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            HandleAsync(
+                Event(Guid.NewGuid(), 1, "Acme DBA", Physical),
+                new InMemoryTenantProfileRefRepository(),
+                unitOfWork
+            )
         );
 
+        Assert.Equal("Tenant", error.Dependency);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 

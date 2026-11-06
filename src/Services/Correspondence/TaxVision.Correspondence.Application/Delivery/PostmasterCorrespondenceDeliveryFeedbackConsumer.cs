@@ -1,11 +1,11 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Correspondence.Application.Abstractions;
-using TaxVision.Correspondence.Application.Threads;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Delivery;
 using TaxVision.Correspondence.Domain.Inbox;
@@ -33,7 +33,6 @@ public static class PostmasterCorrespondenceDeliveryFeedbackConsumer
         IDraftRepository drafts,
         IEmailThreadRepository threads,
         IDeliveryNoticeRepository notices,
-        IIncomingEmailRepository incomingEmails,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -63,12 +62,17 @@ public static class PostmasterCorrespondenceDeliveryFeedbackConsumer
             }
 
             var draft = await drafts.GetByIdAsync(evt.TenantId, evt.CorrespondenceDraftId, ct);
-            if (draft is null || draft.Status != DraftStatus.Sent)
+            // Postmaster puede avisar antes de que el borrador quede Sent: se reintenta con espera larga y después DLQ.
+            if (draft is null || draft.Status is DraftStatus.Draft or DraftStatus.Sending)
+                throw new DependencyNotReadyException("CorrespondenceDraft", $"draft {evt.CorrespondenceDraftId}");
+
+            if (draft.Status != DraftStatus.Sent)
             {
                 logger.LogWarning(
-                    "Delivery feedback {EventId} points to draft {DraftId} that is missing or not sent; skipping.",
+                    "Delivery feedback {EventId} points to draft {DraftId} in terminal status {Status}; skipping.",
                     evt.EventId,
-                    evt.CorrespondenceDraftId
+                    evt.CorrespondenceDraftId,
+                    draft.Status
                 );
                 return;
             }
@@ -152,7 +156,7 @@ public static class PostmasterCorrespondenceDeliveryFeedbackConsumer
                     Category = notice.Category,
                 }
             );
-            await ThreadStateNotifier.PublishAsync(bus, incomingEmails, thread, null, evt.CorrelationId, ct);
+            thread.NotifyStateChanged(correlationId: evt.CorrelationId);
         }
     }
 

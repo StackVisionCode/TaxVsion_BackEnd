@@ -23,6 +23,7 @@ internal sealed class EmailThreadConfiguration : IEntityTypeConfiguration<EmailT
         builder.Property(x => x.MessageCount).IsRequired();
         builder.Property(x => x.Status).IsRequired().HasConversion<string>().HasMaxLength(16);
         builder.Property(x => x.ArchivedAtUtc);
+        builder.Ignore(x => x.DomainEvents);
 
         // Un hilo por cliente (COR-02): el mismo ProviderThreadId puede tener un hilo por cliente.
         builder

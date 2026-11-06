@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -97,10 +98,12 @@ public sealed class SignatureRequestCompletedConsumerTests
         };
         var bus = new CapturingBus();
 
-        await Assert.ThrowsAsync<SignatureImageNotReadyException>(() =>
+        var notReady = await Assert.ThrowsAsync<SignatureImageNotReadyException>(() =>
             SealAsync(request, storage, new FakeSealer(), bus, attempts: 1)
         );
 
+        // SIG-BB7: va por la política estándar de BB-7.
+        Assert.IsAssignableFrom<DependencyNotReadyException>(notReady);
         Assert.Empty(bus.Messages.OfType<SignatureRequestSealingFailedIntegrationEvent>());
         Assert.Null(request.SealingFailedAtUtc);
     }
@@ -112,10 +115,12 @@ public sealed class SignatureRequestCompletedConsumerTests
         var request = NewCompletedRequest(documents: 1);
         var bus = new CapturingBus();
 
-        await Assert.ThrowsAsync<SealingLockBusyException>(() =>
+        var busy = await Assert.ThrowsAsync<SealingLockBusyException>(() =>
             SealAsync(request, new FakeStorage(), new FakeSealer(), bus, attempts: 1, lockAcquired: false)
         );
 
+        // SIG-BB7: va por la política estándar de BB-7.
+        Assert.IsAssignableFrom<DependencyNotReadyException>(busy);
         Assert.Empty(bus.Messages);
         Assert.All(request.Documents, document => Assert.Null(document.SealedFileId));
     }

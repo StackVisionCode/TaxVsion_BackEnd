@@ -1,7 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using TaxVision.PaymentApp.Application.Abstractions;
-using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using Wolverine;
 
@@ -47,7 +47,9 @@ public static class RepublishOnboardingPaymentResultHandler
                 )
             );
 
-        await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlation.CorrelationId, ct);
+        // Re-solicitud manual del admin (no es una transición): se publica por el outbox de este handler.
+        if (SaaSPaymentResultMessages.OnboardingResultOf(payment.Snapshot(), correlation.CorrelationId) is { } result)
+            await bus.PublishAsync(result);
         return Result.Success();
     }
 }

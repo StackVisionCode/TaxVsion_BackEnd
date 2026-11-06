@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.RegisterTenantPaymentWebhook;
@@ -7,7 +8,6 @@ using TaxVision.PaymentClient.Domain.ValueObjects;
 using TaxVision.PaymentClient.Infrastructure.Persistence;
 using TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
 using TaxVision.PaymentClient.Infrastructure.Scheduling;
-using TaxVision.PaymentClient.Tests.Application;
 
 namespace TaxVision.PaymentClient.Tests.Infrastructure;
 
@@ -27,10 +27,12 @@ public sealed class PendingWebhookSetupSweepJobTests
     };
 
     private readonly string _databaseName = Guid.NewGuid().ToString();
+    private readonly InMemoryDatabaseRoot _root = new();
     private readonly PaymentClientDbContext _db;
-    private readonly List<object> _published = [];
+    private readonly OutboxRecording _outbox = new();
+    private List<object> _published => _outbox.Flushed;
 
-    public PendingWebhookSetupSweepJobTests() => _db = InMemoryPaymentClient.CreateDb(_databaseName);
+    public PendingWebhookSetupSweepJobTests() => _db = RecordingPaymentClientOutbox.CreateDb(_databaseName, _root);
 
     [Fact]
     public void The_threshold_is_the_whole_retry_cycle_plus_the_margin()
@@ -101,11 +103,11 @@ public sealed class PendingWebhookSetupSweepJobTests
         Assert.Equal(WebhookSetupStatus.Automatic, (await ReloadAsync(done.Id)).WebhookSetup);
     }
 
+    // Cada pendiente se procesa en su unidad (BB-3): la marca y el comando salen juntos por el outbox.
     private Task<PendingWebhookSetupSweepSummary> SweepAsync(PaymentWebhookOptions settings, DateTime nowUtc) =>
         PendingWebhookSetupSweepJob.SweepAsync(
             new TenantPaymentConfigRepository(_db),
-            _db,
-            InMemoryPaymentClient.RecordingBus(_published),
+            RecordingPaymentClientOutbox.InMemoryUnits(_databaseName, _root, _outbox),
             settings,
             NullLogger.Instance,
             nowUtc,
@@ -133,7 +135,7 @@ public sealed class PendingWebhookSetupSweepJobTests
 
     private async Task<TenantPaymentConfig> ReloadAsync(Guid configId)
     {
-        await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
+        await using var fresh = RecordingPaymentClientOutbox.CreateDb(_databaseName, _root);
         return await fresh.TenantPaymentConfigs.IgnoreQueryFilters().SingleAsync(c => c.Id == configId);
     }
 }

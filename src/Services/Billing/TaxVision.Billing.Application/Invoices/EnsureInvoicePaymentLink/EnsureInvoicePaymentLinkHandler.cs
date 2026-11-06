@@ -60,7 +60,7 @@ public static class EnsureInvoicePaymentLinkHandler
             await unitOfWork.SaveChangesAsync(ct);
         }
 
-        // Paso siguiente del pipeline (outbox durable): generar el PDF con la URL ya persistida.
+        // Paso siguiente del pipeline (cola local durable, BB-2): generar el PDF con la URL ya persistida.
         bus.TenantId = command.TenantId.ToString();
         await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, command.InvoiceId));
     }

@@ -24,6 +24,13 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
             .Where(c => c.Id == id)
             .FirstOrDefaultAsync(ct);
 
+    public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+        db
+            .Customers.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(c => c.Assignments)
+            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == customerId, ct);
+
     // Tracked (sin AsNoTracking): el consumer de offboard reasigna el preparador y persiste. Include(Assignments):
     // el handover/unassign mutan la colección de asignaciones — sin cargarla operarían sobre una vacía y
     // dejarían filas huérfanas. Excluye archivados (no se trabajan).

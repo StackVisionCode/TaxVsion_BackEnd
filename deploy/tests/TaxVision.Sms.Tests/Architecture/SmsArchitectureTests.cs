@@ -1,4 +1,5 @@
 using System.Reflection;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +10,7 @@ using TaxVision.Sms.Api.RateLimiting;
 
 namespace TaxVision.Sms.Tests.Architecture;
 
-/// <summary>Reglas de acción de la API de Sms (SMS-07). SMS-08 agrega las de capas.</summary>
+/// <summary>Reglas de acción de la API de Sms (SMS-07 y SMS-08). Las de capas: SmsLayeringTests.</summary>
 public sealed class SmsArchitectureTests
 {
     private static readonly Assembly ApiAssembly = typeof(WebhooksController).Assembly;
@@ -35,6 +36,32 @@ public sealed class SmsArchitectureTests
         Assert.True(
             violations.Count == 0,
             "Actions missing [RateLimit] or [RateLimitExempt]: " + string.Join(", ", violations)
+        );
+    }
+
+    // SMS-08: toda acción no anónima declara qué actores la usan.
+    [Fact]
+    public void Controller_actions_should_declare_AllowActorTypes()
+    {
+        var violations = new List<string>();
+        foreach (var controller in Controllers())
+        {
+            var classAnonymous = controller.GetCustomAttribute<AllowAnonymousAttribute>(inherit: true) is not null;
+            var classActorTypes = controller.GetCustomAttribute<AllowActorTypesAttribute>(inherit: true);
+
+            foreach (var action in HttpActions(controller))
+            {
+                if (classAnonymous || action.GetCustomAttribute<AllowAnonymousAttribute>() is not null)
+                    continue;
+
+                if ((action.GetCustomAttribute<AllowActorTypesAttribute>() ?? classActorTypes) is null)
+                    violations.Add($"{controller.FullName}.{action.Name}");
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "Actions missing [AllowActorTypes] (method or controller level): " + string.Join(", ", violations)
         );
     }
 

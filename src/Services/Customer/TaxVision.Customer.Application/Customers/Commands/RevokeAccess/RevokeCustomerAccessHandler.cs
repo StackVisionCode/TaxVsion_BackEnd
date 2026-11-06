@@ -1,20 +1,17 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
-using Wolverine;
 
 namespace TaxVision.Customer.Application.Customers.Commands.RevokeAccess;
 
 // Revoca el acceso de un miembro del staff a un cliente. Si era el primary, limpia la denormalización.
+// El snapshot de asignaciones sale del evento de dominio.
 public static class RevokeCustomerAccessHandler
 {
     public static async Task<Result> Handle(
         RevokeCustomerAccessCommand cmd,
         ICustomerRepository repository,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -27,8 +24,6 @@ public static class RevokeCustomerAccessHandler
             return result;
 
         await unitOfWork.SaveChangesAsync(ct);
-
-        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlation.CorrelationId));
 
         return Result.Success();
     }

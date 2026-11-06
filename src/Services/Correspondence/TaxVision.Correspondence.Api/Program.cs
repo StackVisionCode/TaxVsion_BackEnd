@@ -141,6 +141,11 @@ builder.Host.UseWolverine(options =>
 
     options.ApplyStandardFailurePolicies();
 
+    // COR-11: los avisos de ingesta y de estado de hilo salen por la cola domain-events, en orden de commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+    options.UseTaxVisionDurableLocalQueues();
+
     // Sin esta regla, Wolverine no enruta el evento a RabbitMQ y bus.PublishAsync lo descarta en
     // silencio — ningun otro servicio llega a recibirlo.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");

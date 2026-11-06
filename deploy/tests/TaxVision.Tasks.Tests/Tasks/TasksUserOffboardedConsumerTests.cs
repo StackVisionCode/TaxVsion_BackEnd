@@ -60,7 +60,8 @@ public sealed class TasksUserOffboardedConsumerTests
             )
             .Value;
 
-    private static Task Run(
+    // El aviso y el recordatorio del sucesor salen del handler del evento de dominio (el replay los deja en el bus).
+    private static async Task Run(
         InMemoryTaskRepository tasks,
         InMemorySeries series,
         RecordingUnitOfWork uow,
@@ -68,8 +69,9 @@ public sealed class TasksUserOffboardedConsumerTests
         Guid leaver,
         Guid? successor,
         Guid? offboardedBy = null
-    ) =>
-        TasksUserOffboardedConsumer.Handle(
+    )
+    {
+        await TasksUserOffboardedConsumer.Handle(
             new UserOffboardedIntegrationEvent
             {
                 TenantId = Tenant,
@@ -83,11 +85,12 @@ public sealed class TasksUserOffboardedConsumerTests
             tasks,
             series,
             uow,
-            bus,
             new NoOpCorrelationContext(),
             NullLogger<TaskItem>.Instance,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, tasks);
+    }
 
     [Fact]
     public async Task With_successor_reassigns_open_tasks_and_redirects_series()

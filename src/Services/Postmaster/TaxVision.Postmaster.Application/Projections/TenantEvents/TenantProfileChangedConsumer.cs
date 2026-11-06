@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -10,8 +11,8 @@ namespace TaxVision.Postmaster.Application.Projections.TenantEvents;
 /// <summary>
 /// La oficina guardó su perfil: el From de sus correos pasa a llevar el nombre comercial si lo tiene.
 /// Postmaster solo guarda ese nombre. Ordenado por <c>Version</c> (una igual o menor se ignora) e
-/// idempotente. Sin fila se ignora: la crea <c>TenantCreated</c> o el backfill, y el perfil vuelve a
-/// llegar al republicarlo.
+/// idempotente. Sin fila aún (llegó antes que <c>TenantCreated</c> o el backfill) se reintenta: el perfil se
+/// aplica cuando la fila exista.
 /// </summary>
 public static class TenantProfileChangedConsumer
 {
@@ -32,13 +33,7 @@ public static class TenantProfileChangedConsumer
         {
             var existing = await repository.FindAsync(evt.ProfileTenantId, ct);
             if (existing is null)
-            {
-                logger.LogInformation(
-                    "Tenant {TenantId} is not in the Postmaster directory yet; profile skipped.",
-                    evt.ProfileTenantId
-                );
-                return;
-            }
+                throw new DependencyNotReadyException("Tenant", $"profile v{evt.Version} of {evt.ProfileTenantId}");
 
             if (!existing.ApplyProfile(evt.Version, evt.DisplayName, DateTime.UtcNow))
             {

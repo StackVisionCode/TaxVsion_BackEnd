@@ -146,6 +146,12 @@ builder.Host.UseWolverine(options =>
 
     options.ApplyStandardFailurePolicies();
 
+    // PMS-07: los avisos de envío a Notification salen de SentMessage por la cola domain-events, en orden de commit.
+    // La cola solo avisa: el envío y su registro no pasan por aquí.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+    options.UseTaxVisionDurableLocalQueues();
+
     // PMS-01: el paso de envío va por una cola local durable; su sobre se confirma con la reserva y el
     // SentMessage, y sobrevive a un reinicio.
     options

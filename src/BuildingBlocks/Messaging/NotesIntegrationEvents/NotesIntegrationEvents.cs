@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.NotesIntegrationEvents;
 
 // ---------------------------------------------------------------------------
@@ -8,6 +10,7 @@ namespace BuildingBlocks.Messaging.NotesIntegrationEvents;
 // ---------------------------------------------------------------------------
 
 /// <summary><c>notes.note_created.v1</c> — publicado tras crear una nota.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.NotesIntegrationEvents.NoteCreatedIntegrationEvent")]
 public sealed record NoteCreatedIntegrationEvent : IntegrationEvent
 {
     public required Guid NoteId { get; init; }
@@ -19,6 +22,7 @@ public sealed record NoteCreatedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>notes.note_updated.v1</c> — publicado tras cambiar contenido/visibilidad/pin de una nota.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.NotesIntegrationEvents.NoteUpdatedIntegrationEvent")]
 public sealed record NoteUpdatedIntegrationEvent : IntegrationEvent
 {
     public required Guid NoteId { get; init; }
@@ -28,12 +32,14 @@ public sealed record NoteUpdatedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>notes.note_deleted.v1</c> — publicado tras el soft-delete de una nota.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.NotesIntegrationEvents.NoteDeletedIntegrationEvent")]
 public sealed record NoteDeletedIntegrationEvent : IntegrationEvent
 {
     public required Guid NoteId { get; init; }
 }
 
 /// <summary><c>notes.attachment_detached.v1</c> — publicado al desvincular un adjunto (el byte lo recoge la retención de CloudStorage, ADR-07).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.NotesIntegrationEvents.NoteAttachmentDetachedIntegrationEvent")]
 public sealed record NoteAttachmentDetachedIntegrationEvent : IntegrationEvent
 {
     public required Guid NoteId { get; init; }

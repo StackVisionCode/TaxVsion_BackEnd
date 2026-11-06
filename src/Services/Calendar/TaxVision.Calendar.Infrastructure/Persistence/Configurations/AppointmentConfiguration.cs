@@ -15,6 +15,8 @@ public sealed class AppointmentConfiguration : IEntityTypeConfiguration<Appointm
 {
     public void Configure(EntityTypeBuilder<Appointment> builder)
     {
+        builder.Ignore(a => a.DomainEvents);
+
         builder.ToTable("Appointments");
         builder.HasKey(a => a.Id);
         builder.Property(a => a.Id).ValueGeneratedNever();

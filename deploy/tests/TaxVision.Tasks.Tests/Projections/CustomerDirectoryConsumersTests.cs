@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Tasks.Application.Projections.CustomerEvents;
@@ -110,32 +111,88 @@ public sealed class CustomerDirectoryConsumersTests
         Assert.Equal("Acme", stored.DisplayName);
     }
 
-    /// <summary>
-    /// Consistencia eventual: el evento de status puede adelantarse al <c>Created</c>. No hay nada
-    /// que actualizar, y crear una fila desde acá inventaría un customer sin nombre — el backfill o
-    /// la reconciliación la traen después.
-    /// </summary>
+    // TSK-8: un cambio de estado que llega antes que Created se reintenta, no se descarta.
     [Fact]
-    public async Task CustomerDeactivated_is_a_no_op_when_the_entry_is_unknown()
+    public async Task CustomerDeactivated_ArrivesBeforeCreated_ThrowsDependencyNotReady()
     {
         var repository = new InMemoryCustomerDirectoryRepository();
         var uow = new RecordingUnitOfWork();
 
-        await CustomerDeactivatedConsumer.Handle(
-            new CustomerDeactivatedIntegrationEvent
-            {
-                TenantId = TenantId,
-                CustomerId = Guid.NewGuid(),
-                DeactivatedByUserId = Guid.NewGuid(),
-                DeactivatedAtUtc = T0,
-                OccurredOn = T0,
-            },
-            repository,
-            new RecordingBackfillService(),
-            uow,
-            new NoOpCorrelationContext(),
-            NullLogger<CustomerDirectoryEntry>.Instance,
-            CancellationToken.None
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            CustomerDeactivatedConsumer.Handle(
+                new CustomerDeactivatedIntegrationEvent
+                {
+                    TenantId = TenantId,
+                    CustomerId = Guid.NewGuid(),
+                    DeactivatedByUserId = Guid.NewGuid(),
+                    DeactivatedAtUtc = T0,
+                    OccurredOn = T0,
+                },
+                repository,
+                new RecordingBackfillService(),
+                uow,
+                new NoOpCorrelationContext(),
+                NullLogger<CustomerDirectoryEntry>.Instance,
+                CancellationToken.None
+            )
+        );
+
+        Assert.Empty(repository.Entries);
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task CustomerReactivated_ArrivesBeforeCreated_ThrowsDependencyNotReady()
+    {
+        var repository = new InMemoryCustomerDirectoryRepository();
+        var uow = new RecordingUnitOfWork();
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            CustomerReactivatedConsumer.Handle(
+                new CustomerReactivatedIntegrationEvent
+                {
+                    TenantId = TenantId,
+                    CustomerId = Guid.NewGuid(),
+                    ReactivatedByUserId = Guid.NewGuid(),
+                    ReactivatedAtUtc = T0,
+                    OccurredOn = T0,
+                },
+                repository,
+                new RecordingBackfillService(),
+                uow,
+                new NoOpCorrelationContext(),
+                NullLogger<CustomerDirectoryEntry>.Instance,
+                CancellationToken.None
+            )
+        );
+
+        Assert.Empty(repository.Entries);
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task CustomerActivated_ArrivesBeforeCreated_ThrowsDependencyNotReady()
+    {
+        var repository = new InMemoryCustomerDirectoryRepository();
+        var uow = new RecordingUnitOfWork();
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            CustomerActivatedConsumer.Handle(
+                new CustomerActivatedIntegrationEvent
+                {
+                    TenantId = TenantId,
+                    CustomerId = Guid.NewGuid(),
+                    ActivatedByUserId = Guid.NewGuid(),
+                    ActivatedAtUtc = T0,
+                    OccurredOn = T0,
+                },
+                repository,
+                new RecordingBackfillService(),
+                uow,
+                new NoOpCorrelationContext(),
+                NullLogger<CustomerDirectoryEntry>.Instance,
+                CancellationToken.None
+            )
         );
 
         Assert.Empty(repository.Entries);

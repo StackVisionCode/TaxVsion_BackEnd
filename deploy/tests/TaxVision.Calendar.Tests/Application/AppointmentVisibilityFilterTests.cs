@@ -134,6 +134,13 @@ public sealed class AppointmentVisibilityFilterTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
 
+        public Task<int> CountFutureByOrganizerAsync(
+            Guid tenantId,
+            Guid organizerUserId,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public void Add(Appointment appointment) { }
 
         public void Remove(Appointment appointment) { }

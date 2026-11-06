@@ -1,4 +1,5 @@
 ﻿using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using BuildingBlocks.Platform;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -30,88 +31,110 @@ public sealed class TenantDomainBackfillService(
 {
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
         var settings = platform.Current;
+        List<(Guid Id, string SubDomain)> tenantsWithoutPrimaryDomain;
+        await using (var scope = scopeFactory.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
 
-        await scope
-            .ServiceProvider.GetRequiredService<ITenantDomainRebaser>()
-            .RebaseAsync(settings.BaseDomain, settings.ApiHost, cancellationToken);
+            await scope
+                .ServiceProvider.GetRequiredService<ITenantDomainRebaser>()
+                .RebaseAsync(settings.BaseDomain, settings.ApiHost, cancellationToken);
 
-        // RBAC Fase 5 — este backfill recorre TODOS los tenants en una sola query correlacionada
-        // (Tenant no es ITenantOwned, no lo afecta el filtro; TenantDomain sí lo es — la subquery
-        // necesita IgnoreQueryFilters() explícito porque compara contra el TenantId de CADA fila
-        // de Tenants, no contra un tenant ambiente único).
-        var tenantsWithoutPrimaryDomain = await db
-            .Tenants.Where(tenant =>
-                tenant.Kind == TenantKind.Customer
-                && !db
-                    .TenantDomains.IgnoreQueryFilters()
-                    .Any(domain => domain.TenantId == tenant.Id && domain.IsPrimary)
+            // RBAC Fase 5 — este backfill recorre TODOS los tenants en una sola query correlacionada
+            // (Tenant no es ITenantOwned, no lo afecta el filtro; TenantDomain sí lo es — la subquery
+            // necesita IgnoreQueryFilters() explícito porque compara contra el TenantId de CADA fila
+            // de Tenants, no contra un tenant ambiente único).
+            tenantsWithoutPrimaryDomain = (
+                await db
+                    .Tenants.Where(tenant =>
+                        tenant.Kind == TenantKind.Customer
+                        && !db
+                            .TenantDomains.IgnoreQueryFilters()
+                            .Any(domain => domain.TenantId == tenant.Id && domain.IsPrimary)
+                    )
+                    .Select(tenant => new { tenant.Id, tenant.SubDomain })
+                    .ToListAsync(cancellationToken)
             )
-            .ToListAsync(cancellationToken);
+                .Select(tenant => (tenant.Id, tenant.SubDomain))
+                .ToList();
+        }
 
         if (tenantsWithoutPrimaryDomain.Count == 0)
             return;
 
-        var created = 0;
-        foreach (var tenant in tenantsWithoutPrimaryDomain)
+        // Una unidad por tenant: el dominio y su evento de dominio (auditoría + aviso) se confirman juntos.
+        var summary = await TransactionalJobUnit.RunEachAsync<(Guid Id, string SubDomain), AuthDbContext>(
+            scopeFactory,
+            tenantsWithoutPrimaryDomain,
+            (tenant, unit, token) => CreatePrimaryDomainAsync(tenant.Id, tenant.SubDomain, settings, unit, token),
+            logger,
+            cancellationToken
+        );
+
+        if (summary.Committed > 0)
         {
-            var slugResult = SubdomainSlug.Create(tenant.SubDomain);
-            if (slugResult.IsFailure)
-            {
-                logger.LogWarning(
-                    "Backfill: tenant {TenantId} subdomain {SubDomain} is not a valid TenantDomain slug ({Error}); "
-                        + "skipping. Requires manual remediation.",
-                    tenant.Id,
-                    tenant.SubDomain,
-                    slugResult.Error.Code
-                );
-                continue;
-            }
-
-            var host = settings.TenantHost(slugResult.Value.Value);
-            // RBAC Fase 5 — unicidad de host es GLOBAL (cruza tenants a propósito).
-            if (await db.TenantDomains.IgnoreQueryFilters().AnyAsync(domain => domain.Host == host, cancellationToken))
-            {
-                logger.LogWarning(
-                    "Backfill: host {Host} for tenant {TenantId} already claimed by another TenantDomain row; "
-                        + "skipping. Requires manual remediation.",
-                    host,
-                    tenant.Id
-                );
-                continue;
-            }
-
-            var domainResult = TenantDomain.CreateSubdomain(
-                tenant.Id,
-                slugResult.Value,
-                settings.BaseDomain,
-                createdByUserId: Guid.Empty,
-                DateTime.UtcNow
-            );
-            if (domainResult.IsFailure)
-            {
-                logger.LogWarning(
-                    "Backfill: failed to create primary TenantDomain for tenant {TenantId}: {Error}",
-                    tenant.Id,
-                    domainResult.Error.Code
-                );
-                continue;
-            }
-
-            await db.TenantDomains.AddAsync(domainResult.Value, cancellationToken);
-            created++;
-        }
-
-        if (created > 0)
-        {
-            await db.SaveChangesAsync(cancellationToken);
             logger.LogInformation(
                 "Backfill: created {Created} primary TenantDomain row(s) for pre-existing tenants ({Skipped} skipped).",
-                created,
-                tenantsWithoutPrimaryDomain.Count - created
+                summary.Committed,
+                tenantsWithoutPrimaryDomain.Count - summary.Committed
             );
         }
+    }
+
+    private async Task<bool> CreatePrimaryDomainAsync(
+        Guid tenantId,
+        string subDomain,
+        PlatformSettingsSnapshot settings,
+        JobUnitContext<AuthDbContext> unit,
+        CancellationToken ct
+    )
+    {
+        var slugResult = SubdomainSlug.Create(subDomain);
+        if (slugResult.IsFailure)
+        {
+            logger.LogWarning(
+                "Backfill: tenant {TenantId} subdomain {SubDomain} is not a valid TenantDomain slug ({Error}); "
+                    + "skipping. Requires manual remediation.",
+                tenantId,
+                subDomain,
+                slugResult.Error.Code
+            );
+            return false;
+        }
+
+        var db = unit.DbContext;
+        var host = settings.TenantHost(slugResult.Value.Value);
+        // RBAC Fase 5 — unicidad de host es GLOBAL (cruza tenants a propósito).
+        if (await db.TenantDomains.IgnoreQueryFilters().AnyAsync(domain => domain.Host == host, ct))
+        {
+            logger.LogWarning(
+                "Backfill: host {Host} for tenant {TenantId} already claimed by another TenantDomain row; "
+                    + "skipping. Requires manual remediation.",
+                host,
+                tenantId
+            );
+            return false;
+        }
+
+        var domainResult = TenantDomain.CreateSubdomain(
+            tenantId,
+            slugResult.Value,
+            settings.BaseDomain,
+            createdByUserId: Guid.Empty,
+            DateTime.UtcNow
+        );
+        if (domainResult.IsFailure)
+        {
+            logger.LogWarning(
+                "Backfill: failed to create primary TenantDomain for tenant {TenantId}: {Error}",
+                tenantId,
+                domainResult.Error.Code
+            );
+            return false;
+        }
+
+        await db.TenantDomains.AddAsync(domainResult.Value, ct);
+        return true;
     }
 }

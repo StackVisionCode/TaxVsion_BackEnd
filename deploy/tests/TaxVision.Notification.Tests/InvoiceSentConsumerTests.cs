@@ -86,6 +86,13 @@ public sealed class InvoiceSentConsumerTests
 
     private sealed class RecordingRenderClient : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
         public IReadOnlyDictionary<string, object?> LastVariables { get; private set; } =
             new Dictionary<string, object?>();
         public string? LastEventKey { get; private set; }

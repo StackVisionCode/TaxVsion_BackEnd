@@ -42,7 +42,7 @@ public static class DisableTenantDomainHandler
 
         // domain.Disable encola TenantDomainDisabled (domain event); la auditoría y el
         // TenantDomainDisabledIntegrationEvent salen de ahí, vía
-        // AuthDbContext.SaveChangesAsync — ver TenantDomainDisabledHandler (Fase A7).
+        // Wolverine al confirmar — ver TenantDomainDisabledHandler (Fase A7).
         var disableResult = domain.Disable(command.ActingUserId);
         if (disableResult.IsFailure)
             return disableResult;

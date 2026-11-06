@@ -2,6 +2,7 @@ using System.Reflection;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -45,8 +46,15 @@ public sealed class SystemRolePermissionsSyncServiceTests
     {
         var bus = new FakeMessageBus();
         var services = new ServiceCollection();
-        services.AddDbContext<AuthDbContext>(options => options.UseInMemoryDatabase(databaseName));
-        services.AddSingleton<Wolverine.IMessageBus>(bus);
+        services.AddDbContext<AuthDbContext>(options =>
+            options
+                .UseInMemoryDatabase(databaseName)
+                .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+        );
+        // Cada rol va en su unidad (TransactionalJobUnit): lo confirmado sale a bus.Published.
+        services.AddScoped(sp =>
+            RecordingAuthDbContextOutbox.Create(sp.GetRequiredService<AuthDbContext>(), bus.Published)
+        );
         services.AddSingleton<ITenantContext>(new NoTenantContext());
         // El resync avisa por titular (RolePermissionsFanOut): necesita los repositorios reales
         // sobre el mismo contexto en memoria. Sin titulares, el fan-out no publica nada.

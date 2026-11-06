@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 /// consume esto para mantener su proyección local de qué cuentas OAuth activas existen por tenant
 /// (D3 §4.3 — evita una llamada M2M a Connectors en cada intento de resolver el provider de envío).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsTenantEmailAccountConnectedIntegrationEvent")]
 public sealed record ConnectorsTenantEmailAccountConnectedIntegrationEvent : IntegrationEvent
 {
     public required Guid AccountId { get; init; }

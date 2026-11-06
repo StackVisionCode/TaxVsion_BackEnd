@@ -1,13 +1,12 @@
-using BuildingBlocks.Persistence;
-using Microsoft.EntityFrameworkCore;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.RegisterTenantPaymentWebhook;
-using TaxVision.PaymentClient.Domain.ValueObjects;
-using Wolverine;
+using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
+using TaxVision.PaymentClient.Infrastructure.Persistence;
 
 namespace TaxVision.PaymentClient.Infrastructure.Scheduling;
 
@@ -36,70 +35,83 @@ public sealed class PendingWebhookSetupSweepJob(
     protected override Task RunOnceAsync(IServiceProvider services, CancellationToken ct) =>
         SweepAsync(
             services.GetRequiredService<ITenantPaymentConfigRepository>(),
-            services.GetRequiredService<IUnitOfWork>(),
-            services.GetRequiredService<IMessageBus>(),
+            scopeFactory,
             options.Value,
             logger,
             DateTime.UtcNow,
             ct
         );
 
-    /// <summary>Una vuelta: marca, guarda y recién después encola. Público para probarlo con fakes.</summary>
+    /// <summary>Una vuelta: lee los pendientes y procesa cada uno en su unidad (BB-3), donde la marca y el
+    /// comando se confirman juntos. Público para probarlo con fakes.</summary>
     public static async Task<PendingWebhookSetupSweepSummary> SweepAsync(
         ITenantPaymentConfigRepository configs,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IServiceScopeFactory scopeFactory,
         PaymentWebhookOptions settings,
         ILogger logger,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
+        var requestedBeforeUtc = nowUtc - settings.StalePendingAfter;
         var stale = await configs.GetStalePendingWebhookSetupsAsync(
-            nowUtc - settings.StalePendingAfter,
+            requestedBeforeUtc,
             settings.PendingSweepBatchSize,
             ct
         );
         if (stale.Count == 0)
             return new PendingWebhookSetupSweepSummary(0, 0);
 
-        var requeue = new List<(Guid TenantId, PaymentProviderCode Provider)>();
-        var failed = 0;
-        foreach (var config in stale)
+        int requeued = 0,
+            failed = 0;
+        foreach (var (tenantId, provider) in stale.Select(config => (config.TenantId, config.ProviderCode)).ToList())
         {
-            if (!settings.IsAutoSetupEnabled)
-            {
-                if (config.FailAutomaticWebhookSetup(nowUtc).IsSuccess)
-                    failed++;
-            }
-            else if (config.RenewWebhookSetupRequest(nowUtc).IsSuccess)
-                requeue.Add((config.TenantId, config.ProviderCode));
-        }
+            var renewed = false;
+            var result = await TransactionalJobUnit.RunAsync<PaymentClientDbContext>(
+                scopeFactory,
+                async (unit, token) =>
+                {
+                    // Se relee en la unidad: otro escritor pudo resolverlo o renovarlo después de la lectura.
+                    var config = await unit
+                        .Services.GetRequiredService<ITenantPaymentConfigRepository>()
+                        .GetByTenantAndProviderAsync(tenantId, provider, token);
+                    if (config is null || !IsStale(config, requestedBeforeUtc))
+                        return false;
 
-        try
-        {
-            await unitOfWork.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateConcurrencyException ex)
-        {
-            // Otro escritor tocó alguna fila: sin marca guardada no se encola; la próxima vuelta las recoge.
-            logger.LogWarning(ex, "Pending webhook setup sweep could not save; retrying next round.");
-            return new PendingWebhookSetupSweepSummary(0, 0);
-        }
+                    if (!settings.IsAutoSetupEnabled)
+                        return config.FailAutomaticWebhookSetup(nowUtc).IsSuccess;
 
-        foreach (var (tenantId, provider) in requeue)
-        {
-            bus.TenantId = tenantId.ToString();
-            await bus.PublishAsync(new RegisterTenantPaymentWebhookCommand(tenantId, provider));
+                    if (config.RenewWebhookSetupRequest(nowUtc).IsFailure)
+                        return false;
+
+                    unit.Outbox.TenantId = tenantId.ToString();
+                    await unit.PublishAsync(new RegisterTenantPaymentWebhookCommand(tenantId, provider));
+                    renewed = true;
+                    return true;
+                },
+                logger,
+                ct
+            );
+
+            if (result.Outcome != JobUnitOutcome.Committed)
+                continue;
+            if (renewed)
+                requeued++;
+            else
+                failed++;
         }
 
         logger.LogInformation(
             "Pending webhook setup sweep re-queued {Requeued} and failed {Failed} stale setup(s).",
-            requeue.Count,
+            requeued,
             failed
         );
-        return new PendingWebhookSetupSweepSummary(requeue.Count, failed);
+        return new PendingWebhookSetupSweepSummary(requeued, failed);
     }
+
+    private static bool IsStale(TenantPaymentConfig config, DateTime requestedBeforeUtc) =>
+        config.WebhookSetup == WebhookSetupStatus.Pending
+        && (config.WebhookSetupRequestedAtUtc is null || config.WebhookSetupRequestedAtUtc < requestedBeforeUtc);
 }
 
 public sealed record PendingWebhookSetupSweepSummary(int Requeued, int Failed);

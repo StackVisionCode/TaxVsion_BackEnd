@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -8,6 +10,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// heredado de <see cref="IntegrationEvent"/>) alcanza para ubicar el request — un tenant
 /// tiene una sola suscripción base.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SubscriptionPlanChangePaymentSucceededIntegrationEvent")]
 public sealed record SubscriptionPlanChangePaymentSucceededIntegrationEvent : IntegrationEvent
 {
     public required Guid PlanChangeRequestId { get; init; }

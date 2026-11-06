@@ -241,6 +241,8 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, SignatureDbContext>();
     options.Policies.AutoApplyTransactions();
+    // SIG-BB2: los comandos a handlers propios (envío automático, copias del portal) sobreviven a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 
     // Consume TenantCreated (inicializa settings), Customer* (proyección de clientes)
     // y File* de CloudStorage (proyección de archivos + promoción Draft → Ready).
@@ -301,21 +303,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignatureRequestFromFormCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestFromFormFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
-    // El sellado puede adelantarse al scan de ClamAV de las imágenes de firma (el firmante las sube
-    // segundos antes de completar). SignatureImageNotReadyException es transitoria: se reintenta con
-    // cooldowns más largos que los estándar (hasta ~2 min) para dar tiempo a que llegue FileAvailable
-    // y sellar con la firma real, en vez de degradar al sello tipográfico. Debe registrarse ANTES de
-    // ApplyStandardFailurePolicies: gana la primera regla que matchea y la estándar captura Exception.
-    options
-        .Policies.OnException<SignatureImageNotReadyException>()
-        .RetryWithCooldown(
-            TimeSpan.FromSeconds(2),
-            TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(20),
-            TimeSpan.FromSeconds(30),
-            TimeSpan.FromSeconds(60)
-        );
+    // SIG-BB7: SignatureImageNotReadyException y SealingLockBusyException heredan de
+    // DependencyNotReadyException y usan la regla de BB-7 de ApplyStandardFailurePolicies (reintento programado).
+    // Las dos de abajo conservan su arreglo porque el consumidor decide en el último intento.
 
     // Copia de un formulario aún en vuelo: el consumer cuenta los intentos con este mismo arreglo y, en el
     // último, publica SignatureRequestFromFormFailed en vez de dejar el mensaje en la cola de errores.
@@ -326,9 +316,6 @@ builder.Host.UseWolverine(options =>
     // Sellado con CloudStorage o MinIO caídos: reintentos largos programados (no retienen el consumidor).
     // En el último intento el consumidor ya no lanza: avisa SealingFailed y marca la solicitud.
     options.Policies.OnException<SealingTransientException>().ScheduleRetry(SealingTransientException.Cooldowns);
-
-    // Candado de sellado en manos de otro nodo: se reintenta y, al agotarse, va a la cola de errores.
-    options.Policies.OnException<SealingLockBusyException>().ScheduleRetry(SealingLockBusyException.Cooldowns);
 
     options.ApplyStandardFailurePolicies();
 });

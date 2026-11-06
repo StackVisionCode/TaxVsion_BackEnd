@@ -20,8 +20,6 @@ public sealed class ScheduleAppointmentHandlerTests
         var appointments = new InMemoryAppointments();
         var unitOfWork = new CountingUnitOfWork();
         var bus = new FakeMessageBus();
-        var publishedBeforeSave = 0;
-        bus.OnPublish = () => publishedBeforeSave += unitOfWork.Saves == 0 ? 1 : 0;
 
         var result = await Schedule(Command(start, reminderLeadMinutes: 30), appointments, unitOfWork, bus);
 
@@ -34,7 +32,6 @@ public sealed class ScheduleAppointmentHandlerTests
         Assert.Equal(AppointmentReminderRequests.RequestKey(target, 0), request.RequestKey);
         Assert.Equal(30, request.LeadMinutes);
         Assert.Equal(_organizer, request.UserId);
-        Assert.Equal(0, publishedBeforeSave);
     }
 
     [Fact]
@@ -93,7 +90,7 @@ public sealed class ScheduleAppointmentHandlerTests
             reminderLeadMinutes
         );
 
-    private Task<BuildingBlocks.Results.Result<AppointmentWithWarnings>> Schedule(
+    private async Task<BuildingBlocks.Results.Result<AppointmentWithWarnings>> Schedule(
         ScheduleAppointmentCommand command,
         InMemoryAppointments appointments,
         CountingUnitOfWork unitOfWork,
@@ -101,16 +98,16 @@ public sealed class ScheduleAppointmentHandlerTests
     )
     {
         var type = AppointmentType.Create(_tenant, "Review", TimeSpan.FromHours(1), "#336699", DateTime.UtcNow).Value;
-        return ScheduleAppointmentHandler.Handle(
+        var result = await ScheduleAppointmentHandler.Handle(
             command,
             appointments,
             new SingleTypeRepository(type),
             new EmptyAvailability(),
             unitOfWork,
-            bus,
-            new FixedCorrelation(),
             new NullCalendarMetrics(),
             CancellationToken.None
         );
+        await CalendarDomainEventReplay.DispatchIntoAsync(bus, appointments, appointments.All);
+        return result;
     }
 }

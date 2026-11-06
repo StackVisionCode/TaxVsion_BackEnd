@@ -1,4 +1,5 @@
 using System.Reflection;
+using BuildingBlocks.Domain;
 using TaxVision.Tasks.Infrastructure.Persistence;
 using Wolverine.EntityFrameworkCore;
 
@@ -6,13 +7,16 @@ namespace TaxVision.Tasks.Tests;
 
 /// <summary>
 /// Outbox de EF en memoria con la misma promesa que el de Wolverine: lo publicado queda pendiente y solo
-/// sale si el <c>SaveChanges</c> del contexto confirma. Lo que no usa el código bajo prueba, lanza.
+/// sale si el <c>SaveChanges</c> del contexto confirma. Como el de Wolverine, saca los eventos de dominio de
+/// los agregados rastreados (<see cref="DomainEvents"/>) y confirma la transacción abierta, si hay una. Lo que
+/// no usa el código bajo prueba, lanza.
 /// </summary>
 public class RecordingDbContextOutbox : DispatchProxy
 {
     internal TasksDbContext? Context { get; private set; }
     internal List<object> Pending { get; } = [];
     internal List<object> Flushed { get; } = [];
+    internal List<IDomainEvent> DomainEvents { get; } = [];
     internal int Saves { get; private set; }
 
     internal static (IDbContextOutbox<TasksDbContext> Outbox, RecordingDbContextOutbox Recorder) Create(
@@ -43,7 +47,13 @@ public class RecordingDbContextOutbox : DispatchProxy
     private async Task SaveAndFlushAsync(CancellationToken ct)
     {
         if (Context is not null)
+        {
+            var raised = Context.ChangeTracker.Entries<AggregateRoot>().SelectMany(e => e.Entity.DomainEvents).ToList();
             await Context.SaveChangesAsync(ct);
+            if (Context.Database.CurrentTransaction is { } transaction)
+                await transaction.CommitAsync(ct);
+            DomainEvents.AddRange(raised);
+        }
         Saves++;
         Flushed.AddRange(Pending);
         Pending.Clear();

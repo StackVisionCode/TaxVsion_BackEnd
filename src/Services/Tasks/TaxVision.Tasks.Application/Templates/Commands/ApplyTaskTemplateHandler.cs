@@ -42,8 +42,6 @@ public static class ApplyTaskTemplateHandler
         ITaskSeriesRepository seriesRepository,
         ITaskSeriesMaterializer materializer,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -61,10 +59,7 @@ public static class ApplyTaskTemplateHandler
         if (applied.IsFailure)
             return Result.Failure<TemplateApplicationResponse>(applied.Error);
 
-        // D-TSK-1 abierta: sin TaskAssigned por ahora (comportamiento actual), solo alta y recordatorio.
-        foreach (var task in applied.Value.Tasks)
-            await TaskBirthAnnouncements.PublishAsync(task, bus, correlation, announceAssignment: false);
-
+        // Cada tarea creada se anuncia por su evento de alta (TaskCreatedDomainEventHandler).
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(applied.Value.Response);

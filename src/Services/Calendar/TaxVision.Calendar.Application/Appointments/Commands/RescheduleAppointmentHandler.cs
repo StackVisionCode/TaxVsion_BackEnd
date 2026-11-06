@@ -1,10 +1,8 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Observability;
 using TaxVision.Calendar.Domain.Appointments;
-using Wolverine;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
 
@@ -38,8 +36,6 @@ public static class RescheduleAppointmentHandler
         RescheduleAppointmentCommand command,
         IAppointmentRepository appointments,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ICalendarMetrics metrics,
         CancellationToken ct
     )
@@ -49,15 +45,11 @@ public static class RescheduleAppointmentHandler
             return Result.Failure<AppointmentResponse>(found.Error);
 
         var appointment = found.Value;
-        var outgoing = new List<object>();
-        var applied = RescheduleApplier.Apply(appointment, command, appointments, correlation.CorrelationId, outgoing);
+        var applied = RescheduleApplier.Apply(appointment, command, appointments);
         if (applied.IsFailure)
             return Result.Failure<AppointmentResponse>(applied.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-
-        foreach (var message in outgoing)
-            await bus.PublishAsync(message);
 
         metrics.RecordRescheduled(appointment.IsRecurring);
 

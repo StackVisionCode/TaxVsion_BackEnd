@@ -64,6 +64,8 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
         );
 
         Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+        // PAY-BB1: la cancelación la pidió Subscription; no se le devuelve ningún aviso de resultado.
+        Assert.Empty(await SaaSPaymentEventReplay.DispatchAsync(payment));
         var command = Assert.IsType<ExpireProviderCheckoutSessionCommand>(Assert.Single(bus.Published));
         Assert.Equal(payment.Id, command.SaaSPaymentId);
         Assert.Equal(payment.ProviderCode, command.ProviderCode);

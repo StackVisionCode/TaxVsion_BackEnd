@@ -1,18 +1,24 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.PaymentApp.Tests.Integration;
 
 /// <summary>
-/// Host real de PaymentApp.Api (SQL Server + Redis + RabbitMQ locales, sin mocks) para los tests de
+/// Host real de PaymentApp.Api (SQL Server + Redis locales, sin mocks) para los tests de
 /// integración de Fase 4.13 del plan de rate limiting — mismo patrón que
 /// <c>TaxVision.Auth.Tests.Integration.AuthApiFactory</c> (Fase 4.12). La única sustitución
 /// respecto al Program.cs real es la clave de firma JWT: appsettings.Development.json apunta a la
 /// clave RS256 real de dev-keys/ — en vez de replicarla, se sobreescribe la config con un secreto
 /// HS256 generado en memoria SOLO para este proceso de test, nunca leído de ningún user-secret real
-/// ni escrito a disco.
+/// ni escrito a disco. Sin Rabbit y sin jobs: no compite con la flota por la cola payment-app-events ni
+/// cobra pagos de la base local (dunning, conciliación). La persistencia de mensajes se queda: sin ella,
+/// las transacciones EF de los handlers fallan.
 /// </summary>
 public sealed class PaymentAppApiFactory : WebApplicationFactory<Program>
 {
@@ -34,5 +40,14 @@ public sealed class PaymentAppApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            foreach (var hosted in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
+            {
+                if (hosted.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal) == true)
+                    services.Remove(hosted);
+            }
+        });
     }
 }

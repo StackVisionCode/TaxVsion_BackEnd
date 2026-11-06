@@ -116,7 +116,7 @@ public class ResyncMailboxHandlerTests
     public async Task Resync_AccountInError_DoesNothingAndPublishesNoRefreshFailed()
     {
         var account = CreateActiveAccount();
-        account.MarkError(Now);
+        account.MarkError(AccountErrors.RefreshRejected, Now);
         var client = new FakeEmailProviderClient(ProviderCode.Gmail);
         var bus = new FakeMessageBus();
 

@@ -14,7 +14,6 @@ public sealed class WalletTopUpResultConsumerTests
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly FakeWalletRepository _wallets = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
-    private readonly TestMessageContext _bus = new();
 
     private WalletTopUpPaymentSucceededIntegrationEvent Succeeded(Guid topUpId, long amountCents, string currency) =>
         new()
@@ -35,7 +34,6 @@ public sealed class WalletTopUpResultConsumerTests
             evt,
             _wallets,
             _unitOfWork,
-            _bus,
             new FakeCorrelationContext(),
             NullLogger<WalletTopUp>.Instance,
             CancellationToken.None
@@ -55,11 +53,8 @@ public sealed class WalletTopUpResultConsumerTests
         Assert.Empty(_wallets.FundingCredits);
         Assert.Equal(WalletTopUpStatus.NeedsReview, topUp.Status);
         Assert.Equal(1, _unitOfWork.SaveCount);
-        // Published guarda Envelope: se desenvuelve para que la aserción pueda fallar.
-        Assert.DoesNotContain(
-            _bus.Published.OfType<Envelope>().Select(e => e.Message),
-            m => m is WalletBalanceChangedIntegrationEvent
-        );
+        // Sin acreditar no cambia el saldo: ningún aviso pendiente.
+        Assert.Empty(wallet.DomainEvents);
     }
 
     [Fact]

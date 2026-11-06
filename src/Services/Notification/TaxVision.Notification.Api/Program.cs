@@ -222,6 +222,7 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, NotificationDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionDurableLocalQueues();
 
     // Eventos salientes del módulo email (entrega asíncrona propia + notificación a otros servicios).
     options.PublishMessage<EmailSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");

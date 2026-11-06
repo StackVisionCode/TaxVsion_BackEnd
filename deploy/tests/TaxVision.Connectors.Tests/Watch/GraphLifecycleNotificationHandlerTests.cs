@@ -80,7 +80,7 @@ public sealed class GraphLifecycleNotificationHandlerTests
     {
         var fixture = new Fixture();
         if (status == TenantEmailAccountStatus.Error)
-            fixture.Account.MarkError(Now);
+            fixture.Account.MarkError(AccountErrors.RefreshRejected, Now);
         else
             fixture.Account.Disconnect(Now);
 

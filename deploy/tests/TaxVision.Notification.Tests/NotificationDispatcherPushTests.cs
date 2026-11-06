@@ -398,6 +398,8 @@ public sealed class NotificationDispatcherPushTests
 
     private sealed class CountingDispatchMetrics : INotificationDispatchMetrics
     {
+        public void RecordClientFormPushFailure(string code) { }
+
         public int Sent { get; private set; }
         public int Failed { get; private set; }
         public int NoRecipient { get; private set; }
@@ -504,6 +506,9 @@ public sealed class NotificationDispatcherPushTests
 
     private sealed class FakePushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         private readonly Dictionary<Guid, PushDeviceToken> _devices = [];
         public List<Guid> RevokedIds { get; } = [];
 

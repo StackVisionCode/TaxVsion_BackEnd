@@ -32,5 +32,5 @@ public interface INotificationDispatchMetrics
     /// de surface para entregar.</summary>
     void RecordNoRecipient(string kind, string channel);
 
-    void RecordClientFormPushFailure(string code) { }
+    void RecordClientFormPushFailure(string code);
 }

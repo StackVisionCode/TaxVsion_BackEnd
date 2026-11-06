@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -10,6 +12,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// <see cref="SubscriptionId"/> null → Subscription no cancela nada. Los 3 consumers son
 /// no-ops idempotentes si el campo que les toca es null o el recurso ya está en el estado terminal.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.OnboardingCancelRequestedIntegrationEvent")]
 public sealed record OnboardingCancelRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }

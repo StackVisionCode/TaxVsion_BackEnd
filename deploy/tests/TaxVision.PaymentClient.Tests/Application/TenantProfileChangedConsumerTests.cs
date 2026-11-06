@@ -1,8 +1,8 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
-using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Tenants.IntegrationEvents;
 using TaxVision.PaymentClient.Domain.Tenants;
@@ -59,12 +59,15 @@ public sealed class TenantProfileChangedConsumerTests
     }
 
     [Fact]
-    public async Task An_unknown_tenant_is_a_noop()
+    public async Task Handle_TenantRowMissing_ThrowsDependencyNotReady()
     {
         var unitOfWork = new CountingUnitOfWork();
 
-        await HandleAsync(Event(Guid.NewGuid(), 1, "Acme"), new SingleTenantRegistry(null), unitOfWork);
+        var error = await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            HandleAsync(Event(Guid.NewGuid(), 1, "Acme"), new SingleTenantRegistry(null), unitOfWork)
+        );
 
+        Assert.Equal("Tenant", error.Dependency);
         Assert.Equal(0, unitOfWork.SaveCalls);
     }
 
@@ -78,7 +81,6 @@ public sealed class TenantProfileChangedConsumerTests
             tenants,
             unitOfWork,
             new NoOpCorrelationContext(),
-            NullLogger<Tenant>.Instance,
             CancellationToken.None
         );
 

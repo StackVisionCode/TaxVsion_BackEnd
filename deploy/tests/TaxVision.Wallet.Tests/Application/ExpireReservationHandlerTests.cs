@@ -19,11 +19,11 @@ public sealed class ExpireReservationHandlerTests
         var wallets = new FakeWalletRepository();
         var reservations = new FakeReservationRepository();
         var unitOfWork = new FakeUnitOfWork();
-        var bus = new TestMessageContext();
         var wallet = WalletAggregate.Create(tenantId).Value;
         wallet.Credit(10_000_000, "topup:seed");
         wallet.Reserve(500_000, "reserve:seed");
         wallets.Wallets.Add(wallet);
+        wallet.ClearDomainEvents();
         var reservation = ReservationBuilder.Open(tenantId, "campaign-run", referenceId, 500_000, 5);
         reservations.Reservations.Add(reservation);
 
@@ -32,8 +32,6 @@ public sealed class ExpireReservationHandlerTests
             reservations,
             wallets,
             unitOfWork,
-            bus,
-            new FakeCorrelationContext(),
             NullLogger<WalletReservation>.Instance,
             CancellationToken.None
         );
@@ -47,10 +45,8 @@ public sealed class ExpireReservationHandlerTests
         Assert.Equal($"wallet-release:campaign-run:{referenceId:N}", entry.OperationKey);
         Assert.Equal(ReservationStatus.Expired, reservation.Status);
         Assert.Equal(1, unitOfWork.SaveCount);
-        // TestMessageContext guarda sobres, no mensajes.
-        var published = Assert.Single(
-            bus.Published.OfType<Envelope>().Select(e => e.Message).OfType<WalletBalanceChangedIntegrationEvent>()
-        );
-        Assert.Equal("expire", published.Reason);
+        // El aviso sale del evento de dominio del monedero (BB-1).
+        var published = Assert.Single(DomainEventReplay.Dispatch([wallet]).OfType<WalletBalanceChangedIntegrationEvent>());
+        Assert.Equal("release", published.Reason);
     }
 }

@@ -1,5 +1,4 @@
 using TaxVision.Reminder.Domain.Reminders;
-using TaxVision.Reminder.Domain.Reminders.Events;
 using TaxVision.Reminder.Domain.ValueObjects;
 
 namespace TaxVision.Reminder.Tests.Domain;
@@ -24,13 +23,12 @@ public sealed class ReminderTests
     }
 
     [Fact]
-    public void Create_NaceScheduledYEmiteElEventoQueAgendaEnQuartz()
+    public void Create_NaceScheduled()
     {
         var reminder = Build().Value;
 
         Assert.Equal(ReminderStatus.Scheduled, reminder.Status);
         Assert.Equal(TenantId, reminder.TenantId);
-        Assert.Single(reminder.DomainEvents.OfType<ReminderScheduledDomainEvent>());
     }
 
     [Fact]
@@ -45,7 +43,6 @@ public sealed class ReminderTests
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
-        Assert.Single(reminder.DomainEvents.OfType<ReminderFiredDomainEvent>());
     }
 
     [Fact]
@@ -109,7 +106,6 @@ public sealed class ReminderTests
         Assert.True(result.IsSuccess);
         Assert.Equal(originalFireAt, reminder.Schedule.FireAtUtc);
         Assert.Equal(ReminderStatus.Scheduled, reminder.Status);
-        Assert.Empty(reminder.DomainEvents.OfType<ReminderRescheduledDomainEvent>());
     }
 
     [Fact]
@@ -124,11 +120,10 @@ public sealed class ReminderTests
         Assert.True(result.IsSuccess);
         Assert.Equal(ReminderStatus.Missed, reminder.Status);
         Assert.Equal(NowUtc, reminder.ResolvedAtUtc);
-        Assert.Single(reminder.DomainEvents.OfType<ReminderMissedDomainEvent>());
     }
 
     [Fact]
-    public void RescheduleToNewAnchor_HaciaAdelante_ReagendaYEmiteRescheduled()
+    public void RescheduleToNewAnchor_HaciaAdelante_Reagenda()
     {
         var reminder = Build().Value;
 
@@ -137,7 +132,6 @@ public sealed class ReminderTests
         Assert.True(result.IsSuccess);
         Assert.Equal(ReminderStatus.Scheduled, reminder.Status);
         Assert.Equal(NowUtc.AddDays(5).AddMinutes(-60), reminder.Schedule.FireAtUtc);
-        Assert.Single(reminder.DomainEvents.OfType<ReminderRescheduledDomainEvent>());
     }
 
     [Fact]

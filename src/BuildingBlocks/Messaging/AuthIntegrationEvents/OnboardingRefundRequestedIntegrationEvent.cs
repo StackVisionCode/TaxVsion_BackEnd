@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -9,6 +11,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// directo por Id y llama <c>IPaymentProvider.RefundAsync</c> + <c>SaaSPayment.RefundFull</c>, mismo
 /// patrón que <c>RefundSaaSPaymentHandler</c> (admin refund manual ya existente).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.OnboardingRefundRequestedIntegrationEvent")]
 public sealed record OnboardingRefundRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }

@@ -34,6 +34,8 @@ public interface ICampaignRunRepository
         CancellationToken ct = default
     );
 
+    Task<bool> ExistsAsync(Guid tenantId, Guid runId, CancellationToken ct = default);
+
     /// <summary>Agendado que disparó el run, sin cargar sus unidades. Null si fue manual o no existe.</summary>
     Task<Guid?> GetScheduleIdAsync(Guid tenantId, Guid runId, CancellationToken ct = default);
 }

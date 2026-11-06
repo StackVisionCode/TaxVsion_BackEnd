@@ -151,6 +151,14 @@ public sealed class GmailApiClient(
     private static long ToUnixSeconds(DateTime utc) =>
         new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeSeconds();
 
+    // Sin lote nativo: uno por uno.
+    public Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
+        Guid accountId,
+        Guid tenantId,
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) => this.GetMessagesOneByOneAsync(accountId, tenantId, providerMessageIds, ct);
+
     public async Task<RawMessage> GetMessageAsync(
         Guid accountId,
         Guid tenantId,

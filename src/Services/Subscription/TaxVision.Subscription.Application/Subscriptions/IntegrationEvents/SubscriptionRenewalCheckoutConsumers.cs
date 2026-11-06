@@ -75,17 +75,6 @@ public static class SubscriptionRenewalCheckoutPaidConsumer
             await unitOfWork.SaveChangesAsync(ct);
 
             bus.TenantId = evt.TenantId.ToString();
-            if (outcome.StatusChanged)
-            {
-                await bus.PublishStatusChangedAsync(
-                    subscription,
-                    outcome.PreviousStatus,
-                    SubscriptionChangeReason.SelfServiceRenewed,
-                    intent.RequestedByUserId,
-                    correlationId: correlationId
-                );
-            }
-
             await bus.PublishRenewalChargesSupersededAsync(evt.TenantId, outcome.SupersededChargeKeys, correlationId);
             await bus.RecalculateEntitlementsSafelyAsync(evt.TenantId, logger, ct);
             metrics.RecordSelfServiceRenewal("succeeded");

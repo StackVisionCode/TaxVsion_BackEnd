@@ -1,6 +1,5 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Resilience;
-using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -8,10 +7,8 @@ using Polly.CircuitBreaker;
 using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.OAuth;
-using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
-using Wolverine;
 
 namespace TaxVision.Connectors.Infrastructure.OAuth;
 
@@ -22,15 +19,13 @@ namespace TaxVision.Connectors.Infrastructure.OAuth;
 /// correlation id — este método no pushea uno propio, solo lo lee para el evento de falla.
 /// </summary>
 public sealed class OAuthTokenManager(
-    ITenantEmailAccountRepository accountRepository,
     IOAuthConnectionRepository connectionRepository,
-    IProviderWatchSubscriptionRepository subscriptionRepository,
     IOAuthProviderClientFactory providerClientFactory,
     HttpResiliencePipelineRegistry circuitBreakers,
     IEncryptedSecretProtector protector,
     IDistributedLock distributedLock,
     IUnitOfWork unitOfWork,
-    IMessageBus bus,
+    IMailboxFailureUnit failureUnit,
     ICorrelationContext correlation,
     ILogger<OAuthTokenManager> logger
 ) : IOAuthTokenManager
@@ -163,7 +158,7 @@ public sealed class OAuthTokenManager(
         if (rejection is not null)
         {
             var error = new Error(OAuthTokenErrorCodes.RefreshFailed, rejection.Message);
-            await MarkAccountErrorAndPublishAsync(accountId, connection, error, ct);
+            await MarkAccountErrorAsync(accountId, connection, error, ct);
             return Result.Failure<string>(error);
         }
 
@@ -181,12 +176,7 @@ public sealed class OAuthTokenManager(
         return Result.Success(granted.AccessToken);
     }
 
-    private async Task MarkAccountErrorAndPublishAsync(
-        Guid accountId,
-        OAuthConnection connection,
-        Error error,
-        CancellationToken ct
-    )
+    private Task MarkAccountErrorAsync(Guid accountId, OAuthConnection connection, Error error, CancellationToken ct)
     {
         logger.LogWarning(
             "OAuth refresh failed for account {AccountId}: {ErrorCode} {Message}",
@@ -195,34 +185,32 @@ public sealed class OAuthTokenManager(
             error.Message
         );
 
-        var accountResult = await accountRepository.GetByIdAsync(accountId, ct);
-        if (accountResult.IsSuccess)
-        {
-            // Se avisa solo al pasar a Error. Si ya estaba en Error (o la desconectaron), el usuario
-            // ya fue avisado: publicar en cada intento creaba una notificación por intento.
-            if (accountResult.Value.Status is TenantEmailAccountStatus.Error or TenantEmailAccountStatus.Disconnected)
-                return;
-
-            accountResult.Value.MarkError(DateTime.UtcNow);
-            await StopWatchRenewalAsync(accountId, ct);
-            await unitOfWork.SaveChangesAsync(ct);
-        }
-
-        await bus.PublishAsync(
-            new ConnectorsOAuthRefreshFailedIntegrationEvent
+        var cause = new TenantEmailAccountErrorCause(
+            TenantEmailAccountErrorSource.OAuthRefresh,
+            error.Code,
+            error.Message,
+            correlation.CorrelationId,
+            ConnectionId: connection.Id
+        );
+        return failureUnit.RunAsync(
+            async (stores, token) =>
             {
-                TenantId = accountResult.IsSuccess ? accountResult.Value.TenantId : Guid.Empty,
-                CorrelationId = correlation.CorrelationId,
-                AccountId = accountId,
-                ConnectionId = connection.Id,
-                ProviderCode = connection.ProviderCode.ToString(),
-                Reason = error.Message,
-                ErrorCode = error.Code,
-                FailedAtUtc = DateTime.UtcNow,
-                CreatedByUserId = accountResult.IsSuccess ? accountResult.Value.CreatedByUserId : Guid.Empty,
-                IsOfficeMailbox = accountResult.IsSuccess ? accountResult.Value.IsOffice : null,
-                MailboxOwnerUserId = accountResult.IsSuccess ? accountResult.Value.OwnerUserId : null,
-            }
+                var account = await stores.Accounts.GetByIdAsync(accountId, token);
+                if (account.IsFailure)
+                {
+                    logger.LogError("OAuth refresh failed for unknown account {AccountId}.", accountId);
+                    return false;
+                }
+
+                // Se avisa solo al pasar a Error. Si ya estaba en Error (o la desconectaron), el usuario
+                // ya fue avisado: publicar en cada intento creaba una notificación por intento.
+                if (account.Value.MarkError(cause, DateTime.UtcNow).IsFailure)
+                    return false;
+
+                await StopWatchRenewalAsync(stores, accountId, token);
+                return true;
+            },
+            ct
         );
     }
 
@@ -231,9 +219,9 @@ public sealed class OAuthTokenManager(
     /// las renovaciones (WatchRenewalJob ignora Failed), así que Google deja de mandar pushes cuando
     /// el watch vence. Reconectar la cuenta lo reactiva (WatchActivationService → Renew).
     /// </summary>
-    private async Task StopWatchRenewalAsync(Guid accountId, CancellationToken ct)
+    private static async Task StopWatchRenewalAsync(MailboxFailureStores stores, Guid accountId, CancellationToken ct)
     {
-        var subscriptionResult = await subscriptionRepository.GetByAccountIdAsync(accountId, ct);
+        var subscriptionResult = await stores.Subscriptions.GetByAccountIdAsync(accountId, ct);
         if (subscriptionResult.IsSuccess)
             subscriptionResult.Value.MarkFailed();
     }

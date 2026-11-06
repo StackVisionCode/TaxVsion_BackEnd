@@ -116,7 +116,8 @@ public sealed class RecordManualPaymentHandlerTests
         Assert.True((await RecordAsync(invoice, null, bus: bus)).IsSuccess);
 
         Assert.Empty(bus.Published.OfType<EnsureInvoicePaymentLinkCommand>());
-        Assert.Single(bus.Published.OfType<InvoicePaidIntegrationEvent>());
+        Assert.Single(DomainEventReplay.Dispatch([invoice]).OfType<InvoicePaidIntegrationEvent>());
+        Assert.Empty(bus.Published.OfType<InvoicePaidIntegrationEvent>());
     }
 
     private static Invoice IssuedInvoice(long totalCents)
@@ -157,7 +158,6 @@ public sealed class RecordManualPaymentHandlerTests
             Options.Create(new BillingVisibilityOptions()),
             new CountingUnitOfWork(),
             bus ?? new FakeMessageBus(),
-            new NoopCorrelationContext(),
             new FixedClock(Now),
             CancellationToken.None
         );

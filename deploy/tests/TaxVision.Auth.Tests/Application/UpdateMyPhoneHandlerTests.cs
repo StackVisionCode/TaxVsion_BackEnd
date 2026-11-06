@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Credentials.Commands;
+using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Users;
 
@@ -93,6 +94,41 @@ public sealed class UpdateMyPhoneHandlerTests
 
     private sealed class SingleUserRepository(User? user) : IUserRepository
     {
+        public Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<IReadOnlyList<User>> GetActiveByRoleAsync(
+            Guid tenantId,
+            Guid roleId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<TenantOwnerReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<CustomerPortalAccountReconciliationResponse>> ListPortalAccountsForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<StaffUserReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<UserDirectoryReconciliationResponse>> ListUsersForDirectoryReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<UserDirectoryReconciliationResponse>([], page, size, 0));
+
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(user);
 
         public Task<User?> GetByEmailAsync(

@@ -600,6 +600,15 @@ public sealed class EventBasedEmailDispatchGatewayTests
 
     private sealed class RecordingNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public List<NotificationLog> Logs { get; } = new();
 
         public Task AddAsync(NotificationLog log, CancellationToken ct = default)

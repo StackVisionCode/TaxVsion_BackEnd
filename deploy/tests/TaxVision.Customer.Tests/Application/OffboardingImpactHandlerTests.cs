@@ -86,6 +86,9 @@ public sealed class OffboardingImpactHandlerTests
 
         public Task<CustomerEntity?> GetByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
 
+        public Task<CustomerEntity?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<CustomerEntity>> GetByIdsAsync(
             Guid t,
             IReadOnlyCollection<Guid> ids,
@@ -115,5 +118,60 @@ public sealed class OffboardingImpactHandlerTests
         ) => throw new NotSupportedException();
 
         public Task AddAsync(CustomerEntity customer, CancellationToken ct) => throw new NotSupportedException();
+
+        public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeCustomerId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindCustomerIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeCustomerId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeRelationId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindRelationIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeRelationId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public Task<IReadOnlyList<CustomerEntity>> ListNonPrimaryAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<CustomerEntity>>([]);
+
+        public Task<IReadOnlyList<CustomerEntity>> ListArchivedAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<CustomerEntity>>([]);
+
+        public Task<Guid?> FindIdByOriginAsync(
+            Guid tenantId,
+            string sourceService,
+            Guid sourceReferenceId,
+            CancellationToken ct
+        ) => Task.FromResult<Guid?>(null);
+
+        public Task<IReadOnlyList<CustomerEntity>> ListForAssignmentAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<CustomerEntity>>([]);
     }
 }

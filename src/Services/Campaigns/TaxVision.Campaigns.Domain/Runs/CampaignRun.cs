@@ -1,6 +1,7 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Campaigns.Domain.Campaigns;
+using TaxVision.Campaigns.Domain.Runs.Events;
 
 namespace TaxVision.Campaigns.Domain.Runs;
 
@@ -21,7 +22,7 @@ public sealed record RunRecipientDraft(
 /// <c>CampaignRun</c> como fuente única de contadores-caché y la reconciliación tardía son fases
 /// posteriores.
 /// </summary>
-public sealed class CampaignRun : TenantEntity
+public sealed class CampaignRun : AggregateRoot
 {
     private readonly List<CampaignRecipient> _recipients = [];
 
@@ -159,6 +160,17 @@ public sealed class CampaignRun : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>
+    /// El envío arranca: el gate del Wallet ya autorizó. Un run rechazado no pasa por acá, así que no se anuncia.
+    /// Si ya cerró al materializar (todo Skipped), su cierre sale después del arranque.
+    /// </summary>
+    public void AnnounceStart()
+    {
+        AddDomainEvent(new CampaignRunStartedDomainEvent(Id, TenantId, CampaignId, RecipientCount, TriggerKind));
+        if (Status is CampaignRunStatus.Completed or CampaignRunStatus.PartiallyFailed or CampaignRunStatus.Failed)
+            AnnounceClosure();
+    }
+
     /// <summary>Marca una unidad como despachada (tras emitir su evento de dispatch).</summary>
     public Result MarkDispatched(Guid recipientId)
     {
@@ -202,7 +214,10 @@ public sealed class CampaignRun : TenantEntity
         foreach (var recipient in _recipients.Where(r => !r.IsSettled))
             recipient.ExpireAsUnknown("stale_timeout", nowUtc);
         RecomputeCounters();
-        return EvaluateClosure();
+        var closedNow = EvaluateClosure();
+        if (closedNow)
+            AnnounceClosure();
+        return closedNow;
     }
 
     private Result<bool> Apply(
@@ -218,8 +233,27 @@ public sealed class CampaignRun : TenantEntity
         recipient.ApplyOutcome(outcome, providerRef, reason);
         RecomputeCounters();
         var closedNow = EvaluateClosure();
+        if (closedNow)
+            AnnounceClosure();
         return Result.Success(closedNow);
     }
+
+    // Foto del cierre: una unidad resuelta después (D-CMP-4) no cambia lo que se anunció.
+    private void AnnounceClosure() =>
+        AddDomainEvent(
+            new CampaignRunClosedDomainEvent(
+                Id,
+                TenantId,
+                CampaignId,
+                Status,
+                RecipientCount,
+                CounterDelivered,
+                CounterAccepted,
+                CounterFailed,
+                CounterSkipped,
+                CounterUnknown
+            )
+        );
 
     private void RecomputeCounters()
     {

@@ -53,7 +53,9 @@ public sealed class GetCheckoutPaymentStatusHandlerTests
         var result = await StatusAsync(link.Token.Value, payment.Id);
 
         Assert.Equal(nameof(PaymentStatus.Succeeded), result.Value.Status);
-        Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>());
+        Assert.Single(
+            (await DomainEventReplay.EmittedAsync(_published, _db)).OfType<TenantPaymentSucceededIntegrationEvent>()
+        );
         await using var fresh = InMemoryPaymentClient.CreateDb(_databaseName);
         Assert.Equal(
             PaymentLinkStatus.Used,
@@ -93,7 +95,7 @@ public sealed class GetCheckoutPaymentStatusHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(PaymentStatus.RequiresAction), result.Value.Status);
-        Assert.Empty(_published);
+        Assert.Empty(await DomainEventReplay.EmittedAsync(_published, _db));
     }
 
     [Fact]

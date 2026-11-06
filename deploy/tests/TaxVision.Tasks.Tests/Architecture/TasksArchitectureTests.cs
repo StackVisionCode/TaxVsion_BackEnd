@@ -71,11 +71,10 @@ public sealed class TasksArchitectureTests
     }
 
     /// <summary>
-    /// Si Domain referenciara EF, las decisiones del agregado quedarían imposibles de probar sin base
-    /// de datos. <c>Ical.Net</c> sí está permitido: es una librería de dominio puro, sin IO.
+    /// Domain sin EF, ASP.NET ni Wolverine lo cubre <see cref="TasksLayeringTests"/>. <c>Ical.Net</c> sí está
+    /// permitido: es una librería de dominio puro, sin IO.
     /// </summary>
     [Theory]
-    [InlineData("Microsoft.EntityFrameworkCore")]
     [InlineData("TaxVision.Tasks.Infrastructure")]
     [InlineData("TaxVision.Tasks.Application")]
     public void Domain_should_not_depend_on_infrastructure_concerns(string forbiddenNamespace)
@@ -85,21 +84,8 @@ public sealed class TasksArchitectureTests
         Assert.True(result.IsSuccessful, $"Domain types depending on {forbiddenNamespace}: " + Describe(result));
     }
 
-    [Fact]
-    public void Application_should_not_depend_on_infrastructure()
-    {
-        var result = Types
-            .InAssembly(ApplicationAssembly)
-            .ShouldNot()
-            .HaveDependencyOn("TaxVision.Tasks.Infrastructure")
-            .GetResult();
-
-        Assert.True(result.IsSuccessful, "Application types depending on Infrastructure: " + Describe(result));
-    }
-
+    // Domain sin EF ni Wolverine lo cubre ClientFormsLayeringTests.
     [Theory]
-    [InlineData("Microsoft.EntityFrameworkCore")]
-    [InlineData("Wolverine")]
     [InlineData("TaxVision.Tasks.Domain")]
     [InlineData("TaxVision.Tasks.Application")]
     [InlineData("TaxVision.Tasks.ClientForms.Application")]
@@ -114,9 +100,8 @@ public sealed class TasksArchitectureTests
         Assert.True(result.IsSuccessful, $"Client Forms Domain depends on {forbiddenNamespace}: " + Describe(result));
     }
 
+    // Application sin EF ni Infrastructure lo cubre ClientFormsLayeringTests.
     [Theory]
-    [InlineData("Microsoft.EntityFrameworkCore")]
-    [InlineData("TaxVision.Tasks.Infrastructure")]
     [InlineData("TaxVision.Tasks.Domain")]
     [InlineData("TaxVision.Tasks.Application")]
     public void Client_forms_application_should_stay_isolated(string forbiddenNamespace)

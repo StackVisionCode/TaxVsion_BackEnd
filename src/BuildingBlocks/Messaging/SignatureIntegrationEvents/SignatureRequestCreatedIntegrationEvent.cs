@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// firmantes; se emite para que otros microservicios inicien el ciclo de vida (crear
 /// tareas de seguimiento en Planner, agregar entrada al historial del cliente, etc.).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestCreatedIntegrationEvent")]
 public sealed record SignatureRequestCreatedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

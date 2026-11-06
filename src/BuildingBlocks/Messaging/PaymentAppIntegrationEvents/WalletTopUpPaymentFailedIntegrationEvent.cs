@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
 /// Publicado por PaymentApp cuando el cobro de una recarga de monedero falla (tarjeta rechazada, error
 /// del proveedor, etc.). Wallet lo consume para marcar la orden <c>WalletTopUp</c> como Failed. No acredita.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.WalletTopUpPaymentFailedIntegrationEvent")]
 public sealed record WalletTopUpPaymentFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid TopUpId { get; init; }

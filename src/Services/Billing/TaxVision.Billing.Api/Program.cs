@@ -197,6 +197,15 @@ builder.Host.UseWolverine(options =>
     options.Policies.Add(TaxVision.Billing.Infrastructure.Messaging.LongRetryHandlerPolicy.ForSyncCommands());
 
     options.ApplyStandardFailurePolicies();
+
+    // BIL-BB1 — InvoicePaid nace del evento de dominio de la factura: se guarda con el commit del handler y su
+    // handler devuelve el aviso y el PDF. En serie: los avisos salen en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // BIL-BB2 — toda cola local durable: GenerateInvoicePdfCommand y los demás comandos posteriores a la
+    // emisión quedan en wolverine_incoming_envelopes con el commit y sobreviven a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 });
 
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);

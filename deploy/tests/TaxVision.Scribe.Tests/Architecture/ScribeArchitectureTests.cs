@@ -57,30 +57,7 @@ public sealed class ScribeArchitectureTests
         Assert.True(result.IsSuccessful, Describe(result));
     }
 
-    [Fact]
-    public void Domain_should_not_depend_on_entity_framework()
-    {
-        var result = Types
-            .InAssembly(DomainAssembly)
-            .Should()
-            .NotHaveDependencyOn("Microsoft.EntityFrameworkCore")
-            .GetResult();
-
-        Assert.True(result.IsSuccessful, Describe(result));
-    }
-
-    [Fact]
-    public void Application_should_not_depend_on_infrastructure()
-    {
-        var result = Types
-            .InAssembly(ApplicationAssembly)
-            .Should()
-            .NotHaveDependencyOn("TaxVision.Scribe.Infrastructure")
-            .GetResult();
-
-        Assert.True(result.IsSuccessful, Describe(result));
-    }
-
+    // Domain sin EF y Application sin Infrastructure: ScribeLayeringTests (BB-6).
     [Fact]
     public void Application_should_not_depend_on_api()
     {

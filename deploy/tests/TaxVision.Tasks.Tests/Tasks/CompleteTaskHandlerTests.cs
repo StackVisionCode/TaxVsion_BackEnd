@@ -70,22 +70,25 @@ public sealed class CompleteTaskHandlerTests
         public RecordingUnitOfWork UnitOfWork { get; } = new();
         public FakeMessageBus Bus { get; } = new();
 
-        public Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> CompleteAsync(
+        // TaskCompleted sale del handler del evento de dominio (el replay lo deja en el bus).
+        public async Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> CompleteAsync(
             Guid byUserId,
             bool hasManageAll
-        ) =>
-            CompleteTaskHandler.Handle(
+        )
+        {
+            var result = await CompleteTaskHandler.Handle(
                 new CompleteTaskCommand(TenantId, task.Id, byUserId, hasManageAll),
                 Tasks,
                 Unblocking,
                 Hierarchy,
                 SeriesMaterializer,
                 UnitOfWork,
-                Bus,
-                new NoOpCorrelationContext(),
                 new RecordingTaskMetrics(),
                 CancellationToken.None
             );
+            await DomainEventReplay.DispatchIntoAsync(Bus, Tasks);
+            return result;
+        }
     }
 
     private sealed class RecordingUnblockingService : ITaskUnblockingService

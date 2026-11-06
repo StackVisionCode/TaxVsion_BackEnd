@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.CustomerIntegrationEvents;
 
 // Snapshot del set COMPLETO de staff asignado a un cliente (event-carried state transfer). Se publica en
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.CustomerIntegrationEvents;
 // para descartar eventos reordenados o duplicados (aplican solo si Version es más nueva que la última).
 // Es la fuente canónica para las proyecciones de visibilidad por-cliente (P2). Los eventos Preparer*
 // siguen para Communication (compat).
+[MessageIdentity("BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerAssignmentsChangedIntegrationEvent")]
 public sealed record CustomerAssignmentsChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid CustomerId { get; init; }

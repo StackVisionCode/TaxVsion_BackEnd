@@ -186,6 +186,15 @@ public sealed class NotificationDispatcherInAppTests
 
     private sealed class RecordingNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public List<NotificationLog> Logs { get; } = [];
 
         public Task AddAsync(NotificationLog log, CancellationToken ct = default)
@@ -239,6 +248,9 @@ public sealed class NotificationDispatcherInAppTests
 
     private sealed class EmptyPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public static readonly EmptyPushDeviceTokenRepository Instance = new();
 
         public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;

@@ -58,7 +58,6 @@ public sealed class IssueInvoiceHandlerTests
             new NoStock(),
             new CountingUnitOfWork(),
             new FakeMessageBus(),
-            new NoopCorrelationContext(),
             new FixedClock(Now),
             CancellationToken.None
         );

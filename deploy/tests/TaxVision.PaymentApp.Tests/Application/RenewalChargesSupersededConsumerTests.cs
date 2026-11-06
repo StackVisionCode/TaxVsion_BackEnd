@@ -23,6 +23,8 @@ public sealed class RenewalChargesSupersededConsumerTests
         Assert.Equal(PaymentStatus.Cancelled, payment.Status);
         Assert.Null(payment.NextRetryAtUtc);
         Assert.Equal(1, unitOfWork.SaveCalls);
+        // PAY-BB1: Subscription ya lo sabe; la cancelación que pidió no se le anuncia.
+        Assert.Empty(await SaaSPaymentEventReplay.DispatchAsync(payment));
     }
 
     [Fact]

@@ -271,7 +271,7 @@ public static class ProcessTenantWebhookHandler
         // Guardar antes de publicar: un reintento en línea no debe filtrar eventos del intento revertido.
         await unitOfWork.SaveChangesAsync(ct);
         if (becameSucceeded)
-            await TenantPaymentProviderUpdate.PublishSucceededAsync(bus, payment, linkUsed, correlation.CorrelationId);
+            await TenantPaymentProviderUpdate.PublishLinkUsedAsync(bus, linkUsed);
 
         logger.LogInformation(
             "{Provider} webhook {EventType} ({ProviderEventId}) applied to TenantPayment {TenantPaymentId}: now {Status}.",

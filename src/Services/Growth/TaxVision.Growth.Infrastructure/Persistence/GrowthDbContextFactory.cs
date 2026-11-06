@@ -17,7 +17,7 @@ public sealed class GrowthDbContextFactory : IDesignTimeDbContextFactory<GrowthD
             ?? "Server=localhost,1433;Database=TaxVision_Growth;Trusted_Connection=True;TrustServerCertificate=True";
 
         var options = new DbContextOptionsBuilder<GrowthDbContext>().UseSqlServer(connectionString).Options;
-        return new GrowthDbContext(options, new EmptyTenantContext(), messageBus: null);
+        return new GrowthDbContext(options, new EmptyTenantContext());
     }
 
     private sealed class EmptyTenantContext : ITenantContext

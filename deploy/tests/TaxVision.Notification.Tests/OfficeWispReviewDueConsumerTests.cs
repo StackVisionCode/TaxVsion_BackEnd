@@ -299,6 +299,21 @@ public sealed class OfficeWispReviewDueConsumerTests
 
     private sealed class RecordingScribe(bool fails) : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ct);
+
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
         public List<(string EventKey, IReadOnlyDictionary<string, object?> Variables)> Calls { get; } = [];
 
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
@@ -396,6 +411,9 @@ public sealed class OfficeWispReviewDueConsumerTests
 
     private sealed class FakeDevices(IReadOnlyList<Guid> users) : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         private readonly List<PushDeviceToken> _devices = users
             .Select(user => PushDeviceToken.Register(TenantId, user, PushPlatform.Fcm, $"token-{user:N}", null).Value)
             .ToList();

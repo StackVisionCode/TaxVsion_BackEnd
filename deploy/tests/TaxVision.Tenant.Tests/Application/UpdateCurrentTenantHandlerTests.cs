@@ -8,7 +8,7 @@ using TenantEntity = TaxVision.Tenant.Domain.Tenant;
 
 namespace TaxVision.Tenant.Tests.Application;
 
-/// <summary>PUT tenants/current: guarda y recién después publica el estado completo; sin cambios no
+/// <summary>PUT tenants/current: guarda y el agregado anuncia el estado completo; sin cambios no
 /// publica; un dato inválido no guarda ni publica nada.</summary>
 public sealed class UpdateCurrentTenantHandlerTests
 {
@@ -18,13 +18,12 @@ public sealed class UpdateCurrentTenantHandlerTests
     public async Task Rename_and_time_zone_change_saves_publishes_full_state_and_invalidates_the_list()
     {
         var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "Etc/UTC").Value;
-        var (repo, unitOfWork, bus, cache) = Arrange(tenant);
+        var (repo, unitOfWork, cache) = Arrange(tenant);
 
         var result = await HandleAsync(
             new(tenant.Id, "Acme Tax Group", "America/Chicago"),
             repo,
             unitOfWork,
-            bus,
             cache
         );
 
@@ -34,7 +33,7 @@ public sealed class UpdateCurrentTenantHandlerTests
         Assert.Equal("acme-tax", result.Value.Subdomain);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
 
-        var evt = Assert.Single(bus.Published.OfType<TenantUpdatedIntegrationEvent>());
+        var evt = Assert.Single(TenantDomainEventReplay.Dispatch(tenant.DomainEvents).OfType<TenantUpdatedIntegrationEvent>());
         Assert.Equal(tenant.Id, evt.UpdatedTenantId);
         Assert.Equal(tenant.Id, evt.TenantId);
         Assert.Equal("Acme Tax Group", evt.Name);
@@ -47,13 +46,13 @@ public sealed class UpdateCurrentTenantHandlerTests
     public async Task Same_values_return_the_current_state_without_saving_or_publishing()
     {
         var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "America/Chicago").Value;
-        var (repo, unitOfWork, bus, cache) = Arrange(tenant);
+        var (repo, unitOfWork, cache) = Arrange(tenant);
 
-        var result = await HandleAsync(new(tenant.Id, " Acme Tax ", "America/Chicago"), repo, unitOfWork, bus, cache);
+        var result = await HandleAsync(new(tenant.Id, " Acme Tax ", "America/Chicago"), repo, unitOfWork, cache);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
-        Assert.Empty(bus.Published);
+        Assert.Empty(tenant.DomainEvents);
         Assert.Empty(cache.SetKeys);
     }
 
@@ -67,48 +66,44 @@ public sealed class UpdateCurrentTenantHandlerTests
     )
     {
         var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "Etc/UTC").Value;
-        var (repo, unitOfWork, bus, cache) = Arrange(tenant);
+        var (repo, unitOfWork, cache) = Arrange(tenant);
 
-        var result = await HandleAsync(new(tenant.Id, name, timeZoneId), repo, unitOfWork, bus, cache);
+        var result = await HandleAsync(new(tenant.Id, name, timeZoneId), repo, unitOfWork, cache);
 
         Assert.True(result.IsFailure);
         Assert.Equal(expectedCode, result.Error.Code);
         Assert.Equal("Acme Tax", tenant.Name);
         Assert.Equal("Etc/UTC", tenant.DefaultTimeZoneId);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
-        Assert.Empty(bus.Published);
+        Assert.Empty(tenant.DomainEvents);
     }
 
     [Fact]
     public async Task Unknown_tenant_is_not_found()
     {
-        var (repo, unitOfWork, bus, cache) = Arrange(null);
+        var (repo, unitOfWork, cache) = Arrange(null);
 
-        var result = await HandleAsync(new(Guid.NewGuid(), "Acme", "Etc/UTC"), repo, unitOfWork, bus, cache);
+        var result = await HandleAsync(new(Guid.NewGuid(), "Acme", "Etc/UTC"), repo, unitOfWork, cache);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Tenant.NotFound", result.Error.Code);
-        Assert.Empty(bus.Published);
     }
 
-    private static (FakeTenantRepository, CountingUnitOfWork, RecordingMessageBus, RecordingCache) Arrange(
+    private static (FakeTenantRepository, CountingUnitOfWork, RecordingCache) Arrange(
         TenantEntity? tenant
-    ) => (new FakeTenantRepository { Existing = tenant }, new(), new(), new());
+    ) => (new FakeTenantRepository { Existing = tenant }, new(), new());
 
     private static Task<BuildingBlocks.Results.Result<TenantResponse>> HandleAsync(
         UpdateCurrentTenantCommand command,
         ITenantRepository repo,
         CountingUnitOfWork unitOfWork,
-        RecordingMessageBus bus,
         ICacheService cache
     ) =>
         UpdateCurrentTenantHandler.Handle(
             command,
             repo,
             unitOfWork,
-            bus,
             cache,
-            new NoopCorrelationContext(),
             NullLogger<UpdateCurrentTenantCommand>.Instance,
             CancellationToken.None
         );
