@@ -169,6 +169,7 @@ public sealed class BaselineSmokeTests
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
             NullLogger<NotificationDispatcher>.Instance
         );
 
@@ -213,6 +214,7 @@ public sealed class BaselineSmokeTests
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
             NullLogger<NotificationDispatcher>.Instance
         );
 
@@ -253,6 +255,7 @@ public sealed class BaselineSmokeTests
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
             NullLogger<NotificationDispatcher>.Instance
         );
 
@@ -295,6 +298,7 @@ public sealed class BaselineSmokeTests
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
             NullLogger<NotificationDispatcher>.Instance
         );
 

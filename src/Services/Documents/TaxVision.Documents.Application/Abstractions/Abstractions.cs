@@ -92,26 +92,27 @@ public sealed record IssuerSnapshot(
     string? LogoDataUri
 );
 
-/// <summary>Sube el archivo generado al bucket temporal (IAM MinIO propia) y publica
-/// SaveFileRequestedIntegrationEvent para que CloudStorage lo almacene permanentemente. Documents
-/// nunca guarda bytes. SCAFFOLD.</summary>
+/// <summary>Objeto ya subido al bucket temporal, listo para pedir su guardado a CloudStorage.</summary>
+public sealed record StorageUploadResult(
+    Guid FileId,
+    string Bucket,
+    string ObjectKey,
+    long SizeBytes,
+    string ContentType
+);
+
+/// <summary>Sube el archivo generado al bucket temporal (IAM MinIO propia). Documents nunca guarda bytes.
+/// Pedir el guardado a CloudStorage lo hace el handler con su propio bus (DOC-3).</summary>
 public interface IDocumentStorageClient
 {
     /// <summary>RequestingService con que Documents firma sus SaveFileRequested (y que CloudStorage devuelve al rechazar).</summary>
     const string RequestingService = "documents";
 
-    Task<Result> RequestSaveAsync(
-        Guid tenantId,
+    Task<Result<StorageUploadResult>> UploadAsync(
         Guid fileId,
         byte[] content,
         string fileName,
         string contentType,
-        string ownerType,
-        Guid ownerId,
-        string folderType,
-        int? taxYear,
-        Guid actorId,
-        string correlationId,
         CancellationToken ct = default
     );
 }

@@ -1,5 +1,7 @@
 using BuildingBlocks.Caching;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
+using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.AddOns;
@@ -135,13 +137,29 @@ public sealed class RecalculateEntitlementsHandlerTests
         Assert.Single(bus.Published.OfType<TenantEntitlementsChangedIntegrationEvent>());
     }
 
+    // SUB-5: el conflicto sube para que Wolverine reintente, y la revisión perdedora no se anuncia.
+    [Fact]
+    public async Task Conflict_IsRethrownForRetry()
+    {
+        var plan = AddOnTestCatalog.PlanWith("starter", ["customers"]);
+        var subscription = AddOnTestCatalog.ActiveSubscription(Tenant, plan);
+        var bus = new CapturingMessageBus();
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            RecalculateAsync(subscription, plan, [], new FakeSnapshotRepo(), bus, unitOfWork: new ConflictingUnitOfWork())
+        );
+
+        Assert.Empty(bus.Published.OfType<TenantEntitlementsChangedIntegrationEvent>());
+    }
+
     internal static async Task<FakeSnapshotRepo> RecalculateAsync(
         TenantSubscription subscription,
         SubscriptionPlan plan,
         AddOnDefinition[] addOns,
         FakeSnapshotRepo snapshots,
         CapturingMessageBus bus,
-        bool onlyIfChanged = false
+        bool onlyIfChanged = false,
+        IUnitOfWork? unitOfWork = null
     )
     {
         var result = await RecalculateEntitlementsHandler.Handle(
@@ -153,7 +171,7 @@ public sealed class RecalculateEntitlementsHandlerTests
             new FakeAddOnDefinitionRepository(addOns),
             snapshots,
             new NoOpCache(),
-            new FakeUnitOfWork(),
+            unitOfWork ?? new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
             NullLogger<TenantEntitlementSnapshot>.Instance,
@@ -161,6 +179,12 @@ public sealed class RecalculateEntitlementsHandlerTests
         );
         Assert.True(result.IsSuccess);
         return snapshots;
+    }
+
+    private sealed class ConflictingUnitOfWork : IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken ct = default) =>
+            throw new ConflictException("Persistence.ConcurrencyConflict", "conflict");
     }
 
     private sealed class NoOpCache : ICacheService

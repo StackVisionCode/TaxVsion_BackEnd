@@ -259,6 +259,7 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // Eventos de dominio de TenantPayment: se guardan con el commit del handler y su handler devuelve la señal

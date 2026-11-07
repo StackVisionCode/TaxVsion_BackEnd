@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using TaxVision.Signature.Application.Audit;
 using TaxVision.Signature.Application.Requests.Public;
 using TaxVision.Signature.Application.Requests.Public.GetDocument;
@@ -27,7 +28,10 @@ namespace TaxVision.Signature.Api.Controllers;
 [AllowAnonymous]
 [Route("signature/public")]
 [EnableRateLimiting("public-signature")]
-public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
+public sealed class PublicSignatureController(
+    IMessageBus bus,
+    IOptions<PublicSigningConflictRetryOptions> conflictRetry
+) : ControllerBase
 {
     private const string PublicExemptReason =
         "Endpoint anonimo (sin JWT) — TieredRateLimitEvaluator solo soporta particion por "
@@ -125,7 +129,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
     )
     {
         var (ip, ua) = ExtractClientContext();
-        var result = await bus.InvokeAsync<Result>(
+        var result = await InvokeWithConcurrencyRetryAsync(
             new SubmitSignatureCommand(
                 token,
                 body.Method,
@@ -186,7 +190,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
     )
     {
         var (ip, ua) = ExtractClientContext();
-        var result = await bus.InvokeAsync<Result>(new VerifyPinCommand(token, body.Pin, ip, ua), ct);
+        var result = await InvokeWithConcurrencyRetryAsync(new VerifyPinCommand(token, body.Pin, ip, ua), ct);
         return MapResult(result);
     }
 
@@ -267,13 +271,20 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
     )
     {
         var (ip, ua) = ExtractClientContext();
-        var result = await bus.InvokeAsync<Result>(new RejectSignatureCommand(token, body.Reason, ip, ua), ct);
+        var result = await InvokeWithConcurrencyRetryAsync(new RejectSignatureCommand(token, body.Reason, ip, ua), ct);
         return MapResult(result);
     }
 
     // ------------------------------------------------------------------
     // Métodos privados: cada uno una única responsabilidad
     // ------------------------------------------------------------------
+
+    private Task<Result> InvokeWithConcurrencyRetryAsync(object command, CancellationToken ct) =>
+        PublicSigningConflictRetry.InvokeAsync(
+            token => bus.InvokeAsync<Result>(command, token),
+            conflictRetry.Value.MaxAttempts,
+            ct
+        );
 
     private (string? Ip, string? UserAgent) ExtractClientContext()
     {

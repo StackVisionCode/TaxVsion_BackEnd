@@ -1,8 +1,10 @@
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Tasks.Application.Backfill;
 using TaxVision.Tasks.Application.Projections.CustomerEvents;
 using TaxVision.Tasks.Domain.Projections;
+using TaxVision.Tasks.Tests.Dependencies;
 
 namespace TaxVision.Tasks.Tests.Projections;
 
@@ -40,10 +42,45 @@ public sealed class CustomerArchivedConsumerTests
         Assert.Equal(1, uow.SaveCount);
     }
 
+    // TSK-7: el HTTP a Customer ya no corre con la transacción del consumidor abierta.
+    [Fact]
+    public async Task FirstEventOfTenant_EnqueuesBackfill_DoesNotCallCustomerInline()
+    {
+        var customerId = Guid.NewGuid();
+        var repository = new InMemoryCustomerDirectoryRepository(
+            CustomerDirectoryEntry.Create(TenantId, customerId, "Acme", CustomerDirectoryStatus.Active, T0)
+        );
+        var backfill = new RecordingBackfillService { Needed = true };
+        var bus = new FakeMessageBus();
+
+        await HandleAsync(repository, new RecordingUnitOfWork(), customerId, backfill, bus);
+
+        Assert.Equal(TenantId, Assert.IsType<BackfillTenantCustomersCommand>(Assert.Single(bus.Published)).TenantId);
+        Assert.Empty(backfill.Calls);
+        var stored = await repository.GetByCustomerIdAsync(TenantId, customerId);
+        Assert.Equal(CustomerDirectoryStatus.Archived, stored!.Status);
+    }
+
+    [Fact]
+    public async Task TenantAlreadyBackfilled_EnqueuesNothing()
+    {
+        var customerId = Guid.NewGuid();
+        var repository = new InMemoryCustomerDirectoryRepository(
+            CustomerDirectoryEntry.Create(TenantId, customerId, "Acme", CustomerDirectoryStatus.Active, T0)
+        );
+        var bus = new FakeMessageBus();
+
+        await HandleAsync(repository, new RecordingUnitOfWork(), customerId, new RecordingBackfillService(), bus);
+
+        Assert.Empty(bus.Published);
+    }
+
     private static Task HandleAsync(
         InMemoryCustomerDirectoryRepository repository,
         RecordingUnitOfWork uow,
-        Guid customerId
+        Guid customerId,
+        RecordingBackfillService? backfill = null,
+        FakeMessageBus? bus = null
     ) =>
         CustomerArchivedConsumer.Handle(
             new CustomerArchivedIntegrationEvent
@@ -54,7 +91,8 @@ public sealed class CustomerArchivedConsumerTests
                 OccurredOn = T0.AddMinutes(5),
             },
             repository,
-            new RecordingBackfillService(),
+            backfill ?? new RecordingBackfillService(),
+            bus ?? new FakeMessageBus(),
             uow,
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,

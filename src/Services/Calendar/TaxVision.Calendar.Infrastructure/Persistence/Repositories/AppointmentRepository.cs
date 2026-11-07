@@ -1,3 +1,4 @@
+using System.Globalization;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
@@ -136,9 +137,42 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
             .Where(a => a.Recurrence != null || a.Timing.EndUtc > nowUtc)
             .CountAsync(ct);
 
+    /// <summary>
+    /// Lo que un job tiene que mirar en esta ventana, de todos los tenants: las puntuales que empiezan en ella y las
+    /// series vigentes. Las series no tienen <c>StartUtc</c>: la expansión queda en memoria, sobre este subconjunto.
+    ///
+    /// <para>
+    /// <c>UNTIL</c> vive dentro del RRULE, por eso va en SQL crudo. Se compara solo la fecha, con un día de margen por
+    /// si viene sin hora. Una serie con <c>COUNT</c> no se sabe si terminó sin expandirla: esa la descarta el expander.
+    /// </para>
+    /// </summary>
+    public static IQueryable<Appointment> ListStartingWithin(
+        CalendarDbContext context,
+        DateTime fromUtc,
+        DateTime toUtc
+    )
+    {
+        var untilCutoff = fromUtc.AddDays(-1).ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+
+        return context
+            .Appointments.FromSql(
+                $"""
+                SELECT * FROM Appointments
+                WHERE RecurrenceRule IS NULL
+                   OR CHARINDEX('UNTIL=', RecurrenceRule) = 0
+                   OR SUBSTRING(RecurrenceRule, CHARINDEX('UNTIL=', RecurrenceRule) + 6, 8) >= {untilCutoff}
+                """
+            )
+            .IgnoreQueryFilters()
+            .Where(a => a.Status != AppointmentStatus.Cancelled)
+            .Where(a => a.Recurrence != null || (a.Timing.StartUtc >= fromUtc && a.Timing.StartUtc < toUtc));
+    }
+
     public void Add(Appointment appointment) => context.Appointments.Add(appointment);
 
     public void Remove(Appointment appointment) => context.Appointments.Remove(appointment);
+
+    public void DiscardPendingChanges() => context.ChangeTracker.Clear();
 
     private IQueryable<Appointment> Scoped(Guid tenantId) =>
         context.Appointments.IgnoreQueryFilters().Where(a => a.TenantId == tenantId);

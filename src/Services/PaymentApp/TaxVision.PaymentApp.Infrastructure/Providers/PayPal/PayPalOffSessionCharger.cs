@@ -16,6 +16,15 @@ public sealed class PayPalOffSessionCharger(PayPalGateway gateway, ILogger<PayPa
 {
     public const string ProviderCodeValue = "PayPal";
 
+    // Timeout, 5xx o respuesta ilegible después de enviar: la orden o la captura pudieron salir (D-PAY-13).
+    private static readonly HashSet<string> OutcomeUnknownCodes = new(StringComparer.Ordinal)
+    {
+        "PayPal.OffSession.Unavailable",
+        "PayPal.OffSession.EmptyResponse",
+        "PayPal.Capture.Unavailable",
+        "PayPal.Capture.EmptyResponse",
+    };
+
     public string ProviderCode => ProviderCodeValue;
 
     public async Task<Result<OffSessionChargeOutcome>> ChargeAsync(
@@ -55,7 +64,9 @@ public sealed class PayPalOffSessionCharger(PayPalGateway gateway, ILogger<PayPa
             );
             return Result.Success(
                 new OffSessionChargeOutcome(
-                    OffSessionChargeStatus.Failed,
+                    OutcomeUnknownCodes.Contains(result.Error.Code)
+                        ? OffSessionChargeStatus.OutcomeUnknown
+                        : OffSessionChargeStatus.Failed,
                     ProviderPaymentReference: null,
                     FailureCode: result.Error.Code,
                     FailureMessage: result.Error.Message
@@ -79,6 +90,17 @@ public sealed class PayPalOffSessionCharger(PayPalGateway gateway, ILogger<PayPa
                 new OffSessionChargeOutcome(
                     OffSessionChargeStatus.Succeeded,
                     ProviderPaymentReference: result.Value.CaptureId ?? result.Value.OrderId,
+                    FailureCode: null,
+                    FailureMessage: null
+                )
+            );
+
+        // La captura sigue en curso. La referencia es la orden: la reconciliación consulta órdenes.
+        if (string.Equals(normalized, "PENDING", StringComparison.Ordinal))
+            return Result.Success(
+                new OffSessionChargeOutcome(
+                    OffSessionChargeStatus.Processing,
+                    ProviderPaymentReference: result.Value.OrderId,
                     FailureCode: null,
                     FailureMessage: null
                 )

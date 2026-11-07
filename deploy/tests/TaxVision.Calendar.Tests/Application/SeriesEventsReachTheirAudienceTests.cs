@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using TaxVision.Calendar.Application.Appointments.Commands;
 using TaxVision.Calendar.Application.Observability;
 using TaxVision.Calendar.Domain.Appointments;
+using TaxVision.Calendar.Domain.Types;
 using TaxVision.Calendar.Domain.ValueObjects;
 using Xunit;
 
@@ -93,6 +94,11 @@ public sealed class SeriesEventsReachTheirAudienceTests
                 false
             ),
             appointments,
+            new SingleTypeRepository(
+                AppointmentType.Create(_tenant, "Review", TimeSpan.FromHours(1), "#336699", DateTime.UtcNow).Value
+            ),
+            new EmptyAvailability(),
+            new NoScheduleLock(),
             new NoOpUnitOfWork(),
             new NoOpMetrics(),
             CancellationToken.None

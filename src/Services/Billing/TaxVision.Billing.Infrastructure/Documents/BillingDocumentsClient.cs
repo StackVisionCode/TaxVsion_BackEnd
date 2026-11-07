@@ -85,6 +85,8 @@ public sealed class BillingDocumentsClient(
                 paymentTerms = request.PaymentTerms,
                 paymentInstructions = request.PaymentInstructions,
                 invoiceFooter = request.InvoiceFooter,
+                amountPaid = request.AmountPaid,
+                amountDue = request.AmountDue,
             },
         };
 

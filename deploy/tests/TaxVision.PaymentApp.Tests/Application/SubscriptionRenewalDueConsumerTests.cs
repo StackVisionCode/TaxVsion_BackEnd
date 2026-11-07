@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Billing.Abstractions;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ExecuteSaaSPaymentCharge;
 using TaxVision.PaymentApp.Application.SaaSPayments.IntegrationEvents;
 using TaxVision.PaymentApp.Domain.Billing;
 using TaxVision.PaymentApp.Domain.ProviderCustomers;
@@ -46,6 +47,8 @@ public sealed class SubscriptionRenewalDueConsumerTests
             CancellationToken.None
         );
 
+        await TestChargeExecution.DrainAsync(bus, payments, new FakeFactory(charger));
+
         Assert.True(charger.Called);
         Assert.NotNull(payments.Added);
         Assert.Equal(PaymentStatus.Succeeded, payments.Added!.Status);
@@ -55,6 +58,39 @@ public sealed class SubscriptionRenewalDueConsumerTests
         var emitted = await SaaSPaymentEventReplay.EmittedAsync(bus.Published, payments.Added, customers: customers);
         Assert.Single(emitted.OfType<SubscriptionRenewalPaymentSucceededIntegrationEvent>());
         Assert.Single(emitted.OfType<SaaSPaymentSucceededIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task OffSession_persists_pending_payment_and_cascades_charge_without_calling_provider()
+    {
+        var charger = new FakeOffSessionCharger(
+            new OffSessionChargeOutcome(OffSessionChargeStatus.Succeeded, "pi_test_1", null, null)
+        );
+        var payments = new FakeSaaSPaymentRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new CapturingMessageBus();
+
+        await SubscriptionRenewalDueConsumer.Handle(
+            BuildEvent(),
+            bus,
+            new FakeBillingPreferences(AutomaticWithMandate()),
+            new FakeProviderCustomers(WithDefaultMethod()),
+            new FakeFactory(charger),
+            payments,
+            TestPlatform.Settings,
+            new FakePaymentAppMetrics(),
+            unitOfWork,
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.False(charger.Called);
+        Assert.Equal(PaymentStatus.Pending, payments.Added!.Status);
+        var command = Assert.Single(bus.Published.OfType<ExecuteSaaSPaymentChargeCommand>());
+        Assert.Equal(payments.Added.Id, command.SaaSPaymentId);
+        Assert.Equal(SaaSPaymentChargeStrategy.OffSession, command.Strategy);
+        Assert.Equal(1, unitOfWork.SaveCalls);
     }
 
     [Fact]
@@ -199,6 +235,8 @@ public sealed class SubscriptionRenewalDueConsumerTests
             CancellationToken.None
         );
 
+        await TestChargeExecution.DrainAsync(bus, payments, new FakeFactory(charger));
+
         Assert.True(charger.Called);
         Assert.NotNull(payments.Added);
         Assert.Equal(PaymentStatus.Failed, payments.Added!.Status);
@@ -236,6 +274,8 @@ public sealed class SubscriptionRenewalDueConsumerTests
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
+
+        await TestChargeExecution.DrainAsync(bus, payments, new FakeFactory(charger));
 
         Assert.True(charger.Called);
         Assert.NotNull(payments.Added);

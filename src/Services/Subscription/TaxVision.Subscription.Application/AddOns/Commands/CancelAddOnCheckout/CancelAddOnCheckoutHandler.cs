@@ -16,7 +16,6 @@ public static class CancelAddOnCheckoutHandler
     public static async Task<Result<CancelCheckoutResponse>> Handle(
         CancelAddOnCheckoutCommand command,
         IAddOnPurchaseIntentRepository intents,
-        IHostedCheckoutCancellationClient cancellation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -46,18 +45,10 @@ public static class CancelAddOnCheckoutHandler
         if (cancelled.IsFailure)
             return Result.Failure<CancelCheckoutResponse>(cancelled.Error);
 
-        if (intent.SaaSPaymentId is { } paymentId)
-        {
-            var providerResult = await cancellation.CancelAsync(intent.TenantId, paymentId, ct);
-            if (providerResult.IsFailure)
-                logger.LogWarning(
-                    "Provider cancel for add-on intent {IntentId} returned failure: {Error}; proceeding — local state is Cancelled.",
-                    intent.Id,
-                    providerResult.Error.Code
-                );
-        }
-
         await unitOfWork.SaveChangesAsync(ct);
+
+        if (intent.SaaSPaymentId is { } paymentId)
+            await bus.PublishAsync(new CancelHostedCheckoutCommand(intent.TenantId, paymentId));
 
         await bus.PublishAsync(
             new AddOnCheckoutCancelledIntegrationEvent

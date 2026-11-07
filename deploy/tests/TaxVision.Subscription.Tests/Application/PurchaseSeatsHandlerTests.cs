@@ -127,6 +127,80 @@ public sealed class PurchaseSeatsHandlerTests
         Assert.Equal(2, bus.Published.OfType<SeatRenewalDueIntegrationEvent>().Count());
     }
 
+    // SUB-12: doble clic o reintento de red con la misma clave.
+    [Fact]
+    public async Task Handle_SameClientKey_ChargesOnce()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var seatRepo = new CapturingSeatRepo();
+        var bus = new CapturingMessageBus();
+
+        var first = await PurchaseWithKeyAsync(subscription, pricing, seatRepo, bus, "Standard", 2, "key-1");
+        var second = await PurchaseWithKeyAsync(subscription, pricing, seatRepo, bus, "Standard", 2, "key-1");
+
+        Assert.True(first.IsSuccess);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(first.Value, second.Value);
+        Assert.Equal(2, seatRepo.Added.Count);
+        Assert.Equal(2, bus.Published.OfType<SeatRenewalDueIntegrationEvent>().Count());
+    }
+
+    [Fact]
+    public async Task Handle_DifferentClientKeys_AreTwoPurchases()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var seatRepo = new CapturingSeatRepo();
+        var bus = new CapturingMessageBus();
+
+        await PurchaseWithKeyAsync(subscription, pricing, seatRepo, bus, "Standard", 2, "key-1");
+        await PurchaseWithKeyAsync(subscription, pricing, seatRepo, bus, "Standard", 2, "key-2");
+
+        Assert.Equal(4, seatRepo.Added.Count);
+        Assert.Equal(4, bus.Published.OfType<SeatRenewalDueIntegrationEvent>().Count());
+    }
+
+    [Theory]
+    [InlineData("Portal", 2)]
+    [InlineData("Standard", 1)]
+    [InlineData("Standard", 3)]
+    public async Task Handle_SameClientKeyForAnotherPurchase_IsRejected(string seatType, int quantity)
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var seatRepo = new CapturingSeatRepo();
+        var bus = new CapturingMessageBus();
+        await PurchaseWithKeyAsync(subscription, pricing, seatRepo, bus, "Standard", 2, "key-1");
+
+        var other = await PurchaseWithKeyAsync(subscription, pricing, seatRepo, bus, seatType, quantity, "key-1");
+
+        Assert.True(other.IsFailure);
+        Assert.Equal("Seat.IdempotencyKeyReused", other.Error.Code);
+        Assert.Equal(2, seatRepo.Added.Count);
+    }
+
+    private static Task<BuildingBlocks.Results.Result<IReadOnlyList<Guid>>> PurchaseWithKeyAsync(
+        TenantSubscription subscription,
+        SeatPricing pricing,
+        CapturingSeatRepo seatRepo,
+        CapturingMessageBus bus,
+        string seatType,
+        int quantity,
+        string clientKey
+    ) =>
+        PurchaseSeatsHandler.Handle(
+            new PurchaseSeatsCommand(subscription.TenantId, seatType, quantity, true, Guid.NewGuid(), clientKey),
+            new FakeSubscriptionRepo(subscription),
+            seatRepo,
+            new NullSettingsRepo(),
+            new FakeSeatPricingRepository(pricing),
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            new FakeSubscriptionAuditLogWriter(),
+            new FakeSubscriptionMetrics(),
+            NullLogger<SubscriptionSeat>.Instance,
+            CancellationToken.None
+        );
+
     private static (TenantSubscription Subscription, SeatPricing Pricing) ActiveSubscriptionWithPricing()
     {
         var now = DateTime.UtcNow;

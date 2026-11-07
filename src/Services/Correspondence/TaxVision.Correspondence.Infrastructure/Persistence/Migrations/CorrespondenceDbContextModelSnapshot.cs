@@ -100,8 +100,11 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CompletedAtUtc")
+                    b.Property<DateTime?>("CompletedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("LastConfirmedPage")
+                        .HasColumnType("int");
 
                     b.HasKey("TenantId");
 
@@ -148,9 +151,18 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("LastAutoSavedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("LastDeliveryOutcomeAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("ReplyContext")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("ReplyContextJson");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<Guid?>("SentMessageId")
                         .HasColumnType("uniqueidentifier");
@@ -392,6 +404,12 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -442,7 +460,7 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
 
-                    b.Property<Guid>("CustomerId")
+                    b.Property<Guid?>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("DeletedAtUtc")
@@ -605,6 +623,39 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "IncomingEmailId"), new[] { "Filename" });
 
                     b.ToTable("IncomingEmailAttachments", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Correspondence.Domain.Inbox.IncomingEmailMailbox", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("IncomingEmailId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProviderMessageId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IncomingEmailId", "AccountId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_IncomingEmailMailboxes_IncomingEmailId_AccountId_Unique");
+
+                    b.HasIndex("TenantId", "AccountId")
+                        .HasDatabaseName("IX_IncomingEmailMailboxes_TenantId_AccountId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "AccountId"), new[] { "IncomingEmailId" });
+
+                    b.ToTable("IncomingEmailMailboxes", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Correspondence.Domain.Inbox.IncomingEmailRecipient", b =>
@@ -929,6 +980,15 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Correspondence.Domain.Inbox.IncomingEmailMailbox", b =>
+                {
+                    b.HasOne("TaxVision.Correspondence.Domain.Inbox.IncomingEmail", null)
+                        .WithMany("Mailboxes")
+                        .HasForeignKey("IncomingEmailId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Correspondence.Domain.Inbox.IncomingEmailRecipient", b =>
                 {
                     b.HasOne("TaxVision.Correspondence.Domain.Inbox.IncomingEmail", null)
@@ -948,6 +1008,8 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Correspondence.Domain.Inbox.IncomingEmail", b =>
                 {
                     b.Navigation("Attachments");
+
+                    b.Navigation("Mailboxes");
 
                     b.Navigation("Recipients");
                 });

@@ -53,7 +53,12 @@ public class WatchRenewalServiceTests
             subscriptionRepository,
             new FakeWatchProviderClientFactory(watchClient),
             unitOfWork,
-            new InlineMailboxFailureUnit(accountRepository, subscriptionRepository, unitOfWork),
+            new InlineMailboxFailureUnit(
+                accountRepository,
+                subscriptionRepository,
+                new FakeOAuthConnectionRepository(),
+                unitOfWork
+            ),
             correlation,
             NullLogger<WatchRenewalService>.Instance
         );

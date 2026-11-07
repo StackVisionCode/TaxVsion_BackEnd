@@ -5,4 +5,12 @@ namespace TaxVision.Postmaster.Application.Feedback;
 public sealed record DeliveryFeedbackTally(int Applied, int Duplicates, int Unmatched, int Invalid)
 {
     public static readonly DeliveryFeedbackTally Empty = new(0, 0, 0, 0);
+
+    public DeliveryFeedbackTally Plus(DeliveryFeedbackTally other) =>
+        new(
+            Applied + other.Applied,
+            Duplicates + other.Duplicates,
+            Unmatched + other.Unmatched,
+            Invalid + other.Invalid
+        );
 }

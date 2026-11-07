@@ -95,4 +95,7 @@ public interface IAppointmentRepository
     void Add(Appointment appointment);
 
     void Remove(Appointment appointment);
+
+    /// <summary>Olvida lo pendiente. El middleware guarda lo rastreado aunque el handler devuelva un fallo.</summary>
+    void DiscardPendingChanges();
 }

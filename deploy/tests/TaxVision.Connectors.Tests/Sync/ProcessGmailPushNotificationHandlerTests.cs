@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Accounts;
@@ -12,6 +13,81 @@ namespace TaxVision.Connectors.Tests.Sync;
 
 public class ProcessGmailPushNotificationHandlerTests
 {
+    private static async Task<(FakeEmailProviderClient Client, FakeProviderSyncCursorRepository Cursors)> PushAsync(
+        params TenantEmailAccount[] accounts
+    )
+    {
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.AddRange(accounts);
+        var subscriptionRepository = new FakeProviderWatchSubscriptionRepository();
+        foreach (var account in accounts)
+            subscriptionRepository.Subscriptions.Add(
+                ProviderWatchSubscription
+                    .Create(account.Id, ProviderCode.Gmail, "watch-history", "topic", Now.AddDays(7), Now)
+                    .Value
+            );
+        var cursors = new FakeProviderSyncCursorRepository();
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail);
+
+        var outgoing = await GmailPushReceivedHandler.Handle(
+            new GmailPushReceived("office@gmail.com", "push-history", "corr-1"),
+            accountRepository,
+            CancellationToken.None
+        );
+
+        foreach (var push in outgoing.OfType<GmailAccountPushReceived>())
+            await GmailAccountPushReceivedHandler.Handle(
+                push,
+                accountRepository,
+                subscriptionRepository,
+                cursors,
+                new FakeEmailProviderClientFactory(client),
+                new InMemoryDistributedLock(),
+                new InMemorySyncPendingFlag(),
+                new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
+                new FakeCorrelationContext(),
+                NullLogger.Instance,
+                FetchFailures.None(),
+                CancellationToken.None
+            );
+        return (client, cursors);
+    }
+
+    private static TenantEmailAccount ActiveAccountIn(Guid tenantId)
+    {
+        var account = TenantEmailAccount
+            .Create(tenantId, "office@gmail.com", ProviderCode.Gmail, Guid.NewGuid(), Now)
+            .Value;
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        return account;
+    }
+
+    [Fact]
+    public async Task Push_SameEmailInTwoTenants_SyncsBothAccounts()
+    {
+        var first = ActiveAccountIn(Guid.NewGuid());
+        var second = ActiveAccountIn(Guid.NewGuid());
+
+        var (client, cursors) = await PushAsync(first, second);
+
+        Assert.Equal(2, client.ReceivedCursors.Count);
+        Assert.Contains(cursors.Cursors, c => c.AccountId == first.Id);
+        Assert.Contains(cursors.Cursors, c => c.AccountId == second.Id);
+    }
+
+    [Fact]
+    public async Task Push_OneTenantDisconnected_SyncsTheActiveOne()
+    {
+        var disconnected = ActiveAccountIn(Guid.NewGuid());
+        disconnected.Disconnect(Now);
+        var active = ActiveAccountIn(Guid.NewGuid());
+
+        var (_, cursors) = await PushAsync(disconnected, active);
+
+        Assert.Equal(active.Id, Assert.Single(cursors.Cursors).AccountId);
+    }
+
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly DateTime Now = new(2026, 7, 17, 12, 0, 0, DateTimeKind.Utc);
 
@@ -50,15 +126,14 @@ public class ProcessGmailPushNotificationHandlerTests
         correlation.Set("corr-1");
 
         var result = await ProcessGmailPushNotificationHandler.Handle(
-            new ProcessGmailPushNotificationCommand("office@gmail.com", "push-history-1"),
+            new ProcessGmailPushNotificationCommand(account.Id, "push-history-1"),
             accountRepository,
             subscriptionRepository,
             cursorRepository,
             factory,
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            unitOfWork,
-            bus,
+            new HandlerTransactionUnit(unitOfWork, bus),
             correlation,
             NullLogger.Instance,
             FetchFailures.None(),
@@ -101,15 +176,14 @@ public class ProcessGmailPushNotificationHandlerTests
         var bus = new FakeMessageBus();
 
         var result = await ProcessGmailPushNotificationHandler.Handle(
-            new ProcessGmailPushNotificationCommand("owner@gmail.com", "push-history-1"),
+            new ProcessGmailPushNotificationCommand(account.Id, "push-history-1"),
             accountRepository,
             watchRepository,
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
@@ -142,15 +216,14 @@ public class ProcessGmailPushNotificationHandlerTests
         var correlation = new FakeCorrelationContext();
 
         var result = await ProcessGmailPushNotificationHandler.Handle(
-            new ProcessGmailPushNotificationCommand("office@gmail.com", "push-history-99"),
+            new ProcessGmailPushNotificationCommand(account.Id, "push-history-99"),
             accountRepository,
             new FakeProviderWatchSubscriptionRepository(),
             cursorRepository,
             factory,
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            unitOfWork,
-            bus,
+            new HandlerTransactionUnit(unitOfWork, bus),
             correlation,
             NullLogger.Instance,
             FetchFailures.None(),
@@ -162,18 +235,17 @@ public class ProcessGmailPushNotificationHandlerTests
     }
 
     [Fact]
-    public async Task Handle_WithUnknownEmailAddress_ReturnsFailure()
+    public async Task Handle_WithUnknownAccount_ReturnsFailure()
     {
         var result = await ProcessGmailPushNotificationHandler.Handle(
-            new ProcessGmailPushNotificationCommand("unknown@gmail.com", "history-1"),
+            new ProcessGmailPushNotificationCommand(Guid.NewGuid(), "history-1"),
             new FakeTenantEmailAccountRepository(),
             new FakeProviderWatchSubscriptionRepository(),
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Gmail)),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
@@ -197,15 +269,14 @@ public class ProcessGmailPushNotificationHandlerTests
         };
 
         var result = await ProcessGmailPushNotificationHandler.Handle(
-            new ProcessGmailPushNotificationCommand("office@gmail.com", "history-1"),
+            new ProcessGmailPushNotificationCommand(account.Id, "history-1"),
             accountRepository,
             new FakeProviderWatchSubscriptionRepository(),
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
@@ -240,15 +311,14 @@ public class ProcessGmailPushNotificationHandlerTests
         var bus = new FakeMessageBus();
 
         var result = await ProcessGmailPushNotificationHandler.Handle(
-            new ProcessGmailPushNotificationCommand("office@gmail.com", "history-1"),
+            new ProcessGmailPushNotificationCommand(account.Id, "history-1"),
             accountRepository,
             new FakeProviderWatchSubscriptionRepository(),
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
@@ -276,15 +346,14 @@ public class ProcessGmailPushNotificationHandlerTests
         };
 
         var result = await ProcessGmailPushNotificationHandler.Handle(
-            new ProcessGmailPushNotificationCommand("office@gmail.com", "history-1"),
+            new ProcessGmailPushNotificationCommand(account.Id, "history-1"),
             accountRepository,
             new FakeProviderWatchSubscriptionRepository(),
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
@@ -310,15 +379,14 @@ public class ProcessGmailPushNotificationHandlerTests
         var bus = new FakeMessageBus();
 
         var result = await ProcessGmailPushNotificationHandler.Handle(
-            new ProcessGmailPushNotificationCommand("office@gmail.com", "history-1"),
+            new ProcessGmailPushNotificationCommand(account.Id, "history-1"),
             accountRepository,
             new FakeProviderWatchSubscriptionRepository(),
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
@@ -382,15 +450,14 @@ public class ProcessGmailPushNotificationHandlerTests
         // Delivery A: acquires the account lock and blocks mid-sync (simulates a slow provider call).
         var firstDelivery = Task.Run(() =>
             ProcessGmailPushNotificationHandler.Handle(
-                new ProcessGmailPushNotificationCommand("office@gmail.com", "push-history-1"),
+                new ProcessGmailPushNotificationCommand(account.Id, "push-history-1"),
                 accountRepository,
                 subscriptionRepository,
                 cursorRepository,
                 factory,
                 sharedLock,
                 sharedPendingFlag,
-                unitOfWork,
-                bus,
+                new HandlerTransactionUnit(unitOfWork, bus),
                 correlation,
                 NullLogger.Instance,
                 FetchFailures.None(),
@@ -402,15 +469,14 @@ public class ProcessGmailPushNotificationHandlerTests
 
         // Delivery B: the redelivery of the SAME push notification, arriving while A is still in flight.
         var secondResult = await ProcessGmailPushNotificationHandler.Handle(
-            new ProcessGmailPushNotificationCommand("office@gmail.com", "push-history-1"),
+            new ProcessGmailPushNotificationCommand(account.Id, "push-history-1"),
             accountRepository,
             subscriptionRepository,
             cursorRepository,
             factory,
             sharedLock,
             sharedPendingFlag,
-            unitOfWork,
-            bus,
+            new HandlerTransactionUnit(unitOfWork, bus),
             correlation,
             NullLogger.Instance,
             FetchFailures.None(),

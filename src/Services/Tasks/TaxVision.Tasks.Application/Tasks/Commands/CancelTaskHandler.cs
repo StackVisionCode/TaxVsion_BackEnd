@@ -27,6 +27,7 @@ public static class CancelTaskHandler
         ITaskHierarchyService hierarchy,
         ITaskSeriesMaterializer seriesMaterializer,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -43,10 +44,15 @@ public static class CancelTaskHandler
         if (cancelled.IsFailure)
             return Result.Failure<TaskResponse>(cancelled.Error);
 
-        if (wasOpen)
-            await CascadeAsync(command, task, unblocking, hierarchy, seriesMaterializer, ct);
+        IReadOnlyList<TaskUnblockedIntegrationEvent> unblocked = wasOpen
+            ? await CascadeAsync(command, task, unblocking, hierarchy, seriesMaterializer, ct)
+            : [];
 
         await unitOfWork.SaveChangesAsync(ct);
+
+        foreach (var notice in unblocked)
+            await bus.PublishAsync(notice);
+
         return Result.Success(TaskResponse.From(task));
     }
 
@@ -54,7 +60,7 @@ public static class CancelTaskHandler
     /// Cancelar arrastra lo mismo que completar —sucesoras, padre y serie— pero sin fecha de cierre: la
     /// ocurrencia siguiente se calcula desde la regla. Los avisos los devuelve TaskCancelledDomainEventHandler.
     /// </summary>
-    private static async Task CascadeAsync(
+    private static async Task<IReadOnlyList<TaskUnblockedIntegrationEvent>> CascadeAsync(
         CancelTaskCommand command,
         TaskItem task,
         ITaskUnblockingService unblocking,
@@ -63,9 +69,10 @@ public static class CancelTaskHandler
         CancellationToken ct
     )
     {
-        await unblocking.ApplyPredecessorClosedAsync(command.TenantId, task.Id, ct);
+        var unblocked = await unblocking.ApplyPredecessorClosedAsync(command.TenantId, task.Id, ct);
         await hierarchy.ApplyChildClosedAsync(command.TenantId, task.ParentTaskId, ct);
 
         await seriesMaterializer.ApplyInstanceClosedAsync(task, null, ct);
+        return unblocked;
     }
 }

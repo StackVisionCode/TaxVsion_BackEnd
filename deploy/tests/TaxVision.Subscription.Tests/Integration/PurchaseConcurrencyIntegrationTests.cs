@@ -38,7 +38,7 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
 
         Assert.Single(outcomes, o => o.Error is null && o.Result!.IsSuccess);
         var loser = Assert.Single(outcomes, o => o.Error is not null);
-        Assert.IsType<DbUpdateConcurrencyException>(loser.Error);
+        Assert.IsType<ConflictException>(loser.Error);
         var loserBus = ReferenceEquals(loser, outcomes[0]) ? busA : busB;
         Assert.Empty(loserBus.Published.OfType<AddOnRenewalDueIntegrationEvent>());
 
@@ -60,7 +60,7 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
         var outcomes = await Task.WhenAll(PurchaseSeatsAsync(gate), PurchaseSeatsAsync(gate));
 
         Assert.Single(outcomes, o => o.Error is null && o.Result!.IsSuccess);
-        Assert.IsType<DbUpdateConcurrencyException>(Assert.Single(outcomes, o => o.Error is not null).Error);
+        Assert.IsType<ConflictException>(Assert.Single(outcomes, o => o.Error is not null).Error);
 
         await using var check = _db.NewContext();
         Assert.Equal(
@@ -73,14 +73,42 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
         );
     }
 
-    private async Task<Outcome<Guid>> PurchaseAddOnAsync(AddOnDefinition definition, AsyncGate gate, CapturingMessageBus bus)
+    // SUB-12: dos peticiones simultáneas con la misma clave; el reintento del perdedor ve la compra hecha.
+    [Fact]
+    public async Task TwoPurchasesWithSameClientKey_CreateOneAddOnAndChargeOnce()
+    {
+        var definition = AddOnTestCatalog.QuotaAddOn("test.multi", allowMultiple: true);
+        var gate = new AsyncGate(2);
+        var bus = new CapturingMessageBus();
+
+        var outcomes = await Task.WhenAll(
+            PurchaseAddOnAsync(definition, gate, bus, "key-1"),
+            PurchaseAddOnAsync(definition, gate, bus, "key-1")
+        );
+
+        Assert.Single(outcomes, o => o.Error is null && o.Result!.IsSuccess);
+        var retry = await PurchaseAddOnAsync(definition, new AsyncGate(1), bus, "key-1");
+
+        Assert.True(retry.Result!.IsSuccess);
+        var charge = Assert.Single(bus.Published.OfType<AddOnRenewalDueIntegrationEvent>());
+        Assert.Equal(retry.Result.Value, charge.TenantAddOnId);
+        await using var check = _db.NewContext();
+        Assert.Equal(1, await check.TenantAddOns.IgnoreQueryFilters().CountAsync(a => a.TenantId == _db.TenantId));
+    }
+
+    private async Task<Outcome<Guid>> PurchaseAddOnAsync(
+        AddOnDefinition definition,
+        AsyncGate gate,
+        CapturingMessageBus bus,
+        string? clientKey = null
+    )
     {
         await Task.Yield();
         await using var db = _db.NewContext();
         try
         {
             var result = await PurchaseAddOnHandler.Handle(
-                new PurchaseAddOnCommand(_db.TenantId, definition.Code.Value, 1, AutoRenew: true, Guid.NewGuid()),
+                new PurchaseAddOnCommand(_db.TenantId, definition.Code.Value, 1, AutoRenew: true, Guid.NewGuid(), clientKey),
                 new TenantSubscriptionRepository(db),
                 new FakePlanRepo(null),
                 new FakeModuleRepo(),

@@ -1,4 +1,4 @@
-﻿using BuildingBlocks.CustomerVisibility;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -163,6 +163,18 @@ public static class DependencyInjection
         services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
         services.AddScoped<NotificationDeliveryGate>();
         services.AddScoped<NotificationDispatcher>();
+        services.AddScoped<IPushAttemptRecorder, Notifications.PushAttemptRecorder>();
+        services.AddScoped<
+            TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignDispatchSendRepository,
+            Persistence.Repositories.CampaignDispatchSendRepository
+        >();
+        services
+            .AddOptions<TaxVision.Notification.Application.Email.Sending.Campaign.CampaignDispatchOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.Notification.Application.Email.Sending.Campaign.CampaignDispatchOptions.SectionName
+                )
+            );
         services.AddScoped<ClientFormNotificationSender>();
         services.AddScoped<OffboardingNoticeSender>();
 

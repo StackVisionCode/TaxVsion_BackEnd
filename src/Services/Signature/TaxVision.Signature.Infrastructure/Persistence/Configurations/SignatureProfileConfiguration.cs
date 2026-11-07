@@ -18,5 +18,11 @@ public sealed class SignatureProfileConfiguration : IEntityTypeConfiguration<Sig
 
         // Ámbito de consulta: firmas de un tenant + owner (usuario u oficina=null).
         builder.HasIndex(profile => new { profile.TenantId, profile.OwnerUserId });
+
+        // SIG-7: una sola default por ámbito. SQL Server trata los NULL como iguales: cubre la firma de oficina.
+        builder
+            .HasIndex(profile => new { profile.TenantId, profile.OwnerUserId }, "UX_SignatureProfiles_OneDefault")
+            .IsUnique()
+            .HasFilter("[IsDefault] = 1");
     }
 }

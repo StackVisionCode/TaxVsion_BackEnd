@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Common;
@@ -36,10 +37,13 @@ namespace TaxVision.Connectors.Tests.Integration;
 /// <summary>
 /// Host mínimo de Wolverine con la persistencia de Connectors sobre una base temporal propia: los jobs recorren
 /// todos los buzones, así que nunca corren contra la base de desarrollo. Los avisos van a un puerto TCP cerrado y
-/// se quedan en wolverine_outgoing_envelopes. Si una corrida anterior se abortó, su base se borra al arrancar.
+/// se quedan en wolverine_outgoing_envelopes, salvo que la prueba pida recibirlos. Si una corrida anterior se abortó, su base se borra al arrancar.
 /// </summary>
 internal sealed class ConnectorsJobHost : IAsyncDisposable
 {
+    /// <summary>Las clases con base temporal corren en serie: crear y borrar bases en paralelo daba fallos de login.</summary>
+    public const string Collection = "connectors-temporary-database";
+
     private readonly string _prefix;
     private IHost? _host;
 
@@ -65,7 +69,11 @@ internal sealed class ConnectorsJobHost : IAsyncDisposable
             .GetConnectionString("Default")
         ?? throw new InvalidOperationException("Set CONNECTORS_DB_CONNECTION or the Connectors Api user-secrets.");
 
-    public async Task StartAsync(Action<IServiceCollection> configureServices)
+    public async Task StartAsync(
+        Action<IServiceCollection> configureServices,
+        Action<WolverineOptions>? configureWolverine = null,
+        bool receiveNotices = false
+    )
     {
         await DropOrphansAsync();
         await using (var db = NewContext())
@@ -100,6 +108,8 @@ internal sealed class ConnectorsJobHost : IAsyncDisposable
                     options.Services.AddScoped<IWatchRenewalService, WatchRenewalService>();
                     options.Services.AddScoped<IOAuthTokenManager, OAuthTokenManager>();
                     options.Services.AddScoped<IMailboxFailureUnit, MailboxFailureUnit>();
+                    options.Services.AddScoped<IOAuthTokenStore, OAuthTokenStore>();
+                    options.Services.AddScoped<IOutboxUnit, OutboxUnit>();
                     options.Services.AddSingleton(new HttpResiliencePipelineRegistry());
                     options.Services.AddSingleton<IEncryptedSecretProtector, FakeEncryptedSecretProtector>();
                     options.Services.AddSingleton<IDistributedLock, InMemoryDistributedLock>();
@@ -115,12 +125,28 @@ internal sealed class ConnectorsJobHost : IAsyncDisposable
                     options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
                     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+                    configureWolverine?.Invoke(options);
+                    if (receiveNotices)
+                        options.ListenAtPort(closedPort);
+
                     options
                         .PublishMessage<ConnectorsOAuthRefreshFailedIntegrationEvent>()
                         .ToPort(closedPort)
                         .UseDurableOutbox();
                     options
                         .PublishMessage<ConnectorsWatchExpiredIntegrationEvent>()
+                        .ToPort(closedPort)
+                        .UseDurableOutbox();
+                    options
+                        .PublishMessage<ConnectorsRawMessageReceivedIntegrationEvent>()
+                        .ToPort(closedPort)
+                        .UseDurableOutbox();
+                    options
+                        .PublishMessage<ConnectorsTenantEmailAccountConnectedIntegrationEvent>()
+                        .ToPort(closedPort)
+                        .UseDurableOutbox();
+                    options
+                        .PublishMessage<ConnectorsTenantEmailAccountDisconnectedIntegrationEvent>()
                         .ToPort(closedPort)
                         .UseDurableOutbox();
                 })
@@ -210,8 +236,10 @@ internal sealed class ConnectorsJobHost : IAsyncDisposable
     internal sealed class OpenTransactionsCounter : DbTransactionInterceptor
     {
         private int _open;
+        private int _committed;
 
         public int Open => Volatile.Read(ref _open);
+        public int Committed => Volatile.Read(ref _committed);
 
         public override ValueTask<System.Data.Common.DbTransaction> TransactionStartedAsync(
             System.Data.Common.DbConnection connection,
@@ -231,6 +259,7 @@ internal sealed class ConnectorsJobHost : IAsyncDisposable
         )
         {
             Interlocked.Decrement(ref _open);
+            Interlocked.Increment(ref _committed);
             return Task.CompletedTask;
         }
 

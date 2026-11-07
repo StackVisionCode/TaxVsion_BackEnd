@@ -5,6 +5,8 @@ using TaxVision.Tenant.Application.Brands.Abstractions;
 using TaxVision.Tenant.Application.Tenants;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 using TaxVision.Tenant.Domain.Enums;
+using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Tenant.Application.Brands.Commands;
 
@@ -16,6 +18,15 @@ public sealed record UploadTenantBrandAssetCommand(
     byte[] Content,
     string ContentType,
     string FileName
+);
+
+/// <summary>El archivo ya está en MinIO: falta guardarlo como Pending y pedir el escaneo.</summary>
+public sealed record SaveTenantBrandAssetCommand(
+    Guid TenantId,
+    BrandSurface Surface,
+    BrandAssetKey Key,
+    TenantLogoUpload Upload,
+    TenantBrandStoredFile Stored
 );
 
 /// <param name="EmailWarning">
@@ -45,16 +56,16 @@ public static class BrandAssetEmailWarnings
 /// Sube logo o favicon (mismo pipeline asíncrono que el logo viejo: MinIO + SaveFileRequested para el
 /// escaneo). Setea el asset en Pending de forma optimista con los metadatos declarados; se confirma
 /// cuando llega el resultado del escaneo (Fase 6 — consumer). Reusa el cliente de CloudStorage y el
-/// lector de dimensiones existentes.
+/// lector de dimensiones existentes. El PUT va sin transacción abierta; un choque al guardar reintenta solo
+/// <see cref="SaveTenantBrandAssetHandler"/>, sin volver a subir el archivo.
 /// </summary>
 public static class UploadTenantBrandAssetHandler
 {
+    [NonTransactional]
     public static async Task<Result<UploadTenantBrandAssetResponse>> Handle(
         UploadTenantBrandAssetCommand cmd,
-        ITenantBrandRepository repo,
         ITenantBrandingCloudStorageClient client,
-        IUnitOfWork unitOfWork,
-        ICacheService cache,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -65,14 +76,40 @@ public static class UploadTenantBrandAssetHandler
         if (stored.IsFailure)
             return Result.Failure<UploadTenantBrandAssetResponse>(stored.Error);
 
-        var fileId = stored.Value.FileId;
-        var (width, height) = LogoImageDimensionReader.TryRead(cmd.Content, cmd.ContentType);
+        return await bus.InvokeAsync<Result<UploadTenantBrandAssetResponse>>(
+            new SaveTenantBrandAssetCommand(cmd.TenantId, cmd.Surface, cmd.Key, upload, stored.Value),
+            ct
+        );
+    }
+}
+
+public static class SaveTenantBrandAssetHandler
+{
+    public static async Task<Result<UploadTenantBrandAssetResponse>> Handle(
+        SaveTenantBrandAssetCommand cmd,
+        ITenantBrandRepository repo,
+        ITenantBrandingCloudStorageClient client,
+        IUnitOfWork unitOfWork,
+        ICacheService cache,
+        CancellationToken ct
+    )
+    {
+        var upload = cmd.Upload;
+        var fileId = cmd.Stored.FileId;
+        var (width, height) = LogoImageDimensionReader.TryRead(upload.Content, upload.ContentType);
 
         // 2) Persistir el asset Pending ANTES de disparar el escaneo. Si publicáramos primero, el
         //    resultado del escaneo podría llegar antes de que exista la fila y quedaría huérfana en
         //    Pending para siempre (el evento de confirmación no se repite).
         var brand = await BrandCommandSupport.GetOrCreateAsync(repo, cmd.TenantId, cmd.Surface, ct);
-        var setResult = brand.SetAssetPending(cmd.Key, fileId, cmd.ContentType, cmd.Content.LongLength, width, height);
+        var setResult = brand.SetAssetPending(
+            cmd.Key,
+            fileId,
+            upload.ContentType,
+            upload.Content.LongLength,
+            width,
+            height
+        );
         if (setResult.IsFailure)
             return Result.Failure<UploadTenantBrandAssetResponse>(setResult.Error);
 
@@ -80,14 +117,14 @@ public static class UploadTenantBrandAssetHandler
 
         // 3) Ahora sí: pedir a CloudStorage que catalogue y escanee. El consumer del resultado ya
         //    encontrará la fila Pending y podrá confirmarla.
-        await client.RequestCatalogAsync(cmd.TenantId, upload, stored.Value, ct);
+        await client.RequestCatalogAsync(cmd.TenantId, upload, cmd.Stored, ct);
 
         await BrandCommandSupport.InvalidateAsync(cache, cmd.TenantId, cmd.Surface, ct);
         return Result.Success(
             new UploadTenantBrandAssetResponse(
                 fileId,
                 "processing",
-                BrandAssetEmailWarnings.For(cmd.Surface, cmd.Key, cmd.ContentType)
+                BrandAssetEmailWarnings.For(cmd.Surface, cmd.Key, upload.ContentType)
             )
         );
     }

@@ -1,7 +1,9 @@
 ﻿using System.Diagnostics;
 using System.Text.RegularExpressions;
 using BuildingBlocks.Common;
+using BuildingBlocks.Web.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BuildingBlocks.Web.Middleware;
 
@@ -32,6 +34,9 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next)
             ctx.Response.Headers[Header] = id;
             return Task.CompletedTask;
         });
+
+        // BB-9: solo si el servicio llama UseTaxVisionDomainEvents().
+        ctx.RequestServices?.GetService<RequestEnvelopeCorrelation>()?.Apply(id);
 
         using (corr.Push(id))
         {

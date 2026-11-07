@@ -49,6 +49,10 @@ public sealed class PlanChangeRequest : BaseEntity
     public string PaymentIdempotencyKey { get; private set; } = default!;
     public Guid? SaaSPaymentId { get; private set; }
 
+    /// <summary>SUB-13: true = se cobra por redirect. Un off-session tampoco tiene URL y su cobro sigue en curso:
+    /// esto es lo que los distingue.</summary>
+    public bool UsesHostedCheckout { get; private set; }
+
     /// <summary>URL del checkout hosteado, cuando el upgrade se cobra por redirect en vez de off-session.
     /// Mientras la sesión no caduque, el usuario puede retomar ese pago en vez de abrir otro.</summary>
     public string? CheckoutUrl { get; private set; }
@@ -59,6 +63,11 @@ public sealed class PlanChangeRequest : BaseEntity
     [UserReference(UserReferenceKind.Provenance)]
     public Guid? CancelledByUserId { get; private set; }
     public string? CancelReason { get; private set; }
+
+    /// <summary>SUB-15: lo que este upgrade quitó al pedirse. Si no se paga, vuelve a quedar agendado.</summary>
+    public Guid? ReplacedDowngradeId { get; private set; }
+    public DateTime? ReplacedCancellationAtUtc { get; private set; }
+    public string? ReplacedCancellationReason { get; private set; }
 
     private PlanChangeRequest() { }
 
@@ -76,7 +85,8 @@ public sealed class PlanChangeRequest : BaseEntity
         DateTime nowUtc,
         long chargeAmountCents,
         string chargeCurrency,
-        string paymentIdempotencyKey
+        string paymentIdempotencyKey,
+        bool usesHostedCheckout = false
     )
     {
         if (tenantSubscriptionId == Guid.Empty)
@@ -127,8 +137,16 @@ public sealed class PlanChangeRequest : BaseEntity
                 ChargeAmountCents = chargeAmountCents,
                 ChargeCurrency = chargeCurrency,
                 PaymentIdempotencyKey = paymentIdempotencyKey,
+                UsesHostedCheckout = usesHostedCheckout,
             }
         );
+    }
+
+    internal void RememberReplaced(Guid? downgradeId, DateTime? cancellationAtUtc, string? cancellationReason)
+    {
+        ReplacedDowngradeId = downgradeId;
+        ReplacedCancellationAtUtc = cancellationAtUtc;
+        ReplacedCancellationReason = cancellationReason;
     }
 
     /// <summary>Guarda la sesión de checkout recién creada en PaymentApp. Solo aplica al camino por
@@ -149,6 +167,10 @@ public sealed class PlanChangeRequest : BaseEntity
     /// <summary>¿El pago sigue abierto y se puede retomar?</summary>
     public bool HasOpenCheckout(DateTime nowUtc) =>
         Status == PlanChangeRequestStatus.AwaitingPayment && CheckoutUrl is not null && CheckoutExpiresAtUtc > nowUtc;
+
+    /// <summary>SUB-13: pedido por redirect y sin sesión adjunta: nadie tiene la URL, nadie lo puede pagar.</summary>
+    public bool IsHostedWithoutCheckout =>
+        Status == PlanChangeRequestStatus.AwaitingPayment && UsesHostedCheckout && CheckoutUrl is null;
 
     /// <summary>PaymentApp confirmó el cobro — el caller (TenantSubscription) ya aplicó
     /// ChangePlan (y reinició el ciclo) antes de llamar esto; acá solo se cierra el
@@ -211,6 +233,17 @@ public sealed class PlanChangeRequest : BaseEntity
             return Result.Success();
 
         if (CheckoutExpiresAtUtc is null || CheckoutExpiresAtUtc > nowUtc)
+            return Result.Success();
+
+        Status = PlanChangeRequestStatus.Expired;
+        ExpiredAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>SUB-13: cierra el upgrade que nunca recibió sesión. No deja ningún cobro atrás. Idempotente.</summary>
+    public Result ExpireWithoutCheckout(DateTime nowUtc)
+    {
+        if (!IsHostedWithoutCheckout)
             return Result.Success();
 
         Status = PlanChangeRequestStatus.Expired;

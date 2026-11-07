@@ -32,6 +32,49 @@ public sealed class RepublishTenantStatusHandlerTests
     }
 
     [Fact]
+    public async Task Handle_PublishesTheTenantVersion()
+    {
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC").Value;
+        tenant.Suspend();
+        var bus = new RecordingMessageBus();
+
+        await RepublishTenantStatusHandler.Handle(
+            new RepublishTenantStatusCommand(tenant.Id),
+            new SingleTenantRepository(tenant),
+            bus,
+            new NoopCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(1, Assert.Single(bus.Published.OfType<TenantStatusChangedIntegrationEvent>()).TenantVersion);
+    }
+
+    [Fact]
+    public async Task HandleAll_EnqueuesOneCommandPerTenantAcrossPages()
+    {
+        var ids = Enumerable.Range(0, 450).Select(_ => Guid.NewGuid()).ToList();
+        var bus = new RecordingMessageBus();
+
+        var enqueued = await RepublishAllTenantStatusHandler.Handle(
+            new RepublishAllTenantStatusCommand(),
+            new PagedTenants(ids),
+            bus,
+            CancellationToken.None
+        );
+
+        Assert.Equal(450, enqueued);
+        Assert.Equal(ids, bus.Published.OfType<RepublishTenantStatusCommand>().Select(c => c.TenantId));
+    }
+
+    private sealed class PagedTenants(IReadOnlyList<Guid> ids) : ITenantReadService
+    {
+        public Task<IReadOnlyList<TenantResponse>> GetPageAsync(int page, int size, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<TenantResponse>>(
+                ids.Skip((page - 1) * size).Take(size).Select(id => new TenantResponse(id, "n", "s", "UTC")).ToList()
+            );
+    }
+
+    [Fact]
     public async Task Handle_UnknownTenant_ReturnsNotFoundAndPublishesNothing()
     {
         var bus = new RecordingMessageBus();

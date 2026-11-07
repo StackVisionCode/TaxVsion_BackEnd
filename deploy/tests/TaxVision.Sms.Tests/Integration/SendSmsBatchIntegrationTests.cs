@@ -127,6 +127,8 @@ public sealed class SendSmsBatchIntegrationTests : IAsyncLifetime
                         record,
                         new SmsMessageRepository(db),
                         new SmsOptOutRepository(db),
+                        new PendingDeliveryReceiptRepository(db),
+                        new ProcessedWebhookRepository(db),
                         db,
                         bus,
                         CancellationToken.None

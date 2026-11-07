@@ -40,6 +40,9 @@ public sealed class TenantAddOn : TenantEntity
     [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
 
+    /// <summary>Token de concurrencia: dos eventos de pago, el job y el usuario no se pisan el estado.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public IReadOnlyCollection<TenantAddOnRenewal> Renewals => _renewals;
 
     private TenantAddOn() { }
@@ -52,7 +55,8 @@ public sealed class TenantAddOn : TenantEntity
         BillingCycle billingCycle,
         bool autoRenew,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        Guid? id = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -85,6 +89,7 @@ public sealed class TenantAddOn : TenantEntity
             CreatedBy = actorUserId,
             UpdatedBy = actorUserId,
         };
+        addOn.Id = id ?? addOn.Id;
         addOn.SetTenant(tenantId);
         return Result.Success(addOn);
     }
@@ -322,9 +327,12 @@ public sealed class TenantAddOn : TenantEntity
         if (markResult.IsFailure)
             return markResult;
 
-        return effectiveWillRetry
-            ? Result.Success()
-            : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
+        if (!effectiveWillRetry)
+            return MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
+
+        // Solo cambió la renovación hija: la raíz se toca para que la RowVersion vea el conflicto.
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
     }
 
     private static Result CompleteRenewalAttempt(

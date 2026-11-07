@@ -116,7 +116,7 @@ public sealed class CampaignRun : AggregateRoot
             TriggeredByUserId = triggeredByUserId,
             TriggerKind = triggerKind,
             CreatedAtUtc = DateTime.UtcNow,
-            Status = CampaignRunStatus.Dispatching,
+            Status = CampaignRunStatus.Created,
         };
         run.SetTenant(tenantId);
 
@@ -141,15 +141,24 @@ public sealed class CampaignRun : AggregateRoot
         return Result.Success(run);
     }
 
+    /// <summary>El Wallet autorizó el cobro (o no había nada que cobrar): el run puede despachar.</summary>
+    public Result MarkFundsReserved()
+    {
+        if (Status != CampaignRunStatus.Created)
+            return Result.Failure(CampaignRunErrors.NotCreated);
+
+        Status = CampaignRunStatus.Dispatching;
+        return Result.Success();
+    }
+
     /// <summary>
     /// Rechaza el run ANTES de despachar nada (PEP money-OUT, F4): el gate del Wallet no autorizó el cobro
-    /// (saldo insuficiente o Wallet no disponible). Solo válido mientras está <see cref="CampaignRunStatus.Dispatching"/>
-    /// y no se emitió ningún dispatch — así no se cobra ni se envía nada. Terminal: no publica run.completed
-    /// (no hubo envío que liquidar).
+    /// (saldo insuficiente o Wallet no disponible). Solo válido mientras no se emitió ningún dispatch — así no se
+    /// cobra ni se envía nada. Terminal: no publica run.completed (no hubo envío que liquidar).
     /// </summary>
     public Result Reject(string reason)
     {
-        if (Status != CampaignRunStatus.Dispatching)
+        if (Status is not (CampaignRunStatus.Created or CampaignRunStatus.Dispatching))
             return Result.Failure(CampaignRunErrors.NotDispatching);
         if (CounterDispatched > 0)
             return Result.Failure(CampaignRunErrors.AlreadyDispatched);
@@ -171,7 +180,7 @@ public sealed class CampaignRun : AggregateRoot
             AnnounceClosure();
     }
 
-    /// <summary>Marca una unidad como despachada (tras emitir su evento de dispatch).</summary>
+    /// <summary>Marca una unidad como despachada. Su evento de dispatch sale después de guardar.</summary>
     public Result MarkDispatched(Guid recipientId)
     {
         var recipient = _recipients.Find(r => r.Id == recipientId);
@@ -230,12 +239,43 @@ public sealed class CampaignRun : AggregateRoot
         if (recipient is null)
             return Result.Failure<bool>(CampaignRunErrors.RecipientNotFound);
 
-        recipient.ApplyOutcome(outcome, providerRef, reason);
-        RecomputeCounters();
+        // CMP-04: solo la unidad del resultado está cargada; los contadores se mueven, no se recuentan.
+        var previous = recipient.State;
+        if (recipient.ApplyOutcome(outcome, providerRef, reason))
+        {
+            AddToCounter(previous, -1);
+            AddToCounter(recipient.State, 1);
+        }
+
         var closedNow = EvaluateClosure();
         if (closedNow)
             AnnounceClosure();
         return Result.Success(closedNow);
+    }
+
+    private void AddToCounter(DispatchState state, int delta)
+    {
+        switch (state)
+        {
+            case DispatchState.Dispatched:
+                CounterDispatched += delta;
+                break;
+            case DispatchState.Accepted:
+                CounterAccepted += delta;
+                break;
+            case DispatchState.Delivered:
+                CounterDelivered += delta;
+                break;
+            case DispatchState.Failed:
+                CounterFailed += delta;
+                break;
+            case DispatchState.Skipped:
+                CounterSkipped += delta;
+                break;
+            case DispatchState.Unknown:
+                CounterUnknown += delta;
+                break;
+        }
     }
 
     // Foto del cierre: una unidad resuelta después (D-CMP-4) no cambia lo que se anunció.
@@ -255,6 +295,7 @@ public sealed class CampaignRun : AggregateRoot
             )
         );
 
+    /// <summary>Recuento desde las unidades. Solo donde están todas cargadas: arranque, despacho y barrido.</summary>
     private void RecomputeCounters()
     {
         CounterDispatched = _recipients.Count(r => r.State == DispatchState.Dispatched);
@@ -276,9 +317,9 @@ public sealed class CampaignRun : AggregateRoot
             return false;
         }
 
-        if (Status != CampaignRunStatus.Dispatching)
+        if (Status is not (CampaignRunStatus.Created or CampaignRunStatus.Dispatching))
             return false;
-        if (_recipients.Any(r => !r.IsSettled))
+        if (CounterAccepted + CounterDelivered + CounterFailed + CounterSkipped + CounterUnknown < RecipientCount)
             return false;
 
         Status = TerminalStatus();

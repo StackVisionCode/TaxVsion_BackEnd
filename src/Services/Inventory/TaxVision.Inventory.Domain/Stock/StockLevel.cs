@@ -17,6 +17,12 @@ public sealed class StockLevel : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>
+    /// <c>OccurredOn</c> del último evento de Catalog aplicado al rastreo. <c>null</c>: todavía ninguno, como las filas
+    /// de antes de INV-3.
+    /// </summary>
+    public DateTime? CatalogStateAtUtc { get; private set; }
+
     public bool IsLowStock => IsTracked && QuantityOnHand <= MinLevel;
 
     private StockLevel() { }
@@ -51,6 +57,36 @@ public sealed class StockLevel : TenantEntity
         };
         level.SetTenant(tenantId);
         return Result.Success(level);
+    }
+
+    /// <summary>Nivel abierto por un evento de Catalog, en 0. Sin rastreo es la marca de un ítem ya desactivado.</summary>
+    public static Result<StockLevel> CreateFromCatalog(
+        Guid tenantId,
+        Guid catalogItemId,
+        bool tracked,
+        DateTime occurredOnUtc,
+        DateTime nowUtc
+    )
+    {
+        var created = Create(tenantId, catalogItemId, 0, 0, 0, 0, nowUtc);
+        if (created.IsFailure)
+            return created;
+
+        created.Value.IsTracked = tracked;
+        created.Value.CatalogStateAtUtc = occurredOnUtc;
+        return created;
+    }
+
+    /// <summary>Aplica el rastreo que anuncia Catalog. Devuelve <c>false</c> si el evento no es más nuevo que el último.</summary>
+    public bool ApplyCatalogTracking(bool tracked, DateTime occurredOnUtc, DateTime nowUtc)
+    {
+        if (CatalogStateAtUtc is { } applied && occurredOnUtc <= applied)
+            return false;
+
+        IsTracked = tracked;
+        CatalogStateAtUtc = occurredOnUtc;
+        UpdatedAtUtc = nowUtc;
+        return true;
     }
 
     public void SetThresholds(int minLevel, int maxLevel, int reorderPoint, DateTime nowUtc)

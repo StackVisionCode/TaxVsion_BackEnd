@@ -128,6 +128,7 @@ public sealed class ApplyDispatchResultConsumerTests
                 [new RunRecipientDraft("c1", CampaignChannel.Email, "a@x.com", null)]
             )
             .Value;
+        run.MarkFundsReserved();
         run.MarkDispatched(run.Recipients.Single().Id);
         return run;
     }

@@ -26,6 +26,7 @@ public sealed class EmailTemplateConfiguration : IEntityTypeConfiguration<EmailT
             .HasMaxLength(TemplateKey.MaxLength)
             .IsRequired();
 
+        builder.Property(t => t.RowVersion).IsRowVersion();
         builder.Property(t => t.Name).HasMaxLength(200).IsRequired();
         builder.Property(t => t.Description).HasMaxLength(2000);
         builder.Property(t => t.Status).HasConversion<string>().HasMaxLength(16).IsRequired();

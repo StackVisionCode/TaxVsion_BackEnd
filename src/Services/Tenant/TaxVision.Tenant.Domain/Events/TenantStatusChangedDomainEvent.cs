@@ -6,5 +6,6 @@ namespace TaxVision.Tenant.Domain.Events;
 public sealed record TenantStatusChangedDomainEvent(
     Guid TenantId,
     EnumTenantStatus.TenantStatus Status,
-    bool IsActive
+    bool IsActive,
+    long Version
 ) : IDomainEvent;

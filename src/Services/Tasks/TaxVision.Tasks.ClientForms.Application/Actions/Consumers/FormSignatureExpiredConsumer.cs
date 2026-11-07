@@ -29,7 +29,9 @@ public static class FormSignatureExpiredConsumer
             var request = await FormActionResultSupport.LoadAsync(evt.TenantId, requestId, requests, logger, ct);
             if (request is null)
                 return;
-            if (request.MarkSignatureExpired(revision).IsFailure)
+            if (
+                FormSignatureResultSupport.Failed(request.MarkSignatureExpired(revision), "Expired", requestId, revision, logger)
+            )
                 return;
             var outgoing = new DeferredMessages();
             await planner.PlanAfterSignatureAsync(request, revision, false, outgoing, evt.OccurredOn, ct);

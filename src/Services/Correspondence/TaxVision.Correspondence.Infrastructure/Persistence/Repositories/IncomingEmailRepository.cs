@@ -17,6 +17,7 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
     ) =>
         db
             .IncomingEmails.IgnoreQueryFilters()
+            .Include(x => x.Mailboxes)
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.InternetMessageId == internetMessageId, ct);
 
     public Task<IncomingEmail?> FindByProviderMessageIdAsync(
@@ -27,6 +28,7 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
     ) =>
         db
             .IncomingEmails.IgnoreQueryFilters()
+            .Include(x => x.Mailboxes)
             .FirstOrDefaultAsync(
                 x =>
                     x.TenantId == tenantId
@@ -53,9 +55,21 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
             .IncomingEmails.IgnoreQueryFilters()
             .Where(ie =>
                 ie.TenantId == tenantId
+                && ie.CustomerId != null
                 && db.EmailThreads.IgnoreQueryFilters()
                     .Any(t => t.Id == ie.EmailThreadId && t.CustomerId != null && t.CustomerId != ie.CustomerId)
             )
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<IncomingEmail>> ListUnlinkedByAddressAsync(
+        Guid tenantId,
+        string fromAddress,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .IncomingEmails.IgnoreQueryFilters()
+            .Where(x => x.TenantId == tenantId && x.CustomerId == null && x.From == fromAddress)
+            .OrderBy(x => x.ReceivedAtUtc)
             .ToListAsync(ct);
 
     public async Task AddAsync(IncomingEmail entity, CancellationToken ct = default)

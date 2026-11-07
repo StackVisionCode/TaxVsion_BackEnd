@@ -53,6 +53,15 @@ internal sealed class FakeIncomingEmailRepository : IIncomingEmailRepository
     public Task<IncomingEmail?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         Task.FromResult(_store.FirstOrDefault(x => x.TenantId == tenantId && x.Id == id));
 
+    public Task<IReadOnlyList<IncomingEmail>> ListUnlinkedByAddressAsync(
+        Guid tenantId,
+        string fromAddress,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<IncomingEmail>>(
+            _store.Where(x => x.TenantId == tenantId && x.CustomerId is null && x.From == fromAddress).ToList()
+        );
+
     public Task AddAsync(IncomingEmail entity, CancellationToken ct = default)
     {
         _store.Add(entity);

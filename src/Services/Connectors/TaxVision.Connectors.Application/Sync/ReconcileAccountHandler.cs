@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Abstractions;
@@ -7,7 +6,7 @@ using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Shared;
-using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Sync;
 
@@ -40,6 +39,7 @@ public static class ReconcileAccountHandler
     /// </summary>
     private static readonly TimeSpan ReconciliationSyncLockTtl = TimeSpan.FromMinutes(10);
 
+    [NonTransactional]
     public static async Task<Result<ReconciliationOutcome>> Handle(
         ReconcileAccountCommand cmd,
         ITenantEmailAccountRepository accountRepository,
@@ -48,8 +48,7 @@ public static class ReconcileAccountHandler
         IEmailProviderClientFactory emailClientFactory,
         IDistributedLock distributedLock,
         ISyncPendingFlag pendingFlag,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IOutboxUnit unit,
         ICorrelationContext correlation,
         ILogger logger,
         MessageFetchFailureTracker fetchFailures,
@@ -95,8 +94,7 @@ public static class ReconcileAccountHandler
                     account,
                     clientResult.Value,
                     cursor,
-                    unitOfWork,
-                    bus,
+                    unit,
                     correlation,
                     logger,
                     fetchFailures,
@@ -111,12 +109,11 @@ public static class ReconcileAccountHandler
             && syncResult.Error.Code == RawMessageSyncOrchestrator.ReconnectRequiredCode
             && account.ProviderCode == ProviderCode.Imap
         )
-            await MailboxCredentialsRejection.HandleAsync(
-                account,
-                syncResult.Error.Message,
-                unitOfWork,
-                correlation,
-                logger,
+            await unit.RunAsync(
+                (_, _) =>
+                    Task.FromResult(
+                        MailboxCredentialsRejection.TryMark(account, syncResult.Error.Message, correlation, logger)
+                    ),
                 ct
             );
 

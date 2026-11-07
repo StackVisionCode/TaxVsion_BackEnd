@@ -242,8 +242,11 @@ internal sealed class InMemoryTenantRegistry : ITenantRegistry
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task SetActiveAsync(Guid tenantId, bool isActive, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+    public Task SetActiveAsync(Guid tenantId, bool isActive, CancellationToken ct = default)
+    {
+        _tenants.GetValueOrDefault(tenantId)?.SetActive(isActive);
+        return Task.CompletedTask;
+    }
 
     public Task SetBillingBlockedAsync(Guid tenantId, bool blocked, string? reason, CancellationToken ct = default) =>
         throw new NotSupportedException();
@@ -561,6 +564,12 @@ internal sealed class SequentialInvitationTokenService : IInvitationTokenService
 }
 
 /// <summary>Nunca frena: para tests que no ejercen el throttle.</summary>
+/// <summary>Sin base no hay fila que bloquear.</summary>
+internal sealed class NoUserLoginLock : IUserLoginLock
+{
+    public Task AcquireAsync(User user, CancellationToken ct) => Task.CompletedTask;
+}
+
 internal sealed class PermissiveLoginThrottler : ILoginThrottler
 {
     public Task<TimeSpan?> GetIpRetryAfterAsync(string? ipAddress, CancellationToken ct = default) =>

@@ -22,7 +22,7 @@ namespace TaxVision.Customer.Application.Imports.Messages;
 ///
 /// Diseno:
 ///  - Cada chunk se procesa en su propio scope DI (transaccion-per-chunk). Un chunk malo no
-///    aborta el job; rollback solo afecta a su chunk.
+///    aborta el job; rollback solo afecta a su chunk. Toma el candado de alta de sus emails.
 ///  - El attempt aggregate vive en un scope separado para que su progreso commitee
 ///    independientemente de los chunks de customers.
 ///  - Cancelacion cooperativa: antes de cada chunk se recarga el estado del attempt;
@@ -358,19 +358,60 @@ public static class RunCustomerImportHandler
     )
     {
         await using var scope = sf.CreateAsyncScope();
-        var sp = scope.ServiceProvider;
+        var runner = scope.ServiceProvider.GetRequiredService<ITransactionalUnitRunner>();
 
+        // Una transacción por chunk: el candado de cada email dura hasta su commit.
+        var result = new ChunkResult([], [], 0, 0);
+        try
+        {
+            await runner.RunAsync(
+                async (unit, token) =>
+                {
+                    var processed = await ApplyChunkAsync(unit.Services, attemptId, info, chunk, logger, token);
+                    if (processed is null)
+                        return false;
+                    result = processed;
+                    return true;
+                },
+                ct
+            );
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                ex,
+                "Chunk save failed for import {AttemptId} (rows {From}-{To})",
+                attemptId,
+                chunk[0].RowNumber,
+                chunk[^1].RowNumber
+            );
+            throw;
+        }
+
+        return result;
+    }
+
+    private static async Task<ChunkResult?> ApplyChunkAsync(
+        IServiceProvider sp,
+        Guid attemptId,
+        StartInfo info,
+        IReadOnlyList<ImportCustomerRow> chunk,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
         var repo = sp.GetRequiredService<ICustomerImportRepository>();
         var customerRepo = sp.GetRequiredService<ICustomerRepository>();
         var protector = sp.GetRequiredService<ISensitiveDataProtector>();
         var detector = sp.GetRequiredService<ICustomerDuplicateDetector>();
         var catalogs = sp.GetRequiredService<ICatalogResolver>();
-        var uow = sp.GetRequiredService<IUnitOfWork>();
+        var creationLock = sp.GetRequiredService<ICustomerCreationLock>();
 
         var attempt = await repo.GetByIdAsync(attemptId, ct);
         if (attempt is null)
-            return new ChunkResult([], [], 0, 0);
+            return null;
 
+        await LockChunkEmailsAsync(creationLock, info.TenantId, chunk, ct);
         var matchByRow = await BuildDuplicateMapAsync(detector, info.TenantId, chunk, ct);
         var trackers = new ImportChunkDuplicateTracker();
 
@@ -410,23 +451,26 @@ public static class RunCustomerImportHandler
             }
         }
 
-        try
-        {
-            await uow.SaveChangesAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "Chunk save failed for import {AttemptId} (rows {From}-{To})",
-                attemptId,
-                chunk[0].RowNumber,
-                chunk[^1].RowNumber
-            );
-            throw;
-        }
-
         return new ChunkResult(successIds, updatedIds, skippedCount, failedCount);
+    }
+
+    // Antes de la búsqueda de duplicados, que es una sola por chunk. En orden, para que dos importaciones
+    // con emails en común no se bloqueen entre sí.
+    private static async Task LockChunkEmailsAsync(
+        ICustomerCreationLock creationLock,
+        Guid tenantId,
+        IReadOnlyList<ImportCustomerRow> chunk,
+        CancellationToken ct
+    )
+    {
+        var emails = chunk
+            .Select(row => ImportDuplicateKeys.From(row).Email)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
+
+        foreach (var email in emails)
+            await creationLock.AcquireAsync(tenantId, email, ct);
     }
 
     // ============== Row processing helpers ==============

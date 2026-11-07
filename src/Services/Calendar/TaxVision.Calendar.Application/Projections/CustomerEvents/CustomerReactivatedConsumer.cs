@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Calendar.Application.Backfill;
 using TaxVision.Calendar.Application.Backfill.Abstractions;
 using TaxVision.Calendar.Application.Projections.Abstractions;
 using TaxVision.Calendar.Domain.Projections;
@@ -10,10 +11,10 @@ namespace TaxVision.Calendar.Application.Projections.CustomerEvents;
 
 public static class CustomerReactivatedConsumer
 {
-    public static async Task Handle(
+    public static async Task<BackfillTenantCustomersCommand?> Handle(
         CustomerReactivatedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
-        ITenantCustomerBackfillService backfill,
+        ITenantBackfillStateRepository backfillStates,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
@@ -26,7 +27,7 @@ public static class CustomerReactivatedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            var backfill = await BackfillTenantCustomersCommand.IfMissingAsync(evt.TenantId, backfillStates, ct);
 
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (existing is null)
@@ -36,7 +37,7 @@ public static class CustomerReactivatedConsumer
                     evt.TenantId,
                     evt.CustomerId
                 );
-                return;
+                return backfill;
             }
 
             existing.ApplyIfNewer(null, CustomerDirectoryStatus.Active, evt.ReactivatedAtUtc);
@@ -46,6 +47,7 @@ public static class CustomerReactivatedConsumer
                 evt.TenantId,
                 evt.CustomerId
             );
+            return backfill;
         }
     }
 }

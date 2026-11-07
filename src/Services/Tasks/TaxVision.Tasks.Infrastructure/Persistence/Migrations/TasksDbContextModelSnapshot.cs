@@ -433,6 +433,12 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -518,6 +524,22 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_FormAccessSessions_Tenant_Request_Expires");
 
                     b.ToTable("FormAccessSessions", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Participants.FormIntakeDailyCounter", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("DayUtc")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("int");
+
+                    b.HasKey("TenantId", "DayUtc");
+
+                    b.ToTable("FormIntakeDailyCounters", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Participants.FormIntakeLink", b =>

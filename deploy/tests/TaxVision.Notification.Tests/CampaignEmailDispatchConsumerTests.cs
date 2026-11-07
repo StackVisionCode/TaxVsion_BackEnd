@@ -1,9 +1,12 @@
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
+using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Application.Email.Sending.Campaign;
 using TaxVision.Notification.Application.Email.Sending.Consumers;
 using TaxVision.Notification.Domain.Directory;
+using TaxVision.Notification.Domain.Emailing.Campaigns;
 
 namespace TaxVision.Notification.Tests;
 
@@ -83,9 +86,34 @@ public sealed class CampaignEmailDispatchConsumerTests
             evt,
             provider,
             policies,
+            new InMemorySends(),
+            new NoSaveUnitOfWork(),
+            Options.Create(new CampaignDispatchOptions()),
             NullLogger<CampaignEmailMessage>.Instance,
             CancellationToken.None
         );
+
+    private sealed class InMemorySends : ICampaignDispatchSendRepository
+    {
+        private readonly List<CampaignDispatchSend> _rows = [];
+
+        public Task<CampaignDispatchSend?> FindAsync(
+            Guid tenantId,
+            string dispatchId,
+            CancellationToken ct = default
+        ) => Task.FromResult(_rows.FirstOrDefault(x => x.TenantId == tenantId && x.DispatchId == dispatchId));
+
+        public Task AddAsync(CampaignDispatchSend send, CancellationToken ct = default)
+        {
+            _rows.Add(send);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class NoSaveUnitOfWork : IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
+    }
 
     private sealed class RecordingCampaignEmailProvider : ICampaignEmailProvider
     {
@@ -107,6 +135,12 @@ public sealed class CampaignEmailDispatchConsumerTests
             Guid customerId,
             CancellationToken ct = default
         ) => Task.FromResult(rows.FirstOrDefault(r => r.TenantId == tenantId && r.CustomerId == customerId));
+
+        public Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> customerIds,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyCollection<Guid>>([]);
 
         public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) => Task.CompletedTask;
     }

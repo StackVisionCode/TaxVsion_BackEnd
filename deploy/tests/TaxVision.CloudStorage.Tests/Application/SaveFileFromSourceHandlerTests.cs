@@ -118,7 +118,8 @@ public sealed class SaveFileFromSourceHandlerTests
         );
         Assert.Single(audit.Logs, log => log.Action == "upload.from-source" && log.Details == "service=signature");
         Assert.Single(bus.Published.OfType<ScanFileCommand>(), cmd => cmd.FileId == fileId);
-        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        // Uno decide la reserva, antes de mover el objeto; el otro cierra el registro.
+        Assert.Equal(2, unitOfWork.SaveChangesCallCount);
     }
 
     /// <summary>
@@ -613,5 +614,60 @@ public sealed class SaveFileFromSourceHandlerTests
 
         var registered = await files.GetAsync(tenantId, fileId, CancellationToken.None);
         Assert.Null(registered!.FolderId);
+    }
+
+    [Fact]
+    public async Task Handle_QuotaConflictOnSave_PublishesFileSaveRejected()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var limits = new FakeStorageLimitRepository();
+        var limit = TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000);
+        limits.Seed(limit);
+        var audit = new FakeStorageAuditRepository();
+        var storage = new FakeObjectStorage();
+        var bus = new FakeMessageBus();
+        var evt = Evt(tenantId, fileId);
+
+        await SaveFileFromSourceHandler.Handle(
+            evt,
+            files,
+            limits,
+            audit,
+            new DefaultObjectKeyBuilder(),
+            storage,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
+            DefaultOptions(),
+            new FakeUploadPolicyResolver(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new QuotaConflictUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var rejected = Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>());
+        Assert.Equal("QuotaExceeded", rejected.Reason);
+        Assert.Empty(bus.Published.OfType<ScanFileCommand>());
+        // La reserva perdida no queda pendiente y el objeto sigue donde lo dejó el productor.
+        Assert.Null(await files.GetAsync(tenantId, fileId, CancellationToken.None));
+        Assert.Equal(0, limit.ReservedBytes);
+        Assert.Empty(storage.Copied);
+        Assert.Empty(storage.Deleted);
+    }
+
+    private sealed class QuotaConflictUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
+    {
+        private bool _thrown;
+
+        public Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            if (_thrown)
+                return Task.FromResult(1);
+            _thrown = true;
+            throw new BuildingBlocks.Results.ConflictException("Storage.QuotaExceeded", "Simulated quota race.");
+        }
     }
 }

@@ -134,6 +134,9 @@ public sealed class TenantSignatureSettings : BaseEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Control de concurrencia: dos escrituras desde lecturas viejas no se pisan.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     // ------------------------------------------------------------------
     // Factory
     // ------------------------------------------------------------------

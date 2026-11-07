@@ -36,7 +36,16 @@ public static class TenantEmailAccountDisconnectedConsumer
                 return;
             }
 
-            existing.MarkDisconnected(evt.DisconnectedAtUtc);
+            if (!existing.MarkDisconnected(evt.DisconnectedAtUtc))
+            {
+                logger.LogInformation(
+                    "ConnectedMailbox {AccountId}: disconnected event from {DisconnectedAtUtc} is older than the last update; ignored.",
+                    evt.AccountId,
+                    evt.DisconnectedAtUtc
+                );
+                return;
+            }
+
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

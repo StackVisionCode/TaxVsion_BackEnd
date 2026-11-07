@@ -58,7 +58,7 @@ public static class SubmitPortalFormRequestHandler
             return Result.Failure<FormSubmitOutcome>(check.Error);
         if (check.Value.Issues.Count > 0)
             return Result.Success(FormSubmitOutcome.Invalid(check.Value.Issues));
-        var intakeLink = await IntakeLinkAsync(command, found.Value, requests, intakeLinks, options.Value, ct);
+        var intakeLink = await IntakeLinkAsync(command, found.Value, intakeLinks, options.Value, ct);
         if (intakeLink.IsFailure)
             return Result.Failure<FormSubmitOutcome>(intakeLink.Error);
         var submit = await SubmitAsync(command, found.Value, check.Value, protector, consentRecords, ct);
@@ -171,10 +171,10 @@ public static class SubmitPortalFormRequestHandler
     }
 
     // Solo el primer envío de un enlace de captación consume el cupo diario del tenant y del enlace.
+    // TSK-6: el cupo se toma antes de tocar la solicitud, para que un rechazo no deje nada a medio guardar.
     private static async Task<Result<FormIntakeLink?>> IntakeLinkAsync(
         SubmitPortalFormRequestCommand command,
         FormRequest request,
-        IFormRequestRepository requests,
         IFormIntakeLinkRepository intakeLinks,
         ClientFormsOptions options,
         CancellationToken ct
@@ -182,19 +182,23 @@ public static class SubmitPortalFormRequestHandler
     {
         if (request.Origin != FormRequestOrigin.IntakeLink || request.CurrentRevisionNumber != 0)
             return Result.Success<FormIntakeLink?>(null);
-        var submittedToday = await requests.CountIntakeSubmissionsAsync(
-            command.Context.TenantId,
-            command.NowUtc.Date,
-            ct
-        );
-        if (submittedToday >= options.External.MaxIntakeSubmissionsPerTenantPerDay)
-            return Result.Failure<FormIntakeLink?>(FormParticipantErrors.IntakeLimitReached);
         var intakeLink = request.IntakeLinkId.HasValue
             ? await intakeLinks.GetAsync(command.Context.TenantId, request.IntakeLinkId.Value, ct)
             : null;
-        return intakeLink is null
-            ? Result.Failure<FormIntakeLink?>(FormParticipantErrors.IntakeLinkNotFound)
-            : Result.Success<FormIntakeLink?>(intakeLink);
+        if (intakeLink is null)
+            return Result.Failure<FormIntakeLink?>(FormParticipantErrors.IntakeLinkNotFound);
+        // Un enlace agotado no gasta cupo del tenant.
+        if (!intakeLink.IsAvailableAt(command.NowUtc))
+            return Result.Failure<FormIntakeLink?>(FormParticipantErrors.IntakeLimitReached);
+        var consumed = await intakeLinks.TryConsumeDailyIntakeAsync(
+            command.Context.TenantId,
+            command.NowUtc,
+            options.External.MaxIntakeSubmissionsPerTenantPerDay,
+            ct
+        );
+        return consumed
+            ? Result.Success<FormIntakeLink?>(intakeLink)
+            : Result.Failure<FormIntakeLink?>(FormParticipantErrors.IntakeLimitReached);
     }
 
     private static async Task<Result<FormSubmissionRevision>> SubmitAsync(

@@ -13,7 +13,7 @@ internal sealed class FakeEmailThreadRepository : IEmailThreadRepository
 
     public Task<EmailThread?> FindByProviderThreadIdAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         string providerThreadId,
         CancellationToken ct = default
     ) =>

@@ -9,6 +9,42 @@ namespace TaxVision.Subscription.Tests.Domain;
 /// las vencidas pasan a Expired, y no toca intenciones Paid.</summary>
 public sealed class CheckoutIntentExpireSweeperDomainTests
 {
+    // SUB-13: se ven igual (AwaitingPayment, sin URL); solo el pedido por redirect se puede cerrar.
+    [Theory]
+    [InlineData(true, PlanChangeRequestStatus.Expired)]
+    [InlineData(false, PlanChangeRequestStatus.AwaitingPayment)]
+    public void Upgrade_without_session_only_closes_when_it_was_hosted(
+        bool usesHostedCheckout,
+        PlanChangeRequestStatus expected
+    )
+    {
+        var nowUtc = DateTime.UtcNow;
+        var request = PlanChangeRequest
+            .Create(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "starter",
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "pro",
+                null,
+                Guid.NewGuid(),
+                nowUtc,
+                4900,
+                "USD",
+                "plan-change-key",
+                usesHostedCheckout
+            )
+            .Value;
+
+        var result = request.ExpireWithoutCheckout(nowUtc);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, request.Status);
+    }
+
     [Fact]
     public void Sweeper_only_touches_expired_pending_intents()
     {

@@ -48,6 +48,7 @@ public sealed class TenantConnectAccountConfiguration : IEntityTypeConfiguration
 
         builder.Property(account => account.CreatedAtUtc).IsRequired();
         builder.Property(account => account.UpdatedAtUtc).IsRequired();
+        builder.Property(account => account.RowVersion).IsRowVersion();
 
         builder
             .HasIndex(account => new { account.TenantId, account.ProviderCode })

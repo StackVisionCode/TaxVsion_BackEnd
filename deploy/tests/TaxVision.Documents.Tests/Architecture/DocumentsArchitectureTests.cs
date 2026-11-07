@@ -15,6 +15,8 @@ public sealed class DocumentsArchitectureTests
         typeof(TaxVision.Documents.Domain.Generations.DocumentGeneration).Assembly;
     private static readonly Assembly Application =
         typeof(TaxVision.Documents.Application.Abstractions.IDocumentGenerationRepository).Assembly;
+    private static readonly Assembly Infrastructure =
+        typeof(TaxVision.Documents.Infrastructure.Storage.DocumentStorageClient).Assembly;
     private static readonly Assembly ApiAssembly =
         typeof(TaxVision.Documents.Api.Controllers.InternalDocumentBrandingController).Assembly;
 
@@ -50,6 +52,19 @@ public sealed class DocumentsArchitectureTests
             .InAssembly(Application)
             .Should()
             .NotHaveDependencyOnAny("TaxVision.Scribe", "TaxVision.Notification")
+            .GetResult();
+
+        Assert.True(result.IsSuccessful, Fail(result));
+    }
+
+    // DOC-3: un bus inyectado en Infrastructure sale del contenedor y no entra en la transacción del handler.
+    [Fact]
+    public void Infrastructure_DoesNotDependOnIMessageBus()
+    {
+        var result = Types
+            .InAssembly(Infrastructure)
+            .Should()
+            .NotHaveDependencyOn("Wolverine.IMessageBus")
             .GetResult();
 
         Assert.True(result.IsSuccessful, Fail(result));

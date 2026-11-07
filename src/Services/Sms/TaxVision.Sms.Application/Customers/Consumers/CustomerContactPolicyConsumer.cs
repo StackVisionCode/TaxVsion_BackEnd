@@ -11,6 +11,8 @@ namespace TaxVision.Sms.Application.Customers.Consumers;
 /// </summary>
 public static class CustomerContactPolicyConsumer
 {
+    private const int BulkChunkSize = 500;
+
     public static Task Handle(
         CustomerCreatedIntegrationEvent evt,
         ICustomerContactPolicyRepository repository,
@@ -24,6 +26,28 @@ public static class CustomerContactPolicyConsumer
         IUnitOfWork unitOfWork,
         CancellationToken ct
     ) => UpsertAsync(repository, unitOfWork, evt.TenantId, evt.CustomerId, evt.SmsEnabled, ct);
+
+    // La importación no manda CustomerCreated. Todo importado nace con la política por defecto.
+    // Lo que un evento ya proyectó no se toca.
+    public static async Task Handle(
+        CustomersBulkImportedIntegrationEvent evt,
+        ICustomerContactPolicyRepository repository,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        foreach (var chunk in evt.CreatedCustomerIds.Distinct().Chunk(BulkChunkSize))
+        {
+            var existing = await repository.GetExistingCustomerIdsAsync(evt.TenantId, chunk, ct);
+            foreach (var customerId in chunk.Except(existing))
+                await repository.AddAsync(
+                    CustomerContactPolicyProjection.Create(evt.TenantId, customerId, smsEnabled: true),
+                    ct
+                );
+
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+    }
 
     private static async Task UpsertAsync(
         ICustomerContactPolicyRepository repository,

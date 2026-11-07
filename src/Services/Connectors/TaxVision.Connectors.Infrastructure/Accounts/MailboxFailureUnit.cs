@@ -16,6 +16,7 @@ public sealed class MailboxFailureUnit(
     ConnectorsDbContext dbContext,
     ITenantEmailAccountRepository accounts,
     IProviderWatchSubscriptionRepository subscriptions,
+    IOAuthConnectionRepository connections,
     IServiceScopeFactory scopeFactory,
     ILogger<MailboxFailureUnit> logger
 ) : IMailboxFailureUnit
@@ -27,7 +28,7 @@ public sealed class MailboxFailureUnit(
     {
         if (dbContext.Database.CurrentTransaction is not null)
         {
-            if (await work(new MailboxFailureStores(accounts, subscriptions), ct))
+            if (await work(new MailboxFailureStores(accounts, subscriptions, connections), ct))
                 await dbContext.SaveChangesAsync(ct);
             return;
         }
@@ -38,7 +39,8 @@ public sealed class MailboxFailureUnit(
                 work(
                     new MailboxFailureStores(
                         unit.Services.GetRequiredService<ITenantEmailAccountRepository>(),
-                        unit.Services.GetRequiredService<IProviderWatchSubscriptionRepository>()
+                        unit.Services.GetRequiredService<IProviderWatchSubscriptionRepository>(),
+                        unit.Services.GetRequiredService<IOAuthConnectionRepository>()
                     ),
                     token
                 ),

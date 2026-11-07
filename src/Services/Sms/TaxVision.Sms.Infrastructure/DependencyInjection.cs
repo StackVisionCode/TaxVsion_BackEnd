@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<ISmsMessageRepository, SmsMessageRepository>();
         services.AddScoped<ISmsOptOutRepository, SmsOptOutRepository>();
         services.AddScoped<IProcessedWebhookRepository, ProcessedWebhookRepository>();
+        services.AddScoped<IPendingDeliveryReceiptRepository, PendingDeliveryReceiptRepository>();
 
         // Read model del CRM (solo lectura sobre las tablas ya persistidas).
         services.AddScoped<ISmsReadService, SmsReadService>();
@@ -115,6 +116,7 @@ public static class DependencyInjection
 
         // Job de fondo: reconciliación de estado por pull (backstop de los DLR por webhook). Se auto-desactiva
         // en tiempo de ejecución si Sms:Reconciliation:Enabled=false; el endpoint manual funciona igual.
+        services.AddSingleton<Locking.IJobLeaderLock, Locking.JobLeaderLock>();
         services.AddHostedService<Jobs.SmsStatusReconciliationService>();
 
         return services;

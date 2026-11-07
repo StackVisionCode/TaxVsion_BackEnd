@@ -27,7 +27,9 @@ public sealed record ChargeAuthorizationRequest(
 );
 
 /// <summary><paramref name="NextActionClientSecret"/>: solo en RequiresAction de Stripe, para completar el 3DS
-/// con Stripe.js. Viaja a la página de pago; nunca se guarda ni se escribe en logs.</summary>
+/// con Stripe.js. Viaja a la página de pago; nunca se guarda ni se escribe en logs.
+/// <paramref name="OutcomeUnknown"/>: el proveedor no dijo si cobró (5xx, clave en conflicto, timeout). No es un fallo:
+/// el cargo pudo salir, así que el pago sigue <c>Pending</c> y lo cierra la reconciliación (D-PAY-13).</summary>
 public sealed record ChargeAuthorizationResult(
     string ProviderChargeReference,
     PaymentStatus Status,
@@ -36,7 +38,8 @@ public sealed record ChargeAuthorizationResult(
     string? FailureCode = null,
     string? FailureMessage = null,
     ProviderPayerDetails? Payer = null,
-    string? NextActionClientSecret = null
+    string? NextActionClientSecret = null,
+    bool OutcomeUnknown = false
 )
 {
     // El secreto no sale en ToString (logs).
@@ -53,6 +56,10 @@ public sealed record ProviderPayerDetails(string? Name, string? Email, string? C
 /// <summary>Qué cargo consultar al proveedor: la referencia guardada en el pago y, en modo Connect,
 /// la cuenta conectada donde vive (header <c>Stripe-Account</c>).</summary>
 public sealed record ChargeStatusLookup(string ProviderChargeReference, string? OnBehalfOf = null);
+
+/// <summary>Cómo encontrar el cargo de un pago sin referencia: por la metadata <c>tenantPaymentId</c> o por el método
+/// con el que se pidió (en PayPal, la orden) y, en Connect, dentro de la cuenta conectada.</summary>
+public sealed record ChargeSearch(Guid TenantPaymentId, string? ChargeMethodReference, string? OnBehalfOf = null);
 
 public sealed record RefundResult(string ProviderRefundReference, PaymentStatus Status, Money RefundedAmount);
 
@@ -80,7 +87,9 @@ public sealed record WebhookEventPayload(
     long? PaidAmountCents = null,
     string? PaidCurrency = null,
     // Solo en la consulta de un intento RequiresAction de Stripe (recarga del checkout). Nunca se guarda.
-    string? NextActionClientSecret = null
+    string? NextActionClientSecret = null,
+    // Solo en la consulta: el proveedor ya tiene el cargo y lo sigue resolviendo (captura PENDING de PayPal).
+    bool ChargeInProgress = false
 )
 {
     /// <summary>Evento que el adaptador no procesa: se registra como rechazado y se responde 200.</summary>

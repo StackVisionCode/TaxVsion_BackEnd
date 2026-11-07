@@ -439,5 +439,11 @@ public sealed class WebhookAutoSetupTests
             ChargeStatusLookup lookup,
             CancellationToken ct
         ) => throw new NotSupportedException();
+
+        public Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+            TenantProviderCredentials credentials,
+            ChargeSearch search,
+            CancellationToken ct
+        ) => throw new NotSupportedException();
     }
 }

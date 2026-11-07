@@ -28,10 +28,39 @@ internal sealed class FakeSmtpCredentialsRepository : ISmtpCredentialsRepository
 }
 
 /// <summary>Éxito por defecto — los tests que quieren ver un rechazo por credenciales malas setean ImapResult/SmtpResult.</summary>
+/// <summary>Unidad del handler que sabe si está abierta: para ver qué corre fuera de la transacción (CON-12).</summary>
+internal sealed class TrackingOutboxUnit(BuildingBlocks.Persistence.IUnitOfWork unitOfWork, Wolverine.IMessageBus bus)
+    : TaxVision.Connectors.Application.Abstractions.IOutboxUnit
+{
+    public bool IsOpen { get; private set; }
+    public bool Committed { get; private set; }
+
+    public async Task RunAsync(
+        Func<Wolverine.IMessageBus, CancellationToken, Task<bool>> work,
+        CancellationToken ct = default
+    )
+    {
+        IsOpen = true;
+        try
+        {
+            Committed = await work(bus, ct);
+            if (Committed)
+                await unitOfWork.SaveChangesAsync(ct);
+        }
+        finally
+        {
+            IsOpen = false;
+        }
+    }
+}
+
 internal sealed class FakeManualAccountConnectivityValidator : IManualAccountConnectivityValidator
 {
     public Result ImapResult { get; set; } = Result.Success();
     public Result SmtpResult { get; set; } = Result.Success();
+
+    /// <summary>Corre en cada prueba de conexión, para mirar el estado de ese momento.</summary>
+    public Action? OnValidate { get; set; }
     public List<string> ValidatedImapHosts { get; } = [];
     public List<string> ValidatedSmtpHosts { get; } = [];
 
@@ -44,6 +73,7 @@ internal sealed class FakeManualAccountConnectivityValidator : IManualAccountCon
         CancellationToken ct = default
     )
     {
+        OnValidate?.Invoke();
         ValidatedImapHosts.Add(host);
         return Task.FromResult(ImapResult);
     }

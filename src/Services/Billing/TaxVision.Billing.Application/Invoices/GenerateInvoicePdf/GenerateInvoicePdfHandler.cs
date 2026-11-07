@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Tenancy;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Domain.ValueObjects;
 
@@ -19,6 +20,11 @@ public static class GenerateInvoicePdfHandler
     )
     {
         var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct);
+
+        // BIL-12: se pidió bajo la plataforma y el re-hospedaje ganó. Se genera con el dueño actual.
+        if (invoice is null && command.TenantId == PlatformTenant.Id)
+            invoice = await invoices.GetOnboardingInvoiceByIdAsync(command.InvoiceId, ct);
+
         if (invoice is null || invoice.InvoiceNumber is null)
             return; // Nada que generar (borrador borrado o no emitido); no reintentar.
 
@@ -63,7 +69,9 @@ public static class GenerateInvoicePdfHandler
             SettlementType: invoice.SettlementType?.ToString(),
             PaymentTerms: invoice.PaymentTerms?.Label(),
             PaymentInstructions: NullIfBlank(invoice.PaymentInstructions),
-            InvoiceFooter: NullIfBlank(invoice.InvoiceFooter)
+            InvoiceFooter: NullIfBlank(invoice.InvoiceFooter),
+            AmountPaid: ToDollars(invoice.AmountPaid.AmountCents),
+            AmountDue: ToDollars(invoice.AmountDue.AmountCents)
         );
 
         // Idempotencia versionada (punto 8 del review): incluye el ESTADO, la versión y el payable — así
@@ -71,10 +79,12 @@ public static class GenerateInvoicePdfHandler
         // no-pagado cacheado. Un cambio de plantilla/idioma/datos fiscales requeriría subir la versión.
         var payablePart = activeLink is null ? "nolink" : activeLink.ExternalPayableId.ToString("N");
         var statusPart = invoice.Status == InvoiceStatus.Paid ? "paid" : "v1";
-        var idempotencyKey = $"invoice-pdf:{invoice.Id:N}:{statusPart}:{payablePart}";
+        // BIL-PDF1: un saldo nuevo es un PDF nuevo; el mismo saldo reusa el generado. La pagada siempre debe 0.
+        var balancePart = invoice.Status == InvoiceStatus.Paid ? string.Empty : $":due{invoice.AmountDue.AmountCents}";
+        var idempotencyKey = $"invoice-pdf:{invoice.Id:N}:{statusPart}:{payablePart}{balancePart}";
         var result = await documents.GenerateAsync(
             request,
-            command.TenantId,
+            invoice.TenantId,
             idempotencyKey,
             correlation.CorrelationId,
             ct

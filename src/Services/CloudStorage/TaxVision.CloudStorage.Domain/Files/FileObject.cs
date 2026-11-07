@@ -74,6 +74,8 @@ public sealed class FileObject : TenantEntity
     /// <summary>Reencolados hechos por el rescate de escaneos atascados.</summary>
     public int ScanAttemptCount { get; private set; }
 
+    public byte[] RowVersion { get; private set; } = [];
+
     public const string TakedownReport = "Blocked by DMCA takedown notice.";
 
     /// <summary>Estado real del objeto: el previo al borrado si está en la papelera (igual que Restore).</summary>

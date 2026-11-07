@@ -25,6 +25,7 @@ public sealed class CampaignSchedulerService(IServiceProvider services, ILogger<
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
     private const int LeaseSeconds = 120;
     private const int BatchSize = 20;
+    private const string ConcurrencyConflictCode = "Persistence.ConcurrencyConflict";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -111,7 +112,7 @@ public sealed class CampaignSchedulerService(IServiceProvider services, ILogger<
                 // Transitorio: rollback; el lease vence y el próximo claim reintenta el slot.
                 logger.LogWarning("Schedule {ScheduleId} waits for the client directory; will retry.", claimed.Id);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (ConflictException ex) when (ex.Code == ConcurrencyConflictCode)
             {
                 // El agendado cambió mientras se disparaba (pausa, cancelación): rollback, nada salió.
                 logger.LogInformation("Schedule {ScheduleId} changed while firing; skipped.", claimed.Id);

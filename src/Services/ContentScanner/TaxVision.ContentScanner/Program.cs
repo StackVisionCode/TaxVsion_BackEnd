@@ -16,6 +16,7 @@ builder
 builder.Services.AddSingleton<INsfwClassifier, OnnxNsfwClassifier>();
 builder.Services.AddSingleton<IFrameExtractor, FfmpegFrameExtractor>();
 builder.Services.AddSingleton<ScanService>();
+builder.Services.AddSingleton<ITempDiskSpace, DriveTempDiskSpace>();
 
 var maxUploadBytes = builder.Configuration.GetValue<long>($"{ContentScannerOptions.SectionName}:MaxUploadBytes");
 builder.WebHost.ConfigureKestrel(kestrel => kestrel.Limits.MaxRequestBodySize = maxUploadBytes);
@@ -60,6 +61,7 @@ internal static class ScanEndpoint
     public static async Task<IResult> HandleAsync(
         HttpRequest request,
         ScanService scanner,
+        ITempDiskSpace disk,
         IOptions<ContentScannerOptions> options,
         int? frameIntervalSeconds,
         int? maxFrames,
@@ -77,10 +79,23 @@ internal static class ScanEndpoint
                 title: "Only images and videos are scanned."
             );
 
-        Directory.CreateDirectory(options.Value.TempDirectory);
-        var path = Path.Combine(options.Value.TempDirectory, $"{Guid.NewGuid():N}.bin");
+        if (request.ContentLength > options.Value.MaxUploadBytes)
+            return Results.Problem(
+                statusCode: StatusCodes.Status413PayloadTooLarge,
+                title: "The file exceeds the upload limit."
+            );
+
+        string? path = null;
         try
         {
+            // El turno va antes del disco: con todos ocupados no se escribe nada.
+            await using var turn = await scanner.AcquireSlotAsync(ct);
+
+            Directory.CreateDirectory(options.Value.TempDirectory);
+            if (request.ContentLength > disk.AvailableBytes(options.Value.TempDirectory))
+                return Busy();
+
+            path = Path.Combine(options.Value.TempDirectory, $"{Guid.NewGuid():N}.bin");
             await using (var file = File.Create(path))
                 await request.Body.CopyToAsync(file, ct);
 
@@ -89,10 +104,7 @@ internal static class ScanEndpoint
         }
         catch (ScannerBusyException)
         {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "Content scanner is busy."
-            );
+            return Busy();
         }
         catch (UndecodableMediaException)
         {
@@ -103,9 +115,13 @@ internal static class ScanEndpoint
         }
         finally
         {
-            File.Delete(path);
+            if (path is not null)
+                File.Delete(path);
         }
     }
+
+    private static IResult Busy() =>
+        Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Content scanner is busy.");
 }
 
 public partial class Program;

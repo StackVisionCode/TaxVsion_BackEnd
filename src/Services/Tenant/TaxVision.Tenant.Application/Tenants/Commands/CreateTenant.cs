@@ -71,6 +71,8 @@ public static class CreateTenantHandler
         // Fase 18 — depositar el raw token en Auth ANTES de persistir/publicar: si Auth no está
         // disponible, se aborta sin efectos secundarios (nada de tenant a medio crear), mismo
         // criterio de "detener antes de comprometer estado" que el resto del plan de PayFlow.
+        // TEN-7: si después falla el guardado, la referencia queda sin dueño en Auth, pero es de un solo uso
+        // y vence en 30 s: no hace falta moverla a un evento.
         var tokenReferenceResult = await tokenReferenceClient.StoreAsync(activationToken, ct);
         if (tokenReferenceResult.IsFailure)
             return Result.Failure<CreateTenantResponse>(tokenReferenceResult.Error);

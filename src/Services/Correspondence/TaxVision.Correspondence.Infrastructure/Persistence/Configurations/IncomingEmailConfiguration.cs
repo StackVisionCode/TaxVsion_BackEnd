@@ -15,7 +15,8 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
         builder.Property(x => x.Id).ValueGeneratedNever();
 
         builder.Property(x => x.TenantId).IsRequired();
-        builder.Property(x => x.CustomerId).IsRequired();
+        // Opcional (D-COR-3): null = el remitente no es cliente.
+        builder.Property(x => x.CustomerId);
         builder.Property(x => x.EmailThreadId).IsRequired();
         builder.Property(x => x.AccountId).IsRequired();
 
@@ -117,6 +118,15 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
                 x.AccountId,
             })
             .HasDatabaseName("IX_IncomingEmails_TenantId_From");
+
+        builder
+            .HasMany(x => x.Mailboxes)
+            .WithOne()
+            .HasForeignKey(m => m.IncomingEmailId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder
+            .Metadata.FindNavigation(nameof(IncomingEmail.Mailboxes))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
 
         builder
             .HasMany(x => x.Recipients)

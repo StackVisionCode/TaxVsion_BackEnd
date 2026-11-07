@@ -123,7 +123,9 @@ internal sealed class RecordingPaymentProvider(PaymentProviderDescriptor descrip
                 new ChargeAuthorizationResult(
                     $"{Code}-charge-{Charges.Count}",
                     Status,
-                    NextActionType: requiresAction ? (NextActionUrl is null ? "use_stripe_sdk" : "redirect_to_url") : null,
+                    NextActionType: requiresAction
+                        ? (NextActionUrl is null ? "use_stripe_sdk" : "redirect_to_url")
+                        : null,
                     NextActionUrl: requiresAction ? NextActionUrl : null,
                     FailureCode: failed ? "card_declined" : null,
                     FailureMessage: failed ? "Declined." : null,
@@ -176,6 +178,24 @@ internal sealed class RecordingPaymentProvider(PaymentProviderDescriptor descrip
         );
     }
 
+    /// <summary>Búsquedas recibidas de pagos sin resultado.</summary>
+    public List<ChargeSearch> Searches { get; } = [];
+
+    /// <summary>Respuesta de la búsqueda; sin configurar, lanza (el test no la esperaba).</summary>
+    public Func<ChargeSearch, Result<ChargeAuthorizationResult?>>? FoundCharge { get; set; }
+
+    public Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeSearch search,
+        CancellationToken ct
+    )
+    {
+        Searches.Add(search);
+        return Task.FromResult(
+            (FoundCharge ?? throw new InvalidOperationException("Unexpected charge search."))(search)
+        );
+    }
+
     /// <summary>Cancelaciones pedidas al proveedor (credenciales + cargo).</summary>
     public List<(TenantProviderCredentials Credentials, ChargeStatusLookup Lookup)> Cancellations { get; } = [];
 
@@ -221,7 +241,18 @@ internal sealed class IdempotentRecordingPaymentProvider(PaymentProviderDescript
     /// <summary>Si es mayor que 1, cada cobro espera a que lleguen esos llamados (fuerza la carrera).</summary>
     public int WaitForCallers { get; set; }
 
+    /// <summary>Corre al recibir cada cobro: sirve para mirar la base desde otro contexto en ese momento.</summary>
+    public Func<ChargeAuthorizationRequest, Task>? OnCharge { get; set; }
+
+    /// <summary>Llamadas que llegaron al proveedor.</summary>
+    public int Calls => _totalCalls;
+
+    /// <summary>Si es true, la búsqueda responde que no se pudo saber.</summary>
+    public bool SearchUnavailable { get; set; }
+
     private int _calls;
+    private int _totalCalls;
+    private readonly Dictionary<string, ChargeAuthorizationResult> _byPaymentId = [];
     private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public async Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
@@ -230,6 +261,10 @@ internal sealed class IdempotentRecordingPaymentProvider(PaymentProviderDescript
         CancellationToken ct
     )
     {
+        Interlocked.Increment(ref _totalCalls);
+        if (OnCharge is not null)
+            await OnCharge(request);
+
         if (WaitForCallers > 1)
         {
             if (Interlocked.Increment(ref _calls) >= WaitForCallers)
@@ -241,12 +276,32 @@ internal sealed class IdempotentRecordingPaymentProvider(PaymentProviderDescript
         {
             if (!_byKey.TryGetValue(request.IdempotencyKey.Value, out var result))
             {
-                result = new ChargeAuthorizationResult($"{Code}-charge-{_byKey.Count + 1}", Status);
+                result = new ChargeAuthorizationResult($"{Code}-charge-{Guid.NewGuid():N}", Status);
                 _byKey[request.IdempotencyKey.Value] = result;
+                _byPaymentId[request.Metadata["tenantPaymentId"]] = result;
             }
 
             return Result.Success(result);
         }
+    }
+
+    public Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeSearch search,
+        CancellationToken ct
+    )
+    {
+        if (SearchUnavailable)
+            return Task.FromResult(
+                Result.Failure<ChargeAuthorizationResult?>(new Error("Fake.ChargeSearch.Failed", "Search unavailable."))
+            );
+
+        lock (_gate)
+            return Task.FromResult(
+                Result.Success<ChargeAuthorizationResult?>(
+                    _byPaymentId.GetValueOrDefault(search.TenantPaymentId.ToString("N"))
+                )
+            );
     }
 
     public Task<Result<RefundResult>> RefundAsync(

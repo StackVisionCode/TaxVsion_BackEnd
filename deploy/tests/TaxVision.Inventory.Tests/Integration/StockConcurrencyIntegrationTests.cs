@@ -1,8 +1,12 @@
+using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.CatalogIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Inventory.Application.Abstractions;
+using TaxVision.Inventory.Application.Consumers;
 using TaxVision.Inventory.Application.Stock;
 using TaxVision.Inventory.Domain;
 using TaxVision.Inventory.Domain.Stock;
@@ -92,8 +96,16 @@ public sealed class StockConcurrencyIntegrationTests : IAsyncLifetime
         var barrier = new Barrier(2);
 
         await Task.WhenAll(
-            RunCatchingAsync(barrier, ReadsLevel, (stock, db) => Adjust(stock, db, itemId, StockMovementType.Purchase, 2)),
-            RunCatchingAsync(barrier, ReadsLevel, (stock, db) => Adjust(stock, db, itemId, StockMovementType.Purchase, 3))
+            RunCatchingAsync(
+                barrier,
+                ReadsLevel,
+                (stock, db) => Adjust(stock, db, itemId, StockMovementType.Purchase, 2)
+            ),
+            RunCatchingAsync(
+                barrier,
+                ReadsLevel,
+                (stock, db) => Adjust(stock, db, itemId, StockMovementType.Purchase, 3)
+            )
         );
 
         await using var db = NewContext();
@@ -102,6 +114,45 @@ public sealed class StockConcurrencyIntegrationTests : IAsyncLifetime
         );
         Assert.Equal(5, level.QuantityOnHand);
         Assert.Equal(2, (await MovementsAsync(itemId)).Count);
+    }
+
+    [Fact]
+    public async Task FirstAdjust_AndThresholds_OfNewItem_InParallel_CreateOneLevel()
+    {
+        var itemId = Guid.NewGuid();
+        var barrier = new Barrier(2);
+
+        var results = await Task.WhenAll(
+            RunAsync(barrier, ReadsLevel, (stock, db) => Adjust(stock, db, itemId, StockMovementType.Purchase, 2)),
+            RunAsync(barrier, ReadsLevel, (stock, db) => SetThresholds(stock, db, itemId, minLevel: 1))
+        );
+
+        Assert.All(results, r => Assert.True(r.IsSuccess));
+        await using var db = NewContext();
+        var level = Assert.Single(
+            await db.StockLevels.IgnoreQueryFilters().Where(s => s.TenantId == _tenantId).ToListAsync()
+        );
+        Assert.Equal(2, level.QuantityOnHand);
+        Assert.Equal(1, level.MinLevel);
+    }
+
+    [Fact]
+    public async Task CatalogItemCreated_AndFirstAdjust_InParallel_CreateOneLevel()
+    {
+        var itemId = Guid.NewGuid();
+        var barrier = new Barrier(2);
+
+        var results = await Task.WhenAll(
+            RunAsync(barrier, ReadsLevel, (stock, db) => Adjust(stock, db, itemId, StockMovementType.Purchase, 2)),
+            RunAsync(barrier, ReadsLevel, (stock, db) => CatalogCreated(stock, db, itemId))
+        );
+
+        Assert.All(results, r => Assert.True(r.IsSuccess));
+        await using var db = NewContext();
+        var level = Assert.Single(
+            await db.StockLevels.IgnoreQueryFilters().Where(s => s.TenantId == _tenantId).ToListAsync()
+        );
+        Assert.Equal(2, level.QuantityOnHand);
     }
 
     [Fact]
@@ -170,6 +221,53 @@ public sealed class StockConcurrencyIntegrationTests : IAsyncLifetime
                 CancellationToken.None
             )
         );
+
+    private Task<Result> SetThresholds(IStockRepository stock, InventoryDbContext db, Guid itemId, int minLevel) =>
+        Unwrap(
+            SetStockThresholdsHandler.Handle(
+                new SetStockThresholdsCommand(_tenantId, itemId, minLevel, 0, 0),
+                stock,
+                db,
+                CancellationToken.None
+            )
+        );
+
+    private async Task<Result> CatalogCreated(IStockRepository stock, InventoryDbContext db, Guid itemId)
+    {
+        await CatalogItemCreatedConsumer.Handle(
+            new CatalogItemCreatedIntegrationEvent
+            {
+                TenantId = _tenantId,
+                ItemId = itemId,
+                CategoryId = Guid.NewGuid(),
+                Name = "Widget",
+                Kind = "Product",
+                TrackInventory = true,
+                UnitPrice = 100,
+                Currency = "USD",
+            },
+            stock,
+            db,
+            new NoCorrelation(),
+            NullLogger<StockLevel>.Instance,
+            CancellationToken.None
+        );
+        return Result.Success();
+    }
+
+    private sealed class NoCorrelation : ICorrelationContext
+    {
+        public string CorrelationId => string.Empty;
+
+        public void Set(string correlationId) { }
+
+        public IDisposable Push(string correlationId) => new Nothing();
+
+        private sealed class Nothing : IDisposable
+        {
+            public void Dispose() { }
+        }
+    }
 
     private static async Task<Result> Unwrap<T>(Task<Result<T>> task)
     {
@@ -280,8 +378,11 @@ public sealed class StockConcurrencyIntegrationTests : IAsyncLifetime
             return value;
         }
 
-        public Task<StockLevel?> GetByCatalogItemAsync(Guid tenantId, Guid catalogItemId, CancellationToken ct = default) =>
-            Wait(nameof(GetByCatalogItemAsync), inner.GetByCatalogItemAsync(tenantId, catalogItemId, ct));
+        public Task<StockLevel?> GetByCatalogItemAsync(
+            Guid tenantId,
+            Guid catalogItemId,
+            CancellationToken ct = default
+        ) => Wait(nameof(GetByCatalogItemAsync), inner.GetByCatalogItemAsync(tenantId, catalogItemId, ct));
 
         public Task<IReadOnlyList<StockLevel>> GetByCatalogItemsAsync(
             Guid tenantId,
@@ -293,7 +394,11 @@ public sealed class StockConcurrencyIntegrationTests : IAsyncLifetime
             Guid tenantId,
             Guid catalogItemId,
             CancellationToken ct = default
-        ) => Wait(nameof(GetByCatalogItemForUpdateAsync), inner.GetByCatalogItemForUpdateAsync(tenantId, catalogItemId, ct));
+        ) =>
+            Wait(
+                nameof(GetByCatalogItemForUpdateAsync),
+                inner.GetByCatalogItemForUpdateAsync(tenantId, catalogItemId, ct)
+            );
 
         public Task<IReadOnlyList<StockLevel>> GetByCatalogItemsForUpdateAsync(
             Guid tenantId,

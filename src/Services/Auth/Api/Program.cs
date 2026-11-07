@@ -602,6 +602,7 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 });
 

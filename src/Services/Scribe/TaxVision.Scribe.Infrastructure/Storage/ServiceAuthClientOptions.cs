@@ -16,4 +16,7 @@ public sealed class CloudStorageClientOptions
     public const string SectionName = "Scribe:CloudStorage";
 
     public string BaseUrl { get; set; } = "http://localhost:5330";
+
+    /// <summary>SCR-08: publicar una plantilla descarga su HTML dentro de la transacción; no la retiene más que esto.</summary>
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
 }

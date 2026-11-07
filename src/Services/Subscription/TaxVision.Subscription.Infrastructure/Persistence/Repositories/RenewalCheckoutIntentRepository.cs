@@ -6,6 +6,17 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Repositories;
 
 public sealed class RenewalCheckoutIntentRepository(SubscriptionDbContext db) : IRenewalCheckoutIntentRepository
 {
+    public Task<SubscriptionRenewalIntent?> GetUnattachedByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
+        db
+            .SubscriptionRenewalIntents.IgnoreQueryFilters()
+            .Where(intent =>
+                intent.TenantId == tenantId
+                && intent.Status == SubscriptionRenewalIntentStatus.Pending
+                && intent.CheckoutUrl == null
+            )
+            .OrderByDescending(intent => intent.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
     public async Task AddAsync(SubscriptionRenewalIntent intent, CancellationToken ct = default) =>
         await db.SubscriptionRenewalIntents.AddAsync(intent, ct);
 

@@ -7,6 +7,7 @@ using TaxVision.Catalog.Domain;
 using TaxVision.Catalog.Domain.Items;
 using TaxVision.Catalog.Domain.ValueObjects;
 using Wolverine;
+using static TaxVision.Catalog.Application.Items.CatalogItemTracking;
 
 namespace TaxVision.Catalog.Application.Items;
 
@@ -168,6 +169,7 @@ public static class UpdateCatalogItemHandler
         if (!await categories.ExistsAsync(command.TenantId, command.CategoryId, ct))
             return Result.Failure<CatalogItemDto>(CatalogErrors.CategoryNotFound);
 
+        var previousTrack = item.TrackInventory;
         var updated = item.Update(
             command.Name,
             command.Description,
@@ -195,10 +197,33 @@ public static class UpdateCatalogItemHandler
                 ItemId = item.Id,
                 Name = item.Name,
                 CategoryId = item.CategoryId,
+                TrackInventory = item.TrackInventory,
+                IsActive = item.IsActive,
             }
         );
+
+        if (item.TrackInventory != previousTrack)
+            await bus.PublishAsync(TrackingChanged(item, correlation.CorrelationId));
+
         return Result.Success(item.ToDto());
     }
+}
+
+public static class CatalogItemTracking
+{
+    /// <summary>Inventory no se entera de otra forma: <c>Updated</c> no lo consume y reactivar no publicaba nada.</summary>
+    internal static CatalogItemTrackingChangedIntegrationEvent TrackingChanged(
+        CatalogItem item,
+        string correlationId
+    ) =>
+        new()
+        {
+            TenantId = item.TenantId,
+            CorrelationId = correlationId,
+            ItemId = item.Id,
+            TrackInventory = item.TrackInventory,
+            IsActive = item.IsActive,
+        };
 }
 
 public static class ChangeCatalogItemPriceHandler
@@ -257,16 +282,23 @@ public static class SetCatalogItemActiveHandler
         if (item is null)
             return Result.Failure(CatalogErrors.ItemNotFound);
 
+        var wasActive = item.IsActive;
         item.SetActive(command.IsActive, DateTime.UtcNow);
         await unitOfWork.SaveChangesAsync(ct);
 
-        if (!command.IsActive)
+        if (command.IsActive == wasActive)
+            return Result.Success();
+
+        if (command.IsActive)
+            await bus.PublishAsync(TrackingChanged(item, correlation.CorrelationId));
+        else
             await bus.PublishAsync(
                 new CatalogItemDeactivatedIntegrationEvent
                 {
                     TenantId = command.TenantId,
                     CorrelationId = correlation.CorrelationId,
                     ItemId = item.Id,
+                    TrackInventory = item.TrackInventory,
                 }
             );
         return Result.Success();
@@ -298,6 +330,7 @@ public static class DeleteCatalogItemHandler
                 TenantId = command.TenantId,
                 CorrelationId = correlation.CorrelationId,
                 ItemId = item.Id,
+                TrackInventory = item.TrackInventory,
             }
         );
         return Result.Success();

@@ -34,7 +34,10 @@ public static class ListMessageAttachmentsHandler
                 emailThreads,
                 ct
             )
-            || !await emailThreads.IsCustomerVisibleAsync(query.TenantId, email.CustomerId, query.RestrictToUserId, ct)
+            || (
+                email.CustomerId is { } customerId
+                && !await emailThreads.IsCustomerVisibleAsync(query.TenantId, customerId, query.RestrictToUserId, ct)
+            )
         )
             return Result.Failure<IReadOnlyList<AttachmentSummary>>(
                 new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")

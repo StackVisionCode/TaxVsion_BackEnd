@@ -59,6 +59,8 @@ public sealed class SendSmsBatchHandlerTests
                         record,
                         Messages,
                         OptOuts,
+                        new FakePendingDeliveryReceiptRepository(),
+                        new FakeProcessedWebhookRepository(),
                         UnitOfWork,
                         Bus,
                         CancellationToken.None
@@ -111,6 +113,35 @@ public sealed class SendSmsBatchHandlerTests
     /// <summary>Lote enviado por una persona: es el único caso al que se le mide el alcance.</summary>
     private static SendSmsBatchCommand BatchFrom(Guid sender, bool canViewAll, params SmsSendItemDto[] items) =>
         new(Tenant, "corr-1", items, sender, canViewAll);
+
+    // El SMS ya salió: un choque con la conciliación al registrar no puede cortar el lote.
+    [Fact]
+    public async Task Record_that_loses_a_concurrency_conflict_is_retried_and_the_batch_goes_on()
+    {
+        var h = new Harness();
+        var route = h.Bus.OnInvoke!;
+        var conflicts = 0;
+        h.Bus.OnInvoke = message =>
+            message is RecordSmsSendResultCommand && conflicts++ == 0
+                ? throw new BuildingBlocks.Results.ConflictException("Persistence.ConcurrencyConflict", "Simulated.")
+                : route(message);
+
+        var result = await h.Run(
+            new SendSmsBatchCommand(
+                Tenant,
+                "corr",
+                [
+                    new SmsSendItemDto(Guid.NewGuid(), "+18095551234", "uno", null, "key-1", "docs"),
+                    new SmsSendItemDto(Guid.NewGuid(), "+18095551235", "dos", null, "key-2", "docs"),
+                ],
+                ActorUserId: null,
+                CanViewAll: false
+            )
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.All(result.Value.Results, item => Assert.Equal(nameof(SmsMessageStatus.Accepted), item.Status));
+    }
 
     [Fact]
     public async Task Empty_batch_fails()
@@ -198,6 +229,47 @@ public sealed class SendSmsBatchHandlerTests
         Assert.Equal(reserve.ReferenceId, settle.ReferenceId);
         Assert.Equal(1, settle.ConsumedUnits);
         Assert.Equal("bearer-token", settle.CallerBearerToken);
+    }
+
+    [Fact]
+    public async Task Wallet_settle_failure_keeps_the_send_and_queues_the_settlement()
+    {
+        var h = new Harness();
+        h.Wallet.SettleFailures.Enqueue(new InvalidOperationException("Wallet settle failed (503)."));
+
+        var result = await h.Run(ChargedBatch(Item()));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nameof(SmsMessageStatus.Accepted), Assert.Single(result.Value.Results).Status);
+        Assert.Equal(1, h.Provider.SendAsyncCallCount);
+        // Sin el bearer: la sesión vence y un token no se guarda en la cola.
+        Assert.Equal(
+            new SettleSmsBatchCommand(Tenant, result.Value.BatchId),
+            Assert.Single(h.Bus.Published.OfType<SettleSmsBatchCommand>())
+        );
+    }
+
+    [Fact]
+    public async Task Cancelled_settle_queues_the_settlement()
+    {
+        var h = new Harness();
+        h.Wallet.SettleFailures.Enqueue(new OperationCanceledException());
+
+        var result = await h.Run(ChargedBatch(Item()));
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(h.Bus.Published.OfType<SettleSmsBatchCommand>());
+    }
+
+    [Fact]
+    public async Task Settled_batch_queues_nothing()
+    {
+        var h = new Harness();
+
+        await h.Run(ChargedBatch(Item()));
+
+        Assert.Single(h.Wallet.Settlements);
+        Assert.Empty(h.Bus.Published.OfType<SettleSmsBatchCommand>());
     }
 
     [Fact]

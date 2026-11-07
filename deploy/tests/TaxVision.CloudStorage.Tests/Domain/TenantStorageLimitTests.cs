@@ -65,4 +65,40 @@ public sealed class TenantStorageLimitTests
         Assert.True(limit.Recalculate(usedBytes: -1, reservedBytes: 0).IsFailure);
         Assert.Equal(0, limit.UsedBytes);
     }
+
+    [Fact]
+    public void ApplyEntitlements_SameRevision_IsNoOp()
+    {
+        var limit = TenantStorageLimit.Create(Guid.NewGuid(), "starter", maxBytes: 100 * MB, maxFileSizeBytes: 10 * MB);
+        limit.ApplyEntitlements(7, "pro", 200 * MB, 20 * MB, null, isSuspended: false);
+
+        limit.ApplyEntitlements(7, "starter", 100 * MB, 10 * MB, null, isSuspended: true);
+
+        Assert.Equal("pro", limit.PlanCode);
+        Assert.Equal(200 * MB, limit.MaxBytes);
+        Assert.False(limit.IsSuspended);
+        Assert.Equal(7, limit.LastEntitlementsRevision);
+    }
+
+    [Fact]
+    public void ApplyEntitlements_NewerActiveRevision_LiftsTheSuspension()
+    {
+        var limit = TenantStorageLimit.Create(Guid.NewGuid(), "starter", maxBytes: 100 * MB, maxFileSizeBytes: 10 * MB);
+        limit.ApplyEntitlements(7, "pro", 200 * MB, 20 * MB, null, isSuspended: true);
+
+        limit.ApplyEntitlements(8, "pro", 200 * MB, 20 * MB, null, isSuspended: false);
+
+        Assert.False(limit.IsSuspended);
+        Assert.Equal(8, limit.LastEntitlementsRevision);
+    }
+
+    [Fact]
+    public void ApplyEntitlements_WithoutAPreviousRevision_AppliesAnyRevision()
+    {
+        var limit = TenantStorageLimit.Create(Guid.NewGuid(), "starter", maxBytes: 100 * MB, maxFileSizeBytes: 10 * MB);
+
+        limit.ApplyEntitlements(1, "pro", 200 * MB, 20 * MB, null, isSuspended: false);
+
+        Assert.Equal("pro", limit.PlanCode);
+    }
 }

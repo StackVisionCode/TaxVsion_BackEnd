@@ -5,6 +5,7 @@ using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Domain.Sync;
+using TaxVision.Connectors.Tests.Accounts;
 using TaxVision.Connectors.Tests.OAuth;
 
 namespace TaxVision.Connectors.Tests.Sync;
@@ -49,7 +50,8 @@ public class ResyncMailboxHandlerTests
         FakeEmailProviderClient client,
         FakeMessageBus bus,
         string? pageToken = null,
-        Guid? tenantId = null
+        Guid? tenantId = null,
+        TrackingOutboxUnit? unit = null
     )
     {
         var accounts = new FakeTenantEmailAccountRepository();
@@ -58,11 +60,35 @@ public class ResyncMailboxHandlerTests
             new ResyncMailboxCommand(tenantId ?? TenantId, account.Id, FromUtc, Now, pageToken, "resync-1"),
             accounts,
             new FakeEmailProviderClientFactory(client),
-            new FakeUnitOfWork(),
-            bus,
+            unit ?? new TrackingOutboxUnit(new FakeUnitOfWork(), bus),
             NullLogger.Instance,
             CancellationToken.None
         );
+    }
+
+    // CON-12: la lista y el contenido vienen del proveedor; la transacción solo cubre lo que se publica.
+    [Fact]
+    public async Task Resync_CallsTheProviderOutsideTheUnit()
+    {
+        var account = CreateActiveAccount();
+        var bus = new FakeMessageBus();
+        var unit = new TrackingOutboxUnit(new FakeUnitOfWork(), bus);
+        var openDuringCall = false;
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail)
+        {
+            OnListInbox = (_, _, _) =>
+            {
+                openDuringCall = unit.IsOpen;
+                return new InboxMessageIdPage(["m1"], null);
+            },
+            OnGetMessage = (_, id) => Message(id),
+        };
+
+        await RunAsync(account, client, bus, unit: unit);
+
+        Assert.False(openDuringCall);
+        Assert.True(unit.Committed);
+        Assert.Single(bus.Published.OfType<ConnectorsRawMessageReceivedIntegrationEvent>());
     }
 
     [Fact]

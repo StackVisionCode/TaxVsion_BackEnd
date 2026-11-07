@@ -25,6 +25,8 @@ public sealed class ReminderRepository(ReminderDbContext context) : IReminderRep
 
     public void Add(ReminderAggregate reminder) => context.Reminders.Add(reminder);
 
+    public void Detach(ReminderAggregate reminder) => context.Entry(reminder).State = EntityState.Detached;
+
     public async Task<Result<ReminderAggregate>> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var reminder = await context.Reminders.FirstOrDefaultAsync(r => r.Id == id, ct);

@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -53,7 +54,14 @@ public sealed class PaymentLinkRedeemConcurrencyIntegrationTests : IAsyncLifetim
         await using var db = NewContext();
         db.Tenants.Add(
             Tenant
-                .Register(_tenantId, "Concurrency Office", $"cc-{_tenantId:N}"[..20], TenantKind.Customer, "Etc/UTC", NowUtc)
+                .Register(
+                    _tenantId,
+                    "Concurrency Office",
+                    $"cc-{_tenantId:N}"[..20],
+                    TenantKind.Customer,
+                    "Etc/UTC",
+                    NowUtc
+                )
                 .Value
         );
 
@@ -98,10 +106,7 @@ public sealed class PaymentLinkRedeemConcurrencyIntegrationTests : IAsyncLifetim
         await db.AuditEntries.Where(e => e.TenantId == _tenantId).ExecuteDeleteAsync();
         await db.TenantPayments.IgnoreQueryFilters().Where(p => p.TenantId == _tenantId).ExecuteDeleteAsync();
         await db.PaymentLinks.IgnoreQueryFilters().Where(l => l.TenantId == _tenantId).ExecuteDeleteAsync();
-        await db
-            .TenantPaymentConfigs.IgnoreQueryFilters()
-            .Where(c => c.TenantId == _tenantId)
-            .ExecuteDeleteAsync();
+        await db.TenantPaymentConfigs.IgnoreQueryFilters().Where(c => c.TenantId == _tenantId).ExecuteDeleteAsync();
         await db.Tenants.Where(t => t.Id == _tenantId).ExecuteDeleteAsync();
     }
 
@@ -120,7 +125,7 @@ public sealed class PaymentLinkRedeemConcurrencyIntegrationTests : IAsyncLifetim
         Assert.True(b.MarkAsUsed(NowUtc).IsSuccess);
 
         await first.SaveChangesAsync();
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
+        await Assert.ThrowsAsync<ConflictException>(() => second.SaveChangesAsync());
 
         await using var check = NewContext();
         var stored = await check.PaymentLinks.AsNoTracking().SingleAsync(l => l.Id == _link.Id);
@@ -130,12 +135,10 @@ public sealed class PaymentLinkRedeemConcurrencyIntegrationTests : IAsyncLifetim
     [Fact]
     public async Task TwoRedeemsInParallel_ChargeProviderOnce()
     {
+        // El intento se confirma antes de cobrar: el perdedor choca ahí y nunca llega al proveedor.
         var provider = new IdempotentRecordingPaymentProvider(
             new(PaymentProviderCode.Stripe, "Stripe", "Publishable key", "Secret key", true, false)
-        )
-        {
-            WaitForCallers = 2,
-        };
+        );
 
         var outcomes = await Task.WhenAll(RedeemCatchingAsync(provider), RedeemCatchingAsync(provider));
 
@@ -146,6 +149,7 @@ public sealed class PaymentLinkRedeemConcurrencyIntegrationTests : IAsyncLifetim
             .CountAsync();
 
         Assert.Equal(1, provider.DistinctChargedKeys);
+        Assert.Equal(1, provider.Calls);
         Assert.True(succeeded <= 1, $"Expected at most one succeeded payment, found {succeeded}.");
         Assert.Contains(outcomes, ok => !ok);
     }
@@ -156,7 +160,7 @@ public sealed class PaymentLinkRedeemConcurrencyIntegrationTests : IAsyncLifetim
         await using var db = NewContext();
         try
         {
-            var result = await RedeemPaymentLinkHandler.Handle(
+            var result = await TestChargeFlow.RedeemAsync(
                 new RedeemPaymentLinkCommand(_link.Token.Value, PaymentProviderCode.Stripe, "card", ReceiptEmail: null),
                 new PaymentLinkRepository(db),
                 new TenantPaymentRepository(db),
@@ -173,7 +177,7 @@ public sealed class PaymentLinkRedeemConcurrencyIntegrationTests : IAsyncLifetim
             );
             return result.IsSuccess;
         }
-        catch (DbUpdateException)
+        catch (Exception ex) when (ex is DbUpdateException or ConflictException)
         {
             return false;
         }

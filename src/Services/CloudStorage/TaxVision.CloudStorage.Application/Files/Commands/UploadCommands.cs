@@ -296,6 +296,13 @@ public static class ScanFileHandler
         CancellationToken ct
     )
     {
+        // Antes de leer: así el que entra después de un escaneo terminado ya ve el estado final.
+        if (!await files.TryClaimScanAsync(command.FileId, ct))
+        {
+            logger.LogInformation("Scan skipped: file {FileId} is already being scanned.", command.FileId);
+            return;
+        }
+
         var file = await files.GetAsync(command.TenantId, command.FileId, ct);
         if (file is null)
         {

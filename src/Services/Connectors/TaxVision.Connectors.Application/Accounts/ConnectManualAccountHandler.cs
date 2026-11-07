@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Application.Sync;
@@ -11,6 +12,7 @@ using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Audit;
 using TaxVision.Connectors.Domain.Shared;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Accounts;
 
@@ -24,9 +26,13 @@ namespace TaxVision.Connectors.Application.Accounts;
 /// Se llama en proceso (no vía <c>bus.InvokeAsync(new SetupWatchCommand(...))</c>) para compartir la
 /// MISMA transacción/DbContext que <see cref="PersistAsync"/> — ver el docblock de
 /// <see cref="WatchActivationService"/> para el bug real que este approach evita.
+///
+/// CON-12: la prueba IMAP/SMTP tarda segundos y va antes, sin transacción. Lo que se guarda va en una sola
+/// unidad: si algo falla no queda nada.
 /// </summary>
 public static class ConnectManualAccountHandler
 {
+    [NonTransactional]
     public static async Task<Result<ConnectManualAccountResult>> Handle(
         ConnectManualAccountCommand cmd,
         ITenantEmailAccountRepository accountRepository,
@@ -41,7 +47,7 @@ public static class ConnectManualAccountHandler
         IWatchProviderClientFactory watchClientFactory,
         IUserPermissionsProjectionReader initiatorProjections,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IOutboxUnit unit,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -78,86 +84,101 @@ public static class ConnectManualAccountHandler
         if (initiatorCheck.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(initiatorCheck.Error);
 
-        // Fila desconectada que era personal de otra persona (p. ej. un retirado re-invitado): pasa a quien conecta.
-        existingAccount?.ReassignOwnerOnReconnect(cmd.AsOffice ? null : cmd.InitiatedByUserId);
-
-        TenantEmailAccount account;
-        if (existingAccount is null)
-        {
-            var buildResult = BuildAccountAndCredentials(cmd, protector);
-            if (buildResult.IsFailure)
-                return Result.Failure<ConnectManualAccountResult>(buildResult.Error);
-            var (newAccount, imapCredentials, smtpCredentials) = buildResult.Value;
-            account = newAccount;
-
-            await PersistAsync(
-                account,
-                imapCredentials,
-                smtpCredentials,
-                accountRepository,
-                imapCredentialsRepository,
-                smtpCredentialsRepository,
-                unitOfWork,
-                ct
-            );
-        }
-        else if (existingAccount.ProviderCode != ProviderCode.Imap)
-        {
-            // Switch cross-provider: la fila existe como OAuth (Gmail/Graph) Disconnected y el usuario
-            // ahora reconecta por manual IMAP. Reusamos el Id (paridad con el flujo IMAP→OAuth del
-            // CompleteOAuthConnectHandler): ChangeProvider al aggregate, purga OAuthConnection+Token y
-            // ProviderWatchSubscription que son del proveedor anterior, y crea nuevas IMAP+SMTP creds.
-            var switchResult = await SwitchFromOAuthToManualAsync(
-                existingAccount,
-                cmd,
-                protector,
-                oauthConnectionRepository,
-                watchSubscriptionRepository,
-                providerSyncCursorRepository,
-                imapCredentialsRepository,
-                smtpCredentialsRepository,
-                unitOfWork,
-                ct
-            );
-            if (switchResult.IsFailure)
-                return Result.Failure<ConnectManualAccountResult>(switchResult.Error);
-            account = existingAccount;
-        }
-        else
-        {
-            var reconnectResult = await ReconnectCredentialsAsync(
-                existingAccount,
-                cmd,
-                protector,
-                imapCredentialsRepository,
-                smtpCredentialsRepository,
-                unitOfWork,
-                ct
-            );
-            if (reconnectResult.IsFailure)
-                return Result.Failure<ConnectManualAccountResult>(reconnectResult.Error);
-            account = existingAccount;
-        }
-
-        // WatchActivationService publica ConnectorsTenantEmailAccountConnected al activar; acá solo se
-        // audita (antes se publicaba también acá — se quitó para no duplicar el evento).
-        var activateResult = await WatchActivationService.ActivateAsync(
-            cmd.TenantId,
-            account.Id,
-            accountRepository,
-            watchSubscriptionRepository,
-            watchClientFactory,
-            unitOfWork,
-            bus,
-            correlation,
+        var outcome = Result.Failure<ConnectManualAccountResult>(
+            new Error("ConnectManualAccountHandler.NotSaved", "The account could not be saved.")
+        );
+        await unit.RunAsync(
+            async (outbox, token) =>
+            {
+                outcome = await SaveAndActivateAsync(outbox, token);
+                return outcome.IsSuccess;
+            },
             ct
         );
-        if (activateResult.IsFailure)
-            return Result.Failure<ConnectManualAccountResult>(activateResult.Error);
+        return outcome;
 
-        await RecordConnectionAuditAsync(account, auditLogRepository, unitOfWork, ct);
+        async Task<Result<ConnectManualAccountResult>> SaveAndActivateAsync(IMessageBus outbox, CancellationToken token)
+        {
+            // Fila desconectada que era personal de otra persona (p. ej. un retirado re-invitado): pasa a quien conecta.
+            existingAccount?.ReassignOwnerOnReconnect(cmd.AsOffice ? null : cmd.InitiatedByUserId);
 
-        return Result.Success(new ConnectManualAccountResult(account.Id, account.EmailAddress));
+            TenantEmailAccount account;
+            if (existingAccount is null)
+            {
+                var buildResult = BuildAccountAndCredentials(cmd, protector);
+                if (buildResult.IsFailure)
+                    return Result.Failure<ConnectManualAccountResult>(buildResult.Error);
+                var (newAccount, imapCredentials, smtpCredentials) = buildResult.Value;
+                account = newAccount;
+
+                await PersistAsync(
+                    account,
+                    imapCredentials,
+                    smtpCredentials,
+                    accountRepository,
+                    imapCredentialsRepository,
+                    smtpCredentialsRepository,
+                    unitOfWork,
+                    token
+                );
+            }
+            else if (existingAccount.ProviderCode != ProviderCode.Imap)
+            {
+                // Switch cross-provider: la fila existe como OAuth (Gmail/Graph) Disconnected y el usuario
+                // ahora reconecta por manual IMAP. Reusamos el Id (paridad con el flujo IMAP→OAuth del
+                // CompleteOAuthConnectHandler): ChangeProvider al aggregate, purga OAuthConnection+Token y
+                // ProviderWatchSubscription que son del proveedor anterior, y crea nuevas IMAP+SMTP creds.
+                var switchResult = await SwitchFromOAuthToManualAsync(
+                    existingAccount,
+                    cmd,
+                    protector,
+                    oauthConnectionRepository,
+                    watchSubscriptionRepository,
+                    providerSyncCursorRepository,
+                    imapCredentialsRepository,
+                    smtpCredentialsRepository,
+                    unitOfWork,
+                    token
+                );
+                if (switchResult.IsFailure)
+                    return Result.Failure<ConnectManualAccountResult>(switchResult.Error);
+                account = existingAccount;
+            }
+            else
+            {
+                var reconnectResult = await ReconnectCredentialsAsync(
+                    existingAccount,
+                    cmd,
+                    protector,
+                    imapCredentialsRepository,
+                    smtpCredentialsRepository,
+                    unitOfWork,
+                    token
+                );
+                if (reconnectResult.IsFailure)
+                    return Result.Failure<ConnectManualAccountResult>(reconnectResult.Error);
+                account = existingAccount;
+            }
+
+            // WatchActivationService publica ConnectorsTenantEmailAccountConnected al activar; acá solo se
+            // audita (antes se publicaba también acá — se quitó para no duplicar el evento).
+            var activateResult = await WatchActivationService.ActivateAsync(
+                cmd.TenantId,
+                account.Id,
+                accountRepository,
+                watchSubscriptionRepository,
+                watchClientFactory,
+                new HandlerTransactionUnit(unitOfWork, outbox),
+                correlation,
+                token
+            );
+            if (activateResult.IsFailure)
+                return Result.Failure<ConnectManualAccountResult>(activateResult.Error);
+
+            await RecordConnectionAuditAsync(account, auditLogRepository, unitOfWork, token);
+
+            return Result.Success(new ConnectManualAccountResult(account.Id, account.EmailAddress));
+        }
     }
 
     /// <summary>

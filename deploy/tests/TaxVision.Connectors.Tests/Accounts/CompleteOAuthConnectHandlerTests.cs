@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Results;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Application.Watch;
@@ -70,7 +71,7 @@ public class CompleteOAuthConnectHandlerTests
             fixture.SyncCursors,
             fixture.Projections,
             fixture.UnitOfWork,
-            fixture.Bus,
+            new HandlerTransactionUnit(fixture.UnitOfWork, fixture.Bus),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -424,6 +425,47 @@ public class CompleteOAuthConnectHandlerTests
         Assert.NotNull(persistedConnection.Token);
         Assert.Equal(token.Id, persistedConnection.Token!.Id);
         Assert.Equal("new-refresh-token", fixture.Protector.Unprotect(persistedConnection.Token.RefreshTokenCipher));
+    }
+
+    [Fact]
+    public async Task Callback_ConnectionExpired_Reconnects()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "office@gmail.com";
+        var account = TenantEmailAccount
+            .Create(tenantId, "office@gmail.com", ProviderCode.Gmail, Guid.NewGuid(), Now)
+            .Value;
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        account.MarkError(
+            new TenantEmailAccountErrorCause(TenantEmailAccountErrorSource.OAuthRefresh, "x", "y", "c"),
+            Now
+        );
+        fixture.AccountRepository.Accounts.Add(account);
+        var connection = OAuthConnection.Create(account.Id, ProviderCode.Gmail, "client", "fake-scope", Now).Value;
+        connection.AttachToken(
+            OAuthToken
+                .Create(
+                    connection.Id,
+                    fixture.Protector.Protect("old-access"),
+                    fixture.Protector.Protect("old-refresh"),
+                    Now.AddHours(-1),
+                    Now
+                )
+                .Value
+        );
+        connection.MarkExpired();
+        fixture.ConnectionRepository.Connections.Add(connection);
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, Guid.NewGuid(), "code", "office@gmail.com")
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OAuthConnectionStatus.Active, connection.Status);
+        Assert.Equal(TenantEmailAccountStatus.Active, account.Status);
     }
 
     /// <summary>

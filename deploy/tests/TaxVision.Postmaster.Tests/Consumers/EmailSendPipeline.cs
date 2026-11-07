@@ -124,6 +124,7 @@ internal static class EmailSendPipeline
             tenantDirectory,
             correlation,
             bus,
+            new RecordSendResultRetryOptions(),
             logger,
             ct,
             envelope

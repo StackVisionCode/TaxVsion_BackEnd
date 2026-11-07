@@ -4004,6 +4004,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<int>("PermissionsVersion")
                         .HasColumnType("int");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<string>("TargetActorType")
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
@@ -4258,6 +4264,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<long?>("LastProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("LastStatusVersion")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -4471,6 +4483,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("RemovedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateTime?>("SlotPriorityAt")
                         .HasColumnType("datetime2");

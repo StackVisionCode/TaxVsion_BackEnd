@@ -26,6 +26,13 @@ public sealed class Tenant : BaseEntity
     /// nombre y zona del alta. Ordena los <c>TenantUpdatedIntegrationEvent</c>.</summary>
     public DateTime? SourceUpdatedAtUtc { get; private set; }
 
+    /// <summary>Última versión de Tenant aplicada por <c>TenantStatusChangedIntegrationEvent</c>.</summary>
+    public long? LastStatusVersion { get; private set; }
+
+    /// <summary>Última versión de Tenant aplicada por <c>TenantUpdatedIntegrationEvent</c>. Va aparte de la de estado:
+    /// la versión es una sola por oficina y cada aviso trae solo su parte. No es <see cref="ProfileVersion"/>.</summary>
+    public long? LastProfileVersion { get; private set; }
+
     /// <summary>Nombre comercial (DBA) del perfil de la oficina; null = sin dato.</summary>
     public string? DisplayName { get; private set; }
 
@@ -88,10 +95,19 @@ public sealed class Tenant : BaseEntity
     }
 
     /// <summary>Renombre / cambio de zona publicado por Tenant (estado completo). Ignora un evento más
-    /// viejo que el aplicado; uno igual se reaplica (idempotente). Devuelve <c>true</c> si se aplicó.</summary>
-    public bool ApplyTenantUpdate(string name, string defaultTimeZoneId, DateTime sourceUpdatedAtUtc, DateTime nowUtc)
+    /// viejo que el aplicado. Devuelve <c>true</c> si se aplicó.</summary>
+    public bool ApplyTenantUpdate(
+        string name,
+        string defaultTimeZoneId,
+        DateTime sourceUpdatedAtUtc,
+        DateTime nowUtc,
+        long? tenantVersion = null
+    )
     {
-        if (SourceUpdatedAtUtc is { } applied && sourceUpdatedAtUtc < applied)
+        // Sin versión (mensaje viejo) ordena el reloj; uno igual se reaplica (idempotente).
+        if (tenantVersion is null && SourceUpdatedAtUtc is { } applied && sourceUpdatedAtUtc < applied)
+            return false;
+        if (tenantVersion <= LastProfileVersion)
             return false;
         if (string.IsNullOrWhiteSpace(name) || !IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalized))
             return false;
@@ -99,6 +115,7 @@ public sealed class Tenant : BaseEntity
         Name = name.Trim();
         DefaultTimeZoneId = normalized;
         SourceUpdatedAtUtc = sourceUpdatedAtUtc;
+        LastProfileVersion = tenantVersion ?? LastProfileVersion;
         UpdatedAtUtc = nowUtc;
         return true;
     }
@@ -116,10 +133,15 @@ public sealed class Tenant : BaseEntity
         return true;
     }
 
-    public void ApplyStatusChange(string status, bool isActive, DateTime nowUtc)
+    /// <summary>Descarta un aviso de estado igual o más viejo que el aplicado. Sin versión (mensaje viejo) pasa.</summary>
+    public void ApplyStatusChange(string status, bool isActive, DateTime nowUtc, long? tenantVersion = null)
     {
+        if (tenantVersion <= LastStatusVersion)
+            return;
+
         Status = status;
         IsActive = isActive;
+        LastStatusVersion = tenantVersion ?? LastStatusVersion;
         UpdatedAtUtc = nowUtc;
     }
 

@@ -1,11 +1,10 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Watch;
-using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Sync;
 
@@ -15,6 +14,7 @@ public static class GraphNotificationReceivedHandler
     /// Mismo resultado que cuando el webhook procesaba en línea: un fallo se registra y no se
     /// reintenta. El ReconciliationJob (cada 15 min) recupera lo que una notificación no trajo.
     /// </summary>
+    [NonTransactional]
     public static async Task Handle(
         GraphNotificationReceived message,
         IProviderWatchSubscriptionRepository subscriptionRepository,
@@ -23,8 +23,7 @@ public static class GraphNotificationReceivedHandler
         IEmailProviderClientFactory emailClientFactory,
         IDistributedLock distributedLock,
         ISyncPendingFlag pendingFlag,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IOutboxUnit unit,
         ICorrelationContext correlation,
         ILogger logger,
         MessageFetchFailureTracker fetchFailures,
@@ -41,8 +40,7 @@ public static class GraphNotificationReceivedHandler
                 emailClientFactory,
                 distributedLock,
                 pendingFlag,
-                unitOfWork,
-                bus,
+                unit,
                 correlation,
                 logger,
                 fetchFailures,

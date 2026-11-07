@@ -84,8 +84,7 @@ public sealed class SmsMessageRepository(SmsDbContext db) : ISmsMessageRepositor
                     m.Status == SmsMessageStatus.Pending
                     && m.ProviderMessageId == null
                     && m.SendAttemptedAtUtc < pendingBeforeUtc
-                )
-                || (m.Status == SmsMessageStatus.OutcomeUnknown && m.SendAttemptedAtUtc < unknownBeforeUtc)
+                ) || (m.Status == SmsMessageStatus.OutcomeUnknown && m.SendAttemptedAtUtc < unknownBeforeUtc)
             );
         if (tenantId is { } t)
             query = query.Where(m => m.TenantId == t);
@@ -169,4 +168,38 @@ public sealed class ProcessedWebhookRepository(SmsDbContext db) : IProcessedWebh
 
     public async Task AddAsync(ProcessedWebhook processed, CancellationToken ct = default) =>
         await db.ProcessedWebhooks.AddAsync(processed, ct);
+}
+
+public sealed class PendingDeliveryReceiptRepository(SmsDbContext db) : IPendingDeliveryReceiptRepository
+{
+    public Task<bool> ExistsAsync(
+        string providerCode,
+        string providerMessageId,
+        string eventType,
+        CancellationToken ct = default
+    ) =>
+        db.PendingDeliveryReceipts.AnyAsync(
+            r => r.ProviderCode == providerCode && r.ProviderMessageId == providerMessageId && r.EventType == eventType,
+            ct
+        );
+
+    public async Task AddAsync(PendingDeliveryReceipt receipt, CancellationToken ct = default) =>
+        await db.PendingDeliveryReceipts.AddAsync(receipt, ct);
+
+    public async Task<IReadOnlyList<PendingDeliveryReceipt>> ListAsync(
+        string providerCode,
+        string providerMessageId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .PendingDeliveryReceipts.Where(r =>
+                r.ProviderCode == providerCode && r.ProviderMessageId == providerMessageId
+            )
+            .OrderBy(r => r.ReceivedAtUtc)
+            .ToListAsync(ct);
+
+    public void Remove(PendingDeliveryReceipt receipt) => db.PendingDeliveryReceipts.Remove(receipt);
+
+    public Task<int> DeleteReceivedBeforeAsync(DateTime cutoffUtc, CancellationToken ct = default) =>
+        db.PendingDeliveryReceipts.Where(r => r.ReceivedAtUtc < cutoffUtc).ExecuteDeleteAsync(ct);
 }

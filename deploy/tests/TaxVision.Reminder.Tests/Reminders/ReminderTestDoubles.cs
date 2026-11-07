@@ -18,6 +18,8 @@ namespace TaxVision.Reminder.Tests.Reminders;
 /// </summary>
 internal sealed class FakeReminderRepository : IReminderRepository
 {
+    public void Detach(ReminderAggregate reminder) { }
+
     private static readonly ReminderStatus[] PendingStatuses =
     [
         ReminderStatus.Scheduled,
@@ -282,8 +284,17 @@ internal sealed class RecordingMessageBus : IMessageBus
         set { }
     }
 
-    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    /// <summary>Si se asigna, atiende <c>InvokeAsync</c>; si no, lanza como el resto.</summary>
+    public Action? OnInvoke { get; set; }
+
+    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        if (OnInvoke is null)
+            throw new NotImplementedException();
+
+        OnInvoke();
+        return Task.CompletedTask;
+    }
 
     public Task InvokeAsync(
         object message,

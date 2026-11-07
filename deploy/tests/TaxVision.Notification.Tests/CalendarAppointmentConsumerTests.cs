@@ -172,6 +172,7 @@ public sealed class CalendarAppointmentConsumerTests
                 new CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
+                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
                 NullLogger<NotificationDispatcher>.Instance
             );
     }

@@ -2,9 +2,11 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Tasks.Application.Backfill;
 using TaxVision.Tasks.Application.Backfill.Abstractions;
 using TaxVision.Tasks.Application.Projections.Abstractions;
 using TaxVision.Tasks.Domain.Projections;
+using Wolverine;
 
 namespace TaxVision.Tasks.Application.Projections.CustomerEvents;
 
@@ -14,6 +16,7 @@ public static class CustomerUpdatedConsumer
         CustomerUpdatedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
         ITenantCustomerBackfillService backfill,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
@@ -26,7 +29,7 @@ public static class CustomerUpdatedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            await TenantCustomerBackfillRequest.RequestIfNeededAsync(evt.TenantId, backfill, bus, ct);
 
             await UpsertAsync(evt, repository, ct);
             await unitOfWork.SaveChangesAsync(ct);

@@ -93,7 +93,15 @@ public static class PrepareCorrespondenceMessageHandler
         switch (reservation.Outcome)
         {
             case IdempotencyReservationOutcome.AlreadyCompleted:
-                return Completed(new SendCorrespondenceMessageResult(reservation.ExistingSentMessageId!.Value, null));
+                // PMS-10: con el Message-ID, el borrador que cierra el job enlaza la respuesta del cliente (COR-16).
+                var sent = await sentMessages.FindByIdempotencyKeyAsync(command.TenantId, idempotencyKey, ct);
+                return Completed(
+                    new SendCorrespondenceMessageResult(
+                        reservation.ExistingSentMessageId!.Value,
+                        null,
+                        InternetMessageId: sent?.InternetMessageId
+                    )
+                );
             case IdempotencyReservationOutcome.InProgress:
                 var existing = await sentMessages.FindByIdempotencyKeyAsync(command.TenantId, idempotencyKey, ct);
                 return existing is null

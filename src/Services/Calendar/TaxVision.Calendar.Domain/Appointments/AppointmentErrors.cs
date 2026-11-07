@@ -90,6 +90,12 @@ public static class AppointmentErrors
         "The appointment overlaps another one and this type does not allow it."
     );
 
+    /// <summary>Otro la reprogramó mientras se respondía. Mismo código que un choque de versión: el CRM ya sabe qué decir.</summary>
+    public static readonly Error ScheduleChanged = new(
+        "Persistence.ConcurrencyConflict",
+        "The appointment was rescheduled while you were responding. Check the new time and respond again."
+    );
+
     public static readonly Error ScopeRequired = new(
         "Calendar.Appointment.ScopeRequired",
         "Editing an occurrence of a series requires an explicit scope."

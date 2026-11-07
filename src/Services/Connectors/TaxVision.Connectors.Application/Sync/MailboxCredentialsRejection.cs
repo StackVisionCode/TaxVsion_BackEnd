@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Domain.Accounts;
 
@@ -13,13 +12,12 @@ internal static class MailboxCredentialsRejection
 {
     public const string ErrorCode = "Imap.AuthenticationFailed";
 
-    public static async Task HandleAsync(
+    /// <returns>True si la cuenta pasó a Error: hay que guardar, y el guardado lleva el aviso.</returns>
+    public static bool TryMark(
         TenantEmailAccount account,
         string reason,
-        IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        ILogger logger,
-        CancellationToken ct
+        ILogger logger
     )
     {
         var cause = new TenantEmailAccountErrorCause(
@@ -30,9 +28,9 @@ internal static class MailboxCredentialsRejection
         );
         // Si ya estaba en Error o desconectada, el usuario ya fue avisado.
         if (account.MarkCredentialsRejected(cause, DateTime.UtcNow).IsFailure)
-            return;
+            return false;
 
-        await unitOfWork.SaveChangesAsync(ct);
         logger.LogWarning("IMAP credentials rejected for account {AccountId}; marked as Error.", account.Id);
+        return true;
     }
 }

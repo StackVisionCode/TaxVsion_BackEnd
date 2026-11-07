@@ -66,7 +66,7 @@ public sealed class CampaignRunCommandEventCountTests
         await fixture.RunAsync(typeof(StartCampaignRunHandler), fixture.StartCommand("a@x.com"), expectSuccess: false);
 
         Assert.Equal(CampaignRunStatus.Rejected, Assert.Single(fixture.Runs.Runs).Status);
-        Assert.Empty(fixture.Emitted());
+        Assert.IsType<ReleaseCampaignRunReservationCommand>(Assert.Single(fixture.Emitted()));
     }
 
     [Fact]
@@ -185,6 +185,7 @@ public sealed class CampaignRunCommandEventCountTests
         {
             Campaign = Campaign.Create(Tenant, Actor, "Newsletter", CampaignChannel.Email, "body", "subj").Value;
             Campaigns.Campaigns.Add(Campaign);
+            TestRunFlow.Route(Bus, Runs, Campaigns, new FakeCampaignScheduleRepository(), new FakeUnitOfWork());
         }
 
         public Campaign Campaign { get; }
@@ -224,6 +225,7 @@ public sealed class CampaignRunCommandEventCountTests
                         .ToList()
                 )
                 .Value;
+            run.MarkFundsReserved();
             foreach (var recipient in run.Recipients.ToList())
                 run.MarkDispatched(recipient.Id);
             run.ClearDomainEvents();

@@ -29,6 +29,7 @@ public sealed class FakeTenantRegistry(string officeName, Action<Tenant>? shape 
         string status,
         bool isActive,
         DateTime nowUtc,
+        long? tenantVersion,
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 }

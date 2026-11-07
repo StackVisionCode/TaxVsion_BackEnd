@@ -78,6 +78,8 @@ public sealed class TenantPaymentConfiguration : IEntityTypeConfiguration<Tenant
             .HasColumnName("ProviderChargeReferenceOnConnect")
             .HasMaxLength(200);
 
+        builder.Property(payment => payment.ChargeMethodReference).HasMaxLength(255);
+
         builder.OwnsOne(
             payment => payment.SplitPayment,
             split =>
@@ -137,6 +139,13 @@ public sealed class TenantPaymentConfiguration : IEntityTypeConfiguration<Tenant
         builder
             .HasIndex(payment => new { payment.TenantId, payment.Status })
             .HasDatabaseName("IX_TenantPayments_TenantId_Status");
+
+        // El único de (TenantId, ExternalChargeProvider, ExternalChargeReference) vive en la migración
+        // AddTenantPaymentExternalChargeIndex: EF no mezcla una columna del dueño con columnas owned.
+        builder
+            .HasIndex(payment => payment.ProviderChargeReferenceOnConnect)
+            .HasFilter("[ProviderChargeReferenceOnConnect] IS NOT NULL")
+            .HasDatabaseName("IX_TenantPayments_ProviderChargeReferenceOnConnect");
 
         builder
             .HasIndex(payment => payment.NextRetryAtUtc)

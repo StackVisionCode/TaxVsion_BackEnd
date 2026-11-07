@@ -1,4 +1,6 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Messaging.DocumentsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -124,6 +126,133 @@ public sealed class ProcessInvoiceGenerationHandlerTests
         return Assert.IsType<string>(renderer.Html);
     }
 
+    [Fact]
+    public async Task The_handler_publishes_SaveFileRequested_after_saving_the_upload_state()
+    {
+        var generation = NewRequested();
+        var bus = new RecordingBus();
+        var unitOfWork = new CountingUnitOfWork();
+
+        await ProcessAsync(generation, new AcceptingStorage(), bus, unitOfWork);
+
+        var save = Assert.Single(bus.Published.OfType<SaveFileRequestedIntegrationEvent>());
+        Assert.Equal(Tenant, save.TenantId);
+        Assert.Equal(generation.FileId, save.FileId);
+        Assert.Equal("documents", save.RequestingService);
+        Assert.Equal("temp-bucket", save.SourceBucket);
+        Assert.Equal($"documents/{save.FileId:N}/invoice.pdf", save.SourceObjectKey);
+        Assert.Equal("Invoice", save.OwnerType);
+        Assert.Equal(generation.Owner.OwnerId, save.OwnerId);
+        Assert.Equal("Invoices", save.FolderType);
+        Assert.Equal(2026, save.TaxYear);
+        Assert.Equal("invoice.pdf", save.OriginalName);
+        Assert.Equal("application/pdf", save.ContentType);
+        Assert.Equal(4, save.SizeBytes);
+        Assert.Equal(DocumentGenerationStatus.Uploading, generation.Status);
+        Assert.True(unitOfWork.Saves > 0);
+    }
+
+    [Fact]
+    public async Task A_failed_upload_fails_the_generation_and_asks_nothing_of_CloudStorage()
+    {
+        var generation = NewRequested();
+        var bus = new RecordingBus();
+
+        await ProcessAsync(generation, new RefusingStorage(), bus, new CountingUnitOfWork());
+
+        Assert.Empty(bus.Published.OfType<SaveFileRequestedIntegrationEvent>());
+        Assert.Single(bus.Published.OfType<DocumentGenerationFailedIntegrationEvent>());
+        Assert.Equal(DocumentGenerationStatus.Failed, generation.Status);
+    }
+
+    private static Task ProcessAsync(
+        DocumentGeneration generation,
+        IDocumentStorageClient storage,
+        RecordingBus bus,
+        IUnitOfWork unitOfWork
+    ) =>
+        ProcessInvoiceGenerationHandler.Handle(
+            new ProcessInvoiceGenerationCommand(
+                generation.Id,
+                Tenant,
+                "INV-2026-00042",
+                "billing.invoice.v1",
+                1,
+                "Invoice",
+                generation.Owner.OwnerId,
+                1,
+                2026,
+                "invoice.pdf",
+                "corr",
+                Payload(),
+                null
+            ),
+            new SingleGeneration(generation),
+            new NoBranding(),
+            new NoLogo(),
+            new CapturingRenderer(),
+            new TinyPdf(),
+            storage,
+            new NoQr(),
+            unitOfWork,
+            bus,
+            new NoopCorrelation(),
+            TimeProvider.System,
+            TestPlatform.Settings,
+            NullLogger<ProcessInvoiceGenerationCommand>.Instance,
+            CancellationToken.None
+        );
+
+    private sealed class TinyPdf : IHtmlToPdfConverter
+    {
+        public Task<Result<byte[]>> ConvertAsync(string html, CancellationToken ct = default) =>
+            Task.FromResult(Result.Success(new byte[] { 0x25, 0x50, 0x44, 0x46 }));
+    }
+
+    private sealed class AcceptingStorage : IDocumentStorageClient
+    {
+        public Task<Result<StorageUploadResult>> UploadAsync(
+            Guid fileId,
+            byte[] content,
+            string fileName,
+            string contentType,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                Result.Success(
+                    new StorageUploadResult(
+                        fileId,
+                        "temp-bucket",
+                        $"documents/{fileId:N}/{fileName}",
+                        content.LongLength,
+                        contentType
+                    )
+                )
+            );
+    }
+
+    private sealed class RefusingStorage : IDocumentStorageClient
+    {
+        public Task<Result<StorageUploadResult>> UploadAsync(
+            Guid fileId,
+            byte[] content,
+            string fileName,
+            string contentType,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Failure<StorageUploadResult>(new Error("Documents.Storage.Upload", "Refused.")));
+    }
+
+    private sealed class CountingUnitOfWork : IUnitOfWork
+    {
+        public int Saves { get; private set; }
+
+        public Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            Saves++;
+            return Task.FromResult(1);
+        }
+    }
+
     private static DocumentGeneration NewRequested() =>
         DocumentGeneration
             .Request(
@@ -219,18 +348,11 @@ public sealed class ProcessInvoiceGenerationHandlerTests
 
     private sealed class UnusedStorage : IDocumentStorageClient
     {
-        public Task<Result> RequestSaveAsync(
-            Guid tenantId,
+        public Task<Result<StorageUploadResult>> UploadAsync(
             Guid fileId,
             byte[] content,
             string fileName,
             string contentType,
-            string ownerType,
-            Guid ownerId,
-            string folderType,
-            int? taxYear,
-            Guid actorId,
-            string correlationId,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

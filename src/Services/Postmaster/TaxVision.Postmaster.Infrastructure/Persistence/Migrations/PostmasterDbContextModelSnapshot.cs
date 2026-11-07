@@ -90,6 +90,10 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.HasIndex("ReceivedAtUtc")
                         .HasDatabaseName("IX_UnmatchedDeliveryFeedback_ReceivedAtUtc");
 
+                    b.HasIndex("Source", "SourceEventId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_UnmatchedDeliveryFeedback_Source_SourceEventId");
+
                     b.ToTable("UnmatchedDeliveryFeedback", (string)null);
                 });
 
@@ -560,6 +564,12 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateTime?>("SendAttemptedAtUtc")
                         .HasColumnType("datetime2");

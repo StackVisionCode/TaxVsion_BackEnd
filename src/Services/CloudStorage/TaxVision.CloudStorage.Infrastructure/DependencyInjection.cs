@@ -79,6 +79,15 @@ public static class DependencyInjection
         services.AddScoped<IStoragePlatformSettingsProvider, StoragePlatformSettingsProvider>();
 
         services.Configure<CloudStorageOptions>(configuration.GetSection(CloudStorageOptions.SectionName));
+        services
+            .AddOptions<TaxVision.CloudStorage.Application.Sharing.PublicShareConflictRetryOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.CloudStorage.Application.Sharing.PublicShareConflictRetryOptions.SectionName
+                )
+            )
+            .Validate(o => o.MaxAttempts > 0, "CloudStorage:PublicShareConflictRetry:MaxAttempts must be positive.")
+            .ValidateOnStart();
         services.Configure<MinioOptions>(configuration.GetSection(MinioOptions.SectionName));
         services.Configure<ClamAvOptions>(configuration.GetSection(ClamAvOptions.SectionName));
         services.Configure<ContentScannerOptions>(configuration.GetSection(ContentScannerOptions.SectionName));

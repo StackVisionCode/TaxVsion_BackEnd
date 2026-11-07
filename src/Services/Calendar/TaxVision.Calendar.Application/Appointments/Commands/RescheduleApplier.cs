@@ -1,7 +1,9 @@
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
+using TaxVision.Calendar.Application.Availability.Abstractions;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
+using TaxVision.Calendar.Domain.Types;
 using TaxVision.Calendar.Domain.ValueObjects;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
@@ -35,6 +37,24 @@ internal static class RescheduleApplier
             EditScope.ThisAndFollowing => Following(appointment, command, appointments),
             _ => EntireSeries(appointment, command),
         };
+    }
+
+    /// <summary>Comprueba la agenda con el cambio ya aplicado; <paramref name="applied"/> es la serie nueva si se partió.</summary>
+    public static Task<Result<IReadOnlyList<string>>> CheckConflictsAsync(
+        Appointment applied,
+        RescheduleAppointmentCommand command,
+        AppointmentType type,
+        IAppointmentRepository appointments,
+        IAvailabilityRepository availability,
+        CancellationToken ct
+    )
+    {
+        if (!applied.IsRecurring || command.Scope != EditScope.ThisOccurrence)
+            return ConflictProbe.CheckAsync(applied, type, appointments, availability, ct);
+
+        var startUtc = command.NewStartUtc ?? command.OriginalStartUtc!.Value;
+        var endUtc = command.NewEndUtc ?? startUtc + applied.Timing.Duration!.Value;
+        return ConflictProbe.CheckSlotAsync(applied, startUtc, endUtc, type, appointments, availability, ct);
     }
 
     private static Result<Appointment> OneOff(Appointment appointment, RescheduleAppointmentCommand command)

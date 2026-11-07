@@ -204,6 +204,23 @@ internal sealed class FakeTenantEmailAccountRepository : ITenantEmailAccountRepo
         );
     }
 
+    public Task<IReadOnlyList<Guid>> ListSyncableGmailByEmailAddressAsync(
+        string emailAddress,
+        CancellationToken ct = default
+    )
+    {
+        var normalized = emailAddress.Trim().ToLowerInvariant();
+        IReadOnlyList<Guid> ids = Accounts
+            .Where(a =>
+                a.EmailAddress == normalized
+                && a.ProviderCode == ProviderCode.Gmail
+                && a.Status is TenantEmailAccountStatus.Active or TenantEmailAccountStatus.Connected
+            )
+            .Select(a => a.Id)
+            .ToList();
+        return Task.FromResult(ids);
+    }
+
     public Task<Result<TenantEmailAccount>> GetByTenantAndEmailAsync(
         Guid tenantId,
         string emailAddress,
@@ -293,6 +310,9 @@ internal sealed class FakeOAuthConnectionRepository : IOAuthConnectionRepository
         );
     }
 
+    public Task<Result<OAuthConnection>> GetByAccountIdReadOnlyAsync(Guid accountId, CancellationToken ct = default) =>
+        GetByAccountIdAsync(accountId, ct);
+
     public Task<IReadOnlyList<Guid>> ListAccountIdsWithTokenExpiringBeforeAsync(
         DateTime thresholdUtc,
         CancellationToken ct = default
@@ -323,6 +343,21 @@ internal sealed class FakeOAuthConnectionRepository : IOAuthConnectionRepository
     public void Remove(OAuthConnection connection) => Connections.Remove(connection);
 }
 
+/// <summary>El guardado propio del token, sobre el repositorio en memoria de la prueba.</summary>
+internal sealed class InlineOAuthTokenStore(IOAuthConnectionRepository connections, IUnitOfWork unitOfWork)
+    : IOAuthTokenStore
+{
+    public async Task SaveAsync(Guid accountId, Action<OAuthToken> update, CancellationToken ct = default)
+    {
+        var connection = await connections.GetByAccountIdAsync(accountId, ct);
+        if (connection.IsFailure || connection.Value.Token is null)
+            return;
+
+        update(connection.Value.Token);
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+}
+
 internal sealed class FakeOAuthProviderClient(ProviderCode providerCode) : IOAuthProviderClient
 {
     private int _callCount;
@@ -343,9 +378,11 @@ internal sealed class FakeOAuthProviderClient(ProviderCode providerCode) : IOAut
     public string BuildAuthorizationUrl(string state) => $"https://provider.example.com/authorize?state={state}";
 
     public Exception? ThrowOnRevoke { get; set; }
+    public Action? OnRevoke { get; set; }
 
     public Task RevokeAsync(string refreshToken, CancellationToken ct = default)
     {
+        OnRevoke?.Invoke();
         if (ThrowOnRevoke is not null)
             throw ThrowOnRevoke;
         RevokedRefreshTokens.Add(refreshToken);

@@ -28,6 +28,7 @@ public static class OnboardingInvoiceRequestedConsumer
         OnboardingInvoiceRequestedIntegrationEvent evt,
         IInvoiceRepository invoices,
         IInvoiceNumberSequenceRepository sequences,
+        IOnboardingTenantMapRepository tenantMaps,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         IOptions<PlatformIssuerOptions> platformIssuer,
@@ -114,9 +115,25 @@ public static class OnboardingInvoiceRequestedConsumer
         await invoices.AddAsync(result.Value, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        // Pipeline de PDF existente (bajo PlatformTenant.Id; el contenido no depende del tenant dueño).
-        bus.TenantId = PlatformTenant.Id.ToString();
-        await bus.PublishAsync(new GenerateInvoicePdfCommand(PlatformTenant.Id, result.Value.Id));
+        // BIL-5: el alta pudo llegar antes. Se lee después de guardar, igual que el backfill al revés.
+        if (await tenantMaps.FindTenantIdAsync(evt.OnboardingId, ct) is { } tenantId)
+        {
+            var rehomed = result.Value.RehomeToTenant(tenantId, nowUtc);
+            if (rehomed.IsFailure)
+                logger.LogWarning(
+                    "Could not re-home onboarding invoice {InvoiceId} to tenant {TenantId}: {Code} - {Message}",
+                    result.Value.Id,
+                    tenantId,
+                    rehomed.Error.Code,
+                    rehomed.Error.Message
+                );
+            else
+                await unitOfWork.SaveChangesAsync(ct);
+        }
+
+        // Pipeline de PDF existente, con el dueño actual: el handler busca la factura por tenant.
+        bus.TenantId = result.Value.TenantId.ToString();
+        await bus.PublishAsync(new GenerateInvoicePdfCommand(result.Value.TenantId, result.Value.Id));
 
         logger.LogInformation(
             "Onboarding invoice {Number} created for {OnboardingId} ({Settlement}, net {Net} {Currency}).",

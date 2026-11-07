@@ -59,6 +59,11 @@ public interface IPaymentProvider
     /// tras una caída a mitad de cobro (§1714 del diseño).</summary>
     Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(string providerChargeReference, CancellationToken ct);
 
+    /// <summary>Busca el cargo de un pago sin referencia guardada, por la metadata <c>saaSPaymentId</c>. Solo cuentan
+    /// los creados desde <paramref name="createdAfterUtc"/>, salvo uno ya cobrado. La usa la reconciliación de pagos
+    /// <c>Pending</c>; un provider que no puede buscar responde <see cref="ChargeLookupOutcome.NotSupported"/>.</summary>
+    Task<Result<ChargeLookup>> FindChargeAsync(Guid saaSPaymentId, DateTime createdAfterUtc, CancellationToken ct);
+
     /// <summary>Finaliza un checkout hosteado luego del redirect del provider. Para providers
     /// donde el checkout ya captura automaticamente, equivale a leer estado. Para PayPal, este
     /// metodo captura explicitamente el order aprobado de forma idempotente.</summary>

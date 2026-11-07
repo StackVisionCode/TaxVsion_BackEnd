@@ -198,6 +198,7 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // BB-1: eventos de dominio de Tenant; en serie para que los avisos salgan en el orden del commit.

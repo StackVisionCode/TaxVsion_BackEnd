@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Calendar.Application.Appointments;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Infrastructure.Persistence;
+using TaxVision.Calendar.Infrastructure.Persistence.Repositories;
 using Wolverine;
 
 namespace TaxVision.Calendar.Infrastructure.Jobs;
@@ -77,7 +78,8 @@ internal sealed class ReminderScheduleJob(IServiceScopeFactory scopeFactory, ILo
 
         var now = DateTime.UtcNow;
 
-        var appointments = await Candidates(context).ToListAsync(ct);
+        var horizon = now.AddDays(AppointmentReminderRequests.HorizonDays);
+        var appointments = await Candidates(context, now, horizon).ToListAsync(ct);
 
         var requested = 0;
         foreach (var appointment in appointments)
@@ -92,11 +94,11 @@ internal sealed class ReminderScheduleJob(IServiceScopeFactory scopeFactory, ILo
     /// excepciones no es opcional — el expander las lee para saltar las ocurrencias canceladas y
     /// corregir la hora de las movidas. Sin el se piden avisos de reuniones que ya no existen.
     /// </summary>
-    internal static IQueryable<Appointment> Candidates(CalendarDbContext context) =>
-        context
-            .Appointments.IgnoreQueryFilters()
+    internal static IQueryable<Appointment> Candidates(CalendarDbContext context, DateTime fromUtc, DateTime toUtc) =>
+        AppointmentRepository
+            .ListStartingWithin(context, fromUtc, toUtc)
             .Include(a => a.Exceptions)
-            .Where(a => a.ReminderLeadMinutes != null && a.Status != AppointmentStatus.Cancelled);
+            .Where(a => a.ReminderLeadMinutes != null);
 
     private static async Task<int> RequestForAsync(
         Appointment appointment,

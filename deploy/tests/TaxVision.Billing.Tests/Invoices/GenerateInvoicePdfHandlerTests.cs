@@ -86,6 +86,77 @@ public sealed class GenerateInvoicePdfHandlerTests
         Assert.Null(sent.InvoiceFooter);
     }
 
+    // BIL-PDF1: el pago parcial cambia el saldo y con él la clave; sin pago nuevo, la clave no cambia.
+    [Fact]
+    public async Task PartialPayment_SendsBalanceAndNewIdempotencyKey()
+    {
+        var invoice = Issued(525000);
+        var documents = new RecordingDocuments();
+        await RunAsync(invoice, documents);
+        var firstKey = documents.Key;
+
+        Pay(invoice, 100000);
+        await RunAsync(invoice, documents);
+
+        Assert.NotEqual(firstKey, documents.Key);
+        Assert.Equal(1000.00m, documents.Sent!.AmountPaid);
+        Assert.Equal(4250.00m, documents.Sent.AmountDue);
+    }
+
+    [Fact]
+    public async Task SameBalance_ReusesIdempotencyKey()
+    {
+        var invoice = Issued(525000);
+        Pay(invoice, 100000);
+        var documents = new RecordingDocuments();
+
+        await RunAsync(invoice, documents);
+        var firstKey = documents.Key;
+        await RunAsync(invoice, documents);
+
+        Assert.Equal(firstKey, documents.Key);
+    }
+
+    private static Invoice Issued(long cents)
+    {
+        var invoice = Invoice
+            .CreateDraft(
+                Tenant,
+                Actor,
+                new CustomerSnapshot(Guid.NewGuid(), "Client", "client@example.com", null, null, null),
+                "USD",
+                [new DraftInvoiceLine("Tax prep", 1, cents, 0)],
+                null,
+                Now
+            )
+            .Value;
+        Assert.True(invoice.Issue("INV-2026-00043", Now, Now.AddDays(30), Actor).IsSuccess);
+        return invoice;
+    }
+
+    private static void Pay(Invoice invoice, long cents) =>
+        Assert.True(
+            invoice
+                .ApplyPayment(
+                    InvoicePaymentSource.Manual,
+                    Guid.NewGuid().ToString("N"),
+                    Money.Create(cents, "USD").Value,
+                    PaymentMethod.Cash,
+                    Now,
+                    Actor
+                )
+                .IsSuccess
+        );
+
+    private static Task RunAsync(Invoice invoice, IInvoiceDocumentClient documents) =>
+        GenerateInvoicePdfHandler.Handle(
+            new GenerateInvoicePdfCommand(Tenant, invoice.Id),
+            new SingleInvoice(invoice),
+            documents,
+            new FixedCorrelation(),
+            CancellationToken.None
+        );
+
     private static async Task<InvoiceDocumentRequest> GenerateAsync(
         IssuerSnapshot? issuer,
         InvoiceTermsSnapshot? terms = null
@@ -121,6 +192,7 @@ public sealed class GenerateInvoicePdfHandlerTests
     private sealed class RecordingDocuments : IInvoiceDocumentClient
     {
         public InvoiceDocumentRequest? Sent { get; private set; }
+        public string? Key { get; private set; }
 
         public Task<Result> GenerateAsync(
             InvoiceDocumentRequest request,
@@ -131,6 +203,7 @@ public sealed class GenerateInvoicePdfHandlerTests
         )
         {
             Sent = request;
+            Key = idempotencyKey;
             return Task.FromResult(Result.Success());
         }
     }
@@ -146,6 +219,9 @@ public sealed class GenerateInvoicePdfHandlerTests
 
         public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
+            Task.FromResult<Invoice?>(null);
 
         public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
             Guid tenantId,

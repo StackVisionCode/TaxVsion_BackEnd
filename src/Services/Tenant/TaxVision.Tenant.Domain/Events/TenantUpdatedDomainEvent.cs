@@ -10,5 +10,6 @@ public sealed record TenantUpdatedDomainEvent(
     Guid TenantId,
     string Name,
     string DefaultTimeZoneId,
-    DateTime UpdatedAtUtc
+    DateTime UpdatedAtUtc,
+    long Version
 ) : IDomainEvent;

@@ -13,6 +13,12 @@ using TaxVision.Calendar.Domain.Types;
 
 namespace TaxVision.Calendar.Tests.Application;
 
+/// <summary>En memoria no hay carrera que serializar.</summary>
+internal sealed class NoScheduleLock : IOrganizerScheduleLock
+{
+    public Task AcquireAsync(Guid tenantId, Guid organizerUserId, CancellationToken ct) => Task.CompletedTask;
+}
+
 /// <summary>Repositorio en memoria para los handlers de citas. No informa choques de agenda.</summary>
 internal sealed class InMemoryAppointments : IAppointmentRepository
 {
@@ -95,6 +101,8 @@ internal sealed class InMemoryAppointments : IAppointmentRepository
     public void Add(Appointment appointment) => All.Add(appointment);
 
     public void Remove(Appointment appointment) => All.Remove(appointment);
+
+    public void DiscardPendingChanges() { }
 }
 
 internal sealed class SingleTypeRepository(AppointmentType type) : IAppointmentTypeRepository

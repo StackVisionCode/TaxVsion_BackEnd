@@ -95,7 +95,11 @@ public sealed class SmsProviderRegistrationTests
         var bus = new FakeMessageBus();
         var context = new DefaultHttpContext();
         context.Request.Body = new MemoryStream();
-        var controller = new WebhooksController(bus, scope.ServiceProvider.GetRequiredService<ISmsAdapterFactory>())
+        var controller = new WebhooksController(
+            bus,
+            scope.ServiceProvider.GetRequiredService<ISmsAdapterFactory>(),
+            Microsoft.Extensions.Options.Options.Create(new SmsOptions())
+        )
         {
             ControllerContext = new ControllerContext { HttpContext = context },
         };

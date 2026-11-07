@@ -29,10 +29,19 @@ namespace TaxVision.Scribe.Infrastructure.Seed;
 public sealed class ScribeNotificationTemplateSeeder(
     IServiceScopeFactory scopeFactory,
     IHostApplicationLifetime lifetime,
+    ISeedLock seedLock,
     ILogger<ScribeNotificationTemplateSeeder> logger
 ) : IHostedService
 {
     private const int SeedDependencyWaitAttempts = 180;
+    private const string SeedLockResource = "scribe:template-seed";
+
+    private enum SeedOutcome
+    {
+        Unchanged,
+        Seeded,
+        Failed,
+    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -46,10 +55,16 @@ public sealed class ScribeNotificationTemplateSeeder(
     {
         try
         {
+            // SCR-02: dos réplicas sembrando a la vez chocan y duplican subidas.
+            await using var held = await seedLock.TryAcquireAsync(SeedLockResource, cancellationToken);
+            if (held is null)
+            {
+                logger.LogInformation("ScribeNotificationTemplateSeeder skipped: another replica is seeding.");
+                return;
+            }
+
             await using var scope = scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<ScribeDbContext>();
-            var storageService = scope.ServiceProvider.GetRequiredService<ITemplateStorageService>();
-            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
             // Dos layouts, no uno: las plantillas de la plataforma van sobre system-base y las que
             // manda la OFICINA (la factura) sobre tenant-base. Cada seed dice cuál quiere.
@@ -110,25 +125,24 @@ public sealed class ScribeNotificationTemplateSeeder(
             }
 
             var seeded = 0;
+            var failed = 0;
             foreach (var definition in NotificationTemplateSeedSource.All)
             {
                 var onTenantBase = definition.LayoutKey == "tenant-base";
-                var ok = await SeedIfMissingAsync(
-                    dbContext,
-                    storageService,
-                    unitOfWork,
+                var outcome = await SeedIsolatedAsync(
                     definition,
                     onTenantBase ? tenantBaseLayout.Id : systemBaseLayout.Id,
                     onTenantBase ? publishedTenantLayoutVersion.VersionNumber : publishedLayoutVersion.VersionNumber,
                     cancellationToken
                 );
-                if (ok)
-                    seeded++;
+                seeded += outcome == SeedOutcome.Seeded ? 1 : 0;
+                failed += outcome == SeedOutcome.Failed ? 1 : 0;
             }
 
             logger.LogInformation(
-                "ScribeNotificationTemplateSeeder: {Seeded}/{Total} templates seeded (existing ones skipped).",
+                "ScribeNotificationTemplateSeeder: {Seeded} seeded, {Failed} failed of {Total} templates (existing ones skipped).",
                 seeded,
+                failed,
                 NotificationTemplateSeedSource.All.Count
             );
         }
@@ -138,7 +152,36 @@ public sealed class ScribeNotificationTemplateSeeder(
         }
     }
 
-    private async Task<bool> SeedIfMissingAsync(
+    // SCR-02: scope propio por plantilla. Con un contexto compartido, lo que quedó a medias de una se guardaba con
+    // la siguiente, y una excepción cortaba todas las que faltaban.
+    private async Task<SeedOutcome> SeedIsolatedAsync(
+        NotificationTemplateSeed definition,
+        Guid layoutId,
+        int layoutVersionNumber,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            return await SeedIfMissingAsync(
+                scope.ServiceProvider.GetRequiredService<ScribeDbContext>(),
+                scope.ServiceProvider.GetRequiredService<ITemplateStorageService>(),
+                scope.ServiceProvider.GetRequiredService<IUnitOfWork>(),
+                definition,
+                layoutId,
+                layoutVersionNumber,
+                ct
+            );
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Failed to seed template '{TemplateKey}'.", definition.TemplateKey);
+            return SeedOutcome.Failed;
+        }
+    }
+
+    private async Task<SeedOutcome> SeedIfMissingAsync(
         ScribeDbContext dbContext,
         ITemplateStorageService storageService,
         IUnitOfWork unitOfWork,
@@ -158,7 +201,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                 templateKeyResult.IsFailure ? templateKeyResult.Error.Message : null,
                 eventKeyResult.IsFailure ? eventKeyResult.Error.Message : null
             );
-            return false;
+            return SeedOutcome.Failed;
         }
         var templateKey = templateKeyResult.Value;
         var eventKey = eventKeyResult.Value;
@@ -204,7 +247,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                 {
                     var download = await storageService.DownloadTextAsync(contentFileId, tenantId: null, ct);
                     if (download.IsSuccess)
-                        return mappingRepaired;
+                        return mappingRepaired ? SeedOutcome.Seeded : SeedOutcome.Unchanged;
 
                     logger.LogWarning(
                         "Published template '{TemplateKey}' references missing CloudStorage file {FileId}; repairing it.",
@@ -246,7 +289,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                     definition.TemplateKey,
                     repairUpload.Error.Message
                 );
-                return false;
+                return SeedOutcome.Failed;
             }
 
             if (!await WaitUntilDownloadableAsync(storageService, repairUpload.Value.FileId, ct))
@@ -256,7 +299,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                     definition.TemplateKey,
                     repairUpload.Value.FileId
                 );
-                return false;
+                return SeedOutcome.Failed;
             }
 
             var repairVersion = AddSeedVersion(
@@ -273,13 +316,13 @@ public sealed class ScribeNotificationTemplateSeeder(
                     definition.TemplateKey,
                     repairVersion.Error.Message
                 );
-                return false;
+                return SeedOutcome.Failed;
             }
 
             existingTemplate.PublishVersion(repairVersion.Value.Id, PlatformTenant.Id, DateTime.UtcNow);
             await unitOfWork.SaveChangesAsync(ct);
             logger.LogInformation("Repaired and published template '{TemplateKey}'.", definition.TemplateKey);
-            return true;
+            return SeedOutcome.Seeded;
         }
 
         var uploadResult = await storageService.UploadAsync(
@@ -296,7 +339,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                 definition.TemplateKey,
                 uploadResult.Error.Message
             );
-            return false;
+            return SeedOutcome.Failed;
         }
 
         if (!await WaitUntilDownloadableAsync(storageService, uploadResult.Value.FileId, ct))
@@ -306,7 +349,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                 definition.TemplateKey,
                 uploadResult.Value.FileId
             );
-            return false;
+            return SeedOutcome.Failed;
         }
 
         var templateResult = EmailTemplate.CreateNew(
@@ -326,7 +369,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                 definition.TemplateKey,
                 templateResult.Error.Message
             );
-            return false;
+            return SeedOutcome.Failed;
         }
 
         var template = templateResult.Value;
@@ -338,7 +381,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                 definition.TemplateKey,
                 versionResult.Error.Message
             );
-            return false;
+            return SeedOutcome.Failed;
         }
 
         template.PublishVersion(versionResult.Value.Id, PlatformTenant.Id, DateTime.UtcNow);
@@ -360,7 +403,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                 definition.EventKey,
                 mappingResult.Error.Message
             );
-            return false;
+            return SeedOutcome.Failed;
         }
         await dbContext.EventTemplateMappings.AddAsync(mappingResult.Value, ct);
 
@@ -370,7 +413,7 @@ public sealed class ScribeNotificationTemplateSeeder(
             definition.TemplateKey,
             definition.EventKey
         );
-        return true;
+        return SeedOutcome.Seeded;
     }
 
     private static BuildingBlocks.Results.Result<EmailTemplateVersion> AddSeedVersion(

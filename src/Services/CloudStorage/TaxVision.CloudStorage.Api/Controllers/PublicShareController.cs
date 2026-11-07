@@ -25,7 +25,8 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 public sealed class PublicShareController(
     IMessageBus bus,
     IObjectStorage storage,
-    IOptions<CloudStorageOptions> storageOptions
+    IOptions<CloudStorageOptions> storageOptions,
+    IOptions<PublicShareConflictRetryOptions> conflictRetry
 ) : ControllerBase
 {
     /// <summary>Fase C4 — fileId es obligatorio cuando el token es de un link de tipo Folder (ver FolderShareCoverage).</summary>
@@ -43,7 +44,7 @@ public sealed class PublicShareController(
         CancellationToken ct
     )
     {
-        var result = await bus.InvokeAsync<ShareAccessResult>(
+        var result = await InvokeWithConflictRetryAsync<ShareAccessResult>(
             new ResolvePublicShareQuery(token, password, email, fileId, RemoteIp(), UserAgent()),
             ct
         );
@@ -147,7 +148,7 @@ public sealed class PublicShareController(
         CancellationToken ct
     )
     {
-        var result = await bus.InvokeAsync<PublicZipResult>(
+        var result = await InvokeWithConflictRetryAsync<PublicZipResult>(
             new PreparePublicFolderZipQuery(
                 token,
                 password,
@@ -197,6 +198,13 @@ public sealed class PublicShareController(
         }
         return new EmptyResult();
     }
+
+    private Task<T> InvokeWithConflictRetryAsync<T>(object query, CancellationToken ct) =>
+        PublicShareConflictRetry.InvokeAsync(
+            token => bus.InvokeAsync<T>(query, token),
+            conflictRetry.Value.MaxAttempts,
+            ct
+        );
 
     private string? RemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString();
 

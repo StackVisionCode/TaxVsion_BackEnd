@@ -56,6 +56,9 @@ public sealed class TenantStorageLimit : TenantEntity
 
     /// <summary>Tope de descargas de un enlace externo (null = sin tope); también es el valor si no se elige uno.</summary>
     public int? MaxShareDownloads { get; private set; }
+
+    /// <summary>Última revisión de entitlements aplicada; una igual o anterior llega tarde y se ignora.</summary>
+    public long? LastEntitlementsRevision { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
     public static TenantStorageLimit Create(
@@ -130,6 +133,24 @@ public sealed class TenantStorageLimit : TenantEntity
         MaxFileSizeBytes = maxFileSizeBytes;
         PlanFileTypeGroups = fileTypeGroups ?? PlanFileAllowanceDefaults.FileTypeGroups;
         IsSuspended = false;
+    }
+
+    public void ApplyEntitlements(
+        long revision,
+        string planCode,
+        long maxBytes,
+        long maxFileSizeBytes,
+        string? fileTypeGroups,
+        bool isSuspended
+    )
+    {
+        if (revision <= LastEntitlementsRevision)
+            return;
+
+        ApplyPlan(planCode, maxBytes, maxFileSizeBytes, fileTypeGroups);
+        if (isSuspended)
+            Suspend();
+        LastEntitlementsRevision = revision;
     }
 
     public PlanFileAllowance PlanAllowance() =>
@@ -247,6 +268,9 @@ public sealed class TenantStorageLimit : TenantEntity
 
 public static class QuotaErrors
 {
+    /// <summary>Código del conflicto cuando dos reservas pasan el chequeo a la vez y juntas superan el tope.</summary>
+    public const string ConcurrentExceededCode = "Storage.QuotaExceeded";
+
     public static readonly Error NotProvisioned = new(
         "StorageQuota.NotProvisioned",
         "Storage limits have not been provisioned for this tenant."

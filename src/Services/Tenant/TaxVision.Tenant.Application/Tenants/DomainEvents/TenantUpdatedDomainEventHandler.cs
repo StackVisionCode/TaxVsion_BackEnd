@@ -15,6 +15,7 @@ public static class TenantUpdatedDomainEventHandler
             Name = updated.Name,
             DefaultTimeZoneId = updated.DefaultTimeZoneId,
             UpdatedAtUtc = updated.UpdatedAtUtc,
+            TenantVersion = updated.Version,
             CorrelationId = envelope.CorrelationId ?? string.Empty,
         };
 }

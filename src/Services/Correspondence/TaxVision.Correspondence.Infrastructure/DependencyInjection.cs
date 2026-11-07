@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Backfill;
+using TaxVision.Correspondence.Application.Compose;
 using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Application.RateLimiting.Abstractions;
 using TaxVision.Correspondence.Application.Reconciliation;
@@ -86,6 +87,14 @@ public static class DependencyInjection
             .AddOptions<PostmasterClientOptions>()
             .Bind(configuration.GetSection(PostmasterClientOptions.SectionName));
         services.AddOptions<DraftCleanupOptions>().Bind(configuration.GetSection(DraftCleanupOptions.SectionName));
+        services
+            .AddOptions<DraftSendReconciliationOptions>()
+            .Bind(configuration.GetSection(DraftSendReconciliationOptions.SectionName));
+        services
+            .AddOptions<NotAClientMailRetentionOptions>()
+            .Bind(configuration.GetSection(NotAClientMailRetentionOptions.SectionName))
+            .Validate(o => !o.Enabled || o.RetentionDays > 0, "RetentionDays must be greater than zero.")
+            .ValidateOnStart();
         services
             .AddOptions<CustomerEmailReconciliationOptions>()
             .Bind(configuration.GetSection(CustomerEmailReconciliationOptions.SectionName));
@@ -168,7 +177,11 @@ public static class DependencyInjection
         // Fase 16 — jobs de hardening final: DraftCleanupJob (plan §30, deshabilitado por default)
         // y CustomerEmailReconciliationJob (plan §32 R1, habilitado por default).
         services.AddHostedService<DraftCleanupJob>();
+        services.AddScoped<DraftSendReconciler>();
+        services.AddSingleton<DraftSendReconciliationJob>();
+        services.AddHostedService(sp => sp.GetRequiredService<DraftSendReconciliationJob>());
         services.AddHostedService<CustomerEmailReconciliationJob>();
+        services.AddHostedService<NotAClientMailRetentionJob>();
 
         // Auto-reparación de la proyección CustomerEmailAddress vía el endpoint global de reconciliación
         // de Customer (cross-tenant, un solo token de PlatformTenant) + job periódico. Reusa el

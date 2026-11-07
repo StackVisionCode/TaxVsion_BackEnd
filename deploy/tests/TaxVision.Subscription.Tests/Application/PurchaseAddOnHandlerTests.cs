@@ -44,6 +44,83 @@ public sealed class PurchaseAddOnHandlerTests
         Assert.Equal(retry.Value, charge.TenantAddOnId);
     }
 
+    // SUB-12: doble clic o reintento de red con la misma clave.
+    [Fact]
+    public async Task Handle_SameClientKey_ChargesOnce()
+    {
+        var bus = new CapturingMessageBus();
+        var addOns = new FakeTenantAddOnRepo();
+        var definition = AddOnTestCatalog.QuotaAddOn("test.multi", allowMultiple: true);
+
+        var first = await PurchaseWithKeyAsync(definition, "key-1", bus, addOns);
+        var second = await PurchaseWithKeyAsync(definition, "key-1", bus, addOns);
+
+        Assert.True(first.IsSuccess);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(first.Value, second.Value);
+        Assert.Single(addOns.Added);
+        Assert.Single(bus.Published.OfType<AddOnRenewalDueIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Handle_DifferentClientKeys_AreTwoPurchases()
+    {
+        var bus = new CapturingMessageBus();
+        var addOns = new FakeTenantAddOnRepo();
+        var definition = AddOnTestCatalog.QuotaAddOn("test.multi", allowMultiple: true);
+
+        await PurchaseWithKeyAsync(definition, "key-1", bus, addOns);
+        await PurchaseWithKeyAsync(definition, "key-2", bus, addOns);
+
+        Assert.Equal(2, addOns.Added.Count);
+        Assert.Equal(2, bus.Published.OfType<AddOnRenewalDueIntegrationEvent>().Count());
+    }
+
+    [Fact]
+    public async Task Handle_SameClientKeyForAnotherAddOn_IsRejected()
+    {
+        var bus = new CapturingMessageBus();
+        var addOns = new FakeTenantAddOnRepo();
+
+        await PurchaseWithKeyAsync(AddOnTestCatalog.QuotaAddOn("test.one", allowMultiple: true), "key-1", bus, addOns);
+        var other = await PurchaseWithKeyAsync(
+            AddOnTestCatalog.QuotaAddOn("test.two", allowMultiple: true),
+            "key-1",
+            bus,
+            addOns
+        );
+
+        Assert.True(other.IsFailure);
+        Assert.Equal("AddOn.IdempotencyKeyReused", other.Error.Code);
+        Assert.Single(bus.Published.OfType<AddOnRenewalDueIntegrationEvent>());
+    }
+
+    private static Task<Result<Guid>> PurchaseWithKeyAsync(
+        AddOnDefinition definition,
+        string clientKey,
+        CapturingMessageBus bus,
+        FakeTenantAddOnRepo addOns
+    )
+    {
+        var plan = AddOnTestCatalog.PlanWith("starter", modules: ["documents"]);
+        return PurchaseAddOnHandler.Handle(
+            new PurchaseAddOnCommand(TenantId, definition.Code.Value, 1, AutoRenew: true, Guid.NewGuid(), clientKey),
+            new FakeSubscriptionRepo(AddOnTestCatalog.ActiveSubscription(TenantId, plan)),
+            new FakePlanRepo(plan),
+            new FakeModuleRepo(),
+            new FakeAddOnDefinitionRepository(definition),
+            new NoSettingsRepo(),
+            addOns,
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            new FakeSubscriptionAuditLogWriter(),
+            new FakeSubscriptionMetrics(),
+            NullLogger<TenantAddOn>.Instance,
+            CancellationToken.None
+        );
+    }
+
     private static Task<Result<Guid>> PurchaseAsync(CapturingMessageBus bus, IUnitOfWork unitOfWork)
     {
         // Cada intento relee de cero, como un DbContext nuevo.

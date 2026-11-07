@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Accounts;
+using TaxVision.Connectors.Domain.Shared;
 
 namespace TaxVision.Connectors.Infrastructure.Persistence.Repositories;
 
@@ -40,6 +41,23 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
                 new Error("TenantEmailAccount.NotFound", $"TenantEmailAccount with email '{emailAddress}' not found.")
             )
             : Result.Success(account);
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListSyncableGmailByEmailAddressAsync(
+        string emailAddress,
+        CancellationToken ct = default
+    )
+    {
+        var normalized = emailAddress.Trim().ToLowerInvariant();
+        return await dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .Where(a =>
+                a.EmailAddress == normalized
+                && a.ProviderCode == ProviderCode.Gmail
+                && (a.Status == TenantEmailAccountStatus.Active || a.Status == TenantEmailAccountStatus.Connected)
+            )
+            .Select(a => a.Id)
+            .ToListAsync(ct);
     }
 
     public async Task<Result<TenantEmailAccount>> GetByTenantAndEmailAsync(

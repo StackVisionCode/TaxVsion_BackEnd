@@ -207,8 +207,11 @@ public sealed class TaskCommandEventCountTests
 
     private sealed class NoOpCascades : ITaskUnblockingService, ITaskHierarchyService
     {
-        public Task ApplyPredecessorClosedAsync(Guid tenantId, Guid predecessorTaskId, CancellationToken ct = default) =>
-            Task.CompletedTask;
+        public Task<IReadOnlyList<TaskUnblockedIntegrationEvent>> ApplyPredecessorClosedAsync(
+            Guid tenantId,
+            Guid predecessorTaskId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<TaskUnblockedIntegrationEvent>>([]);
 
         public Task ApplyPredecessorReopenedAsync(Guid tenantId, Guid predecessorTaskId, CancellationToken ct = default) =>
             Task.CompletedTask;

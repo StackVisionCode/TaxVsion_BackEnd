@@ -1139,6 +1139,12 @@ public sealed class ClientFormsConsumerTests
             CancellationToken ct = default
         ) => Task.FromResult(policy);
 
+        public Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> customerIds,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyCollection<Guid>>([]);
+
         public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) => Task.CompletedTask;
     }
 

@@ -52,6 +52,9 @@ public sealed class SmsMessage : TenantEntity
     /// <summary>El lote se cobra al Wallet (envío individual). La conciliación liquida solo estos lotes.</summary>
     public bool WalletCharged { get; private set; }
 
+    /// <summary>Concurrencia optimista: el webhook, la conciliación y el registro del envío escriben la misma fila.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     /// <summary>Envío pedido sin resultado final todavía (en curso o desconocido).</summary>
     public bool IsUnresolved => Status is SmsMessageStatus.Pending or SmsMessageStatus.OutcomeUnknown;
 

@@ -144,6 +144,7 @@ builder.Host.UseWolverine(options =>
             "Reschedule an email that is over the provider quota"
         );
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // PMS-07: los avisos de envío a Notification salen de SentMessage por la cola domain-events, en orden de commit.

@@ -71,7 +71,7 @@ public sealed class PayerDetailsPersistenceTests
         await SeedOfficeAsync();
         _stripe.Payer = new ProviderPayerDetails("Jane Doe", "not-an-email", "visa", "42");
 
-        var result = await ChargeTenantPaymentHandler.Handle(
+        var result = await TestChargeFlow.ChargeAsync(
             new ChargeTenantPaymentCommand(
                 _tenantId,
                 PaymentProviderCode.Stripe,
@@ -158,7 +158,7 @@ public sealed class PayerDetailsPersistenceTests
         PaymentLink link,
         string? receiptEmail
     ) =>
-        RedeemPaymentLinkHandler.Handle(
+        TestChargeFlow.RedeemAsync(
             new RedeemPaymentLinkCommand(link.Token.Value, PaymentProviderCode.Stripe, "pm_card", receiptEmail),
             new PaymentLinkRepository(_db),
             new TenantPaymentRepository(_db),

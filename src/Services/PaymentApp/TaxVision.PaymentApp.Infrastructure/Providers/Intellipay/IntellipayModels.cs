@@ -21,6 +21,9 @@ public sealed class IntellipayResponse
     [JsonPropertyName("message")]
     public string? Message { get; init; }
 
+    /// <summary>Código local: timeout, 5xx o respuesta ilegible. La operación pudo hacerse (D-PAY-13).</summary>
+    public const string OutcomeUnknown = "outcome_unknown";
+
     public bool IsApproved => Status == "1";
 }
 

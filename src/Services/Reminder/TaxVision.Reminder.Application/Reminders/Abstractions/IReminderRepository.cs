@@ -29,6 +29,12 @@ public interface IReminderRepository
 {
     void Add(ReminderAggregate reminder);
 
+    /// <summary>
+    /// Suelta una entidad que no se pudo insertar. Si sigue <c>Added</c>, el <c>SaveChanges</c> del middleware de
+    /// Wolverine vuelve a intentar el INSERT al terminar el handler.
+    /// </summary>
+    void Detach(ReminderAggregate reminder);
+
     Task<Result<ReminderAggregate>> GetByIdAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>

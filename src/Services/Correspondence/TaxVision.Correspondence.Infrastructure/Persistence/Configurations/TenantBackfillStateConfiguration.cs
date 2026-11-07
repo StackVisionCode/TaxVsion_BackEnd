@@ -13,6 +13,8 @@ internal sealed class TenantBackfillStateConfiguration : IEntityTypeConfiguratio
         builder.HasKey(x => x.TenantId);
         builder.Property(x => x.TenantId).ValueGeneratedNever();
 
-        builder.Property(x => x.CompletedAtUtc).IsRequired();
+        builder.Property(x => x.CompletedAtUtc);
+        builder.Property(x => x.LastConfirmedPage).IsRequired();
+        builder.Ignore(x => x.IsCompleted);
     }
 }

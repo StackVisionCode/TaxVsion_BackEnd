@@ -37,6 +37,7 @@ public sealed class ReadyReconciliationScheduler(
     ILogger<ReadyReconciliationScheduler> logger
 ) : BackgroundService
 {
+    private const string LockKey = "signature:ready-reconciliation";
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
 
     /// <summary>Antigüedad mínima de un borrador para considerarlo "atascado" (no una creación en vuelo).</summary>
@@ -73,8 +74,15 @@ public sealed class ReadyReconciliationScheduler(
         }
     }
 
-    private async Task RunOnceAsync(CancellationToken ct)
+    internal async Task RunOnceAsync(CancellationToken ct)
     {
+        // SIG-15: una sola réplica por pasada; la otra sale y retoma en su próximo tick.
+        await using var handle = await serviceProvider
+            .GetRequiredService<IDistributedLock>()
+            .AcquireAsync(LockKey, Interval, ct);
+        if (!handle.IsAcquired)
+            return;
+
         var cutoff = DateTime.UtcNow - MinAge;
         IReadOnlyList<StrandedDraft> drafts;
         using (var scope = serviceProvider.CreateScope())

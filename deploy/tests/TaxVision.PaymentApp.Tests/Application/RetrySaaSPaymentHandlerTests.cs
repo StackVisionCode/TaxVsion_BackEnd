@@ -33,6 +33,7 @@ public sealed class RetrySaaSPaymentHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            new CapturingMessageBus(),
             CancellationToken.None
         );
 

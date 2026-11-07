@@ -13,9 +13,18 @@ namespace TaxVision.Auth.Tests.Integration;
 /// </summary>
 public static class JwtTestTokenFactory
 {
-    public static string Mint(AuthApiFactory factory, Guid tenantId, Guid userId)
+    public static string Mint(AuthApiFactory factory, Guid tenantId, Guid userId) =>
+        Mint(factory.JwtSecret, tenantId, userId, factory.JwtIssuer, factory.JwtAudience);
+
+    public static string Mint(
+        string secret,
+        Guid tenantId,
+        Guid userId,
+        string issuer = "TaxVision.Auth",
+        string audience = "TaxVision.Services"
+    )
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(factory.JwtSecret));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new[]
@@ -27,8 +36,8 @@ public static class JwtTestTokenFactory
         };
 
         var token = new JwtSecurityToken(
-            issuer: factory.JwtIssuer,
-            audience: factory.JwtAudience,
+            issuer: issuer,
+            audience: audience,
             claims: claims,
             expires: DateTime.UtcNow.AddMinutes(30),
             signingCredentials: credentials

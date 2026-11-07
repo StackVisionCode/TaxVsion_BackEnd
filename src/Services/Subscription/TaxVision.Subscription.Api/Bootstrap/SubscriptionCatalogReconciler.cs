@@ -14,6 +14,7 @@ using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.ValueObjects;
 using TaxVision.Subscription.Infrastructure.Configuration;
 using TaxVision.Subscription.Infrastructure.Persistence;
+using TaxVision.Subscription.Infrastructure.Scheduling;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Bootstrap;
@@ -22,11 +23,23 @@ public sealed class SubscriptionCatalogReconciler(
     IServiceScopeFactory scopeFactory,
     IHostApplicationLifetime lifetime,
     ILogger<SubscriptionCatalogReconciler> logger,
-    IOptions<SubscriptionCatalogOptions> catalogOptions
+    IOptions<SubscriptionCatalogOptions> catalogOptions,
+    IDistributedLockFactory lockFactory
 ) : DeferredStartupHostedService(lifetime, logger)
 {
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
+        await using var lease = await lockFactory.TryAcquireAsync(
+            "bootstrap:catalog-reconcile",
+            catalogOptions.Value.ReconcileLockTtl,
+            cancellationToken
+        );
+        if (lease is null)
+        {
+            logger.LogInformation("Catalog reconcile skipped: another replica holds the lock.");
+            return;
+        }
+
         await using var scope = scopeFactory.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var log = services.GetRequiredService<ILogger<SubscriptionCatalogReconciler>>();

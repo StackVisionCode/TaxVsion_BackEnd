@@ -22,6 +22,12 @@ public sealed class CampaignRunSweepOptions
     public TimeSpan Interval { get; set; } = TimeSpan.FromMinutes(15);
 
     public int BatchSize { get; set; } = 100;
+
+    /// <summary>Retoma los runs que quedaron en Created. Independiente de <see cref="Enabled"/>: no depende de la DLQ.</summary>
+    public bool ResumeCreatedEnabled { get; set; } = true;
+
+    /// <summary>Edad a partir de la cual un run en Created ya no tiene un envío en curso.</summary>
+    public TimeSpan ResumeCreatedAfter { get; set; } = TimeSpan.FromMinutes(15);
 }
 
 /// <summary>
@@ -40,11 +46,14 @@ public sealed class CampaignRunSweepJob(
         while (!stoppingToken.IsCancellationRequested)
         {
             var current = options.CurrentValue;
-            if (current.Enabled)
+            if (current.Enabled || current.ResumeCreatedEnabled)
             {
                 try
                 {
-                    await SweepAsync(current, stoppingToken);
+                    if (current.ResumeCreatedEnabled)
+                        await ResumeCreatedAsync(current, stoppingToken);
+                    if (current.Enabled)
+                        await SweepAsync(current, stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -63,6 +72,35 @@ public sealed class CampaignRunSweepJob(
             catch (OperationCanceledException)
             {
                 break;
+            }
+        }
+    }
+
+    /// <summary>CMP-05: una unidad por run, con la misma referencia en el Wallet. Un run que falla no corta el lote.</summary>
+    public async Task ResumeCreatedAsync(CampaignRunSweepOptions current, CancellationToken ct)
+    {
+        using var scope = services.CreateScope();
+        var runs = scope.ServiceProvider.GetRequiredService<ICampaignRunRepository>();
+        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+
+        var created = await runs.ListCreatedBeforeAsync(
+            DateTime.UtcNow - current.ResumeCreatedAfter,
+            current.BatchSize,
+            ct
+        );
+        foreach (var run in created)
+        {
+            try
+            {
+                await bus.InvokeAsync(new ResumeCreatedCampaignRunCommand(run.TenantId, run.Id), ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Resume of campaign run {RunId} failed; next interval retries.", run.Id);
             }
         }
     }

@@ -26,6 +26,12 @@ public sealed record CatalogItemUpdatedIntegrationEvent : IntegrationEvent
     public required Guid ItemId { get; init; }
     public required string Name { get; init; }
     public required Guid CategoryId { get; init; }
+
+    /// <summary>Opcional: <c>null</c> en mensajes de antes de CAT-1.</summary>
+    public bool? TrackInventory { get; init; }
+
+    /// <summary>Opcional: <c>null</c> en mensajes de antes de CAT-1.</summary>
+    public bool? IsActive { get; init; }
 }
 
 [MessageIdentity("BuildingBlocks.Messaging.CatalogIntegrationEvents.CatalogItemPriceChangedIntegrationEvent")]
@@ -40,4 +46,22 @@ public sealed record CatalogItemPriceChangedIntegrationEvent : IntegrationEvent
 public sealed record CatalogItemDeactivatedIntegrationEvent : IntegrationEvent
 {
     public required Guid ItemId { get; init; }
+
+    /// <summary>
+    /// Opcional: <c>null</c> en mensajes de antes de CAT-1. Con <c>true</c>, Inventory deja una marca si este evento
+    /// llega antes que el <c>Created</c>.
+    /// </summary>
+    public bool? TrackInventory { get; init; }
+}
+
+/// <summary>
+/// Cambió si el ítem se rastrea: se reactivó o se editó <c>TrackInventory</c>. El consumidor rastrea si
+/// <c>TrackInventory &amp;&amp; IsActive</c>.
+/// </summary>
+[MessageIdentity("catalog.item.tracking_changed.v1")]
+public sealed record CatalogItemTrackingChangedIntegrationEvent : IntegrationEvent
+{
+    public required Guid ItemId { get; init; }
+    public required bool TrackInventory { get; init; }
+    public required bool IsActive { get; init; }
 }

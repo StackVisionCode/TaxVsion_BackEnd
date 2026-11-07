@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using BuildingBlocks.Common;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Web.Hosting;
 using JasperFx;
@@ -91,6 +92,19 @@ public sealed class DomainEventDispatchIntegrationTests : IAsyncLifetime
             await WaitUntilAsync(async () => await CountOutgoingAsync(nameof(TenantlessProbeCreatedIntegrationEvent)) == 1),
             "El evento de la raíz sin TenantId no se despachó."
         );
+    }
+
+    [Fact]
+    public async Task EventRaised_DomainHandlerSeesCorrelationIdOfCommand()
+    {
+        _gate.Open();
+        await using var scope = _host.Services.CreateAsyncScope();
+        var bus = scope.ServiceProvider.GetRequiredService<IMessageContext>();
+        bus.CorrelationId = "bb9-command";
+
+        await bus.InvokeAsync(new CreateProbe(Guid.NewGuid(), FailAfterSave: false));
+
+        Assert.Equal("bb9-command", await _gate.SeenCorrelationId.WaitAsync(TimeSpan.FromSeconds(30)));
     }
 
     private async Task<IHost> StartHostAsync()
@@ -208,6 +222,12 @@ public sealed class ProbeGate
 {
     private readonly TaskCompletionSource _opened = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    private readonly TaskCompletionSource<string> _seenCorrelationId = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public Task<string> SeenCorrelationId => _seenCorrelationId.Task;
+
+    public void RecordCorrelationId(string correlationId) => _seenCorrelationId.TrySetResult(correlationId);
+
     public Task WaitAsync() => _opened.Task;
 
     public void Open() => _opened.TrySetResult();
@@ -261,9 +281,14 @@ public static class CreateTenantlessProbeHandler
 
 public static class ProbeCreatedDomainEventHandler
 {
-    public static async Task<ProbeCreatedIntegrationEvent> Handle(ProbeCreatedDomainEvent domainEvent, ProbeGate gate)
+    public static async Task<ProbeCreatedIntegrationEvent> Handle(
+        ProbeCreatedDomainEvent domainEvent,
+        ProbeGate gate,
+        ICorrelationContext correlation
+    )
     {
         await gate.WaitAsync();
+        gate.RecordCorrelationId(correlation.CorrelationId);
         return new(domainEvent.ProbeId);
     }
 }

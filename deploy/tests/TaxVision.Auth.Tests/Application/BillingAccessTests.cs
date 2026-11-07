@@ -93,6 +93,78 @@ public sealed class BillingAccessTests
     }
 
     [Fact]
+    public async Task Reannounced_block_writes_no_audit_and_revokes_nothing()
+    {
+        var tenants = new RecordingTenantRegistry { Current = BuildTenant(blocked: true) };
+        var sessions = new RecordingSessionRepository();
+        var audit = new FakeAuthAuditWriter();
+        var metrics = new FakeSubscriptionAccessMetrics();
+
+        await HandleAsync(StatusEvent(tenants.Current.Id, "Expired"), tenants, sessions, audit, metrics);
+
+        Assert.Empty(audit.Logs);
+        Assert.Null(sessions.RevokedReason);
+        Assert.Empty(metrics.Blocked);
+    }
+
+    [Fact]
+    public async Task Reannounced_active_writes_no_audit()
+    {
+        var tenants = new RecordingTenantRegistry { Current = BuildTenant(blocked: false) };
+        var audit = new FakeAuthAuditWriter();
+        var metrics = new FakeSubscriptionAccessMetrics();
+
+        await HandleAsync(
+            StatusEvent(tenants.Current.Id, "Active"),
+            tenants,
+            new RecordingSessionRepository(),
+            audit,
+            metrics
+        );
+
+        Assert.Empty(audit.Logs);
+        Assert.Equal(0, metrics.Restored);
+    }
+
+    [Fact]
+    public async Task Block_that_changes_the_value_audits_and_revokes()
+    {
+        var tenants = new RecordingTenantRegistry { Current = BuildTenant(blocked: false) };
+        var sessions = new RecordingSessionRepository();
+        var audit = new FakeAuthAuditWriter();
+
+        await HandleAsync(
+            StatusEvent(tenants.Current.Id, "Suspended"),
+            tenants,
+            sessions,
+            audit,
+            new FakeSubscriptionAccessMetrics()
+        );
+
+        Assert.Equal("auth.subscription.access_blocked", Assert.Single(audit.Logs).Action);
+        Assert.Equal("subscription_lapsed", sessions.RevokedReason);
+    }
+
+    [Fact]
+    public async Task Restore_that_changes_the_value_audits()
+    {
+        var tenants = new RecordingTenantRegistry { Current = BuildTenant(blocked: true) };
+        var audit = new FakeAuthAuditWriter();
+        var metrics = new FakeSubscriptionAccessMetrics();
+
+        await HandleAsync(
+            StatusEvent(tenants.Current.Id, "Active"),
+            tenants,
+            new RecordingSessionRepository(),
+            audit,
+            metrics
+        );
+
+        Assert.Equal("auth.subscription.access_restored", Assert.Single(audit.Logs).Action);
+        Assert.Equal(1, metrics.Restored);
+    }
+
+    [Fact]
     public async Task Past_due_does_not_block_or_revoke()
     {
         var tenants = new RecordingTenantRegistry();
@@ -115,6 +187,27 @@ public sealed class BillingAccessTests
         Assert.Null(tenants.LastCall);
         Assert.Null(sessions.RevokedReason);
     }
+
+    private static Task HandleAsync(
+        TenantSubscriptionStatusChangedIntegrationEvent evt,
+        RecordingTenantRegistry tenants,
+        RecordingSessionRepository sessions,
+        FakeAuthAuditWriter audit,
+        FakeSubscriptionAccessMetrics metrics
+    ) =>
+        TenantSubscriptionAccessConsumer.Handle(
+            evt,
+            tenants,
+            sessions,
+            new QuietDenylist(),
+            new QuietSessionRevocationPublisher(),
+            audit,
+            metrics,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            NullLogger<TenantSubscriptionStatusChangedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
 
     private static TenantSubscriptionStatusChangedIntegrationEvent StatusEvent(Guid tenantId, string status) =>
         new()
@@ -139,6 +232,7 @@ public sealed class BillingAccessTests
         public bool Blocked { get; private set; }
         public string? Reason { get; private set; }
         public string? LastCall { get; private set; }
+        public Tenant? Current { get; init; }
 
         public Task SetBillingBlockedAsync(Guid tenantId, bool blocked, string? reason, CancellationToken ct = default)
         {
@@ -149,7 +243,7 @@ public sealed class BillingAccessTests
         }
 
         public Task<Tenant?> GetByIdAsync(Guid tenantId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+            Task.FromResult(Current);
 
         public Task UpsertCreatedAsync(
             Guid tenantId,

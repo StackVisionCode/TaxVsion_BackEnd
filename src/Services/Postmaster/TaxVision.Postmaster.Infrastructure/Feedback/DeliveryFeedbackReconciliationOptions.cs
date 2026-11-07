@@ -16,6 +16,9 @@ public sealed class DeliveryFeedbackReconciliationOptions
     /// <summary>Cada destinatario es una consulta a la API (60/min): 50 entran en ~1 minuto.</summary>
     public int MaxRecipientsPerRun { get; set; } = 50;
 
+    /// <summary>Avisos por transacción al aplicar lo consultado: un choque solo deja para la próxima vuelta su lote.</summary>
+    public int ApplyBatchSize { get; set; } = 50;
+
     /// <summary>Tope de <see cref="MaxEngagementEventsPerRun"/>: diez páginas de la API mantienen la vuelta corta.</summary>
     public const int MaxEngagementEventsPerRunLimit = 10_000;
 

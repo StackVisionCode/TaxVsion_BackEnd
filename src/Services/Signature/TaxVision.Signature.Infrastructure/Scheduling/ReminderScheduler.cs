@@ -24,6 +24,7 @@ namespace TaxVision.Signature.Infrastructure.Scheduling;
 public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<ReminderScheduler> logger)
     : BackgroundService
 {
+    private const string LockKey = "signature:reminder-scheduler";
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(30);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -60,8 +61,15 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
         }
     }
 
-    private async Task RunOnceAsync(CancellationToken ct)
+    internal async Task RunOnceAsync(CancellationToken ct)
     {
+        // SIG-15: una sola réplica por pasada; la otra sale y retoma en su próximo tick.
+        await using var handle = await serviceProvider
+            .GetRequiredService<IDistributedLock>()
+            .AcquireAsync(LockKey, Interval, ct);
+        if (!handle.IsAcquired)
+            return;
+
         var now = DateTime.UtcNow;
         IReadOnlyList<ReminderCandidate> candidates;
         using (var scope = serviceProvider.CreateScope())

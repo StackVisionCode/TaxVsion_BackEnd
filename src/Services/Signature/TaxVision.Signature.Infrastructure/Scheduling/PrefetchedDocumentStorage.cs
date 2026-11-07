@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 
@@ -21,6 +22,12 @@ internal sealed class PrefetchedDocumentStorage(IReadOnlyDictionary<Guid, byte[]
 
     public Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default) =>
         throw new NotSupportedException("CloudStorage is not called inside a job unit.");
+
+    public Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
+        Guid tenantId,
+        SignatureFileUpload upload,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException("CloudStorage is not called inside a job unit.");
 
     public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
         throw new NotSupportedException("CloudStorage is not called inside a job unit.");

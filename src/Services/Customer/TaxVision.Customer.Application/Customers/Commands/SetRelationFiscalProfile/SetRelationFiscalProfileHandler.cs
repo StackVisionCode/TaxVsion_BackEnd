@@ -48,7 +48,8 @@ public static class SetRelationFiscalProfileHandler
         if (uniquenessCheck.IsFailure)
             return Result.Failure<RelationFiscalProfileResponse>(uniquenessCheck.Error);
 
-        var setResult = relation.SetFiscalProfile(
+        var setResult = customer.SetRelationFiscalProfile(
+            relationId: cmd.RelationId,
             role: cmd.Role,
             taxIdentifierCipher: encryption.Cipher,
             taxIdentifierBlindIndex: encryption.BlindIndex,

@@ -71,6 +71,8 @@ public static class CreatePaymentLinkHandler
             ct
         );
 
+        await unitOfWork.SaveChangesAsync(ct);
+
         await bus.PublishAsync(
             new PaymentLinkCreatedIntegrationEvent
             {
@@ -84,8 +86,6 @@ public static class CreatePaymentLinkHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(new CreatePaymentLinkResponse(link.Id, link.Token.Value, link.ExpiresAtUtc));
     }

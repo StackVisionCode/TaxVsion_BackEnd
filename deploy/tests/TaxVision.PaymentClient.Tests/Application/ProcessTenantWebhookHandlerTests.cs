@@ -241,7 +241,9 @@ public sealed class ProcessTenantWebhookHandlerTests
         );
 
         Assert.True(result.IsSuccess);
-        var paid = Assert.Single((await EmittedAsync(bus.Published, payment)).OfType<TenantPaymentSucceededIntegrationEvent>());
+        var paid = Assert.Single(
+            (await EmittedAsync(bus.Published, payment)).OfType<TenantPaymentSucceededIntegrationEvent>()
+        );
         Assert.Equal(payment.Id, paid.TenantPaymentId);
         Assert.Equal("inv-1", paid.ExternalReferenceId);
         Assert.Equal(PaymentLinkStatus.Used, link.Status);
@@ -267,7 +269,9 @@ public sealed class ProcessTenantWebhookHandlerTests
         );
 
         Assert.True(result.IsSuccess);
-        var paid = Assert.Single((await EmittedAsync(bus.Published, payment)).OfType<TenantPaymentSucceededIntegrationEvent>());
+        var paid = Assert.Single(
+            (await EmittedAsync(bus.Published, payment)).OfType<TenantPaymentSucceededIntegrationEvent>()
+        );
         Assert.Equal(payment.Id, paid.TenantPaymentId);
         Assert.Empty(bus.Published.OfType<PaymentLinkUsedIntegrationEvent>());
         Assert.Equal(PaymentLinkStatus.Revoked, link.Status);
@@ -439,6 +443,12 @@ file sealed class FakePaymentProvider(WebhookVerificationResult verification, We
     public Task<Result<WebhookEventPayload>> CancelChargeAsync(
         TenantProviderCredentials credentials,
         ChargeStatusLookup lookup,
+        CancellationToken ct
+    ) => throw new NotSupportedException();
+
+    public Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeSearch search,
         CancellationToken ct
     ) => throw new NotSupportedException();
 

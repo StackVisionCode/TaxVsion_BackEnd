@@ -96,3 +96,27 @@ public interface IProcessedWebhookRepository
 
     Task AddAsync(ProcessedWebhook processed, CancellationToken ct = default);
 }
+
+/// <summary>DLR guardados a la espera de su mensaje. Sin filtro de tenant, igual que la dedup de webhooks.</summary>
+public interface IPendingDeliveryReceiptRepository
+{
+    Task<bool> ExistsAsync(
+        string providerCode,
+        string providerMessageId,
+        string eventType,
+        CancellationToken ct = default
+    );
+
+    Task AddAsync(PendingDeliveryReceipt receipt, CancellationToken ct = default);
+
+    /// <summary>Los DLR de un mensaje, del más viejo al más nuevo.</summary>
+    Task<IReadOnlyList<PendingDeliveryReceipt>> ListAsync(
+        string providerCode,
+        string providerMessageId,
+        CancellationToken ct = default
+    );
+
+    void Remove(PendingDeliveryReceipt receipt);
+
+    Task<int> DeleteReceivedBeforeAsync(DateTime cutoffUtc, CancellationToken ct = default);
+}

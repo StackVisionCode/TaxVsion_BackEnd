@@ -29,7 +29,9 @@ public static class FormSignatureRejectedConsumer
             var request = await FormActionResultSupport.LoadAsync(evt.TenantId, requestId, requests, logger, ct);
             if (request is null)
                 return;
-            if (request.MarkSignatureDeclined(revision).IsFailure)
+            if (
+                FormSignatureResultSupport.Failed(request.MarkSignatureDeclined(revision), "Declined", requestId, revision, logger)
+            )
                 return;
             var outgoing = new DeferredMessages();
             await planner.PlanAfterSignatureAsync(request, revision, false, outgoing, evt.OccurredOn, ct);

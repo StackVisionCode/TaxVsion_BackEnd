@@ -35,6 +35,12 @@ public sealed class TenantSavedPaymentMethodConfiguration : IEntityTypeConfigura
             .HasDatabaseName("UX_TenantSavedPaymentMethods_Customer_MethodReference_Active");
 
         builder
+            .HasIndex(method => method.TenantProviderCustomerId)
+            .IsUnique()
+            .HasFilter("[IsDefault] = 1 AND [IsDetached] = 0")
+            .HasDatabaseName("UX_TenantSavedPaymentMethods_OneDefault");
+
+        builder
             .HasIndex(method => new { method.ExpYear, method.ExpMonth })
             .HasFilter("[IsDetached] = 0")
             .HasDatabaseName("IX_TenantSavedPaymentMethods_Expiration");

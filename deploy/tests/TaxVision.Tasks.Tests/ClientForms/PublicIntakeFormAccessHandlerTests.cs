@@ -610,6 +610,13 @@ public sealed class PublicIntakeFormAccessHandlerTests
 
     private sealed class MemoryIntakeLinkRepository(params FormIntakeLink[] seed) : IFormIntakeLinkRepository
     {
+        public Task<bool> TryConsumeDailyIntakeAsync(
+            Guid tenantId,
+            DateTime nowUtc,
+            int maxPerDay,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
+
         private readonly List<FormIntakeLink> items = [.. seed];
 
         public Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default) =>

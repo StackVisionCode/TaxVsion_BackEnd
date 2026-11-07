@@ -6,6 +6,22 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Repositories;
 
 public sealed class AddOnPurchaseIntentRepository(SubscriptionDbContext db) : IAddOnPurchaseIntentRepository
 {
+    public Task<AddOnPurchaseIntent?> GetUnattachedByTenantAsync(
+        Guid tenantId,
+        string addOnCode,
+        CancellationToken ct = default
+    ) =>
+        db
+            .AddOnPurchaseIntents.IgnoreQueryFilters()
+            .Where(intent =>
+                intent.TenantId == tenantId
+                && intent.AddOnCode == addOnCode
+                && intent.Status == AddOnPurchaseIntentStatus.Pending
+                && intent.CheckoutUrl == null
+            )
+            .OrderByDescending(intent => intent.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
     public async Task AddAsync(AddOnPurchaseIntent intent, CancellationToken ct = default) =>
         await db.AddOnPurchaseIntents.AddAsync(intent, ct);
 

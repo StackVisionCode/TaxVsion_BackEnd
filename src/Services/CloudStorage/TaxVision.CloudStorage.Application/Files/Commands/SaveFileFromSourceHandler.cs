@@ -1,12 +1,14 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
+using TaxVision.CloudStorage.Domain.Quotas;
 using Wolverine;
 
 namespace TaxVision.CloudStorage.Application.Files.Commands;
@@ -185,25 +187,6 @@ public static class SaveFileFromSourceHandler
             }
 
             var file = registered.Value;
-
-            // Idempotencia ante redelivery: Copy/Delete en MinIO no son transaccionales con el
-            // SaveChanges de abajo. Si un intento anterior copio el objeto pero el SaveChanges
-            // fallo despues (p.ej. DbUpdateConcurrencyException en TenantStorageLimits por otro
-            // mensaje concurrente del mismo tenant), el retry de Wolverine reenvia el mismo
-            // evento — y sin este chequeo, intentaria copiar de nuevo desde SourceObjectKey, que
-            // el intento anterior ya borro, tirando ObjectNotFoundException para siempre.
-            if (!await storage.ExistsAsync(options.Value.TempBucket, key.Value.Value, ct))
-            {
-                await storage.CopyAsync(
-                    evt.SourceBucket,
-                    evt.SourceObjectKey,
-                    options.Value.TempBucket,
-                    key.Value.Value,
-                    ct
-                );
-                await storage.DeleteAsync(evt.SourceBucket, evt.SourceObjectKey, ct);
-            }
-
             file.MarkPendingScan(clock.UtcNow);
 
             // Coloca el archivo en su carpeta de sistema segun FolderType (get-or-create por
@@ -225,6 +208,42 @@ public static class SaveFileFromSourceHandler
             }
 
             files.Add(file);
+
+            // La reserva se decide antes de mover el objeto: si otra se llevó el cupo, el origen queda intacto.
+            try
+            {
+                await unitOfWork.SaveChangesAsync(ct);
+            }
+            catch (ConflictException conflict) when (conflict.Code == QuotaErrors.ConcurrentExceededCode)
+            {
+                files.Remove(file);
+                limit.Release(evt.SizeBytes);
+                logger.LogWarning(
+                    "SaveFileRequested {FileId} from {Service} rejected: a concurrent reservation took the quota.",
+                    evt.FileId,
+                    evt.RequestingService
+                );
+                await RejectAsync(evt, "QuotaExceeded", audit, unitOfWork, bus, correlation, clock, ct);
+                return;
+            }
+
+            // Idempotencia ante redelivery: Copy/Delete en MinIO no son transaccionales con el
+            // commit. Si un intento anterior copio el objeto pero la transaccion fallo despues,
+            // el retry de Wolverine reenvia el mismo evento — y sin este chequeo, intentaria
+            // copiar de nuevo desde SourceObjectKey, que el intento anterior ya borro, tirando
+            // ObjectNotFoundException para siempre.
+            if (!await storage.ExistsAsync(options.Value.TempBucket, key.Value.Value, ct))
+            {
+                await storage.CopyAsync(
+                    evt.SourceBucket,
+                    evt.SourceObjectKey,
+                    options.Value.TempBucket,
+                    key.Value.Value,
+                    ct
+                );
+                await storage.DeleteAsync(evt.SourceBucket, evt.SourceObjectKey, ct);
+            }
+
             audit.Add(
                 StorageAccessLog.Create(
                     evt.TenantId,
@@ -239,8 +258,8 @@ public static class SaveFileFromSourceHandler
                     clock.UtcNow
                 )
             );
-            await bus.PublishAsync(new ScanFileCommand(evt.TenantId, file.Id, correlation.CorrelationId));
             await unitOfWork.SaveChangesAsync(ct);
+            await bus.PublishAsync(new ScanFileCommand(evt.TenantId, file.Id, correlation.CorrelationId));
         }
     }
 

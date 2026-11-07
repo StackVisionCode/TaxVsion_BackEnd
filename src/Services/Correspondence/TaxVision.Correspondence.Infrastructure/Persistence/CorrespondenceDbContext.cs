@@ -49,6 +49,7 @@ public sealed class CorrespondenceDbContext(
     public DbSet<IncomingEmail> IncomingEmails => Set<IncomingEmail>();
     public DbSet<IncomingEmailRecipient> IncomingEmailRecipients => Set<IncomingEmailRecipient>();
     public DbSet<IncomingEmailAttachment> IncomingEmailAttachments => Set<IncomingEmailAttachment>();
+    public DbSet<IncomingEmailMailbox> IncomingEmailMailboxes => Set<IncomingEmailMailbox>();
     public DbSet<EmailThread> EmailThreads => Set<EmailThread>();
     public DbSet<UnmatchedIncomingEmail> UnmatchedIncomingEmails => Set<UnmatchedIncomingEmail>();
     public DbSet<Draft> Drafts => Set<Draft>();
@@ -113,6 +114,14 @@ public sealed class CorrespondenceDbContext(
         try
         {
             return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The record changed while the operation was in progress.",
+                ex
+            );
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {

@@ -117,6 +117,21 @@ public static class RestoreFolderHandler
             return Result.Failure(FolderErrors.NotDeleted);
         var batchId = root.Id;
 
+        // Mientras estuvo en la papelera pudo crearse otra con ese nombre: el índice único la rechazaría.
+        if (
+            root.Category is null
+            && await folders.NameExistsUnderParentAsync(
+                command.TenantId,
+                root.ParentFolderId,
+                root.Name,
+                root.OwnerType,
+                root.OwnerId,
+                root.Id,
+                ct
+            )
+        )
+            return Result.Failure(FolderErrors.NameAlreadyExists);
+
         foreach (var folder in await folders.ListBatchAsync(command.TenantId, batchId, ct))
             folder.Restore();
 

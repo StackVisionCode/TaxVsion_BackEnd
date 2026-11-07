@@ -26,6 +26,7 @@ public interface ITenantRegistry
         string status,
         bool isActive,
         DateTime nowUtc,
+        long? tenantVersion,
         CancellationToken ct = default
     );
 }

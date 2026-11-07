@@ -183,12 +183,17 @@ public static class ProcessConnectWebhookHandler
         CancellationToken ct
     )
     {
+        // Fuera de orden: el estado vigente ya viene de un evento más nuevo.
+        if (account.IsStaleProviderEvent(evt.OccurredAtUtc))
+            return Result.Success();
+
         var statusBeforeWebhook = account.Status;
         var updateResult = account.UpdateFromWebhook(
             evt.ChargesEnabled ?? false,
             evt.PayoutsEnabled ?? false,
             evt.RequirementsCurrentlyDue ?? [],
-            nowUtc
+            nowUtc,
+            evt.OccurredAtUtc
         );
         if (updateResult.IsFailure)
             return updateResult;

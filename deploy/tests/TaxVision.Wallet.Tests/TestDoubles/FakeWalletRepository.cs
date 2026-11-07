@@ -49,6 +49,9 @@ public sealed class FakeWalletRepository : IWalletRepository
     public Task<WalletTopUp?> GetTopUpAsync(Guid tenantId, Guid topUpId, CancellationToken ct = default) =>
         Task.FromResult(TopUps.FirstOrDefault(t => t.TenantId == tenantId && t.Id == topUpId));
 
+    public Task<WalletTopUp?> GetTopUpReadOnlyAsync(Guid tenantId, Guid topUpId, CancellationToken ct = default) =>
+        GetTopUpAsync(tenantId, topUpId, ct);
+
     public Task<bool> FundingCreditExistsAsync(
         string sourceService,
         Guid saaSPaymentId,

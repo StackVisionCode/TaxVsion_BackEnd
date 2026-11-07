@@ -5,7 +5,8 @@ namespace TaxVision.Connectors.Application.Accounts;
 /// <summary>Lo que la unidad deja tocar, atado a su DbContext.</summary>
 public sealed record MailboxFailureStores(
     ITenantEmailAccountRepository Accounts,
-    IProviderWatchSubscriptionRepository Subscriptions
+    IProviderWatchSubscriptionRepository Subscriptions,
+    IOAuthConnectionRepository Connections
 );
 
 /// <summary>

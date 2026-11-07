@@ -13,6 +13,7 @@ using Microsoft.Extensions.Hosting;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Runs;
+using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
 using TaxVision.Campaigns.Application.Scheduling.Commands;
@@ -54,10 +55,10 @@ public sealed class CampaignScheduleFireIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Fire_FailureAfterSave_LeavesNoRunNoEnvelopeAndScheduleUnchanged()
+    public async Task Fire_FailureAfterSave_LeavesTheRunCreatedNoEnvelopeAndScheduleUnchanged()
     {
         var (schedule, lease, slot) = await SeedDueScheduleAsync();
-        // Falla el guardado del avance, cuando el run y sus unidades ya se escribieron en la transacción.
+        // Falla el guardado que lleva el despacho y el avance del agendado. El run ya existe en Created.
         var crash = new FailWhenScheduleIsSaved();
 
         using var host = await StartHostAsync(crash);
@@ -74,9 +75,9 @@ public sealed class CampaignScheduleFireIntegrationTests : IAsyncLifetime
         await Task.Delay(TimeSpan.FromSeconds(2)); // margen por si un sobre llegara al sumidero
 
         Assert.Equal(
-            0,
+            1,
             await CampaignsTestDatabase.ScalarAsync(
-                "SELECT COUNT(*) FROM CampaignRuns WHERE ScheduleId = @s",
+                "SELECT COUNT(*) FROM CampaignRuns WHERE ScheduleId = @s AND Status = 0",
                 ("@s", schedule.Id)
             )
         );
@@ -219,6 +220,9 @@ public sealed class CampaignScheduleFireIntegrationTests : IAsyncLifetime
                 options
                     .Discovery.DisableConventionalDiscovery()
                     .IncludeType(typeof(FireCampaignScheduleHandler))
+                    .IncludeType(typeof(SkipScheduledSlotHandler))
+                    .IncludeType(typeof(OpenCampaignRunHandler))
+                    .IncludeType(typeof(ApplyCampaignRunFundingHandler))
                     .IncludeType(typeof(SinkHandler));
                 options.PersistMessagesWithSqlServer(CampaignsTestDatabase.ConnectionString, Schema);
                 options.AutoBuildMessageStorageOnStartup = AutoCreate.CreateOrUpdate;
@@ -256,7 +260,7 @@ public sealed class CampaignScheduleFireIntegrationTests : IAsyncLifetime
 
     public sealed class SimulatedCrashException() : Exception("Simulated crash after the run was saved.");
 
-    /// <summary>Lanza en el SaveChanges que lleva el avance del agendado (después del guardado del run).</summary>
+    /// <summary>Lanza en el SaveChanges que lleva el avance del agendado.</summary>
     public sealed class FailWhenScheduleIsSaved : SaveChangesInterceptor
     {
         public bool Enabled { get; init; } = true;

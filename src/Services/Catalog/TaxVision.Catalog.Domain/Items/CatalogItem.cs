@@ -38,6 +38,7 @@ public sealed class CatalogItem : TenantEntity
     public DateTime UpdatedAtUtc { get; private set; }
     public bool IsDeleted { get; private set; }
     public DateTime? DeletedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     public IReadOnlyCollection<CatalogItemAttribute> Attributes => _attributes;
 

@@ -58,6 +58,7 @@ public sealed class SentMessage : AggregateRoot
     /// cada transición que cambia <see cref="Status"/> o el outcome de un destinatario.
     /// </summary>
     public SentMessageActivity Activity { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
     public DateTime QueuedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
 
@@ -571,6 +572,14 @@ public sealed class SentMessage : AggregateRoot
                 DeliveryOutcome.Complained => SentMessageEventType.Complained,
                 _ => SentMessageEventType.Bounced,
             };
+
+    /// <summary>Vuelve a derivar <see cref="Activity"/> de los destinatarios. Devuelve true si cambió.</summary>
+    public bool RecalculateActivity()
+    {
+        var before = Activity;
+        RefreshActivity();
+        return Activity != before;
+    }
 
     /// <summary>Única regla de "Email activity": el estado del envío y, si salió, el peor outcome.</summary>
     private void RefreshActivity() =>

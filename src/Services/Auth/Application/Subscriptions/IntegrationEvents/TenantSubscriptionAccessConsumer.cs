@@ -17,6 +17,8 @@ namespace TaxVision.Auth.Application.Subscriptions.IntegrationEvents;
 /// <c>Auth.SubscriptionInactive</c> — distinto de la suspensión admin (<c>tenant.IsActive</c>). Al volver
 /// a <c>Active</c> (recuperación de pago o reactivación) se limpia el bloqueo y los usuarios re-loguean.
 /// Estados intermedios (PastDue/Trialing/Cancelled) NO cortan acceso: son avisos.
+/// La anti-entropía de Subscription reanuncia el estado varias veces al día: solo un cambio real de
+/// <c>BillingAccessBlocked</c> audita y corta sesiones. Sin esto, cada pasada sacaba al TenantAdmin que entró a renovar.
 /// </summary>
 public static class TenantSubscriptionAccessConsumer
 {
@@ -46,9 +48,19 @@ public static class TenantSubscriptionAccessConsumer
 
         using (correlation.Push(correlationId))
         {
+            // Sin proyección todavía no se sabe el valor anterior: se trata como cambio.
+            var wasBlocked = (await tenants.GetByIdAsync(evt.TenantId, ct))?.BillingAccessBlocked;
+
             if (AccessBlockingStatuses.Contains(evt.Status))
             {
                 await tenants.SetBillingBlockedAsync(evt.TenantId, blocked: true, reason: evt.Status, ct);
+                if (wasBlocked == true)
+                {
+                    // Suspended → Expired mueve el motivo, no el acceso.
+                    await unitOfWork.SaveChangesAsync(ct);
+                    return;
+                }
+
                 // A5 (G10) — igual que la suspensión administrativa: denylist + anuncio + revocación.
                 // Cortar solo en la base dejaba el access token vivo hasta 15 minutos.
                 var revoked = await SessionAccessCutoff.ForTenantAsync(
@@ -89,6 +101,9 @@ public static class TenantSubscriptionAccessConsumer
 
             if (string.Equals(evt.Status, "Active", StringComparison.OrdinalIgnoreCase))
             {
+                if (wasBlocked == false)
+                    return;
+
                 await tenants.SetBillingBlockedAsync(evt.TenantId, blocked: false, reason: null, ct);
                 await audit.AddAsync(
                     AuthAuditLog.Record(

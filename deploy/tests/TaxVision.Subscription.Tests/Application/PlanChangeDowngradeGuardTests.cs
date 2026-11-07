@@ -1,4 +1,7 @@
+using BuildingBlocks.Common;
+using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
@@ -18,6 +21,56 @@ namespace TaxVision.Subscription.Tests.Application;
 /// </summary>
 public sealed class PlanChangeDowngradeGuardTests
 {
+    // Corre el orquestador con los handlers reales de pedido y adjunto, como los enruta Wolverine.
+    private static Task<Result<ChangePlanResult>> Start(
+        ChangePlanCommand command,
+        ISubscriptionRepository subscriptions,
+        IPlanRepository plans,
+        ISubscriptionSeatRepository seats,
+        ITenantUserCountClient userCounts,
+        IPlanChangeCheckoutPaymentClient client,
+        IUnitOfWork unitOfWork,
+        CapturingMessageBus bus,
+        ICorrelationContext correlation,
+        ISubscriptionAuditLogWriter audit,
+        ILogger<TenantSubscription> logger,
+        CancellationToken ct
+    )
+    {
+        bus.OnInvoke = async (message, token) =>
+            message switch
+            {
+                RequestPlanChangeCommand request => await RequestPlanChangeHandler.Handle(
+                    request,
+                    subscriptions,
+                    plans,
+                    seats,
+                    userCounts,
+                    unitOfWork,
+                    bus,
+                    correlation,
+                    audit,
+                    logger,
+                    token
+                ),
+                AttachUpgradeCheckoutCommand attach => await AttachUpgradeCheckoutHandler.Handle(
+                    attach,
+                    subscriptions,
+                    unitOfWork,
+                    bus,
+                    token
+                ),
+                ReleaseUpgradeWithoutCheckoutCommand release => await ReleaseUpgradeWithoutCheckoutHandler.Handle(
+                    release,
+                    subscriptions,
+                    unitOfWork,
+                    token
+                ),
+                _ => throw new NotSupportedException(),
+            };
+        return ChangePlanHandler.Handle(command, bus, client, ct);
+    }
+
     private static readonly Guid TenantId = Guid.NewGuid();
 
     [Fact]
@@ -156,6 +209,53 @@ public sealed class PlanChangeDowngradeGuardTests
         Assert.Equal("PlanChange.Checkout.Unavailable", result.Error.Code);
     }
 
+    // SUB-13: sin sesión nadie puede pagar ese upgrade, así que no bloquea el siguiente intento.
+    [Fact]
+    public async Task A_checkout_that_cannot_be_opened_does_not_block_the_next_upgrade()
+    {
+        var scenario = Scenario(currentPlanCode: "starter");
+        var failing = new FakePlanChangeCheckoutPaymentClient(
+            Result.Failure<PlanChangeCheckoutClientResult>(
+                new Error("PlanChange.Checkout.Unavailable", "The payment service is unavailable.")
+            )
+        );
+        await ChangePlanAsync(scenario, "pro", activeUsers: 2, failing, hostedCheckout: true);
+
+        var retry = await ChangePlanAsync(
+            scenario,
+            "pro",
+            activeUsers: 2,
+            new FakePlanChangeCheckoutPaymentClient(),
+            hostedCheckout: true
+        );
+
+        Assert.True(retry.IsSuccess, retry.IsFailure ? retry.Error.Code : null);
+        Assert.Equal("https://pay.example/upgrade", retry.Value.CheckoutUrl);
+        Assert.Single(
+            scenario.Subscription.PlanChangeRequests,
+            request => request.Status == PlanChangeRequestStatus.AwaitingPayment
+        );
+    }
+
+    // SUB-15: si la sesión no abre, el cliente con cancelación programada no renueva sin pedirlo.
+    [Fact]
+    public async Task A_checkout_that_cannot_be_opened_keeps_the_scheduled_cancellation()
+    {
+        var scenario = Scenario(currentPlanCode: "starter");
+        scenario.Subscription.ScheduleCancellation("too expensive", Guid.Empty, DateTime.UtcNow);
+        var failing = new FakePlanChangeCheckoutPaymentClient(
+            Result.Failure<PlanChangeCheckoutClientResult>(
+                new Error("PlanChange.Checkout.Unavailable", "The payment service is unavailable.")
+            )
+        );
+
+        var result = await ChangePlanAsync(scenario, "pro", activeUsers: 2, failing, hostedCheckout: true);
+
+        Assert.True(result.IsFailure);
+        Assert.True(scenario.Subscription.CancelAtPeriodEnd);
+        Assert.Equal("too expensive", scenario.Subscription.CancellationReason);
+    }
+
     private sealed record Fixture(TenantSubscription Subscription, FakeMultiPlanRepo Plans);
 
     /// <summary>starter: 3 asientos, $19. pro: 10 asientos, $49. Sin asientos comprados.</summary>
@@ -189,7 +289,7 @@ public sealed class PlanChangeDowngradeGuardTests
         FakePlanChangeCheckoutPaymentClient? checkoutClient = null,
         bool hostedCheckout = false
     ) =>
-        ChangePlanHandler.Handle(
+        Start(
             hostedCheckout
                 ? new ChangePlanCommand(
                     TenantId,

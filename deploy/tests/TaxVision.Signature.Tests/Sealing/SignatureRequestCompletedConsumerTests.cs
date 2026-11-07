@@ -1,4 +1,6 @@
+using System.Reflection;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -11,12 +13,14 @@ using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using TaxVision.Signature.Tests.Delivery;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Signature.Tests.Sealing;
 
 /// <summary>
 /// SIG-2: el sellado distingue el fallo transitorio (se reintenta) del permanente (se avisa sin perder lo
-/// que sí quedó sellado). SIG-3: sin candado se reintenta y cada ejecución sella todo lo listo.
+/// que sí quedó sellado). SIG-3: sin candado se reintenta y cada ejecución sella todo lo listo. SIG-6: la fase A
+/// no escribe y la fase B registra y publica junto.
 /// </summary>
 public sealed class SignatureRequestCompletedConsumerTests
 {
@@ -143,7 +147,210 @@ public sealed class SignatureRequestCompletedConsumerTests
         );
     }
 
-    private static Task SealAsync(
+    [Fact]
+    public async Task SealingPhase_OnlyHandsOverTheResults()
+    {
+        var request = NewCompletedRequest(documents: 1, generateCertificate: true);
+        var bus = new CapturingBus();
+
+        await RunSealingPhaseAsync(request, new FakeStorage(), new FakeSealer(), bus, attempts: 1);
+
+        var command = Assert.IsType<PersistSealedDocumentsCommand>(Assert.Single(bus.Messages));
+        Assert.Single(command.Documents);
+        Assert.Single(command.Certificates);
+        Assert.Equal(2, command.FileRequests.Count);
+        Assert.All(request.Documents, document => Assert.Null(document.SealedFileId));
+        Assert.Null(request.CertificateFileId);
+    }
+
+    [Theory]
+    [InlineData(typeof(SealCompletedRequestCommand))]
+    [InlineData(typeof(SignatureDocumentsReadyForSealingIntegrationEvent))]
+    public void SealingPhase_RunsWithoutTransaction(Type message)
+    {
+        var handler = typeof(SignatureRequestCompletedConsumer)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Single(method => method.Name == "Handle" && method.GetParameters()[0].ParameterType == message);
+
+        Assert.NotNull(handler.GetCustomAttribute<NonTransactionalAttribute>());
+    }
+
+    // El evento lo comparte con la auditoría: aquí solo se pide el sellado, dentro de su transacción.
+    [Fact]
+    public void CompletedEvent_OnlyRequestsTheSealing()
+    {
+        var documentId = Guid.NewGuid();
+        var evt = new SignatureRequestCompletedIntegrationEvent
+        {
+            TenantId = Guid.NewGuid(),
+            CorrelationId = "sealing-tests",
+            SignatureRequestId = Guid.NewGuid(),
+            CreatedByUserId = Guid.NewGuid(),
+            CompletedAtUtc = DateTime.UtcNow,
+            Documents = [new DocumentHashDescriptor(documentId, Guid.NewGuid(), new string('a', 64))],
+            SignerIds = [],
+            GenerateCertificate = false,
+            Signers = [],
+        };
+
+        var command = CompletedRequestSealingConsumer.Handle(evt);
+
+        Assert.Equal(
+            new SealCompletedRequestCommand(
+                evt.TenantId,
+                evt.SignatureRequestId,
+                command.DocumentIds,
+                evt.CompletedAtUtc,
+                evt.CorrelationId,
+                evt.EventId
+            ),
+            command
+        );
+        Assert.Equal(documentId, Assert.Single(command.DocumentIds));
+        Assert.Null(
+            typeof(CompletedRequestSealingConsumer)
+                .GetMethod(nameof(CompletedRequestSealingConsumer.Handle))!
+                .GetCustomAttribute<NonTransactionalAttribute>()
+        );
+    }
+
+    [Fact]
+    public async Task PersistPhase_RequestsEveryFileAndClosesTheRequest()
+    {
+        var request = NewCompletedRequest(documents: 2, generateCertificate: true);
+        var bus = new CapturingBus();
+
+        await SealAsync(request, new FakeStorage(), new FakeSealer(), bus, attempts: 1);
+
+        var expected = request
+            .Documents.Select(document => document.SealedFileId!.Value)
+            .Append(request.CertificateFileId!.Value)
+            .Order();
+        Assert.Equal(expected, bus.Messages.OfType<SaveFileRequestedIntegrationEvent>().Select(e => e.FileId).Order());
+        Assert.Single(bus.Messages.OfType<SignatureRequestSealingCompletedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task PersistRedelivered_PublishesNothingNew()
+    {
+        var request = NewCompletedRequest(documents: 1);
+        var bus = new CapturingBus();
+        await RunSealingPhaseAsync(request, new FakeStorage(), new FakeSealer(), bus, attempts: 1);
+        var command = bus.Messages.OfType<PersistSealedDocumentsCommand>().Single();
+        bus.Messages.Clear();
+        await PersistAsync(request, command, bus);
+        bus.Messages.Clear();
+
+        await PersistAsync(request, command, bus);
+
+        Assert.Empty(bus.Messages);
+    }
+
+    // Dos corridas con el mismo documento: el archivo guardado manda y su hash sigue siendo el verdadero.
+    [Fact]
+    public async Task PersistOfALosingRun_KeepsTheStoredFile_AndAsksForTheCertificateAgain()
+    {
+        var request = NewCompletedRequest(documents: 2, generateCertificate: true);
+        var first = request.Documents.OrderBy(d => d.Order).First();
+        var second = request.Documents.OrderBy(d => d.Order).Last();
+        var winner = SealedResult(first.Id, 'a');
+        var loser = SealedResult(first.Id, 'b');
+        var other = SealedResult(second.Id, 'c');
+        var certificate = Guid.NewGuid();
+        var bus = new CapturingBus();
+        await PersistAsync(request, Command(request, [winner], []), bus);
+        bus.Messages.Clear();
+
+        await PersistAsync(
+            request,
+            Command(request, [loser, other], [new SealedCertificateResult(null, certificate)]),
+            bus
+        );
+
+        Assert.Equal(winner.SealedFileId, first.SealedFileId);
+        Assert.Equal(winner.HashPost, first.DocumentHashPost?.Value);
+        Assert.Equal(other.SealedFileId, second.SealedFileId);
+        Assert.Null(request.CertificateFileId);
+        Assert.Equal(
+            other.SealedFileId,
+            Assert.Single(bus.Messages.OfType<SaveFileRequestedIntegrationEvent>()).FileId
+        );
+        Assert.Single(bus.Messages.OfType<SignatureDocumentsReadyForSealingIntegrationEvent>());
+        Assert.Empty(bus.Messages.OfType<SignatureRequestSealingCompletedIntegrationEvent>());
+    }
+
+    private static SealedDocumentResult SealedResult(Guid documentId, char hash) =>
+        new(documentId, Guid.NewGuid(), new string(hash, 64), DateTime.UtcNow);
+
+    private static PersistSealedDocumentsCommand Command(
+        SignatureRequest request,
+        IReadOnlyList<SealedDocumentResult> documents,
+        IReadOnlyList<SealedCertificateResult> certificates
+    ) =>
+        new(
+            request.TenantId,
+            request.Id,
+            "sealing-tests",
+            documents,
+            certificates,
+            documents
+                .Select(document => document.SealedFileId)
+                .Concat(certificates.Select(item => item.CertificateFileId))
+                .Select(fileId => FileRequest(request.TenantId, fileId))
+                .ToList()
+        );
+
+    private static SaveFileRequestedIntegrationEvent FileRequest(Guid tenantId, Guid fileId) =>
+        new()
+        {
+            TenantId = tenantId,
+            FileId = fileId,
+            RequestingService = SignatureStorage.RequestingService,
+            SourceBucket = "temp",
+            SourceObjectKey = $"signature/{fileId:N}/file.pdf",
+            ActorId = Guid.NewGuid(),
+            OwnerType = "Signature",
+            FolderType = "Signatures",
+            OriginalName = "file.pdf",
+            ContentType = "application/pdf",
+            SizeBytes = 3,
+        };
+
+    // Las dos fases, como las encadena la cola local.
+    private static async Task SealAsync(
+        SignatureRequest request,
+        ISignatureCloudStorageClient storage,
+        IDocumentSealingEngine sealer,
+        CapturingBus bus,
+        int attempts,
+        bool lockAcquired = true,
+        IReadOnlyList<Guid>? documentIds = null
+    )
+    {
+        await RunSealingPhaseAsync(request, storage, sealer, bus, attempts, lockAcquired, documentIds);
+        foreach (var command in bus.Messages.OfType<PersistSealedDocumentsCommand>().ToList())
+        {
+            bus.Messages.Remove(command);
+            await PersistAsync(request, command, bus);
+        }
+    }
+
+    private static Task PersistAsync(
+        SignatureRequest request,
+        PersistSealedDocumentsCommand command,
+        CapturingBus bus
+    ) =>
+        PersistSealedDocumentsHandler.Handle(
+            command,
+            new SingleRequestRepository(request),
+            new NoOpUnitOfWork(),
+            bus,
+            new FixedCorrelation(),
+            NullLogger<PersistSealedDocumentsCommand>.Instance,
+            CancellationToken.None
+        );
+
+    private static Task RunSealingPhaseAsync(
         SignatureRequest request,
         ISignatureCloudStorageClient storage,
         IDocumentSealingEngine sealer,
@@ -171,7 +378,6 @@ public sealed class SignatureRequestCompletedConsumerTests
             new FixedStampStyle(),
             new FixedCertificateRenderer(),
             new FixedLock(lockAcquired),
-            new NoOpUnitOfWork(),
             bus,
             new FixedCorrelation(),
             NullLogger<SignatureRequest>.Instance,
@@ -179,11 +385,26 @@ public sealed class SignatureRequestCompletedConsumerTests
             CancellationToken.None
         );
 
-    private static SignatureRequest NewCompletedRequest(int documents, Guid? signatureImageFileId = null)
+    private static SignatureRequest NewCompletedRequest(
+        int documents,
+        Guid? signatureImageFileId = null,
+        bool generateCertificate = false
+    )
     {
         var limits = TestSignatureLimits.Default;
         var request = SignatureRequest
-            .CreateDraft(limits, Guid.NewGuid(), Guid.NewGuid(), "Sealing", null, "Fiscal", 72, false, false, false)
+            .CreateDraft(
+                limits,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Sealing",
+                null,
+                "Fiscal",
+                72,
+                false,
+                false,
+                generateCertificate
+            )
             .Value;
         for (var i = 1; i <= documents; i++)
             request.AddDocument(limits, Guid.NewGuid(), $"Document {i}");
@@ -249,6 +470,17 @@ public sealed class SignatureRequestCompletedConsumerTests
             SignatureFileUpload upload,
             CancellationToken ct = default
         ) => Task.FromResult(UploadError is { } error ? Result.Failure<Guid>(error) : Result.Success(Guid.NewGuid()));
+
+        public Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
+            Guid tenantId,
+            SignatureFileUpload upload,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                UploadError is { } error
+                    ? Result.Failure<SaveFileRequestedIntegrationEvent>(error)
+                    : Result.Success(FileRequest(tenantId, Guid.NewGuid()))
+            );
 
         public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             throw new NotSupportedException();

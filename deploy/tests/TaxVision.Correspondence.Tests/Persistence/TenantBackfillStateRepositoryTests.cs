@@ -27,6 +27,13 @@ public sealed class TenantBackfillStateRepositoryTests
             new NoTenantContext()
         );
 
+    private static TenantBackfillState Completed(Guid tenantId)
+    {
+        var state = TenantBackfillState.Start(tenantId);
+        state.ConfirmPage(1, isLastPage: true);
+        return state;
+    }
+
     [Fact]
     public async Task ListAllTenantIdsAsync_returns_every_backfilled_tenant()
     {
@@ -34,8 +41,9 @@ public sealed class TenantBackfillStateRepositoryTests
         var repository = new TenantBackfillStateRepository(db);
         var tenant1 = Guid.NewGuid();
         var tenant2 = Guid.NewGuid();
-        await repository.AddAsync(TenantBackfillState.Create(tenant1));
-        await repository.AddAsync(TenantBackfillState.Create(tenant2));
+        await repository.AddAsync(Completed(tenant1));
+        await repository.AddAsync(Completed(tenant2));
+        await repository.AddAsync(TenantBackfillState.Start(Guid.NewGuid()));
         await db.SaveChangesAsync();
 
         var tenantIds = await repository.ListAllTenantIdsAsync();

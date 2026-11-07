@@ -34,6 +34,14 @@ public interface ISaaSPaymentRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Id y tenant de los cobros directos en Pending sin cambios desde <paramref name="cutoffUtc"/>: su
+    /// comando se perdió o no dejó resultado. Cross-tenant, solo la llama <c>PendingChargeReconciliationJob</c>.</summary>
+    Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
     /// <summary>Cobros confirmados de un tenant real que siguen sin recibo pasado
     /// <paramref name="cutoffUtc"/> — batch job query, cross-tenant por diseño, solo la llama
     /// <c>MissingReceiptBackfillJob</c>.</summary>

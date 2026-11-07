@@ -51,18 +51,6 @@ public sealed class TenantUpdatedConsumerTests
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
-    [Fact]
-    public void A_redelivered_creation_does_not_overwrite_an_applied_rename()
-    {
-        var profile = TenantProfileRef.Create(Guid.NewGuid(), "Acme Tax", "acme-tax", T0);
-        profile.ApplyTenantUpdate("Acme Tax Group", T0, T0);
-
-        profile.Update("Acme Tax", "acme-new", T0.AddMinutes(1));
-
-        Assert.Equal("Acme Tax Group", profile.Name);
-        Assert.Equal("acme-new", profile.SubDomain);
-    }
-
     private static Task HandleAsync(
         TenantUpdatedIntegrationEvent evt,
         ITenantProfileRefRepository repository,
@@ -100,7 +88,7 @@ public sealed class TenantUpdatedConsumerTests
         public Task<TenantProfileRef?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult(_rows.GetValueOrDefault(tenantId));
 
-        public Task UpsertAsync(
+        public Task AddIfMissingAsync(
             Guid tenantId,
             string name,
             string subDomain,

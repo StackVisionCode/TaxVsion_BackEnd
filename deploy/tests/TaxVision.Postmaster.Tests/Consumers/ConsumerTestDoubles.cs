@@ -68,11 +68,15 @@ internal sealed class FakeMessageBus : IMessageBus
     /// <summary>Ejecuta un comando local en línea (como InvokeAsync de Wolverine); sin configurar, lanza.</summary>
     public Func<object, Task<object?>>? OnInvoke { get; set; }
 
+    /// <summary>Corre antes del comando; lanzar acá simula un conflicto al guardarlo.</summary>
+    public Action<object>? BeforeInvoke { get; set; }
+
     public List<object> Invoked { get; } = [];
 
     public async Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
     {
         Invoked.Add(message);
+        BeforeInvoke?.Invoke(message);
         _ = await (OnInvoke ?? throw new NotImplementedException()).Invoke(message);
     }
 
@@ -90,6 +94,7 @@ internal sealed class FakeMessageBus : IMessageBus
     )
     {
         Invoked.Add(message);
+        BeforeInvoke?.Invoke(message);
         return (T)(await (OnInvoke ?? throw new NotImplementedException()).Invoke(message))!;
     }
 

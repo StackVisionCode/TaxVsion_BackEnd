@@ -90,7 +90,7 @@ public sealed class PayableResolverConcurrencyIntegrationTests : IAsyncLifetime
             await using var db = NewContext();
             return await ResolveAsync(db, new BarrierLinks(new PaymentLinkRepository(db), barrier));
         }
-        catch (DbUpdateException)
+        catch (Exception ex) when (ex is DbUpdateException or BuildingBlocks.Results.ConflictException)
         {
             await using var retry = NewContext();
             return await ResolveAsync(retry, new PaymentLinkRepository(retry));

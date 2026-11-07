@@ -29,6 +29,113 @@ public sealed class TenantDomainTests
     }
 
     [Fact]
+    public void ChangeStatus_IncrementsVersion()
+    {
+        var tenant = NewTenant();
+
+        Assert.True(tenant.ChangeStatus(EnumTenantStatus.TenantStatus.Suspended).IsSuccess);
+
+        Assert.Equal(1, tenant.Version);
+        Assert.Equal(1, tenant.DomainEvents.OfType<TenantStatusChangedDomainEvent>().Single().Version);
+    }
+
+    [Fact]
+    public void ChangeStatus_SameStatus_DoesNotIncrement()
+    {
+        var tenant = NewTenant();
+
+        Assert.True(tenant.ChangeStatus(EnumTenantStatus.TenantStatus.Active).IsSuccess);
+
+        Assert.Equal(0, tenant.Version);
+    }
+
+    [Fact]
+    public void Suspend_IncrementsVersion()
+    {
+        var tenant = NewTenant();
+
+        Assert.True(tenant.Suspend().IsSuccess);
+
+        Assert.Equal(1, tenant.Version);
+    }
+
+    [Fact]
+    public void CloseForOnboardingCancellation_Replay_DoesNotIncrement()
+    {
+        var tenant = NewTenant();
+
+        Assert.True(tenant.CloseForOnboardingCancellation().IsSuccess);
+        Assert.True(tenant.CloseForOnboardingCancellation().IsSuccess);
+
+        Assert.Equal(1, tenant.Version);
+    }
+
+    [Fact]
+    public void Rename_IncrementsVersion()
+    {
+        var tenant = NewTenant();
+
+        Assert.True(tenant.Rename("Another", DateTime.UtcNow).Value);
+
+        Assert.Equal(1, tenant.Version);
+        Assert.Equal(1, tenant.DomainEvents.OfType<TenantUpdatedDomainEvent>().Single().Version);
+    }
+
+    [Fact]
+    public void Rename_NoChange_DoesNotIncrement()
+    {
+        var tenant = NewTenant();
+
+        Assert.False(tenant.Rename("Demo", DateTime.UtcNow).Value);
+
+        Assert.Equal(0, tenant.Version);
+    }
+
+    [Fact]
+    public void ChangeTimeZone_IncrementsVersion()
+    {
+        var tenant = NewTenant();
+
+        Assert.True(tenant.ChangeTimeZone("America/Chicago", DateTime.UtcNow).Value);
+
+        Assert.Equal(1, tenant.Version);
+    }
+
+    [Fact]
+    public void UpdateNameAndTimeZone_BothChange_IncrementsOnce()
+    {
+        var tenant = NewTenant();
+
+        Assert.True(tenant.UpdateNameAndTimeZone("Another", "America/Chicago", DateTime.UtcNow).Value);
+
+        Assert.Equal(1, tenant.Version);
+        Assert.Equal(1, tenant.DomainEvents.OfType<TenantUpdatedDomainEvent>().Single().Version);
+    }
+
+    [Fact]
+    public void ChangeSubDomain_IncrementsVersion()
+    {
+        var tenant = NewTenant();
+
+        Assert.True(tenant.ChangeSubDomain("another-slug").IsSuccess);
+
+        Assert.Equal(1, tenant.Version);
+    }
+
+    [Fact]
+    public void ChangeSubDomain_NoChange_DoesNotIncrement()
+    {
+        var tenant = NewTenant();
+
+        Assert.True(tenant.ChangeSubDomain("demo-office").IsSuccess);
+
+        Assert.Equal(0, tenant.Version);
+    }
+
+    private static TaxVision.Tenant.Domain.Tenant NewTenant() =>
+        TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York").Value;
+
+    [Fact]
     public void Only_active_tenant_can_be_suspended()
     {
         var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York").Value;

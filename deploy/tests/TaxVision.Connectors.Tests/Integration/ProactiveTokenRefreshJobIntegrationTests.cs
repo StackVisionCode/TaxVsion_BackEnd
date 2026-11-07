@@ -15,6 +15,7 @@ namespace TaxVision.Connectors.Tests.Integration;
 /// CON-08 contra SQL real: el refresh rechazado deja la cuenta en Error y el aviso juntos, o ninguno. El proveedor es
 /// falso y anota cuántas transacciones había abiertas cuando lo llamaron.
 /// </summary>
+[Collection(ConnectorsJobHost.Collection)]
 public sealed class ProactiveTokenRefreshJobIntegrationTests : IAsyncLifetime
 {
     private readonly ConnectorsJobHost _host = new("conrefresh");

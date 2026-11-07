@@ -19,6 +19,7 @@ public sealed class Category : TenantEntity
     public DateTime UpdatedAtUtc { get; private set; }
     public bool IsDeleted { get; private set; }
     public DateTime? DeletedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     private Category() { }
 

@@ -1,8 +1,10 @@
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Reconciliation;
 
@@ -27,6 +29,7 @@ public sealed class CustomerEmailReconciliationService(
     ICorrespondenceCustomerClient customerClient,
     ICustomerEmailAddressRepository emailRepository,
     IUnitOfWork unitOfWork,
+    IMessageBus bus,
     ILogger<CustomerEmailReconciliationService> logger
 ) : ICustomerEmailReconciliationService
 {
@@ -43,6 +46,7 @@ public sealed class CustomerEmailReconciliationService(
         var conflicts = 0;
         // Un solo guardado al final: FindActiveByAddressAsync no ve lo activado en esta corrida.
         var activatedInRun = new HashSet<string>();
+        var links = new List<LinkUnlinkedMailCommand>();
 
         var page = 1;
         while (true)
@@ -58,6 +62,7 @@ public sealed class CustomerEmailReconciliationService(
                     page
                 );
                 await SaveIfAnyFixAsync(created, updated, reactivated, ct);
+                await LinkMailAsync(links, ct);
                 return new CustomerEmailReconciliationResult(
                     created,
                     updated,
@@ -72,6 +77,19 @@ public sealed class CustomerEmailReconciliationService(
                 var outcome = await ReconcileCustomerAsync(tenantId, customer, readAtUtc, activatedInRun, ct);
                 if (outcome == ReconciliationOutcome.Conflict)
                     conflicts++;
+                if (
+                    outcome
+                    is ReconciliationOutcome.Created
+                        or ReconciliationOutcome.Updated
+                        or ReconciliationOutcome.Reactivated
+                )
+                    links.Add(
+                        new LinkUnlinkedMailCommand(
+                            tenantId,
+                            customer.Id,
+                            EmailAddress.Create(customer.PrimaryEmail).Value.NormalizedValue
+                        )
+                    );
                 (created, updated, reactivated) = ApplyOutcome(outcome, created, updated, reactivated);
             }
 
@@ -81,7 +99,24 @@ public sealed class CustomerEmailReconciliationService(
         }
 
         await SaveIfAnyFixAsync(created, updated, reactivated, ct);
+        await LinkMailAsync(links, ct);
         return new CustomerEmailReconciliationResult(created, updated, reactivated, CompletedFully: true, conflicts);
+    }
+
+    // COR-05: un importado entra por aquí, sin evento propio. Después de guardar, una unidad por cliente.
+    private async Task LinkMailAsync(List<LinkUnlinkedMailCommand> links, CancellationToken ct)
+    {
+        foreach (var link in links)
+        {
+            try
+            {
+                await bus.InvokeAsync(link, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Could not link pending mail for customer {CustomerId}.", link.CustomerId);
+            }
+        }
     }
 
     private enum ReconciliationOutcome

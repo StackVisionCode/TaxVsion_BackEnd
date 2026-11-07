@@ -68,7 +68,10 @@ public sealed record InvoicePayload(
     // instrucciones de pago y pie (gana sobre el pie de la marca). Retrocompatible (defaults).
     string? PaymentTerms = null,
     string? PaymentInstructions = null,
-    string? InvoiceFooter = null
+    string? InvoiceFooter = null,
+    // Lo pagado y el saldo, ya calculados por Billing. Retrocompatible (defaults).
+    decimal AmountPaid = 0m,
+    decimal AmountDue = 0m
 );
 
 /// <summary>Parte de la factura. Teléfono, correo y web son opcionales (hoy solo los manda el emisor):

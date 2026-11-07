@@ -1,8 +1,13 @@
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Backfill;
+using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Application.Projections.CustomerEvents;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
+using TaxVision.Correspondence.Tests.Backfill;
+using TaxVision.Correspondence.Tests.Ingest;
 
 namespace TaxVision.Correspondence.Tests.Projections;
 
@@ -43,6 +48,45 @@ public sealed class CustomerCreatedConsumerTests
         Assert.Equal(CustomerEmailSource.CustomerPrimary, stored.Source);
         Assert.True(stored.IsActive);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Handle_FirstEventForTenant_EnqueuesBackfillInsteadOfPaging()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var repository = new FakeCustomerEmailAddressRepository();
+        var client = new FakeCorrespondenceCustomerClient();
+        client.Seed(tenantId, new RemoteCustomerSummary(Guid.NewGuid(), "old@example.com", true));
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+        var backfill = new TenantCustomerBackfillService(new FakeTenantBackfillStateRepository(), bus);
+        var evt = new CustomerCreatedIntegrationEvent
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            Kind = "Individual",
+            DisplayName = "Jane Doe",
+            PrimaryEmail = "jane@example.com",
+            Language = "en",
+            CreatedByUserId = Guid.NewGuid(),
+        };
+
+        var link = await CustomerCreatedConsumer.Handle(
+            evt,
+            repository,
+            backfill,
+            unitOfWork,
+            new FakeCorrelationContext(),
+            NullLogger<CustomerEmailAddress>.Instance,
+            CancellationToken.None
+        );
+
+        // COR-05: lo que esta dirección escribió antes pasa a la ficha.
+        Assert.Equal(new LinkUnlinkedMailCommand(tenantId, customerId, "jane@example.com"), link);
+        Assert.Empty(client.RequestedPages);
+        Assert.Equal(tenantId, Assert.IsType<BackfillTenantCustomersCommand>(Assert.Single(bus.Published)).TenantId);
+        Assert.NotNull(await repository.GetByCustomerIdAsync(tenantId, customerId));
     }
 
     [Fact]

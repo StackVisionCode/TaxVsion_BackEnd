@@ -49,6 +49,10 @@ public sealed class NotificationLog : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
 
+    // Toca la raíz cuando cambia un intento: sin esto el token no vería ese cambio.
+    public DateTime? LastAttemptChangeAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
+
     /// <summary>
     /// Intentos por canal introducidos en Notifications Fase 2. Vacío hasta que los consumers
     /// (Fase 3+) empiecen a poblarlos. La existencia de esta colección no altera el estado
@@ -169,7 +173,11 @@ public sealed class NotificationLog : TenantEntity
                 new Error("NotificationLog.AttemptNotFound", $"Dispatch attempt {attemptId} not found on log {Id}.")
             );
         }
-        return attempt.Transition(newStatus, providerMessageId, errorReason, eventAtUtc ?? DateTime.UtcNow);
+        var at = eventAtUtc ?? DateTime.UtcNow;
+        var transition = attempt.Transition(newStatus, providerMessageId, errorReason, at);
+        if (transition.IsSuccess)
+            LastAttemptChangeAtUtc = DateTime.UtcNow;
+        return transition;
     }
 
     private static string Truncate(string value, int maxLength) =>

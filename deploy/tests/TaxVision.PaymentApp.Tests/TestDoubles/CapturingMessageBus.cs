@@ -9,6 +9,9 @@ internal sealed class CapturingMessageBus : IMessageBus
     public List<(object Message, string? TenantId)> Invoked { get; } = [];
     public string? TenantId { get; set; }
 
+    /// <summary>Si tiene valor, resuelve InvokeAsync con el handler real del comando.</summary>
+    public Func<object, object>? Route { get; set; }
+
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
         if (message is not null)
@@ -58,6 +61,8 @@ internal sealed class CapturingMessageBus : IMessageBus
     public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
     {
         Invoked.Add((message, TenantId));
+        if (Route is not null)
+            return (Task<T>)Route(message);
         if (typeof(T) == typeof(BuildingBlocks.Results.Result))
             return Task.FromResult((T)(object)BuildingBlocks.Results.Result.Success());
         throw new NotSupportedException();

@@ -22,9 +22,7 @@ public sealed class JobPublishingTests(ITestOutputHelper output) : JobPublishing
     protected override string SourceDirectory => "src/Services";
 
     protected override IReadOnlyDictionary<string, string> PendingAdoption { get; } =
-        new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-        };
+        new Dictionary<string, string>(StringComparer.Ordinal) { };
 
     protected override IReadOnlyDictionary<string, string> JustifiedExceptions { get; } =
         new Dictionary<string, string>(StringComparer.Ordinal)
@@ -34,11 +32,12 @@ public sealed class JobPublishingTests(ITestOutputHelper output) : JobPublishing
                 "PMS-08: solo InvokeAsync de handlers transaccionales; el poll sale al job con PMS-06",
             // Solo re-publica (anti-entropy cada 6 h) y no guarda nada: lo que no salga lo repite el pase siguiente.
             ["src/Services/Auth/Api/Jobs/PermissionsReconciliationService.cs"] = "AUTH-BB3: solo publica",
-            // No es un job: SaveFileRequested sale antes del commit a propósito (T-INT de SCR-07).
+            // No es un job. Tras SCR-08 lo siguen usando los seeders, que no tienen handler ni outbox, y los borradores.
             ["src/Services/Scribe/TaxVision.Scribe.Infrastructure/Storage/CloudStorageClient.cs"] =
-                "SCR-07: el archivo debe existir antes de que una fila lo apunte; peor caso: blob huérfano",
+                "SCR-07/08: los seeders suben sin handler y sin outbox; peor caso: blob huérfano",
             // Solo re-publican y no guardan. Reminder deduplica por RequestKey y el pedido de sala se repite la vuelta siguiente.
-            ["src/Services/Calendar/TaxVision.Calendar.Infrastructure/Jobs/ReminderScheduleJob.cs"] = "CAL-BB3: solo publica",
+            ["src/Services/Calendar/TaxVision.Calendar.Infrastructure/Jobs/ReminderScheduleJob.cs"] =
+                "CAL-BB3: solo publica",
             ["src/Services/Calendar/TaxVision.Calendar.Infrastructure/Jobs/MeetingLinkReconciliationJob.cs"] =
                 "CAL-BB3: solo publica",
             // Le pasa el bus a SmsReconciliation.RunAsync, que solo hace InvokeAsync de handlers transaccionales.

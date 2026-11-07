@@ -15,7 +15,8 @@ public sealed class InvoiceTemplateRenderingTests
         string status = "Pending",
         string paidDate = "",
         string paymentUrl = "",
-        Dictionary<string, object>? issuer = null
+        Dictionary<string, object>? issuer = null,
+        bool hasPayments = false
     ) =>
         new Dictionary<string, object?>
         {
@@ -27,6 +28,9 @@ public sealed class InvoiceTemplateRenderingTests
                 ["issueDate"] = "2026-07-25",
                 ["dueDate"] = "2026-08-25",
                 ["status"] = status,
+                ["hasPayments"] = hasPayments,
+                ["amountPaid"] = "900.00",
+                ["amountDue"] = "310.00",
                 ["paidDate"] = paidDate,
                 ["paymentUrl"] = paymentUrl,
                 ["paymentQr"] = "",
@@ -64,6 +68,27 @@ public sealed class InvoiceTemplateRenderingTests
                 ["notes"] = "Gracias por su confianza.",
             },
         };
+
+    // BIL-PDF1: lo pagado y el saldo salen solo si hubo pagos.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Shows_paid_and_balance_only_with_payments(bool hasPayments)
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+
+        var result = await renderer.RenderHtmlAsync(
+            "billing.invoice.v1",
+            1,
+            Guid.NewGuid(),
+            SampleData(status: "PartiallyPaid", hasPayments: hasPayments)
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(hasPayments, result.Value.Contains("Balance due"));
+        Assert.Equal(hasPayments, result.Value.Contains("900.00 EUR"));
+        Assert.Equal(hasPayments, result.Value.Contains("310.00 EUR"));
+    }
 
     [Fact]
     public async Task Renders_invoice_html_with_all_key_fields()

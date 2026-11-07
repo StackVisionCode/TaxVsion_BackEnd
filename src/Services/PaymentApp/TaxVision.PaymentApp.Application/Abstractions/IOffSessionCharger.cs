@@ -52,4 +52,10 @@ public enum OffSessionChargeStatus
     Succeeded,
     Failed,
     RequiresUserAction,
+
+    /// <summary>El provider sigue resolviendo el cargo: lo termina el webhook o la reconciliación.</summary>
+    Processing,
+
+    /// <summary>El provider no dijo si cobró: no se reintenta con clave nueva (D-PAY-13).</summary>
+    OutcomeUnknown,
 }

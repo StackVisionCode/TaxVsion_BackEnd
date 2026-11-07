@@ -9,6 +9,34 @@ namespace TaxVision.Tenant.Application.Tenants.Commands;
 /// proyecciones (Auth, PaymentApp, PaymentClient). Idempotente: los consumidores fijan el valor.</summary>
 public sealed record RepublishTenantStatusCommand(Guid TenantId);
 
+/// <summary>TEN-4: reposición de todas las oficinas, una por mensaje. Devuelve cuántas encoló.</summary>
+public sealed record RepublishAllTenantStatusCommand;
+
+public static class RepublishAllTenantStatusHandler
+{
+    private const int PageSize = 200;
+
+    public static async Task<int> Handle(
+        RepublishAllTenantStatusCommand _,
+        ITenantReadService tenants,
+        IMessageBus bus,
+        CancellationToken ct
+    )
+    {
+        var total = 0;
+        for (var page = 1; ; page++)
+        {
+            var batch = await tenants.GetPageAsync(page, PageSize, ct);
+            foreach (var tenant in batch)
+                await bus.PublishAsync(new RepublishTenantStatusCommand(tenant.Id));
+
+            total += batch.Count;
+            if (batch.Count < PageSize)
+                return total;
+        }
+    }
+}
+
 public static class RepublishTenantStatusHandler
 {
     public static async Task<Result> Handle(

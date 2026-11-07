@@ -14,4 +14,7 @@ public sealed record TenantUpdatedIntegrationEvent : IntegrationEvent
     public required string Name { get; init; }
     public required string DefaultTimeZoneId { get; init; }
     public required DateTime UpdatedAtUtc { get; init; }
+
+    /// <summary>Versión de la oficina al emitirlo. Null en mensajes viejos: ordena <see cref="UpdatedAtUtc"/>.</summary>
+    public long? TenantVersion { get; init; }
 }

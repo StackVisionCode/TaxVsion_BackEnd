@@ -20,6 +20,7 @@ using StackExchange.Redis;
 using TaxVision.Sms.Api.RateLimiting;
 using TaxVision.Sms.Application;
 using TaxVision.Sms.Infrastructure;
+using TaxVision.Sms.Infrastructure.Messaging;
 using TaxVision.Sms.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
@@ -150,7 +151,17 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, SmsDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // La liquidación de un SMS que ya salió espera al Wallet con reintentos largos, en una cola durable (BB-2).
+    options.Policies.Add(
+        new WalletSettleRetryPolicy(
+            builder.Configuration.GetSection(WalletSettleRetryOptions.SectionName).Get<WalletSettleRetryOptions>()
+                ?? new WalletSettleRetryOptions()
+        )
+    );
+    options.UseTaxVisionDurableLocalQueues();
 
     // Eventos de resultado publicados (agnósticos). Sin esto, bus.PublishAsync los descarta en silencio.
     options.PublishMessage<SmsMessageAcceptedIntegrationEvent>().ToRabbitExchange("taxvision-events");

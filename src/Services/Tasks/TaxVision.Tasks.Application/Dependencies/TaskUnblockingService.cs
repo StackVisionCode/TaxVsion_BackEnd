@@ -3,21 +3,24 @@ using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
-using Wolverine;
 
 namespace TaxVision.Tasks.Application.Dependencies;
 
 public sealed class TaskUnblockingService(
     ITaskRepository tasks,
     ITaskDependencyRepository dependencies,
-    IMessageBus bus,
     ICorrelationContext correlation
 ) : ITaskUnblockingService
 {
-    public async Task ApplyPredecessorClosedAsync(Guid tenantId, Guid predecessorTaskId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<TaskUnblockedIntegrationEvent>> ApplyPredecessorClosedAsync(
+        Guid tenantId,
+        Guid predecessorTaskId,
+        CancellationToken ct = default
+    )
     {
         var successors = await LoadSuccessorsAsync(tenantId, predecessorTaskId, ct);
         var nowUtc = DateTime.UtcNow;
+        var unblocked = new List<TaskUnblockedIntegrationEvent>();
 
         foreach (var successor in successors)
         {
@@ -26,8 +29,10 @@ public sealed class TaskUnblockingService(
             successor.RegisterBlockerResolved(nowUtc);
 
             if (wasBlocked && successor.OpenBlockerCount == 0)
-                await PublishUnblockedAsync(successor);
+                unblocked.Add(BuildUnblocked(successor));
         }
+
+        return unblocked;
     }
 
     public async Task ApplyPredecessorReopenedAsync(
@@ -51,17 +56,13 @@ public sealed class TaskUnblockingService(
         return successorIds.Count == 0 ? [] : await tasks.ListByIdsAsync(tenantId, successorIds, ct);
     }
 
-    private async Task PublishUnblockedAsync(TaskItem successor)
-    {
-        await bus.PublishAsync(
-            new TaskUnblockedIntegrationEvent
-            {
-                TenantId = successor.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                TaskId = successor.Id,
-                Title = successor.Title.Value,
-                AssigneeUserId = successor.AssigneeUserId,
-            }
-        );
-    }
+    private TaskUnblockedIntegrationEvent BuildUnblocked(TaskItem successor) =>
+        new()
+        {
+            TenantId = successor.TenantId,
+            CorrelationId = correlation.CorrelationId,
+            TaskId = successor.Id,
+            Title = successor.Title.Value,
+            AssigneeUserId = successor.AssigneeUserId,
+        };
 }

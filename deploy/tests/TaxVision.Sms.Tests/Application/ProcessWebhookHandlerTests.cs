@@ -1,10 +1,12 @@
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Sms.Application.Messages.Commands;
 using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Application.Webhooks.Commands;
 using TaxVision.Sms.Domain.Messages;
 using TaxVision.Sms.Domain.OptOut;
 using TaxVision.Sms.Domain.ValueObjects;
+using TaxVision.Sms.Domain.Webhooks;
 using TaxVision.Sms.Tests.Fakes;
 
 namespace TaxVision.Sms.Tests.Application;
@@ -15,6 +17,8 @@ public sealed class ProcessWebhookHandlerTests
     private static readonly Guid Customer = Guid.NewGuid();
     private const string Phone = "+18095551234";
     private const string ProviderCode = "fake";
+
+    private readonly FakePendingDeliveryReceiptRepository _pending = new();
 
     private static SmsMessage AcceptedMessage(string providerMessageId)
     {
@@ -48,6 +52,7 @@ public sealed class ProcessWebhookHandlerTests
             new FakeSmsAdapterFactory(provider),
             new FakeSmsWebhookSecrets(),
             new FakeProcessedWebhookRepository(),
+            new FakePendingDeliveryReceiptRepository(),
             new FakeSmsMessageRepository(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
@@ -77,6 +82,7 @@ public sealed class ProcessWebhookHandlerTests
             new FakeSmsAdapterFactory(provider),
             new FakeSmsWebhookSecrets(),
             processed,
+            _pending,
             messages,
             new FakeUnitOfWork(),
             bus,
@@ -87,6 +93,140 @@ public sealed class ProcessWebhookHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(SmsMessageStatus.Delivered, msg.Status);
         Assert.Single(processed.Added);
+        Assert.NotNull(bus.LastOfType<SmsMessageDeliveredIntegrationEvent>());
+    }
+
+    // SMS-04: sin cambio de estado no hay nada que avisar.
+    [Fact]
+    public async Task Second_dlr_type_after_delivered_does_not_republish()
+    {
+        var msg = AcceptedMessage("prov-1");
+        msg.MarkDelivered(DateTime.UtcNow);
+        var messages = new FakeSmsMessageRepository();
+        messages.SeedForProviderMessageId(msg);
+        var provider = new FakeSmsProvider
+        {
+            DeliveryUpdate = new SmsDeliveryUpdate("prov-1", "dlr-final", SmsCanonicalStatus.Delivered, null, null),
+        };
+        var processed = new FakeProcessedWebhookRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await ProcessDeliveryReceiptHandler.Handle(
+            new ProcessDeliveryReceiptCommand(ProviderCode, "{}", "sig"),
+            new FakeSmsAdapterFactory(provider),
+            new FakeSmsWebhookSecrets(),
+            processed,
+            _pending,
+            messages,
+            new FakeUnitOfWork(),
+            bus,
+            NullLogger<ProcessDeliveryReceiptCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(processed.Added);
+        Assert.Empty(bus.Published);
+    }
+
+    // Guardar antes de publicar: un guardado fallido no deja avisos sueltos.
+    [Fact]
+    public async Task Dlr_save_failure_publishes_nothing()
+    {
+        var msg = AcceptedMessage("prov-1");
+        var messages = new FakeSmsMessageRepository();
+        messages.SeedForProviderMessageId(msg);
+        var provider = new FakeSmsProvider
+        {
+            DeliveryUpdate = new SmsDeliveryUpdate("prov-1", "dlr", SmsCanonicalStatus.Delivered, null, null),
+        };
+        var bus = new FakeMessageBus();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ProcessDeliveryReceiptHandler.Handle(
+                new ProcessDeliveryReceiptCommand(ProviderCode, "{}", "sig"),
+                new FakeSmsAdapterFactory(provider),
+                new FakeSmsWebhookSecrets(),
+                new FakeProcessedWebhookRepository(),
+                new FakePendingDeliveryReceiptRepository(),
+                messages,
+                new FakeUnitOfWork { FailNextSave = true },
+                bus,
+                NullLogger<ProcessDeliveryReceiptCommand>.Instance,
+                CancellationToken.None
+            )
+        );
+
+        Assert.Empty(bus.Published);
+    }
+
+    // SMS-04: el DLR puede llegar antes del commit del envío. No se pierde: se aplica al aceptar.
+    [Fact]
+    public async Task Dlr_for_unknown_message_is_kept_and_applied_on_accept()
+    {
+        var messages = new FakeSmsMessageRepository();
+        var processed = new FakeProcessedWebhookRepository();
+        var provider = new FakeSmsProvider
+        {
+            DeliveryUpdate = new SmsDeliveryUpdate("prov-early", "dlr", SmsCanonicalStatus.Delivered, null, null),
+        };
+        var bus = new FakeMessageBus();
+
+        var received = await ProcessDeliveryReceiptHandler.Handle(
+            new ProcessDeliveryReceiptCommand(ProviderCode, "{}", "sig"),
+            new FakeSmsAdapterFactory(provider),
+            new FakeSmsWebhookSecrets(),
+            processed,
+            _pending,
+            messages,
+            new FakeUnitOfWork(),
+            bus,
+            NullLogger<ProcessDeliveryReceiptCommand>.Instance,
+            CancellationToken.None
+        );
+        Assert.True(received.IsSuccess);
+        Assert.Single(_pending.Receipts);
+
+        var msg = SmsMessage
+            .Create(
+                Tenant,
+                Customer,
+                PhoneE164.Create(Phone).Value,
+                SmsBody.Create("hi").Value,
+                "idem-early",
+                "corr-1",
+                Guid.NewGuid(),
+                ProviderCode,
+                "docs",
+                [],
+                DateTime.UtcNow
+            )
+            .Value;
+        await messages.AddAsync(msg);
+
+        await RecordSmsSendResultHandler.Handle(
+            new RecordSmsSendResultCommand(
+                Tenant,
+                msg.Id,
+                SmsSendOutcome.Accepted,
+                ProviderCode,
+                "prov-early",
+                null,
+                null
+            ),
+            messages,
+            new FakeSmsOptOutRepository(),
+            _pending,
+            processed,
+            new FakeUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
+
+        Assert.Equal(SmsMessageStatus.Delivered, msg.Status);
+        Assert.Empty(_pending.Receipts);
+        Assert.Single(processed.Added);
+        Assert.NotNull(bus.LastOfType<SmsMessageAcceptedIntegrationEvent>());
         Assert.NotNull(bus.LastOfType<SmsMessageDeliveredIntegrationEvent>());
     }
 
@@ -109,6 +249,7 @@ public sealed class ProcessWebhookHandlerTests
             new FakeSmsAdapterFactory(provider),
             new FakeSmsWebhookSecrets(),
             processed,
+            _pending,
             messages,
             new FakeUnitOfWork(),
             bus,
@@ -122,7 +263,7 @@ public sealed class ProcessWebhookHandlerTests
     }
 
     [Fact]
-    public async Task Dlr_for_unknown_message_is_ignored()
+    public async Task Repeated_dlr_for_unknown_message_is_kept_once()
     {
         var provider = new FakeSmsProvider
         {
@@ -130,21 +271,46 @@ public sealed class ProcessWebhookHandlerTests
         };
         var bus = new FakeMessageBus();
 
-        var result = await ProcessDeliveryReceiptHandler.Handle(
-            new ProcessDeliveryReceiptCommand(ProviderCode, "{}", "sig"),
-            new FakeSmsAdapterFactory(provider),
-            new FakeSmsWebhookSecrets(),
-            new FakeProcessedWebhookRepository(),
-            new FakeSmsMessageRepository(),
-            new FakeUnitOfWork(),
-            bus,
-            NullLogger<ProcessDeliveryReceiptCommand>.Instance,
+        for (var delivery = 0; delivery < 2; delivery++)
+        {
+            var result = await ProcessDeliveryReceiptHandler.Handle(
+                new ProcessDeliveryReceiptCommand(ProviderCode, "{}", "sig"),
+                new FakeSmsAdapterFactory(provider),
+                new FakeSmsWebhookSecrets(),
+                new FakeProcessedWebhookRepository(),
+                _pending,
+                new FakeSmsMessageRepository(),
+                new FakeUnitOfWork(),
+                bus,
+                NullLogger<ProcessDeliveryReceiptCommand>.Instance,
+                CancellationToken.None
+            );
+            Assert.True(result.IsSuccess);
+        }
+
+        Assert.Single(_pending.Receipts);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Purge_removes_only_the_receipts_past_the_retention()
+    {
+        var nowUtc = DateTime.UtcNow;
+        await _pending.AddAsync(Receipt("old", nowUtc.AddDays(-8)));
+        await _pending.AddAsync(Receipt("new", nowUtc.AddDays(-6)));
+
+        var removed = await PurgePendingDeliveryReceiptsHandler.Handle(
+            new PurgePendingDeliveryReceiptsCommand(7),
+            _pending,
             CancellationToken.None
         );
 
-        Assert.True(result.IsSuccess);
-        Assert.Empty(bus.Published);
+        Assert.Equal(1, removed.Value);
+        Assert.Equal("new", Assert.Single(_pending.Receipts).ProviderMessageId);
     }
+
+    private static PendingDeliveryReceipt Receipt(string providerMessageId, DateTime receivedAtUtc) =>
+        new(ProviderCode, providerMessageId, "dlr", nameof(SmsCanonicalStatus.Delivered), null, null, receivedAtUtc);
 
     // ─────────── Inbound STOP/START ───────────
 
@@ -399,6 +565,7 @@ public sealed class ProcessWebhookHandlerTests
             adapters,
             new FakeSmsWebhookSecrets(),
             new FakeProcessedWebhookRepository(),
+            new FakePendingDeliveryReceiptRepository(),
             new FakeSmsMessageRepository(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),

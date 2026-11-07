@@ -80,18 +80,13 @@ public sealed class RawMessageReceivedConsumerTests
         FakeUnmatchedIncomingEmailRepository unmatched,
         FakeUnitOfWork unitOfWork,
         FakeMessageBus bus,
-        bool enableUnmatchedDebug = false,
         bool enableSubjectThreadingFallback = false,
         FakeIngestMetrics? metrics = null,
         FakeDraftRepository? drafts = null
     )
     {
         var options = Options.Create(
-            new CorrespondenceIngestOptions
-            {
-                EnableUnmatchedDebug = enableUnmatchedDebug,
-                EnableSubjectThreadingFallback = enableSubjectThreadingFallback,
-            }
+            new CorrespondenceIngestOptions { EnableSubjectThreadingFallback = enableSubjectThreadingFallback }
         );
         var threadResolver = new ThreadResolver(threads, incomingEmails, drafts ?? new FakeDraftRepository(), options);
 
@@ -241,95 +236,95 @@ public sealed class RawMessageReceivedConsumerTests
     }
 
     [Fact]
-    public async Task Handle_creates_nothing_for_an_unknown_sender_when_debug_is_disabled()
+    public async Task Handle_SameMessageInSecondMailbox_AddsMailboxCopy()
     {
         var tenantId = Guid.NewGuid();
+        var customerEmails = new FakeCustomerEmailAddressRepository();
+        await SeedCustomerAsync(customerEmails, tenantId, "customer@example.com");
         var incomingEmails = new FakeIncomingEmailRepository();
         var threads = new FakeEmailThreadRepository();
-        var customerEmails = new FakeCustomerEmailAddressRepository();
         var unmatched = new FakeUnmatchedIncomingEmailRepository();
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
+        var maria = Guid.NewGuid();
+        var juan = Guid.NewGuid();
 
-        var evt = NewEvent(tenantId, "stranger@example.com");
+        foreach (var (account, providerId) in new[] { (maria, "pm-maria"), (juan, "pm-juan"), (juan, "pm-juan") })
+            await HandleAsync(
+                NewEvent(
+                    tenantId,
+                    "customer@example.com",
+                    providerMessageId: providerId,
+                    internetMessageId: "<x@example.com>",
+                    accountId: account
+                ),
+                incomingEmails,
+                threads,
+                customerEmails,
+                unmatched,
+                unitOfWork,
+                bus
+            );
 
-        await HandleAsync(
-            evt,
-            incomingEmails,
-            threads,
-            customerEmails,
-            unmatched,
-            unitOfWork,
-            bus,
-            enableUnmatchedDebug: false
-        );
-
-        Assert.Empty(incomingEmails.All);
-        Assert.Empty(threads.All);
-        Assert.Empty(unmatched.All);
-        Assert.Empty(bus.Published);
-        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+        var email = Assert.Single(incomingEmails.All);
+        Assert.Equal(maria, email.AccountId);
+        Assert.Equal([maria, juan], email.Mailboxes.Select(m => m.AccountId));
+        Assert.Equal("pm-juan", email.Mailboxes.Last().ProviderMessageId);
+        Assert.Equal(1, Assert.Single(threads.All).MessageCount);
+        // La copia del segundo buzón no avisa: el correo ya se anunció una vez.
+        Assert.Single(bus.Published.OfType<CorrespondenceCustomerEmailReceivedIntegrationEvent>());
     }
 
     [Fact]
-    public async Task Handle_records_UnmatchedIncomingEmail_for_an_unknown_sender_when_debug_is_enabled()
+    public async Task Handle_UnknownSender_IngestsAsNotAClient()
     {
         var tenantId = Guid.NewGuid();
         var incomingEmails = new FakeIncomingEmailRepository();
         var threads = new FakeEmailThreadRepository();
-        var customerEmails = new FakeCustomerEmailAddressRepository();
         var unmatched = new FakeUnmatchedIncomingEmailRepository();
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
 
-        var evt = NewEvent(tenantId, "stranger@example.com");
-
         await HandleAsync(
-            evt,
+            NewEvent(tenantId, "stranger@example.com", internetMessageId: "<s@example.com>", providerThreadId: "pt-1"),
             incomingEmails,
             threads,
-            customerEmails,
+            new FakeCustomerEmailAddressRepository(),
             unmatched,
             unitOfWork,
-            bus,
-            enableUnmatchedDebug: true
+            bus
         );
 
-        Assert.Empty(incomingEmails.All);
-        var record = Assert.Single(unmatched.All);
-        Assert.Equal(UnmatchedReason.NoCustomerMatch, record.Reason);
-        Assert.Equal(tenantId, record.TenantId);
-        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        var email = Assert.Single(incomingEmails.All);
+        Assert.Null(email.CustomerId);
+        var thread = Assert.Single(threads.All);
+        Assert.Null(thread.CustomerId);
+        Assert.Equal(thread.Id, email.EmailThreadId);
+        Assert.Empty(unmatched.All);
+        // Sin campana: boletines y spam no llegan a Notification.
+        Assert.Empty(bus.Published.OfType<CorrespondenceCustomerEmailReceivedIntegrationEvent>());
     }
 
     [Theory]
-    [InlineData("Fail", "Pass", "Pass")] // DMARC fail alone is enough
-    [InlineData("Pass", "Fail", "Fail")] // SPF+DKIM both fail
-    [InlineData("None", "Fail", "Fail")]
-    public async Task Handle_ingests_a_failed_authentication_email_marked_Unverified_never_quarantined(
-        string dmarc,
-        string spf,
-        string dkim
-    )
+    [InlineData("mailer-daemon@example.com")]
+    [InlineData("postmaster@example.com")]
+    [InlineData("MicrosoftExchange329e71ec88ae4615bbc36ab6ce41109e@example.com")]
+    public async Task Handle_UnknownSystemSender_IsNotIngested(string from)
     {
-        var tenantId = Guid.NewGuid();
         var incomingEmails = new FakeIncomingEmailRepository();
-        var threads = new FakeEmailThreadRepository();
-        var customerEmails = new FakeCustomerEmailAddressRepository();
-        var unmatched = new FakeUnmatchedIncomingEmailRepository();
-        var unitOfWork = new FakeUnitOfWork();
-        var bus = new FakeMessageBus();
-        await SeedCustomerAsync(customerEmails, tenantId, "customer@example.com");
 
-        var evt = NewEvent(tenantId, "customer@example.com", spf: spf, dkim: dkim, dmarc: dmarc);
+        await HandleAsync(
+            NewEvent(Guid.NewGuid(), from),
+            incomingEmails,
+            new FakeEmailThreadRepository(),
+            new FakeCustomerEmailAddressRepository(),
+            new FakeUnmatchedIncomingEmailRepository(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus()
+        );
 
-        await HandleAsync(evt, incomingEmails, threads, customerEmails, unmatched, unitOfWork, bus);
-
-        // Transparencia: entra al inbox marcado Unverified, NO a cuarentena oculta.
-        var email = Assert.Single(incomingEmails.All);
-        Assert.Equal(SenderTrust.Unverified, email.SenderTrust);
-        Assert.Empty(unmatched.All);
-        Assert.Single(bus.Published);
+        // Los avisos de no entrega los procesa Connectors: un hilo aquí los duplicaría.
+        Assert.Empty(incomingEmails.All);
     }
 
     [Fact]
@@ -741,8 +736,7 @@ public sealed class RawMessageReceivedConsumerTests
             new FakeCustomerEmailAddressRepository(),
             unmatched,
             new FakeUnitOfWork(),
-            new FakeMessageBus(),
-            enableUnmatchedDebug: false
+            new FakeMessageBus()
         );
 
         Assert.Empty(incomingEmails.All);
@@ -771,7 +765,6 @@ public sealed class RawMessageReceivedConsumerTests
             unmatched,
             unitOfWork,
             bus,
-            enableUnmatchedDebug: false,
             metrics: metrics
         );
 

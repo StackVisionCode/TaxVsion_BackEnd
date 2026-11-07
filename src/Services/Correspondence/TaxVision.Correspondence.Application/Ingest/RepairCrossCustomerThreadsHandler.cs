@@ -33,6 +33,9 @@ public static class RepairCrossCustomerThreadsHandler
 
         foreach (var email in foreign.OrderBy(e => e.ReceivedAtUtc))
         {
+            if (email.CustomerId is not { } customerId)
+                continue;
+
             if (!touched.TryGetValue(email.EmailThreadId, out var source))
             {
                 source = await threads.GetByIdAsync(tenantId, email.EmailThreadId, ct);
@@ -41,22 +44,17 @@ public static class RepairCrossCustomerThreadsHandler
                 touched[source.Id] = source;
             }
 
-            var key = (source.Id, email.CustomerId);
+            var key = (source.Id, customerId);
             if (!targets.TryGetValue(key, out var target))
             {
                 target = source.ProviderThreadId is null
                     ? null
-                    : await threads.FindByProviderThreadIdAsync(
-                        tenantId,
-                        email.CustomerId,
-                        source.ProviderThreadId,
-                        ct
-                    );
+                    : await threads.FindByProviderThreadIdAsync(tenantId, customerId, source.ProviderThreadId, ct);
                 if (target is null)
                 {
                     var newThread = EmailThread.NewFromMessage(
                         tenantId,
-                        email.CustomerId,
+                        customerId,
                         source.Subject,
                         source.ProviderThreadId,
                         email.ReceivedAtUtc

@@ -61,7 +61,11 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
             .TenantPayments.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(payment =>
-                (payment.Status == PaymentStatus.Processing || payment.Status == PaymentStatus.RequiresAction)
+                (
+                    payment.Status == PaymentStatus.Processing
+                    || payment.Status == PaymentStatus.RequiresAction
+                    || payment.Status == PaymentStatus.Pending
+                )
                 && payment.UpdatedAtUtc < stuckBeforeUtc
                 && payment.CreatedAtUtc > createdAfterUtc
             )

@@ -83,8 +83,9 @@ public sealed class WalletController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<TopUpCheckoutView>>(
-            new TopUpWalletCommand(
+        var result = await TopUpCheckoutFlow.RunAsync(
+            bus,
+            new TopUpCheckoutRequest(
                 tenantId,
                 userId,
                 request.AmountCents,

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Sms.Application;
 using TaxVision.Sms.Application.Webhooks.Commands;
+using TaxVision.Sms.Infrastructure.Locking;
 using Wolverine;
 
 namespace TaxVision.Sms.Infrastructure.Jobs;
@@ -18,10 +19,13 @@ namespace TaxVision.Sms.Infrastructure.Jobs;
 /// </summary>
 public sealed class SmsStatusReconciliationService(
     IServiceProvider services,
+    IJobLeaderLock leaderLock,
     IOptions<SmsOptions> options,
     ILogger<SmsStatusReconciliationService> logger
 ) : BackgroundService
 {
+    private const string LeaderLockKey = "sms:reconcile";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var config = options.Value.Reconciliation;
@@ -69,8 +73,16 @@ public sealed class SmsStatusReconciliationService(
         }
     }
 
-    private async Task TickAsync(SmsReconciliationOptions config, CancellationToken ct)
+    /// <summary>Una vuelta. Con varias réplicas la corre solo la que tiene el candado.</summary>
+    public async Task TickAsync(SmsReconciliationOptions config, CancellationToken ct)
     {
+        await using var lease = await leaderLock.TryAcquireAsync(
+            LeaderLockKey,
+            TimeSpan.FromSeconds(Math.Max(1, config.LeaderLockSeconds))
+        );
+        if (lease is null)
+            return;
+
         using var scope = services.CreateScope();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
         await SmsReconciliation.RunAsync(
@@ -82,6 +94,10 @@ public sealed class SmsStatusReconciliationService(
                 config.PendingTimeoutMinutes,
                 config.OutcomeUnknownTimeoutMinutes
             ),
+            ct
+        );
+        await bus.InvokeAsync<Result<int>>(
+            new PurgePendingDeliveryReceiptsCommand(config.PendingReceiptRetentionDays),
             ct
         );
     }

@@ -62,6 +62,14 @@ public interface IPaymentProvider
         CancellationToken ct
     );
 
+    /// <summary>Busca el cargo de un pago que quedó sin resultado (no hay referencia guardada). Devuelve null si el
+    /// proveedor confirma que no existe; un fallo significa que no se pudo saber y el pago no se toca.</summary>
+    Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeSearch search,
+        CancellationToken ct
+    );
+
     /// <summary>Cancela un cobro abandonado (D-PCL-1) y devuelve el estado en que quedó. Si el proveedor ya
     /// lo completó, no cancela y devuelve <c>Succeeded</c>; si sigue en curso, <c>Processing</c>.</summary>
     Task<Result<WebhookEventPayload>> CancelChargeAsync(

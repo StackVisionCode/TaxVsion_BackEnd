@@ -254,12 +254,6 @@ public sealed class SubscriptionStatusChangedPublishingTests
             .Value;
     }
 
-    private sealed class NoCheckoutToCancel : IHostedCheckoutCancellationClient
-    {
-        public Task<Result> CancelAsync(Guid tenantId, Guid saaSPaymentId, CancellationToken ct = default) =>
-            Task.FromResult(Result.Success());
-    }
-
     /// <summary>Corre el handler resolviendo sus parámetros por tipo, sin atarse a su firma.</summary>
     private sealed class Fixture(TenantSubscription subscription, SubscriptionPlan plan, params object[] extra)
     {
@@ -278,7 +272,6 @@ public sealed class SubscriptionStatusChangedPublishingTests
                 new FakeCorrelationContext(),
                 new FakeSubscriptionAuditLogWriter(),
                 new FakeSubscriptionMetrics(),
-                new NoCheckoutToCancel(),
             };
             var method = handler
                 .GetMethods(BindingFlags.Public | BindingFlags.Static)

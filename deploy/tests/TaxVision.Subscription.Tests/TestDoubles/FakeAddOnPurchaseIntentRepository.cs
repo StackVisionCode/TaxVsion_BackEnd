@@ -19,6 +19,23 @@ public sealed class FakeAddOnPurchaseIntentRepository : IAddOnPurchaseIntentRepo
     public Task<AddOnPurchaseIntent?> GetByIdAsync(Guid intentId, Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(Added.FirstOrDefault(intent => intent.Id == intentId && intent.TenantId == tenantId));
 
+    public Task<AddOnPurchaseIntent?> GetUnattachedByTenantAsync(
+        Guid tenantId,
+        string addOnCode,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            Added
+                .Where(intent =>
+                    intent.TenantId == tenantId
+                    && intent.AddOnCode == addOnCode
+                    && intent.Status == AddOnPurchaseIntentStatus.Pending
+                    && intent.CheckoutUrl == null
+                )
+                .OrderByDescending(intent => intent.CreatedAtUtc)
+                .FirstOrDefault()
+        );
+
     public Task<AddOnPurchaseIntent?> GetOpenByTenantAsync(
         Guid tenantId,
         string addOnCode,

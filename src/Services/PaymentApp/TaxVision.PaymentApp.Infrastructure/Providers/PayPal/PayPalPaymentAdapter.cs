@@ -33,6 +33,13 @@ public sealed class PayPalPaymentAdapter(
             )
         );
 
+    /// <summary>PayPal no busca órdenes por <c>custom_id</c>: sin referencia no se puede saber.</summary>
+    public Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    ) => Task.FromResult(Result.Success(new ChargeLookup(ChargeLookupOutcome.NotSupported)));
+
     public Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
         ChargeAuthorizationRequest request,
         CancellationToken ct

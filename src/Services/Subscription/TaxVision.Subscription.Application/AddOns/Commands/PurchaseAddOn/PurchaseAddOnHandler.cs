@@ -38,6 +38,10 @@ public static class PurchaseAddOnHandler
         CancellationToken ct
     )
     {
+        var replay = await ReplayAsync(command, tenantAddOns, ct);
+        if (replay is not null)
+            return replay;
+
         var validation = await AddOnPurchaseEligibility.EnsurePurchasableAsync(
             command.TenantId,
             command.AddOnCode,
@@ -70,7 +74,8 @@ public static class PurchaseAddOnHandler
             billingCycle,
             command.AutoRenew,
             command.RequestedByUserId,
-            nowUtc
+            nowUtc,
+            RequestedAddOnId(command)
         );
         if (addOnResult.IsFailure)
             return Result.Failure<Guid>(addOnResult.Error);
@@ -151,6 +156,35 @@ public static class PurchaseAddOnHandler
         );
 
         return Result.Success(addOn.Id);
+    }
+
+    private static Guid? RequestedAddOnId(PurchaseAddOnCommand command) =>
+        string.IsNullOrWhiteSpace(command.ClientRequestKey)
+            ? null
+            : PurchaseRequestIds.AddOn(command.TenantId, command.ClientRequestKey);
+
+    // SUB-12: va antes de la elegibilidad. Un add-on de instancia única ya comprado no debe responder AlreadyActive.
+    private static async Task<Result<Guid>?> ReplayAsync(
+        PurchaseAddOnCommand command,
+        ITenantAddOnRepository tenantAddOns,
+        CancellationToken ct
+    )
+    {
+        if (RequestedAddOnId(command) is not { } addOnId)
+            return null;
+
+        var existing = await tenantAddOns.GetByIdAsync(addOnId, command.TenantId, ct);
+        if (existing is null)
+            return null;
+
+        var sameRequest =
+            string.Equals(existing.AddOnCode, command.AddOnCode, StringComparison.OrdinalIgnoreCase)
+            && existing.Quantity == command.Quantity;
+        return sameRequest
+            ? Result.Success(existing.Id)
+            : Result.Failure<Guid>(
+                new Error("AddOn.IdempotencyKeyReused", "This Idempotency-Key was already used for another purchase.")
+            );
     }
 
     // Cargo del período parcial inicial, prorrateado por días sobre el período vigente de la base.

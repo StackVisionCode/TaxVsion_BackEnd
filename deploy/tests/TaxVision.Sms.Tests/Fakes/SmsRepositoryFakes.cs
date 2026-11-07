@@ -29,8 +29,7 @@ internal sealed class FakeSmsMessageRepository : ISmsMessageRepository
         Guid tenantId,
         string idempotencyKey,
         CancellationToken ct = default
-    ) =>
-        Task.FromResult(All().FirstOrDefault(m => m.TenantId == tenantId && m.IdempotencyKey == idempotencyKey));
+    ) => Task.FromResult(All().FirstOrDefault(m => m.TenantId == tenantId && m.IdempotencyKey == idempotencyKey));
 
     public Task<SmsMessage?> GetByProviderMessageIdAsync(
         string providerCode,
@@ -91,10 +90,8 @@ internal sealed class FakeSmsMessageRepository : ISmsMessageRepository
                             m.Status == SmsMessageStatus.Pending
                             && m.ProviderMessageId == null
                             && m.SendAttemptedAtUtc < pendingBeforeUtc
-                        )
-                        || (m.Status == SmsMessageStatus.OutcomeUnknown && m.SendAttemptedAtUtc < unknownBeforeUtc)
-                    )
-                    && (tenantId is null || m.TenantId == tenantId)
+                        ) || (m.Status == SmsMessageStatus.OutcomeUnknown && m.SendAttemptedAtUtc < unknownBeforeUtc)
+                    ) && (tenantId is null || m.TenantId == tenantId)
                 )
                 .OrderBy(m => m.SendAttemptedAtUtc)
                 .Take(limit),
@@ -107,7 +104,10 @@ internal sealed class FakeSmsMessageRepository : ISmsMessageRepository
         Guid tenantId,
         Guid batchId,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<SmsMessage>>([.. All().Where(m => m.TenantId == tenantId && m.BatchId == batchId)]);
+    ) =>
+        Task.FromResult<IReadOnlyList<SmsMessage>>([
+            .. All().Where(m => m.TenantId == tenantId && m.BatchId == batchId),
+        ]);
 
     private IEnumerable<SmsMessage> All() => _byIdempotency.Concat(_byProviderMessageId).Concat(Added).Distinct();
 
@@ -156,6 +156,45 @@ internal sealed class FakeSmsOptOutRepository : ISmsOptOutRepository
         Added.Add(optOut);
         return Task.CompletedTask;
     }
+}
+
+internal sealed class FakePendingDeliveryReceiptRepository : IPendingDeliveryReceiptRepository
+{
+    public List<PendingDeliveryReceipt> Receipts { get; } = [];
+
+    public Task<bool> ExistsAsync(
+        string providerCode,
+        string providerMessageId,
+        string eventType,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            Receipts.Exists(r =>
+                r.ProviderCode == providerCode && r.ProviderMessageId == providerMessageId && r.EventType == eventType
+            )
+        );
+
+    public Task AddAsync(PendingDeliveryReceipt receipt, CancellationToken ct = default)
+    {
+        Receipts.Add(receipt);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<PendingDeliveryReceipt>> ListAsync(
+        string providerCode,
+        string providerMessageId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<PendingDeliveryReceipt>>([
+            .. Receipts
+                .Where(r => r.ProviderCode == providerCode && r.ProviderMessageId == providerMessageId)
+                .OrderBy(r => r.ReceivedAtUtc),
+        ]);
+
+    public void Remove(PendingDeliveryReceipt receipt) => Receipts.Remove(receipt);
+
+    public Task<int> DeleteReceivedBeforeAsync(DateTime cutoffUtc, CancellationToken ct = default) =>
+        Task.FromResult(Receipts.RemoveAll(r => r.ReceivedAtUtc < cutoffUtc));
 }
 
 internal sealed class FakeProcessedWebhookRepository : IProcessedWebhookRepository

@@ -144,6 +144,8 @@ public sealed class AppointmentVisibilityFilterTests
         public void Add(Appointment appointment) { }
 
         public void Remove(Appointment appointment) { }
+
+        public void DiscardPendingChanges() { }
     }
 
     private sealed class NoOpMetrics : ICalendarMetrics

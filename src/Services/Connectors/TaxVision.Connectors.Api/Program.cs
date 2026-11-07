@@ -170,6 +170,7 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // CON-11: "pasa a Error y avisa" sale del agregado por la cola domain-events, en orden de commit.
@@ -207,6 +208,10 @@ builder.Host.UseWolverine(options =>
     // Push de Gmail: mismo esquema que Graph, cola local durable y respuesta inmediata.
     options
         .PublishMessage<TaxVision.Connectors.Application.Sync.GmailPushReceived>()
+        .ToLocalQueue("gmail-webhook")
+        .UseDurableInbox();
+    options
+        .PublishMessage<TaxVision.Connectors.Application.Sync.GmailAccountPushReceived>()
         .ToLocalQueue("gmail-webhook")
         .UseDurableInbox();
 

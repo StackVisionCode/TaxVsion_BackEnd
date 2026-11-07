@@ -64,6 +64,7 @@ public sealed class CustomerProjectionReconciliationIntegrationTests : IAsyncLif
         services.AddScoped<ICustomerEmailAddressRepository, CustomerEmailAddressRepository>();
         services.AddSingleton<ICustomerReconciliationClient>(client);
         services.AddSingleton<ICorrelationContext, FakeCorrelationContext>();
+        services.AddSingleton<Wolverine.IMessageBus, TaxVision.Correspondence.Tests.Ingest.FakeMessageBus>();
         await using var provider = services.BuildServiceProvider();
         var job = new CustomerProjectionReconciliationJob(
             provider,

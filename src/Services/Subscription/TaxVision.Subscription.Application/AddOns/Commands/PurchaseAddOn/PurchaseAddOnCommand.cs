@@ -6,5 +6,6 @@ public sealed record PurchaseAddOnCommand(
     string AddOnCode,
     int Quantity,
     bool AutoRenew,
-    Guid RequestedByUserId
+    Guid RequestedByUserId,
+    string? ClientRequestKey = null
 );

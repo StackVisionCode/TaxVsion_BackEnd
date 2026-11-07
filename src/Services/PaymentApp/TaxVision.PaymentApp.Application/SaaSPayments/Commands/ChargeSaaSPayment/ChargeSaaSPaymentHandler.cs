@@ -7,12 +7,16 @@ using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
 using TaxVision.PaymentApp.Application.Common.Branding;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ExecuteSaaSPaymentCharge;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.ChargeSaaSPayment;
 
+/// <summary>Paso 1 del cobro (patrón BB-8): guarda el pago en <c>Pending</c> y deja el comando que llama al provider
+/// en la misma transacción. Sin tarjeta guardada no hay nada que mandar y el pago se cierra acá.</summary>
 public static class ChargeSaaSPaymentHandler
 {
     /// <summary>Descriptor por defecto para todo cobro SaaS en Fase A. Personalización por
@@ -28,6 +32,7 @@ public static class ChargeSaaSPaymentHandler
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -51,7 +56,37 @@ public static class ChargeSaaSPaymentHandler
         metrics.RecordAttempted(command.Provider.ToString(), command.Type.ToString());
 
         var adapter = providerFactory.Resolve(command.Provider);
-        await ExecuteChargeAsync(payment, adapter, providerCustomers, command, metrics, ct);
+        var payerResult = await SaaSPaymentChargeOutcome.ResolvePayerAsync(
+            command.TenantId,
+            providerCustomers,
+            adapter,
+            ct
+        );
+        if (payerResult.IsSuccess)
+        {
+            // Guardar antes de publicar: fila y comando salen juntos o no sale ninguno.
+            await unitOfWork.SaveChangesAsync(ct);
+            await bus.PublishAsync(
+                new ExecuteSaaSPaymentChargeCommand(
+                    command.TenantId,
+                    payment.Id,
+                    SaaSPaymentChargeStrategy.Authorize,
+                    payerResult.Value.Method.Token,
+                    payerResult.Value.Customer.Token,
+                    command.RequestedByUserId,
+                    correlation.CorrelationId
+                )
+            );
+            return Result.Success(payment.Id);
+        }
+
+        SaaSPaymentChargeOutcome.FailPayment(
+            payment,
+            payerResult.Error,
+            command.RequestedByUserId,
+            SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, DateTime.UtcNow),
+            metrics
+        );
 
         await AuditEntryFactory.AppendAsync(
             audit,
@@ -121,69 +156,5 @@ public static class ChargeSaaSPaymentHandler
                 ChargeBreakdowns.FromRequest(command.Quantity, command.UnitAmountCents, amountResult.Value.AmountCents)
             )
             .WithConceptFor(command.Type, command.Quantity);
-    }
-
-    private static async Task ExecuteChargeAsync(
-        SaaSPayment payment,
-        IPaymentProvider adapter,
-        ITenantProviderCustomerRepository providerCustomers,
-        ChargeSaaSPaymentCommand command,
-        IPaymentAppMetrics metrics,
-        CancellationToken ct
-    )
-    {
-        var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, DateTime.UtcNow);
-
-        var payerResult = await SaaSPaymentChargeOutcome.ResolvePayerAsync(
-            command.TenantId,
-            providerCustomers,
-            adapter,
-            ct
-        );
-        if (payerResult.IsFailure)
-        {
-            SaaSPaymentChargeOutcome.FailPayment(
-                payment,
-                payerResult.Error,
-                command.RequestedByUserId,
-                nextRetryAtUtc,
-                metrics
-            );
-            return;
-        }
-
-        var chargeRequest = new ChargeAuthorizationRequest(
-            Customer: payerResult.Value.Customer,
-            Amount: payment.Amount,
-            IdempotencyKey: payment.ProviderIdempotencyKeyForNextAttempt(),
-            Descriptor: payment.StatementDescriptor,
-            Metadata: new Dictionary<string, string>
-            {
-                ["tenantId"] = command.TenantId.ToString("N"),
-                ["saaSPaymentId"] = payment.Id.ToString("N"),
-            },
-            SpecificPaymentMethod: payerResult.Value.Method
-        );
-
-        var chargeResult = await adapter.AuthorizeChargeAsync(chargeRequest, ct);
-        if (chargeResult.IsFailure)
-        {
-            SaaSPaymentChargeOutcome.FailPayment(
-                payment,
-                chargeResult.Error,
-                command.RequestedByUserId,
-                nextRetryAtUtc,
-                metrics
-            );
-            return;
-        }
-
-        SaaSPaymentChargeOutcome.ApplyChargeOutcome(
-            payment,
-            chargeResult.Value,
-            command.RequestedByUserId,
-            nextRetryAtUtc,
-            metrics
-        );
     }
 }

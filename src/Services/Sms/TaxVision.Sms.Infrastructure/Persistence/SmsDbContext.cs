@@ -26,6 +26,7 @@ public sealed class SmsDbContext(DbContextOptions<SmsDbContext> options, ITenant
     public DbSet<SmsMedia> SmsMedia => Set<SmsMedia>();
     public DbSet<SmsOptOut> SmsOptOuts => Set<SmsOptOut>();
     public DbSet<ProcessedWebhook> ProcessedWebhooks => Set<ProcessedWebhook>();
+    public DbSet<PendingDeliveryReceipt> PendingDeliveryReceipts => Set<PendingDeliveryReceipt>();
 
     // RBAC Fase 7 — proyección local de permisos (mantenida por los eventos de Auth) que consulta
     // ProjectionPermissionsSource para autorizar [HasPermission] sin llamar a Auth en el hot path.
@@ -77,6 +78,14 @@ public sealed class SmsDbContext(DbContextOptions<SmsDbContext> options, ITenant
         try
         {
             return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The record changed while the operation was in progress.",
+                ex
+            );
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {

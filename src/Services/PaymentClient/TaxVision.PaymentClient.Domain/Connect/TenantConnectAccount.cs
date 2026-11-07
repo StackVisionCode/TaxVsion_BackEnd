@@ -24,6 +24,10 @@ public sealed class TenantConnectAccount : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Fecha del proveedor del último evento aplicado; Stripe no garantiza el orden de entrega.</summary>
+    public DateTime? LastProviderEventAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
+
     private TenantConnectAccount() { }
 
     /// <summary>Se llama justo después de que Infrastructure crea la Account en Stripe — el
@@ -81,11 +85,15 @@ public sealed class TenantConnectAccount : TenantEntity
     /// habilitado y cero requirements pendientes; perder <c>chargesEnabled</c> desde Enabled
     /// degrada a Restricted; recuperarlo vuelve a Enabled. <c>Disabled</c> es terminal — solo
     /// <see cref="Deactivate"/> (acción de admin) lo alcanza.</summary>
+    /// <summary>Un evento más viejo que el último aplicado llegó fuera de orden: no debe pisar el estado.</summary>
+    public bool IsStaleProviderEvent(DateTime? occurredAtUtc) => occurredAtUtc < LastProviderEventAtUtc;
+
     public Result UpdateFromWebhook(
         bool chargesEnabled,
         bool payoutsEnabled,
         IReadOnlyList<string> requirementsCurrentlyDue,
-        DateTime nowUtc
+        DateTime nowUtc,
+        DateTime? occurredAtUtc = null
     )
     {
         if (Status == ConnectAccountStatus.Disabled)
@@ -111,6 +119,7 @@ public sealed class TenantConnectAccount : TenantEntity
         if (Status == ConnectAccountStatus.Enabled)
             OnboardingStep = OnboardingStep.Completed;
 
+        LastProviderEventAtUtc = occurredAtUtc ?? LastProviderEventAtUtc;
         UpdatedAtUtc = nowUtc;
         return Result.Success();
     }

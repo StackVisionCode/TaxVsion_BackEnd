@@ -89,6 +89,19 @@ public sealed class AppointmentTests
     }
 
     [Fact]
+    public void A_response_does_not_change_the_schedule_stamp_but_a_new_time_does()
+    {
+        var appointment = ScheduledWithAttendee();
+        var stamp = appointment.ScheduleStamp;
+
+        appointment.RespondAsAttendee(AttendeeResponse.Accepted, Attendee, null, null, Now);
+        Assert.Equal(stamp, appointment.ScheduleStamp);
+
+        appointment.Reschedule(Timing(20), Organizer, canManageAll: false, Now);
+        Assert.NotEqual(stamp, appointment.ScheduleStamp);
+    }
+
+    [Fact]
     public void Rescheduling_clears_the_answers_that_were_given_for_the_old_time()
     {
         var appointment = ScheduledWithAttendee();

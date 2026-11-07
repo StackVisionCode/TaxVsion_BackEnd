@@ -1,6 +1,5 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Resilience;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
@@ -24,7 +23,7 @@ public sealed class OAuthTokenManager(
     HttpResiliencePipelineRegistry circuitBreakers,
     IEncryptedSecretProtector protector,
     IDistributedLock distributedLock,
-    IUnitOfWork unitOfWork,
+    IOAuthTokenStore tokenStore,
     IMailboxFailureUnit failureUnit,
     ICorrelationContext correlation,
     ILogger<OAuthTokenManager> logger
@@ -36,7 +35,7 @@ public sealed class OAuthTokenManager(
 
     public async Task<Result<string>> GetValidAccessTokenAsync(Guid accountId, CancellationToken ct = default)
     {
-        var connectionResult = await connectionRepository.GetByAccountIdAsync(accountId, ct);
+        var connectionResult = await connectionRepository.GetByAccountIdReadOnlyAsync(accountId, ct);
         if (connectionResult.IsFailure)
             return Result.Failure<string>(connectionResult.Error);
 
@@ -55,7 +54,7 @@ public sealed class OAuthTokenManager(
             );
 
         // Double-checked: otro nodo puede haber refrescado mientras esperábamos el lock.
-        connectionResult = await connectionRepository.GetByAccountIdAsync(accountId, ct);
+        connectionResult = await connectionRepository.GetByAccountIdReadOnlyAsync(accountId, ct);
         if (connectionResult.IsFailure)
             return Result.Failure<string>(connectionResult.Error);
 
@@ -66,9 +65,20 @@ public sealed class OAuthTokenManager(
         return await RefreshAsync(accountId, connectionResult.Value, ct);
     }
 
-    /// <summary>Devuelve el access token vigente sin refrescar, o null si expira dentro de <see cref="RefreshBuffer"/>.</summary>
+    /// <summary>
+    /// El access token vigente sin refrescar, o null si expira dentro de <see cref="RefreshBuffer"/>. Una conexión
+    /// vencida o revocada falla acá: refrescarla solo volvería a fallar.
+    /// </summary>
     private Result<string>? TryGetFreshAccessToken(OAuthConnection connection)
     {
+        if (connection.Status != OAuthConnectionStatus.Active)
+            return Result.Failure<string>(
+                new Error(
+                    OAuthTokenErrorCodes.ConnectionNotActive,
+                    $"OAuthConnection {connection.Id} is {connection.Status}; the mailbox must be reconnected."
+                )
+            );
+
         if (connection.Token is null)
             return Result.Failure<string>(
                 new Error(OAuthTokenErrorCodes.NoToken, $"OAuthConnection {connection.Id} has no token attached.")
@@ -164,15 +174,20 @@ public sealed class OAuthTokenManager(
 
         var granted = grant!;
         var now = DateTime.UtcNow;
-        connection.Token.UpdateAccessToken(
-            protector.Protect(granted.AccessToken),
-            now.AddSeconds(granted.ExpiresInSeconds),
-            now
-        );
-        if (granted.RefreshToken is not null)
-            connection.Token.UpdateRefreshToken(protector.Protect(granted.RefreshToken));
+        var accessCipher = protector.Protect(granted.AccessToken);
+        var refreshCipher = granted.RefreshToken is null ? null : protector.Protect(granted.RefreshToken);
 
-        await unitOfWork.SaveChangesAsync(ct);
+        // Antes de soltar el lock y sin atarse al que llamó: el proveedor ya rotó el token.
+        await tokenStore.SaveAsync(
+            accountId,
+            token =>
+            {
+                token.UpdateAccessToken(accessCipher, now.AddSeconds(granted.ExpiresInSeconds), now);
+                if (refreshCipher is not null)
+                    token.UpdateRefreshToken(refreshCipher);
+            },
+            CancellationToken.None
+        );
         return Result.Success(granted.AccessToken);
     }
 
@@ -202,10 +217,14 @@ public sealed class OAuthTokenManager(
                     return false;
                 }
 
+                // El grant está muerto aunque la cuenta ya estuviera en Error por otra causa.
+                var found = await stores.Connections.GetByAccountIdAsync(accountId, token);
+                var expired = found.IsSuccess && found.Value.MarkExpired().IsSuccess;
+
                 // Se avisa solo al pasar a Error. Si ya estaba en Error (o la desconectaron), el usuario
                 // ya fue avisado: publicar en cada intento creaba una notificación por intento.
                 if (account.Value.MarkError(cause, DateTime.UtcNow).IsFailure)
-                    return false;
+                    return expired;
 
                 await StopWatchRenewalAsync(stores, accountId, token);
                 return true;

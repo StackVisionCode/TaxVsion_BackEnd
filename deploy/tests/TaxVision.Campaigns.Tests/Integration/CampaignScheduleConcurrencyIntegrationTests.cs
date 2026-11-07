@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Campaigns.Domain.Scheduling;
 
@@ -37,6 +38,7 @@ public sealed class CampaignScheduleConcurrencyIntegrationTests : IAsyncLifetime
         await first.SaveChangesAsync();
 
         b.MarkFired(Guid.NewGuid(), DateTime.UtcNow);
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
+        var conflict = await Assert.ThrowsAsync<ConflictException>(() => second.SaveChangesAsync());
+        Assert.Equal("Persistence.ConcurrencyConflict", conflict.Code);
     }
 }

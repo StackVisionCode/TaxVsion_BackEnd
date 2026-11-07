@@ -11,11 +11,10 @@ using TaxVision.Correspondence.Domain.ValueObjects;
 namespace TaxVision.Correspondence.Application.Ingest;
 
 /// <summary>
-/// Consume <c>connectors.raw_message_received.v1</c> (Connectors Fase 7/8) y decide si el
-/// mensaje entra al inbox de un customer conocido del tenant. Flujo completo en
-/// Correspondence_Service_Design_And_Implementation_Plan.md §36 Fase 4; <see cref="UnmatchedIncomingEmail"/>
-/// en §14. Fetch de body (Fase 5) y descarga de attachments (Fase 8/12) están explícitamente
-/// fuera de alcance de este consumer.
+/// Consume <c>connectors.raw_message_received.v1</c> (Connectors Fase 7/8). El correo de un cliente entra a su ficha;
+/// el de quien todavía no es cliente entra sin cliente a la vista "Not a client" (D-COR-3) y se le enlaza cuando el
+/// cliente aparece (<see cref="LinkUnlinkedMailHandler"/>). Fetch de body (Fase 5) y descarga de attachments
+/// (Fase 8/12) están explícitamente fuera de alcance de este consumer.
 /// </summary>
 public static class RawMessageReceivedConsumer
 {
@@ -37,7 +36,8 @@ public static class RawMessageReceivedConsumer
         using (correlation.Push(evt.CorrelationId))
         {
             var message = IncomingMessageNormalizer.Normalize(evt);
-            if (await IsDuplicateAsync(evt, message, incomingEmails, ct))
+            var duplicate = await FindDuplicateAsync(evt, message, incomingEmails, ct);
+            if (duplicate is not null)
             {
                 logger.LogDebug(
                     "Duplicate message {InternetMessageId}/{ProviderMessageId} for tenant {TenantId}; skipping.",
@@ -45,6 +45,9 @@ public static class RawMessageReceivedConsumer
                     evt.ProviderMessageId,
                     evt.TenantId
                 );
+                // COR-03: el mismo mensaje en otro buzón es una copia, no un descarte. No avisa a su dueño.
+                if (duplicate.AddMailboxCopy(evt.AccountId, evt.ProviderMessageId))
+                    await unitOfWork.SaveChangesAsync(ct);
                 return;
             }
 
@@ -70,9 +73,10 @@ public static class RawMessageReceivedConsumer
             var from = fromResult.Value;
 
             var customer = await customerEmails.FindActiveByAddressAsync(evt.TenantId, from.NormalizedValue, ct);
-            if (customer is null)
+            // Los avisos de no entrega los procesa Connectors: un hilo "Not a client" los duplicaría.
+            if (customer is null && options.Value.IsSystemSender(from.NormalizedValue))
             {
-                await HandleUnmatchedSenderAsync(evt, from, options.Value, unmatched, unitOfWork, logger, ct);
+                logger.LogDebug("System sender for event {EventId} is not a customer; skipped.", evt.EventId);
                 return;
             }
 
@@ -81,7 +85,7 @@ public static class RawMessageReceivedConsumer
             await IngestMatchedMessageAsync(
                 evt,
                 message,
-                customer.CustomerId,
+                customer?.CustomerId,
                 from,
                 incomingEmails,
                 threads,
@@ -95,36 +99,16 @@ public static class RawMessageReceivedConsumer
         }
     }
 
-    private static async Task<bool> IsDuplicateAsync(
+    // Sin InternetMessageId (o anulado por largo) se deduplica por el id del proveedor en ese buzón.
+    private static Task<IncomingEmail?> FindDuplicateAsync(
         ConnectorsRawMessageReceivedIntegrationEvent evt,
         NormalizedIncomingMessage message,
         IIncomingEmailRepository incomingEmails,
         CancellationToken ct
-    )
-    {
-        // Sin InternetMessageId (o anulado por largo) se deduplica por el id del proveedor en ese buzón.
-        var existing = message.InternetMessageId is null
-            ? await incomingEmails.FindByProviderMessageIdAsync(evt.TenantId, evt.AccountId, evt.ProviderMessageId, ct)
-            : await incomingEmails.FindByInternetMessageIdAsync(evt.TenantId, message.InternetMessageId, ct);
-        return existing is not null;
-    }
-
-    private static async Task HandleUnmatchedSenderAsync(
-        ConnectorsRawMessageReceivedIntegrationEvent evt,
-        EmailAddress from,
-        CorrespondenceIngestOptions options,
-        IUnmatchedIncomingEmailRepository unmatched,
-        IUnitOfWork unitOfWork,
-        ILogger<IncomingEmail> logger,
-        CancellationToken ct
-    )
-    {
-        if (!options.EnableUnmatchedDebug)
-            return;
-
-        await RecordUnmatchedAsync(evt, from, UnmatchedReason.NoCustomerMatch, unmatched, logger, ct);
-        await unitOfWork.SaveChangesAsync(ct);
-    }
+    ) =>
+        message.InternetMessageId is null
+            ? incomingEmails.FindByProviderMessageIdAsync(evt.TenantId, evt.AccountId, evt.ProviderMessageId, ct)
+            : incomingEmails.FindByInternetMessageIdAsync(evt.TenantId, message.InternetMessageId, ct);
 
     private static SenderAuthentication BuildAuthentication(ConnectorsRawMessageReceivedIntegrationEvent evt) =>
         new(
@@ -133,37 +117,7 @@ public static class RawMessageReceivedConsumer
             SenderAuthentication.Parse(evt.DmarcResult)
         );
 
-    private static async Task RecordUnmatchedAsync(
-        ConnectorsRawMessageReceivedIntegrationEvent evt,
-        EmailAddress from,
-        UnmatchedReason reason,
-        IUnmatchedIncomingEmailRepository unmatched,
-        ILogger<IncomingEmail> logger,
-        CancellationToken ct
-    )
-    {
-        var result = UnmatchedIncomingEmail.Create(
-            evt.TenantId,
-            from,
-            evt.Subject,
-            evt.ProviderMessageId,
-            evt.ReceivedAtUtc,
-            reason
-        );
-        if (result.IsFailure)
-        {
-            logger.LogWarning(
-                "UnmatchedIncomingEmail.Create failed for event {EventId}: {Error}",
-                evt.EventId,
-                result.Error.Code
-            );
-            return;
-        }
-
-        await unmatched.AddAsync(result.Value, ct);
-    }
-
-    // Siempre se guarda (no depende de EnableUnmatchedDebug): el mensaje se acusa pero queda para reprocesarlo.
+    // El mensaje se acusa pero queda para reprocesarlo.
     private static async Task RecordRejectionAsync(
         ConnectorsRawMessageReceivedIntegrationEvent evt,
         NormalizedIncomingMessage message,
@@ -236,7 +190,7 @@ public static class RawMessageReceivedConsumer
     private static async Task IngestMatchedMessageAsync(
         ConnectorsRawMessageReceivedIntegrationEvent evt,
         NormalizedIncomingMessage message,
-        Guid customerId,
+        Guid? customerId,
         EmailAddress from,
         IIncomingEmailRepository incomingEmails,
         IEmailThreadRepository threads,

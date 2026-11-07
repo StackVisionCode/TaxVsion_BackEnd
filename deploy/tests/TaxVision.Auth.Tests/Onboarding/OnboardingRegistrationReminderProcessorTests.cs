@@ -9,33 +9,30 @@ using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 
+/// <summary>Que el marcado y el aviso se confirmen juntos lo mide OnboardingRegistrationReminderIntegrationTests.</summary>
 public sealed class OnboardingRegistrationReminderProcessorTests
 {
     private static readonly DateTime Now = DateTime.UtcNow;
 
     [Fact]
-    public async Task ProcessDueAsync_publishes_the_email_and_marks_sent_when_reference_is_alive()
+    public async Task PrepareDueAsync_builds_the_email_without_marking_when_reference_is_alive()
     {
         var store = new FakeTokenReferenceStore { ToPeek = "raw-token" };
         var onboarding = DueOnboarding(store.Reference);
         var repo = new FakeTenantOnboardingRepository { RemindersDue = [onboarding] };
-        var bus = new FakeMessageBus();
-        var unitOfWork = new FakeUnitOfWork();
-        var processor = ProcessorFor(repo, store, bus, unitOfWork);
+        var processor = ProcessorFor(repo, store);
 
-        var published = await processor.ProcessDueAsync(Now, CancellationToken.None);
+        var reminders = await processor.PrepareDueAsync(Now, CancellationToken.None);
 
-        Assert.Equal(1, published);
-        var evt = Assert.Single(bus.Published.OfType<OnboardingRegistrationReadyIntegrationEvent>());
+        var evt = Assert.Single(reminders);
         Assert.Equal(onboarding.Id, evt.OnboardingId);
         Assert.Equal(onboarding.Email, evt.Email);
         Assert.Equal(store.Reference, evt.TokenReference);
-        Assert.NotNull(onboarding.RegistrationEmailSentAtUtc);
-        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        Assert.Null(onboarding.RegistrationEmailSentAtUtc);
     }
 
     [Fact]
-    public async Task ProcessDueAsync_does_not_mark_sent_when_reference_expired_so_admin_can_recover()
+    public async Task PrepareDueAsync_skips_the_onboarding_when_reference_expired_so_admin_can_recover()
     {
         // Guardrail: marcar RegistrationEmailSentAtUtc al perder la referencia convertía al cliente en
         // huérfano permanente — pagó pero nunca más recibía su link. El sweeper DEBE reintentar cada tick
@@ -43,48 +40,65 @@ public sealed class OnboardingRegistrationReminderProcessorTests
         var store = new FakeTokenReferenceStore { ToPeek = null };
         var onboarding = DueOnboarding(store.Reference);
         var repo = new FakeTenantOnboardingRepository { RemindersDue = [onboarding] };
-        var bus = new FakeMessageBus();
-        var unitOfWork = new FakeUnitOfWork();
-        var processor = ProcessorFor(repo, store, bus, unitOfWork);
+        var processor = ProcessorFor(repo, store);
 
-        var published = await processor.ProcessDueAsync(Now, CancellationToken.None);
+        var reminders = await processor.PrepareDueAsync(Now, CancellationToken.None);
 
-        Assert.Equal(0, published);
-        Assert.Empty(bus.Published.OfType<OnboardingRegistrationReadyIntegrationEvent>());
+        Assert.Empty(reminders);
         Assert.Null(onboarding.RegistrationEmailSentAtUtc);
-        // SaveChanges se sigue llamando al final del batch (es un no-op sin tracked changes); lo que
-        // importa es que el aggregate NO quedó marcado como sent.
-        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
-    public async Task ProcessDueAsync_does_nothing_when_no_onboarding_is_due()
+    public async Task PrepareDueAsync_returns_nothing_when_no_onboarding_is_due()
     {
         var store = new FakeTokenReferenceStore { ToPeek = "raw-token" };
-        var repo = new FakeTenantOnboardingRepository { RemindersDue = [] };
+        var processor = ProcessorFor(new FakeTenantOnboardingRepository { RemindersDue = [] }, store);
+
+        Assert.Empty(await processor.PrepareDueAsync(Now, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task MarkAndPublishAsync_marks_sent_and_publishes()
+    {
+        var store = new FakeTokenReferenceStore { ToPeek = "raw-token" };
+        var onboarding = DueOnboarding(store.Reference);
+        var repo = new FakeTenantOnboardingRepository { RemindersDue = [onboarding], Existing = onboarding };
+        var processor = ProcessorFor(repo, store);
+        var reminder = Assert.Single(await processor.PrepareDueAsync(Now, CancellationToken.None));
         var bus = new FakeMessageBus();
-        var unitOfWork = new FakeUnitOfWork();
-        var processor = ProcessorFor(repo, store, bus, unitOfWork);
 
-        var published = await processor.ProcessDueAsync(Now, CancellationToken.None);
+        var published = await processor.MarkAndPublishAsync(reminder, bus, Now, CancellationToken.None);
 
-        Assert.Equal(0, published);
+        Assert.True(published);
+        Assert.Same(reminder, Assert.Single(bus.Published.OfType<OnboardingRegistrationReadyIntegrationEvent>()));
+        Assert.NotNull(onboarding.RegistrationEmailSentAtUtc);
+    }
+
+    [Fact]
+    public async Task MarkAndPublishAsync_does_not_resend_what_another_replica_already_sent()
+    {
+        var store = new FakeTokenReferenceStore { ToPeek = "raw-token" };
+        var onboarding = DueOnboarding(store.Reference);
+        var repo = new FakeTenantOnboardingRepository { RemindersDue = [onboarding], Existing = onboarding };
+        var processor = ProcessorFor(repo, store);
+        var reminder = Assert.Single(await processor.PrepareDueAsync(Now, CancellationToken.None));
+        onboarding.MarkRegistrationEmailSent(Now);
+        var bus = new FakeMessageBus();
+
+        var published = await processor.MarkAndPublishAsync(reminder, bus, Now, CancellationToken.None);
+
+        Assert.False(published);
         Assert.Empty(bus.Published);
-        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
     private static OnboardingRegistrationReminderProcessor ProcessorFor(
         FakeTenantOnboardingRepository repo,
-        FakeTokenReferenceStore store,
-        FakeMessageBus bus,
-        FakeUnitOfWork unitOfWork
+        FakeTokenReferenceStore store
     ) =>
         new(
             repo,
             store,
             new FakePlanCatalogClient("Pro"),
-            unitOfWork,
-            bus,
             Options.Create(new OnboardingOptions { RegistrationReminderDelayMinutes = 45 }),
             NullLogger<OnboardingRegistrationReminderProcessor>.Instance
         );

@@ -7,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Persistence;
 using TaxVision.Subscription.Infrastructure.Persistence.Repositories;
@@ -31,6 +32,7 @@ internal static class SubscriptionWolverineHost
         Action<DbContextOptionsBuilder>? configureDb = null
     ) =>
         Host.CreateDefaultBuilder()
+            .ConfigureLogging(logging => logging.ClearProviders())
             .UseWolverine(options =>
             {
                 options.ServiceName = "subscription-int-test";

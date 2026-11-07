@@ -125,6 +125,12 @@ internal sealed class CloudStorageClient(
             using var response = await httpClient.SendAsync(request, ct);
             if (!response.IsSuccessStatusCode)
             {
+                // COR-18: "ya no existe" no es lo mismo que "no se pudo preguntar".
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                    return Result.Failure<CloudStorageFileMetadata>(
+                        new Error("CloudStorageClient.FileNotRegistered", "The file does not exist.")
+                    );
+
                 logger.LogWarning("CloudStorage file lookup call failed ({Status}).", (int)response.StatusCode);
                 return Result.Failure<CloudStorageFileMetadata>(
                     new Error(
@@ -140,7 +146,14 @@ internal sealed class CloudStorageClient(
                     new Error("CloudStorageClient.EmptyResponse", "Empty response from file lookup.")
                 )
                 : Result.Success(
-                    new CloudStorageFileMetadata(payload.Id, payload.DeclaredContentType, payload.SizeBytes)
+                    new CloudStorageFileMetadata(
+                        payload.Id,
+                        payload.DeclaredContentType,
+                        payload.SizeBytes,
+                        payload.OwnerType,
+                        payload.OwnerId,
+                        payload.FolderType
+                    )
                 );
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
@@ -166,7 +179,14 @@ internal sealed class CloudStorageClient(
 
     private sealed record DownloadUrlResponseDto(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
 
-    private sealed record FileMetadataResponseDto(Guid Id, string DeclaredContentType, long SizeBytes);
+    private sealed record FileMetadataResponseDto(
+        Guid Id,
+        string DeclaredContentType,
+        long SizeBytes,
+        string? OwnerType,
+        Guid? OwnerId,
+        string? FolderType
+    );
 
     private sealed record ErrorResponseDto(string? Code, string? Message);
 }

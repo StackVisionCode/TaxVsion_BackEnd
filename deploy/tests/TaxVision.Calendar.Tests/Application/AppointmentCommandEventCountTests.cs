@@ -465,6 +465,7 @@ public sealed class AppointmentCommandEventCountTests
                 new NullCalendarMetrics(),
                 new SingleTypeRepository(type),
                 new EmptyAvailability(),
+                new NoScheduleLock(),
                 new NoFeedTokens(),
                 new NoFeedCache(),
             };

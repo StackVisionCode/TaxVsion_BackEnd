@@ -39,6 +39,9 @@ public sealed class SubscriptionSeat : TenantEntity
     [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
 
+    /// <summary>Token de concurrencia: dos eventos de pago, el job y el usuario no se pisan el estado.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public IReadOnlyCollection<SubscriptionSeatRenewal> Renewals => _renewals;
 
     private SubscriptionSeat() { }
@@ -52,7 +55,8 @@ public sealed class SubscriptionSeat : TenantEntity
         BillingCycle billingCycle,
         bool autoRenew,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        Guid? id = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -81,6 +85,7 @@ public sealed class SubscriptionSeat : TenantEntity
             CreatedBy = actorUserId,
             UpdatedBy = actorUserId,
         };
+        seat.Id = id ?? seat.Id;
         seat.SetTenant(tenantId);
         return Result.Success(seat);
     }
@@ -341,7 +346,11 @@ public sealed class SubscriptionSeat : TenantEntity
             return succeeded;
 
         if (Status == SeatStatus.Active)
+        {
+            // Solo cambió la renovación hija: la raíz se toca para que la RowVersion vea el conflicto.
+            Touch(actorUserId, nowUtc);
             return Result.Success();
+        }
 
         return ReactivateAfterAdminReview(renewal.PeriodStartUtc, renewal.PeriodEndUtc, actorUserId, nowUtc);
     }
@@ -398,9 +407,12 @@ public sealed class SubscriptionSeat : TenantEntity
         if (markResult.IsFailure)
             return markResult;
 
-        return effectiveWillRetry
-            ? Result.Success()
-            : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
+        if (!effectiveWillRetry)
+            return MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
+
+        // Solo cambió la renovación hija: la raíz se toca para que la RowVersion vea el conflicto.
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
     }
 
     private static Result CompleteRenewalAttempt(

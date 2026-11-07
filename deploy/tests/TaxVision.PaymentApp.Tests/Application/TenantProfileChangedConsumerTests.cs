@@ -127,6 +127,7 @@ public sealed class TenantProfileChangedConsumerTests
             string status,
             bool isActive,
             DateTime nowUtc,
+            long? tenantVersion,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

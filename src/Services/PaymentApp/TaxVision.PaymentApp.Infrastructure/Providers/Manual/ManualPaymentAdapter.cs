@@ -26,6 +26,13 @@ public sealed class ManualPaymentAdapter(ILogger<ManualPaymentAdapter> logger) :
         CancellationToken ct
     ) => Task.FromResult(Result.Success(new ProviderCustomerToken(tenantId.ToString("N"), PaymentProviderCode.Manual)));
 
+    /// <summary>El proveedor manual no mueve dinero: sin resultado guardado, no hubo cargo.</summary>
+    public Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    ) => Task.FromResult(Result.Success(new ChargeLookup(ChargeLookupOutcome.NotFound)));
+
     public Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
         ChargeAuthorizationRequest request,
         CancellationToken ct

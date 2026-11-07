@@ -56,20 +56,30 @@ public sealed class ConnectedMailbox
         };
     }
 
-    public void ReconnectAt(string providerCode, string fromAddress, DateTime connectedAtUtc)
+    /// <summary>False si el aviso es anterior al último aplicado: la cola no garantiza el orden.</summary>
+    public bool ReconnectAt(string providerCode, string fromAddress, DateTime connectedAtUtc)
     {
+        if (connectedAtUtc < UpdatedAtUtc)
+            return false;
+
         ProviderCode = providerCode;
         FromAddress = fromAddress;
         IsActive = true;
         ConnectedAtUtc = connectedAtUtc;
         DisconnectedAtUtc = null;
         UpdatedAtUtc = connectedAtUtc;
+        return true;
     }
 
-    public void MarkDisconnected(DateTime disconnectedAtUtc)
+    /// <summary>False si el aviso es anterior al último aplicado: la cola no garantiza el orden.</summary>
+    public bool MarkDisconnected(DateTime disconnectedAtUtc)
     {
+        if (disconnectedAtUtc < UpdatedAtUtc)
+            return false;
+
         IsActive = false;
         DisconnectedAtUtc = disconnectedAtUtc;
         UpdatedAtUtc = disconnectedAtUtc;
+        return true;
     }
 }

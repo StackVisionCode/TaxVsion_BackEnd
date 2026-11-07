@@ -121,6 +121,7 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CatalogDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // Eventos de resultado publicados. Sin esto, bus.PublishAsync los descarta en silencio.
@@ -128,6 +129,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CatalogItemUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CatalogItemPriceChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CatalogItemDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CatalogItemTrackingChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     options
         .Policies.ForMessagesOfType<IIntegrationEvent>()

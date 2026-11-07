@@ -23,6 +23,7 @@ using Serilog;
 using StackExchange.Redis;
 using TaxVision.Subscription.Api.Bootstrap;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Seats.Commands.StartSeatReactivationCheckout;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Infrastructure;
 using TaxVision.Subscription.Infrastructure.Configuration;
@@ -81,6 +82,12 @@ builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
 builder.Services.AddHostedService<SubscriptionCatalogReconciler>();
 builder.Services.AddHostedService<AddOnCheckoutReconciliationJob>();
 builder.Services.AddHostedService<SubscriptionRenewalCheckoutReconciliationJob>();
+builder.Services.Configure<SeatReactivationOptions>(
+    builder.Configuration.GetSection(SeatReactivationOptions.SectionName)
+);
+builder.Services.Configure<CheckoutIntentExpirationOptions>(
+    builder.Configuration.GetSection(CheckoutIntentExpirationOptions.SectionName)
+);
 builder.Services.AddHostedService<CheckoutIntentExpirationJob>();
 
 // A6 — anti-entropía del corte por facturación: re-anuncia el estado ACTUAL para que Auth converja
@@ -228,6 +235,7 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // Eventos de dominio de TenantSubscription: se guardan con el commit del handler (o de la unidad del job) y

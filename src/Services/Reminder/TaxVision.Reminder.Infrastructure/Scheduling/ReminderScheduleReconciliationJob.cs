@@ -21,8 +21,8 @@ namespace TaxVision.Reminder.Infrastructure.Scheduling;
 /// </para>
 ///
 /// <para>
-/// Reagendar es idempotente (<c>ScheduleAsync</c> reemplaza), así que dos réplicas barriendo a la
-/// vez no se pisan.
+/// Dos réplicas barriendo a la vez no se pisan: <c>ScheduleAsync</c> toma un trigger ya creado como
+/// agendado. Un fallo en un recordatorio se registra y el barrido sigue con los demás.
 /// </para>
 /// </summary>
 public sealed class ReminderScheduleReconciliationJob(
@@ -67,19 +67,20 @@ public sealed class ReminderScheduleReconciliationJob(
         var repaired = 0;
         foreach (var reminder in pending)
         {
-            if (await scheduler.IsScheduledAsync(reminder.TenantId, reminder.Id, ct))
-                continue;
-
-            await scheduler.ScheduleAsync(reminder.TenantId, reminder.Id, reminder.Schedule.FireAtUtc, ct);
-            repaired++;
-
-            logger.LogWarning(
-                "Reminder {ReminderId} of tenant {TenantId} was {Status} without a live trigger; rescheduled for {FireAtUtc:O}.",
-                reminder.Id,
-                reminder.TenantId,
-                reminder.Status,
-                reminder.Schedule.FireAtUtc
-            );
+            try
+            {
+                if (await RepairAsync(reminder, ct))
+                    repaired++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(
+                    ex,
+                    "Reminder {ReminderId} of tenant {TenantId} could not be repaired; the next sweep retries it.",
+                    reminder.Id,
+                    reminder.TenantId
+                );
+            }
         }
 
         if (repaired > 0)
@@ -88,5 +89,22 @@ public sealed class ReminderScheduleReconciliationJob(
                 repaired,
                 pending.Count
             );
+    }
+
+    private async Task<bool> RepairAsync(TaxVision.Reminder.Domain.Reminders.Reminder reminder, CancellationToken ct)
+    {
+        if (await scheduler.IsScheduledAsync(reminder.TenantId, reminder.Id, ct))
+            return false;
+
+        await scheduler.ScheduleAsync(reminder.TenantId, reminder.Id, reminder.Schedule.FireAtUtc, ct);
+
+        logger.LogWarning(
+            "Reminder {ReminderId} of tenant {TenantId} was {Status} without a live trigger; rescheduled for {FireAtUtc:O}.",
+            reminder.Id,
+            reminder.TenantId,
+            reminder.Status,
+            reminder.Schedule.FireAtUtc
+        );
+        return true;
     }
 }

@@ -3,6 +3,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.AddOns.Commands.CancelAddOnCheckout;
+using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Seats.Commands.CancelSeatCheckout;
 using TaxVision.Subscription.Application.Subscriptions.Commands.CancelRenewalCheckout;
 using TaxVision.Subscription.Domain.AddOns;
@@ -15,16 +16,6 @@ namespace TaxVision.Subscription.Tests.Application;
 
 public sealed class CancelCheckoutHandlerTests
 {
-    private sealed class CountingCancellationClient : IHostedCheckoutCancellationClient
-    {
-        public int Calls { get; private set; }
-
-        public Task<Result> CancelAsync(Guid tenantId, Guid saaSPaymentId, CancellationToken ct = default)
-        {
-            Calls++;
-            return Task.FromResult(Result.Success());
-        }
-    }
 
     private static SeatPurchaseIntent PendingSeat(Guid tenantId, bool withPayment = true)
     {
@@ -52,7 +43,6 @@ public sealed class CancelCheckoutHandlerTests
         var tenantId = Guid.NewGuid();
         var intent = PendingSeat(tenantId);
         var repo = new FakeSeatPurchaseIntentRepository(intent);
-        var cancellation = new CountingCancellationClient();
         var bus = new CapturingMessageBus();
         var uow = new FakeUnitOfWork();
         var audit = new FakeSubscriptionAuditLogWriter();
@@ -60,7 +50,6 @@ public sealed class CancelCheckoutHandlerTests
         var result = await CancelSeatCheckoutHandler.Handle(
             new CancelSeatCheckoutCommand(tenantId, intent.Id, Guid.NewGuid(), "closed window"),
             repo,
-            cancellation,
             uow,
             bus,
             new FakeCorrelationContext(),
@@ -72,7 +61,8 @@ public sealed class CancelCheckoutHandlerTests
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.AlreadyCancelled);
         Assert.Equal(SeatPurchaseIntentStatus.Cancelled, intent.Status);
-        Assert.Equal(1, cancellation.Calls);
+        var providerCancel = Assert.Single(bus.Published.OfType<CancelHostedCheckoutCommand>());
+        Assert.Equal(intent.SaaSPaymentId, providerCancel.SaaSPaymentId);
         Assert.Contains(bus.Published, m => m is SeatCheckoutCancelledIntegrationEvent);
     }
 
@@ -85,7 +75,6 @@ public sealed class CancelCheckoutHandlerTests
         var result = await CancelSeatCheckoutHandler.Handle(
             new CancelSeatCheckoutCommand(Guid.NewGuid(), intent.Id, Guid.NewGuid(), null),
             repo,
-            new CountingCancellationClient(),
             new FakeUnitOfWork(),
             new CapturingMessageBus(),
             new FakeCorrelationContext(),
@@ -109,7 +98,6 @@ public sealed class CancelCheckoutHandlerTests
         var result = await CancelSeatCheckoutHandler.Handle(
             new CancelSeatCheckoutCommand(tenantId, intent.Id, Guid.NewGuid(), null),
             repo,
-            new CountingCancellationClient(),
             new FakeUnitOfWork(),
             new CapturingMessageBus(),
             new FakeCorrelationContext(),
@@ -128,13 +116,11 @@ public sealed class CancelCheckoutHandlerTests
         var tenantId = Guid.NewGuid();
         var intent = PendingSeat(tenantId);
         var repo = new FakeSeatPurchaseIntentRepository(intent);
-        var cancellation = new CountingCancellationClient();
         var bus = new CapturingMessageBus();
 
         await CancelSeatCheckoutHandler.Handle(
             new CancelSeatCheckoutCommand(tenantId, intent.Id, Guid.NewGuid(), null),
             repo,
-            cancellation,
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -147,7 +133,6 @@ public sealed class CancelCheckoutHandlerTests
         var second = await CancelSeatCheckoutHandler.Handle(
             new CancelSeatCheckoutCommand(tenantId, intent.Id, Guid.NewGuid(), null),
             repo,
-            cancellation,
             new FakeUnitOfWork(),
             secondBus,
             new FakeCorrelationContext(),

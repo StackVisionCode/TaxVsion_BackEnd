@@ -33,6 +33,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.PermissionsBackfilledAt);
         builder.Property(user => user.CreatedAtUtc).IsRequired();
         builder.Property(user => user.OnboardingId);
+        builder.Property(user => user.RowVersion).IsRowVersion();
         builder.Property(user => user.AvatarFileId);
         builder.Property(user => user.PendingAvatarFileId);
         builder.Property(user => user.PendingAvatarRequestedAtUtc);
@@ -60,6 +61,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Ignore(user => user.Roles);
         builder.Ignore(user => user.AccountKind);
         builder.Ignore(user => user.IsOwner);
+        builder.Ignore(user => user.HasLoginFailures);
 
         var converter = new ValueConverter<List<string>, string>(
             roles => JsonSerializer.Serialize(roles, (JsonSerializerOptions?)null),

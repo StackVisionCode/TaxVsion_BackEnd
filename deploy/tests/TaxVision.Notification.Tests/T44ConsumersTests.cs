@@ -199,6 +199,7 @@ public sealed class T44ConsumersTests
             publisher,
             new NoOpUnitOfWork(),
             new NoOpNotificationDispatchMetrics(),
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
             NullLogger<NotificationDispatcher>.Instance
         );
 

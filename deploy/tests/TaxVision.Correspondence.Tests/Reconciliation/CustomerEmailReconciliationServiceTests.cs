@@ -4,6 +4,7 @@ using TaxVision.Correspondence.Application.Reconciliation;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
 using TaxVision.Correspondence.Tests.Backfill;
+using TaxVision.Correspondence.Tests.Ingest;
 using TaxVision.Correspondence.Tests.Projections;
 
 namespace TaxVision.Correspondence.Tests.Reconciliation;
@@ -111,7 +112,14 @@ public sealed class CustomerEmailReconciliationServiceTests
         ICorrespondenceCustomerClient client,
         ICustomerEmailAddressRepository emailRepository,
         FakeUnitOfWork unitOfWork
-    ) => new(client, emailRepository, unitOfWork, NullLogger<CustomerEmailReconciliationService>.Instance);
+    ) =>
+        new(
+            client,
+            emailRepository,
+            unitOfWork,
+            new FakeMessageBus(),
+            NullLogger<CustomerEmailReconciliationService>.Instance
+        );
 
     [Fact]
     public async Task Reconcile_ReactivationWithEmailOwnedByOtherCustomer_SkipsAndContinues()
@@ -143,6 +151,7 @@ public sealed class CustomerEmailReconciliationServiceTests
             client,
             emailRepository,
             unitOfWork,
+            new FakeMessageBus(),
             NullLogger<CustomerEmailReconciliationService>.Instance
         );
 
@@ -168,7 +177,9 @@ public sealed class CustomerEmailReconciliationServiceTests
                 .GroupBy(x => (x.TenantId, x.EmailAddress))
                 .Any(g => g.Count() > 1);
             if (duplicated)
-                throw new InvalidOperationException("Unique index IX_CustomerEmailAddresses_TenantId_EmailAddress_Active violated.");
+                throw new InvalidOperationException(
+                    "Unique index IX_CustomerEmailAddresses_TenantId_EmailAddress_Active violated."
+                );
             CommittedSaves++;
             return Task.FromResult(0);
         }

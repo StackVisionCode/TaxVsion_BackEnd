@@ -22,6 +22,7 @@ public static class SendCorrespondenceMessageHandler
         IOutboundAttachmentFetcher attachmentFetcher,
         IConnectedMailboxSender mailboxSender,
         IMessageBus bus,
+        RecordSendResultRetryOptions recordRetry,
         CancellationToken ct
     )
     {
@@ -47,7 +48,7 @@ public static class SendCorrespondenceMessageHandler
             );
         }
 
-        var attempted = await bus.InvokeAsync<Result>(new MarkSendAttemptedCommand(message.Id), ct);
+        var attempted = await SendAttempt.TryMarkAsync(bus, message.Id, ct);
         if (attempted.IsFailure)
             return Result.Success(new SendCorrespondenceMessageResult(message.Id, null, InProgress: true));
 
@@ -65,22 +66,20 @@ public static class SendCorrespondenceMessageHandler
         );
 
         // Se registra aunque el pedido HTTP se haya cancelado: Connectors ya contestó.
-        await bus.InvokeAsync(
-            new RecordSendResultCommand(
-                message.Id,
-                sendResult,
-                "Unknown Connectors send failure.",
-                Fallback: null
-            ),
-            CancellationToken.None
+        await RecordSendResultRetry.InvokeAsync(
+            bus,
+            new RecordSendResultCommand(message.Id, sendResult, "Unknown Connectors send failure.", Fallback: null),
+            recordRetry
         );
 
         return sendResult.Success
-            ? Result.Success(new SendCorrespondenceMessageResult(
+            ? Result.Success(
+                new SendCorrespondenceMessageResult(
                     message.Id,
                     sendResult.ProviderMessageId,
                     InternetMessageId: sendResult.InternetMessageId
-                ))
+                )
+            )
             : Result.Failure<SendCorrespondenceMessageResult>(
                 new Error(
                     "SendCorrespondenceMessageHandler.ConnectorsSendFailed",

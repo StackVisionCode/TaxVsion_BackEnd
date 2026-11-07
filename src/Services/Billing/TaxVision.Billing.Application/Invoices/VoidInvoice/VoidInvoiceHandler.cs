@@ -44,6 +44,8 @@ public static class VoidInvoiceHandler
         if (voided.IsFailure)
             return voided;
 
+        await unitOfWork.SaveChangesAsync(ct);
+
         // Anunciar la anulación para que PaymentClient REVOQUE el payable/link de pago (una factura anulada
         // no se debe poder pagar). Vía outbox durable: si PaymentClient está caído, se reintrega solo.
         await bus.PublishAsync(
@@ -64,7 +66,6 @@ public static class VoidInvoiceHandler
         // Reponer el stock después del commit (outbox): si la anulación se revierte, Inventory no se entera.
         await bus.PublishAsync(new SyncInvoiceStockCommand(command.TenantId, invoice.Id));
 
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }

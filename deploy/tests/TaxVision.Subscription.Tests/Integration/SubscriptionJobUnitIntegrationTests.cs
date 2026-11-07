@@ -31,6 +31,7 @@ public sealed class SubscriptionJobUnitIntegrationTests : IAsyncLifetime
     private readonly SubscriptionIntegrationDb _db = new();
     private readonly string _schema = SubscriptionWolverineHost.NewSchema("subbb3");
     private readonly FailAfterSaveInterceptor _failAfterSave = new();
+    private readonly ConcurrentWriterInterceptor _concurrentWriter = new();
     private IHost _host = null!;
 
     public async Task InitializeAsync() => _host = await StartHostAsync();
@@ -121,6 +122,25 @@ public sealed class SubscriptionJobUnitIntegrationTests : IAsyncLifetime
         Assert.Equal(1, await EnvelopesAsync("wolverine_incoming_envelopes", "SubscriptionStatusChangedDomainEvent"));
     }
 
+    // SUB-6: otro escritor toca el asiento A entre la lectura y el guardado de su unidad.
+    [Fact(Timeout = 120_000)]
+    public async Task SeatRenewal_ConflictOnOneSeat_DoesNotBlockNext()
+    {
+        await _db.SeedActiveSubscriptionAsync();
+        var conflicted = await SeedActiveSeatAsync();
+        var next = await SeedActiveSeatAsync();
+        _concurrentWriter.SeatId = conflicted.Id;
+
+        var summary = await NewSeatRenewalJob()
+            .RenewAsync([(conflicted.Id, _db.TenantId), (next.Id, _db.TenantId)], DateTime.UtcNow, "test", default);
+
+        Assert.Equal(1, summary.Conflicts);
+        Assert.Equal(1, summary.Committed);
+        Assert.Equal(0, await SeatRenewalCountAsync(conflicted.Id));
+        Assert.Equal(1, await SeatRenewalCountAsync(next.Id));
+        Assert.Equal(1, await OutgoingAsync(nameof(SeatRenewalDueIntegrationEvent)));
+    }
+
     private SeatRenewalJob NewSeatRenewalJob() =>
         new(ScopeFactory, lockFactory: null!, NullLogger<SeatRenewalJob>.Instance);
 
@@ -146,7 +166,7 @@ public sealed class SubscriptionJobUnitIntegrationTests : IAsyncLifetime
                     .ToPort(closedPort)
                     .UseDurableOutbox();
             },
-            db => db.AddInterceptors(_failAfterSave)
+            db => db.AddInterceptors(_failAfterSave, _concurrentWriter)
         );
     }
 
@@ -228,6 +248,32 @@ public sealed class SubscriptionJobUnitIntegrationTests : IAsyncLifetime
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    /// <summary>Simula a otro escritor: cambia la fila del asiento justo antes de que la unidad guarde.</summary>
+    private sealed class ConcurrentWriterInterceptor : SaveChangesInterceptor
+    {
+        public Guid? SeatId { get; set; }
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default
+        )
+        {
+            var tracked = eventData.Context!.ChangeTracker.Entries<SubscriptionSeat>();
+            if (SeatId is not { } seatId || !tracked.Any(entry => entry.Entity.Id == seatId))
+                return result;
+
+            SeatId = null;
+            await using var connection = new SqlConnection(SubscriptionIntegrationDb.Connection);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE SubscriptionSeats SET UpdatedAtUtc = SYSUTCDATETIME() WHERE Id = @id";
+            command.Parameters.AddWithValue("@id", seatId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return result;
+        }
     }
 
     /// <summary>Falla una vez después de que el UPDATE/INSERT llegó a la base y antes del commit de la unidad.</summary>

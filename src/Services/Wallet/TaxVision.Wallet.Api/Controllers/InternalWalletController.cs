@@ -5,6 +5,7 @@ using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using TaxVision.Wallet.Application.Pricing;
 using TaxVision.Wallet.Application.Reservations;
 using TaxVision.Wallet.Application.Reservations.Commands;
@@ -27,7 +28,8 @@ namespace TaxVision.Wallet.Api.Controllers;
 [ApiController]
 [Route("internal/wallet")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin, ActorType.Service)]
-public sealed class InternalWalletController(IMessageBus bus) : ControllerBase
+public sealed class InternalWalletController(IMessageBus bus, IOptions<ReservationConflictRetryOptions> conflictRetry)
+    : ControllerBase
 {
     /// <summary>Reserva fondos para una referencia: unidades por canal a cobrar + la referencia que la respalda.</summary>
     public sealed record ReserveRequest(
@@ -55,8 +57,10 @@ public sealed class InternalWalletController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var units = new PerChannelUnits(request.Email, request.Sms, request.Push, request.WhatsApp);
-        var result = await bus.InvokeAsync<Result<ReservationView>>(
-            new ReserveFundsCommand(tenantId, request.ReferenceType, request.ReferenceId, units),
+        var command = new ReserveFundsCommand(tenantId, request.ReferenceType, request.ReferenceId, units);
+        var result = await ReservationConflictRetry.InvokeAsync(
+            token => bus.InvokeAsync<Result<ReservationView>>(command, token),
+            conflictRetry.Value.MaxAttempts,
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -71,8 +75,15 @@ public sealed class InternalWalletController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<SettlementView>>(
-            new SettleReservationCommand(tenantId, request.ReferenceType, request.ReferenceId, request.ConsumedUnits),
+        var command = new SettleReservationCommand(
+            tenantId,
+            request.ReferenceType,
+            request.ReferenceId,
+            request.ConsumedUnits
+        );
+        var result = await ReservationConflictRetry.InvokeAsync(
+            token => bus.InvokeAsync<Result<SettlementView>>(command, token),
+            conflictRetry.Value.MaxAttempts,
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

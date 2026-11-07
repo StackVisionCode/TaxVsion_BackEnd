@@ -28,6 +28,9 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }
 
+    /// <summary>SCR-03: cubre también las versiones, porque todo cambio en ellas pasa por la raíz.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     /// <summary>
     /// Carril de envio fijado a mano por un PlatformAdmin. null = lo decide el layout, que es lo normal.
     /// Existe para los casos que el layout no puede saber, no para cambiarlo por gusto.
@@ -261,7 +264,7 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
     /// (<c>ITemplateStorageService</c>), no delete; la limpieza de blobs huérfanos es
     /// responsabilidad del recycle bin de CloudStorage, no de Scribe.
     /// </summary>
-    public IReadOnlyList<Guid> PurgeArchivedVersionsOlderThan(DateTime cutoffUtc)
+    public IReadOnlyList<Guid> PurgeArchivedVersionsOlderThan(DateTime cutoffUtc, DateTime nowUtc)
     {
         var purgedIds = new List<Guid>();
         for (var i = _versions.Count - 1; i >= 0; i--)
@@ -273,6 +276,9 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
                 _versions.RemoveAt(i);
             }
         }
+
+        if (purgedIds.Count > 0)
+            UpdatedAtUtc = nowUtc;
         return purgedIds;
     }
 

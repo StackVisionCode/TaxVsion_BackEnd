@@ -1,6 +1,6 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
-using Microsoft.Extensions.Logging;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Domain.Runs;
 
@@ -23,7 +23,6 @@ public static class SettleWalletOnRunCompletedConsumer
         ICampaignRunRepository runs,
         IWalletSpendClient wallet,
         ICorrelationContext correlation,
-        ILogger<CampaignRun> logger,
         CancellationToken ct
     )
     {
@@ -33,16 +32,10 @@ public static class SettleWalletOnRunCompletedConsumer
             )
         )
         {
-            var run = await runs.GetByIdAsync(evt.TenantId, evt.RunId, ct);
-            if (run is null)
-            {
-                logger.LogWarning(
-                    "Run {RunId} not found settling wallet (tenant {TenantId}).",
-                    evt.RunId,
-                    evt.TenantId
-                );
-                return;
-            }
+            // Sin run no hay qué liquidar todavía: descartar perdería el cobro sin dejar rastro.
+            var run =
+                await runs.GetByIdAsync(evt.TenantId, evt.RunId, ct)
+                ?? throw new DependencyNotReadyException("CampaignRun", $"run {evt.RunId}");
 
             var consumedUnits = run.Recipients.Count(r =>
                 BillableChannels.IsBillable(r.Channel) && r.State != DispatchState.Skipped

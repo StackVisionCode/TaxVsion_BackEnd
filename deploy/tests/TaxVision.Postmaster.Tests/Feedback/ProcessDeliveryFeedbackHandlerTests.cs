@@ -61,6 +61,66 @@ public sealed class ProcessDeliveryFeedbackHandlerTests
             Db.SentMessageRecipients.IgnoreQueryFilters().Single(r => r.SentMessageId == Message.Id);
     }
 
+    /// <summary>El segundo aviso del lote choca al confirmar, como lo haría la versión del correo.</summary>
+    private sealed class ConflictOnSecondCommit(IDeliveryFeedbackReceiptRepository inner)
+        : IDeliveryFeedbackReceiptRepository
+    {
+        private int _commits;
+
+        public Task<bool> ExistsAsync(string source, string sourceEventId, CancellationToken ct = default) =>
+            inner.ExistsAsync(source, sourceEventId, ct);
+
+        public Task<bool> TryCommitAsync(
+            TaxVision.Postmaster.Domain.Feedback.DeliveryFeedbackReceipt receipt,
+            CancellationToken ct = default
+        ) =>
+            ++_commits == 2
+                ? throw new ConflictException("Persistence.ConcurrencyConflict", "Modified.")
+                : inner.TryCommitAsync(receipt, ct);
+    }
+
+    // El intento revertido no deja avisos en el bus: se publican recién con el lote entero guardado.
+    [Fact]
+    public async Task Conflict_in_the_middle_of_the_batch_publishes_nothing()
+    {
+        var fixture = await SentMessageInDatabaseAsync(fromNotification: true);
+        TranslatedFeedback[] items =
+        [
+            Delivered(providerMessageId: "message-id", eventId: "evt-1"),
+            Delivered(providerMessageId: "message-id", eventId: "evt-2"),
+        ];
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            ProcessDeliveryFeedbackHandler.Handle(
+                new ProcessDeliveryFeedbackCommand("Smtp2Go", "{}", SentAt.AddMinutes(10)),
+                new DeliveryFeedbackCapabilities([new FakeTranslator(items)], [], []),
+                new SentMessageRepository(fixture.Db),
+                new ConflictOnSecondCommit(new DeliveryFeedbackReceiptRepository(fixture.Db)),
+                new UnmatchedDeliveryFeedbackRepository(fixture.Db),
+                new SuppressionListRepository(fixture.Db),
+                fixture.Db,
+                fixture.Bus,
+                NullLogger.Instance,
+                CancellationToken.None
+            )
+        );
+
+        Assert.Empty(fixture.Bus.Published);
+    }
+
+    [Fact]
+    public async Task Same_unmatched_event_twice_is_stored_once()
+    {
+        var fixture = await SentMessageInDatabaseAsync();
+        var stranger = Delivered(providerMessageId: "nobody", eventId: "evt-unmatched");
+
+        await fixture.ProcessAsync(stranger);
+        var second = await fixture.ProcessAsync(stranger);
+
+        Assert.Equal(1, second.Value.Unmatched);
+        Assert.Equal(1, await fixture.Db.UnmatchedDeliveryFeedback.CountAsync());
+    }
+
     private static readonly Guid NotificationLogId = Guid.NewGuid();
     private static readonly Guid DispatchAttemptId = Guid.NewGuid();
 

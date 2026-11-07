@@ -1,3 +1,4 @@
+using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout;
@@ -14,6 +15,83 @@ namespace TaxVision.Subscription.Tests.Application;
 /// server-side y pide a PaymentApp (M2M) la sesión, devolviendo la URL. Un tipo gratis no puede ir por acá.</summary>
 public sealed class StartSeatCheckoutHandlerTests
 {
+    // Corre el orquestador con los handlers reales de reserva y adjunto, como los enruta Wolverine.
+    private static Task<Result<StartSeatCheckoutResponse>> Start(
+        StartSeatCheckoutCommand command,
+        ISubscriptionRepository subscriptions,
+        ISeatPricingRepository pricing,
+        ISeatPurchaseIntentRepository intents,
+        ISeatCheckoutPaymentClient client,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var bus = new CapturingMessageBus();
+        bus.OnInvoke = async (message, token) =>
+            message switch
+            {
+                ReserveSeatCheckoutCommand reserve => await ReserveSeatCheckoutHandler.Handle(
+                    reserve,
+                    subscriptions,
+                    pricing,
+                    intents,
+                    unitOfWork,
+                    token
+                ),
+                AttachSeatCheckoutCommand attach => await AttachSeatCheckoutHandler.Handle(
+                    attach,
+                    intents,
+                    unitOfWork,
+                    bus,
+                    token
+                ),
+                _ => throw new NotSupportedException(),
+            };
+        return StartSeatCheckoutHandler.Handle(command, bus, client, ct);
+    }
+
+    // SUB-7: la intención ya está confirmada; repetir la compra reusa su clave.
+    [Fact]
+    public async Task A_provider_failure_keeps_the_intent_and_the_retry_reuses_its_key()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var intents = new FakeSeatPurchaseIntentRepository();
+        var command = Command(subscription.TenantId, "Standard", 2);
+        var failing = new FakeSeatCheckoutPaymentClient(
+            Result.Failure<SeatCheckoutClientResult>(new Error("Seats.Checkout.ProviderError", "boom"))
+        );
+        await HandleAsync(command, subscription, pricing, intents, failing);
+
+        var retryClient = Client();
+        var retry = await HandleAsync(command, subscription, pricing, intents, retryClient);
+
+        Assert.True(retry.IsSuccess);
+        Assert.Single(intents.Added);
+        Assert.Equal(failing.LastRequest!.IdempotencyKey, retryClient.LastRequest!.IdempotencyKey);
+    }
+
+    [Fact]
+    public async Task An_unattached_intent_of_another_purchase_is_not_reused()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var intents = new FakeSeatPurchaseIntentRepository();
+        var failing = new FakeSeatCheckoutPaymentClient(
+            Result.Failure<SeatCheckoutClientResult>(new Error("Seats.Checkout.ProviderError", "boom"))
+        );
+        await HandleAsync(Command(subscription.TenantId, "Standard", 2), subscription, pricing, intents, failing);
+
+        var retry = await HandleAsync(
+            Command(subscription.TenantId, "Standard", 5),
+            subscription,
+            pricing,
+            intents,
+            Client()
+        );
+
+        Assert.True(retry.IsSuccess);
+        Assert.Equal(2, intents.Added.Count);
+    }
+
     private static StartSeatCheckoutCommand Command(Guid tenantId, string seatType, int quantity) =>
         new(
             tenantId,
@@ -45,7 +123,7 @@ public sealed class StartSeatCheckoutHandlerTests
         );
         var unitOfWork = new FakeUnitOfWork();
 
-        var result = await StartSeatCheckoutHandler.Handle(
+        var result = await Start(
             Command(subscription.TenantId, "Standard", 2),
             new FakeSubscriptionRepo(subscription),
             new FakeSeatPricingRepository(pricing),
@@ -73,7 +151,7 @@ public sealed class StartSeatCheckoutHandlerTests
     {
         var (subscription, pricing) = ActiveSubscriptionWithPricing();
 
-        var result = await StartSeatCheckoutHandler.Handle(
+        var result = await Start(
             Command(subscription.TenantId, "Portal", 1),
             new FakeSubscriptionRepo(subscription),
             new FakeSeatPricingRepository(pricing),
@@ -94,7 +172,7 @@ public sealed class StartSeatCheckoutHandlerTests
     {
         var (subscription, pricing) = ActiveSubscriptionWithPricing();
 
-        var result = await StartSeatCheckoutHandler.Handle(
+        var result = await Start(
             Command(subscription.TenantId, "Standard", 1),
             new FakeSubscriptionRepo(subscription),
             new FakeSeatPricingRepository(pricing),
@@ -187,7 +265,7 @@ public sealed class StartSeatCheckoutHandlerTests
         FakeSeatPurchaseIntentRepository intents,
         FakeSeatCheckoutPaymentClient client
     ) =>
-        StartSeatCheckoutHandler.Handle(
+        Start(
             command,
             new FakeSubscriptionRepo(subscription),
             new FakeSeatPricingRepository(pricing),

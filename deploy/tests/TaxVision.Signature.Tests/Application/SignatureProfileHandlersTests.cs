@@ -504,6 +504,12 @@ public sealed class SignatureProfileHandlersTests
 
     private sealed class FakeCloudStorage : ISignatureCloudStorageClient
     {
+        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
+            Guid tenantId,
+            SignatureFileUpload upload,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public int Uploads { get; private set; }
 
         public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>

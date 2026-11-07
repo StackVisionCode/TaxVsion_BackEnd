@@ -32,6 +32,7 @@ public sealed class SmsMessageConfiguration : IEntityTypeConfiguration<SmsMessag
 
         builder.Property(m => m.CreatedAtUtc).IsRequired();
         builder.Property(m => m.UpdatedAtUtc).IsRequired();
+        builder.Property(m => m.RowVersion).IsRowVersion();
 
         builder.HasMany(m => m.Media).WithOne().HasForeignKey(x => x.SmsMessageId).OnDelete(DeleteBehavior.Cascade);
         builder.Metadata.FindNavigation(nameof(SmsMessage.Media))!.SetPropertyAccessMode(PropertyAccessMode.Field);
@@ -96,6 +97,33 @@ public sealed class SmsOptOutConfiguration : IEntityTypeConfiguration<SmsOptOut>
             .IsUnique()
             .HasDatabaseName("UX_SmsOptOuts_Tenant_Customer_Phone");
         builder.HasIndex(x => new { x.TenantId, x.PhoneE164 }).HasDatabaseName("IX_SmsOptOuts_Tenant_Phone");
+    }
+}
+
+public sealed class PendingDeliveryReceiptConfiguration : IEntityTypeConfiguration<PendingDeliveryReceipt>
+{
+    public void Configure(EntityTypeBuilder<PendingDeliveryReceipt> builder)
+    {
+        builder.ToTable("smsPendingDeliveryReceipts");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ProviderCode).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.ProviderMessageId).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.EventType).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.CanonicalStatus).HasMaxLength(24).IsRequired();
+        builder.Property(x => x.FailureCode).HasMaxLength(64);
+        builder.Property(x => x.FailureReason).HasMaxLength(512);
+        builder.Property(x => x.ReceivedAtUtc).IsRequired();
+
+        builder
+            .HasIndex(x => new
+            {
+                x.ProviderCode,
+                x.ProviderMessageId,
+                x.EventType,
+            })
+            .IsUnique()
+            .HasDatabaseName("UX_SmsPendingDeliveryReceipts_Provider_MessageId_EventType");
+        builder.HasIndex(x => x.ReceivedAtUtc).HasDatabaseName("IX_SmsPendingDeliveryReceipts_ReceivedAt");
     }
 }
 

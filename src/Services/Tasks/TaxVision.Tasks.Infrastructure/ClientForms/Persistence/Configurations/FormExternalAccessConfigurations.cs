@@ -72,6 +72,17 @@ public sealed class FormIntakeLinkConfiguration : IEntityTypeConfiguration<FormI
     }
 }
 
+public sealed class FormIntakeDailyCounterConfiguration : IEntityTypeConfiguration<FormIntakeDailyCounter>
+{
+    public void Configure(EntityTypeBuilder<FormIntakeDailyCounter> builder)
+    {
+        builder.ToTable("FormIntakeDailyCounters");
+        builder.HasKey(item => new { item.TenantId, item.DayUtc });
+        builder.Property(item => item.DayUtc).HasColumnType("date");
+        builder.Property(item => item.Count).IsRequired();
+    }
+}
+
 public sealed class FormAccessGrantConfiguration : IEntityTypeConfiguration<FormAccessGrant>
 {
     public void Configure(EntityTypeBuilder<FormAccessGrant> builder)
@@ -82,6 +93,7 @@ public sealed class FormAccessGrantConfiguration : IEntityTypeConfiguration<Form
         builder.Property(item => item.TenantId).IsRequired();
         builder.Property(item => item.TokenHash).HasMaxLength(64).IsRequired();
         builder.Property(item => item.TokenLast4).HasMaxLength(4).IsRequired();
+        builder.Property(item => item.RowVersion).IsRowVersion();
         builder.HasIndex(item => item.TokenHash).IsUnique().HasDatabaseName("UX_FormAccessGrants_TokenHash");
         builder
             .HasIndex(item => new { item.TenantId, item.FormRequestId })

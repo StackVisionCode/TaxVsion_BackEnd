@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -70,6 +71,6 @@ public sealed class CheckoutIntentRowVersionIntegrationTests : IAsyncLifetime
         await first.SaveChangesAsync();
 
         Assert.True(secondChange(b).IsSuccess);
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
+        await Assert.ThrowsAsync<ConflictException>(() => second.SaveChangesAsync());
     }
 }

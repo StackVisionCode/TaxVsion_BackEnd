@@ -14,6 +14,7 @@ public sealed class TenantProviderCustomerConfiguration : IEntityTypeConfigurati
         builder.Property(customer => customer.TenantId).IsRequired();
         builder.Property(customer => customer.ProviderCode).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(customer => customer.Email).HasMaxLength(320).IsRequired();
+        builder.Property(customer => customer.RowVersion).IsRowVersion();
 
         builder.OwnsOne(
             customer => customer.CustomerReference,

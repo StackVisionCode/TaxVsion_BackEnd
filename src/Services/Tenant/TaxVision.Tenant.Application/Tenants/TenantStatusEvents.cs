@@ -13,6 +13,7 @@ public static class TenantStatusEvents
             TenantId = tenant.Id,
             Status = tenant.Status.ToString(),
             IsActive = tenant.Status == EnumTenantStatus.TenantStatus.Active,
+            TenantVersion = tenant.Version,
             CorrelationId = correlationId,
         };
 }

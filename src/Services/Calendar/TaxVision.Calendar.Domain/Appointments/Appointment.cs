@@ -40,6 +40,34 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
     public bool IsRecurring => Recurrence is not null;
 
+    /// <summary>Cuándo ocurre, con sus excepciones. Cambia al reprogramar; un RSVP no la mueve.</summary>
+    public string ScheduleStamp
+    {
+        get
+        {
+            var exceptions = new List<string>(_exceptions.Count);
+            foreach (var e in _exceptions)
+                exceptions.Add($"{e.OriginalStartUtc:O}={e.Kind}:{e.NewStartUtc:O}:{e.NewEndUtc:O}");
+
+            exceptions.Sort(StringComparer.Ordinal);
+
+            return string.Join(
+                '|',
+                Timing.Kind,
+                Timing.TimeZone.Id,
+                $"{Timing.StartUtc:O}",
+                $"{Timing.EndUtc:O}",
+                $"{Timing.StartDate:O}",
+                $"{Timing.EndDate:O}",
+                $"{Timing.SeriesStartDate:O}",
+                $"{Timing.LocalStartTime:O}",
+                Timing.Duration,
+                Recurrence?.Value,
+                string.Join(',', exceptions)
+            );
+        }
+    }
+
     /// <summary>
     /// De que serie salio esta al partirse. Sin el rastro, nadie entiende por que hay dos series casi
     /// iguales y alguien «arregla» borrando una.
@@ -79,6 +107,12 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     public DateTime? CancelledAtUtc { get; private set; }
 
     public byte[] RowVersion { get; private set; } = default!;
+
+    /// <summary>
+    /// Sube con cada cambio en asistentes o excepciones. Esos cambios no tocan la fila de la cita, y sin
+    /// <c>UPDATE</c> en la raíz <see cref="RowVersion"/> no detecta dos ediciones a la vez.
+    /// </summary>
+    public int ChildrenRevision { get; private set; }
 
     private readonly List<AppointmentAttendee> _attendees = [];
     public IReadOnlyList<AppointmentAttendee> Attendees => _attendees;
@@ -241,9 +275,11 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (userId == OrganizerUserId)
             return Result.Failure(AppointmentErrors.OrganizerCannotBeRemoved);
 
-        return _attendees.RemoveAll(a => a.UserId == userId) > 0
-            ? Result.Success()
-            : Result.Failure(AppointmentErrors.AttendeeNotFound);
+        if (_attendees.RemoveAll(a => a.UserId == userId) == 0)
+            return Result.Failure(AppointmentErrors.AttendeeNotFound);
+
+        ChildrenRevision++;
+        return Result.Success();
     }
 
     public Result ChangeTitle(AppointmentTitle title, Guid actingUserId, bool canManageAll)
@@ -289,6 +325,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
         var attendee = AppointmentAttendee.Invite(Id, kind, userId, customerId, snapshot, isRequired);
         _attendees.Add(attendee);
+        ChildrenRevision++;
 
         AddDomainEvent(
             new AppointmentAttendeeInvitedDomainEvent(
@@ -320,6 +357,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             return Result.Failure(AppointmentErrors.OrganizerCannotBeRemoved);
 
         _attendees.Remove(attendee);
+        ChildrenRevision++;
         return Result.Success();
     }
 
@@ -343,6 +381,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             return Result.Failure(AppointmentErrors.AttendeeNotFound);
 
         attendee.Respond(response, nowUtc);
+        ChildrenRevision++;
 
         AddDomainEvent(
             new AppointmentAttendeeRespondedDomainEvent(
@@ -421,6 +460,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             return allowed;
 
         _exceptions.Add(AppointmentException.Cancel(Id, TenantId, originalStartUtc, actingUserId, nowUtc));
+        ChildrenRevision++;
 
         AddDomainEvent(
             new AppointmentOccurrenceCancelledDomainEvent(Id, TenantId, originalStartUtc, actingUserId, nowUtc, reason)
@@ -461,6 +501,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             return Result.Failure(exception.Error);
 
         _exceptions.Add(exception.Value);
+        ChildrenRevision++;
 
         AddDomainEvent(
             new AppointmentOccurrenceOverriddenDomainEvent(

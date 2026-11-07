@@ -170,4 +170,39 @@ public class OAuthConnectionTests
         Assert.True(result.IsFailure);
         Assert.Equal("OAuthConnection.InvalidTransition", result.Error.Code);
     }
+
+    [Fact]
+    public void CanReconnect_ExpiredOrMissingScope_ReturnsTrue()
+    {
+        var active = ActiveConnection("scope-a scope-b");
+        Assert.False(active.CanReconnect("scope-a scope-b"));
+        Assert.True(active.CanReconnect("scope-a scope-b scope-c"));
+
+        var expired = ActiveConnection("scope-a");
+        expired.MarkExpired();
+        Assert.True(expired.CanReconnect("scope-a"));
+
+        var revoked = ActiveConnection("scope-a");
+        revoked.Revoke(DateTime.UtcNow);
+        Assert.True(revoked.CanReconnect("scope-a"));
+    }
+
+    [Fact]
+    public void CanReconnect_Pending_ReturnsFalse()
+    {
+        var pending = OAuthConnection
+            .Create(Guid.NewGuid(), ProviderCode.Gmail, "client", "scope-a", DateTime.UtcNow)
+            .Value;
+
+        Assert.False(pending.CanReconnect("scope-a scope-b"));
+    }
+
+    private static OAuthConnection ActiveConnection(string scope)
+    {
+        var now = DateTime.UtcNow;
+        var connection = OAuthConnection.Create(Guid.NewGuid(), ProviderCode.Gmail, "client", scope, now).Value;
+        var cipher = EncryptedSecret.Create(new byte[] { 1 }, new byte[12], new byte[16], 1).Value;
+        connection.AttachToken(OAuthToken.Create(connection.Id, cipher, cipher, now.AddHours(1), now).Value);
+        return connection;
+    }
 }

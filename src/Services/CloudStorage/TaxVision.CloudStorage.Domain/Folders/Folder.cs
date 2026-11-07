@@ -59,6 +59,8 @@ public sealed class Folder : TenantEntity
     /// </summary>
     public string? Category { get; private set; }
 
+    public byte[] RowVersion { get; private set; } = [];
+
     public static Result<Folder> Create(
         Guid id,
         Guid tenantId,

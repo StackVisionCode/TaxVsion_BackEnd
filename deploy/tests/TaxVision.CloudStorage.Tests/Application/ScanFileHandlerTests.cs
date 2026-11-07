@@ -45,6 +45,19 @@ public sealed class ScanFileHandlerTests
     }
 
     [Fact]
+    public async Task A_file_already_being_scanned_is_left_to_that_scan()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.Files.ScansInProgress.Add(fixture.File.Id);
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.PendingScan, fixture.File.Status);
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
     public async Task Content_type_rejection_publishes_FileScanFailed_with_owner_context()
     {
         var fixture = CreateFixture(FolderType.ClientForms, null);

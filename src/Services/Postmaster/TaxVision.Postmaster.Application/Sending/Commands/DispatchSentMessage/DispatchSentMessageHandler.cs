@@ -44,6 +44,7 @@ public static class DispatchSentMessageHandler
         ITenantDirectoryRepository tenantDirectory,
         ICorrelationContext correlation,
         IMessageBus bus,
+        RecordSendResultRetryOptions recordRetry,
         ILogger logger,
         CancellationToken ct,
         Envelope? envelope = null
@@ -65,7 +66,7 @@ public static class DispatchSentMessageHandler
                 );
                 const string unknown =
                     $"{SendOutcomeReasons.SendOutcomeUnknown}: the provider was called but the result was not recorded.";
-                await RecordAsync(bus, command, Failed(unknown), unknown, fallback: null);
+                await RecordAsync(bus, recordRetry, command, Failed(unknown), unknown, fallback: null);
                 return;
             }
 
@@ -82,7 +83,14 @@ public static class DispatchSentMessageHandler
             var attachments = await FetchAttachmentsAsync(evt, attachmentFetcher, logger, ct);
             if (attachments.IsFailure)
             {
-                await RecordAsync(bus, command, Failed(attachments.Error.Message), attachments.Error.Message, null);
+                await RecordAsync(
+                    bus,
+                    recordRetry,
+                    command,
+                    Failed(attachments.Error.Message),
+                    attachments.Error.Message,
+                    null
+                );
                 return;
             }
 
@@ -100,13 +108,13 @@ public static class DispatchSentMessageHandler
                 if (resolved.Status != ProviderResolutionStatus.Resolved)
                 {
                     var reason = $"{resolved.Status}: {resolved.Reason}";
-                    await RecordAsync(bus, command, Failed(reason), reason, null);
+                    await RecordAsync(bus, recordRetry, command, Failed(reason), reason, null);
                     return;
                 }
                 systemProvider = resolved.Provider!;
             }
 
-            var attempted = await bus.InvokeAsync<Result>(new MarkSendAttemptedCommand(message.Id), ct);
+            var attempted = await SendAttempt.TryMarkAsync(bus, message.Id, ct);
             if (attempted.IsFailure)
             {
                 logger.LogInformation(
@@ -127,7 +135,7 @@ public static class DispatchSentMessageHandler
                     attachments.Value,
                     ct
                 );
-                await RecordAsync(bus, command, sendResult, "Unknown SMTP failure.", null);
+                await RecordAsync(bus, recordRetry, command, sendResult, "Unknown SMTP failure.", null);
                 return;
             }
 
@@ -144,6 +152,7 @@ public static class DispatchSentMessageHandler
                 new SystemLane(providerResolver, rateLimiter, emailSender),
                 tenantDirectory,
                 bus,
+                recordRetry,
                 logger,
                 ct
             );
@@ -176,6 +185,7 @@ public static class DispatchSentMessageHandler
         SystemLane systemLane,
         ITenantDirectoryRepository tenantDirectory,
         IMessageBus bus,
+        RecordSendResultRetryOptions recordRetry,
         ILogger logger,
         CancellationToken ct
     )
@@ -212,7 +222,7 @@ public static class DispatchSentMessageHandler
             sendResult = outcome.Result ?? sendResult;
         }
 
-        await RecordAsync(bus, send.Command, sendResult, "Unknown Connectors send failure.", fallback);
+        await RecordAsync(bus, recordRetry, send.Command, sendResult, "Unknown Connectors send failure.", fallback);
     }
 
     private static bool ShouldFallBack(
@@ -329,14 +339,16 @@ public static class DispatchSentMessageHandler
     // Se registra aunque se esté apagando el host: el proveedor ya contestó.
     private static Task RecordAsync(
         IMessageBus bus,
+        RecordSendResultRetryOptions retry,
         DispatchSentMessageCommand command,
         SendResult result,
         string fallbackFailureReason,
         MailboxFallback? fallback
     ) =>
-        bus.InvokeAsync(
+        RecordSendResultRetry.InvokeAsync(
+            bus,
             new RecordSendResultCommand(command.SentMessageId, result, fallbackFailureReason, fallback),
-            CancellationToken.None
+            retry
         );
 
     private static SendResult Failed(string reason) => new(false, null, reason, []);

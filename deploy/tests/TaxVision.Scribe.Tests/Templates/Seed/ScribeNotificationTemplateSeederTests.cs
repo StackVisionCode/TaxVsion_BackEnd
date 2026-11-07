@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Scribe.Application.Templates.BaseLayouts;
+using TaxVision.Scribe.Application.Templates.Seed;
 using TaxVision.Scribe.Application.Templates.Storage;
 using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.Layouts;
@@ -48,6 +49,17 @@ public sealed class ScribeNotificationTemplateSeederTests
         Assert.Contains(template.Versions, v => v.Status == EmailVersionStatus.Archived && v.SeedContentVersion == 22);
     }
 
+    // SCR-02: una plantilla que falla no se lleva a las demás.
+    [Fact]
+    public async Task One_failing_template_does_not_stop_the_rest()
+    {
+        await using var host = await SeedHost.StartAsync(throwOnUpload: 3);
+
+        var published = await host.WaitForPublishedCountAsync(NotificationTemplateSeedSource.All.Count - 1);
+
+        Assert.Equal(NotificationTemplateSeedSource.All.Count - 1, published);
+    }
+
     private sealed class SeedHost : IAsyncDisposable
     {
         private readonly ServiceProvider _provider;
@@ -61,7 +73,7 @@ public sealed class ScribeNotificationTemplateSeederTests
 
         public RecordingStorage Storage { get; }
 
-        public static async Task<SeedHost> StartAsync(int? existingWispVersion = null)
+        public static async Task<SeedHost> StartAsync(int? existingWispVersion = null, int? throwOnUpload = null)
         {
             var storage = new RecordingStorage();
             var databaseName = Guid.NewGuid().ToString();
@@ -73,10 +85,12 @@ public sealed class ScribeNotificationTemplateSeederTests
             var host = new SeedHost(services.BuildServiceProvider(), storage);
 
             await host.SeedLayoutsAndExistingAsync(existingWispVersion);
+            storage.ThrowOnUpload = throwOnUpload;
 
             var seeder = new ScribeNotificationTemplateSeeder(
                 host._provider.GetRequiredService<IServiceScopeFactory>(),
                 host._lifetime,
+                new FreeSeedLock(),
                 NullLogger<ScribeNotificationTemplateSeeder>.Instance
             );
             await seeder.StartAsync(CancellationToken.None);
@@ -101,6 +115,27 @@ public sealed class ScribeNotificationTemplateSeederTests
                 await Task.Delay(100);
             }
             throw new TimeoutException($"Template {templateKey} was not published at v{minimumVersion}.");
+        }
+
+        /// <summary>Espera a que el conteo llegue a <paramref name="expected"/> o deje de crecer.</summary>
+        public async Task<int> WaitForPublishedCountAsync(int expected)
+        {
+            var last = -1;
+            var unchanged = 0;
+            while (unchanged < 30)
+            {
+                await using var scope = _provider.CreateAsyncScope();
+                var db = scope.ServiceProvider.GetRequiredService<ScribeDbContext>();
+                var count = await db.EmailTemplates.CountAsync(t =>
+                    t.Versions.Any(v => v.Status == EmailVersionStatus.Published)
+                );
+                if (count >= expected)
+                    return count;
+                unchanged = count == last ? unchanged + 1 : 0;
+                last = count;
+                await Task.Delay(100);
+            }
+            return last;
         }
 
         public async Task<bool> HasMappingAsync(string eventKey)
@@ -210,6 +245,10 @@ public sealed class ScribeNotificationTemplateSeederTests
 
         public string Read(Guid fileId) => _texts[fileId];
 
+        public int? ThrowOnUpload { get; set; }
+
+        private int _uploads;
+
         public async Task<BuildingBlocks.Results.Result<TemplateStorageUpload>> UploadAsync(
             Guid? tenantId,
             TemplateArtifactKind kind,
@@ -218,6 +257,9 @@ public sealed class ScribeNotificationTemplateSeederTests
             CancellationToken ct = default
         )
         {
+            if (Interlocked.Increment(ref _uploads) == ThrowOnUpload)
+                throw new InvalidOperationException("Storage failed on this upload.");
+
             var result = await _inner.UploadAsync(tenantId, kind, content, actorId, ct);
             if (result.IsSuccess)
                 _texts[result.Value.FileId] = System.Text.Encoding.UTF8.GetString(content);
@@ -245,6 +287,17 @@ public sealed class ScribeNotificationTemplateSeederTests
         public void Stop() => _stopping.Cancel();
 
         public void StopApplication() => Stop();
+    }
+
+    private sealed class FreeSeedLock : ISeedLock
+    {
+        public Task<IAsyncDisposable?> TryAcquireAsync(string resource, CancellationToken ct) =>
+            Task.FromResult<IAsyncDisposable?>(new Held());
+
+        private sealed class Held : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 
     private sealed class NoTenantContext : ITenantContext

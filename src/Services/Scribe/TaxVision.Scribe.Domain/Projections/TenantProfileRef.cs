@@ -23,6 +23,9 @@ public sealed class TenantProfileRef : ITenantOwned
     public string Name { get; private set; } = default!;
     public string SubDomain { get; private set; } = default!;
 
+    /// <summary>Cuándo ocurrió en origen el último cambio de subdominio aplicado; null = es el del alta.</summary>
+    public DateTime? SubDomainChangedAtUtc { get; private set; }
+
     /// <summary>Último toque local (alta, backfill, subdominio o renombre), con el reloj de Scribe.</summary>
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -51,14 +54,17 @@ public sealed class TenantProfileRef : ITenantOwned
             UpdatedAtUtc = updatedAtUtc,
         };
 
-    /// <summary>Alta reentregada, backfill o cambio de subdominio. El nombre no pisa un renombre ya
-    /// aplicado: ese llega solo por <see cref="ApplyTenantUpdate"/>.</summary>
-    public void Update(string name, string subDomain, DateTime updatedAtUtc)
+    /// <summary>SCR-04: cambio de subdominio publicado por Tenant. Ignora uno más viejo que el aplicado.
+    /// Devuelve <c>true</c> si hay algo que guardar.</summary>
+    public bool ApplySubDomain(string slug, DateTime occurredOnUtc, DateTime nowUtc)
     {
-        if (SourceUpdatedAtUtc is null)
-            Name = name.Trim();
-        SubDomain = subDomain.Trim();
-        UpdatedAtUtc = updatedAtUtc;
+        if (SubDomainChangedAtUtc is { } applied && occurredOnUtc <= applied)
+            return false;
+
+        SubDomain = slug.Trim();
+        SubDomainChangedAtUtc = occurredOnUtc;
+        UpdatedAtUtc = nowUtc;
+        return true;
     }
 
     /// <summary>Renombre publicado por Tenant. Ignora un evento más viejo que el aplicado (uno igual se

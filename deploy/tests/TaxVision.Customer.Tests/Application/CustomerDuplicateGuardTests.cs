@@ -160,6 +160,7 @@ public sealed class CustomerDuplicateGuardTests
             repo,
             detector,
             new NoDirectory(),
+            new CustomerFormCreationHarness.CreationLock([]),
             new NoOpUnitOfWork(),
             bus,
             new NoOpCorrelationContext(),

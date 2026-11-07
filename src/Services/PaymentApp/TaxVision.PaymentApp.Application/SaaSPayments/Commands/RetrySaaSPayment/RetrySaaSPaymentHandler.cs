@@ -5,11 +5,14 @@ using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ExecuteSaaSPaymentCharge;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
+using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.RetrySaaSPayment;
 
+/// <summary>Reabre el pago y deja el comando que llama al provider en la misma transacción (patrón BB-8).</summary>
 public static class RetrySaaSPaymentHandler
 {
     public static async Task<Result> Handle(
@@ -22,6 +25,7 @@ public static class RetrySaaSPaymentHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -37,7 +41,37 @@ public static class RetrySaaSPaymentHandler
         metrics.RecordAttempted(payment.ProviderCode.ToString(), payment.Type.ToString());
 
         var adapter = providerFactory.Resolve(payment.ProviderCode);
-        await ExecuteRetryAsync(payment, adapter, providerCustomers, command.ActorUserId, metrics, ct);
+        var payerResult = await SaaSPaymentChargeOutcome.ResolvePayerAsync(
+            payment.TenantId,
+            providerCustomers,
+            adapter,
+            ct
+        );
+        if (payerResult.IsSuccess)
+        {
+            // Guardar antes de publicar: fila y comando salen juntos o no sale ninguno.
+            await unitOfWork.SaveChangesAsync(ct);
+            await bus.PublishAsync(
+                new ExecuteSaaSPaymentChargeCommand(
+                    payment.TenantId,
+                    payment.Id,
+                    SaaSPaymentChargeStrategy.Authorize,
+                    payerResult.Value.Method.Token,
+                    payerResult.Value.Customer.Token,
+                    command.ActorUserId,
+                    correlation.CorrelationId
+                )
+            );
+            return Result.Success();
+        }
+
+        SaaSPaymentChargeOutcome.FailPayment(
+            payment,
+            payerResult.Error,
+            command.ActorUserId,
+            SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, DateTime.UtcNow),
+            metrics
+        );
 
         await AuditEntryFactory.AppendAsync(
             audit,
@@ -71,52 +105,5 @@ public static class RetrySaaSPaymentHandler
         );
 
         return Result.Success();
-    }
-
-    private static async Task ExecuteRetryAsync(
-        SaaSPayment payment,
-        IPaymentProvider adapter,
-        ITenantProviderCustomerRepository providerCustomers,
-        Guid actorUserId,
-        IPaymentAppMetrics metrics,
-        CancellationToken ct
-    )
-    {
-        var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, DateTime.UtcNow);
-
-        var payerResult = await SaaSPaymentChargeOutcome.ResolvePayerAsync(
-            payment.TenantId,
-            providerCustomers,
-            adapter,
-            ct
-        );
-        if (payerResult.IsFailure)
-        {
-            SaaSPaymentChargeOutcome.FailPayment(payment, payerResult.Error, actorUserId, nextRetryAtUtc, metrics);
-            return;
-        }
-
-        var chargeRequest = new ChargeAuthorizationRequest(
-            Customer: payerResult.Value.Customer,
-            Amount: payment.Amount,
-            IdempotencyKey: payment.ProviderIdempotencyKeyForNextAttempt(),
-            Descriptor: payment.StatementDescriptor,
-            Metadata: new Dictionary<string, string>
-            {
-                ["tenantId"] = payment.TenantId.ToString("N"),
-                // Mismos datos que el primer cobro: con otra metadata, Stripe rechaza la clave reusada.
-                ["saaSPaymentId"] = payment.Id.ToString("N"),
-            },
-            SpecificPaymentMethod: payerResult.Value.Method
-        );
-
-        var chargeResult = await adapter.AuthorizeChargeAsync(chargeRequest, ct);
-        if (chargeResult.IsFailure)
-        {
-            SaaSPaymentChargeOutcome.FailPayment(payment, chargeResult.Error, actorUserId, nextRetryAtUtc, metrics);
-            return;
-        }
-
-        SaaSPaymentChargeOutcome.ApplyChargeOutcome(payment, chargeResult.Value, actorUserId, nextRetryAtUtc, metrics);
     }
 }

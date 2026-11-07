@@ -3,9 +3,11 @@ using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Tasks.Application.Backfill;
 using TaxVision.Tasks.Application.Backfill.Abstractions;
 using TaxVision.Tasks.Application.Projections.Abstractions;
 using TaxVision.Tasks.Domain.Projections;
+using Wolverine;
 
 namespace TaxVision.Tasks.Application.Projections.CustomerEvents;
 
@@ -15,6 +17,7 @@ public static class CustomerDeactivatedConsumer
         CustomerDeactivatedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
         ITenantCustomerBackfillService backfill,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
@@ -27,7 +30,7 @@ public static class CustomerDeactivatedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            await TenantCustomerBackfillRequest.RequestIfNeededAsync(evt.TenantId, backfill, bus, ct);
 
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             // Llegó antes que Created: se reintenta con espera (y a la DLQ si nunca llega), no se descarta.

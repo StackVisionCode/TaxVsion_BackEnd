@@ -54,6 +54,12 @@ public sealed class FakeSaaSPaymentRepository(SaaSPayment? existing = null) : IS
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
+    public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<(Guid Id, Guid TenantId)>>([]);
+
     public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
         DateTime cutoffUtc,
         int batchSize,
@@ -241,6 +247,21 @@ public sealed class FakePaymentProvider(
         string providerChargeReference,
         CancellationToken ct
     ) => throw new NotSupportedException();
+
+    /// <summary>Respuesta de la búsqueda de un cargo sin referencia.</summary>
+    public ChargeLookup Lookup { get; set; } = new(ChargeLookupOutcome.NotSupported);
+
+    public int Lookups { get; private set; }
+
+    public Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    )
+    {
+        Lookups++;
+        return Task.FromResult(Result.Success(Lookup));
+    }
 
     public Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
         string providerChargeReference,

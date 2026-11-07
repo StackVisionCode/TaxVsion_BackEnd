@@ -89,6 +89,10 @@ public sealed class SaaSPayment : AggregateRoot
     public Guid? ReviewResolvedByUserId { get; private set; }
     public string? ReviewResolution { get; private set; }
 
+    /// <summary>Cuándo se llamó por primera vez al provider en este intento. Con valor y sin resultado, el cargo pudo
+    /// existir: no se reenvía a ciegas (BB-8). Lo limpia <see cref="PrepareForRetry"/>.</summary>
+    public DateTime? ChargeAttemptedAtUtc { get; private set; }
+
     public IReadOnlyCollection<SaaSPaymentAttempt> Attempts => _attempts;
     public IReadOnlyCollection<RefundLine> Refunds => _refunds;
 
@@ -404,6 +408,20 @@ public sealed class SaaSPayment : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>Graba el intento antes de llamar al provider. Un reintento conserva la primera fecha: de ahí corre el
+    /// plazo en que el provider recuerda la clave.</summary>
+    public Result MarkChargeAttempted(DateTime nowUtc)
+    {
+        if (Status != PaymentStatus.Pending)
+            return Result.Failure(
+                new Error("SaaSPayment.InvalidTransition", $"Cannot start a charge attempt from {Status}.")
+            );
+
+        ChargeAttemptedAtUtc ??= nowUtc;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
     /// <summary>
     /// Clave que se manda al provider en el próximo intento. El primero usa la clave del pago; los
     /// reintentos le suman el número: Stripe rechaza una clave reusada con otros datos y, pasadas 24 h,
@@ -440,6 +458,7 @@ public sealed class SaaSPayment : AggregateRoot
         FailureCode = null;
         FailureReason = null;
         NextRetryAtUtc = null;
+        ChargeAttemptedAtUtc = null;
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -636,10 +655,14 @@ public sealed class SaaSPayment : AggregateRoot
     public const string ReviewReasonLateProviderSuccess = "LateProviderSuccess";
     public const string ReviewReasonAmountMismatch = "AmountMismatch";
 
+    /// <summary>Se llamó al provider, no quedó resultado y el provider no permite buscar el cargo.</summary>
+    public const string ReviewReasonChargeOutcomeUnknown = "ChargeOutcomeUnknown";
+
     private static readonly HashSet<string> ReviewReasons =
     [
         ReviewReasonLateProviderSuccess,
         ReviewReasonAmountMismatch,
+        ReviewReasonChargeOutcomeUnknown,
     ];
     private static readonly HashSet<string> ReviewResolutions = ["Refunded", "BenefitApplied", "NoActionNeeded"];
 

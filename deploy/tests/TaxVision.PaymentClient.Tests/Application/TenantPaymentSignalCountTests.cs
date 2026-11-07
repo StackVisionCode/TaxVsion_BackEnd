@@ -93,7 +93,7 @@ public sealed class TenantPaymentSignalCountTests
         _db.PaymentLinks.Add(link);
         await _db.SaveChangesAsync();
 
-        var result = await RedeemPaymentLinkHandler.Handle(
+        var result = await TestChargeFlow.RedeemAsync(
             new RedeemPaymentLinkCommand(link.Token.Value, PaymentProviderCode.Stripe, "pm_card", ReceiptEmail: null),
             new PaymentLinkRepository(_db),
             new TenantPaymentRepository(_db),
@@ -169,7 +169,9 @@ public sealed class TenantPaymentSignalCountTests
             new TenantConnectAccountRepository(_db),
             InMemoryPaymentClient.FakeAdapters(_stripe),
             new PrefixSecretProtector(),
-            Options.Create(new PlatformStripeCredentials { PlatformSecretKey = "unused", ConnectWebhookSecret = "unused" }),
+            Options.Create(
+                new PlatformStripeCredentials { PlatformSecretKey = "unused", ConnectWebhookSecret = "unused" }
+            ),
             new PaymentLinkRepository(_db),
             new PaymentAuditLogWriter(_db),
             _db,
@@ -185,7 +187,7 @@ public sealed class TenantPaymentSignalCountTests
 
     private async Task<Guid> ChargeAsync(long amountCents)
     {
-        var result = await ChargeTenantPaymentHandler.Handle(
+        var result = await TestChargeFlow.ChargeAsync(
             new ChargeTenantPaymentCommand(
                 _tenantId,
                 PaymentProviderCode.Stripe,
@@ -204,7 +206,9 @@ public sealed class TenantPaymentSignalCountTests
             new TenantConnectAccountRepository(_db),
             InMemoryPaymentClient.FakeAdapters(_stripe),
             new PrefixSecretProtector(),
-            Options.Create(new PlatformStripeCredentials { PlatformSecretKey = "unused", ConnectWebhookSecret = "unused" }),
+            Options.Create(
+                new PlatformStripeCredentials { PlatformSecretKey = "unused", ConnectWebhookSecret = "unused" }
+            ),
             new PaymentAuditLogWriter(_db),
             _db,
             new NoOpPaymentClientMetrics(),

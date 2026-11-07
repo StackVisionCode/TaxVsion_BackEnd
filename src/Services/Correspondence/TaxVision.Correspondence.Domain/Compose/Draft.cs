@@ -39,8 +39,8 @@ public sealed class Draft : IHasOwner, ITenantOwned
     /// <summary>
     /// Cliente en cuya ficha queda archivado el correo. Null = correo nuevo a alguien que no es
     /// cliente (proveedor, IRS, colega): sale igual, pero no se archiva en ningún cliente y solo lo
-    /// ven quienes ven su buzón de envío. Un reply siempre tiene cliente: nace de un correo entrante,
-    /// y solo entran correos de clientes.
+    /// ven quienes ven su buzón de envío. Un reply lleva el cliente del correo al que responde: ninguno
+    /// si ese correo es de quien no es cliente.
     /// </summary>
     public Guid? CustomerId { get; private set; }
 
@@ -72,6 +72,10 @@ public sealed class Draft : IHasOwner, ITenantOwned
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public DateTime? LastAutoSavedAtUtc { get; private set; }
+
+    // Toca la raíz cuando cambia un destinatario sin mover UpdatedAtUtc, que en un enviado es la hora de envío.
+    public DateTime? LastDeliveryOutcomeAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     // Soft-delete del enviado (Sent): null = visible; set = en la papelera.
     public DateTime? DeletedAtUtc { get; private set; }
@@ -154,7 +158,7 @@ public sealed class Draft : IHasOwner, ITenantOwned
     /// <summary>Un reply — <paramref name="originalSubject"/> es el subject del <see cref="Inbox.IncomingEmail"/> original, del que se deriva el subject del reply con el prefijo "Re: ".</summary>
     public static Result<Draft> CreateReply(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         Guid accountId,
         Guid createdByUserId,
         ReplyContext replyContext,
@@ -454,7 +458,10 @@ public sealed class Draft : IHasOwner, ITenantOwned
                 new Error("Draft.RecipientNotFound", "The recipient is not part of this email.")
             );
 
-        return Result.Success(recipient.RecordDelivery(outcome, category, occurredAtUtc));
+        var changed = recipient.RecordDelivery(outcome, category, occurredAtUtc);
+        if (changed)
+            LastDeliveryOutcomeAtUtc = occurredAtUtc;
+        return Result.Success(changed);
     }
 
     /// <summary>

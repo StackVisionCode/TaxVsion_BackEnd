@@ -30,6 +30,10 @@ public partial class Tenant : TenantlessAggregateRoot
     /// contra reintentos del mismo comando M2M.</summary>
     public Guid? OnboardingId { get; private set; }
 
+    /// <summary>Sube en cada cambio real de estado, nombre, zona o subdominio. Viaja en los avisos para que cada
+    /// proyección descarte uno más viejo, y es el token de concurrencia de la fila.</summary>
+    public long Version { get; private set; }
+
     public Tenant() { }
 
     public static Result<Tenant> Create(
@@ -88,6 +92,8 @@ public partial class Tenant : TenantlessAggregateRoot
                 )
             );
 
+        if (SubDomain != sub)
+            Version++;
         SubDomain = sub;
         return Result.Success();
     }
@@ -157,7 +163,7 @@ public partial class Tenant : TenantlessAggregateRoot
         if (Status != EnumTenantStatus.TenantStatus.Active)
             return Result.Failure(new Error("Tenant.Status", "Only active tenants can be suspended."));
 
-        Status = EnumTenantStatus.TenantStatus.Suspended;
+        ApplyStatus(EnumTenantStatus.TenantStatus.Suspended);
         RaiseStatusChanged();
         return Result.Success();
     }
@@ -176,7 +182,7 @@ public partial class Tenant : TenantlessAggregateRoot
             );
         }
 
-        Status = EnumTenantStatus.TenantStatus.Closed;
+        ApplyStatus(EnumTenantStatus.TenantStatus.Closed);
         // También en un replay: los consumidores fijan Closed, que es terminal.
         RaiseStatusChanged();
         return Result.Success();
@@ -196,7 +202,7 @@ public partial class Tenant : TenantlessAggregateRoot
             return Result.Failure(new Error("Tenant.Status", "A closed tenant cannot be reactivated."));
         }
 
-        Status = status;
+        ApplyStatus(status);
         RaiseStatusChanged();
         return Result.Success();
     }
@@ -221,12 +227,23 @@ public partial class Tenant : TenantlessAggregateRoot
         return true;
     }
 
-    private void RaiseUpdated() =>
-        AddDomainEvent(new TenantUpdatedDomainEvent(Id, Name, DefaultTimeZoneId, UpdatedAtUtc));
+    private void ApplyStatus(EnumTenantStatus.TenantStatus status)
+    {
+        if (Status != status)
+            Version++;
+        Status = status;
+    }
+
+    // Una sola subida por edición, aunque cambien nombre y zona.
+    private void RaiseUpdated()
+    {
+        Version++;
+        AddDomainEvent(new TenantUpdatedDomainEvent(Id, Name, DefaultTimeZoneId, UpdatedAtUtc, Version));
+    }
 
     private void RaiseStatusChanged() =>
         AddDomainEvent(
-            new TenantStatusChangedDomainEvent(Id, Status, Status == EnumTenantStatus.TenantStatus.Active)
+            new TenantStatusChangedDomainEvent(Id, Status, Status == EnumTenantStatus.TenantStatus.Active, Version)
         );
 
     // El tenant de plataforma es reservado: su nombre lo fija el seed.

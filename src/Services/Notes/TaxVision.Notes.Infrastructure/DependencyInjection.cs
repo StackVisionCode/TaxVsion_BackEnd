@@ -130,7 +130,6 @@ public static class DependencyInjection
     {
         services.AddScoped<ICustomerDirectoryRepository, CustomerDirectoryRepository>();
         services.AddScoped<ITenantBackfillStateRepository, TenantBackfillStateRepository>();
-        services.AddScoped<ITenantCustomerBackfillService, TenantCustomerBackfillService>();
 
         services.AddOptions<CustomerClientOptions>().Bind(configuration.GetSection(CustomerClientOptions.SectionName));
         services.AddHttpClient<INotesCustomerClient, NotesCustomerClient>(

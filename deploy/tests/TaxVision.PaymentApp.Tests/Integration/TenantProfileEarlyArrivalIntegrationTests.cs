@@ -129,6 +129,7 @@ public sealed class TenantProfileEarlyArrivalIntegrationTests : IAsyncLifetime
             string status,
             bool isActive,
             DateTime nowUtc,
+            long? tenantVersion,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

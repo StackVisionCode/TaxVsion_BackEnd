@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Appointments.Commands;
@@ -162,6 +163,7 @@ public sealed class AppointmentDomainEventIntegrationTests : IAsyncLifetime
 
         var job = new StartingSoonJob(
             _host.Services.GetRequiredService<IServiceScopeFactory>(),
+            Microsoft.Extensions.Options.Options.Create(new StartingSoonOptions()),
             NullLogger<StartingSoonJob>.Instance
         );
         await job.StartAsync(CancellationToken.None);
@@ -223,6 +225,8 @@ public sealed class AppointmentDomainEventIntegrationTests : IAsyncLifetime
     {
         var closedPort = FreeTcpPort();
         return await Host.CreateDefaultBuilder()
+            // El temporizador de Wolverine puede registrar tras el Dispose: EventLog lanzaría y tumbaría el proceso.
+            .ConfigureLogging(logging => logging.ClearProviders())
             .UseWolverine(options =>
             {
                 options.ServiceName = "cal-bb1-domain-events-test";
@@ -425,6 +429,8 @@ public sealed class AppointmentDomainEventIntegrationTests : IAsyncLifetime
         public void Add(Appointment appointment) => inner.Add(appointment);
 
         public void Remove(Appointment appointment) => inner.Remove(appointment);
+
+        public void DiscardPendingChanges() => inner.DiscardPendingChanges();
     }
 
     // Falla después de guardar la cancelación y antes de confirmar: la transacción de Wolverine deshace fila y sobre.

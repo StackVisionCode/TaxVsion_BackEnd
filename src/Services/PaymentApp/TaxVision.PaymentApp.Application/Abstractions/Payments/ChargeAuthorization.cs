@@ -21,13 +21,30 @@ public sealed record ChargeAuthorizationRequest(
     Money? ApplicationFee = null
 );
 
+public enum ChargeLookupOutcome
+{
+    Found = 1,
+
+    /// <summary>El provider confirma que no hay cargo.</summary>
+    NotFound = 2,
+
+    /// <summary>El provider no permite buscar: no se puede saber.</summary>
+    NotSupported = 3,
+}
+
+/// <summary>Resultado de buscar un cargo. <paramref name="Charge"/> solo con <see cref="ChargeLookupOutcome.Found"/>.</summary>
+public sealed record ChargeLookup(ChargeLookupOutcome Outcome, ChargeAuthorizationResult? Charge = null);
+
+/// <summary><paramref name="OutcomeUnknown"/>: el provider no dijo si cobró (5xx, clave en conflicto, timeout). No es
+/// un fallo: el cargo pudo salir, así que no se reintenta con clave nueva y lo resuelve la reconciliación (D-PAY-13).</summary>
 public sealed record ChargeAuthorizationResult(
     string ProviderChargeReference,
     PaymentStatus Status,
     string? NextActionType = null,
     string? NextActionUrl = null,
     string? FailureCode = null,
-    string? FailureMessage = null
+    string? FailureMessage = null,
+    bool OutcomeUnknown = false
 );
 
 public sealed record CaptureResult(string ProviderChargeReference, PaymentStatus Status, Money CapturedAmount);

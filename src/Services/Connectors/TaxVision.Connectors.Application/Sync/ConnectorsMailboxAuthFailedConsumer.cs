@@ -28,14 +28,15 @@ public static class ConnectorsMailboxAuthFailedConsumer
             if (account.IsFailure || account.Value.ProviderCode != ProviderCode.Imap)
                 return;
 
-            await MailboxCredentialsRejection.HandleAsync(
-                account.Value,
-                "The IMAP server rejected the username or password.",
-                unitOfWork,
-                correlation,
-                logger,
-                ct
-            );
+            if (
+                MailboxCredentialsRejection.TryMark(
+                    account.Value,
+                    "The IMAP server rejected the username or password.",
+                    correlation,
+                    logger
+                )
+            )
+                await unitOfWork.SaveChangesAsync(ct);
         }
     }
 }

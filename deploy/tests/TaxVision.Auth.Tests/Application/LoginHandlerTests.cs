@@ -102,6 +102,7 @@ public sealed class LoginHandlerTests
         LoginHandler.Handle(
             new LoginCommand(world.Tenant.Id, email, password, AccountKind: accountKind),
             world.Users,
+            new NoUserLoginLock(),
             world.Tenants,
             new PrefixedPasswordHasher(),
             world.Roles,

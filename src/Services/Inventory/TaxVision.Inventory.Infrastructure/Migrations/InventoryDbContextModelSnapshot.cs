@@ -139,6 +139,9 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
                     b.Property<Guid>("CatalogItemId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("CatalogStateAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 

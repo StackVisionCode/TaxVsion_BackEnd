@@ -66,6 +66,20 @@ internal sealed class SignatureCloudStorageClient(
         CancellationToken ct = default
     )
     {
+        var staged = await StageAsync(tenantId, upload, ct);
+        if (staged.IsFailure)
+            return Result.Failure<Guid>(staged.Error);
+
+        await bus.PublishAsync(staged.Value);
+        return Result.Success(staged.Value.FileId);
+    }
+
+    public async Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
+        Guid tenantId,
+        SignatureFileUpload upload,
+        CancellationToken ct = default
+    )
+    {
         ArgumentNullException.ThrowIfNull(upload);
 
         var fileId = Guid.NewGuid();
@@ -88,10 +102,12 @@ internal sealed class SignatureCloudStorageClient(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "MinIO PUT failed for sealed document upload ({FileName}).", upload.FileName);
-            return Result.Failure<Guid>(new Error(SignatureStorage.TransientCode, "MinIO PUT failed."));
+            return Result.Failure<SaveFileRequestedIntegrationEvent>(
+                new Error(SignatureStorage.TransientCode, "MinIO PUT failed.")
+            );
         }
 
-        await bus.PublishAsync(
+        return Result.Success(
             new SaveFileRequestedIntegrationEvent
             {
                 TenantId = tenantId,
@@ -110,8 +126,6 @@ internal sealed class SignatureCloudStorageClient(
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        return Result.Success(fileId);
     }
 
     public async Task<Result<Guid>> CopyToCustomerAsync(

@@ -1,7 +1,8 @@
 namespace TaxVision.PaymentClient.Infrastructure.Scheduling;
 
 /// <summary>
-/// Revisión periódica de pagos que siguen esperando al proveedor (<c>Processing</c>/<c>RequiresAction</c>).
+/// Revisión periódica de pagos que siguen esperando al proveedor (<c>Processing</c>/<c>RequiresAction</c>), y de los
+/// <c>Pending</c> cuyo cobro no dejó resultado (PCL-8).
 /// Un pago entra si no cambió hace más de <see cref="StuckAfterMinutes"/> (el webhook ya tuvo tiempo) y
 /// se creó hace menos de <see cref="GiveUpAfterDays"/> (más viejo se deja como está, sin inventar nada).
 /// </summary>

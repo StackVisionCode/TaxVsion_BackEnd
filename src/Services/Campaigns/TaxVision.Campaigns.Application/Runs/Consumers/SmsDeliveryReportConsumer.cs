@@ -38,7 +38,7 @@ internal static class SmsDeliveryReport
 
         var dispatchId = sourceContext[CampaignPrefix.Length..];
         var run =
-            await runs.GetByDispatchIdAsync(tenantId, dispatchId, ct)
+            await runs.GetForDispatchResultAsync(tenantId, dispatchId, ct)
             ?? throw new DependencyNotReadyException("CampaignRun", $"dispatch {dispatchId}");
 
         var applied = run.ApplyResult(dispatchId, outcome, providerRef, reason);

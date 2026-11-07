@@ -167,6 +167,7 @@ builder.Host.UseWolverine(options =>
     // Borrado de la copia de firma huérfana cuando CloudStorage rechaza el archivo principal (mismo canal que Tasks).
     options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 });
 

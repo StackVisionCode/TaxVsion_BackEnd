@@ -478,6 +478,7 @@ public sealed class ResolvePayableHandlerTests
             string status,
             bool isActive,
             DateTime nowUtc,
+            long? tenantVersion,
             CancellationToken ct = default
         ) => Task.CompletedTask;
     }

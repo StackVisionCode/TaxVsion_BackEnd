@@ -24,6 +24,7 @@ public sealed class CampaignSmsAcceptedConsumerTests
             )
             .Value;
         var unit = run.Recipients.Single();
+        run.MarkFundsReserved();
         run.MarkDispatched(unit.Id);
         // Sms reportó Unknown (Pending/OutcomeUnknown) y el run cerró con esa unidad.
         run.ApplyResult(unit.DispatchId, DispatchOutcome.Unknown, null, "outcome_unknown");

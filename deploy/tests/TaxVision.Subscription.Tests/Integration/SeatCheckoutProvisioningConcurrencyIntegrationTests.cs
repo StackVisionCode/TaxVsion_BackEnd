@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
@@ -80,7 +81,7 @@ public sealed class SeatCheckoutProvisioningConcurrencyIntegrationTests : IAsync
         await ProvisionInAsync(second, _db.TenantId, _intentId);
 
         await first.SaveChangesAsync();
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
+        await Assert.ThrowsAsync<ConflictException>(() => second.SaveChangesAsync());
 
         await using var check = _db.NewContext();
         Assert.Equal(3, await check.Seats.IgnoreQueryFilters().CountAsync(s => s.TenantId == _db.TenantId));
@@ -103,7 +104,7 @@ public sealed class SeatCheckoutProvisioningConcurrencyIntegrationTests : IAsync
             await ProvisionInAsync(first, _db.TenantId, _intentId);
             await ProvisionInAsync(second, _db.TenantId, _intentId);
             await first.SaveChangesAsync();
-            await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
+            await Assert.ThrowsAsync<ConflictException>(() => second.SaveChangesAsync());
         }
 
         // Reintento del consumidor en un contexto nuevo: relee Provisioned y sale sin tocar nada.

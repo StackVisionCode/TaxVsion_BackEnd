@@ -1,6 +1,5 @@
 using System.Globalization;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -11,34 +10,32 @@ using Wolverine;
 namespace TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 
 /// <summary>
-/// Publica el email "completa tu oficina" para los onboardings pagados que NO terminaron in-session
-/// dentro de la ventana (RegistrationReminderDelayMinutes). Lo dispara un sweeper
-/// (OnboardingRegistrationReminderScheduler). Publish-before-save: el evento y el marcado se
-/// comprometen en la MISMA transacción del outbox EF (UseEntityFrameworkCoreTransactions), así que un
-/// conflicto de RowVersion revierte ambos → exactamente un email por onboarding.
+/// El email "completa tu oficina" para los onboardings pagados que NO terminaron in-session dentro de la
+/// ventana (RegistrationReminderDelayMinutes). Lo dispara OnboardingRegistrationReminderScheduler en dos pasos:
+/// <see cref="PrepareDueAsync"/> lee Redis y el catálogo fuera de la transacción, y
+/// <see cref="MarkAndPublishAsync"/> corre dentro de la unidad del job (BB-3), una por onboarding: el marcado y el
+/// aviso se confirman juntos. Un conflicto de RowVersion revierte los dos → exactamente un email por onboarding.
 /// </summary>
 public sealed class OnboardingRegistrationReminderProcessor(
     ITenantOnboardingRepository onboardings,
     ITokenReferenceStore tokenReferences,
     IPlanCatalogClient planCatalog,
-    IUnitOfWork unitOfWork,
-    IMessageBus bus,
     IOptions<OnboardingOptions> onboardingOptions,
     ILogger<OnboardingRegistrationReminderProcessor> logger
 )
 {
     private const int BatchSize = 50;
 
-    public async Task<int> ProcessDueAsync(DateTime nowUtc, CancellationToken ct)
+    public async Task<IReadOnlyList<OnboardingRegistrationReadyIntegrationEvent>> PrepareDueAsync(
+        DateTime nowUtc,
+        CancellationToken ct
+    )
     {
         var options = onboardingOptions.Value;
         var cutoff = nowUtc.AddMinutes(-options.RegistrationReminderDelayMinutes);
         var due = await onboardings.GetRegistrationRemindersDueAsync(cutoff, BatchSize, ct);
-        if (due.Count == 0)
-            return 0;
 
-        bus.TenantId = PlatformTenant.Id.ToString();
-        var published = 0;
+        var reminders = new List<OnboardingRegistrationReadyIntegrationEvent>();
         foreach (var onboarding in due)
         {
             if (onboarding.RegistrationTokenReference is not { } tokenReference)
@@ -62,7 +59,7 @@ public sealed class OnboardingRegistrationReminderProcessor(
             }
 
             var planName = await planCatalog.GetPlanNameAsync(onboarding.PlanId, ct);
-            await bus.PublishAsync(
+            reminders.Add(
                 new OnboardingRegistrationReadyIntegrationEvent
                 {
                     TenantId = PlatformTenant.Id,
@@ -77,12 +74,27 @@ public sealed class OnboardingRegistrationReminderProcessor(
                     CorrelationId = onboarding.Id.ToString("N"),
                 }
             );
-            onboarding.MarkRegistrationEmailSent(nowUtc);
-            published++;
         }
 
-        await unitOfWork.SaveChangesAsync(ct);
-        return published;
+        return reminders;
+    }
+
+    /// <summary>Devuelve <c>false</c> si otra réplica ya lo mandó: la unidad no guarda nada.</summary>
+    public async Task<bool> MarkAndPublishAsync(
+        OnboardingRegistrationReadyIntegrationEvent reminder,
+        IMessageBus outbox,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        var onboarding = await onboardings.GetByIdAsync(reminder.OnboardingId, ct);
+        if (onboarding is null || onboarding.RegistrationEmailSentAtUtc is not null)
+            return false;
+
+        onboarding.MarkRegistrationEmailSent(nowUtc);
+        outbox.TenantId = PlatformTenant.Id.ToString();
+        await outbox.PublishAsync(reminder);
+        return true;
     }
 
     private static string FormatPrice(long amountCents, string currency) =>

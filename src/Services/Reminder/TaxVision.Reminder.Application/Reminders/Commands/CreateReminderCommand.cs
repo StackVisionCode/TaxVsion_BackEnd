@@ -155,6 +155,8 @@ public static class CreateReminderHandler
         }
         catch (ConflictException)
         {
+            reminders.Detach(built.Reminder!);
+
             var winner = await reminders.FindByRequestKeyAsync(command.TenantId, command.UserId, built.RequestKey, ct);
             if (winner is null)
                 return Result.Failure<PersistOutcome>(ReminderErrors.DuplicateRequest);

@@ -83,6 +83,7 @@ public sealed class CompleteTaskHandlerTests
                 Hierarchy,
                 SeriesMaterializer,
                 UnitOfWork,
+                Bus,
                 new RecordingTaskMetrics(),
                 CancellationToken.None
             );
@@ -95,10 +96,14 @@ public sealed class CompleteTaskHandlerTests
     {
         public int ClosedCalls { get; private set; }
 
-        public Task ApplyPredecessorClosedAsync(Guid tenantId, Guid predecessorTaskId, CancellationToken ct = default)
+        public Task<IReadOnlyList<TaskUnblockedIntegrationEvent>> ApplyPredecessorClosedAsync(
+            Guid tenantId,
+            Guid predecessorTaskId,
+            CancellationToken ct = default
+        )
         {
             ClosedCalls++;
-            return Task.CompletedTask;
+            return Task.FromResult<IReadOnlyList<TaskUnblockedIntegrationEvent>>([]);
         }
 
         public Task ApplyPredecessorReopenedAsync(

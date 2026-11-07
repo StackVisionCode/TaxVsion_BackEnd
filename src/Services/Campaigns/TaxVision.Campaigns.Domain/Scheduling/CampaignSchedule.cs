@@ -17,6 +17,15 @@ public enum ScheduleStatus
     Completed = 3,
 }
 
+/// <summary>CMP-19: por qué está pausado. Null en los pausados antes de este campo.</summary>
+public enum SchedulePauseReason
+{
+    ByUser,
+    WalletUnavailable,
+    OwnerOffboarded,
+    MissedSlot,
+}
+
 /// <summary>
 /// Aggregate root del <b>agendado</b> de una campaña (SendMode Scheduled/Recurring — <c>State_Machines.md</c>).
 /// Cada disparo crea un <c>CampaignRun</c> inmutable nuevo; el schedule NO ejecuta, solo dice "cuándo" y
@@ -205,11 +214,14 @@ public sealed class CampaignSchedule : TenantEntity
         );
     }
 
-    public Result Pause()
+    public SchedulePauseReason? PauseReason { get; private set; }
+
+    public Result Pause(SchedulePauseReason reason = SchedulePauseReason.ByUser)
     {
         if (Status != ScheduleStatus.Active)
             return Result.Failure(CampaignScheduleErrors.NotActive);
         Status = ScheduleStatus.Paused;
+        PauseReason = reason;
         Touch();
         return Result.Success();
     }
@@ -219,6 +231,7 @@ public sealed class CampaignSchedule : TenantEntity
         if (Status != ScheduleStatus.Paused)
             return Result.Failure(CampaignScheduleErrors.NotPaused);
         Status = ScheduleStatus.Active;
+        PauseReason = null;
         Touch();
         return Result.Success();
     }
@@ -237,6 +250,7 @@ public sealed class CampaignSchedule : TenantEntity
         RunAsUserId = actorUserId;
         CreatorCanViewAllCustomers = actorCanViewAllCustomers;
         Status = ScheduleStatus.Active;
+        PauseReason = null;
         Touch();
         return Result.Success();
     }
@@ -281,6 +295,7 @@ public sealed class CampaignSchedule : TenantEntity
             return Result.Success();
 
         Status = ScheduleStatus.Paused;
+        PauseReason = SchedulePauseReason.OwnerOffboarded;
         Touch();
         return Result.Success();
     }

@@ -194,6 +194,9 @@ public sealed class InvoicePaidPublishingTests
         public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             Task.FromResult<Invoice?>(null);
 
+        public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
+            Task.FromResult<Invoice?>(null);
+
         public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
             Guid tenantId,
             int take,

@@ -32,10 +32,9 @@ public static class TenantSubdomainChangedConsumer
         )
         {
             var existing = await repository.GetByTenantIdAsync(evt.TenantId, ct);
-            if (existing is null || existing.SubDomain == evt.NewSlug)
+            if (existing is null || !existing.ApplySubDomain(evt.NewSlug, evt.OccurredOn, DateTime.UtcNow))
                 return;
 
-            existing.Update(existing.Name, evt.NewSlug, DateTime.UtcNow);
             await unitOfWork.SaveChangesAsync(ct);
             logger.LogInformation("Tenant {TenantId} subdomain renamed in the Scribe directory.", evt.TenantId);
         }

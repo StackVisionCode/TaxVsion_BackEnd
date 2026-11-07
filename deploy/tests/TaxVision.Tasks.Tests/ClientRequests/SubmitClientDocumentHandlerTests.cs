@@ -94,24 +94,37 @@ public sealed class SubmitClientDocumentHandlerTests
         Assert.Equal(expected, request.Documents.Single().Status);
     }
 
+    // TSK-7: un pedido ajeno se corta antes de preguntarle nada a CloudStorage.
+    [Fact]
+    public async Task A_foreign_request_never_reaches_cloudstorage()
+    {
+        var request = NewRequest(CustomerId);
+        var status = new FixedScanStatus(RemoteFileScanStatus.Available);
+
+        var result = await SubmitClientDocumentHandler.Handle(
+            Command(OtherCustomerId, request.Id),
+            new InMemoryClientRequestRepository(request),
+            status,
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(ClientRequestErrors.NotYours, result.Error);
+        Assert.Equal(0, status.Calls);
+    }
+
+    private static SubmitClientDocumentCommand Command(Guid customerId, Guid requestId) =>
+        new(TenantId, customerId, requestId, Guid.NewGuid(), "w2.pdf", "application/pdf", 2048);
+
     private static async Task<Result<PortalClientRequestResponse>> SubmitAsync(
         IClientRequestRepository repository,
         Guid customerId,
         Guid requestId,
         RemoteFileScanStatus remote = RemoteFileScanStatus.Unknown
     ) =>
-        await SubmitClientDocumentHandler.Handle(
-            new SubmitClientDocumentCommand(
-                TenantId,
-                customerId,
-                requestId,
-                Guid.NewGuid(),
-                "w2.pdf",
-                "application/pdf",
-                2048
-            ),
+        await RecordClientDocumentHandler.Handle(
+            new RecordClientDocumentCommand(Command(customerId, requestId), remote),
             repository,
-            new FixedScanStatus(remote),
             new RecordingUnitOfWork(),
             new FakeMessageBus(),
             new NoOpCorrelationContext(),
@@ -120,8 +133,13 @@ public sealed class SubmitClientDocumentHandlerTests
 
     private sealed class FixedScanStatus(RemoteFileScanStatus status) : ITaskFileScanStatusClient
     {
-        public Task<RemoteFileScanStatus> GetStatusAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
-            Task.FromResult(status);
+        public int Calls { get; private set; }
+
+        public Task<RemoteFileScanStatus> GetStatusAsync(Guid tenantId, Guid fileId, CancellationToken ct = default)
+        {
+            Calls++;
+            return Task.FromResult(status);
+        }
 
         public Task<RemoteFileMetadata> GetFileMetadataAsync(
             Guid tenantId,

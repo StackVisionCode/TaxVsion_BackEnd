@@ -34,12 +34,16 @@ public sealed class PlanChangeRequestConfiguration : IEntityTypeConfiguration<Pl
         builder.Property(request => request.ChargeCurrency).HasMaxLength(3).IsRequired();
         builder.Property(request => request.PaymentIdempotencyKey).HasMaxLength(200).IsRequired();
         builder.Property(request => request.SaaSPaymentId);
+        builder.Property(request => request.UsesHostedCheckout).IsRequired();
         builder.Property(request => request.CheckoutUrl).HasMaxLength(2048);
         builder.Property(request => request.CheckoutExpiresAtUtc);
         builder.Property(request => request.CancelledAtUtc);
         builder.Property(request => request.ExpiredAtUtc);
         builder.Property(request => request.CancelledByUserId);
         builder.Property(request => request.CancelReason).HasMaxLength(500);
+        builder.Property(request => request.ReplacedDowngradeId);
+        builder.Property(request => request.ReplacedCancellationAtUtc);
+        builder.Property(request => request.ReplacedCancellationReason).HasMaxLength(500);
 
         builder
             .HasIndex(request => new { request.TenantSubscriptionId, request.Status })

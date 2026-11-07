@@ -164,7 +164,7 @@ public sealed class ScanQueueDurabilityIntegrationTests : IAsyncLifetime
                     .UseEntityFrameworkCoreTransactions()
                     .WithDbContextAbstraction<IUnitOfWork, CloudStorageDbContext>();
                 options.Policies.AutoApplyTransactions();
-                options.ConfigureScanQueue();
+                options.ConfigureScanQueue(1);
                 options.ApplyStandardFailurePolicies();
             })
             .Build();

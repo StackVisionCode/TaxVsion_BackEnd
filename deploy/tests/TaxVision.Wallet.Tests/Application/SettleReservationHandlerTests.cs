@@ -41,6 +41,41 @@ public sealed class SettleReservationHandlerTests
     }
 
     [Fact]
+    public async Task Handle_SettledTwice_ChargesOnce()
+    {
+        var tenantId = Guid.NewGuid();
+        var referenceId = Guid.NewGuid();
+        var wallets = new FakeWalletRepository();
+        var reservations = new FakeReservationRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var wallet = WalletAggregate.Create(tenantId).Value;
+        wallet.Credit(10_000_000, "topup:seed");
+        wallet.Reserve(1_000_000, "reserve:seed");
+        wallets.Wallets.Add(wallet);
+        reservations.Reservations.Add(ReservationBuilder.Open(tenantId, "individual-sms", referenceId, 1_000_000, 2));
+        var command = new SettleReservationCommand(tenantId, "individual-sms", referenceId, ConsumedUnits: 1);
+
+        Task<BuildingBlocks.Results.Result<TaxVision.Wallet.Application.Reservations.SettlementView>> SettleAsync() =>
+            SettleReservationHandler.Handle(
+                command,
+                reservations,
+                wallets,
+                unitOfWork,
+                NullLogger<WalletReservation>.Instance,
+                CancellationToken.None
+            );
+
+        var first = await SettleAsync();
+        var ledgerAfterFirst = wallets.LedgerEntries.Count;
+        var second = await SettleAsync();
+
+        Assert.Equal(first.Value, second.Value);
+        Assert.Equal(9_500_000, wallet.PostedMicros);
+        Assert.Equal(0, wallet.HeldMicros);
+        Assert.Equal(ledgerAfterFirst, wallets.LedgerEntries.Count);
+    }
+
+    [Fact]
     public async Task Handle_ExpiredReservation_ReturnsExpiredWithoutCharging()
     {
         // Otro hold vivo del tenant: sin la rama de Expired, Settle alcanzaría a cobrar de ahí.

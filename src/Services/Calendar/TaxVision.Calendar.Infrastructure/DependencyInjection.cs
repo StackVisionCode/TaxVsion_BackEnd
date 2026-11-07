@@ -12,7 +12,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Availability.Abstractions;
-using TaxVision.Calendar.Application.Backfill;
 using TaxVision.Calendar.Application.Backfill.Abstractions;
 using TaxVision.Calendar.Application.Customers.Abstractions;
 using TaxVision.Calendar.Application.Feeds.Abstractions;
@@ -46,6 +45,25 @@ public static class DependencyInjection
         services.AddDbContext<CalendarDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CalendarDbContext>());
         services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+        services.AddScoped<IOrganizerScheduleLock, SqlOrganizerScheduleLock>();
+        services
+            .AddOptions<OrganizerScheduleLockOptions>()
+            .Bind(configuration.GetSection(OrganizerScheduleLockOptions.SectionName));
+        services
+            .AddOptions<TaxVision.Calendar.Application.Appointments.Commands.AttendeeResponseConflictRetryOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision
+                        .Calendar
+                        .Application
+                        .Appointments
+                        .Commands
+                        .AttendeeResponseConflictRetryOptions
+                        .SectionName
+                )
+            )
+            .Validate(o => o.MaxAttempts > 0, "Calendar:AttendeeResponseConflictRetry:MaxAttempts must be positive.")
+            .ValidateOnStart();
 
         // P2 — visibilidad por-cliente (kit compartido BuildingBlocks.CustomerVisibility): store de la
         // proyección sobre CalendarDbContext + reconciliación (siembra desde Customer con el token M2M de la
@@ -143,7 +161,6 @@ public static class DependencyInjection
     {
         services.AddScoped<ICustomerDirectoryRepository, CustomerDirectoryRepository>();
         services.AddScoped<ITenantBackfillStateRepository, TenantBackfillStateRepository>();
-        services.AddScoped<ITenantCustomerBackfillService, TenantCustomerBackfillService>();
 
         services.AddOptions<CustomerClientOptions>().Bind(configuration.GetSection(CustomerClientOptions.SectionName));
         services.AddHttpClient<ICalendarCustomerClient, CalendarCustomerClient>(
@@ -158,6 +175,7 @@ public static class DependencyInjection
         services
             .AddOptions<CustomerDirectoryReconciliationOptions>()
             .Bind(configuration.GetSection(CustomerDirectoryReconciliationOptions.SectionName));
+        services.AddOptions<StartingSoonOptions>().Bind(configuration.GetSection(StartingSoonOptions.SectionName));
 
         // Uno rellena nombres faltantes de filas que ya existen; el otro inserta las filas que nunca
         // llegaron. Son huecos distintos y ninguno cubre al otro.

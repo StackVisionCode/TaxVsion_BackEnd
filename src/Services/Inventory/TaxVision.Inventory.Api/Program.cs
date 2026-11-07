@@ -101,6 +101,7 @@ builder.Host.UseWolverine(options =>
     );
     options.Discovery.IncludeType(typeof(TaxVision.Inventory.Application.Consumers.CatalogItemCreatedConsumer));
     options.Discovery.IncludeType(typeof(TaxVision.Inventory.Application.Consumers.CatalogItemDeactivatedConsumer));
+    options.Discovery.IncludeType(typeof(TaxVision.Inventory.Application.Consumers.CatalogItemTrackingChangedConsumer));
 
     // RateLimit Fase 2 — consumer que mantiene la proyección de plan-code al día desde Subscription.
     options.Discovery.IncludeType(
@@ -118,6 +119,7 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, InventoryDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     options

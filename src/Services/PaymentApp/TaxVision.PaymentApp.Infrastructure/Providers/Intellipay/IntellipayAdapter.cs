@@ -54,6 +54,13 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
         return Result.Success(new ProviderCustomerToken(response.CustId, PaymentProviderCode.Intellipay));
     }
 
+    /// <summary>Intellipay no busca cargos por metadata: sin referencia no se puede saber.</summary>
+    public Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    ) => Task.FromResult(Result.Success(new ChargeLookup(ChargeLookupOutcome.NotSupported)));
+
     public async Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
         ChargeAuthorizationRequest request,
         CancellationToken ct
@@ -84,7 +91,8 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
                 ProviderChargeReference: response.TransactionId ?? string.Empty,
                 Status: PaymentStatus.Failed,
                 FailureCode: response.Response,
-                FailureMessage: response.Message
+                FailureMessage: response.Message,
+                OutcomeUnknown: response.Response == IntellipayResponse.OutcomeUnknown
             )
         );
     }

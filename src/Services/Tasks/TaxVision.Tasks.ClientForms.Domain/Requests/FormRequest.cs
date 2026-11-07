@@ -632,17 +632,12 @@ public sealed class FormRequest : AggregateRoot
         if (revision is null)
             return Result.Failure(FormRequestErrors.NotFound);
         revision.MarkSignatureRequesting(copyFileId, documentHashPre);
+        Touch(DateTime.UtcNow);
         return Result.Success();
     }
 
-    public Result LinkSignatureRequest(int revisionNumber, Guid signatureRequestId)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.LinkSignatureRequest(signatureRequestId);
-        return Result.Success();
-    }
+    public Result<bool> LinkSignatureRequest(int revisionNumber, Guid signatureRequestId) =>
+        ApplySignatureTransition(revisionNumber, revision => revision.LinkSignatureRequest(signatureRequestId));
 
     public Result MarkSignatureFailed(int revisionNumber)
     {
@@ -650,68 +645,50 @@ public sealed class FormRequest : AggregateRoot
         if (revision is null)
             return Result.Failure(FormRequestErrors.NotFound);
         // Un segundo aviso de fallo (dispatch duplicado) no vuelve a planificar ni a notificar.
-        return revision.MarkSignatureFailed()
-            ? Result.Success()
-            : Result.Failure(FormRequestErrors.SignatureNotPending);
-    }
-
-    public Result MarkSignatureSigned(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureSigned();
+        if (!revision.MarkSignatureFailed())
+            return Result.Failure(FormRequestErrors.SignatureNotPending);
+        Touch(DateTime.UtcNow);
         return Result.Success();
     }
 
-    public Result MarkSignatureCompleted(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureCompleted();
-        return Result.Success();
-    }
+    public Result<bool> MarkSignatureSigned(int revisionNumber) =>
+        ApplySignatureTransition(revisionNumber, revision => revision.MarkSignatureSigned());
 
-    public Result MarkSignatureSealed(
+    public Result<bool> MarkSignatureCompleted(int revisionNumber) =>
+        ApplySignatureTransition(revisionNumber, revision => revision.MarkSignatureCompleted());
+
+    public Result<bool> MarkSignatureSealed(
         int revisionNumber,
         Guid sealedFileId,
         string documentHashPost,
         Guid? certificateFileId
-    )
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureSealed(sealedFileId, documentHashPost, certificateFileId);
-        return Result.Success();
-    }
+    ) =>
+        ApplySignatureTransition(
+            revisionNumber,
+            revision => revision.MarkSignatureSealed(sealedFileId, documentHashPost, certificateFileId)
+        );
 
-    public Result MarkSignatureDeclined(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureDeclined();
-        return Result.Success();
-    }
+    public Result<bool> MarkSignatureDeclined(int revisionNumber) =>
+        ApplySignatureTransition(revisionNumber, revision => revision.MarkSignatureDeclined());
 
-    public Result MarkSignatureCanceled(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureCanceled();
-        return Result.Success();
-    }
+    public Result<bool> MarkSignatureCanceled(int revisionNumber) =>
+        ApplySignatureTransition(revisionNumber, revision => revision.MarkSignatureCanceled());
 
-    public Result MarkSignatureExpired(int revisionNumber)
+    public Result<bool> MarkSignatureExpired(int revisionNumber) =>
+        ApplySignatureTransition(revisionNumber, revision => revision.MarkSignatureExpired());
+
+    // TSK-4: la revisión no tiene RowVersion. Tocar la raíz hace chocar a dos consumidores de firma en paralelo.
+    // Devuelve false si el estado actual no admite la transición.
+    private Result<bool> ApplySignatureTransition(int revisionNumber, Func<FormSubmissionRevision, bool> transition)
     {
         var revision = Submission?.CurrentRevision(revisionNumber);
         if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureExpired();
-        return Result.Success();
+            return Result.Failure<bool>(FormRequestErrors.NotFound);
+
+        var applied = transition(revision);
+        if (applied)
+            Touch(DateTime.UtcNow);
+        return Result.Success(applied);
     }
 
     public Result<FormActionRun> RequestAction(string actionKey, string actionType, Guid commandId, DateTime nowUtc) =>

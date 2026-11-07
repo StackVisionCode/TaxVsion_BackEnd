@@ -1,8 +1,10 @@
+using System.Net;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Stripe;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Application.PaymentLinks.Commands.RedeemPaymentLink;
 using TaxVision.PaymentClient.Domain.PaymentLinks;
@@ -12,6 +14,8 @@ using TaxVision.PaymentClient.Domain.Tenants;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 using TaxVision.PaymentClient.Infrastructure.Persistence;
 using TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
+using TaxVision.PaymentClient.Infrastructure.Providers.Stripe;
+using PaymentLink = TaxVision.PaymentClient.Domain.PaymentLinks.PaymentLink;
 
 namespace TaxVision.PaymentClient.Tests.Application;
 
@@ -28,6 +32,7 @@ public sealed class RedeemPaymentLinkHandlerTests
     );
     private readonly List<object> _published = [];
     private readonly Guid _tenantId = Guid.NewGuid();
+    private IPaymentProvider? _adapter;
 
     public RedeemPaymentLinkHandlerTests() => _db = InMemoryPaymentClient.CreateDb(_dbName);
 
@@ -119,6 +124,23 @@ public sealed class RedeemPaymentLinkHandlerTests
         Assert.Equal("Stripe-charge-1", lookup.ProviderChargeReference);
     }
 
+    // D-PAY-13: el cargo pudo salir. Para el pagador es un intento en curso y el link no acepta otro.
+    [Fact]
+    public async Task Redeem_ProviderOutcomeUnknown_KeepsTheAttemptOpen()
+    {
+        var link = await SeedAsync();
+        _adapter = new StripePaymentAdapter(NullLogger<StripePaymentAdapter>.Instance, new ServerErrorStripeClients());
+
+        var first = await RedeemAsync(link, "card-token-1");
+        var second = await RedeemAsync(link, "card-token-2");
+
+        Assert.Equal(PaymentLink.AttemptInProgressError, first.Error);
+        Assert.Equal(PaymentLink.AttemptInProgressError, second.Error);
+        await using var read = InMemoryPaymentClient.CreateDb(_dbName);
+        var payment = await read.TenantPayments.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal(PaymentStatus.Pending, payment.Status);
+    }
+
     [Fact]
     public async Task Redeem_SaveFails_PublishesNothing()
     {
@@ -139,12 +161,12 @@ public sealed class RedeemPaymentLinkHandlerTests
     )
     {
         await using var db = InMemoryPaymentClient.CreateDb(_dbName);
-        return await RedeemPaymentLinkHandler.Handle(
+        return await TestChargeFlow.RedeemAsync(
             new RedeemPaymentLinkCommand(link.Token.Value, PaymentProviderCode.Stripe, cardToken, ReceiptEmail: null),
             new PaymentLinkRepository(db),
             new TenantPaymentRepository(db),
             new TenantPaymentConfigRepository(db),
-            InMemoryPaymentClient.FakeAdapters(_stripe),
+            InMemoryPaymentClient.FakeAdapters(_adapter ?? _stripe),
             new PrefixSecretProtector(),
             new PaymentAuditLogWriter(db),
             unitOfWork ?? db,
@@ -197,6 +219,21 @@ public sealed class RedeemPaymentLinkHandlerTests
 
         await _db.SaveChangesAsync();
         return link;
+    }
+
+    private sealed class ServerErrorStripeClients : IStripeClientFactory
+    {
+        public IStripeClient Create(string secretKey) =>
+            new StripeClient(
+                secretKey,
+                httpClient: new SystemNetHttpClient(new HttpClient(new ServerError()), maxNetworkRetries: 0)
+            );
+
+        private sealed class ServerError : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+                Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        }
     }
 
     private sealed class FailingUnitOfWork : IUnitOfWork

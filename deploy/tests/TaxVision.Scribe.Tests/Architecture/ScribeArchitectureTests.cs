@@ -25,6 +25,21 @@ public sealed class ScribeArchitectureTests
     private static readonly Assembly ApiAssembly =
         typeof(TaxVision.Scribe.Api.Controllers.EmailTemplatesController).Assembly;
 
+    // SCR-08: la espera a que CloudStorage catalogue el logo no puede retener una transacción.
+    [Fact]
+    public void Transactional_handlers_do_not_poll()
+    {
+        var handle = typeof(TaxVision.Scribe.Application.SystemAssets.Commands.UpdateSystemHeaderLogoHandler).GetMethod(
+            "Handle"
+        )!;
+
+        Assert.NotNull(handle.GetCustomAttribute<Wolverine.Attributes.NonTransactionalAttribute>());
+        Assert.DoesNotContain(
+            handle.GetParameters(),
+            parameter => parameter.ParameterType == typeof(BuildingBlocks.Persistence.IUnitOfWork)
+        );
+    }
+
     [Fact]
     public void Domain_should_not_depend_on_application()
     {

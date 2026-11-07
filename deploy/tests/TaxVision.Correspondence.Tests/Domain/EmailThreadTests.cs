@@ -45,6 +45,18 @@ public sealed class EmailThreadTests
     }
 
     [Fact]
+    public void AppendMessage_OlderReceivedAt_DoesNotMoveLastMessageBack()
+    {
+        var t5 = DateTime.UtcNow;
+        var thread = EmailThread.NewFromMessage(Guid.NewGuid(), Guid.NewGuid(), "Subject", null, t5).Value;
+
+        thread.AppendMessage(t5.AddHours(-2));
+
+        Assert.Equal(t5, thread.LastMessageAtUtc);
+        Assert.Equal(2, thread.MessageCount);
+    }
+
+    [Fact]
     public void AppendMessage_ArchivedThread_UnarchivesAndIncrementsCount()
     {
         var thread = EmailThread.NewFromMessage(Guid.NewGuid(), Guid.NewGuid(), "Subject", null, DateTime.UtcNow).Value;

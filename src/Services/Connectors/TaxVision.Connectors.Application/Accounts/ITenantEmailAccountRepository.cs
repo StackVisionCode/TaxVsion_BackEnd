@@ -22,6 +22,12 @@ public interface ITenantEmailAccountRepository
     Task<Result<TenantEmailAccount>> GetByEmailAddressAsync(string emailAddress, CancellationToken ct = default);
 
     /// <summary>
+    /// Cuentas Gmail Active o Connected con ese email, en cualquier tenant: el push de Gmail solo trae la
+    /// dirección y el mismo buzón puede estar conectado en varias oficinas.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListSyncableGmailByEmailAddressAsync(string emailAddress, CancellationToken ct = default);
+
+    /// <summary>
     /// Cuenta de ESE tenant con ese email. Se usa para el chequeo "¿ya conectada?" scoped al tenant
     /// (uniqueness por <c>(TenantId, EmailAddress)</c>, igual que Auth): el mismo buzón puede estar
     /// conectado en tenants distintos por la misma persona, así que NO se puede usar la versión

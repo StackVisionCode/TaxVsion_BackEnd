@@ -1,38 +1,34 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
-using TaxVision.Signature.Application.Delivery;
-using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Application.Requests.Preparer;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Signature.Application.Sealing;
 
 /// <summary>
-/// Consumer del <see cref="SignatureRequestCompletedIntegrationEvent"/> que orquesta el
-/// sellado end-to-end:
+/// Fase A del sellado (SIG-6), sin transacción: descarga, sella, genera el certificado y deja los archivos en MinIO.
+/// No toca el agregado. Termina con <see cref="PersistSealedDocumentsCommand"/>, que registra todo en una sola
+/// transacción y publica por el outbox.
 /// <list type="number">
-///   <item>Carga el aggregate y verifica precondiciones (Completed y aún no sellado).</item>
-///   <item>Descarga el PDF original de CloudStorage.</item>
-///   <item>Aplica el sellado con las firmas estampadas.</item>
-///   <item>Opcionalmente genera el Certificate of Completion.</item>
-///   <item>Sube ambos a CloudStorage.</item>
-///   <item>Registra <c>MarkSealed</c> en el aggregate.</item>
-///   <item>Publica el resultado de sellado por documento y el cierre de la solicitud.</item>
+///   <item>Carga la solicitud y verifica precondiciones.</item>
+///   <item>Descarga el PDF original, aplica el sello y lo deja en MinIO.</item>
+///   <item>Con todo sellado, genera el Certificate of Completion y lo deja en MinIO.</item>
+///   <item>Entrega el resultado a la fase B, también el fallo definitivo.</item>
 /// </list>
-/// Cada fase vive en un método privado con nombre autoexplicativo — no acumulan lógica.
-/// Un fallo transitorio lanza <see cref="SealingTransientException"/> y Wolverine reintenta; uno
-/// permanente (o el transitorio del último intento) emite
-/// <see cref="SignatureRequestSealingFailedIntegrationEvent"/>, marca la solicitud y avisa los documentos
-/// que sí quedaron sellados.
+/// Cada corrida usa <c>FileId</c> nuevos: la cuenta de MinIO solo puede escribir, y pisar una clave ya entregada
+/// dejaría un hash guardado que no es el del archivo. Lo que sube una corrida fallida queda en el bucket temporal,
+/// sin registrar. Un fallo transitorio lanza <see cref="SealingTransientException"/> y Wolverine reintenta; uno
+/// permanente (o el transitorio del último intento) lo resuelve la fase B.
 /// </summary>
 public static class SignatureRequestCompletedConsumer
 {
@@ -54,8 +50,9 @@ public static class SignatureRequestCompletedConsumer
     private static readonly TimeSpan InProcessScanPollBudget = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan InProcessScanPollInterval = TimeSpan.FromMilliseconds(300);
 
+    [NonTransactional]
     public static Task Handle(
-        SignatureRequestCompletedIntegrationEvent evt,
+        SealCompletedRequestCommand command,
         ISignatureRequestRepository repository,
         ISignatureCloudStorageClient storage,
         IFileMetadataRefRepository fileRefRepository,
@@ -64,7 +61,6 @@ public static class SignatureRequestCompletedConsumer
         IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
-        IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SignatureRequest> logger,
@@ -72,12 +68,12 @@ public static class SignatureRequestCompletedConsumer
         CancellationToken ct
     ) =>
         HandleCore(
-            evt.TenantId,
-            evt.SignatureRequestId,
-            evt.Documents.Select(document => document.DocumentId).ToList(),
-            evt.CompletedAtUtc,
-            evt.CorrelationId,
-            evt.EventId,
+            command.TenantId,
+            command.SignatureRequestId,
+            command.DocumentIds,
+            command.CompletedAtUtc,
+            command.CorrelationId,
+            command.SourceEventId,
             repository,
             storage,
             fileRefRepository,
@@ -86,7 +82,6 @@ public static class SignatureRequestCompletedConsumer
             stampStyles,
             certificateRenderer,
             distributedLock,
-            unitOfWork,
             bus,
             correlation,
             logger,
@@ -94,6 +89,7 @@ public static class SignatureRequestCompletedConsumer
             ct
         );
 
+    [NonTransactional]
     public static Task Handle(
         SignatureDocumentsReadyForSealingIntegrationEvent evt,
         ISignatureRequestRepository repository,
@@ -104,7 +100,6 @@ public static class SignatureRequestCompletedConsumer
         IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
-        IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SignatureRequest> logger,
@@ -126,7 +121,6 @@ public static class SignatureRequestCompletedConsumer
             stampStyles,
             certificateRenderer,
             distributedLock,
-            unitOfWork,
             bus,
             correlation,
             logger,
@@ -149,7 +143,6 @@ public static class SignatureRequestCompletedConsumer
         IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
-        IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SignatureRequest> logger,
@@ -193,64 +186,78 @@ public static class SignatureRequestCompletedConsumer
                 logger,
                 ct
             );
+            var run = new SealingRun();
+
             // SIG-14: la imagen no existe en CloudStorage; esperar no la trae.
             if (readyImageSignerIds.IsFailure)
             {
-                await FailSealingAsync(request, [], readyImageSignerIds.Error, correlationId, unitOfWork, bus, ct);
+                await bus.PublishAsync(run.ToCommand(request, correlationId, readyImageSignerIds.Error));
                 return;
             }
 
-            var sealedDocuments = new List<DocumentSealOutcome>();
-            var pipeline = await SealAndPersistAsync(
+            var pipeline = await SealAndStageAsync(
                 request,
                 documentIds,
                 evidenceAtUtc,
                 readyImageSignerIds.Value,
-                sealedDocuments,
+                run,
                 storage,
                 brandingRepository,
                 sealer,
                 stampStyles,
                 certificateRenderer,
-                unitOfWork,
                 logger,
                 ct
             );
-            if (pipeline.IsFailure)
-            {
-                // Transitorio: la excepción revierte el intento y Wolverine lo vuelve a entregar.
-                if (SignatureStorage.IsTransient(pipeline.Error) && attempt < SealingTransientException.FinalAttempt)
-                    throw new SealingTransientException(
-                        $"Sealing of request {request.Id} failed transiently ({pipeline.Error.Code}); attempt {attempt} of {SealingTransientException.FinalAttempt}."
-                    );
 
-                await FailSealingAsync(request, sealedDocuments, pipeline.Error, correlationId, unitOfWork, bus, ct);
-                return;
-            }
+            // Transitorio: Wolverine vuelve a entregar el mensaje; no se registró nada.
+            if (
+                pipeline.IsFailure
+                && SignatureStorage.IsTransient(pipeline.Error)
+                && attempt < SealingTransientException.FinalAttempt
+            )
+                throw new SealingTransientException(
+                    $"Sealing of request {request.Id} failed transiently ({pipeline.Error.Code}); attempt {attempt} of {SealingTransientException.FinalAttempt}."
+                );
 
-            await PublishSealedAsync(request, pipeline.Value, correlationId, bus);
-
-            // Varios clientes firmantes: cada uno recibe su copia en el portal. Va después del commit
-            // (outbox) por si el FileAvailable de algún archivo ganó la carrera y no encontró la solicitud.
-            if (pipeline.Value.RequestSealingCompleted && request.PendingCustomerCopies().Count > 0)
-                await bus.PublishAsync(new CreateCustomerPortalCopiesCommand(request.TenantId, request.Id));
+            await bus.PublishAsync(run.ToCommand(request, correlationId, pipeline.IsFailure ? pipeline.Error : null));
         }
     }
 
-    private sealed record DocumentSealOutcome(
-        Guid DocumentId,
-        Guid SealedFileId,
-        string HashPost,
-        DateTime SealedAtUtc
-    );
+    /// <summary>Lo que lleva hecho una corrida de la fase A; la solicitud sigue intacta hasta la fase B.</summary>
+    private sealed class SealingRun
+    {
+        private readonly List<SealedDocumentResult> _documents = [];
+        private readonly List<SealedCertificateResult> _certificates = [];
+        private readonly List<SaveFileRequestedIntegrationEvent> _fileRequests = [];
 
-    private sealed record PipelineOutcome(
-        IReadOnlyList<DocumentSealOutcome> SealedDocuments,
-        Guid? CertificateFileId,
-        IReadOnlyDictionary<Guid, Guid> DocumentCertificateFileIds,
-        DateTime CompletedAtUtc,
-        bool RequestSealingCompleted
-    );
+        public SealedDocumentResult? Find(Guid documentId) =>
+            _documents.Find(document => document.DocumentId == documentId);
+
+        public void Add(SealedDocumentResult document, SaveFileRequestedIntegrationEvent fileRequest)
+        {
+            _documents.Add(document);
+            _fileRequests.Add(fileRequest);
+        }
+
+        public void Add(SealedCertificateResult certificate, SaveFileRequestedIntegrationEvent fileRequest)
+        {
+            _certificates.Add(certificate);
+            _fileRequests.Add(fileRequest);
+        }
+
+        public PersistSealedDocumentsCommand ToCommand(SignatureRequest request, string correlationId, Error? failure) =>
+            new(
+                request.TenantId,
+                request.Id,
+                correlationId,
+                _documents,
+                _certificates,
+                _fileRequests,
+                failure?.Code,
+                failure?.Message
+            );
+    }
 
     private sealed record CertificateRenderArtifact(Guid? DocumentId, string Title, byte[] Bytes);
 
@@ -469,18 +476,17 @@ public static class SignatureRequestCompletedConsumer
             ? remote.Error.Code == SignatureStorage.FileNotFoundCode
             : string.Equals(remote.Value.Status, "ScanFailed", StringComparison.OrdinalIgnoreCase);
 
-    private static async Task<Result<PipelineOutcome>> SealAndPersistAsync(
+    private static async Task<Result> SealAndStageAsync(
         SignatureRequest request,
         IReadOnlyList<Guid> requestedDocumentIds,
         DateTime evidenceAtUtc,
         IReadOnlySet<Guid> readyImageSignerIds,
-        List<DocumentSealOutcome> sealedDocuments,
+        SealingRun run,
         ISignatureCloudStorageClient storage,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
         IStampStyleResolver stampStyles,
         ICertificateOfCompletionRenderer certificateRenderer,
-        IUnitOfWork unitOfWork,
         ILogger logger,
         CancellationToken ct
     )
@@ -507,7 +513,7 @@ public static class SignatureRequestCompletedConsumer
 
             var originalBytesResult = await storage.DownloadAsync(request.TenantId, document.OriginalFileId, ct);
             if (originalBytesResult.IsFailure)
-                return Result.Failure<PipelineOutcome>(originalBytesResult.Error);
+                return Result.Failure(originalBytesResult.Error);
 
             var sealResult = TryApplySeal(
                 request,
@@ -521,68 +527,40 @@ public static class SignatureRequestCompletedConsumer
                 logger
             );
             if (sealResult.IsFailure)
-                return Result.Failure<PipelineOutcome>(sealResult.Error);
-
-            var sealedUpload = BuildSealedUpload(request, document, sealResult.Value);
-            var sealedFileIdResult = await storage.UploadAsync(request.TenantId, sealedUpload, ct);
-            if (sealedFileIdResult.IsFailure)
-                return Result.Failure<PipelineOutcome>(sealedFileIdResult.Error);
+                return Result.Failure(sealResult.Error);
 
             var hashResult = DocumentHash.Create(sealResult.Value.ChecksumSha256);
             if (hashResult.IsFailure)
-                return Result.Failure<PipelineOutcome>(hashResult.Error);
+                return Result.Failure(hashResult.Error);
 
-            var sealedAtUtc = DateTime.UtcNow;
-            var marked = request.MarkDocumentSealed(
-                document.Id,
-                sealedFileIdResult.Value,
-                hashResult.Value,
-                sealedAtUtc
+            var staged = await storage.StageAsync(
+                request.TenantId,
+                BuildSealedUpload(request, document, sealResult.Value),
+                ct
             );
-            if (marked.IsFailure)
-                return Result.Failure<PipelineOutcome>(marked.Error);
+            if (staged.IsFailure)
+                return Result.Failure(staged.Error);
 
-            sealedDocuments.Add(
-                new DocumentSealOutcome(
+            run.Add(
+                new SealedDocumentResult(
                     document.Id,
-                    sealedFileIdResult.Value,
+                    staged.Value.FileId,
                     sealResult.Value.ChecksumSha256,
-                    sealedAtUtc
-                )
+                    DateTime.UtcNow
+                ),
+                staged.Value
             );
         }
 
         var requestSealingCompleted =
-            request.Status == SignatureRequestStatus.Completed && request.AllDocumentsSealed();
-
+            request.Status == SignatureRequestStatus.Completed
+            && request.Documents.All(document => document.SealedFileId is not null || run.Find(document.Id) is not null);
         if (!requestSealingCompleted)
-        {
-            if (sealedDocuments.Count > 0)
-                await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success();
 
-            return Result.Success(
-                new PipelineOutcome(
-                    sealedDocuments,
-                    request.CertificateFileId,
-                    request
-                        .Documents.Where(document => document.CertificateFileId is not null)
-                        .ToDictionary(document => document.Id, document => document.CertificateFileId!.Value),
-                    DateTime.UtcNow,
-                    RequestSealingCompleted: false
-                )
-            );
-        }
-
-        // ORDEN CRÍTICO (carrera con el commit): el handler de sellado corre bajo una transacción de
-        // Wolverine que commitea al FINAL, pero las subidas publican SaveFileRequested de inmediato, así
-        // que CloudStorage escanea y emite FileAvailable ANTES del commit. SealedReady/CertReady resuelven
-        // el request por Sealed/CertificateFileId, que aún no están persistidos si el FileAvailable gana la
-        // carrera → se perdía el correo de "documento firmado". Solución: hacer TODO el trabajo lento
-        // (render del certificado + descarga del logo de oficina, ~1-2s) ANTES de subir nada, y luego subir
-        // sellado y certificado espalda con espalda justo antes del commit. Así ambos FileAvailable llegan
-        // con una ventana mínima (~ms) respecto al commit y los consumers encuentran el request.
         var certificateArtifactsResult = await GenerateCertificateArtifactsAsync(
             request,
+            run,
             certificateRenderer,
             sealer,
             storage,
@@ -591,50 +569,22 @@ public static class SignatureRequestCompletedConsumer
             ct
         );
         if (certificateArtifactsResult.IsFailure)
-            return Result.Failure<PipelineOutcome>(certificateArtifactsResult.Error);
+            return Result.Failure(certificateArtifactsResult.Error);
 
-        // Certificado PRIMERO y sellado de ÚLTIMO: así el FileAvailable del sellado (el correo que fallaba)
-        // llega con la ventana más chica posible respecto al commit — sube y a renglón seguido se persiste.
-        var certificateFileId = request.CertificateFileId;
-        var documentCertificateFileIds = request
-            .Documents.Where(document => document.CertificateFileId is not null)
-            .ToDictionary(document => document.Id, document => document.CertificateFileId!.Value);
         foreach (var artifact in certificateArtifactsResult.Value)
         {
             var certificateUpload = BuildCertificateUpload(request, artifact.Title, artifact.Bytes);
-            var certificateUploadResult = await storage.UploadAsync(request.TenantId, certificateUpload, ct);
-            if (certificateUploadResult.IsFailure)
+            var staged = await storage.StageAsync(request.TenantId, certificateUpload, ct);
+            if (staged.IsFailure)
             {
-                logger.LogWarning(
-                    "Certificate upload failed for {RequestId}: {Error}",
-                    request.Id,
-                    certificateUploadResult.Error.Message
-                );
-                return Result.Failure<PipelineOutcome>(certificateUploadResult.Error);
+                logger.LogWarning("Certificate upload failed for {RequestId}: {Error}", request.Id, staged.Error.Message);
+                return Result.Failure(staged.Error);
             }
 
-            var recorded = artifact.DocumentId is { } documentId
-                ? request.RecordDocumentCertificate(documentId, certificateUploadResult.Value)
-                : request.RecordCertificate(certificateUploadResult.Value);
-            if (recorded.IsFailure)
-                return Result.Failure<PipelineOutcome>(recorded.Error);
-
-            if (artifact.DocumentId is { } perDocumentId)
-                documentCertificateFileIds[perDocumentId] = certificateUploadResult.Value;
-            else
-                certificateFileId = certificateUploadResult.Value;
+            run.Add(new SealedCertificateResult(artifact.DocumentId, staged.Value.FileId), staged.Value);
         }
 
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(
-            new PipelineOutcome(
-                sealedDocuments,
-                certificateFileId,
-                documentCertificateFileIds,
-                DateTime.UtcNow,
-                RequestSealingCompleted: true
-            )
-        );
+        return Result.Success();
     }
 
     private static async Task<IReadOnlyDictionary<Guid, byte[]>> DownloadSignatureImagesAsync(
@@ -842,13 +792,12 @@ public static class SignatureRequestCompletedConsumer
     // ============== Fase 3b: certificate opcional ==============
 
     /// <summary>
-    /// Genera SOLO los bytes del Certificate of Completion (incluye la descarga del logo de oficina/sistema,
-    /// que es la parte lenta), SIN subirlo. La subida se hace luego, junto a la del sellado, justo antes del
-    /// commit — ver el comentario de ORDEN CRÍTICO en <see cref="SealAndPersistAsync"/>. Devuelve null si la
-    /// request no pidió certificado.
+    /// Genera SOLO los bytes del Certificate of Completion (incluye la descarga del logo de oficina/sistema).
+    /// Devuelve una lista vacía si la request no pidió certificado.
     /// </summary>
     private static async Task<Result<IReadOnlyList<CertificateRenderArtifact>>> GenerateCertificateArtifactsAsync(
         SignatureRequest request,
+        SealingRun run,
         ICertificateOfCompletionRenderer renderer,
         IDocumentSealingEngine sealer,
         ISignatureCloudStorageClient storage,
@@ -895,7 +844,7 @@ public static class SignatureRequestCompletedConsumer
             if (request.CertificateFileId is not null)
                 return Result.Success<IReadOnlyList<CertificateRenderArtifact>>([]);
 
-            var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, seal, documentId: null);
+            var model = BuildCertificateModel(request, run, issuerName, platformLogo, officeLogo, seal, documentId: null);
             var rendered = renderer.Render(model);
             return Result.Success<IReadOnlyList<CertificateRenderArtifact>>([
                 new CertificateRenderArtifact(null, request.Title, rendered.CertificatePdfBytes),
@@ -907,7 +856,7 @@ public static class SignatureRequestCompletedConsumer
             .OrderBy(document => document.Order)
             .Select(document =>
             {
-                var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, seal, document.Id);
+                var model = BuildCertificateModel(request, run, issuerName, platformLogo, officeLogo, seal, document.Id);
                 return new CertificateRenderArtifact(
                     document.Id,
                     document.Title,
@@ -973,6 +922,7 @@ public static class SignatureRequestCompletedConsumer
 
     private static CertificateOfCompletionModel BuildCertificateModel(
         SignatureRequest request,
+        SealingRun run,
         string? issuerName,
         byte[]? platformLogo,
         byte[]? tenantLogo,
@@ -1020,8 +970,11 @@ public static class SignatureRequestCompletedConsumer
                     document.Order,
                     document.Title,
                     document.DocumentHashPre?.Value ?? string.Empty,
-                    document.DocumentHashPost?.Value ?? string.Empty,
-                    document.SealedAtUtc ?? request.CompletedAtUtc ?? DateTime.UtcNow,
+                    run.Find(document.Id)?.HashPost ?? document.DocumentHashPost?.Value ?? string.Empty,
+                    run.Find(document.Id)?.SealedAtUtc
+                        ?? document.SealedAtUtc
+                        ?? request.CompletedAtUtc
+                        ?? DateTime.UtcNow,
                     request
                         .Signers.Where(signer => signer.Fields.Any(field => field.DocumentId == document.Id))
                         .Select(signer => new CertificateDocumentSignerEntry(
@@ -1088,121 +1041,6 @@ public static class SignatureRequestCompletedConsumer
     }
 
     private static string MaskIdentifier(string identifier) => PreparerIdentifierMask.Mask(identifier);
-
-    // ============== Fase 6: publicar Sealed / Failed ==============
-
-    private static async Task PublishSealedAsync(
-        SignatureRequest request,
-        PipelineOutcome outcome,
-        string correlationId,
-        IMessageBus bus
-    )
-    {
-        var finalSealedDocumentId = outcome.RequestSealingCompleted
-            ? outcome.SealedDocuments.LastOrDefault()?.DocumentId
-            : null;
-        foreach (var sealedDocument in outcome.SealedDocuments)
-        {
-            await bus.PublishAsync(
-                new SignatureDocumentSealedIntegrationEvent
-                {
-                    TenantId = request.TenantId,
-                    CorrelationId = correlationId,
-                    IdempotencyKey = SignatureSealingIdempotencyKeys.DocumentSealed(
-                        request.Id,
-                        sealedDocument.DocumentId,
-                        sealedDocument.SealedFileId
-                    ),
-                    SignatureRequestId = request.Id,
-                    CreatedByUserId = request.CreatedByUserId,
-                    DocumentId = sealedDocument.DocumentId,
-                    SealedFileId = sealedDocument.SealedFileId,
-                    DocumentHashPost = sealedDocument.HashPost,
-                    CertificateFileId =
-                        outcome.DocumentCertificateFileIds.TryGetValue(
-                            sealedDocument.DocumentId,
-                            out var documentCertificateFileId
-                        )
-                            ? documentCertificateFileId
-                        : sealedDocument.DocumentId == finalSealedDocumentId ? outcome.CertificateFileId
-                        : null,
-                    SealedAtUtc = sealedDocument.SealedAtUtc,
-                    ExternalReference = request.ExternalReference.ToMessaging(),
-                }
-            );
-        }
-
-        if (!outcome.RequestSealingCompleted)
-            return;
-
-        await bus.PublishAsync(
-            new SignatureRequestSealingCompletedIntegrationEvent
-            {
-                TenantId = request.TenantId,
-                CorrelationId = correlationId,
-                SignatureRequestId = request.Id,
-                CreatedByUserId = request.CreatedByUserId,
-                DocumentCount = request.Documents.Count,
-                SealedAtUtc = outcome.CompletedAtUtc,
-            }
-        );
-    }
-
-    /// <summary>
-    /// Fallo definitivo: guarda lo sellado y la marca, avisa cada documento que sí quedó sellado (su línea
-    /// RequestSealed y su correo) y después el fallo.
-    /// </summary>
-    private static async Task FailSealingAsync(
-        SignatureRequest request,
-        IReadOnlyList<DocumentSealOutcome> sealedDocuments,
-        Error error,
-        string correlationId,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        CancellationToken ct
-    )
-    {
-        request.MarkSealingFailed(DateTime.UtcNow);
-        await unitOfWork.SaveChangesAsync(ct);
-
-        if (sealedDocuments.Count > 0)
-            await PublishSealedAsync(
-                request,
-                new PipelineOutcome(
-                    sealedDocuments,
-                    request.CertificateFileId,
-                    request
-                        .Documents.Where(document => document.CertificateFileId is not null)
-                        .ToDictionary(document => document.Id, document => document.CertificateFileId!.Value),
-                    DateTime.UtcNow,
-                    RequestSealingCompleted: false
-                ),
-                correlationId,
-                bus
-            );
-
-        await PublishFailedAsync(request, error, correlationId, bus);
-    }
-
-    private static Task PublishFailedAsync(
-        SignatureRequest request,
-        Error error,
-        string correlationId,
-        IMessageBus bus
-    ) =>
-        bus.PublishAsync(
-                new SignatureRequestSealingFailedIntegrationEvent
-                {
-                    TenantId = request.TenantId,
-                    CorrelationId = correlationId,
-                    SignatureRequestId = request.Id,
-                    CreatedByUserId = request.CreatedByUserId,
-                    Reason = error.Message,
-                    ErrorCode = error.Code,
-                    FailedAtUtc = DateTime.UtcNow,
-                }
-            )
-            .AsTask();
 
     // ============== Helpers ==============
 

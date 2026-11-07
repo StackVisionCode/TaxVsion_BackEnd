@@ -51,6 +51,16 @@ public static class DependencyInjection
         services.AddScoped<ITenantProviderCustomerRepository, TenantProviderCustomerRepository>();
         services.AddScoped<IOnboardingPaymentMethodOverrideRepository, OnboardingPaymentMethodOverrideRepository>();
 
+        services
+            .AddOptions<TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentChargeOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentChargeOptions.SectionName
+                )
+            )
+            .Validate(o => o.IsValid(), "PaymentApp:ChargeExecution windows must be positive.")
+            .ValidateOnStart();
+
         services.Configure<StripeOptions>(configuration.GetSection(StripeOptions.SectionName));
         services.Configure<IntellipayOptions>(configuration.GetSection(IntellipayOptions.SectionName));
         services.Configure<PayPalOptions>(configuration.GetSection(PayPalOptions.SectionName));

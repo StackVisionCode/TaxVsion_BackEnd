@@ -34,6 +34,8 @@ public sealed record CreateFolderCommand(
 
 public static class CreateFolderHandler
 {
+    private const string UniqueConstraintCode = "Persistence.UniqueConstraint";
+
     public static async Task<Result<FolderResponse>> Handle(
         CreateFolderCommand command,
         IFolderRepository folders,
@@ -116,15 +118,12 @@ public static class CreateFolderHandler
     }
 
     /// <summary>
-    /// Cuando command.Category viene informado, el indice unico filtrado
-    /// IX_Folders_Owner_Category (FolderConfiguration) respalda una carrera real: si dos
-    /// requests concurrentes (dos interfaces distintas pidiendo la carpeta ancla del mismo
-    /// dueno) pasan el pre-check de arriba y ambas intentan insertar, la segunda choca con
-    /// ConflictException — en vez de propagar el error, buscamos la fila que gano la
-    /// carrera y la devolvemos como si la hubieramos creado nosotros. Mismo patron que
-    /// StartCustomerImportHandler (Customer.Application) para el race de IdempotencyKey.
-    /// Sin Category no hay indice unico que proteja el Name (solo el pre-check de arriba,
-    /// best-effort) — la excepcion, si ocurriera, se deja propagar sin capturar.
+    /// Los indices unicos filtrados IX_Folders_Owner_Category (con Category) y
+    /// UX_Folders_Owner_Parent_Name (sin Category) respaldan una carrera real: si dos
+    /// requests concurrentes pasan el pre-check de arriba y ambas intentan insertar, la
+    /// segunda choca con ConflictException — en vez de propagar el error, buscamos la fila
+    /// que gano la carrera y la devolvemos como si la hubieramos creado nosotros. Mismo
+    /// patron que StartCustomerImportHandler (Customer.Application) para el race de IdempotencyKey.
     /// </summary>
     private static async Task<Result<FolderResponse>> PersistOrReturnExisting(
         CreateFolderCommand command,
@@ -140,7 +139,7 @@ public static class CreateFolderHandler
         {
             await unitOfWork.SaveChangesAsync(ct);
         }
-        catch (ConflictException) when (command.Category is not null)
+        catch (ConflictException conflict) when (conflict.Code == UniqueConstraintCode)
         {
             logger.LogInformation(
                 "CreateFolder hit unique violation for tenant {TenantId} owner {OwnerType}/{OwnerId} category {Category} "
@@ -150,13 +149,24 @@ public static class CreateFolderHandler
                 command.OwnerId,
                 command.Category
             );
-            var existing = await folders.GetByOwnerAndCategoryAsync(
-                command.TenantId,
-                command.OwnerType,
-                command.OwnerId,
-                command.Category,
-                ct
-            );
+            // Sale del seguimiento: el guardado final de la transacción no debe repetir el INSERT.
+            folders.Remove(folder);
+            var existing = command.Category is not null
+                ? await folders.GetByOwnerAndCategoryAsync(
+                    command.TenantId,
+                    command.OwnerType,
+                    command.OwnerId,
+                    command.Category,
+                    ct
+                )
+                : await folders.GetByNameUnderParentAsync(
+                    command.TenantId,
+                    command.ParentFolderId,
+                    folder.Name,
+                    command.OwnerType,
+                    command.OwnerId,
+                    ct
+                );
             if (existing is not null)
                 return Result.Success(FolderResponseMapper.Map(existing));
 
@@ -283,6 +293,9 @@ public sealed record MoveFolderCommand(
 
 public static class MoveFolderHandler
 {
+    // Cota defensiva, igual que MoveFileToFolderHandler: un ciclo ya existente no cuelga el movimiento.
+    private const int MaxAncestorWalkDepth = 64;
+
     public static async Task<Result<FolderResponse>> Handle(
         MoveFolderCommand command,
         IFolderRepository folders,
@@ -290,6 +303,8 @@ public static class MoveFolderHandler
         CancellationToken ct
     )
     {
+        await LockMoveAsync(command, folders, ct);
+
         var loaded = await RenameFolderHandler.LoadOwnedFolder(
             command.TenantId,
             command.Scope,
@@ -332,6 +347,27 @@ public static class MoveFolderHandler
             return Result.Failure<FolderResponse>(applied.Error);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(FolderResponseMapper.Map(folder));
+    }
+
+    /// <summary>
+    /// Candado sobre la carpeta, el destino y los ancestros del destino antes del chequeo de ciclo: dos
+    /// movimientos que se cruzan por sus descendientes no comparten otras filas que esas.
+    /// </summary>
+    private static async Task LockMoveAsync(MoveFolderCommand command, IFolderRepository folders, CancellationToken ct)
+    {
+        // Orden fijo por Id: el cruce directo hace fila en vez de bloquearse. Si aun así hay
+        // interbloqueo por los ancestros, SQL elige víctima y sale como conflicto.
+        var locked = new[] { command.FolderId, command.NewParentFolderId ?? command.FolderId }.Distinct().Order();
+        Folder? ancestor = null;
+        foreach (var id in locked)
+        {
+            var row = await folders.GetForUpdateAsync(command.TenantId, id, ct);
+            if (id == command.NewParentFolderId)
+                ancestor = row;
+        }
+
+        for (var depth = 0; ancestor?.ParentFolderId is { } next && depth < MaxAncestorWalkDepth; depth++)
+            ancestor = await folders.GetForUpdateAsync(command.TenantId, next, ct);
     }
 
     private static async Task<Result<string?>> ResolveNewParent(

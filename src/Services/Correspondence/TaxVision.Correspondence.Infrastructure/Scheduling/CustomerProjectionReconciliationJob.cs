@@ -7,11 +7,13 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
 using TaxVision.Correspondence.Infrastructure.Customers;
 using TaxVision.Correspondence.Infrastructure.Observability;
 using TaxVision.Correspondence.Infrastructure.Persistence;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Infrastructure.Scheduling;
 
@@ -82,6 +84,7 @@ public sealed class CustomerProjectionReconciliationJob(
         var repository = scope.ServiceProvider.GetRequiredService<ICustomerEmailAddressRepository>();
         var db = scope.ServiceProvider.GetRequiredService<CorrespondenceDbContext>();
         var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
+        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
 
         using (correlation.Push(Guid.NewGuid().ToString("N")))
         {
@@ -107,6 +110,7 @@ public sealed class CustomerProjectionReconciliationJob(
                 var activatedInPage = new HashSet<(Guid TenantId, string Email)>();
                 var pageInserted = 0;
                 var pageUpdated = 0;
+                var links = new List<LinkUnlinkedMailCommand>();
                 foreach (var customer in result.Items)
                 {
                     var applied = await UpsertAsync(repository, customer, readAtUtc, activatedInPage, logger, ct);
@@ -114,6 +118,16 @@ public sealed class CustomerProjectionReconciliationJob(
                         pageInserted++;
                     else if (applied == UpsertOutcome.Updated)
                         pageUpdated++;
+
+                    // COR-05: los importados entran por aquí, sin evento propio.
+                    if (applied is UpsertOutcome.Inserted or UpsertOutcome.Updated && customer.IsActive)
+                        links.Add(
+                            new LinkUnlinkedMailCommand(
+                                customer.TenantId,
+                                customer.CustomerId,
+                                EmailAddress.Create(customer.PrimaryEmail).Value.NormalizedValue
+                            )
+                        );
                 }
 
                 // Persistir por página para acotar el tamaño del change-tracker en catálogos grandes.
@@ -122,12 +136,17 @@ public sealed class CustomerProjectionReconciliationJob(
                     await db.SaveChangesAsync(ct);
                     inserted += pageInserted;
                     updated += pageUpdated;
+                    await LinkMailAsync(bus, links, ct);
                 }
                 // El DbContext traduce la violación de índice único a ConflictException.
                 catch (Exception ex) when (ex is DbUpdateException or ConflictException)
                 {
                     // Una página mala no corta las siguientes; la próxima corrida la reintenta.
-                    logger.LogError(ex, "CustomerProjectionReconciliationJob could not save page {Page}; skipping it.", page);
+                    logger.LogError(
+                        ex,
+                        "CustomerProjectionReconciliationJob could not save page {Page}; skipping it.",
+                        page
+                    );
                     db.ChangeTracker.Clear();
                 }
 
@@ -192,6 +211,22 @@ public sealed class CustomerProjectionReconciliationJob(
         await repository.AddAsync(projection, ct);
         activatedInPage.Add((customer.TenantId, email.NormalizedValue));
         return UpsertOutcome.Inserted;
+    }
+
+    // Una unidad por cliente: un correo que no se pudo enlazar no corta el resto ni la página siguiente.
+    private async Task LinkMailAsync(IMessageBus bus, List<LinkUnlinkedMailCommand> links, CancellationToken ct)
+    {
+        foreach (var link in links)
+        {
+            try
+            {
+                await bus.InvokeAsync(link, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Could not link pending mail for customer {CustomerId}.", link.CustomerId);
+            }
+        }
     }
 
     private static async Task<bool> IsTakenAsync(

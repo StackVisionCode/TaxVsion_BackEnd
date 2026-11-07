@@ -301,6 +301,12 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<(Guid Id, Guid TenantId)>>([]);
+
         public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
             DateTime cutoffUtc,
             int batchSize,
@@ -418,6 +424,12 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             Money amount,
             CancellationToken ct
         ) => Task.FromResult(Result.Success(chargeStatus));
+
+        public Task<Result<ChargeLookup>> FindChargeAsync(
+            Guid saaSPaymentId,
+            DateTime createdAfterUtc,
+            CancellationToken ct
+        ) => throw new NotSupportedException();
 
         public Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
             string providerChargeReference,

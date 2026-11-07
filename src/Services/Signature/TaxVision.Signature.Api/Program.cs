@@ -317,6 +317,7 @@ builder.Host.UseWolverine(options =>
     // En el último intento el consumidor ya no lanza: avisa SealingFailed y marca la solicitud.
     options.Policies.OnException<SealingTransientException>().ScheduleRetry(SealingTransientException.Cooldowns);
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 });
 

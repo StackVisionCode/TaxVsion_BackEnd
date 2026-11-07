@@ -103,6 +103,7 @@ public sealed class ScheduleAppointmentHandlerTests
             appointments,
             new SingleTypeRepository(type),
             new EmptyAvailability(),
+            new NoScheduleLock(),
             unitOfWork,
             new NullCalendarMetrics(),
             CancellationToken.None

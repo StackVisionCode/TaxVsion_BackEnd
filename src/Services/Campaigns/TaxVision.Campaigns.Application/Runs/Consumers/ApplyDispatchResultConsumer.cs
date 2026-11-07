@@ -27,7 +27,7 @@ public static class ApplyDispatchResultConsumer
             throw new ArgumentException($"Unknown dispatch outcome '{evt.Outcome}' for run {evt.RunId}.", nameof(evt));
 
         var run =
-            await runs.GetByIdAsync(evt.TenantId, evt.RunId, ct)
+            await runs.GetForResultAsync(evt.TenantId, evt.RunId, evt.DispatchId, ct)
             ?? throw new DependencyNotReadyException("CampaignRun", $"run {evt.RunId}");
 
         var applied = run.ApplyResult(evt.DispatchId, outcome, evt.ProviderRef, evt.Reason);

@@ -92,6 +92,10 @@ public sealed class PaymentAppDeployConfigWiringTests
             "PublishMessage<ExpireProviderCheckoutSessionCommand>().ToLocalQueue(\"payment-app-provider-calls\")",
             program
         );
+        Assert.Contains(
+            "PublishMessage<ExecuteSaaSPaymentChargeCommand>().ToLocalQueue(\"payment-app-provider-calls\")",
+            program
+        );
         Assert.Contains("LocalQueue(\"payment-app-provider-calls\").UseDurableInbox()", program);
     }
 

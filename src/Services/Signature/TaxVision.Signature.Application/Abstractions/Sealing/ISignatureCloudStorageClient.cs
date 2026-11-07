@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Signature.Application.Abstractions.Sealing;
@@ -64,8 +65,21 @@ public interface ISignatureCloudStorageClient
     /// <summary>Descarga los bytes del PDF original.</summary>
     Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
 
-    /// <summary>Sube un PDF a CloudStorage y devuelve el nuevo <c>FileId</c>.</summary>
+    /// <summary>
+    /// Sube un archivo y pide guardarlo en el acto: <c>SaveFileRequested</c> sale antes del commit de quien llama.
+    /// Es para quien espera el escaneo sin confirmar o no guarda nada; el resto usa <see cref="StageAsync"/>.
+    /// </summary>
     Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default);
+
+    /// <summary>
+    /// SIG-6: deja el archivo en MinIO y devuelve el <c>SaveFileRequested</c> sin publicarlo. Quien llama lo publica
+    /// por su outbox, en la transacción que registra el <c>FileId</c>.
+    /// </summary>
+    Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
+        Guid tenantId,
+        SignatureFileUpload upload,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// URL firmada de corta vida (adjunto) para que el navegador del firmante baje un archivo de su entrega.

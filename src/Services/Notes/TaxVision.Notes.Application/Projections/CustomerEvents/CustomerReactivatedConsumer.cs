@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Notes.Application.Backfill;
 using TaxVision.Notes.Application.Backfill.Abstractions;
 using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Projections;
@@ -10,10 +11,10 @@ namespace TaxVision.Notes.Application.Projections.CustomerEvents;
 
 public static class CustomerReactivatedConsumer
 {
-    public static async Task Handle(
+    public static async Task<RunTenantCustomerBackfillCommand?> Handle(
         CustomerReactivatedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
-        ITenantCustomerBackfillService backfill,
+        ITenantBackfillStateRepository backfillStates,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
@@ -26,7 +27,7 @@ public static class CustomerReactivatedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            var backfill = await RunTenantCustomerBackfillCommand.IfMissingAsync(evt.TenantId, backfillStates, ct);
 
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (existing is null)
@@ -36,7 +37,7 @@ public static class CustomerReactivatedConsumer
                     evt.TenantId,
                     evt.CustomerId
                 );
-                return;
+                return backfill;
             }
 
             // Reactivated fires Archived -> Active (ver contrato del evento en Customer).
@@ -47,6 +48,7 @@ public static class CustomerReactivatedConsumer
                 evt.TenantId,
                 evt.CustomerId
             );
+            return backfill;
         }
     }
 }

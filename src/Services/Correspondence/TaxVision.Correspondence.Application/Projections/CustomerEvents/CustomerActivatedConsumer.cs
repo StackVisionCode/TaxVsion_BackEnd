@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Domain.Projections;
 
 namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
@@ -13,7 +14,7 @@ namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
 /// </summary>
 public static class CustomerActivatedConsumer
 {
-    public static async Task Handle(
+    public static async Task<LinkUnlinkedMailCommand?> Handle(
         CustomerActivatedIntegrationEvent evt,
         ICustomerEmailAddressRepository repository,
         ITenantCustomerBackfillService backfill,
@@ -34,7 +35,7 @@ public static class CustomerActivatedConsumer
                     "CustomerEmailAddress not found for {CustomerId}; nothing to activate.",
                     evt.CustomerId
                 );
-                return;
+                return null;
             }
 
             // Igual que el alta: un email ya activo para otro cliente se omite en vez de violar el índice (DLQ).
@@ -49,7 +50,7 @@ public static class CustomerActivatedConsumer
                         evt.CustomerId,
                         emailOwner.CustomerId
                     );
-                    return;
+                    return null;
                 }
             }
 
@@ -61,9 +62,10 @@ public static class CustomerActivatedConsumer
                     evt.EventId,
                     evt.CustomerId
                 );
-                return;
+                return null;
             }
             await unitOfWork.SaveChangesAsync(ct);
+            return new LinkUnlinkedMailCommand(evt.TenantId, evt.CustomerId, existing.EmailAddress);
         }
     }
 }

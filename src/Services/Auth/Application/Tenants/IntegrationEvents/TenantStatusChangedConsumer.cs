@@ -25,6 +25,11 @@ public static class TenantStatusChangedConsumer
 
         using (correlation.Push(correlationId))
         {
+            // TEN-4: suspender y reactivar pueden llegar al revés.
+            var tenant = await tenants.GetByIdAsync(evt.ChangedTenantId, ct);
+            if (tenant is not null && !tenant.AcceptStatusVersion(evt.TenantVersion))
+                return;
+
             await tenants.SetActiveAsync(evt.ChangedTenantId, evt.IsActive, ct);
 
             // Tenant suspendido/cerrado: se cortan todas las sesiones activas. A5 (G10) — antes esto

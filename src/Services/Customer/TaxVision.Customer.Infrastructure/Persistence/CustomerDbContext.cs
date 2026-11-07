@@ -136,7 +136,7 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
 
     /// <summary>
     /// Persiste de forma asíncrona en SQL Server todos los cambios que EF Core está siguiendo.
-    /// Convierte las violaciones de unicidad de SQL Server en una
+    /// Convierte las violaciones de unicidad de SQL Server y los conflictos de concurrencia en una
     /// <see cref="ConflictException"/> independiente de la tecnología de persistencia.
     /// </summary>
     /// <param name="cancellationToken">
@@ -145,7 +145,7 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
     /// <returns>Número de entradas de estado escritas en la base de datos.</returns>
     /// <exception cref="ConflictException">
     /// Se produce cuando SQL Server informa de una clave duplicada mediante los errores
-    /// 2601 o 2627.
+    /// 2601 o 2627, o cuando otro guardó la fila antes (RowVersion).
     /// </exception>
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -154,6 +154,15 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
             // Detecta las entidades agregadas, modificadas o eliminadas y ejecuta
             // los INSERT, UPDATE y DELETE correspondientes.
             return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // HTTP responde 409; por mensaje, Wolverine reintenta sobre lo nuevo.
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The resource was modified by someone else. Reload and try again.",
+                ex
+            );
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {

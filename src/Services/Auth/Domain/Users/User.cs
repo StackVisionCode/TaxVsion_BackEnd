@@ -77,6 +77,9 @@ public sealed class User : AggregateRoot
     /// contra que un reintento del mismo comando M2M cree un segundo TenantAdmin.</summary>
     public Guid? OnboardingId { get; private set; }
 
+    /// <summary>Token de concurrencia: dos ediciones del mismo usuario no se pisan en silencio.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public static Result<User> Register(
         Guid tenantId,
         string name,
@@ -157,6 +160,9 @@ public sealed class User : AggregateRoot
     }
 
     public bool IsLockedOut(DateTime utcNow) => LockoutEndUtc is { } end && end > utcNow;
+
+    /// <summary>Hay fallos o bloqueo por limpiar: un login correcto va a escribir la fila.</summary>
+    public bool HasLoginFailures => FailedLoginCount > 0 || LockoutEndUtc is not null;
 
     public void RegisterFailedLogin(DateTime utcNow, int maxAttempts, TimeSpan lockoutDuration)
     {

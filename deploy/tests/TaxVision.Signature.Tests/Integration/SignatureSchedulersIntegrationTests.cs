@@ -265,6 +265,12 @@ public sealed class SignatureSchedulersApiFactory : SignatureApiFactory
 /// <summary>CloudStorage en memoria: sirve los PDF sembrados y cuenta las descargas.</summary>
 public sealed class CountingStorage : ISignatureCloudStorageClient
 {
+    public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
+        Guid tenantId,
+        SignatureFileUpload upload,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
+
     private readonly ConcurrentDictionary<Guid, byte[]> _files = new();
     private readonly ConcurrentDictionary<Guid, int> _downloads = new();
 

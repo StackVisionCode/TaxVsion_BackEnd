@@ -185,7 +185,7 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     {
         try
         {
-            return await base.SaveChangesAsync(cancellationToken);
+            return await SaveReleasingDefaultProfilesFirstAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException ex)
         {
@@ -203,5 +203,48 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
                 ex
             );
         }
+    }
+
+    /// <summary>
+    /// SIG-7: EF no ordena los UPDATE por un índice único filtrado. Las firmas que dejan de ser default se escriben
+    /// antes, en la misma transacción, para no chocar con UX_SignatureProfiles_OneDefault al mover la marca.
+    /// </summary>
+    private async Task<int> SaveReleasingDefaultProfilesFirstAsync(CancellationToken ct)
+    {
+        var leaving = Database.IsRelational() ? ProfilesLeavingDefault() : [];
+        if (leaving.Count == 0)
+            return await base.SaveChangesAsync(ct);
+
+        if (Database.CurrentTransaction is not null)
+        {
+            await ReleaseDefaultProfilesAsync(leaving, ct);
+            return await base.SaveChangesAsync(ct);
+        }
+
+        await using var transaction = await Database.BeginTransactionAsync(ct);
+        await ReleaseDefaultProfilesAsync(leaving, ct);
+        var saved = await base.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return saved;
+    }
+
+    private List<SignatureProfile> ProfilesLeavingDefault() =>
+        ChangeTracker
+            .Entries<SignatureProfile>()
+            .Where(entry =>
+                entry.State == EntityState.Modified
+                && entry.Property(profile => profile.IsDefault).OriginalValue
+                && !entry.Entity.IsDefault
+            )
+            .Select(entry => entry.Entity)
+            .ToList();
+
+    private async Task ReleaseDefaultProfilesAsync(List<SignatureProfile> profiles, CancellationToken ct)
+    {
+        foreach (var profile in profiles)
+            await Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.SignatureProfiles SET IsDefault = 0 WHERE Id = {profile.Id}",
+                ct
+            );
     }
 }

@@ -3,6 +3,7 @@ using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
 using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.Sending;
+using TaxVision.Postmaster.Application.Sending.Commands.RecordSendResult;
 using TaxVision.Postmaster.Application.Sending.Commands.SendCorrespondenceMessage;
 using TaxVision.Postmaster.Domain.Providers;
 using TaxVision.Postmaster.Domain.Sending;
@@ -62,10 +63,11 @@ public sealed class SendCorrespondenceMessageHandlerTests
 
     private static Task<Result<SendCorrespondenceMessageResult>> HandleAsync(
         Fixture fixture,
-        SendCorrespondenceMessageCommand command
+        SendCorrespondenceMessageCommand command,
+        Action<object>? beforeInvoke = null
     )
     {
-        var bus = new FakeMessageBus();
+        var bus = new FakeMessageBus { BeforeInvoke = beforeInvoke };
         EmailSendPipeline.RouteSendCommands(
             bus,
             fixture.IdempotencyGuard,
@@ -79,6 +81,7 @@ public sealed class SendCorrespondenceMessageHandlerTests
             fixture.AttachmentFetcher,
             fixture.EmailSender,
             bus,
+            new RecordSendResultRetryOptions(),
             CancellationToken.None
         );
     }
@@ -169,6 +172,27 @@ public sealed class SendCorrespondenceMessageHandlerTests
         Assert.Null(fixture.EmailSender.LastMessage);
     }
 
+    // PMS-10: sin el Message-ID en el replay, el borrador que cierra el job no enlaza la respuesta del cliente (COR-16).
+    [Fact]
+    public async Task Replay_returns_the_internet_message_id_of_the_send()
+    {
+        var fixture = CreateFixture();
+        fixture.IdempotencyGuard.Stateful = true;
+        fixture.EmailSender.SendReturnValue = new SendResult(true, "gmail-msg-1", null, [])
+        {
+            InternetMessageId = "<sent-1@mail.test>",
+        };
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        await HandleAsync(fixture, command);
+        var replay = await HandleAsync(fixture, command);
+
+        Assert.True(replay.IsSuccess);
+        Assert.False(replay.Value.InProgress);
+        Assert.Equal("sent-1@mail.test", replay.Value.InternetMessageId);
+        Assert.Equal(1, fixture.EmailSender.SendCount);
+    }
+
     /// <summary>
     /// El bug real del plan §Fase 11: antes de este fix, InProgress se conflaba con "reserva nueva" y
     /// el handler creaba un segundo <c>SentMessage</c> para el mismo draft en una carrera real
@@ -209,6 +233,31 @@ public sealed class SendCorrespondenceMessageHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("SendCorrespondenceMessageHandler.SendInProgress", result.Error.Code);
         Assert.Null(fixture.EmailSender.LastMessage);
+    }
+
+    // Dos envíos del mismo draft a la vez: quien pierde al marcar el intento responde "en curso" y no envía.
+    [Fact]
+    public async Task Conflict_marking_the_attempt_answers_in_progress_without_sending()
+    {
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        var result = await HandleAsync(
+            fixture,
+            command,
+            message =>
+            {
+                if (
+                    message
+                    is TaxVision.Postmaster.Application.Sending.Commands.MarkSendAttempted.MarkSendAttemptedCommand
+                )
+                    throw new ConflictException("Persistence.ConcurrencyConflict", "Modified.");
+            }
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.InProgress);
+        Assert.Equal(0, fixture.EmailSender.SendCount);
     }
 
     /// <summary>

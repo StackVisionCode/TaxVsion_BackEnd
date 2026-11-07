@@ -43,6 +43,7 @@ public sealed class SignatureTemplateConfiguration : IEntityTypeConfiguration<Si
         builder.Property(t => t.UpdatedAtUtc).IsRequired();
         builder.Property(t => t.PublishedAtUtc);
         builder.Property(t => t.ArchivedAtUtc);
+        builder.Property(t => t.RowVersion).IsRowVersion();
 
         builder.HasIndex(t => new { t.TenantId, t.Status });
         builder.HasIndex(t => new { t.TenantId, t.Category });

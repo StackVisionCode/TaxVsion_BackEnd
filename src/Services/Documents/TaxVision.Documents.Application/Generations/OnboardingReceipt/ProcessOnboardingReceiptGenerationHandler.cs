@@ -130,26 +130,26 @@ public static class ProcessOnboardingReceiptGenerationHandler
                 }
             );
 
-            var save = await storageClient.RequestSaveAsync(
-                tenantId: PlatformTenant.Id,
-                fileId: fileId,
-                content: pdf.Value,
-                fileName: command.FileName,
-                contentType: PdfContentType,
-                ownerType: OwnerTypeOnboarding,
-                ownerId: command.OnboardingId,
-                folderType: FolderTypeReceipts,
-                taxYear: command.Receipt.PaidAtUtc.Year,
-                actorId: PlatformTenant.Id,
-                correlationId: correlation.CorrelationId,
-                ct: ct
-            );
-
-            if (save.IsFailure)
+            var upload = await storageClient.UploadAsync(fileId, pdf.Value, command.FileName, PdfContentType, ct);
+            if (upload.IsFailure)
             {
-                await FailAsync(generation, command, save.Error, unitOfWork, bus, now, logger, ct);
+                await FailAsync(generation, command, upload.Error, unitOfWork, bus, now, logger, ct);
                 return;
             }
+
+            await bus.RequestSaveAsync(
+                upload.Value,
+                new GeneratedFileDestination(
+                    PlatformTenant.Id,
+                    command.FileName,
+                    OwnerTypeOnboarding,
+                    command.OnboardingId,
+                    FolderTypeReceipts,
+                    command.Receipt.PaidAtUtc.Year,
+                    PlatformTenant.Id,
+                    correlation.CorrelationId
+                )
+            );
 
             logger.LogInformation(
                 "Onboarding receipt generation {GenerationId} rendered ({Bytes} bytes) and handed to CloudStorage as file {FileId}.",

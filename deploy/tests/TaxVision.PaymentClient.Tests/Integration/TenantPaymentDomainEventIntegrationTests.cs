@@ -19,6 +19,9 @@ using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.RegisterTenantPaymentWebhook;
 using TaxVision.PaymentClient.Application.TenantPayments.Commands.ChargeTenantPayment;
+using TaxVision.PaymentClient.Application.TenantPayments.Commands.ExecuteTenantPaymentCharge;
+using TaxVision.PaymentClient.Application.TenantPayments.Commands.PrepareTenantPayment;
+using TaxVision.PaymentClient.Application.TenantPayments.Commands.RecordTenantPaymentCharge;
 using TaxVision.PaymentClient.Application.TenantPayments.DomainEventHandlers;
 using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
 using TaxVision.PaymentClient.Domain.TenantPayments;
@@ -102,22 +105,27 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
         // El handler del evento de dominio devuelve una sola señal "pagado".
         Assert.True(
             await WaitUntilAsync(async () =>
-                await CountRowsAsync("wolverine_outgoing_envelopes", nameof(TenantPaymentSucceededIntegrationEvent)) == 1
+                await CountRowsAsync("wolverine_outgoing_envelopes", nameof(TenantPaymentSucceededIntegrationEvent))
+                == 1
             )
         );
     }
 
     [Fact]
-    public async Task DirectCharge_FailureAfterSave_NoRowAndNoEnvelope()
+    public async Task DirectCharge_FailureAfterSave_KeepsPendingRowAndNoEnvelope()
     {
         await SeedConfigAsync();
         _interceptor.FailOnSucceededPayment = true;
 
-        await Assert.ThrowsAnyAsync<Exception>(ChargeAsync);
+        var result = await ChargeAsync();
 
-        Assert.Equal(0, await CountPaymentsAsync());
+        // El resultado se revierte; la intención queda para que la reconciliación la encuentre.
+        Assert.Equal(PaymentStatus.Pending, await StatusOfAsync(result.Value));
         Assert.Equal(0, await CountRowsAsync("wolverine_incoming_envelopes", "TenantPaymentSucceededDomainEvent"));
-        Assert.Equal(0, await CountRowsAsync("wolverine_outgoing_envelopes", nameof(TenantPaymentSucceededIntegrationEvent)));
+        Assert.Equal(
+            0,
+            await CountRowsAsync("wolverine_outgoing_envelopes", nameof(TenantPaymentSucceededIntegrationEvent))
+        );
     }
 
     [Fact]
@@ -130,7 +138,10 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
 
         Assert.Equal(new PendingWebhookSetupSweepSummary(1, 0), summary);
         Assert.Equal(nowUtc, await WebhookRequestedAtAsync(configId), TimeSpan.FromMilliseconds(10));
-        Assert.Equal(1, await CountRowsAsync("wolverine_outgoing_envelopes", nameof(RegisterTenantPaymentWebhookCommand)));
+        Assert.Equal(
+            1,
+            await CountRowsAsync("wolverine_outgoing_envelopes", nameof(RegisterTenantPaymentWebhookCommand))
+        );
     }
 
     [Fact]
@@ -144,7 +155,10 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
 
         Assert.Equal(new PendingWebhookSetupSweepSummary(0, 0), summary);
         Assert.Equal(requestedAtUtc, await WebhookRequestedAtAsync(configId), TimeSpan.FromMilliseconds(10));
-        Assert.Equal(0, await CountRowsAsync("wolverine_outgoing_envelopes", nameof(RegisterTenantPaymentWebhookCommand)));
+        Assert.Equal(
+            0,
+            await CountRowsAsync("wolverine_outgoing_envelopes", nameof(RegisterTenantPaymentWebhookCommand))
+        );
     }
 
     private Task<Result<Guid>> ChargeAsync() =>
@@ -222,7 +236,11 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
     private async Task<PaymentStatus> StatusOfAsync(Guid paymentId)
     {
         await using var db = NewContext();
-        return await db.TenantPayments.IgnoreQueryFilters().Where(p => p.Id == paymentId).Select(p => p.Status).SingleAsync();
+        return await db
+            .TenantPayments.IgnoreQueryFilters()
+            .Where(p => p.Id == paymentId)
+            .Select(p => p.Status)
+            .SingleAsync();
     }
 
     private async Task<int> CountPaymentsAsync()
@@ -252,6 +270,9 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
                 options
                     .Discovery.DisableConventionalDiscovery()
                     .IncludeType(typeof(ChargeTenantPaymentHandler))
+                    .IncludeType(typeof(PrepareTenantPaymentHandler))
+                    .IncludeType(typeof(ExecuteTenantPaymentChargeHandler))
+                    .IncludeType(typeof(RecordTenantPaymentChargeHandler))
                     .IncludeType(typeof(TenantPaymentSucceededDomainEventHandler));
                 options.PersistMessagesWithSqlServer(ConnectionString, _schema);
                 options.AutoBuildMessageStorageOnStartup = AutoCreate.CreateOrUpdate;
@@ -268,12 +289,15 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
                 options.Services.AddScoped<ITenantPaymentRepository, TenantPaymentRepository>();
                 options.Services.AddScoped<ITenantPaymentConfigRepository, TenantPaymentConfigRepository>();
                 options.Services.AddScoped<ITenantConnectAccountRepository, TenantConnectAccountRepository>();
+                options.Services.AddScoped<IPaymentLinkRepository, PaymentLinkRepository>();
                 options.Services.AddScoped<IPaymentAuditLogWriter, PaymentAuditLogWriter>();
                 options.Services.AddSingleton(InMemoryPaymentClient.FakeAdapters(_stripe));
                 options.Services.AddSingleton<ISecretProtector, PrefixSecretProtector>();
                 options.Services.AddSingleton<IPaymentClientMetrics, NoOpPaymentClientMetrics>();
                 options.Services.Configure<PlatformStripeCredentials>(_ => { });
-                options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, PaymentClientDbContext>();
+                options
+                    .UseEntityFrameworkCoreTransactions()
+                    .WithDbContextAbstraction<IUnitOfWork, PaymentClientDbContext>();
                 options.Policies.AutoApplyTransactions();
 
                 options.UseTaxVisionDomainEvents();
@@ -363,13 +387,19 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>La revisión es cross-tenant: en la prueba solo ve los pendientes de su propio tenant.</summary>
-    private sealed class StaleOfTenant(ITenantPaymentConfigRepository inner, Guid tenantId) : ITenantPaymentConfigRepository
+    private sealed class StaleOfTenant(ITenantPaymentConfigRepository inner, Guid tenantId)
+        : ITenantPaymentConfigRepository
     {
         public async Task<IReadOnlyList<TenantPaymentConfig>> GetStalePendingWebhookSetupsAsync(
             DateTime requestedBeforeUtc,
             int batchSize,
             CancellationToken ct = default
-        ) => [.. (await inner.GetStalePendingWebhookSetupsAsync(requestedBeforeUtc, 500, ct)).Where(c => c.TenantId == tenantId)];
+        ) =>
+            [
+                .. (await inner.GetStalePendingWebhookSetupsAsync(requestedBeforeUtc, 500, ct)).Where(c =>
+                    c.TenantId == tenantId
+                ),
+            ];
 
         public Task<TenantPaymentConfig?> GetByTenantAndProviderAsync(
             Guid tenantId,
@@ -377,16 +407,24 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
-        public Task<TenantPaymentConfig?> GetByIdAsync(Guid tenantPaymentConfigId, Guid tenantId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<TenantPaymentConfig?> GetByIdAsync(
+            Guid tenantPaymentConfigId,
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<TenantPaymentConfig>> GetActiveByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<TenantPaymentConfig>> GetActiveByTenantAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<TenantPaymentConfig>> GetAllByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<TenantPaymentConfig>> GetAllByTenantAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) =>
+            throw new NotSupportedException();
 
         public void Remove(TenantPaymentConfig config) => throw new NotSupportedException();
     }
@@ -405,8 +443,10 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
         {
             var tracker = eventData.Context!.ChangeTracker;
             var hit =
-                (FailOnSucceededPayment && tracker.Entries<TenantPayment>().Any(e => e.Entity.Status == PaymentStatus.Succeeded))
-                || (FailOnWebhookConfig && tracker.Entries<TenantPaymentConfig>().Any());
+                (
+                    FailOnSucceededPayment
+                    && tracker.Entries<TenantPayment>().Any(e => e.Entity.Status == PaymentStatus.Succeeded)
+                ) || (FailOnWebhookConfig && tracker.Entries<TenantPaymentConfig>().Any());
             return hit
                 ? ValueTask.FromException<int>(new InvalidOperationException("Fallo forzado después de guardar."))
                 : ValueTask.FromResult(result);

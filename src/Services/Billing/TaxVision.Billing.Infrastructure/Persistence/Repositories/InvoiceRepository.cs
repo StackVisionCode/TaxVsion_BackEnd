@@ -52,6 +52,14 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
             .Include(i => i.PaymentLinks)
             .FirstOrDefaultAsync(i => i.OnboardingId == onboardingId, ct);
 
+    public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
+        _dbContext
+            .Invoices.IgnoreQueryFilters()
+            .Include(i => i.PaymentLinks)
+            .Include(i => i.StatusChanges)
+            .Include(i => i.Payments)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.OnboardingId != null, ct);
+
     public async Task<IReadOnlyList<Invoice>> ListByTenantAsync(
         Guid tenantId,
         int take,

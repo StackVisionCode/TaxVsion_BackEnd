@@ -7,8 +7,17 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
 {
     public int SaveChangesCallCount { get; private set; }
 
+    /// <summary>La próxima confirmación falla, como un choque de la base.</summary>
+    public bool FailNextSave { get; set; }
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
+        if (FailNextSave)
+        {
+            FailNextSave = false;
+            throw new InvalidOperationException("Simulated save failure.");
+        }
+
         SaveChangesCallCount++;
         return Task.FromResult(0);
     }

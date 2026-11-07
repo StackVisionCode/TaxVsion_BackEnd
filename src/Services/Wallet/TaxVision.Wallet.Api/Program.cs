@@ -121,6 +121,7 @@ builder.Host.UseWolverine(options =>
     options.Policies.AutoApplyTransactions();
 
     options.ApplyWalletFailureRules();
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // Eventos de dominio del monedero: se guardan con el commit del handler y su handler devuelve

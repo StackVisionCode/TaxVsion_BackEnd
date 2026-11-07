@@ -70,7 +70,7 @@ public sealed class ChargeTenantPaymentHandlerTests
             PlatformFeeReference: null
         );
 
-        var result = await ChargeTenantPaymentHandler.Handle(
+        var result = await TestChargeFlow.ChargeAsync(
             command,
             payments,
             configs,
@@ -147,7 +147,7 @@ public sealed class ChargeTenantPaymentHandlerTests
             ActorUserId: Guid.Empty
         );
 
-        var result = await ChargeTenantPaymentHandler.Handle(
+        var result = await TestChargeFlow.ChargeAsync(
             command,
             payments,
             configs,
@@ -184,7 +184,9 @@ public sealed class ChargeTenantPaymentHandlerTests
         var result = await office.ChargeAsync("direct-invoice-1", published);
 
         Assert.True(result.IsSuccess);
-        var paid = Assert.Single((await office.EmittedAsync(published)).OfType<TenantPaymentSucceededIntegrationEvent>());
+        var paid = Assert.Single(
+            (await office.EmittedAsync(published)).OfType<TenantPaymentSucceededIntegrationEvent>()
+        );
         Assert.Equal(result.Value, paid.TenantPaymentId);
         Assert.Equal(nameof(PaymentPurposeKind.InvoicePayment), paid.PurposeKind);
         Assert.Equal("inv-direct", paid.ExternalReferenceId);
@@ -255,7 +257,7 @@ public sealed class ChargeTenantPaymentHandlerTests
             DomainEventReplay.EmittedAsync(published, _db);
 
         public Task<BuildingBlocks.Results.Result<Guid>> ChargeAsync(string idempotencyKey, List<object> published) =>
-            ChargeTenantPaymentHandler.Handle(
+            TestChargeFlow.ChargeAsync(
                 new ChargeTenantPaymentCommand(
                     _tenantId,
                     PaymentProviderCode.Stripe,

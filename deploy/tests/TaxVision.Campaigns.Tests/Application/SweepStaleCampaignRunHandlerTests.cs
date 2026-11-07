@@ -23,6 +23,7 @@ public sealed class SweepStaleCampaignRunHandlerTests
                     .ToList()
             )
             .Value;
+        run.MarkFundsReserved();
         foreach (var r in run.Recipients.ToList())
             run.MarkDispatched(r.Id);
         run.ClearDomainEvents();

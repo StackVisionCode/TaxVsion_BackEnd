@@ -42,8 +42,8 @@ public static class StartMailboxResyncHandler
         var runId = string.IsNullOrEmpty(correlation.CorrelationId)
             ? Guid.NewGuid().ToString("N")
             : correlation.CorrelationId;
-        await bus.PublishAsync(new ResyncMailboxCommand(cmd.TenantId, account.Id, cmd.FromUtc, cmd.ToUtc, null, runId));
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(new ResyncMailboxCommand(cmd.TenantId, account.Id, cmd.FromUtc, cmd.ToUtc, null, runId));
 
         logger.LogInformation(
             "Mailbox resync {RunId} queued for account {AccountId} ({Provider}) from {FromUtc} to {ToUtc}.",

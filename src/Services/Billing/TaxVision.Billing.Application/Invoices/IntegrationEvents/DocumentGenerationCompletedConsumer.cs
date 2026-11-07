@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.DocumentsIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Domain.Invoices;
@@ -34,6 +35,11 @@ public static class DocumentGenerationCompletedConsumer
         )
         {
             var invoice = await invoices.GetByIdAsync(evt.TenantId, evt.OwnerId, ct);
+
+            // BIL-12: Documents generó bajo la plataforma y la factura ya se re-hospedó.
+            if (invoice is null && evt.TenantId == PlatformTenant.Id)
+                invoice = await invoices.GetOnboardingInvoiceByIdAsync(evt.OwnerId, ct);
+
             if (invoice is null)
             {
                 logger.LogWarning(

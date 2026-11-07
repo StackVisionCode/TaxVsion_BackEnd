@@ -1,9 +1,9 @@
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Accounts;
-using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Sync;
 
@@ -14,12 +14,12 @@ namespace TaxVision.Connectors.Application.Sync;
 public static class ResyncMailboxHandler
 {
     /// <returns>La página siguiente (cascada a la cola local) o null si la cadena termina.</returns>
+    [NonTransactional]
     public static async Task<ResyncMailboxCommand?> Handle(
         ResyncMailboxCommand cmd,
         ITenantEmailAccountRepository accountRepository,
         IEmailProviderClientFactory emailClientFactory,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IOutboxUnit unit,
         ILogger logger,
         CancellationToken ct
     )
@@ -86,19 +86,27 @@ public static class ResyncMailboxHandler
             throw error;
         }
 
+        // CON-12: el proveedor ya contestó; la transacción solo cubre lo que se publica.
         var published = 0;
-        foreach (var item in fetched)
-        {
-            if (item.Message is null)
-                continue;
+        await unit.RunAsync(
+            async (outbox, _) =>
+            {
+                foreach (var item in fetched)
+                {
+                    if (item.Message is null)
+                        continue;
 
-            await bus.PublishAsync(
-                RawMessageSyncOrchestrator.BuildEvent(account, item.Message, cmd.CorrelationId, isReplay: true)
-            );
-            published++;
-        }
+                    await outbox.PublishAsync(
+                        RawMessageSyncOrchestrator.BuildEvent(account, item.Message, cmd.CorrelationId, isReplay: true)
+                    );
+                    published++;
+                }
 
-        await unitOfWork.SaveChangesAsync(ct);
+                return published > 0;
+            },
+            ct
+        );
+
         logger.LogInformation(
             "Mailbox resync {RunId} for account {AccountId}: republished {Published}/{Listed} message(s); more pages: {HasMore}.",
             cmd.CorrelationId,

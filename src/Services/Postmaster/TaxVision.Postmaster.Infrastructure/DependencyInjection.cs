@@ -17,6 +17,7 @@ using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.RateLimit;
 using TaxVision.Postmaster.Application.RateLimiting.Abstractions;
 using TaxVision.Postmaster.Application.Sending;
+using TaxVision.Postmaster.Application.Sending.Commands.RecordSendResult;
 using TaxVision.Postmaster.Application.Suppression;
 using TaxVision.Postmaster.Infrastructure.DevMailbox;
 using TaxVision.Postmaster.Infrastructure.Feedback;
@@ -70,6 +71,22 @@ public static class DependencyInjection
         );
         services.AddHostedService<SystemEmailProviderSeeder>();
         services.AddHostedService<TenantDirectoryBackfillService>();
+        services.AddSingleton(
+            configuration.GetSection(RecordSendResultRetryOptions.SectionName).Get<RecordSendResultRetryOptions>()
+                ?? new RecordSendResultRetryOptions()
+        );
+
+        // Reposición de Activity (PMS-03): solo con el flag, una vez y revisada. Ver el plan.
+        var activityBackfill =
+            configuration
+                .GetSection(SentMessageActivityBackfillOptions.SectionName)
+                .Get<SentMessageActivityBackfillOptions>()
+            ?? new SentMessageActivityBackfillOptions();
+        if (activityBackfill.Enabled)
+        {
+            services.AddSingleton(activityBackfill);
+            services.AddHostedService<SentMessageActivityBackfillService>();
+        }
 
         services.AddSingleton(_ => new HttpResiliencePipelineRegistry(
             minimumThroughput: 5,

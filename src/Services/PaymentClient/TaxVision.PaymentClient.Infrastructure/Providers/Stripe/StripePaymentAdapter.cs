@@ -105,7 +105,8 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
                     Status: PaymentStatus.Failed,
                     FailureCode: ex.StripeError?.Code,
                     FailureMessage: ex.StripeError?.Message ?? ex.Message,
-                    Payer: StripePayerDetailsReader.FromError(ex.StripeError)
+                    Payer: StripePayerDetailsReader.FromError(ex.StripeError),
+                    OutcomeUnknown: StripeChargeFailure.IsOutcomeUnknown(ex)
                 )
             );
         }
@@ -166,6 +167,38 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
             );
             return Result.Failure<WebhookEventPayload>(
                 new Error("Stripe.ChargeStatus.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
+        }
+    }
+
+    /// <summary>Busca el PaymentIntent por la metadata <c>tenantPaymentId</c> (en Connect, dentro de la cuenta
+    /// conectada). Search tarda hasta un minuto en ver un cargo nuevo: la reconciliación llega mucho después.</summary>
+    public async Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeSearch search,
+        CancellationToken ct
+    )
+    {
+        var service = new PaymentIntentService(_clients.Create(credentials.SecretKey));
+        try
+        {
+            var found = await service.SearchAsync(
+                new PaymentIntentSearchOptions { Query = $"metadata['tenantPaymentId']:'{search.TenantPaymentId:N}'" },
+                new RequestOptions { StripeAccount = search.OnBehalfOf },
+                ct
+            );
+            var intent = found.Data.OrderByDescending(candidate => candidate.Created).FirstOrDefault();
+            return Result.Success<ChargeAuthorizationResult?>(intent is null ? null : MapChargeStatus(intent));
+        }
+        catch (StripeException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Stripe charge search failed for TenantPayment {TenantPaymentId}.",
+                search.TenantPaymentId
+            );
+            return Result.Failure<ChargeAuthorizationResult?>(
+                new Error("Stripe.ChargeSearch.Failed", ex.StripeError?.Message ?? ex.Message)
             );
         }
     }

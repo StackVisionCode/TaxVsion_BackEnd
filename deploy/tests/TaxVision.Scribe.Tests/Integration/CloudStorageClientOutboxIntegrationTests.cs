@@ -27,7 +27,7 @@ public sealed class CloudStorageClientOutboxIntegrationTests(ScribeOutboxFixture
     public async Task SaveFileRequested_is_sent_before_handler_commit()
     {
         // CloudStorage (el doble) solo deja descargar lo que ya recibió: el handler real recorre su polling
-        // dentro de la transacción y únicamente sale bien si el mensaje ya se fue.
+        // (SCR-08: fuera de la transacción) y únicamente sale bien si el mensaje ya se fue.
         var result = await InvokeAsync(bus =>
             bus.InvokeAsync<Result<UpdateSystemHeaderLogoResult>>(
                 new UpdateSystemHeaderLogoCommand(Png, "image/png", Guid.NewGuid())
@@ -135,7 +135,9 @@ public static class OutboxProbeHandlers
                 }
             );
 
-            command.DeliveredBeforeCommit.TrySetResult(await probe.WaitForAsync(command.FileId, TimeSpan.FromSeconds(3)));
+            command.DeliveredBeforeCommit.TrySetResult(
+                await probe.WaitForAsync(command.FileId, TimeSpan.FromSeconds(3))
+            );
 
             await PointHeaderLogoAsync(assets, command.FileId, ct);
             await unitOfWork.SaveChangesAsync(ct);
@@ -144,7 +146,8 @@ public static class OutboxProbeHandlers
 
     public static class SaveFileRequestedProbeHandler
     {
-        public static void Handle(SaveFileRequestedIntegrationEvent evt, SaveFileProbe probe) => probe.Record(evt.FileId);
+        public static void Handle(SaveFileRequestedIntegrationEvent evt, SaveFileProbe probe) =>
+            probe.Record(evt.FileId);
     }
 
     private static async Task PointHeaderLogoAsync(ISystemAssetRefRepository assets, Guid fileId, CancellationToken ct)

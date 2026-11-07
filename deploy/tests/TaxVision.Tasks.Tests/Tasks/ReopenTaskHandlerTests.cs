@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
+using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
 using TaxVision.Tasks.Application.Hierarchy.Abstractions;
 using TaxVision.Tasks.Application.Permissions.Abstractions;
@@ -145,11 +146,11 @@ public sealed class ReopenTaskHandlerTests
 
     private sealed class NoOpUnblocking : ITaskUnblockingService
     {
-        public Task ApplyPredecessorClosedAsync(
+        public Task<IReadOnlyList<TaskUnblockedIntegrationEvent>> ApplyPredecessorClosedAsync(
             Guid tenantId,
             Guid predecessorTaskId,
             CancellationToken ct = default
-        ) => Task.CompletedTask;
+        ) => Task.FromResult<IReadOnlyList<TaskUnblockedIntegrationEvent>>([]);
 
         public Task ApplyPredecessorReopenedAsync(
             Guid tenantId,

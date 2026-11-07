@@ -1,4 +1,3 @@
-using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Tasks.Application.Dependencies;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
@@ -12,18 +11,18 @@ public sealed class TaskUnblockingServiceTests
     private static readonly DateTime Now = new(2026, 4, 15, 12, 0, 0, DateTimeKind.Utc);
 
     [Fact]
-    public async Task Closing_the_only_predecessor_unblocks_the_successor_and_publishes()
+    public async Task Closing_the_only_predecessor_unblocks_the_successor_and_returns_the_notice()
     {
         var predecessor = NewTask();
         var successor = NewTask();
-        var (service, bus) = Build(predecessor, successor, blockersOnSuccessor: 1);
+        var service = Build(predecessor, successor, blockersOnSuccessor: 1);
 
-        await service.ApplyPredecessorClosedAsync(TenantId, predecessor.Id, CancellationToken.None);
+        var unblocked = await service.ApplyPredecessorClosedAsync(TenantId, predecessor.Id, CancellationToken.None);
 
         Assert.False(successor.IsBlocked);
-        var published = Assert.Single(bus.Published.OfType<TaskUnblockedIntegrationEvent>());
-        Assert.Equal(successor.Id, published.TaskId);
-        Assert.Equal(TenantId, published.TenantId);
+        var notice = Assert.Single(unblocked);
+        Assert.Equal(successor.Id, notice.TaskId);
+        Assert.Equal(TenantId, notice.TenantId);
     }
 
     [Fact]
@@ -31,12 +30,12 @@ public sealed class TaskUnblockingServiceTests
     {
         var predecessor = NewTask();
         var successor = NewTask();
-        var (service, bus) = Build(predecessor, successor, blockersOnSuccessor: 2);
+        var service = Build(predecessor, successor, blockersOnSuccessor: 2);
 
-        await service.ApplyPredecessorClosedAsync(TenantId, predecessor.Id, CancellationToken.None);
+        var unblocked = await service.ApplyPredecessorClosedAsync(TenantId, predecessor.Id, CancellationToken.None);
 
         Assert.True(successor.IsBlocked);
-        Assert.Empty(bus.Published.OfType<TaskUnblockedIntegrationEvent>());
+        Assert.Empty(unblocked);
     }
 
     [Fact]
@@ -44,7 +43,7 @@ public sealed class TaskUnblockingServiceTests
     {
         var predecessor = NewTask();
         var successor = NewTask();
-        var (service, _) = Build(predecessor, successor, blockersOnSuccessor: 1);
+        var service = Build(predecessor, successor, blockersOnSuccessor: 1);
         await service.ApplyPredecessorClosedAsync(TenantId, predecessor.Id, CancellationToken.None);
 
         await service.ApplyPredecessorReopenedAsync(TenantId, predecessor.Id, CancellationToken.None);
@@ -53,19 +52,20 @@ public sealed class TaskUnblockingServiceTests
     }
 
     [Fact]
-    public async Task Reprocessing_the_same_closure_does_not_publish_twice()
+    public async Task Reprocessing_the_same_closure_does_not_announce_twice()
     {
         var predecessor = NewTask();
         var successor = NewTask();
-        var (service, bus) = Build(predecessor, successor, blockersOnSuccessor: 1);
+        var service = Build(predecessor, successor, blockersOnSuccessor: 1);
 
-        await service.ApplyPredecessorClosedAsync(TenantId, predecessor.Id, CancellationToken.None);
-        await service.ApplyPredecessorClosedAsync(TenantId, predecessor.Id, CancellationToken.None);
+        var first = await service.ApplyPredecessorClosedAsync(TenantId, predecessor.Id, CancellationToken.None);
+        var second = await service.ApplyPredecessorClosedAsync(TenantId, predecessor.Id, CancellationToken.None);
 
-        Assert.Single(bus.Published.OfType<TaskUnblockedIntegrationEvent>());
+        Assert.Single(first);
+        Assert.Empty(second);
     }
 
-    private static (TaskUnblockingService Service, FakeMessageBus Bus) Build(
+    private static TaskUnblockingService Build(
         TaskItem predecessor,
         TaskItem successor,
         int blockersOnSuccessor
@@ -77,14 +77,11 @@ public sealed class TaskUnblockingServiceTests
         var dependencies = new InMemoryTaskDependencyRepository();
         dependencies.Seed(TenantId, successor.Id, predecessor.Id);
 
-        var bus = new FakeMessageBus();
-        var service = new TaskUnblockingService(
+        return new TaskUnblockingService(
             new InMemoryTaskRepository(predecessor, successor),
             dependencies,
-            bus,
             new NoOpCorrelationContext()
         );
-        return (service, bus);
     }
 
     private static TaskItem NewTask() =>

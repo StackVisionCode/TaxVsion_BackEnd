@@ -35,6 +35,7 @@ public sealed class NotificationDispatcherHarness
             Publisher,
             new NoOpUnitOfWork(),
             metrics ?? new NoOpNotificationDispatchMetrics(),
+            new InlinePushAttemptRecorder(logs),
             NullLogger<NotificationDispatcher>.Instance
         );
     }

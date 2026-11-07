@@ -1,4 +1,3 @@
-using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -33,6 +32,7 @@ public static class ProcessDeliveryReceiptHandler
         ISmsAdapterFactory adapters,
         ISmsWebhookSecrets secrets,
         IProcessedWebhookRepository processed,
+        IPendingDeliveryReceiptRepository pending,
         ISmsMessageRepository messages,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -62,30 +62,38 @@ public static class ProcessDeliveryReceiptHandler
             return Result.Success();
 
         var message = await messages.GetByProviderMessageIdAsync(command.ProviderCode, update.ProviderMessageId, ct);
+        var nowUtc = DateTime.UtcNow;
         if (message is null)
         {
+            // El DLR puede ganarle al commit del envío: queda guardado hasta que el mensaje se acepte.
+            if (!await pending.ExistsAsync(command.ProviderCode, update.ProviderMessageId, update.EventType, ct))
+            {
+                await pending.AddAsync(
+                    new PendingDeliveryReceipt(
+                        command.ProviderCode,
+                        update.ProviderMessageId,
+                        update.EventType,
+                        update.Status.ToString(),
+                        update.FailureCode,
+                        update.FailureReason,
+                        nowUtc
+                    ),
+                    ct
+                );
+                await unitOfWork.SaveChangesAsync(ct);
+            }
+
             logger.LogInformation(
-                "SMS DLR for unknown message {ProviderMessageId} ({Provider}); ignored.",
+                "SMS DLR for unknown message {ProviderMessageId} ({Provider}); kept until it is accepted.",
                 update.ProviderMessageId,
                 command.ProviderCode
             );
             return Result.Success();
         }
 
-        var nowUtc = DateTime.UtcNow;
-        var transition = update.Status switch
-        {
-            SmsCanonicalStatus.Delivered => message.MarkDelivered(nowUtc),
-            SmsCanonicalStatus.Failed => message.MarkFailed(nowUtc, update.FailureCode, update.FailureReason),
-            SmsCanonicalStatus.Undeliverable => message.MarkUndeliverable(
-                nowUtc,
-                update.FailureCode,
-                update.FailureReason
-            ),
-            SmsCanonicalStatus.Accepted => message.MarkAccepted(update.ProviderMessageId, nowUtc),
-            _ => Result.Success(),
-        };
         // Una transición inválida (estado ya avanzado) no rompe el webhook; se registra la dedup igual.
+        var before = message.Status;
+        SmsDeliveryOutcome.Apply(message, update, nowUtc);
 
         await processed.AddAsync(
             new ProcessedWebhook(
@@ -99,35 +107,12 @@ public static class ProcessDeliveryReceiptHandler
             ct
         );
 
-        bus.TenantId = message.TenantId.ToString();
-        if (message.Status == SmsMessageStatus.Delivered)
-            await bus.PublishAsync(
-                new SmsMessageDeliveredIntegrationEvent
-                {
-                    TenantId = message.TenantId,
-                    CorrelationId = message.CorrelationId,
-                    MessageId = message.Id,
-                    CustomerId = message.CustomerId,
-                    SourceContext = message.SourceContext,
-                    ProviderMessageId = message.ProviderMessageId,
-                }
-            );
-        else if (message.Status is SmsMessageStatus.Failed or SmsMessageStatus.Undeliverable)
-            await bus.PublishAsync(
-                new SmsMessageFailedIntegrationEvent
-                {
-                    TenantId = message.TenantId,
-                    CorrelationId = message.CorrelationId,
-                    MessageId = message.Id,
-                    CustomerId = message.CustomerId,
-                    SourceContext = message.SourceContext,
-                    ProviderMessageId = message.ProviderMessageId,
-                    FailureCode = message.FailureCode,
-                }
-            );
-
+        // Guardar antes de publicar, y solo si cambió: otro tipo de DLR del mismo estado no se vuelve a avisar.
         await unitOfWork.SaveChangesAsync(ct);
-        return transition.IsSuccess ? Result.Success() : Result.Success();
+        if (message.Status != before)
+            await SmsDeliveryOutcome.PublishAsync(bus, message);
+
+        return Result.Success();
     }
 }
 

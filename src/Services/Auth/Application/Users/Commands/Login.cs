@@ -97,6 +97,7 @@ public static class LoginHandler
     public static async Task<Result<LoginResponse>> Handle(
         LoginCommand command,
         IUserRepository users,
+        IUserLoginLock loginLock,
         ITenantRegistry tenants,
         IPasswordHasher hasher,
         IRoleRepository roles,
@@ -202,7 +203,10 @@ public static class LoginHandler
         // 4. Verificación de contraseña.
         if (!hasher.Verify(command.Password, user.PasswordHash))
         {
-            user.RegisterFailedLogin(now, LockoutPolicy.MaxFailedAttempts, LockoutPolicy.LockoutDuration);
+            await loginLock.AcquireAsync(user, ct);
+            var alreadyLocked = user.IsLockedOut(now);
+            if (!alreadyLocked)
+                user.RegisterFailedLogin(now, LockoutPolicy.MaxFailedAttempts, LockoutPolicy.LockoutDuration);
             await throttler.RegisterFailureAsync(request.IpAddress, ct);
             await audit.AddAsync(
                 AuthAuditLog.Record(
@@ -218,7 +222,7 @@ public static class LoginHandler
                 ct
             );
 
-            if (user.IsLockedOut(now))
+            if (!alreadyLocked && user.IsLockedOut(now))
             {
                 await bus.PublishAsync(
                     new SecurityAlertIntegrationEvent
@@ -282,6 +286,8 @@ public static class LoginHandler
             );
         }
 
+        if (user.HasLoginFailures)
+            await loginLock.AcquireAsync(user, ct);
         user.RegisterSuccessfulLogin();
 
         // 5. Evaluación MFA (política del tenant + preferencia del usuario).

@@ -196,6 +196,19 @@ builder.Host.UseWolverine(options =>
     // de errores. Es por cadena, así que los demás mensajes siguen con la política estándar.
     options.Policies.Add(TaxVision.Billing.Infrastructure.Messaging.LongRetryHandlerPolicy.ForSyncCommands());
 
+    // BIL-11 — la secuencia de onboarding es una sola fila: más intentos y espera al azar, solo para ese mensaje.
+    options.Policies.Add(
+        new TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryPolicy(
+            builder
+                .Configuration.GetSection(
+                    TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions.SectionName
+                )
+                .Get<TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions>()
+                ?? new TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions()
+        )
+    );
+
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // BIL-BB1 — InvoicePaid nace del evento de dominio de la factura: se guarda con el commit del handler y su

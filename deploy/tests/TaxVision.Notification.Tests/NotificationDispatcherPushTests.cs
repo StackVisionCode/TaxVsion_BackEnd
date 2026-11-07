@@ -393,6 +393,7 @@ public sealed class NotificationDispatcherPushTests
             new NoOpIntegrationEventPublisher(),
             new NoOpUnitOfWork(),
             metrics,
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(logs),
             NullLogger<NotificationDispatcher>.Instance
         );
 
@@ -469,6 +470,7 @@ public sealed class NotificationDispatcherPushTests
             new NoOpIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(logs),
             NullLogger<NotificationDispatcher>.Instance
         );
 

@@ -11,8 +11,7 @@ namespace TaxVision.Correspondence.Domain.Inbox;
 ///
 /// <para>
 /// Dos motivos muy distintos comparten esta tabla (ver <see cref="UnmatchedReason"/>):
-/// <see cref="UnmatchedReason.NoCustomerMatch"/> es ruido de debug (opt-in vía
-/// <c>Correspondence:EnableUnmatchedDebug</c>, TTL corto), mientras que
+/// <see cref="UnmatchedReason.NoCustomerMatch"/> ya no se escribe (D-COR-3: ese correo entra sin cliente), mientras que
 /// <see cref="UnmatchedReason.AuthenticationFailed"/> es un registro de seguridad (siempre se
 /// escribe, sin gate de config) — por eso <see cref="ExpiresAtUtc"/> usa un TTL distinto según
 /// el motivo en vez de un valor fijo de 24h para toda la tabla.

@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Seats;
@@ -10,6 +11,14 @@ using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Infrastructure.Persistence;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
+
+/// <summary>SUB-7: cuánto espera el barrido antes de cerrar una intención que nunca recibió su sesión.</summary>
+public sealed class CheckoutIntentExpirationOptions
+{
+    public const string SectionName = "Subscription:CheckoutExpiration";
+
+    public TimeSpan UnattachedAfter { get; set; } = TimeSpan.FromHours(1);
+}
 
 /// <summary>
 /// Barre intenciones de checkout vencidas (CheckoutExpiresAtUtc &lt; now, estado Pending/AwaitingPayment) y las
@@ -20,10 +29,12 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 public sealed class CheckoutIntentExpirationJob(
     IServiceScopeFactory scopeFactory,
     IDistributedLockFactory lockFactory,
-    ILogger<CheckoutIntentExpirationJob> logger
+    ILogger<CheckoutIntentExpirationJob> logger,
+    IOptions<CheckoutIntentExpirationOptions> options
 ) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(2), TimeSpan.FromSeconds(100))
 {
     private const int BatchSize = 100;
+    private const string UnattachedReason = "The checkout session was never attached.";
 
     protected override string JobName => "checkout-intent-expiration";
 
@@ -92,6 +103,122 @@ public sealed class CheckoutIntentExpirationJob(
             );
         else if (total > 0)
             jobLogger.LogInformation("CheckoutIntentExpirationJob expired {Count} intent(s).", total);
+
+        var closed = await CloseUnattachedAsync(await FindUnattachedAsync(db, nowUtc, ct), nowUtc, ct);
+        if (closed > 0)
+            jobLogger.LogInformation("CheckoutIntentExpirationJob closed {Count} unattached intent(s).", closed);
+    }
+
+    internal sealed record UnattachedBatch(
+        IReadOnlyList<Guid> SeatIntentIds,
+        IReadOnlyList<Guid> AddOnIntentIds,
+        IReadOnlyList<Guid> RenewalIntentIds,
+        IReadOnlyList<Guid> UpgradeRequestIds
+    );
+
+    private async Task<UnattachedBatch> FindUnattachedAsync(
+        SubscriptionDbContext db,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        var cutoffUtc = nowUtc - options.Value.UnattachedAfter;
+        return new UnattachedBatch(
+            await db
+                .SeatPurchaseIntents.IgnoreQueryFilters()
+                .Where(i =>
+                    i.Status == SeatPurchaseIntentStatus.Pending && i.CheckoutUrl == null && i.CreatedAtUtc < cutoffUtc
+                )
+                .OrderBy(i => i.CreatedAtUtc)
+                .Take(BatchSize)
+                .Select(i => i.Id)
+                .ToListAsync(ct),
+            await db
+                .AddOnPurchaseIntents.IgnoreQueryFilters()
+                .Where(i =>
+                    i.Status == AddOnPurchaseIntentStatus.Pending && i.CheckoutUrl == null && i.CreatedAtUtc < cutoffUtc
+                )
+                .OrderBy(i => i.CreatedAtUtc)
+                .Take(BatchSize)
+                .Select(i => i.Id)
+                .ToListAsync(ct),
+            await db
+                .SubscriptionRenewalIntents.IgnoreQueryFilters()
+                .Where(i =>
+                    i.Status == SubscriptionRenewalIntentStatus.Pending
+                    && i.CheckoutUrl == null
+                    && i.CreatedAtUtc < cutoffUtc
+                )
+                .OrderBy(i => i.CreatedAtUtc)
+                .Take(BatchSize)
+                .Select(i => i.Id)
+                .ToListAsync(ct),
+            // SUB-13: solo los pedidos por redirect. Un off-session sin URL es un cobro en curso.
+            await db
+                .Subscriptions.IgnoreQueryFilters()
+                .SelectMany(s => s.PlanChangeRequests)
+                .Where(r =>
+                    r.Status == PlanChangeRequestStatus.AwaitingPayment
+                    && r.UsesHostedCheckout
+                    && r.CheckoutUrl == null
+                    && r.RequestedAtUtc < cutoffUtc
+                )
+                .OrderBy(r => r.RequestedAtUtc)
+                .Take(BatchSize)
+                .Select(r => r.Id)
+                .ToListAsync(ct)
+        );
+    }
+
+    // SUB-7: sin sesión adjunta nadie tiene la URL de pago, así que cerrarla no deja ningún cobro atrás. Sin esto,
+    // el corte entre la llamada a PaymentApp y el adjunto dejaba la intención Pending para siempre.
+    internal async Task<int> CloseUnattachedAsync(UnattachedBatch batch, DateTime nowUtc, CancellationToken ct)
+    {
+        var seats = await RunUnitsAsync(
+            batch.SeatIntentIds,
+            async (id, unit, token) =>
+                await unit
+                    .DbContext.SeatPurchaseIntents.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(i => i.Id == id, token)
+                    is { Status: SeatPurchaseIntentStatus.Pending, CheckoutUrl: null } intent
+                && intent.MarkFailed(UnattachedReason, nowUtc).IsSuccess,
+            ct
+        );
+        var addOns = await RunUnitsAsync(
+            batch.AddOnIntentIds,
+            async (id, unit, token) =>
+                await unit
+                    .DbContext.AddOnPurchaseIntents.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(i => i.Id == id, token)
+                    is { Status: AddOnPurchaseIntentStatus.Pending, CheckoutUrl: null } intent
+                && intent.MarkFailed(UnattachedReason, nowUtc).IsSuccess,
+            ct
+        );
+        var renewals = await RunUnitsAsync(
+            batch.RenewalIntentIds,
+            async (id, unit, token) =>
+                await unit
+                    .DbContext.SubscriptionRenewalIntents.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(i => i.Id == id, token)
+                    is { Status: SubscriptionRenewalIntentStatus.Pending, CheckoutUrl: null } intent
+                && intent.MarkFailed(UnattachedReason, nowUtc).IsSuccess,
+            ct
+        );
+        // Por la raíz: su RowVersion detecta un adjunto que llegue a la vez.
+        var upgrades = await RunUnitsAsync(
+            batch.UpgradeRequestIds,
+            async (id, unit, token) =>
+                await unit
+                    .DbContext.Subscriptions.IgnoreQueryFilters()
+                    .Include(s => s.PlanChangeRequests)
+                    .Include(s => s.PendingDowngrades)
+                    .FirstOrDefaultAsync(s => s.PlanChangeRequests.Any(r => r.Id == id), token)
+                    is { } subscription
+                && subscription.PlanChangeRequests.Any(r => r.Id == id && r.IsHostedWithoutCheckout)
+                && subscription.ExpireUpgradeWithoutCheckout(id, Guid.Empty, nowUtc).IsSuccess,
+            ct
+        );
+        return seats.Committed + addOns.Committed + renewals.Committed + upgrades.Committed;
     }
 
     internal sealed record CheckoutExpirationBatch(
@@ -302,14 +429,17 @@ public sealed class CheckoutIntentExpirationJob(
         CancellationToken ct
     )
     {
-        var request = await unit
+        // SUB-15: por la raíz, que devuelve lo agendado y su RowVersion ve un cobro que llegue a la vez.
+        var subscription = await unit
             .DbContext.Subscriptions.IgnoreQueryFilters()
-            .SelectMany(s => s.PlanChangeRequests)
-            .FirstOrDefaultAsync(r => r.Id == id, ct);
-        if (request is null || request.Status != PlanChangeRequestStatus.AwaitingPayment)
+            .Include(s => s.PlanChangeRequests)
+            .Include(s => s.PendingDowngrades)
+            .FirstOrDefaultAsync(s => s.PlanChangeRequests.Any(r => r.Id == id), ct);
+        var request = subscription?.PlanChangeRequests.FirstOrDefault(r => r.Id == id);
+        if (subscription is null || request?.Status != PlanChangeRequestStatus.AwaitingPayment)
             return false;
 
-        var result = request.Expire(nowUtc);
+        var result = subscription.ExpireUpgradeSession(id, Guid.Empty, nowUtc);
         if (result.IsFailure || request.Status != PlanChangeRequestStatus.Expired)
             return false;
 

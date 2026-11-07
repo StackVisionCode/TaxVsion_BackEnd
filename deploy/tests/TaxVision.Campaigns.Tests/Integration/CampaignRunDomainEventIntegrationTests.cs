@@ -16,6 +16,7 @@ using Microsoft.Extensions.Hosting;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Runs;
+using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Consumers;
 using TaxVision.Campaigns.Application.Runs.DomainEvents;
@@ -85,7 +86,7 @@ public sealed class CampaignRunDomainEventIntegrationTests : IAsyncLifetime
         await db.Database.EnsureDeletedAsync();
     }
 
-    /// <summary>El disparo guarda dos veces en la misma transacción: el arranque se anuncia una sola vez.</summary>
+    /// <summary>El disparo anuncia el arranque una sola vez y deja un sobre por unidad.</summary>
     [Fact]
     public async Task FireSchedule_AnnouncesTheStartOnce()
     {
@@ -259,6 +260,9 @@ public sealed class CampaignRunDomainEventIntegrationTests : IAsyncLifetime
                 options
                     .Discovery.DisableConventionalDiscovery()
                     .IncludeType(typeof(FireCampaignScheduleHandler))
+                    .IncludeType(typeof(SkipScheduledSlotHandler))
+                    .IncludeType(typeof(OpenCampaignRunHandler))
+                    .IncludeType(typeof(ApplyCampaignRunFundingHandler))
                     .IncludeType(typeof(ApplyDispatchResultConsumer))
                     .IncludeType(typeof(CampaignRunStartedDomainEventHandler))
                     .IncludeType(typeof(CampaignRunClosedDomainEventHandler));

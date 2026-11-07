@@ -13,6 +13,7 @@ public static class CampaignRunErrors
     public static readonly Error NotFound = new("CampaignRun.NotFound", "Campaign run not found.");
     public static readonly Error RecipientNotFound = new("CampaignRun.RecipientNotFound", "Dispatch unit not found.");
     public static readonly Error NotDispatching = new("CampaignRun.NotDispatching", "The run is not dispatching.");
+    public static readonly Error NotCreated = new("CampaignRun.NotCreated", "The run is not waiting for funds.");
     public static readonly Error AlreadyDispatched = new(
         "CampaignRun.AlreadyDispatched",
         "The run already dispatched units and cannot be rejected."

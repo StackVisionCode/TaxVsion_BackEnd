@@ -18,6 +18,9 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
     public List<ReservationCall> Reservations { get; } = [];
     public List<SettlementCall> Settlements { get; } = [];
 
+    /// <summary>Cada liquidación consume una y la lanza, después de anotarse.</summary>
+    public Queue<Exception> SettleFailures { get; } = new();
+
     public Task<WalletReserveResult> ReserveAsync(
         Guid tenantId,
         string referenceType,
@@ -41,7 +44,7 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
     )
     {
         Settlements.Add(new SettlementCall(tenantId, referenceType, referenceId, consumedUnits, callerBearerToken));
-        return Task.CompletedTask;
+        return SettleFailures.TryDequeue(out var failure) ? Task.FromException(failure) : Task.CompletedTask;
     }
 
     public sealed record ReservationCall(

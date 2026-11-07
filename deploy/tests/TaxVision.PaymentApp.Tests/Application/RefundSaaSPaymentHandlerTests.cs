@@ -203,6 +203,12 @@ internal abstract class RefundRecordingProviderBase : IPaymentProvider
         CancellationToken ct
     ) => throw new NotSupportedException();
 
+    public Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    ) => throw new NotSupportedException();
+
     public Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
         string providerChargeReference,
         CancellationToken ct

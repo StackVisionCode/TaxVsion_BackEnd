@@ -43,7 +43,7 @@ public sealed class ThreadResolver(
     // COR-02: un hilo por cliente. Ninguna capa empareja con el hilo (o el correo) de otro cliente.
     public async Task<EmailThreadResolution> ResolveAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         string? providerThreadId,
         string? inReplyTo,
         IReadOnlyList<string>? references,
@@ -90,10 +90,11 @@ public sealed class ThreadResolver(
                 return byReferences;
         }
 
-        if (!options.Value.EnableSubjectThreadingFallback)
+        // Sin cliente no hay "hilos del mismo cliente" contra los que comparar el asunto.
+        if (!options.Value.EnableSubjectThreadingFallback || customerId is not { } owner)
             return EmailThreadResolution.NoMatch;
 
-        var bySubject = await ResolveBySubjectFallbackAsync(tenantId, customerId, subject, receivedAtUtc, ct);
+        var bySubject = await ResolveBySubjectFallbackAsync(tenantId, owner, subject, receivedAtUtc, ct);
         return bySubject is null
             ? EmailThreadResolution.NoMatch
             : new EmailThreadResolution(bySubject, ThreadMatchLayer.SubjectFallback);
@@ -105,7 +106,7 @@ public sealed class ThreadResolver(
     /// </summary>
     private async Task<EmailThreadResolution?> ResolveByMessageIdsAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         IReadOnlyList<string> messageIds,
         ThreadMatchLayer layer,
         CancellationToken ct
@@ -142,7 +143,7 @@ public sealed class ThreadResolver(
 
     private async Task<Draft?> FindMostRecentSentAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         IReadOnlyList<string> messageIds,
         CancellationToken ct
     )
@@ -166,7 +167,12 @@ public sealed class ThreadResolver(
         return mostRecent;
     }
 
-    private async Task<EmailThread?> OwnThreadAsync(Guid tenantId, Guid customerId, Guid threadId, CancellationToken ct)
+    private async Task<EmailThread?> OwnThreadAsync(
+        Guid tenantId,
+        Guid? customerId,
+        Guid threadId,
+        CancellationToken ct
+    )
     {
         var thread = await threads.GetByIdAsync(tenantId, threadId, ct);
         return thread?.CustomerId == customerId ? thread : null;

@@ -36,10 +36,11 @@ public sealed class TenantRegistry(PaymentClientDbContext db) : ITenantRegistry
         string status,
         bool isActive,
         DateTime nowUtc,
+        long? tenantVersion,
         CancellationToken ct = default
     )
     {
         var tenant = await db.Tenants.FirstOrDefaultAsync(value => value.Id == tenantId, ct);
-        tenant?.ApplyStatusChange(status, isActive, nowUtc);
+        tenant?.ApplyStatusChange(status, isActive, nowUtc, tenantVersion);
     }
 }

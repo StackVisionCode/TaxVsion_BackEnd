@@ -51,6 +51,12 @@ public sealed class WalletRepository(WalletDbContext db) : IWalletRepository
     public Task<WalletTopUp?> GetTopUpAsync(Guid tenantId, Guid topUpId, CancellationToken ct = default) =>
         db.WalletTopUps.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == topUpId, ct);
 
+    public Task<WalletTopUp?> GetTopUpReadOnlyAsync(Guid tenantId, Guid topUpId, CancellationToken ct = default) =>
+        db
+            .WalletTopUps.AsNoTracking()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == topUpId, ct);
+
     public Task<bool> FundingCreditExistsAsync(
         string sourceService,
         Guid saaSPaymentId,

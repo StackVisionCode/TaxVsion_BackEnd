@@ -183,6 +183,12 @@ public sealed class SignerPartialCopyConsumerTests
         FileScanStatus copyOutcome
     ) : ISignatureCloudStorageClient
     {
+        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
+            Guid tenantId,
+            SignatureFileUpload upload,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public List<Guid> Downloads { get; } = [];
 
         public Task<Result<byte[]>> DownloadAsync(Guid tenant, Guid fileId, CancellationToken ct = default)

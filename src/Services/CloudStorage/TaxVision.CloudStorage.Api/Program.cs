@@ -28,6 +28,7 @@ using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
 using TaxVision.CloudStorage.Api.Messaging;
+using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Domain.Sharing;
 using TaxVision.CloudStorage.Infrastructure;
@@ -258,8 +259,11 @@ builder.Host.UseWolverine(options =>
     options.Policies.AutoApplyTransactions();
     options.UseTaxVisionDurableLocalQueues();
 
-    // Cola local del escaneo (en serie y durable): ver ScanQueueConfiguration.
-    options.ConfigureScanQueue();
+    // Cola local del escaneo (durable y con paralelismo acotado): ver ScanQueueConfiguration.
+    var storageOptions =
+        builder.Configuration.GetSection(CloudStorageOptions.SectionName).Get<CloudStorageOptions>()
+        ?? new CloudStorageOptions();
+    options.ConfigureScanQueue(storageOptions.ScanParallelism);
 
     options.PublishMessage<FileAvailableIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerDocumentUploadedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -321,6 +325,7 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 });
 

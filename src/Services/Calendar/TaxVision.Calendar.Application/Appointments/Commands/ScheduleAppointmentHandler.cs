@@ -37,6 +37,7 @@ public static class ScheduleAppointmentHandler
         IAppointmentRepository appointments,
         IAppointmentTypeRepository types,
         IAvailabilityRepository availability,
+        IOrganizerScheduleLock scheduleLock,
         IUnitOfWork unitOfWork,
         ICalendarMetrics metrics,
         CancellationToken ct
@@ -47,6 +48,9 @@ public static class ScheduleAppointmentHandler
             return Result.Failure<AppointmentWithWarnings>(built.Error);
 
         var (appointment, type) = built.Value;
+
+        // Comprobar e insertar en serie por organizador: el choque con un tipo bloqueante es regla dura (D-CAL-2).
+        await scheduleLock.AcquireAsync(command.TenantId, appointment.OrganizerUserId, ct);
 
         var conflict = await ConflictProbe.CheckAsync(appointment, type, appointments, availability, ct);
         if (conflict.IsFailure)

@@ -1,8 +1,10 @@
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Tasks.Application.Backfill;
 using TaxVision.Tasks.Application.Projections.CustomerEvents;
 using TaxVision.Tasks.Domain.Projections;
+using TaxVision.Tasks.Tests.Dependencies;
 
 namespace TaxVision.Tasks.Tests.Projections;
 
@@ -12,11 +14,12 @@ public sealed class CustomerDirectoryConsumersTests
     private static readonly DateTime T0 = new(2026, 8, 12, 10, 0, 0, DateTimeKind.Utc);
 
     [Fact]
-    public async Task CustomerCreated_inserts_the_entry_and_triggers_backfill_first()
+    public async Task CustomerCreated_inserts_the_entry_and_requests_the_backfill()
     {
         var customerId = Guid.NewGuid();
         var repository = new InMemoryCustomerDirectoryRepository();
-        var backfill = new RecordingBackfillService();
+        var backfill = new RecordingBackfillService { Needed = true };
+        var bus = new FakeMessageBus();
         var uow = new RecordingUnitOfWork();
 
         await CustomerCreatedConsumer.Handle(
@@ -33,6 +36,7 @@ public sealed class CustomerDirectoryConsumersTests
             },
             repository,
             backfill,
+            bus,
             uow,
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
@@ -43,7 +47,8 @@ public sealed class CustomerDirectoryConsumersTests
         Assert.Equal("Acme", stored!.DisplayName);
         Assert.Equal(CustomerDirectoryStatus.Active, stored.Status);
         Assert.Equal(1, uow.SaveCount);
-        Assert.Equal([TenantId], backfill.Calls);
+        Assert.Equal(TenantId, Assert.IsType<BackfillTenantCustomersCommand>(Assert.Single(bus.Published)).TenantId);
+        Assert.Empty(backfill.Calls);
     }
 
     /// <summary>
@@ -72,6 +77,7 @@ public sealed class CustomerDirectoryConsumersTests
             },
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new RecordingUnitOfWork(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
@@ -100,6 +106,7 @@ public sealed class CustomerDirectoryConsumersTests
             },
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new RecordingUnitOfWork(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
@@ -130,6 +137,7 @@ public sealed class CustomerDirectoryConsumersTests
                 },
                 repository,
                 new RecordingBackfillService(),
+                new FakeMessageBus(),
                 uow,
                 new NoOpCorrelationContext(),
                 NullLogger<CustomerDirectoryEntry>.Instance,
@@ -159,6 +167,7 @@ public sealed class CustomerDirectoryConsumersTests
                 },
                 repository,
                 new RecordingBackfillService(),
+                new FakeMessageBus(),
                 uow,
                 new NoOpCorrelationContext(),
                 NullLogger<CustomerDirectoryEntry>.Instance,
@@ -188,6 +197,7 @@ public sealed class CustomerDirectoryConsumersTests
                 },
                 repository,
                 new RecordingBackfillService(),
+                new FakeMessageBus(),
                 uow,
                 new NoOpCorrelationContext(),
                 NullLogger<CustomerDirectoryEntry>.Instance,
@@ -209,6 +219,7 @@ public sealed class CustomerDirectoryConsumersTests
             NewBulkEvent([Guid.NewGuid(), shared], [shared, Guid.NewGuid()]),
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
             CancellationToken.None
@@ -233,6 +244,7 @@ public sealed class CustomerDirectoryConsumersTests
             NewBulkEvent(ids, []),
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
             CancellationToken.None
@@ -251,6 +263,7 @@ public sealed class CustomerDirectoryConsumersTests
             NewBulkEvent([], []),
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
             CancellationToken.None

@@ -257,6 +257,12 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -320,6 +326,11 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantProviderCustomerId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantSavedPaymentMethods_OneDefault")
+                        .HasFilter("[IsDefault] = 1 AND [IsDetached] = 0");
 
                     b.HasIndex("ExpYear", "ExpMonth")
                         .HasDatabaseName("IX_TenantSavedPaymentMethods_Expiration")
@@ -406,6 +417,9 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ChargeAttemptedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("ChargedBackAtUtc")
                         .HasColumnType("datetime2");
@@ -634,6 +648,12 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<long?>("LastProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("LastStatusVersion")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Name")
                         .IsRequired()

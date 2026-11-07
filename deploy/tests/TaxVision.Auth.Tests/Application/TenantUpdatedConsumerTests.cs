@@ -43,6 +43,25 @@ public sealed class TenantUpdatedConsumerTests
     }
 
     [Fact]
+    public async Task An_older_version_is_ignored_even_with_a_newer_clock()
+    {
+        var tenant = Tenant.Register(Guid.NewGuid(), "Acme Tax", "acme-tax", TenantKind.Customer, "Etc/UTC").Value;
+        tenant.ApplyTenantUpdate("Newest", "America/Chicago", T0, tenantVersion: 6);
+        var registry = new InMemoryTenantRegistry();
+        registry.Add(tenant);
+        var unitOfWork = new CountingUnitOfWork();
+
+        await HandleAsync(
+            Event(tenant.Id, "Older", "America/Denver", T0.AddSeconds(1)) with { TenantVersion = 5 },
+            registry,
+            unitOfWork
+        );
+
+        Assert.Equal("Newest", tenant.Name);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
+    [Fact]
     public async Task Unknown_tenant_is_a_noop()
     {
         var unitOfWork = new CountingUnitOfWork();

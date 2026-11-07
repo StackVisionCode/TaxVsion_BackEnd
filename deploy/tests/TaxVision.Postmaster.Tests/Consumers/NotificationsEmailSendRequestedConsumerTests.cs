@@ -690,6 +690,118 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
     /// La reserva quedó abierta hace 5 min y su SentMessage ya intentó salir (el proceso murió antes de
     /// grabar el resultado). Volver a entregar el evento no puede reenviar a ciegas.
     /// </summary>
+    private static BuildingBlocks.Results.ConflictException VersionConflict() =>
+        new("Persistence.ConcurrencyConflict", "The resource was modified by someone else.");
+
+    // PMS-03: el aviso del proveedor puede llegar antes de registrar el resultado. Si el choque saliera, el comando
+    // se repetiría y el correo ya aceptado quedaría cerrado como resultado desconocido.
+    [Fact]
+    public async Task Feedback_that_beats_the_result_record_keeps_the_message_sent()
+    {
+        var evt = CreateEvent();
+        var sentMessages = new FakeSentMessageRepository();
+        var emailSender = new FakeEmailSender();
+        var bus = new FakeMessageBus();
+        var conflicted = false;
+        bus.BeforeInvoke = message =>
+        {
+            if (
+                message is TaxVision.Postmaster.Application.Sending.Commands.RecordSendResult.RecordSendResultCommand
+                && !conflicted
+            )
+            {
+                conflicted = true;
+                throw VersionConflict();
+            }
+        };
+
+        await EmailSendPipeline.RunAsync(
+            evt,
+            new FakeIdempotencyGuard(),
+            new FakeProviderResolver
+            {
+                ResolveReturnValue = new ResolveResult(
+                    ProviderResolutionStatus.Resolved,
+                    CreateResolvedProvider(),
+                    null
+                ),
+            },
+            new FakeConnectedMailboxResolver(),
+            new FakeSuppressionListRepository(),
+            new FakeEmailProviderRateLimiter(),
+            emailSender,
+            new FakeConnectedMailboxSender(),
+            new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
+            sentMessages,
+            new FakeTenantDirectoryRepository(),
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(1, emailSender.SendCount);
+        Assert.Equal(
+            TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Sent,
+            Assert.Single(sentMessages.Added).Status
+        );
+    }
+
+    // PMS-01 sigue en pie: otra entrega ganó el intento, así que esta no envía ni cierra nada.
+    [Fact]
+    public async Task Conflict_marking_the_attempt_means_another_delivery_is_sending()
+    {
+        var evt = CreateEvent();
+        var sentMessages = new FakeSentMessageRepository();
+        var emailSender = new FakeEmailSender();
+        var bus = new FakeMessageBus
+        {
+            BeforeInvoke = message =>
+            {
+                if (
+                    message
+                    is TaxVision.Postmaster.Application.Sending.Commands.MarkSendAttempted.MarkSendAttemptedCommand
+                )
+                    throw VersionConflict();
+            },
+        };
+
+        await EmailSendPipeline.RunAsync(
+            evt,
+            new FakeIdempotencyGuard(),
+            new FakeProviderResolver
+            {
+                ResolveReturnValue = new ResolveResult(
+                    ProviderResolutionStatus.Resolved,
+                    CreateResolvedProvider(),
+                    null
+                ),
+            },
+            new FakeConnectedMailboxResolver(),
+            new FakeSuppressionListRepository(),
+            new FakeEmailProviderRateLimiter(),
+            emailSender,
+            new FakeConnectedMailboxSender(),
+            new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
+            sentMessages,
+            new FakeTenantDirectoryRepository(),
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(0, emailSender.SendCount);
+        Assert.Equal(
+            TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Sending,
+            Assert.Single(sentMessages.Added).Status
+        );
+    }
+
     [Fact]
     public async Task Abandoned_reservation_with_attempted_send_is_not_resent()
     {

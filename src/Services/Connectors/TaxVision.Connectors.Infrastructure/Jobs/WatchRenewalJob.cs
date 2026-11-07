@@ -3,6 +3,8 @@ using BuildingBlocks.Infrastructure.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Watch;
 
 namespace TaxVision.Connectors.Infrastructure.Jobs;
@@ -13,9 +15,14 @@ namespace TaxVision.Connectors.Infrastructure.Jobs;
 /// Mismo patrón que ProactiveTokenRefreshJob (Fase 4): scope propio por suscripción, correlation
 /// fresca por iteración — este job es el consumer boundary, no WatchRenewalService.
 /// </summary>
-public sealed class WatchRenewalJob(IServiceProvider serviceProvider, ILogger<WatchRenewalJob> logger)
-    : BackgroundService
+public sealed class WatchRenewalJob(
+    IServiceProvider serviceProvider,
+    IOptions<WatchRenewalOptions> options,
+    ILogger<WatchRenewalJob> logger
+) : BackgroundService
 {
+    private const string LeaderLockKey = "connectors:watch-renewal:leader";
+
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
     private static readonly TimeSpan ExpiringWithin = TimeSpan.FromHours(24);
 
@@ -52,6 +59,16 @@ public sealed class WatchRenewalJob(IServiceProvider serviceProvider, ILogger<Wa
 
     public async Task RunOnceAsync(CancellationToken ct)
     {
+        // Con varias réplicas, solo una recorre las suscripciones en cada vuelta.
+        var leaderLockTtl = TimeSpan.FromMinutes(Math.Max(1, options.Value.LeaderLockTtlMinutes));
+        var distributedLock = serviceProvider.GetRequiredService<IDistributedLock>();
+        await using var leader = await distributedLock.AcquireAsync(LeaderLockKey, leaderLockTtl, ct);
+        if (!leader.IsAcquired)
+        {
+            logger.LogDebug("WatchRenewalJob skipped — another instance holds the leader lock.");
+            return;
+        }
+
         using var scope = serviceProvider.CreateScope();
         var subscriptionRepository = scope.ServiceProvider.GetRequiredService<IProviderWatchSubscriptionRepository>();
 
@@ -63,6 +80,12 @@ public sealed class WatchRenewalJob(IServiceProvider serviceProvider, ILogger<Wa
         var renewed = 0;
         foreach (var subscription in expiring)
         {
+            if (!await leader.ExtendAsync(leaderLockTtl, ct))
+            {
+                logger.LogWarning("WatchRenewalJob lost the leader lock — stopping this pass.");
+                return;
+            }
+
             if (await RenewOneAsync(subscription.Id, ct))
                 renewed++;
         }

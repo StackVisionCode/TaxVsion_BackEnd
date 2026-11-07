@@ -57,8 +57,11 @@ internal sealed class FakeMessageBus : IMessageBus
         set { }
     }
 
+    /// <summary>Si se asigna, atiende <c>InvokeAsync</c>; si no, lanza como el resto.</summary>
+    public Func<object, Task>? OnInvoke { get; set; }
+
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+        OnInvoke?.Invoke(message) ?? throw new NotImplementedException();
 
     public Task InvokeAsync(
         object message,

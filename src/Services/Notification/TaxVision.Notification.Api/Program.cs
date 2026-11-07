@@ -131,14 +131,7 @@ builder.Services.AddTransient<BuildingBlocks.Infrastructure.Security.IServiceTok
 
 // Fase 8: cliente HTTP a Scribe (render de emails) — reusa el mismo IServiceTokenAcquirer M2M ya
 // registrado arriba para CloudStorage (no está atado a un downstream específico).
-builder.Services.Configure<ScribeClientOptions>(builder.Configuration.GetSection(ScribeClientOptions.SectionName));
-builder.Services.AddHttpClient<IScribeRenderClient, ScribeRenderClient>(
-    (sp, client) =>
-    {
-        var options = sp.GetRequiredService<IOptions<ScribeClientOptions>>().Value;
-        client.BaseAddress = new Uri(options.BaseUrl);
-    }
-);
+builder.Services.AddScribeRenderClient(builder.Configuration);
 
 // Reminder Fase 10: recuperación pull del correo de un usuario contra el endpoint interno de Auth,
 // para los usuarios que ya existían cuando se creó el directorio userId → email. Reusa el mismo
@@ -274,6 +267,7 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 });
 

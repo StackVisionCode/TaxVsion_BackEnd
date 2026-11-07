@@ -158,26 +158,26 @@ public static class ProcessInvoiceGenerationHandler
                 }
             );
 
-            var save = await storageClient.RequestSaveAsync(
-                tenantId: generation.TenantId,
-                fileId: fileId,
-                content: pdf.Value,
-                fileName: command.FileName,
-                contentType: PdfContentType,
-                ownerType: command.OwnerType,
-                ownerId: command.OwnerId,
-                folderType: FolderTypeInvoices,
-                taxYear: command.TaxYear,
-                actorId: generation.TenantId,
-                correlationId: correlation.CorrelationId,
-                ct: ct
-            );
-
-            if (save.IsFailure)
+            var upload = await storageClient.UploadAsync(fileId, pdf.Value, command.FileName, PdfContentType, ct);
+            if (upload.IsFailure)
             {
-                await FailAsync(generation, command, save.Error, unitOfWork, bus, now, logger, ct);
+                await FailAsync(generation, command, upload.Error, unitOfWork, bus, now, logger, ct);
                 return;
             }
+
+            await bus.RequestSaveAsync(
+                upload.Value,
+                new GeneratedFileDestination(
+                    generation.TenantId,
+                    command.FileName,
+                    command.OwnerType,
+                    command.OwnerId,
+                    FolderTypeInvoices,
+                    command.TaxYear,
+                    generation.TenantId,
+                    correlation.CorrelationId
+                )
+            );
 
             logger.LogInformation(
                 "Invoice generation {GenerationId} rendered ({Bytes} bytes) and handed to CloudStorage as file {FileId}.",
@@ -301,6 +301,10 @@ public static class ProcessInvoiceGenerationHandler
                 // Ajustes de facturación (dato de Billing). Vacío = la plantilla no los dibuja.
                 ["paymentTerms"] = invoice.PaymentTerms?.Trim() ?? string.Empty,
                 ["paymentInstructions"] = invoice.PaymentInstructions?.Trim() ?? string.Empty,
+                // Sin pagos, la plantilla no dibuja lo pagado ni el saldo.
+                ["hasPayments"] = invoice.AmountPaid > 0m,
+                ["amountPaid"] = invoice.AmountPaid.ToString("N2", culture),
+                ["amountDue"] = invoice.AmountDue.ToString("N2", culture),
                 // Branding del tenant (opcional). La plantilla los aplica; si vienen vacíos, look por defecto.
                 ["logo"] = logo,
                 ["brandColor"] = brandColor,

@@ -147,6 +147,7 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, TasksDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // Eventos de dominio de los agregados: se guardan con el commit del handler y sus handlers devuelven los

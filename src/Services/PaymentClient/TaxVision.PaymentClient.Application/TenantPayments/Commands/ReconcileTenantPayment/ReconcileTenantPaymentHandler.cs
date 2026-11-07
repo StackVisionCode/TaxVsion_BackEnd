@@ -24,6 +24,11 @@ namespace TaxVision.PaymentClient.Application.TenantPayments.Commands.ReconcileT
 /// </summary>
 public static class ReconcileTenantPaymentHandler
 {
+    private static readonly Error ChargeNotFound = new(
+        "TenantPayment.ChargeNotConfirmed",
+        "The provider has no charge for this payment."
+    );
+
     public static async Task<Result<TenantPaymentReconciliation>> Handle(
         ReconcileTenantPaymentCommand command,
         ITenantPaymentRepository payments,
@@ -48,11 +53,14 @@ public static class ReconcileTenantPaymentHandler
                 new Error("TenantPayment.NotFound", "TenantPayment does not exist.")
             );
 
-        if (!payment.IsAwaitingProviderConfirmation)
+        if (!payment.IsAwaitingProviderConfirmation && payment.Status != PaymentStatus.Pending)
             return Result.Success(TenantPaymentReconciliation.AlreadyResolved);
 
         var nowUtc = DateTime.UtcNow;
         payment.RecordProviderCheck(nowUtc);
+
+        if (payment.Status == PaymentStatus.Pending)
+            return await ResolvePendingAsync();
 
         var target = await ResolveTargetAsync(
             payment,
@@ -166,6 +174,80 @@ public static class ReconcileTenantPaymentHandler
             payment.Status
         );
         return Result.Success(TenantPaymentReconciliation.Resolved);
+
+        // El cobro no dejó resultado: se busca el cargo. Sin confirmación del proveedor, el pago no se toca.
+        async Task<Result<TenantPaymentReconciliation>> ResolvePendingAsync()
+        {
+            var access = await TenantChargeAccess.ResolveAsync(
+                payment,
+                configs,
+                connectAccounts,
+                secretProtector,
+                platformCredentials.Value,
+                ct
+            );
+            if (access.IsFailure)
+                return await StampAndFailAsync(access.Error);
+
+            var found = await providerFactory
+                .Resolve(payment.ProviderCode)
+                .FindChargeAsync(
+                    access.Value.Credentials,
+                    new ChargeSearch(payment.Id, payment.ChargeMethodReference, access.Value.OnBehalfOf),
+                    ct
+                );
+            if (found.IsFailure)
+                return await StampAndFailAsync(found.Error);
+
+            if (found.Value is { } charge)
+                TenantPaymentChargeOutcome.ApplyPlannedCharge(payment, charge, Guid.Empty);
+            else
+                TenantPaymentChargeOutcome.FailPayment(payment, ChargeNotFound, Guid.Empty);
+
+            await AuditEntryFactory.AppendAsync(
+                audit,
+                payment.TenantId,
+                nameof(TenantPayment),
+                payment.Id,
+                TenantPaymentProviderUpdate.MapAuditAction(payment.Status),
+                actorUserId: Guid.Empty,
+                correlation.CorrelationId,
+                before: new { Status = PaymentStatus.Pending },
+                after: new { payment.Status, Source = $"{payment.ProviderCode}Reconciliation" },
+                reason: null,
+                nowUtc,
+                ct
+            );
+
+            var succeeded = payment.Status == PaymentStatus.Succeeded;
+            PaymentLinkUsedIntegrationEvent? linkUsed = null;
+            if (succeeded)
+            {
+                metrics.RecordPaymentSucceeded(payment.Amount.AmountCents, payment.Amount.Currency);
+                linkUsed = await TenantPaymentProviderUpdate.CompletePaymentLinkIfAnyAsync(
+                    payment,
+                    links,
+                    audit,
+                    metrics,
+                    correlation,
+                    source: "Reconciliation",
+                    ct
+                );
+            }
+
+            await unitOfWork.SaveChangesAsync(ct);
+            if (succeeded)
+                await TenantPaymentProviderUpdate.PublishLinkUsedAsync(bus, linkUsed);
+
+            logger.LogInformation(
+                "Reconciled pending TenantPayment {TenantPaymentId} for tenant {TenantId} with {Provider}: {Status}.",
+                payment.Id,
+                payment.TenantId,
+                payment.ProviderCode,
+                payment.Status
+            );
+            return Result.Success(TenantPaymentReconciliation.Resolved);
+        }
 
         // La anotación de la consulta se guarda igual: la próxima vuelta reintenta sin acaparar la cola.
         async Task<Result<TenantPaymentReconciliation>> StampAndFailAsync(Error error)

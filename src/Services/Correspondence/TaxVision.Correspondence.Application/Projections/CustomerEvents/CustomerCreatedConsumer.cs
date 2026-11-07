@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
 
@@ -15,7 +16,7 @@ namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
 /// </summary>
 public static class CustomerCreatedConsumer
 {
-    public static async Task Handle(
+    public static async Task<LinkUnlinkedMailCommand?> Handle(
         CustomerCreatedIntegrationEvent evt,
         ICustomerEmailAddressRepository repository,
         ITenantCustomerBackfillService backfill,
@@ -40,15 +41,20 @@ public static class CustomerCreatedConsumer
                     evt.CustomerId,
                     emailResult.Error.Code
                 );
-                return;
+                return null;
             }
 
-            await UpsertProjection(evt, emailResult.Value, repository, logger, ct);
+            var applied = await UpsertProjection(evt, emailResult.Value, repository, logger, ct);
             await unitOfWork.SaveChangesAsync(ct);
+
+            // COR-05: lo que esta dirección escribió antes de ser cliente pasa a su ficha.
+            return applied
+                ? new LinkUnlinkedMailCommand(evt.TenantId, evt.CustomerId, emailResult.Value.NormalizedValue)
+                : null;
         }
     }
 
-    private static async Task UpsertProjection(
+    private static async Task<bool> UpsertProjection(
         CustomerCreatedIntegrationEvent evt,
         EmailAddress email,
         ICustomerEmailAddressRepository repository,
@@ -69,7 +75,7 @@ public static class CustomerCreatedConsumer
                     evt.CustomerId,
                     owner.CustomerId
                 );
-                return;
+                return false;
             }
 
             existing.UpdateEmail(email, evt.OccurredOn);
@@ -80,7 +86,7 @@ public static class CustomerCreatedConsumer
                 "CustomerEmailAddress already exists for {CustomerId}; reconciled from Created event.",
                 evt.CustomerId
             );
-            return;
+            return true;
         }
 
         // IX_CustomerEmailAddresses_TenantId_EmailAddress_Active es única por email activo dentro
@@ -97,11 +103,12 @@ public static class CustomerCreatedConsumer
                 evt.CustomerId,
                 emailOwner.CustomerId
             );
-            return;
+            return false;
         }
 
         var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email, evt.OccurredOn);
         await repository.AddAsync(projection, ct);
         logger.LogInformation("CustomerEmailAddress created for {CustomerId}.", evt.CustomerId);
+        return true;
     }
 }

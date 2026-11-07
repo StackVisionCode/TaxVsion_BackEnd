@@ -20,6 +20,7 @@ public sealed class NotificationLogConfiguration : IEntityTypeConfiguration<Noti
         builder.Property(log => log.Error).HasMaxLength(512);
         builder.Property(log => log.CorrelationId).HasMaxLength(128);
         builder.Property(log => log.CreatedAtUtc).IsRequired();
+        builder.Property(log => log.RowVersion).IsRowVersion();
 
         builder.HasIndex(log => new { log.TenantId, log.CreatedAtUtc });
         builder.HasIndex(log => new { log.TenantId, log.Status });

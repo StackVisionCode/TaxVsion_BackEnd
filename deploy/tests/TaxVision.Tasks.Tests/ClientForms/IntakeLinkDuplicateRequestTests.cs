@@ -276,6 +276,13 @@ public sealed class IntakeLinkDuplicateRequestTests
 
     private sealed class Links(params FormIntakeLink[] seed) : IFormIntakeLinkRepository
     {
+        public Task<bool> TryConsumeDailyIntakeAsync(
+            Guid tenantId,
+            DateTime nowUtc,
+            int maxPerDay,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
+
         private readonly List<FormIntakeLink> _items = [.. seed];
 
         public Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default) =>

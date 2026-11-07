@@ -213,7 +213,8 @@ public sealed class StripeConnectGateway : IStripeConnectGateway
                 PayoutReference: null,
                 PayoutAmountCents: null,
                 PayoutCurrency: null,
-                PayoutFailureReason: null
+                PayoutFailureReason: null,
+                OccurredAtUtc: stripeEvent.Created
             )
         );
     }

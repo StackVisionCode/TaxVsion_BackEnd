@@ -227,7 +227,11 @@ public sealed class FakeSnapshotRepo(TenantEntitlementSnapshot? existing = null)
     public Task<TenantEntitlementSnapshot?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(existing);
 
-    public Task UpsertAsync(TenantEntitlementSnapshot snapshot, CancellationToken ct = default)
+    public Task UpsertAsync(
+        TenantEntitlementSnapshot snapshot,
+        long expectedPreviousRevision,
+        CancellationToken ct = default
+    )
     {
         Upserted = snapshot;
         return Task.CompletedTask;

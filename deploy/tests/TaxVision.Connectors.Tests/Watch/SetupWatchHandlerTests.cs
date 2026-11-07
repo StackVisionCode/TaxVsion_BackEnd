@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
@@ -29,10 +30,10 @@ public class SetupWatchHandlerTests
         var result = await SetupWatchHandler.Handle(
             new SetupWatchCommand(TenantId, account.Id),
             accountRepository,
+            new FakeOAuthConnectionRepository(),
             subscriptionRepository,
             factory,
-            unitOfWork,
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(unitOfWork, new FakeMessageBus()),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -60,10 +61,10 @@ public class SetupWatchHandlerTests
         var result = await SetupWatchHandler.Handle(
             new SetupWatchCommand(TenantId, account.Id),
             accountRepository,
+            new FakeOAuthConnectionRepository(),
             subscriptionRepository,
             factory,
-            unitOfWork,
-            bus,
+            new HandlerTransactionUnit(unitOfWork, bus),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -94,10 +95,10 @@ public class SetupWatchHandlerTests
         var result = await SetupWatchHandler.Handle(
             new SetupWatchCommand(TenantId, account.Id),
             accountRepository,
+            new FakeOAuthConnectionRepository(),
             subscriptionRepository,
             factory,
-            unitOfWork,
-            bus,
+            new HandlerTransactionUnit(unitOfWork, bus),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -119,10 +120,10 @@ public class SetupWatchHandlerTests
         var result = await SetupWatchHandler.Handle(
             new SetupWatchCommand(TenantId, account.Id),
             accountRepository,
+            new FakeOAuthConnectionRepository(),
             subscriptionRepository,
             factory,
-            unitOfWork,
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(unitOfWork, new FakeMessageBus()),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -145,16 +146,62 @@ public class SetupWatchHandlerTests
         var result = await SetupWatchHandler.Handle(
             new SetupWatchCommand(Guid.NewGuid(), account.Id),
             accountRepository,
+            new FakeOAuthConnectionRepository(),
             subscriptionRepository,
             factory,
-            unitOfWork,
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(unitOfWork, new FakeMessageBus()),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
 
         Assert.True(result.IsFailure);
         Assert.Equal("SetupWatchHandler.Forbidden", result.Error.Code);
+    }
+
+    // Hoy cada clic en reauth pasaba la cuenta a Connected y disparaba un refresh que publicaba refresh_failed.
+    [Fact]
+    public async Task Reauth_ConnectionExpired_ReturnsReconnectRequiredAndPublishesNothing()
+    {
+        var account = CreateDraftAccount(ProviderCode.Gmail);
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        account.MarkError(
+            new TenantEmailAccountErrorCause(TenantEmailAccountErrorSource.OAuthRefresh, "x", "y", "c"),
+            Now
+        );
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var connection = OAuthConnection.Create(account.Id, ProviderCode.Gmail, "client", "scope", Now).Value;
+        var protector = new FakeEncryptedSecretProtector();
+        connection.AttachToken(
+            OAuthToken
+                .Create(connection.Id, protector.Protect("a"), protector.Protect("r"), Now.AddHours(-1), Now)
+                .Value
+        );
+        connection.MarkExpired();
+        var connectionRepository = new FakeOAuthConnectionRepository();
+        connectionRepository.Connections.Add(connection);
+        var bus = new FakeMessageBus();
+
+        for (var click = 0; click < 3; click++)
+        {
+            var result = await SetupWatchHandler.Handle(
+                new SetupWatchCommand(TenantId, account.Id),
+                accountRepository,
+                connectionRepository,
+                new FakeProviderWatchSubscriptionRepository(),
+                new FakeWatchProviderClientFactory(new FakeWatchProviderClient(ProviderCode.Gmail)),
+                new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
+                new FakeCorrelationContext(),
+                CancellationToken.None
+            );
+
+            Assert.True(result.IsFailure);
+            Assert.Equal("Connectors.ReconnectRequired", result.Error.Code);
+        }
+
+        Assert.Equal(TenantEmailAccountStatus.Error, account.Status);
+        Assert.Empty(bus.Published);
     }
 
     [Fact]
@@ -168,10 +215,10 @@ public class SetupWatchHandlerTests
         var result = await SetupWatchHandler.Handle(
             new SetupWatchCommand(TenantId, Guid.NewGuid()),
             accountRepository,
+            new FakeOAuthConnectionRepository(),
             subscriptionRepository,
             factory,
-            unitOfWork,
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(unitOfWork, new FakeMessageBus()),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -197,17 +244,17 @@ public class SetupWatchHandlerTests
         var result = await SetupWatchHandler.Handle(
             new SetupWatchCommand(TenantId, account.Id),
             accountRepository,
+            new FakeOAuthConnectionRepository(),
             subscriptionRepository,
             factory,
-            unitOfWork,
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(unitOfWork, new FakeMessageBus()),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
 
         Assert.True(result.IsFailure);
         Assert.Equal("SetupWatchHandler.ProviderFailed", result.Error.Code);
-        Assert.Equal(TenantEmailAccountStatus.Connected, account.Status);
+        Assert.Equal(TenantEmailAccountStatus.Draft, account.Status);
         Assert.Empty(subscriptionRepository.Subscriptions);
     }
 
@@ -225,10 +272,10 @@ public class SetupWatchHandlerTests
         var result = await SetupWatchHandler.Handle(
             new SetupWatchCommand(TenantId, account.Id),
             accountRepository,
+            new FakeOAuthConnectionRepository(),
             subscriptionRepository,
             factory,
-            unitOfWork,
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(unitOfWork, new FakeMessageBus()),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -270,10 +317,10 @@ public class SetupWatchHandlerTests
         var result = await SetupWatchHandler.Handle(
             new SetupWatchCommand(TenantId, account.Id),
             accountRepository,
+            new FakeOAuthConnectionRepository(),
             subscriptionRepository,
             factory,
-            unitOfWork,
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(unitOfWork, new FakeMessageBus()),
             new FakeCorrelationContext(),
             CancellationToken.None
         );

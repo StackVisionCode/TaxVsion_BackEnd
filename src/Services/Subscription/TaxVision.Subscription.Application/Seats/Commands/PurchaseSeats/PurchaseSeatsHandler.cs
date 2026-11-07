@@ -37,6 +37,10 @@ public static class PurchaseSeatsHandler
         CancellationToken ct
     )
     {
+        var replay = await ReplayAsync(command, seats, ct);
+        if (replay is not null)
+            return replay;
+
         var validation = await ValidateRequestAsync(command, subscriptions, seats, settingsRepository, ct);
         if (validation.IsFailure)
             return Result.Failure<IReadOnlyList<Guid>>(validation.Error);
@@ -88,6 +92,42 @@ public static class PurchaseSeatsHandler
         );
 
         return Result.Success<IReadOnlyList<Guid>>(newSeats.ConvertAll(seat => seat.Id));
+    }
+
+    private static Guid? RequestedSeatId(PurchaseSeatsCommand command, int index) =>
+        string.IsNullOrWhiteSpace(command.ClientRequestKey)
+            ? null
+            : PurchaseRequestIds.Seat(command.TenantId, command.ClientRequestKey, index);
+
+    // SUB-12: misma clave, misma compra. Los asientos del lote se confirman juntos: alcanza con ver los bordes.
+    private static async Task<Result<IReadOnlyList<Guid>>?> ReplayAsync(
+        PurchaseSeatsCommand command,
+        ISubscriptionSeatRepository seats,
+        CancellationToken ct
+    )
+    {
+        if (RequestedSeatId(command, 0) is not { } firstId)
+            return null;
+
+        var first = await seats.GetByIdAsync(firstId, command.TenantId, ct);
+        if (first is null)
+            return null;
+
+        var sameRequest =
+            command.Quantity >= 1
+            && Enum.TryParse<SeatType>(command.SeatType, ignoreCase: true, out var seatType)
+            && first.Type == seatType
+            && await seats.GetByIdAsync(RequestedSeatId(command, command.Quantity - 1)!.Value, command.TenantId, ct)
+                is not null
+            && await seats.GetByIdAsync(RequestedSeatId(command, command.Quantity)!.Value, command.TenantId, ct) is null;
+        if (!sameRequest)
+            return Result.Failure<IReadOnlyList<Guid>>(
+                new Error("Seat.IdempotencyKeyReused", "This Idempotency-Key was already used for another purchase.")
+            );
+
+        return Result.Success<IReadOnlyList<Guid>>(
+            [.. Enumerable.Range(0, command.Quantity).Select(index => RequestedSeatId(command, index)!.Value)]
+        );
     }
 
     // Observabilidad de una compra off-session: métrica de asientos comprados/facturados + entrada de auditoría
@@ -223,7 +263,8 @@ public static class PurchaseSeatsHandler
                     subscription.BillingCycle,
                     command.AutoRenew,
                     command.RequestedByUserId,
-                    nowUtc
+                    nowUtc,
+                    RequestedSeatId(command, i)
                 )
                 .Value;
 

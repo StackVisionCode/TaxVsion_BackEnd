@@ -236,6 +236,7 @@ public sealed class ReminderDueConsumerTests
                 new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
+                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(Logs),
                 NullLogger<NotificationDispatcher>.Instance
             );
         }

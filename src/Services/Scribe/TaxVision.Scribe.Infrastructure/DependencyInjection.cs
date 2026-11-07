@@ -36,6 +36,7 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
         services.AddDbContext<ScribeDbContext>(options => options.UseSqlServer(connectionString));
+        services.AddSingleton<Seed.ISeedLock>(new Seed.SqlSeedLock(connectionString));
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<ScribeDbContext>());
 
         services.AddScoped<IEventTemplateMappingRepository, EventTemplateMappingRepository>();
@@ -164,6 +165,7 @@ public static class DependencyInjection
             {
                 var opt = sp.GetRequiredService<IOptions<CloudStorageClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = opt.Timeout;
             }
         );
 

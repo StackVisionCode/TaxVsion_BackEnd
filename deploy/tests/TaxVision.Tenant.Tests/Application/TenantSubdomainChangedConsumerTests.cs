@@ -1,4 +1,5 @@
 using BuildingBlocks.Caching;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
@@ -27,6 +28,34 @@ public sealed class TenantSubdomainChangedConsumerTests
         Assert.Equal("acme-new", tenant.SubDomain);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
         Assert.Equal([TenantListVersionKey], cache.SetKeys);
+    }
+
+    [Fact]
+    public async Task Handle_OldSlugMismatch_ThrowsDependencyNotReady()
+    {
+        var tenant = TenantEntity.Create("Acme Tax Office", "first-slug", "UTC").Value;
+        var repo = new FakeTenantRepository { Existing = tenant };
+        var unitOfWork = new CountingUnitOfWork();
+
+        // Falta el renombre anterior: este evento dice venir de "acme-tax".
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            HandleAsync(Event(tenant.Id, isPrimary: true), repo, unitOfWork, new RecordingCache())
+        );
+
+        Assert.Equal("first-slug", tenant.SubDomain);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Redelivered_rename_is_a_noop()
+    {
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-new", "UTC").Value;
+        var repo = new FakeTenantRepository { Existing = tenant };
+        var unitOfWork = new CountingUnitOfWork();
+
+        await HandleAsync(Event(tenant.Id, isPrimary: true), repo, unitOfWork, new RecordingCache());
+
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]

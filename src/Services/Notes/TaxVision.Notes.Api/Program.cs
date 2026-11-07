@@ -23,6 +23,7 @@ using Serilog;
 using StackExchange.Redis;
 using TaxVision.Notes.Api.Authorization;
 using TaxVision.Notes.Application;
+using TaxVision.Notes.Application.Backfill;
 using TaxVision.Notes.Domain.Notes;
 using TaxVision.Notes.Infrastructure;
 using TaxVision.Notes.Infrastructure.Persistence;
@@ -135,7 +136,12 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, NotesDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // NTS-8: durable para que el pedido salga con la transacción del evento, y en serie: el primero siembra y los
+    // repetidos de una ráfaga encuentran el estado hecho.
+    options.LocalQueueFor<RunTenantCustomerBackfillCommand>().UseDurableInbox().Sequential();
 
     // PUBLICADOS (guardrail 13) — Fase 5 conecta la publicación real de los 4 eventos de
     // integración de Note (contratos en BuildingBlocks.Messaging.NotesIntegrationEvents desde

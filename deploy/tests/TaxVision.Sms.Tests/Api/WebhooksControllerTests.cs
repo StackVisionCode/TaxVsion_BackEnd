@@ -2,8 +2,10 @@ using System.Net;
 using BuildingBlocks.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using TaxVision.Sms.Api.Controllers;
 using TaxVision.Sms.Api.RateLimiting;
+using TaxVision.Sms.Application;
 using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Application.Webhooks.Commands;
 using TaxVision.Sms.Tests.Fakes;
@@ -50,6 +52,23 @@ public sealed class WebhooksControllerTests
         Assert.IsType<ProcessInboundCommand>(command);
     }
 
+    // No todos los proveedores reenvían un DLR rechazado: un choque con la conciliación se resuelve adentro.
+    [Fact]
+    public async Task Dlr_that_loses_a_concurrency_conflict_is_retried()
+    {
+        var bus = new FakeMessageBus();
+        var calls = 0;
+        bus.OnInvoke = _ =>
+            ++calls == 1
+                ? throw new ConflictException("Persistence.ConcurrencyConflict", "Simulated.")
+                : Task.FromResult<object?>(Result.Success());
+
+        var result = await BuildController(bus).Status("fake", CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+        Assert.Equal(2, calls);
+    }
+
     [Fact]
     public void Webhook_limiter_rejects_above_the_configured_permit_limit_per_ip()
     {
@@ -79,7 +98,7 @@ public sealed class WebhooksControllerTests
         );
         var context = new DefaultHttpContext();
         context.Request.Body = new MemoryStream();
-        return new WebhooksController(bus, adapters)
+        return new WebhooksController(bus, adapters, Options.Create(new SmsOptions()))
         {
             ControllerContext = new ControllerContext { HttpContext = context },
         };

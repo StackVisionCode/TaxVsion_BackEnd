@@ -3,6 +3,8 @@ using TaxVision.Correspondence.Domain.Compose;
 
 namespace TaxVision.Correspondence.Application.Abstractions;
 
+public sealed record StuckDraftSend(Guid TenantId, Guid DraftId);
+
 /// <summary>
 /// Fase 10 — el primer repositorio de <see cref="Draft"/>, deliberadamente mínimo: solo lo que
 /// <see cref="Compose.StartReplyHandler"/> necesita. Fase 15 agrega las consultas de lectura para
@@ -22,12 +24,19 @@ public interface IDraftRepository
     /// </summary>
     Task<Draft?> FindOpenReplyDraftAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         Guid incomingEmailId,
         CancellationToken ct = default
     );
 
     Task AddAsync(Draft entity, CancellationToken ct = default);
+
+    /// <summary>Borradores en Sending sin cambios desde el corte, de todos los tenants (job de COR-08).</summary>
+    Task<IReadOnlyList<StuckDraftSend>> ListStuckSendingAsync(
+        DateTime updatedBeforeUtc,
+        int limit,
+        CancellationToken ct = default
+    );
 
     /// <summary>Enviado (Sent) con ese Message-ID ya normalizado (COR-16). Tracked: la ingesta puede enlazarle el hilo.</summary>
     Task<Draft?> FindSentByInternetMessageIdAsync(

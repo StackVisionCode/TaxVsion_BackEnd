@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
@@ -306,8 +307,7 @@ public class AccountManagementHandlersTests
             new FakeOAuthProviderClientFactory(providerClient),
             protector,
             auditLogRepository,
-            unitOfWork,
-            bus,
+            new HandlerTransactionUnit(unitOfWork, bus),
             new FakeCorrelationContext(),
             NullLogger<DisconnectAccountCommand>.Instance,
             CancellationToken.None
@@ -366,8 +366,7 @@ public class AccountManagementHandlersTests
             new FakeOAuthProviderClientFactory(providerClient),
             protector,
             new FakeProviderConnectionAuditLogRepository(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger<DisconnectAccountCommand>.Instance,
             CancellationToken.None

@@ -33,6 +33,8 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
         IUnitOfWork
 {
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+    public DbSet<TaxVision.Notification.Domain.Emailing.Campaigns.CampaignDispatchSend> CampaignDispatchSends =>
+        Set<TaxVision.Notification.Domain.Emailing.Campaigns.CampaignDispatchSend>();
     public DbSet<NotificationDispatchAttempt> NotificationDispatchAttempts => Set<NotificationDispatchAttempt>();
     public DbSet<SeatGateNotificationLog> SeatGateNotificationLogs => Set<SeatGateNotificationLog>();
     public DbSet<PushDeviceToken> PushDeviceTokens => Set<PushDeviceToken>();
@@ -132,6 +134,14 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
         try
         {
             return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The record changed while the operation was in progress.",
+                ex
+            );
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {

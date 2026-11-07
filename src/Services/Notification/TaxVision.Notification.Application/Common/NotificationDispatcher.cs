@@ -67,6 +67,7 @@ public sealed class NotificationDispatcher(
     IIntegrationEventPublisher publisher,
     IUnitOfWork unitOfWork,
     INotificationDispatchMetrics metrics,
+    IPushAttemptRecorder pushAttempts,
     ILogger<NotificationDispatcher> logger
 )
 {
@@ -281,17 +282,19 @@ public sealed class NotificationDispatcher(
         }
 
         var log = logResult.Value;
-        await logs.AddAsync(log, ct);
 
         // Sin dispositivo no hay entrega posible: Skipped, no Failed. El error sigue saliendo para Campaigns.
         if (devices.Count == 0)
         {
             var error = new Error("Notification.NoPushDevices", "Recipient has no registered push devices.");
+            await logs.AddAsync(log, ct);
             log.MarkSkipped(NoDeviceReason);
             metrics.RecordNoRecipient(request.Kind, "Push");
             await unitOfWork.SaveChangesAsync(ct);
             return new(error, [], []);
         }
+
+        await pushAttempts.RecordAttemptAsync(log, ct);
 
         var anySucceeded = false;
         var failures = new List<(Guid DeviceId, Error Error)>();
@@ -325,7 +328,7 @@ public sealed class NotificationDispatcher(
         var codes = failures.Select(failure => failure.Error.Code).ToList();
         if (anySucceeded)
         {
-            log.MarkSent();
+            await pushAttempts.RecordSentAsync(request.TenantId, log.Id, CancellationToken.None);
             metrics.RecordSent(request.Kind, "Push");
             await unitOfWork.SaveChangesAsync(ct);
             return new(null, retryable, codes);
@@ -335,7 +338,7 @@ public sealed class NotificationDispatcher(
         var failed =
             failures.FirstOrDefault(failure => PushErrorCodes.IsTransient(failure.Error.Code)).Error
             ?? failures[^1].Error;
-        log.MarkFailed(failed.Message);
+        await pushAttempts.RecordFailedAsync(request.TenantId, log.Id, failed.Message, CancellationToken.None);
         metrics.RecordFailed(request.Kind, "Push");
         await unitOfWork.SaveChangesAsync(ct);
         return new(failed, retryable, codes);
@@ -411,7 +414,11 @@ public sealed class NotificationDispatcher(
             recipient,
             ct
         );
-        return existing?.Status is NotificationStatus.Sent or NotificationStatus.Delivered;
+        // Pending = se intentó y el resultado no quedó registrado: pudo salir, así que no se manda de nuevo.
+        return existing?.Status
+            is NotificationStatus.Sent
+                or NotificationStatus.Delivered
+                or NotificationStatus.Pending;
     }
 
     /// <summary>

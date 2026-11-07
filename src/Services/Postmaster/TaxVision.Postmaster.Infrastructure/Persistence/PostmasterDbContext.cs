@@ -92,9 +92,19 @@ public sealed class PostmasterDbContext(DbContextOptions<PostmasterDbContext> op
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        TouchRootsOfChangedRecipients();
         try
         {
             return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // HTTP responde 409; por mensaje, Wolverine reintenta sobre lo nuevo.
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The resource was modified by someone else. Reload and try again.",
+                ex
+            );
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {
@@ -104,5 +114,24 @@ public sealed class PostmasterDbContext(DbContextOptions<PostmasterDbContext> op
                 ex
             );
         }
+    }
+
+    /// <summary>
+    /// La <c>RowVersion</c> vive en la raíz. Un aviso viejo cambia al destinatario sin cambiar nada de
+    /// <see cref="SentMessage"/>: sin esto, EF no la compara y el cambio pisa a otro sin conflicto.
+    /// </summary>
+    private void TouchRootsOfChangedRecipients()
+    {
+        var changed = ChangeTracker
+            .Entries<SentMessageRecipient>()
+            .Where(recipient => recipient.State == EntityState.Modified)
+            .Select(recipient => recipient.Entity.SentMessageId)
+            .ToHashSet();
+        if (changed.Count == 0)
+            return;
+
+        foreach (var root in ChangeTracker.Entries<SentMessage>())
+            if (root.State == EntityState.Unchanged && changed.Contains(root.Entity.Id))
+                root.Property(message => message.LastEventAtUtc).IsModified = true;
     }
 }

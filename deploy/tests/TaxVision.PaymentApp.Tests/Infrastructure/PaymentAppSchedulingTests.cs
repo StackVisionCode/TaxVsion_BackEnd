@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ReconcilePendingSaaSPayment;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ReconcileStuckSaaSPayment;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -74,6 +75,26 @@ public sealed class PaymentAppSchedulingTests
         Assert.All(stuck, payment => Assert.Equal(PaymentStatus.Processing, payment.Status));
     }
 
+    [Fact]
+    public async Task PendingChargeReconciliationJob_invokes_one_command_per_stale_pending_payment()
+    {
+        var pending = CreateProcessingRenewalPayment(Guid.NewGuid(), DateTime.UtcNow.AddHours(-1));
+        var bus = new CapturingMessageBus();
+        using var services = BuildReconciliationServices(
+            new StuckPaymentRepository([], [pending]),
+            new FakeUnitOfWork(),
+            bus,
+            new StatusPaymentProvider(Result.Failure<ChargeAuthorizationResult>(new Error("unused", "unused")))
+        );
+
+        await InvokeRunOnceAsync(CreateReconciliationJob(services), services);
+
+        var (message, tenantId) = Assert.Single(bus.Invoked);
+        var command = Assert.IsType<ReconcilePendingSaaSPaymentCommand>(message);
+        Assert.Equal(pending.Id, command.SaaSPaymentId);
+        Assert.Equal(pending.TenantId.ToString(), tenantId);
+    }
+
     private static SaaSPayment CreateProcessingRenewalPayment(Guid tenantId, DateTime nowUtc)
     {
         var payment = SaaSPayment
@@ -120,6 +141,11 @@ public sealed class PaymentAppSchedulingTests
             .AddSingleton<ICorrelationContext>(new FakeCorrelationContext())
             .AddSingleton<ITenantRegistry>(new FakeTenantRegistry("Acme Tax"))
             .AddSingleton<ILogger<PendingChargeReconciliationJob>>(NullLogger<PendingChargeReconciliationJob>.Instance)
+            .AddSingleton(
+                Microsoft.Extensions.Options.Options.Create(
+                    new TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentChargeOptions()
+                )
+            )
             .BuildServiceProvider();
 
     private static async Task InvokeRunOnceAsync(PendingChargeReconciliationJob job, ServiceProvider services)
@@ -187,8 +213,20 @@ public sealed class PaymentAppSchedulingTests
         public void StopApplication() => _stopping.Cancel();
     }
 
-    private sealed class StuckPaymentRepository(IReadOnlyList<SaaSPayment> stuck) : ISaaSPaymentRepository
+    private sealed class StuckPaymentRepository(
+        IReadOnlyList<SaaSPayment> stuck,
+        IReadOnlyList<SaaSPayment>? stalePending = null
+    ) : ISaaSPaymentRepository
     {
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyList<(Guid Id, Guid TenantId)>>(
+                (stalePending ?? []).Select(p => (p.Id, p.TenantId)).ToList()
+            );
+
         public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
             DateTime cutoffUtc,
             int batchSize,

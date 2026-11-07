@@ -1,15 +1,15 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Audience;
-using TaxVision.Campaigns.Application.Senders.Abstractions;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Runs;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Campaigns.Application.Runs.Commands;
 
@@ -40,20 +40,20 @@ public sealed record StartCampaignRunFromAudienceCommand(
 
 public static class StartCampaignRunFromAudienceHandler
 {
+    // Sin transacción: la audiencia y el Wallet son llamadas HTTP (patrón BB-8, ver StartAndDispatchAsync).
+    [NonTransactional]
     public static async Task<Result<CampaignRunResponse>> Handle(
         StartCampaignRunFromAudienceCommand command,
         ICampaignRepository campaigns,
-        ICampaignRunRepository runs,
         IContactRepository contacts,
         IContactListRepository lists,
         ICustomerAudienceClient customerClient,
         ICampaignCustomerAssignmentReader assignmentReader,
         IOptions<CampaignsVisibilityOptions> visibility,
-        ISenderProfileRepository senderProfiles,
         IWalletSpendClient wallet,
-        IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ILogger<CampaignRun> logger,
         CancellationToken ct
     )
     {
@@ -86,13 +86,11 @@ public static class StartCampaignRunFromAudienceHandler
             command.TriggerKind,
             command.TriggeredByUserId,
             resolved.Value,
-            runs,
-            senderProfiles,
             wallet,
             command.CallerBearerToken,
-            unitOfWork,
             bus,
             correlation,
+            logger,
             ct
         );
     }

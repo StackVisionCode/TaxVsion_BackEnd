@@ -6,8 +6,8 @@ using TaxVision.PaymentApp.Application.Abstractions;
 namespace TaxVision.PaymentApp.Application.Tenants.IntegrationEvents;
 
 /// <summary>
-/// La oficina cambió de nombre o de zona horaria: la proyección local los copia. Ordenado por
-/// <c>UpdatedAtUtc</c> (un evento más viejo que lo aplicado se ignora) e idempotente. Sin fila no hay
+/// La oficina cambió de nombre o de zona horaria: la proyección local los copia. Ordenado por la versión
+/// de Tenant o, en un mensaje sin versión, por <c>UpdatedAtUtc</c>. Idempotente. Sin fila no hay
 /// nada que actualizar: la crea <c>TenantCreated</c>, que nunca pisa una fila existente.
 /// </summary>
 public static class TenantUpdatedConsumer
@@ -30,7 +30,15 @@ public static class TenantUpdatedConsumer
             if (tenant is null)
                 return;
 
-            if (tenant.ApplyTenantUpdate(evt.Name, evt.DefaultTimeZoneId, evt.UpdatedAtUtc, DateTime.UtcNow))
+            if (
+                tenant.ApplyTenantUpdate(
+                    evt.Name,
+                    evt.DefaultTimeZoneId,
+                    evt.UpdatedAtUtc,
+                    DateTime.UtcNow,
+                    evt.TenantVersion
+                )
+            )
                 await unitOfWork.SaveChangesAsync(ct);
         }
     }

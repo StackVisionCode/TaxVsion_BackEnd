@@ -105,21 +105,24 @@ public sealed class IntellipayGateway(
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning("Intellipay {Method} returned HTTP {StatusCode}", method, (int)response.StatusCode);
-                return Failed("http_error", $"HTTP {(int)response.StatusCode}");
+                return Failed(
+                    (int)response.StatusCode >= 500 ? IntellipayResponse.OutcomeUnknown : "http_error",
+                    $"HTTP {(int)response.StatusCode}"
+                );
             }
 
             var parsed = await response.Content.ReadFromJsonAsync<IntellipayResponse>(ct);
-            return parsed ?? Failed("parse_error", "Empty or invalid Intellipay response.");
+            return parsed ?? Failed(IntellipayResponse.OutcomeUnknown, "Empty or invalid Intellipay response.");
         }
         catch (JsonException ex)
         {
             logger.LogWarning(ex, "Intellipay {Method} returned invalid JSON.", method);
-            return Failed("parse_error", "Invalid Intellipay response.");
+            return Failed(IntellipayResponse.OutcomeUnknown, "Invalid Intellipay response.");
         }
         catch (Exception ex) when (IsTransportFailure(ex, ct))
         {
             logger.LogWarning(ex, "Intellipay {Method} request failed.", method);
-            return Failed("http_error", "Intellipay request failed.");
+            return Failed(IntellipayResponse.OutcomeUnknown, "Intellipay request failed.");
         }
     }
 

@@ -40,7 +40,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     /// </summary>
     public async Task<Draft?> FindOpenReplyDraftAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         Guid incomingEmailId,
         CancellationToken ct = default
     )
@@ -217,6 +217,20 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     // Usa IX_Drafts_Status_UpdatedAtUtc (Fase 16, ver el WHY-comment del índice en DraftConfiguration).
     // IgnoreQueryFilters: job cross-tenant (RBAC Fase 5) — recorre drafts abandonados de todos los
     // tenants, nunca sirve una request autenticada.
+    public async Task<IReadOnlyList<StuckDraftSend>> ListStuckSendingAsync(
+        DateTime updatedBeforeUtc,
+        int limit,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Drafts.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(d => d.Status == DraftStatus.Sending && d.UpdatedAtUtc < updatedBeforeUtc)
+            .OrderBy(d => d.UpdatedAtUtc)
+            .Take(limit)
+            .Select(d => new StuckDraftSend(d.TenantId, d.Id))
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<Draft>> ListAbandonedAsync(
         DateTime updatedBeforeUtc,
         int limit,

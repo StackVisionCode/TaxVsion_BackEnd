@@ -107,6 +107,9 @@ public sealed class SignatureTemplate : TenantEntity
     public DateTime? PublishedAtUtc { get; private set; }
     public DateTime? ArchivedAtUtc { get; private set; }
 
+    /// <summary>Control de concurrencia: dos escrituras desde lecturas viejas no se pisan.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public IReadOnlyList<TemplateSignerSlot> Slots => _slots.AsReadOnly();
     public IReadOnlyList<TemplateDocument> Documents => _documents.OrderBy(document => document.Order).ToList();
     public IReadOnlyList<TemplateField> Fields => _fields.AsReadOnly();

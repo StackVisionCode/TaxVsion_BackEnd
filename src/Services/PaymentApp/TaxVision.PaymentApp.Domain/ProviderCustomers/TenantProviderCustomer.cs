@@ -21,6 +21,9 @@ public sealed class TenantProviderCustomer : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Toda mutación de métodos pasa por <see cref="Touch"/>: el conflicto se detecta aunque solo cambien hijos.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public IReadOnlyCollection<TenantSavedPaymentMethod> SavedMethods => _savedMethods;
 
     private TenantProviderCustomer() { }

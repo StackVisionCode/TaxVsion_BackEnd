@@ -96,7 +96,7 @@ public sealed class ReconcileStuckSaaSPaymentIntegrationTests : IAsyncLifetime
         );
         var resultB = await bus.InvokeAsync<Result>(new ReconcileStuckSaaSPaymentCommand(_tenantId, paymentB.Id));
 
-        Assert.IsType<DbUpdateConcurrencyException>(errorA);
+        Assert.Equal("Persistence.ConcurrencyConflict", Assert.IsType<ConflictException>(errorA).Code);
         Assert.True(resultB.IsSuccess);
 
         await WaitUntilAsync(() =>

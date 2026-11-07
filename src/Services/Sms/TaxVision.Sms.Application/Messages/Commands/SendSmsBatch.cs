@@ -8,6 +8,7 @@ using TaxVision.Sms.Application.Abstractions;
 using TaxVision.Sms.Application.Customers.Abstractions;
 using TaxVision.Sms.Application.Messages.Abstractions;
 using TaxVision.Sms.Application.Providers;
+using TaxVision.Sms.Application.Webhooks;
 using TaxVision.Sms.Domain;
 using TaxVision.Sms.Domain.Messages;
 using TaxVision.Sms.Domain.ValueObjects;
@@ -168,6 +169,7 @@ public static class SendSmsBatchHandler
                 smsDisabled.Contains(item.CustomerId),
                 providers,
                 bus,
+                options.Value.ConflictRetryAttempts,
                 nowUtc,
                 logger,
                 ct
@@ -176,17 +178,28 @@ public static class SendSmsBatchHandler
         }
 
         // Liquidación del cobro (F6, D-SMS-3): consume lo que el proveedor aceptó y libera el resto. Si queda
-        // un ítem en curso o desconocido, la reserva sigue abierta. Un fallo del Wallet no tira el envío.
+        // un ítem en curso o desconocido, la reserva sigue abierta. Un fallo del Wallet no tira el envío: la
+        // liquidación pasa a la cola durable.
         if (chargeWallet)
-            await SettleSmsBatchHandler.SettleAsync(
-                command.TenantId,
-                batchId,
-                command.CallerBearerToken,
-                messages,
-                wallet,
-                logger,
-                ct
-            );
+        {
+            try
+            {
+                await SettleSmsBatchHandler.SettleAsync(
+                    command.TenantId,
+                    batchId,
+                    command.CallerBearerToken,
+                    messages,
+                    wallet,
+                    logger,
+                    ct
+                );
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "SMS batch {BatchId}: wallet settle failed; queued for retry.", batchId);
+                await bus.PublishAsync(new SettleSmsBatchCommand(command.TenantId, batchId));
+            }
+        }
 
         logger.LogInformation(
             "SMS batch {BatchId} processed {Count} message(s) for tenant {TenantId} (correlation {CorrelationId}).",
@@ -215,6 +228,7 @@ public static class SendSmsBatchHandler
         bool blockedByContactPolicy,
         IReadOnlyList<ISmsProvider> providers,
         IMessageBus bus,
+        int conflictRetryAttempts,
         DateTime nowUtc,
         ILogger logger,
         CancellationToken ct
@@ -293,17 +307,22 @@ public static class SendSmsBatchHandler
         );
 
         // 4) Fase 3: resultado y evento en su propia transacción. Se registra aunque la petición se haya cancelado.
-        var recorded = await bus.InvokeAsync<Result<SmsMessageSnapshot>>(
-            new RecordSmsSendResultCommand(
-                tenantId,
-                reserved.Message.Id,
-                outcome,
-                (provider ?? primary).Code,
-                providerMessageId,
-                error?.Code,
-                error?.Message
-            ),
-            CancellationToken.None
+        // El SMS ya salió: un choque con la conciliación no puede cortar el lote.
+        var recorded = await SmsConflictRetry.InvokeAsync(
+            () =>
+                bus.InvokeAsync<Result<SmsMessageSnapshot>>(
+                    new RecordSmsSendResultCommand(
+                        tenantId,
+                        reserved.Message.Id,
+                        outcome,
+                        (provider ?? primary).Code,
+                        providerMessageId,
+                        error?.Code,
+                        error?.Message
+                    ),
+                    CancellationToken.None
+                ),
+            conflictRetryAttempts
         );
         return recorded.IsSuccess ? ItemResult(recorded.Value, item, reused: false) : Failed(item, recorded.Error.Code);
     }

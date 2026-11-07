@@ -5,9 +5,9 @@ namespace TaxVision.Correspondence.Domain.Inbox;
 
 /// <summary>
 /// Conversación entre el tenant y un destinatario: agrupa los <see cref="IncomingEmail"/>, los enviados
-/// (<c>Draft.EmailThreadId</c>) y los avisos de entrega. Un hilo que nace de un correo entrante siempre tiene
-/// cliente (solo entra correo de clientes); uno que nace de un aviso de no entrega puede no tenerlo (D-1):
-/// <see cref="CustomerId"/> null = "Not a client", y su visibilidad la decide solo el buzón.
+/// (<c>Draft.EmailThreadId</c>) y los avisos de entrega. <see cref="CustomerId"/> null = "Not a client": nació de un
+/// aviso de no entrega (D-1) o de un correo de quien todavía no es cliente (D-COR-3). Su visibilidad la decide solo
+/// el buzón.
 /// </summary>
 public sealed class EmailThread : AggregateRoot
 {
@@ -19,7 +19,7 @@ public sealed class EmailThread : AggregateRoot
 
     private EmailThread() { }
 
-    /// <summary>Null = el destinatario no es cliente (solo hilos nacidos de un aviso de no entrega).</summary>
+    /// <summary>Null = la otra parte no es cliente.</summary>
     public Guid? CustomerId { get; private set; }
     public string Subject { get; private set; } = default!;
     public string? ProviderThreadId { get; private set; }
@@ -28,10 +28,11 @@ public sealed class EmailThread : AggregateRoot
     public int MessageCount { get; private set; }
     public EmailThreadStatus Status { get; private set; }
     public DateTime? ArchivedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     public static Result<EmailThread> NewFromMessage(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         string subject,
         string? providerThreadId,
         DateTime firstMessageAtUtc
@@ -128,7 +129,9 @@ public sealed class EmailThread : AggregateRoot
     {
         var reopened = Status == EmailThreadStatus.Archived;
         Reopen();
-        LastMessageAtUtc = receivedAtUtc;
+        // Un correo viejo (re-sincronización) cuenta, pero no mueve el hilo hacia atrás.
+        if (receivedAtUtc > LastMessageAtUtc)
+            LastMessageAtUtc = receivedAtUtc;
         MessageCount++;
         return Result.Success(reopened);
     }
@@ -145,6 +148,16 @@ public sealed class EmailThread : AggregateRoot
             return false;
 
         ProviderThreadId = providerThreadId;
+        return true;
+    }
+
+    /// <summary>Quien escribió ya es cliente (COR-05): el hilo pasa a su ficha. No pisa un cliente ya asignado.</summary>
+    public bool LinkToCustomer(Guid customerId)
+    {
+        if (CustomerId is not null || customerId == Guid.Empty)
+            return false;
+
+        CustomerId = customerId;
         return true;
     }
 
@@ -209,7 +222,7 @@ public sealed class EmailThread : AggregateRoot
         ArchivedAtUtc = null;
     }
 
-    private static Error? Validate(Guid tenantId, Guid customerId, string subject, string? providerThreadId)
+    private static Error? Validate(Guid tenantId, Guid? customerId, string subject, string? providerThreadId)
     {
         if (tenantId == Guid.Empty)
             return new Error("EmailThread.TenantIdRequired", "TenantId is required.");

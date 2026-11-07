@@ -33,7 +33,7 @@ internal static class EmailDeliveryReport
             return; // no es un envío de campaña (correo transaccional/ad-hoc)
 
         var run =
-            await runs.GetByRecipientIdAsync(tenantId, recipientId, ct)
+            await runs.GetForRecipientResultAsync(tenantId, recipientId, ct)
             ?? throw new DependencyNotReadyException("CampaignRun", $"recipient {recipientId}");
 
         var applied = run.ApplyResultForRecipient(recipientId, outcome, providerRef, reason);

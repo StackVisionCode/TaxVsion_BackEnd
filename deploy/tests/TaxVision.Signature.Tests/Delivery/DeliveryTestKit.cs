@@ -279,6 +279,12 @@ internal sealed class ReadableCodec : IProtectedPayloadCodec
 
 internal sealed class RecordingStorage : ISignatureCloudStorageClient
 {
+    public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
+        Guid tenantId,
+        SignatureFileUpload upload,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
+
     public List<Guid> Presigned { get; } = [];
     public List<(Guid Source, Guid Customer)> Copies { get; } = [];
     public HashSet<Guid> FailCopiesOf { get; } = [];

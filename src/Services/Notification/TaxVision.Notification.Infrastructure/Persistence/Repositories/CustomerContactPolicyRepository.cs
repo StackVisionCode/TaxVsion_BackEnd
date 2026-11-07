@@ -21,6 +21,18 @@ public sealed class CustomerContactPolicyRepository(NotificationDbContext contex
             .CustomerContactPolicyProjections.IgnoreQueryFilters()
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.CustomerId == customerId, ct);
 
+    public async Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> customerIds,
+        CancellationToken ct = default
+    ) =>
+        await context
+            .CustomerContactPolicyProjections.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(e => e.TenantId == tenantId && customerIds.Contains(e.CustomerId))
+            .Select(e => e.CustomerId)
+            .ToListAsync(ct);
+
     public async Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) =>
         await context.CustomerContactPolicyProjections.AddAsync(row, ct);
 

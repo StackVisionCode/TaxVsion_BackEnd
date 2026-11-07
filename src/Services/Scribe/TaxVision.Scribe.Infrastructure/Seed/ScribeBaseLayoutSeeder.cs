@@ -23,9 +23,12 @@ namespace TaxVision.Scribe.Infrastructure.Seed;
 public sealed class ScribeBaseLayoutSeeder(
     IServiceScopeFactory scopeFactory,
     IHostApplicationLifetime lifetime,
+    ISeedLock seedLock,
     ILogger<ScribeBaseLayoutSeeder> logger
 ) : IHostedService
 {
+    private const string SeedLockResource = "scribe:layout-seed";
+
     // CloudStorage scans every uploaded asset with ClamAV. Its configured timeout is
     // 120 seconds, so a 30-second polling window can abandon a healthy slow scan.
     private const int DownloadableWaitAttempts = 180;
@@ -43,25 +46,22 @@ public sealed class ScribeBaseLayoutSeeder(
     {
         try
         {
-            await using var scope = scopeFactory.CreateAsyncScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ScribeDbContext>();
-            var storageService = scope.ServiceProvider.GetRequiredService<ITemplateStorageService>();
-            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            // SCR-02: una sola réplica siembra.
+            await using var held = await seedLock.TryAcquireAsync(SeedLockResource, cancellationToken);
+            if (held is null)
+            {
+                logger.LogInformation("ScribeBaseLayoutSeeder skipped: another replica is seeding.");
+                return;
+            }
 
-            await SeedIfMissingAsync(
-                dbContext,
-                storageService,
-                unitOfWork,
+            await SeedIsolatedAsync(
                 "system-base",
                 "System base layout",
                 Application.Templates.BaseLayouts.BaseLayoutHtml.SystemBaseV1,
                 Application.Templates.BaseLayouts.BaseLayoutHtml.SystemBaseVersion,
                 cancellationToken
             );
-            await SeedIfMissingAsync(
-                dbContext,
-                storageService,
-                unitOfWork,
+            await SeedIsolatedAsync(
                 "tenant-base",
                 "Tenant base layout",
                 Application.Templates.BaseLayouts.BaseLayoutHtml.TenantBaseV1,
@@ -72,6 +72,35 @@ public sealed class ScribeBaseLayoutSeeder(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to seed base layouts on startup.");
+        }
+    }
+
+    // SCR-02: un layout que falla no se lleva al otro.
+    private async Task SeedIsolatedAsync(
+        string layoutKeyValue,
+        string name,
+        string html,
+        int contentVersion,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            await SeedIfMissingAsync(
+                scope.ServiceProvider.GetRequiredService<ScribeDbContext>(),
+                scope.ServiceProvider.GetRequiredService<ITemplateStorageService>(),
+                scope.ServiceProvider.GetRequiredService<IUnitOfWork>(),
+                layoutKeyValue,
+                name,
+                html,
+                contentVersion,
+                ct
+            );
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Failed to seed base layout '{LayoutKey}'.", layoutKeyValue);
         }
     }
 

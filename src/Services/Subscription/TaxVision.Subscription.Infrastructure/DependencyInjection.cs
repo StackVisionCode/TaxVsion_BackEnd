@@ -38,7 +38,8 @@ public static class DependencyInjection
         services.Configure<SubscriptionOptions>(configuration.GetSection(SubscriptionOptions.SectionName));
 
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<SubscriptionDbContext>());
-        services.AddSingleton<IModuleEditSerializer, InMemoryModuleEditSerializer>();
+        services.Configure<ModuleEditLockOptions>(configuration.GetSection(ModuleEditLockOptions.SectionName));
+        services.AddSingleton<IModuleEditSerializer, DistributedModuleEditSerializer>();
         services.AddScoped<ICommercialModuleShadowReconciler, CommercialModuleShadowReconciler>();
         services.AddScoped<IModuleRepository, ModuleRepository>();
         services.AddScoped<IPlanRepository, PlanRepository>();

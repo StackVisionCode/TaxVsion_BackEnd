@@ -60,6 +60,10 @@ public sealed class TenantPayment : AggregateRoot
     public Guid UpdatedBy { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
+    /// <summary>Método con el que se pidió el cobro: la intención guardada antes de llamar al proveedor. Un reintento
+    /// manda lo mismo y la reconciliación lo usa para buscar el cargo (PCL-8).</summary>
+    public string? ChargeMethodReference { get; private set; }
+
     public IReadOnlyCollection<TenantPaymentAttempt> Attempts => _attempts;
     public IReadOnlyCollection<RefundLine> Refunds => _refunds;
 
@@ -155,6 +159,29 @@ public sealed class TenantPayment : AggregateRoot
         payment.SetTenant(tenantId);
         payment.AddDomainEvent(new TenantPaymentSucceededDomainEvent(tenantId, payment.Id, nowUtc));
         return Result.Success(payment);
+    }
+
+    /// <summary>Deja en la fila lo que se va a cobrar, antes de llamar al proveedor. <paramref name="split"/> solo en
+    /// un cobro Connect.</summary>
+    public Result PlanCharge(string paymentMethodReference, SplitPaymentBreakdown? split, DateTime nowUtc)
+    {
+        if (Status != PaymentStatus.Pending)
+            return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot plan a charge from {Status}."));
+
+        if (string.IsNullOrWhiteSpace(paymentMethodReference))
+            return Result.Failure(
+                new Error("TenantPayment.InvalidPaymentMethod", "PaymentMethodReference is required.")
+            );
+
+        if (split is not null && split.TenantAmountCents + split.PlatformFeeAmountCents != Amount.AmountCents)
+            return Result.Failure(
+                new Error("TenantPayment.SplitMismatch", "Split total must equal the payment amount.")
+            );
+
+        ChargeMethodReference = paymentMethodReference;
+        SplitPayment = split;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
     }
 
     public Result MarkProcessing(
@@ -286,6 +313,10 @@ public sealed class TenantPayment : AggregateRoot
 
         if (string.IsNullOrWhiteSpace(failureCode))
             return Result.Failure(new Error("TenantPayment.InvalidFailureCode", "FailureCode is required."));
+
+        // El reparto planeado no llegó a cobrarse.
+        if (Status == PaymentStatus.Pending)
+            SplitPayment = null;
 
         Status = PaymentStatus.Failed;
         FailureCode = failureCode;

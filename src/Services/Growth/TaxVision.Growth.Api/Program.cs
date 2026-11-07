@@ -161,6 +161,7 @@ builder.Host.UseWolverine(options =>
 
     // Antes de la estándar: gana la primera regla que matchea.
     options.ApplyGrowthFailurePolicies();
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // BB-1: eventos de dominio de CodeReservation; en serie para que los avisos salgan en el orden del commit.

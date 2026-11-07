@@ -5,10 +5,9 @@ using TaxVision.Correspondence.Domain.ValueObjects;
 namespace TaxVision.Correspondence.Domain.Inbox;
 
 /// <summary>
-/// Un correo recibido de un customer del tenant. <see cref="CustomerId"/> y
-/// <see cref="EmailThreadId"/> son obligatorios por diseño — es la regla de negocio central
-/// del rediseño de Correspondence: un correo cuyo sender no matcheó contra un customer nunca
-/// llega a instanciar este aggregate (ver plan de diseño §2/§14).
+/// Un correo recibido en un buzón del tenant. <see cref="CustomerId"/> null = el remitente todavía no es cliente
+/// (D-COR-3, vista "Not a client"): cuando el cliente aparece, el correo se le enlaza. <see cref="EmailThreadId"/>
+/// siempre es obligatorio.
 ///
 /// <para>
 /// A propósito, este factory NO depende del evento de integración
@@ -30,10 +29,12 @@ public sealed class IncomingEmail : AggregateRoot
 
     private readonly List<IncomingEmailRecipient> _recipients = [];
     private readonly List<IncomingEmailAttachment> _attachments = [];
+    private readonly List<IncomingEmailMailbox> _mailboxes = [];
 
     private IncomingEmail() { }
 
-    public Guid CustomerId { get; private set; }
+    /// <summary>Null = el remitente no es cliente (todavía).</summary>
+    public Guid? CustomerId { get; private set; }
     public Guid EmailThreadId { get; private set; }
 
     /// <summary>
@@ -83,9 +84,12 @@ public sealed class IncomingEmail : AggregateRoot
     public IReadOnlyCollection<IncomingEmailRecipient> Recipients => _recipients.AsReadOnly();
     public IReadOnlyCollection<IncomingEmailAttachment> Attachments => _attachments.AsReadOnly();
 
+    /// <summary>Buzones que recibieron este mensaje. El primero es <see cref="AccountId"/>.</summary>
+    public IReadOnlyCollection<IncomingEmailMailbox> Mailboxes => _mailboxes.AsReadOnly();
+
     public static Result<IncomingEmail> Create(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         Guid emailThreadId,
         Guid accountId,
         string providerCode,
@@ -147,6 +151,7 @@ public sealed class IncomingEmail : AggregateRoot
             Authentication = authentication ?? SenderAuthentication.Unknown,
         };
         email.SetTenant(tenantId);
+        email._mailboxes.Add(IncomingEmailMailbox.Create(tenantId, email.Id, accountId, providerMessageId));
 
         foreach (var recipient in recipients ?? [])
             email._recipients.Add(
@@ -179,13 +184,18 @@ public sealed class IncomingEmail : AggregateRoot
     /// <summary>
     /// Avisa que entró un correo nuevo. La ingesta lo llama salvo en una réplica (CON-07): el correo viejo recuperado
     /// no genera campana. Los datos del buzón los trae el evento de Connectors; el agregado no los guarda.
+    /// El correo de quien no es cliente tampoco avisa: boletines y spam no deben llenar la campana.
     /// </summary>
-    public void NotifyReceived(Guid? mailboxAccountId, Guid? mailboxOwnerUserId, string correlationId) =>
+    public void NotifyReceived(Guid? mailboxAccountId, Guid? mailboxOwnerUserId, string correlationId)
+    {
+        if (CustomerId is not { } customerId)
+            return;
+
         AddDomainEvent(
             new IncomingEmailReceivedDomainEvent(
                 TenantId,
                 Id,
-                CustomerId,
+                customerId,
                 EmailThreadId,
                 Subject,
                 mailboxAccountId,
@@ -193,6 +203,27 @@ public sealed class IncomingEmail : AggregateRoot
                 correlationId
             )
         );
+    }
+
+    /// <summary>Registra que otro buzón recibió este mensaje (COR-03). Devuelve <c>true</c> si la copia es nueva.</summary>
+    public bool AddMailboxCopy(Guid accountId, string providerMessageId)
+    {
+        if (accountId == AccountId || _mailboxes.Exists(m => m.AccountId == accountId))
+            return false;
+
+        _mailboxes.Add(IncomingEmailMailbox.Create(TenantId, Id, accountId, providerMessageId));
+        return true;
+    }
+
+    /// <summary>El remitente ya es cliente (COR-05). No pisa un cliente ya asignado. Devuelve <c>true</c> si cambió.</summary>
+    public bool LinkToCustomer(Guid customerId)
+    {
+        if (CustomerId is not null || customerId == Guid.Empty)
+            return false;
+
+        CustomerId = customerId;
+        return true;
+    }
 
     /// <summary>Idempotente: si el body ya se pidió al menos una vez, es un no-op.</summary>
     public void MarkBodyFetched()
@@ -258,7 +289,7 @@ public sealed class IncomingEmail : AggregateRoot
 
     private static Error? Validate(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         Guid emailThreadId,
         Guid accountId,
         string providerCode,

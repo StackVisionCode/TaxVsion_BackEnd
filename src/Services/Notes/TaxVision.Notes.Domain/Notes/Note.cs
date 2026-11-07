@@ -40,6 +40,7 @@ public sealed class Note : TenantEntity, IHasOwner
     public NoteStatus Status { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     public IReadOnlyCollection<NoteAttachment> Attachments => _attachments.AsReadOnly();
 

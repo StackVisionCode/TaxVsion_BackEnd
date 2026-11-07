@@ -132,8 +132,11 @@ internal sealed class InMemoryTenantBackfillStateRepository(params Guid[] seed) 
 internal sealed class RecordingBackfillService : ITenantCustomerBackfillService
 {
     public List<Guid> Calls { get; } = [];
+    public bool Needed { get; init; }
 
-    public Task EnsureBackfilledAsync(Guid tenantId, CancellationToken ct = default)
+    public Task<bool> NeedsBackfillAsync(Guid tenantId, CancellationToken ct = default) => Task.FromResult(Needed);
+
+    public Task BackfillAsync(Guid tenantId, CancellationToken ct = default)
     {
         Calls.Add(tenantId);
         return Task.CompletedTask;

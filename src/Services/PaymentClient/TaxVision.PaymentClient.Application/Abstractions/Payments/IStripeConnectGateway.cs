@@ -30,7 +30,8 @@ public sealed record ConnectWebhookEvent(
     string? PayoutReference,
     long? PayoutAmountCents,
     string? PayoutCurrency,
-    string? PayoutFailureReason
+    string? PayoutFailureReason,
+    DateTime? OccurredAtUtc = null
 );
 
 /// <summary>

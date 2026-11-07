@@ -121,6 +121,19 @@ public sealed class TenantController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Reposición de TEN-4: vuelve a publicar el estado de todas las oficinas con su versión.</summary>
+    [HttpPost("status/republish")]
+    [Authorize]
+    [HasPermission(TenantPermissions.StatusChange)]
+    [RateLimit("tenant.g.status_change")]
+    [ProducesResponseType<RepublishAllTenantStatusResponse>(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> RepublishAllStatus(CancellationToken cancellationToken)
+    {
+        var enqueued = await bus.InvokeAsync<int>(new RepublishAllTenantStatusCommand(), cancellationToken);
+
+        return Accepted(new RepublishAllTenantStatusResponse(enqueued));
+    }
+
     /// <summary>Vuelve a publicar el estado actual de la oficina para reparar proyecciones. Idempotente.</summary>
     [HttpPost("{tenantId:guid}/status/republish")]
     [Authorize]
@@ -135,5 +148,7 @@ public sealed class TenantController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }
+
+public sealed record RepublishAllTenantStatusResponse(int Enqueued);
 
 public sealed record ChangeTenantStatusRequest(EnumTenantStatus.TenantStatus Status);

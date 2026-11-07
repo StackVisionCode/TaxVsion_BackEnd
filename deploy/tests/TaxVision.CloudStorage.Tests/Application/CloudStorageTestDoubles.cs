@@ -53,6 +53,12 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         return GetAsync(tenantId, fileId, ct);
     }
 
+    /// <summary>Archivos cuyo escaneo ya tomó otro: TryClaimScanAsync devuelve false.</summary>
+    public HashSet<Guid> ScansInProgress { get; } = [];
+
+    public Task<bool> TryClaimScanAsync(Guid fileId, CancellationToken ct) =>
+        Task.FromResult(!ScansInProgress.Contains(fileId));
+
     public Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
@@ -363,6 +369,32 @@ internal sealed class FakeFolderRepository : IFolderRepository
 
     public Task<Folder?> GetAsync(Guid tenantId, Guid folderId, CancellationToken ct) =>
         Task.FromResult(_byId.TryGetValue(folderId, out var folder) && folder.TenantId == tenantId ? folder : null);
+
+    public List<Guid> LockedReads { get; } = [];
+
+    public Task<Folder?> GetForUpdateAsync(Guid tenantId, Guid folderId, CancellationToken ct)
+    {
+        LockedReads.Add(folderId);
+        return GetAsync(tenantId, folderId, ct);
+    }
+
+    public Task<Folder?> GetByNameUnderParentAsync(
+        Guid tenantId,
+        Guid? parentFolderId,
+        string name,
+        OwnerType ownerType,
+        Guid? ownerId,
+        CancellationToken ct
+    ) =>
+        Task.FromResult(
+            _byId.Values.FirstOrDefault(f =>
+                f.TenantId == tenantId
+                && f.ParentFolderId == parentFolderId
+                && f.Name == name
+                && f.OwnerType == ownerType
+                && f.OwnerId == ownerId
+            )
+        );
 
     private IEnumerable<Folder> Subfolders(
         Guid tenantId,

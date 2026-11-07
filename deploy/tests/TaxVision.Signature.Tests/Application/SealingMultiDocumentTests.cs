@@ -178,15 +178,16 @@ public sealed class SealingMultiDocumentTests
         Assert.True(request.AllDocumentsSealed());
     }
 
-    private static Task Seal(
+    private static async Task Seal(
         SignatureDocumentsReadyForSealingIntegrationEvent readyEvent,
         ISignatureRequestRepository repository,
         ISignatureCloudStorageClient storage,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation
-    ) =>
-        SignatureRequestCompletedConsumer.Handle(
+    )
+    {
+        await SignatureRequestCompletedConsumer.Handle(
             readyEvent,
             repository,
             storage,
@@ -196,13 +197,38 @@ public sealed class SealingMultiDocumentTests
             new FixedStampStyle(),
             new DeterministicCertificateRenderer(),
             new AcquiredDistributedLock(),
-            unitOfWork,
             bus,
             correlation,
             NullLogger<SignatureRequest>.Instance,
             new Envelope(),
             CancellationToken.None
         );
+        await PersistPending(repository, unitOfWork, bus, correlation);
+    }
+
+    // SIG-6: lo que la cola local entrega a la fase B.
+    private static async Task PersistPending(
+        ISignatureRequestRepository repository,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation
+    )
+    {
+        var messages = ((SealingMessageBus)bus).Messages;
+        foreach (var command in messages.OfType<PersistSealedDocumentsCommand>().ToList())
+        {
+            messages.Remove(command);
+            await PersistSealedDocumentsHandler.Handle(
+                command,
+                repository,
+                unitOfWork,
+                bus,
+                correlation,
+                NullLogger<PersistSealedDocumentsCommand>.Instance,
+                CancellationToken.None
+            );
+        }
+    }
 
     private static async Task SubmitAndSeal(
         SignatureRequest request,
@@ -251,13 +277,13 @@ public sealed class SealingMultiDocumentTests
             new FixedStampStyle(),
             new DeterministicCertificateRenderer(),
             new AcquiredDistributedLock(),
-            unitOfWork,
             bus,
             correlation,
             NullLogger<SignatureRequest>.Instance,
             new Envelope(),
             CancellationToken.None
         );
+        await PersistPending(repository, unitOfWork, bus, correlation);
     }
 
     private static SignatureRequest NewRequest(
@@ -468,6 +494,36 @@ public sealed class SealingMultiDocumentTests
             var fileId = Guid.NewGuid();
             Uploads.Add((fileId, upload));
             return Task.FromResult(Result.Success(fileId));
+        }
+
+        public Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
+            Guid tenantId,
+            SignatureFileUpload upload,
+            CancellationToken ct = default
+        )
+        {
+            var fileId = Guid.NewGuid();
+            Uploads.Add((fileId, upload));
+            return Task.FromResult(
+                Result.Success(
+                    new SaveFileRequestedIntegrationEvent
+                    {
+                        TenantId = tenantId,
+                        FileId = fileId,
+                        RequestingService = SignatureStorage.RequestingService,
+                        SourceBucket = "temp",
+                        SourceObjectKey = $"signature/{fileId:N}/{upload.FileName}",
+                        ActorId = upload.ActorId,
+                        OwnerType = upload.OwnerType,
+                        OwnerId = upload.OwnerId,
+                        FolderType = upload.FolderType,
+                        TaxYear = upload.TaxYear,
+                        OriginalName = upload.FileName,
+                        ContentType = upload.ContentType,
+                        SizeBytes = upload.Content.LongLength,
+                    }
+                )
+            );
         }
 
         public Task<Result<Guid>> CopyToCustomerAsync(

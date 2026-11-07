@@ -56,6 +56,7 @@ public sealed class OutboundEmailMessage : TenantEntity
     /// <summary>El destinatario lo marcó como spam. Postmaster ya suprimió la dirección.</summary>
     public DateTime? ComplainedAtUtc { get; private set; }
     public DateTime? BouncedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     public IReadOnlyCollection<EmailRecipient> Recipients => _recipients.AsReadOnly();
     public IReadOnlyCollection<EmailDeliveryLog> DeliveryLogs => _deliveryLogs.AsReadOnly();

@@ -28,7 +28,10 @@ public class ConnectManualAccountHandlerTests
         FakeUserPermissionsProjectionReader Projections,
         FakeUnitOfWork UnitOfWork,
         FakeMessageBus Bus
-    );
+    )
+    {
+        public TrackingOutboxUnit Unit { get; } = new(UnitOfWork, Bus);
+    }
 
     private static Fixture CreateFixture() =>
         new(
@@ -68,6 +71,33 @@ public class ConnectManualAccountHandlerTests
             "smtp-pass"
         );
 
+    // CON-12: la prueba tarda segundos y no puede tener la transacción abierta.
+    [Fact]
+    public async Task Connectivity_test_runs_outside_the_unit_and_the_account_is_saved_inside()
+    {
+        var fixture = CreateFixture();
+        var openDuringTest = false;
+        fixture.ConnectivityValidator.OnValidate = () => openDuringTest = fixture.Unit.IsOpen;
+
+        var result = await HandleAsync(fixture, ValidCommand(Guid.NewGuid(), Guid.NewGuid()));
+
+        Assert.True(result.IsSuccess);
+        Assert.False(openDuringTest);
+        Assert.True(fixture.Unit.Committed);
+    }
+
+    [Fact]
+    public async Task A_failed_connectivity_test_never_opens_the_unit()
+    {
+        var fixture = CreateFixture();
+        fixture.ConnectivityValidator.ImapResult = Result.Failure(new Error("Imap.Failed", "Could not connect."));
+
+        var result = await HandleAsync(fixture, ValidCommand(Guid.NewGuid(), Guid.NewGuid()));
+
+        Assert.True(result.IsFailure);
+        Assert.False(fixture.Unit.Committed);
+    }
+
     private static Task<Result<ConnectManualAccountResult>> HandleAsync(
         Fixture fixture,
         ConnectManualAccountCommand cmd
@@ -86,7 +116,7 @@ public class ConnectManualAccountHandlerTests
             fixture.WatchClientFactory,
             fixture.Projections,
             fixture.UnitOfWork,
-            fixture.Bus,
+            fixture.Unit,
             new FakeCorrelationContext(),
             CancellationToken.None
         );

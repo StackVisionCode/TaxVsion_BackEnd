@@ -59,6 +59,8 @@ public sealed class TenantEmailAccount : AggregateRoot
     /// <summary>Motivo de la revisión; ver <see cref="OfficeMailboxReviewReasons"/>.</summary>
     public string? ReviewReason { get; private set; }
 
+    public byte[] RowVersion { get; private set; } = [];
+
     public bool NeedsReview => ReviewRequiredAtUtc is not null;
 
     public static Result<TenantEmailAccount> Create(

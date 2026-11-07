@@ -52,6 +52,30 @@ public sealed class TenantSubdomainChangedConsumerTests
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
+    // SCR-04: el mensaje viejo que llega tarde no deshace el cambio más nuevo.
+    [Fact]
+    public async Task Older_slug_event_does_not_revert_a_newer_one()
+    {
+        var tenantId = Guid.NewGuid();
+        var repository = new InMemoryTenantProfileRefRepository();
+        var existing = repository.Seed(TenantProfileRef.Create(tenantId, "Acme", "start", DateTime.UtcNow));
+        var unitOfWork = new FakeUnitOfWork();
+        var t1 = DateTime.UtcNow.AddMinutes(-10);
+
+        await HandleAsync(
+            Event(tenantId, true) with
+            {
+                NewSlug = "b",
+                OccurredOn = t1.AddMinutes(1),
+            },
+            repository,
+            unitOfWork
+        );
+        await HandleAsync(Event(tenantId, true) with { NewSlug = "a", OccurredOn = t1 }, repository, unitOfWork);
+
+        Assert.Equal("b", existing.SubDomain);
+    }
+
     private static Task HandleAsync(
         TenantSubdomainChangedIntegrationEvent evt,
         ITenantProfileRefRepository repository,
@@ -93,7 +117,7 @@ public sealed class TenantSubdomainChangedConsumerTests
         public Task<TenantProfileRef?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult(_rows.GetValueOrDefault(tenantId));
 
-        public Task UpsertAsync(
+        public Task AddIfMissingAsync(
             Guid tenantId,
             string name,
             string subDomain,

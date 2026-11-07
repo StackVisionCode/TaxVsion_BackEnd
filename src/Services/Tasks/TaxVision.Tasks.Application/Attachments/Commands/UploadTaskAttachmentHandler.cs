@@ -53,8 +53,8 @@ public static class UploadTaskAttachmentHandler
         if (attached.IsFailure)
             return Result.Failure<TaskAttachmentResponse>(attached.Error);
 
-        await bus.PublishAsync(AttachmentEvents.Added(found.Value, attached.Value, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(AttachmentEvents.Added(found.Value, attached.Value, correlation.CorrelationId));
 
         return Result.Success(TaskAttachmentResponse.From(attached.Value));
     }

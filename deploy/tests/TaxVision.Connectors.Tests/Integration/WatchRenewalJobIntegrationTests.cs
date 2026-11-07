@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
@@ -16,6 +17,7 @@ namespace TaxVision.Connectors.Tests.Integration;
 /// CON-08 contra SQL real: al tercer fallo de renovación, el estado Error y su aviso se confirman juntos o no se
 /// confirma ninguno. El proveedor es falso: nunca se llama a Gmail ni a Graph.
 /// </summary>
+[Collection(ConnectorsJobHost.Collection)]
 public sealed class WatchRenewalJobIntegrationTests : IAsyncLifetime
 {
     private readonly ConnectorsJobHost _host = new("conwatch");
@@ -86,23 +88,22 @@ public sealed class WatchRenewalJobIntegrationTests : IAsyncLifetime
         Assert.Equal(1, await _host.WaitForOutgoingAsync(nameof(ConnectorsWatchExpiredIntegrationEvent)));
     }
 
+    // CON-12: el handler ya no tiene transacción, así que el fallo queda en su unidad, como en el job: no se relanza.
     [Fact(Timeout = 120_000)]
     public async Task HandlerFailsAfterTheFailureWasRecorded_RollsBackStateAndEvent()
     {
         var (accountId, subscriptionId) = await SeedAsync();
         _host.FailAfterSave.Armed = true;
 
-        await Assert.ThrowsAnyAsync<Exception>(() =>
-            _host
-                .Services.GetRequiredService<IMessageBus>()
-                .InvokeAsync(
-                    new GraphLifecycleNotificationReceived(
-                        "history-1",
-                        GraphLifecycleEvents.ReauthorizationRequired,
-                        "lifecycle-correlation"
-                    )
+        await _host
+            .Services.GetRequiredService<IMessageBus>()
+            .InvokeAsync(
+                new GraphLifecycleNotificationReceived(
+                    "history-1",
+                    GraphLifecycleEvents.ReauthorizationRequired,
+                    "lifecycle-correlation"
                 )
-        );
+            );
 
         Assert.Equal(TenantEmailAccountStatus.Active, await AccountStatusAsync(accountId));
         Assert.Equal(ProviderWatchStatus.Active, await SubscriptionStatusAsync(subscriptionId));
@@ -115,7 +116,11 @@ public sealed class WatchRenewalJobIntegrationTests : IAsyncLifetime
     {
         try
         {
-            await new WatchRenewalJob(_host.Services, NullLogger<WatchRenewalJob>.Instance).RunOnceAsync(default);
+            await new WatchRenewalJob(
+                _host.Services,
+                Options.Create(new WatchRenewalOptions()),
+                NullLogger<WatchRenewalJob>.Instance
+            ).RunOnceAsync(default);
         }
         catch (InvalidOperationException) { }
     }

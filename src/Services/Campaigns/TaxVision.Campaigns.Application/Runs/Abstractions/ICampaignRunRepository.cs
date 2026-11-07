@@ -11,11 +11,15 @@ public interface ICampaignRunRepository
     /// <summary>Carga un run con sus unidades (recipients) por <c>(TenantId, Id)</c>.</summary>
     Task<CampaignRun?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
-    /// <summary>Carga el run dueño de una unidad por su <c>DispatchId</c> — para correlacionar DLR/webhooks de entrega de vuelta a la campaña.</summary>
-    Task<CampaignRun?> GetByDispatchIdAsync(Guid tenantId, string dispatchId, CancellationToken ct = default);
+    /// <summary>Raíz del run y solo la unidad del resultado: aplicar un resultado no depende del tamaño del run.
+    /// Sin esa unidad, el run llega sin unidades y el dominio responde que no la encontró.</summary>
+    Task<CampaignRun?> GetForResultAsync(Guid tenantId, Guid runId, string dispatchId, CancellationToken ct = default);
 
-    /// <summary>Carga el run dueño de una unidad por su <c>RecipientId</c> (Guid) — DLR de Email (seam <c>CampaignId</c> de Postmaster = RecipientId).</summary>
-    Task<CampaignRun?> GetByRecipientIdAsync(Guid tenantId, Guid recipientId, CancellationToken ct = default);
+    /// <summary>Igual, buscando el run por el <c>DispatchId</c> — DLR de SMS (seam <c>SourceContext</c>).</summary>
+    Task<CampaignRun?> GetForDispatchResultAsync(Guid tenantId, string dispatchId, CancellationToken ct = default);
+
+    /// <summary>Igual, por el <c>RecipientId</c> — DLR de Email (seam <c>CampaignId</c> de Postmaster = RecipientId).</summary>
+    Task<CampaignRun?> GetForRecipientResultAsync(Guid tenantId, Guid recipientId, CancellationToken ct = default);
 
     Task<PagedResult<CampaignRun>> ListByCampaignAsync(
         Guid tenantId,
@@ -29,6 +33,13 @@ public interface ICampaignRunRepository
 
     /// <summary>Runs en <c>Dispatching</c> creados antes de <paramref name="createdBeforeUtc"/> (todos los tenants), para el barrido.</summary>
     Task<IReadOnlyList<StaleRunRef>> ListStaleDispatchingAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Runs en <c>Created</c> creados antes de <paramref name="createdBeforeUtc"/> (todos los tenants).</summary>
+    Task<IReadOnlyList<StaleRunRef>> ListCreatedBeforeAsync(
         DateTime createdBeforeUtc,
         int batchSize,
         CancellationToken ct = default

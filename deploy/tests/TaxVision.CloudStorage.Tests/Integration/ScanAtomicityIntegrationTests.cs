@@ -157,7 +157,7 @@ public sealed class ScanAtomicityIntegrationTests : IAsyncLifetime
                     .UseEntityFrameworkCoreTransactions()
                     .WithDbContextAbstraction<IUnitOfWork, CloudStorageDbContext>();
                 options.Policies.AutoApplyTransactions();
-                options.ConfigureScanQueue();
+                options.ConfigureScanQueue(1);
             })
             .Build();
         await host.StartAsync();

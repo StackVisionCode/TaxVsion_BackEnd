@@ -2,22 +2,23 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Calendar.Application.Backfill;
 using TaxVision.Calendar.Application.Backfill.Abstractions;
 using TaxVision.Calendar.Application.Projections.Abstractions;
 using TaxVision.Calendar.Domain.Projections;
 
 namespace TaxVision.Calendar.Application.Projections.CustomerEvents;
 
-// Los siete consumers de este grupo mantienen CustomerDirectoryEntry. Todos arrancan llamando a
-// EnsureBackfilledAsync: recibir cualquier evento de Customer es la única forma en que Task
-// descubre que un tenant existe.
+// Los siete consumers de este grupo mantienen CustomerDirectoryEntry. Todos devuelven en cascada
+// BackfillTenantCustomersCommand si el tenant no se ha sembrado: recibir cualquier evento de Customer
+// es la única forma en que Task descubre que un tenant existe. El HTTP a Customer va en ese comando.
 
 public static class CustomerCreatedConsumer
 {
-    public static async Task Handle(
+    public static async Task<BackfillTenantCustomersCommand?> Handle(
         CustomerCreatedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
-        ITenantCustomerBackfillService backfill,
+        ITenantBackfillStateRepository backfillStates,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
@@ -30,7 +31,7 @@ public static class CustomerCreatedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            var backfill = await BackfillTenantCustomersCommand.IfMissingAsync(evt.TenantId, backfillStates, ct);
 
             await UpsertAsync(evt, repository, ct);
             await unitOfWork.SaveChangesAsync(ct);
@@ -39,6 +40,7 @@ public static class CustomerCreatedConsumer
                 evt.TenantId,
                 evt.CustomerId
             );
+            return backfill;
         }
     }
 

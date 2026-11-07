@@ -98,8 +98,7 @@ public sealed class CampaignScheduleRepository(CampaignsDbContext db) : ICampaig
             .Where(s =>
                 s.Status == ScheduleStatus.Active
                 && s.ActiveRunId != null
-                && db
-                    .CampaignRuns.IgnoreQueryFilters()
+                && db.CampaignRuns.IgnoreQueryFilters()
                     .Any(r =>
                         r.Id == s.ActiveRunId
                         && r.Status != CampaignRunStatus.Created
@@ -116,6 +115,7 @@ public sealed class CampaignScheduleRepository(CampaignsDbContext db) : ICampaig
                 set =>
                     set.SetProperty(s => s.ActiveRunId, (Guid?)null)
                         .SetProperty(s => s.Status, ScheduleStatus.Paused)
+                        .SetProperty(s => s.PauseReason, SchedulePauseReason.MissedSlot)
                         .SetProperty(s => s.UpdatedAtUtc, nowUtc),
                 ct
             );

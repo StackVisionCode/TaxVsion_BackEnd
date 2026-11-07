@@ -86,6 +86,15 @@ public sealed class ConnectorsDbContext(DbContextOptions<ConnectorsDbContext> op
         {
             return await base.SaveChangesAsync(cancellationToken);
         }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // HTTP responde 409; por mensaje, Wolverine reintenta sobre lo nuevo.
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The resource was modified by someone else. Reload and try again.",
+                ex
+            );
+        }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {
             throw new ConflictException(

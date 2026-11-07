@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Accounts;
@@ -67,8 +68,7 @@ public class RawMessageSyncOrchestratorTests
             new FakeEmailProviderClientFactory(s.Client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            s.Bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), s.Bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.Tracker(s.Failures, s.Metrics),

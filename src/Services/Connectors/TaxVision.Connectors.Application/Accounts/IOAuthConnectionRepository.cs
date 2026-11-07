@@ -10,6 +10,9 @@ public interface IOAuthConnectionRepository
     /// <summary>Incluye el OAuthToken hijo — el caller siempre lo necesita junto con la connection.</summary>
     Task<Result<OAuthConnection>> GetByAccountIdAsync(Guid accountId, CancellationToken ct = default);
 
+    /// <summary>Sin tracking: el token se guarda en su propia unidad y una lectura rastreada lo vería viejo.</summary>
+    Task<Result<OAuthConnection>> GetByAccountIdReadOnlyAsync(Guid accountId, CancellationToken ct = default);
+
     /// <summary>
     /// AccountIds cuyo AccessToken expira antes de <paramref name="thresholdUtc"/> y cuya connection
     /// sigue Active — usado por ProactiveTokenRefreshJob (Fase 4) para no cargar aggregates completos

@@ -469,6 +469,10 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OnboardingId")
@@ -490,7 +494,8 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                             Name = "Platform",
                             Status = "Active",
                             SubDomain = "platform-internal",
-                            UpdatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 0L
                         });
                 });
 

@@ -172,6 +172,9 @@ public interface ISeatPurchaseIntentRepository
     /// sesión de checkout sin caducar). Es el guard contra el doble cobro al reintentar.</summary>
     Task<SeatPurchaseIntent?> GetOpenByTenantAsync(Guid tenantId, DateTime nowUtc, CancellationToken ct = default);
 
+    /// <summary>SUB-7: intención confirmada que aún no recibió su sesión. Un reintento la reusa y manda la misma clave.</summary>
+    Task<SeatPurchaseIntent?> GetUnattachedByTenantAsync(Guid tenantId, CancellationToken ct = default);
+
     /// <summary>Cross-tenant para el consumer del webhook: ignora el filtro fail-closed; el caller valida el
     /// tenant del evento antes de mutar (mismo patrón que los consumers de resultado de pago).</summary>
     Task<SeatPurchaseIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default);
@@ -195,6 +198,13 @@ public interface IAddOnPurchaseIntentRepository
 
     /// <summary>Lectura tenant-scoped (endpoint de estado del tenant).</summary>
     Task<AddOnPurchaseIntent?> GetByIdAsync(Guid intentId, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>SUB-7: intención confirmada que aún no recibió su sesión. Un reintento la reusa y manda la misma clave.</summary>
+    Task<AddOnPurchaseIntent?> GetUnattachedByTenantAsync(
+        Guid tenantId,
+        string addOnCode,
+        CancellationToken ct = default
+    );
 
     /// <summary>La compra de ESE add-on que el tenant dejó a medias y todavía se puede pagar. A diferencia de
     /// los asientos, dos add-ons distintos sí pueden estar en curso a la vez: son compras independientes.</summary>
@@ -234,6 +244,9 @@ public interface IRenewalCheckoutIntentRepository
 
     /// <summary>Lectura tenant-scoped (endpoint de estado del tenant).</summary>
     Task<SubscriptionRenewalIntent?> GetByIdAsync(Guid intentId, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>SUB-7: intención confirmada que aún no recibió su sesión. Un reintento la reusa y manda la misma clave.</summary>
+    Task<SubscriptionRenewalIntent?> GetUnattachedByTenantAsync(Guid tenantId, CancellationToken ct = default);
 
     /// <summary>La renovación que el tenant dejó a medias y todavía se puede pagar. Es el guard contra el
     /// doble cobro al reintentar, igual que en asientos y add-ons.</summary>
@@ -312,7 +325,14 @@ public interface ITenantAddOnRepository
 public interface ITenantEntitlementSnapshotRepository
 {
     Task<TenantEntitlementSnapshot?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
-    Task UpsertAsync(TenantEntitlementSnapshot snapshot, CancellationToken ct = default);
+
+    /// <summary>SUB-5: <paramref name="expectedPreviousRevision"/> es la revisión sobre la que se calculó (0 si no había
+    /// fila). Si otro recálculo avanzó primero, el guardado falla por conflicto y Wolverine reintenta.</summary>
+    Task UpsertAsync(
+        TenantEntitlementSnapshot snapshot,
+        long expectedPreviousRevision,
+        CancellationToken ct = default
+    );
 }
 
 /// <summary>RateLimit Fase 6 — catálogo completo, consultado por otros servicios vía

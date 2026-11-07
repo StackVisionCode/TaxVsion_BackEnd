@@ -82,6 +82,8 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
 
     public DbSet<FormIntakeLink> FormIntakeLinks => Set<FormIntakeLink>();
 
+    public DbSet<FormIntakeDailyCounter> FormIntakeDailyCounters => Set<FormIntakeDailyCounter>();
+
     public DbSet<FormAccessGrant> FormAccessGrants => Set<FormAccessGrant>();
 
     public DbSet<FormAccessChallenge> FormAccessChallenges => Set<FormAccessChallenge>();

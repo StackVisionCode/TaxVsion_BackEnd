@@ -20,6 +20,7 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
         b.Property(t => t.DefaultTimeZoneId).HasMaxLength(100).IsRequired();
         b.Property(t => t.Status).HasConversion<string>(); // enum como texto legible
         b.Property(t => t.UpdatedAtUtc).IsRequired();
+        b.Property(t => t.Version).IsConcurrencyToken();
         // El subdominio es único globalmente (a diferencia del email por tenant).
         b.HasIndex(t => t.SubDomain).IsUnique();
 
@@ -41,6 +42,7 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
                 Status = EnumTenantStatus.TenantStatus.Active,
                 CreatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, DateTimeKind.Utc),
                 UpdatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, DateTimeKind.Utc),
+                Version = 0L,
             }
         );
     }

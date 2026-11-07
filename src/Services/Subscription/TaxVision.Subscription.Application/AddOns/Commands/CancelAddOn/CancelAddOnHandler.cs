@@ -35,18 +35,6 @@ public static class CancelAddOnHandler
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(
-            new AddOnCancelledIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                TenantAddOnId = addOn.Id,
-                AddOnCode = addOn.AddOnCode,
-                Reason = command.Reason,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-        await unitOfWork.SaveChangesAsync(ct);
-
         await AuditEntryFactory.AppendAsync(
             audit,
             command.TenantId,
@@ -60,6 +48,21 @@ public static class CancelAddOnHandler
             reason: command.Reason,
             nowUtc,
             ct
+        );
+
+        // La auditoría va antes: lo que queda sin guardar lo guarda Wolverine después de publicar, y ese guardado
+        // también puede fallar y reintentarse.
+        await unitOfWork.SaveChangesAsync(ct);
+
+        await bus.PublishAsync(
+            new AddOnCancelledIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                TenantAddOnId = addOn.Id,
+                AddOnCode = addOn.AddOnCode,
+                Reason = command.Reason,
+                CorrelationId = correlation.CorrelationId,
+            }
         );
 
         await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);

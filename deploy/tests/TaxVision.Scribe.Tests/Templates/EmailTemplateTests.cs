@@ -263,7 +263,7 @@ public sealed class EmailTemplateTests
         Assert.Equal(EmailVersionStatus.Archived, oldArchived.Status);
         Assert.Equal(EmailVersionStatus.Published, recentDraft.Status);
 
-        var purgedIds = template.PurgeArchivedVersionsOlderThan(DateTime.UtcNow.AddDays(-90));
+        var purgedIds = template.PurgeArchivedVersionsOlderThan(DateTime.UtcNow.AddDays(-90), DateTime.UtcNow);
 
         Assert.Single(purgedIds);
         Assert.Equal(oldArchived.Id, purgedIds[0]);
@@ -302,7 +302,7 @@ public sealed class EmailTemplateTests
             )
             .Value;
 
-        var purgedIds = template.PurgeArchivedVersionsOlderThan(DateTime.UtcNow.AddDays(1));
+        var purgedIds = template.PurgeArchivedVersionsOlderThan(DateTime.UtcNow.AddDays(1), DateTime.UtcNow);
 
         Assert.Empty(purgedIds);
         Assert.Equal(2, template.Versions.Count);

@@ -43,7 +43,7 @@ public static class TenantProfileBackfillPlan
                 if (!known.Add(tenant.Id))
                     continue;
 
-                await repository.UpsertAsync(tenant.Id, tenant.Name, tenant.Subdomain, DateTime.UtcNow, ct);
+                await repository.AddIfMissingAsync(tenant.Id, tenant.Name, tenant.Subdomain, DateTime.UtcNow, ct);
                 added++;
             }
 

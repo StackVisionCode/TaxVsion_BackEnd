@@ -1,12 +1,11 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Sync;
-using Wolverine;
 
 namespace TaxVision.Connectors.Application.Sync;
 
@@ -14,7 +13,8 @@ namespace TaxVision.Connectors.Application.Sync;
 /// Lógica compartida entre ProcessGmailPushNotificationHandler y ProcessGraphNotificationHandler:
 /// ambos terminan resolviendo (cuenta, client, cursor) por caminos distintos y de ahí en más el
 /// flujo es idéntico. Fetch history → por cada mensaje nuevo, metadata-only (nunca body/attachments,
-/// regla dura del plan §19) → publish → avanzar cursor.
+/// regla dura del plan §19) → publish → avanzar cursor. El fetch corre sin transacción; lo publicado y el cursor
+/// se confirman juntos en una unidad corta, dentro del lock de la cuenta (CON-03).
 /// </summary>
 internal static class RawMessageSyncOrchestrator
 {
@@ -31,8 +31,7 @@ internal static class RawMessageSyncOrchestrator
         TenantEmailAccount account,
         IEmailProviderClient client,
         ProviderSyncCursor cursor,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IOutboxUnit unit,
         ICorrelationContext correlation,
         ILogger logger,
         MessageFetchFailureTracker fetchFailures,
@@ -56,11 +55,9 @@ internal static class RawMessageSyncOrchestrator
             return Result.Failure<int>(new Error(code, ex.Message));
         }
 
-        var publishedCount = 0;
-        var blockingFailures = 0;
+        IReadOnlyList<ProviderMessageFetch> fetched = [];
         if (history.NewMessageIds.Count > 0)
         {
-            IReadOnlyList<ProviderMessageFetch> fetched;
             try
             {
                 fetched = await client.GetMessagesAsync(account.Id, account.TenantId, history.NewMessageIds, ct);
@@ -71,64 +68,84 @@ internal static class RawMessageSyncOrchestrator
                 var code = ex.RequiresReconnect ? ReconnectRequiredCode : "RawMessageSync.MessageFetchFailed";
                 return Result.Failure<int>(new Error(code, ex.Message));
             }
-
-            foreach (var item in fetched)
-            {
-                if (item.Message is null)
-                {
-                    if (item.IsNotFound)
-                        logger.LogInformation(
-                            "Message {MessageId} on account {AccountId} no longer exists at the provider — skipping.",
-                            item.ProviderMessageId,
-                            account.Id
-                        );
-                    else
-                        logger.LogWarning(
-                            item.Error,
-                            "Could not fetch metadata for message {MessageId} on account {AccountId} — the cursor stays put.",
-                            item.ProviderMessageId,
-                            account.Id
-                        );
-                    continue;
-                }
-
-                await bus.PublishAsync(BuildEvent(account, item.Message, correlation.CorrelationId));
-                publishedCount++;
-
-                // Un aviso de no entrega se revisa aparte: bajar el MIME no debe frenar el sync.
-                if (DeliveryReportCandidate.IsLikely(item.Message))
-                    await bus.PublishAsync(
-                        new InspectDeliveryReport(
-                            account.Id,
-                            account.TenantId,
-                            item.Message.ProviderMessageId,
-                            item.Message.ReceivedAtUtc,
-                            correlation.CorrelationId
-                        )
-                    );
-            }
-
-            blockingFailures = await fetchFailures.RecordAsync(account, fetched, DateTime.UtcNow, ct);
         }
 
-        var now = DateTime.UtcNow;
-        account.TouchActivity(now);
+        var publishedCount = 0;
+        var blockingFailures = 0;
+        await unit.RunAsync(
+            async (outbox, token) =>
+            {
+                publishedCount = await PublishFetchedAsync(account, fetched, outbox, correlation, logger);
+                if (fetched.Count > 0)
+                    blockingFailures = await fetchFailures.RecordAsync(account, fetched, DateTime.UtcNow, token);
 
-        // Gmail (historyId) y Graph (deltaLink) no avanzan a medias: se conserva el cursor entero.
-        if (blockingFailures > 0)
-        {
-            await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure<int>(
+                var now = DateTime.UtcNow;
+                account.TouchActivity(now);
+
+                // Gmail (historyId) y Graph (deltaLink) no avanzan a medias: se conserva el cursor entero.
+                if (blockingFailures == 0)
+                    cursor.UpdateCursor(history.NextCursor, now);
+                return true;
+            },
+            ct
+        );
+
+        return blockingFailures > 0
+            ? Result.Failure<int>(
                 new Error(
                     MessageFetchPartiallyFailedCode,
                     $"{blockingFailures} message(s) could not be fetched; the cursor was not advanced."
                 )
-            );
+            )
+            : Result.Success(publishedCount);
+    }
+
+    private static async Task<int> PublishFetchedAsync(
+        TenantEmailAccount account,
+        IReadOnlyList<ProviderMessageFetch> fetched,
+        Wolverine.IMessageBus outbox,
+        ICorrelationContext correlation,
+        ILogger logger
+    )
+    {
+        var publishedCount = 0;
+        foreach (var item in fetched)
+        {
+            if (item.Message is null)
+            {
+                if (item.IsNotFound)
+                    logger.LogInformation(
+                        "Message {MessageId} on account {AccountId} no longer exists at the provider — skipping.",
+                        item.ProviderMessageId,
+                        account.Id
+                    );
+                else
+                    logger.LogWarning(
+                        item.Error,
+                        "Could not fetch metadata for message {MessageId} on account {AccountId} — the cursor stays put.",
+                        item.ProviderMessageId,
+                        account.Id
+                    );
+                continue;
+            }
+
+            await outbox.PublishAsync(BuildEvent(account, item.Message, correlation.CorrelationId));
+            publishedCount++;
+
+            // Un aviso de no entrega se revisa aparte: bajar el MIME no debe frenar el sync.
+            if (DeliveryReportCandidate.IsLikely(item.Message))
+                await outbox.PublishAsync(
+                    new InspectDeliveryReport(
+                        account.Id,
+                        account.TenantId,
+                        item.Message.ProviderMessageId,
+                        item.Message.ReceivedAtUtc,
+                        correlation.CorrelationId
+                    )
+                );
         }
 
-        cursor.UpdateCursor(history.NextCursor, now);
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(publishedCount);
+        return publishedCount;
     }
 
     internal static ConnectorsRawMessageReceivedIntegrationEvent BuildEvent(

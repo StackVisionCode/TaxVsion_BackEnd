@@ -68,6 +68,8 @@ public static class CreateTenantFromOnboardingHandler
 
         var tenant = createResult.Value;
         await repo.AddAsync(tenant, ct);
+        // Guardar antes de publicar: el reintento en línea no descarta lo publicado por un intento revertido.
+        await unitOfWork.SaveChangesAsync(ct);
 
         await bus.PublishAsync(
             new TenantCreatedForOnboardingIntegrationEvent
@@ -94,8 +96,6 @@ public static class CreateTenantFromOnboardingHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
     }

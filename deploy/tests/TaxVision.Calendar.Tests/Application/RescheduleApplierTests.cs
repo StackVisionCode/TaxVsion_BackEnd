@@ -5,6 +5,7 @@ using TaxVision.Calendar.Application.Appointments;
 using TaxVision.Calendar.Application.Appointments.Commands;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
+using TaxVision.Calendar.Domain.Types;
 using Xunit;
 using static TaxVision.Calendar.Tests.Application.ReminderTargetsTestData;
 
@@ -117,6 +118,9 @@ public sealed class RescheduleApplierTests
         var result = await RescheduleAppointmentHandler.Handle(
             command,
             appointments,
+            new SingleTypeRepository(AnyType()),
+            new EmptyAvailability(),
+            new NoScheduleLock(),
             new CountingUnitOfWork(),
             new NullCalendarMetrics(),
             CancellationToken.None
@@ -134,6 +138,9 @@ public sealed class RescheduleApplierTests
         Assert.Empty(bus.Published.OfType<ReminderTargetMovedIntegrationEvent>());
     }
 
+    private AppointmentType AnyType() =>
+        AppointmentType.Create(_tenant, "Review", TimeSpan.FromHours(1), "#336699", DateTime.UtcNow).Value;
+
     private static DateTime WeeklyTargetsStart(DateOnly date) =>
         TimeZoneInfo.ConvertTimeToUtc(date.ToDateTime(TenAm), TimeZoneInfo.FindSystemTimeZoneById(NewYork));
 
@@ -147,6 +154,9 @@ public sealed class RescheduleApplierTests
         var result = await RescheduleAppointmentHandler.Handle(
             command,
             appointments,
+            new SingleTypeRepository(AnyType()),
+            new EmptyAvailability(),
+            new NoScheduleLock(),
             new CountingUnitOfWork(),
             new NullCalendarMetrics(),
             CancellationToken.None

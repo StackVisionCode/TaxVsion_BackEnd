@@ -1,6 +1,9 @@
 using BuildingBlocks.Common;
+using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
+using TaxVision.Campaigns.Application.Runs.Commands;
+using TaxVision.Campaigns.Application.Scheduling.Commands;
 using TaxVision.Campaigns.Application.Senders.Abstractions;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Runs;
@@ -15,11 +18,24 @@ internal sealed class FakeCampaignRunRepository : ICampaignRunRepository
     public Task<CampaignRun?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         Task.FromResult(Runs.Find(r => r.TenantId == tenantId && r.Id == id));
 
-    public Task<CampaignRun?> GetByDispatchIdAsync(Guid tenantId, string dispatchId, CancellationToken ct = default) =>
-        Task.FromResult(Runs.Find(r => r.TenantId == tenantId && r.Recipients.Any(x => x.DispatchId == dispatchId)));
+    public Task<CampaignRun?> GetForResultAsync(
+        Guid tenantId,
+        Guid runId,
+        string dispatchId,
+        CancellationToken ct = default
+    ) => GetByIdAsync(tenantId, runId, ct);
 
-    public Task<CampaignRun?> GetByRecipientIdAsync(Guid tenantId, Guid recipientId, CancellationToken ct = default) =>
-        Task.FromResult(Runs.Find(r => r.TenantId == tenantId && r.Recipients.Any(x => x.Id == recipientId)));
+    public Task<CampaignRun?> GetForDispatchResultAsync(
+        Guid tenantId,
+        string dispatchId,
+        CancellationToken ct = default
+    ) => Task.FromResult(Runs.Find(r => r.TenantId == tenantId && r.Recipients.Any(x => x.DispatchId == dispatchId)));
+
+    public Task<CampaignRun?> GetForRecipientResultAsync(
+        Guid tenantId,
+        Guid recipientId,
+        CancellationToken ct = default
+    ) => Task.FromResult(Runs.Find(r => r.TenantId == tenantId && r.Recipients.Any(x => x.Id == recipientId)));
 
     public Task<PagedResult<CampaignRun>> ListByCampaignAsync(
         Guid tenantId,
@@ -50,8 +66,22 @@ internal sealed class FakeCampaignRunRepository : ICampaignRunRepository
     /// <summary>Agendado de runs que no están en <see cref="Runs"/> (solo se conoce su ScheduleId).</summary>
     public Dictionary<Guid, Guid> ScheduleIdByRun { get; } = [];
 
+    public Task<IReadOnlyList<StaleRunRef>> ListCreatedBeforeAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<StaleRunRef>>(
+            Runs.Where(r => r.Status == CampaignRunStatus.Created && r.CreatedAtUtc < createdBeforeUtc)
+                .Take(batchSize)
+                .Select(r => new StaleRunRef(r.TenantId, r.Id))
+                .ToList()
+        );
+
     public Task<bool> ExistsAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
-        Task.FromResult(ScheduleIdByRun.ContainsKey(runId) || Runs.Exists(r => r.TenantId == tenantId && r.Id == runId));
+        Task.FromResult(
+            ScheduleIdByRun.ContainsKey(runId) || Runs.Exists(r => r.TenantId == tenantId && r.Id == runId)
+        );
 
     public Task<Guid?> GetScheduleIdAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
         Task.FromResult(
@@ -61,10 +91,15 @@ internal sealed class FakeCampaignRunRepository : ICampaignRunRepository
         );
 }
 
-/// <summary>Wallet que autoriza siempre y anota cada referencia reservada.</summary>
+/// <summary>Wallet que autoriza por defecto y anota cada referencia reservada.</summary>
 internal sealed class FakeWalletSpendClient : IWalletSpendClient
 {
     public List<Guid> ReservedReferences { get; } = [];
+
+    public WalletReserveResult ReserveResult { get; set; } = new(true, true, 0, 0, 0, "USD");
+
+    /// <summary>Corre dentro de la reserva, para mirar qué había confirmado en ese momento.</summary>
+    public Action? OnReserve { get; set; }
 
     public Task<WalletReserveResult> ReserveAsync(
         Guid tenantId,
@@ -76,8 +111,11 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
     )
     {
         ReservedReferences.Add(referenceId);
-        return Task.FromResult(new WalletReserveResult(true, true, 0, 0, 0, "USD"));
+        OnReserve?.Invoke();
+        return Task.FromResult(ReserveResult);
     }
+
+    public List<(Guid ReferenceId, int ConsumedUnits)> Settlements { get; } = [];
 
     public Task SettleAsync(
         Guid tenantId,
@@ -85,7 +123,52 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
         Guid referenceId,
         int consumedUnits,
         CancellationToken ct = default
-    ) => Task.CompletedTask;
+    )
+    {
+        Settlements.Add((referenceId, consumedUnits));
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Corre en línea los pasos del arranque que en producción invoca Wolverine, cada uno con su unidad.</summary>
+internal static class TestRunFlow
+{
+    public static void Route(
+        FakeMessageBus bus,
+        FakeCampaignRunRepository runs,
+        FakeCampaignRepository campaigns,
+        FakeCampaignScheduleRepository schedules,
+        FakeUnitOfWork unitOfWork
+    ) =>
+        bus.OnInvoke = async message =>
+            message switch
+            {
+                OpenCampaignRunCommand open => await OpenCampaignRunHandler.Handle(
+                    open,
+                    runs,
+                    schedules,
+                    unitOfWork,
+                    CancellationToken.None
+                ),
+                ApplyCampaignRunFundingCommand apply => await ApplyCampaignRunFundingHandler.Handle(
+                    apply,
+                    runs,
+                    campaigns,
+                    schedules,
+                    new FakeSenderProfileRepository(),
+                    unitOfWork,
+                    bus,
+                    NullLogger<CampaignRun>.Instance,
+                    CancellationToken.None
+                ),
+                SkipScheduledSlotCommand skip => await SkipScheduledSlotHandler.Handle(
+                    skip,
+                    schedules,
+                    unitOfWork,
+                    CancellationToken.None
+                ),
+                _ => throw new NotSupportedException(message.GetType().Name),
+            };
 }
 
 internal sealed class FakeSenderProfileRepository : ISenderProfileRepository

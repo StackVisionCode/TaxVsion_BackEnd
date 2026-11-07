@@ -1,3 +1,4 @@
+using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Sync;
@@ -27,7 +28,8 @@ public class StartMailboxResyncHandlerTests
         FakeMessageBus bus,
         DateTime fromUtc,
         DateTime toUtc,
-        Guid? tenantId = null
+        Guid? tenantId = null,
+        IUnitOfWork? unitOfWork = null
     )
     {
         var accounts = new FakeTenantEmailAccountRepository();
@@ -38,7 +40,7 @@ public class StartMailboxResyncHandlerTests
             new StartMailboxResyncCommand(tenantId ?? TenantId, account.Id, fromUtc, toUtc),
             accounts,
             MailboxResyncLimits.Default,
-            new FakeUnitOfWork(),
+            unitOfWork ?? new FakeUnitOfWork(),
             bus,
             correlation,
             NullLogger.Instance,
@@ -103,5 +105,24 @@ public class StartMailboxResyncHandlerTests
 
         Assert.Equal("TenantEmailAccount.NotFound", result.Error.Code);
         Assert.Empty(bus.Published);
+    }
+
+    // BB-14: hoy el guardado no tiene cambios pendientes, pero el orden no debe depender de eso.
+    [Fact]
+    public async Task Start_WhenSaveFails_QueuesNothing()
+    {
+        var bus = new FakeMessageBus();
+
+        await Assert.ThrowsAsync<TimeoutException>(
+            () => RunAsync(CreateActiveAccount(), bus, Now.AddDays(-1), Now, unitOfWork: new FailingUnitOfWork())
+        );
+
+        Assert.Empty(bus.Published);
+    }
+
+    private sealed class FailingUnitOfWork : IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+            throw new TimeoutException("Simulated SQL timeout.");
     }
 }

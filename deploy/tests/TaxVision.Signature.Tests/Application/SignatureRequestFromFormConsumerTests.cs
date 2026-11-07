@@ -334,6 +334,12 @@ public sealed class SignatureRequestFromFormConsumerTests
 
     private sealed class FailingLookup(string errorCode) : ISignatureCloudStorageClient
     {
+        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
+            Guid tenantId,
+            SignatureFileUpload upload,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<Result<SignatureFileMetadata>> GetFileAsync(
             Guid tenantId,
             Guid id,
@@ -418,6 +424,12 @@ public sealed class SignatureRequestFromFormConsumerTests
 
     private sealed class ConfiguredStorage(Guid fileId, SignatureFileMetadata metadata) : ISignatureCloudStorageClient
     {
+        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
+            Guid tenantId,
+            SignatureFileUpload upload,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
             throw new NotImplementedException();
 

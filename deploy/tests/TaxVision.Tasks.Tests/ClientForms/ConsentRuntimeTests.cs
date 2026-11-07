@@ -581,6 +581,13 @@ public sealed class ConsentRuntimeTests
 
     private sealed class NoIntakeLinks : IFormIntakeLinkRepository
     {
+        public Task<bool> TryConsumeDailyIntakeAsync(
+            Guid tenantId,
+            DateTime nowUtc,
+            int maxPerDay,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
+
         public Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default) =>
             Task.FromResult<FormIntakeLink?>(null);
 

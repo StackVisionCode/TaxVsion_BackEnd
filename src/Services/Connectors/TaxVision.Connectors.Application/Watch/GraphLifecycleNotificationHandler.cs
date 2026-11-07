@@ -5,6 +5,7 @@ using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Watch;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Watch;
 
@@ -14,6 +15,8 @@ namespace TaxVision.Connectors.Application.Watch;
 /// </summary>
 public static class GraphLifecycleNotificationHandler
 {
+    // CON-12: renovar llama a Graph. El servicio guarda por su cuenta, igual que en WatchRenewalJob.
+    [NonTransactional]
     public static async Task Handle(
         GraphLifecycleNotificationReceived message,
         IProviderWatchSubscriptionRepository subscriptionRepository,

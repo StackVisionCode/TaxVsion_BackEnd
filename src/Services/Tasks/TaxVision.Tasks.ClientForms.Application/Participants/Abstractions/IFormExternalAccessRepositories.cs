@@ -18,6 +18,18 @@ public interface IFormParticipantRepository
 public interface IFormIntakeLinkRepository
 {
     Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
+
+    /// <summary>
+    /// TSK-6: toma un cupo del día de forma atómica; false si ya no quedan. Corre en la transacción de quien llama:
+    /// si esa transacción se revierte, el cupo vuelve.
+    /// </summary>
+    Task<bool> TryConsumeDailyIntakeAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        int maxPerDay,
+        CancellationToken ct = default
+    );
+
     Task<FormIntakeLink?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default);
     Task<IReadOnlyList<FormIntakeLink>> ListAsync(Guid tenantId, CancellationToken ct = default);
 

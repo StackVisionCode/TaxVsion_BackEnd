@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Notes.Infrastructure.Jobs;
+using Wolverine;
 
 namespace TaxVision.Notes.Tests.Integration;
 
@@ -42,6 +43,9 @@ public sealed class NotesApiFactory : WebApplicationFactory<Program>
         // Los jobs llaman a Customer y CloudStorage reales con datos de la base local: no en pruebas.
         builder.ConfigureTestServices(services =>
         {
+            // Sin Rabbit: la cola notes-events es la de la flota y este host le quitaría mensajes.
+            services.DisableAllExternalWolverineTransports();
+
             Type[] jobs =
             [
                 typeof(CustomerDirectoryReconciliationJob),

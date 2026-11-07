@@ -59,6 +59,17 @@ public static class DependencyInjection
         services.AddSingleton<Scheduling.IDistributedLockFactory, Scheduling.RedisDistributedLockFactory>();
         services.AddHostedService<Scheduling.ExpireStaleReservationsJob>();
 
+        // WAL-6 — intentos de una reserva o liquidación que choca con otra del mismo monedero.
+        services
+            .AddOptions<TaxVision.Wallet.Application.Reservations.ReservationConflictRetryOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.Wallet.Application.Reservations.ReservationConflictRetryOptions.SectionName
+                )
+            )
+            .Validate(o => o.MaxAttempts > 0, "Wallet:ReservationConflictRetry:MaxAttempts must be positive.")
+            .ValidateOnStart();
+
         // SEC-M1.C — signer HMAC compartido con PaymentApp. Secret vive en env var
         // PurchaseIntentAmountSignature__Secret (misma en Wallet y PaymentApp).
         services.AddPurchaseIntentAmountSigning(configuration);

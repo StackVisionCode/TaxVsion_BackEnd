@@ -27,6 +27,9 @@ public interface IWalletRepository
 
     Task<WalletTopUp?> GetTopUpAsync(Guid tenantId, Guid topUpId, CancellationToken ct = default);
 
+    /// <summary>Lectura sin seguimiento, para el paso que llama a PaymentApp fuera de la transacción.</summary>
+    Task<WalletTopUp?> GetTopUpReadOnlyAsync(Guid tenantId, Guid topUpId, CancellationToken ct = default);
+
     /// <summary>¿Ya se acreditó este pago? Dedupe por <c>(SourceService, SaaSPaymentId)</c>.</summary>
     Task<bool> FundingCreditExistsAsync(string sourceService, Guid saaSPaymentId, CancellationToken ct = default);
 

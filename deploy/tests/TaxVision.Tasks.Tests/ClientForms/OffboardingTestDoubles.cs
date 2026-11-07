@@ -89,6 +89,13 @@ internal sealed class OffboardingAuthorizer(IEnumerable<Guid>? denied = null) : 
 
 internal sealed class OffboardingIntakeLinks(params FormIntakeLink[] seed) : IFormIntakeLinkRepository
 {
+    public Task<bool> TryConsumeDailyIntakeAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        int maxPerDay,
+        CancellationToken ct = default
+    ) => Task.FromResult(true);
+
     internal List<FormIntakeLink> Items { get; } = [.. seed];
 
     public Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default) =>

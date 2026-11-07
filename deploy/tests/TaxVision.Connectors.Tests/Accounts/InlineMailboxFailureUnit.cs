@@ -8,6 +8,7 @@ namespace TaxVision.Connectors.Tests.Accounts;
 internal sealed class InlineMailboxFailureUnit(
     ITenantEmailAccountRepository accounts,
     IProviderWatchSubscriptionRepository subscriptions,
+    IOAuthConnectionRepository connections,
     IUnitOfWork unitOfWork
 ) : IMailboxFailureUnit
 {
@@ -16,7 +17,7 @@ internal sealed class InlineMailboxFailureUnit(
         CancellationToken ct = default
     )
     {
-        if (await work(new MailboxFailureStores(accounts, subscriptions), ct))
+        if (await work(new MailboxFailureStores(accounts, subscriptions, connections), ct))
             await unitOfWork.SaveChangesAsync(ct);
     }
 }

@@ -8,6 +8,9 @@ internal sealed class CapturingMessageBus : IMessageBus
     public List<object> Published { get; } = [];
     public string? TenantId { get; set; }
 
+    /// <summary>Enruta <c>InvokeAsync</c> a un handler real, como haría Wolverine.</summary>
+    public Func<object, CancellationToken, Task<object?>>? OnInvoke { get; set; }
+
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
         if (message is not null)
@@ -54,7 +57,7 @@ internal sealed class CapturingMessageBus : IMessageBus
     ) => throw new NotSupportedException();
 
     public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotSupportedException();
+        OnInvoke is null ? throw new NotSupportedException() : InvokeRoutedAsync<T>(message, cancellation);
 
     public Task<T> InvokeAsync<T>(
         object message,
@@ -62,6 +65,9 @@ internal sealed class CapturingMessageBus : IMessageBus
         CancellationToken cancellation = default,
         TimeSpan? timeout = null
     ) => throw new NotSupportedException();
+
+    private async Task<T> InvokeRoutedAsync<T>(object message, CancellationToken cancellation) =>
+        (T)(await OnInvoke!(message, cancellation))!;
 
     public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(
         object message,

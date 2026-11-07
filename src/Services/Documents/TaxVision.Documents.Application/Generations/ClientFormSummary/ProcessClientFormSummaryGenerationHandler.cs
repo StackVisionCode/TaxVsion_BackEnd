@@ -135,47 +135,40 @@ public static class ProcessClientFormSummaryGenerationHandler
                 }
             );
 
-            var save = await storageClient.RequestSaveAsync(
-                tenantId: command.TenantId,
-                fileId: fileId,
-                content: pdf.Value,
-                fileName: fileName,
-                contentType: PdfContentType,
-                ownerType: generation.Owner.OwnerType,
-                ownerId: generation.Owner.OwnerId,
-                folderType: FolderTypeClientForms,
-                taxYear: command.TaxYear,
-                actorId: command.TenantId,
-                correlationId: correlationId,
-                ct: ct
-            );
-
-            if (save.IsFailure)
+            var upload = await storageClient.UploadAsync(fileId, pdf.Value, fileName, PdfContentType, ct);
+            if (upload.IsFailure)
             {
-                await FailAsync(generation, save.Error, unitOfWork, bus, correlationId, now, logger, ct);
+                await FailAsync(generation, upload.Error, unitOfWork, bus, correlationId, now, logger, ct);
                 return;
             }
+
+            await bus.RequestSaveAsync(
+                upload.Value,
+                new GeneratedFileDestination(
+                    command.TenantId,
+                    fileName,
+                    generation.Owner.OwnerType,
+                    generation.Owner.OwnerId,
+                    FolderTypeClientForms,
+                    command.TaxYear,
+                    command.TenantId,
+                    correlationId
+                )
+            );
 
             // P-18: segunda copia del mismo PDF para Signature (owner/carpeta de firma), con su propio FileId.
             if (command.SignatureCopy is { } signatureCopy)
             {
                 var signatureFileId = Guid.NewGuid();
-                var copySave = await storageClient.RequestSaveAsync(
-                    tenantId: command.TenantId,
-                    fileId: signatureFileId,
-                    content: pdf.Value,
-                    fileName: fileName,
-                    contentType: PdfContentType,
-                    ownerType: signatureCopy.OwnerType,
-                    ownerId: generation.Owner.OwnerId,
-                    folderType: signatureCopy.FolderType,
-                    taxYear: signatureCopy.TaxYear ?? command.TaxYear,
-                    actorId: command.TenantId,
-                    correlationId: correlationId,
-                    ct: ct
+                var copyUpload = await storageClient.UploadAsync(
+                    signatureFileId,
+                    pdf.Value,
+                    fileName,
+                    PdfContentType,
+                    ct
                 );
 
-                if (copySave.IsSuccess)
+                if (copyUpload.IsSuccess)
                 {
                     // Sólo se anuncia la copia si quedó subida: así Tasks nunca pide firmar un archivo inexistente.
                     var anchorPage = ResolveAnchorPage(pageCounter, pdf.Value, logger);
@@ -186,13 +179,26 @@ public static class ProcessClientFormSummaryGenerationHandler
                         signatureCopy.FolderType
                     );
                     await unitOfWork.SaveChangesAsync(ct);
+                    await bus.RequestSaveAsync(
+                        copyUpload.Value,
+                        new GeneratedFileDestination(
+                            command.TenantId,
+                            fileName,
+                            signatureCopy.OwnerType,
+                            generation.Owner.OwnerId,
+                            signatureCopy.FolderType,
+                            signatureCopy.TaxYear ?? command.TaxYear,
+                            command.TenantId,
+                            correlationId
+                        )
+                    );
                 }
                 else
                 {
                     logger.LogWarning(
                         "Client form summary {GenerationId}: signature copy could not be saved: {Code}.",
                         generation.Id,
-                        copySave.Error.Code
+                        copyUpload.Error.Code
                     );
                 }
             }

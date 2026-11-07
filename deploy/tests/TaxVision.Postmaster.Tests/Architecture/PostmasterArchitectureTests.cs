@@ -369,6 +369,38 @@ public sealed class PostmasterArchitectureTests
         Assert.True(violations.Count == 0, "Handlers that send inside a transaction: " + string.Join(", ", violations));
     }
 
+    // PMS-06: el poll a SMTP2GO no puede correr con la transacción abierta. Se busca en el fuente porque el poller
+    // llega por IDeliveryFeedbackCapabilities, que los handlers de push también usan para traducir.
+    [Fact]
+    public void Pollers_are_not_used_by_transactional_handlers()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "TaxVision.slnx")))
+            root = root.Parent;
+        Assert.NotNull(root);
+
+        var application = Path.Combine(
+            root.FullName,
+            "src",
+            "Services",
+            "Postmaster",
+            "TaxVision.Postmaster.Application"
+        );
+        string[] pollerCalls = ["FindPoller(", "FindEngagementPoller(", ".PollAsync(", ".PollEngagementAsync("];
+        var violations = Directory
+            .EnumerateFiles(application, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .Where(path =>
+            {
+                var source = File.ReadAllText(path);
+                return source.Contains("IUnitOfWork") && pollerCalls.Any(source.Contains);
+            })
+            .Select(Path.GetFileName)
+            .ToList();
+
+        Assert.True(violations.Count == 0, "Transactional handlers that poll: " + string.Join(", ", violations));
+    }
+
     private static string Describe(TestResult result) =>
         result.FailingTypes is null
             ? "Unknown architecture violation."

@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quartz;
@@ -31,6 +32,8 @@ internal sealed class ReminderFireJob(
     ILogger<ReminderFireJob> logger
 ) : IJob
 {
+    private const string ConcurrencyConflictCode = "Persistence.ConcurrencyConflict";
+
     internal static readonly JobKey Key = new("reminder-fire", "reminder");
 
     public async Task Execute(IJobExecutionContext context)
@@ -51,9 +54,19 @@ internal sealed class ReminderFireJob(
             return;
         }
 
-        await bus.InvokeAsync(
-            new FireReminderCommand(tenantId, reminderId, options.Value.MisfireGrace),
-            context.CancellationToken
-        );
+        try
+        {
+            await bus.InvokeAsync(
+                new FireReminderCommand(tenantId, reminderId, options.Value.MisfireGrace),
+                context.CancellationToken
+            );
+        }
+        catch (ConflictException ex)
+            when (ex.Code == ConcurrencyConflictCode && context.RefireCount < options.Value.FireConflictRefires)
+        {
+            // Otra edición ganó y el trigger es de un solo disparo: se relee ya. Pasado el tope lo repara la reconciliación.
+            logger.LogInformation("Reminder {ReminderId} changed while firing; firing it again.", reminderId);
+            throw new JobExecutionException(ex, refireImmediately: true);
+        }
     }
 }

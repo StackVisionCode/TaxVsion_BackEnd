@@ -50,6 +50,42 @@ public sealed class TenantUpdatedConsumerTests
     }
 
     [Fact]
+    public async Task An_older_version_is_ignored_even_with_a_newer_clock()
+    {
+        var tenant = RegisterTenant();
+        var registry = new SingleTenantRegistry(tenant);
+        var unitOfWork = new CountingUnitOfWork();
+
+        await HandleAsync(Event(tenant.Id, "Newest", "America/Chicago", T0, version: 6), registry, unitOfWork);
+        await HandleAsync(
+            Event(tenant.Id, "Older", "America/Denver", T0.AddSeconds(1), version: 5),
+            registry,
+            unitOfWork
+        );
+
+        Assert.Equal("Newest", tenant.Name);
+        Assert.Equal("America/Chicago", tenant.DefaultTimeZoneId);
+        Assert.Equal(1, unitOfWork.SaveCalls);
+    }
+
+    [Fact]
+    public async Task A_newer_version_is_applied_even_with_an_older_clock()
+    {
+        var tenant = RegisterTenant();
+        var registry = new SingleTenantRegistry(tenant);
+        var unitOfWork = new CountingUnitOfWork();
+
+        await HandleAsync(Event(tenant.Id, "First", "America/Chicago", T0, version: 5), registry, unitOfWork);
+        await HandleAsync(
+            Event(tenant.Id, "Second", "America/Denver", T0.AddSeconds(-1), version: 6),
+            registry,
+            unitOfWork
+        );
+
+        Assert.Equal("Second", tenant.Name);
+    }
+
+    [Fact]
     public async Task An_invalid_time_zone_changes_nothing()
     {
         var tenant = RegisterTenant();
@@ -86,7 +122,13 @@ public sealed class TenantUpdatedConsumerTests
             .Register(Guid.NewGuid(), "Acme Tax Office", "acme-tax", TenantKind.Customer, "Etc/UTC", T0.AddDays(-1))
             .Value;
 
-    private static TenantUpdatedIntegrationEvent Event(Guid tenantId, string name, string zone, DateTime at) =>
+    private static TenantUpdatedIntegrationEvent Event(
+        Guid tenantId,
+        string name,
+        string zone,
+        DateTime at,
+        long? version = null
+    ) =>
         new()
         {
             TenantId = tenantId,
@@ -94,6 +136,7 @@ public sealed class TenantUpdatedConsumerTests
             Name = name,
             DefaultTimeZoneId = zone,
             UpdatedAtUtc = at,
+            TenantVersion = version,
         };
 
     private sealed class SingleTenantRegistry(Tenant? tenant) : ITenantRegistry
@@ -116,6 +159,7 @@ public sealed class TenantUpdatedConsumerTests
             string status,
             bool isActive,
             DateTime nowUtc,
+            long? tenantVersion,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

@@ -28,6 +28,7 @@ public static class CompleteTaskHandler
         ITaskHierarchyService hierarchy,
         ITaskSeriesMaterializer seriesMaterializer,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ITaskMetrics metrics,
         CancellationToken ct
     )
@@ -45,10 +46,15 @@ public static class CompleteTaskHandler
         if (completed.IsFailure)
             return Result.Failure<TaskResponse>(completed.Error);
 
-        if (wasOpen)
-            await CascadeAsync(command, task, unblocking, hierarchy, seriesMaterializer, ct);
+        IReadOnlyList<TaskUnblockedIntegrationEvent> unblocked = wasOpen
+            ? await CascadeAsync(command, task, unblocking, hierarchy, seriesMaterializer, ct)
+            : [];
 
         await unitOfWork.SaveChangesAsync(ct);
+
+        foreach (var notice in unblocked)
+            await bus.PublishAsync(notice);
+
         metrics.RecordCompleted(task.Reference.CustomerId is not null);
         metrics.RecordTimeToCompleteSeconds((DateTime.UtcNow - task.CreatedAtUtc).TotalSeconds);
         return Result.Success(TaskResponse.From(task));
@@ -59,7 +65,7 @@ public static class CompleteTaskHandler
     /// la siguiente ocurrencia de la serie. Los avisos los devuelve TaskCompletedDomainEventHandler. Sólo la
     /// primera vez.
     /// </summary>
-    private static async Task CascadeAsync(
+    private static async Task<IReadOnlyList<TaskUnblockedIntegrationEvent>> CascadeAsync(
         CompleteTaskCommand command,
         TaskItem task,
         ITaskUnblockingService unblocking,
@@ -68,9 +74,10 @@ public static class CompleteTaskHandler
         CancellationToken ct
     )
     {
-        await unblocking.ApplyPredecessorClosedAsync(command.TenantId, task.Id, ct);
+        var unblocked = await unblocking.ApplyPredecessorClosedAsync(command.TenantId, task.Id, ct);
         await hierarchy.ApplyChildClosedAsync(command.TenantId, task.ParentTaskId, ct);
 
         await seriesMaterializer.ApplyInstanceClosedAsync(task, task.CompletedAtUtc, ct);
+        return unblocked;
     }
 }

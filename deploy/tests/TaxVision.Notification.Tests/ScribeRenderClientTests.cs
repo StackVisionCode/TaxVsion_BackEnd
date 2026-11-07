@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Infrastructure.Scribe;
@@ -31,6 +33,20 @@ public sealed class ScribeRenderClientTests
     {
         public Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<string?>("fake-m2m-token");
+    }
+
+    [Fact]
+    public void Http_client_has_a_short_timeout()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IServiceTokenAcquirer, FakeTokenAcquirer>();
+        services.AddLogging();
+        services.AddScribeRenderClient(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IScribeRenderClient));
+
+        Assert.Equal(TimeSpan.FromSeconds(10), client.Timeout);
     }
 
     [Fact]

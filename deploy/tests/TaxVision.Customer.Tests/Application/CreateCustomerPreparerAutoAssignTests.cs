@@ -127,6 +127,7 @@ public sealed class CreateCustomerPreparerAutoAssignTests
             repo,
             new NoDuplicates(),
             new SingleEntryDirectory(entry),
+            new CustomerFormCreationHarness.CreationLock([]),
             new NoOpUnitOfWork(),
             bus,
             new FixedCorrelation(),

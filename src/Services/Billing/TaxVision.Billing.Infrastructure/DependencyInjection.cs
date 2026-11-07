@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<IIssuerProfileRepository, IssuerProfileRepository>();
         services.AddScoped<ITenantBillingSettingsRepository, TenantBillingSettingsRepository>();
         services.AddScoped<IInvoiceNumberSequenceRepository, InvoiceNumberSequenceRepository>();
+        services.AddScoped<IOnboardingTenantMapRepository, OnboardingTenantMapRepository>();
         services.AddScoped<IPaymentReceiptRepository, PaymentReceiptRepository>();
         services.AddScoped<IUnappliedPaymentRepository, UnappliedPaymentRepository>();
         services.AddSingleton<TimeProvider>(TimeProvider.System);

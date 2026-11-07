@@ -100,6 +100,9 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("LastProviderEventAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("OnboardingStep")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -115,6 +118,12 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)")
                         .HasColumnName("RequirementsCurrentlyDue");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -668,6 +677,12 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<string>("SecretKeyEncrypted")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("SecretKeyEncrypted");
@@ -789,6 +804,10 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ChargeMethodReference")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
                     b.Property<DateTime?>("ChargedBackAtUtc")
                         .HasColumnType("datetime2");
 
@@ -877,6 +896,10 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_TenantPayments_Status_NextRetry")
                         .HasFilter("[Status] = 'Failed' AND [NextRetryAtUtc] IS NOT NULL");
 
+                    b.HasIndex("ProviderChargeReferenceOnConnect")
+                        .HasDatabaseName("IX_TenantPayments_ProviderChargeReferenceOnConnect")
+                        .HasFilter("[ProviderChargeReferenceOnConnect] IS NOT NULL");
+
                     b.HasIndex("TenantId", "IdempotencyKey")
                         .IsUnique()
                         .HasDatabaseName("UX_TenantPayments_TenantId_IdempotencyKey");
@@ -947,6 +970,12 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<long?>("LastProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("LastStatusVersion")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Name")
                         .IsRequired()

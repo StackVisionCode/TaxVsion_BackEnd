@@ -399,6 +399,12 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<long>("SourceVersion")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint")
@@ -424,6 +430,22 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("IssuerProfiles", "billing");
+                });
+
+            modelBuilder.Entity("TaxVision.Billing.Domain.Invoices.OnboardingTenantMap", b =>
+                {
+                    b.Property<Guid>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("OnboardingId");
+
+                    b.ToTable("OnboardingTenantMaps", "billing");
                 });
 
             modelBuilder.Entity("TaxVision.Billing.Domain.Numbering.InvoiceNumberSequence", b =>

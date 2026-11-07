@@ -50,7 +50,8 @@ public sealed class DeliveryFeedbackReconciliationJob(
             now.AddHours(-settings.GiveUpAfterHours),
             now.AddHours(-settings.ReconcileAfterHours),
             settings.MaxRecipientsPerRun,
-            now
+            now,
+            settings.ApplyBatchSize
         );
 
     /// <summary>Null = apagado: las aperturas y clics llegan solo por el webhook.</summary>
@@ -63,7 +64,8 @@ public sealed class DeliveryFeedbackReconciliationJob(
                 now.AddHours(-settings.EngagementLookbackHours),
                 now,
                 settings.MaxEngagementEventsPerRun,
-                now
+                now,
+                settings.ApplyBatchSize
             )
             : null;
 

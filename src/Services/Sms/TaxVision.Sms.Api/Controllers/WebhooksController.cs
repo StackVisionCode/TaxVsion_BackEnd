@@ -4,8 +4,11 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using TaxVision.Sms.Api.RateLimiting;
+using TaxVision.Sms.Application;
 using TaxVision.Sms.Application.Providers;
+using TaxVision.Sms.Application.Webhooks;
 using TaxVision.Sms.Application.Webhooks.Commands;
 using Wolverine;
 
@@ -20,7 +23,8 @@ namespace TaxVision.Sms.Api.Controllers;
 [Route("sms/webhooks")]
 [AllowAnonymous]
 [EnableRateLimiting(SmsWebhookRateLimiting.PolicyName)]
-public sealed class WebhooksController(IMessageBus bus, ISmsAdapterFactory adapters) : ControllerBase
+public sealed class WebhooksController(IMessageBus bus, ISmsAdapterFactory adapters, IOptions<SmsOptions> options)
+    : ControllerBase
 {
     private const string AnonymousExemptReason =
         "Anónimo: [RateLimit] particiona por tenant/usuario y quedaría abierto. Lo limita el limiter nativo por IP.";
@@ -33,9 +37,12 @@ public sealed class WebhooksController(IMessageBus bus, ISmsAdapterFactory adapt
         if (!adapters.TryResolve(provider, out _))
             return NotFound(SmsWebhookErrors.UnknownProvider);
         var rawBody = await ReadBodyAsync(ct);
-        var result = await bus.InvokeAsync<Result>(
-            new ProcessDeliveryReceiptCommand(provider, rawBody, ReadSignature(), BuildPublicUrl()),
-            ct
+        var command = new ProcessDeliveryReceiptCommand(provider, rawBody, ReadSignature(), BuildPublicUrl());
+
+        // No todos los proveedores reenvían un DLR rechazado: un choque con la conciliación se resuelve aquí.
+        var result = await SmsConflictRetry.InvokeAsync(
+            () => bus.InvokeAsync<Result>(command, ct),
+            options.Value.ConflictRetryAttempts
         );
         return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

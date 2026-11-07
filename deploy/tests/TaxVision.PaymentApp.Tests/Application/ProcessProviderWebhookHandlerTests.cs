@@ -734,6 +734,12 @@ public sealed class ProcessProviderWebhookHandlerTests
             CancellationToken ct
         ) => throw new NotSupportedException();
 
+        public Task<Result<ChargeLookup>> FindChargeAsync(
+            Guid saaSPaymentId,
+            DateTime createdAfterUtc,
+            CancellationToken ct
+        ) => throw new NotSupportedException();
+
         public Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
             string providerChargeReference,
             CancellationToken ct
@@ -866,6 +872,12 @@ public sealed class ProcessProviderWebhookHandlerTests
 
         public Task<SaaSPayment?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<(Guid Id, Guid TenantId)>>([]);
 
         public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
             DateTime cutoffUtc,

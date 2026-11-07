@@ -36,6 +36,13 @@ public interface IIncomingEmailRepository
     /// </summary>
     Task<IncomingEmail?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>Correos de esa dirección que todavía no tienen cliente. Tracked: el caller los enlaza (COR-05).</summary>
+    Task<IReadOnlyList<IncomingEmail>> ListUnlinkedByAddressAsync(
+        Guid tenantId,
+        string fromAddress,
+        CancellationToken ct = default
+    );
+
     Task AddAsync(IncomingEmail entity, CancellationToken ct = default);
 
     /// <summary>

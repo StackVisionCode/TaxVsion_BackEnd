@@ -156,7 +156,7 @@ public sealed class TenantProfileChangedConsumerTests
         public Task<TenantProfileRef?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult(_rows.GetValueOrDefault(tenantId));
 
-        public Task UpsertAsync(
+        public Task AddIfMissingAsync(
             Guid tenantId,
             string name,
             string subDomain,

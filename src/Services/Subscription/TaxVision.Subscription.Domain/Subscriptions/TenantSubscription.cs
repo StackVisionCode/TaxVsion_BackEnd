@@ -263,7 +263,7 @@ public sealed class TenantSubscription : AggregateRoot
     /// de facturación desde hoy) o se descarta si falla (<see cref="FailUpgradeCharge"/>).
     /// Rechaza si ya hay un upgrade AwaitingPayment (evita doble cobro por un segundo submit
     /// mientras el primero está en vuelo); si había un downgrade agendado, lo cancela — un
-    /// upgrade reemplaza cualquier cambio pendiente.
+    /// upgrade reemplaza cualquier cambio pendiente. SUB-15: si no se paga, lo reemplazado vuelve.
     /// </summary>
     public Result RequestUpgrade(
         SubscriptionPlan newPlan,
@@ -273,7 +273,8 @@ public sealed class TenantSubscription : AggregateRoot
         string chargeCurrency,
         string paymentIdempotencyKey,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        bool usesHostedCheckout = false
     )
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
@@ -293,6 +294,10 @@ public sealed class TenantSubscription : AggregateRoot
             return Result.Failure(
                 new Error("PlanChangeRequest.PaymentInProgress", "A plan change payment is already being processed.")
             );
+
+        var replacedDowngradeId = FindScheduledDowngrade()?.Id;
+        var replacedCancellationAtUtc = CancelAtPeriodEnd ? CancellationScheduledAtUtc ?? nowUtc : (DateTime?)null;
+        var replacedCancellationReason = CancelAtPeriodEnd ? CancellationReason : null;
 
         var cancelDowngradeResult = CancelScheduledDowngradeIfAny(nowUtc);
         if (cancelDowngradeResult.IsFailure)
@@ -315,11 +320,17 @@ public sealed class TenantSubscription : AggregateRoot
             nowUtc,
             chargeAmountCents,
             chargeCurrency,
-            paymentIdempotencyKey
+            paymentIdempotencyKey,
+            usesHostedCheckout
         );
         if (requestResult.IsFailure)
             return Result.Failure(requestResult.Error);
 
+        requestResult.Value.RememberReplaced(
+            replacedDowngradeId,
+            replacedCancellationAtUtc,
+            replacedCancellationReason
+        );
         _planChangeRequests.Add(requestResult.Value);
         Touch(actorUserId, nowUtc);
         return Result.Success();
@@ -385,13 +396,74 @@ public sealed class TenantSubscription : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>SUB-13: libera el upgrade por redirect que se quedó sin sesión. Un off-session no se toca.</summary>
+    public Result ExpireUpgradeWithoutCheckout(Guid requestId, Guid actorUserId, DateTime nowUtc)
+    {
+        var request = FindPlanChangeRequestById(requestId);
+        if (request is null)
+            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        if (!request.IsHostedWithoutCheckout)
+            return Result.Success();
+
+        var expired = request.ExpireWithoutCheckout(nowUtc);
+        if (expired.IsFailure)
+            return expired;
+
+        RestoreReplacedSchedule(request);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>SUB-15: la sesión del upgrade venció sin pagarse. Por la raíz, para devolver lo agendado.</summary>
+    public Result ExpireUpgradeSession(Guid requestId, Guid actorUserId, DateTime nowUtc)
+    {
+        var request = FindPlanChangeRequestById(requestId);
+        if (request is null)
+            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        if (request.Status != PlanChangeRequestStatus.AwaitingPayment)
+            return Result.Success();
+
+        var expired = request.Expire(nowUtc);
+        if (expired.IsFailure || request.Status != PlanChangeRequestStatus.Expired)
+            return expired;
+
+        RestoreReplacedSchedule(request);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result FailUpgradeCharge(Guid requestId, Guid saaSPaymentId, DateTime nowUtc)
     {
         var request = FindPlanChangeRequestById(requestId);
         if (request is null)
             return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
 
-        return request.MarkPaymentFailed(saaSPaymentId, nowUtc);
+        var failed = request.MarkPaymentFailed(saaSPaymentId, nowUtc);
+        if (failed.IsFailure)
+            return failed;
+
+        RestoreReplacedSchedule(request);
+        Touch(request.RequestedByUserId, nowUtc);
+        return Result.Success();
+    }
+
+    // SUB-15: sin aviso, igual que al quitarlos. En una suscripción que ya no sigue activa no hay nada que agendar.
+    private void RestoreReplacedSchedule(PlanChangeRequest request)
+    {
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
+            return;
+
+        if (request.ReplacedCancellationAtUtc is { } scheduledAtUtc)
+        {
+            CancelAtPeriodEnd = true;
+            CancellationScheduledAtUtc = scheduledAtUtc;
+            CancellationReason = request.ReplacedCancellationReason;
+        }
+
+        if (request.ReplacedDowngradeId is { } downgradeId)
+            FindPendingDowngradeById(downgradeId)?.Reinstate(CurrentPeriodEndUtc);
     }
 
     /// <summary>
@@ -560,6 +632,7 @@ public sealed class TenantSubscription : AggregateRoot
         if (cancelled.IsFailure)
             return Result.Failure<PlanChangeRequest?>(cancelled.Error);
 
+        RestoreReplacedSchedule(awaiting);
         Touch(actorUserId, nowUtc);
         return Result.Success<PlanChangeRequest?>(awaiting);
     }

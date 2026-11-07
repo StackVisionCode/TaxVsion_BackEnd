@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using Microsoft.Extensions.Logging;
+using TaxVision.Notes.Application.Backfill;
 using TaxVision.Notes.Application.Backfill.Abstractions;
 using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Projections;
@@ -21,10 +22,10 @@ public static class CustomersBulkImportedConsumer
 {
     private const int ChunkSize = 500;
 
-    public static async Task Handle(
+    public static async Task<RunTenantCustomerBackfillCommand?> Handle(
         CustomersBulkImportedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
-        ITenantCustomerBackfillService backfill,
+        ITenantBackfillStateRepository backfillStates,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
         CancellationToken ct
@@ -36,12 +37,12 @@ public static class CustomersBulkImportedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            var backfill = await RunTenantCustomerBackfillCommand.IfMissingAsync(evt.TenantId, backfillStates, ct);
 
             var customerIds = evt.CreatedCustomerIds.Concat(evt.UpdatedCustomerIds).Distinct().ToArray();
 
             if (customerIds.Length == 0)
-                return;
+                return backfill;
 
             foreach (var chunk in customerIds.Chunk(ChunkSize))
                 await repository.UpsertBulkAsync(evt.TenantId, chunk, evt.CompletedAtUtc, ct);
@@ -52,6 +53,7 @@ public static class CustomersBulkImportedConsumer
                 evt.ImportJobId,
                 customerIds.Length
             );
+            return backfill;
         }
     }
 }

@@ -56,6 +56,7 @@ public sealed class CampaignScheduleRepositoryIntegrationTests : IAsyncLifetime
         var overdue = await ReadAsync(db, _overdue.Id);
         Assert.Null(overdue.ActiveRunId);
         Assert.Equal(ScheduleStatus.Paused, overdue.Status);
+        Assert.Equal(SchedulePauseReason.MissedSlot, overdue.PauseReason);
 
         var future = await ReadAsync(db, _future.Id);
         Assert.Null(future.ActiveRunId);

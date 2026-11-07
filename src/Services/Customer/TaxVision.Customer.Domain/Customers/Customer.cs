@@ -68,6 +68,9 @@ public sealed class Customer : AggregateRoot
     [UserReference(UserReferenceKind.Provenance)]
     public Guid? ArchivedByUserId { get; private set; }
 
+    /// <summary>Concurrencia optimista: todo cambio en hijos pasa por <c>Touch</c> para que salte.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public CustomerOrigin? Origin =>
         _originSourceReferenceId is { } referenceId
             ? CustomerOrigin.Create(_originSourceService!, referenceId).Value
@@ -552,6 +555,40 @@ public sealed class Customer : AggregateRoot
         _relations.Remove(existing);
         Touch(byUserId);
         return Result.Success();
+    }
+
+    /// <summary>Perfil fiscal de una relación: pasa por la raíz para que su RowVersion salte.</summary>
+    public Result SetRelationFiscalProfile(
+        Guid relationId,
+        TaxRelationshipRole role,
+        byte[] taxIdentifierCipher,
+        string taxIdentifierBlindIndex,
+        string taxIdentifierLast4,
+        int taxYear,
+        bool qualifiesAsDependent,
+        bool livedWithTaxpayer,
+        Guid byUserId,
+        short taxIdentifierKeyVersion = 1
+    )
+    {
+        var existing = _relations.FirstOrDefault(r => r.Id == relationId);
+        if (existing is null)
+            return Result.Failure(new Error("Customer.RelationNotFound", "Relation not found."));
+
+        var result = existing.SetFiscalProfile(
+            role,
+            taxIdentifierCipher,
+            taxIdentifierBlindIndex,
+            taxIdentifierLast4,
+            taxYear,
+            qualifiesAsDependent,
+            livedWithTaxpayer,
+            byUserId,
+            taxIdentifierKeyVersion
+        );
+        if (result.IsSuccess)
+            Touch(byUserId);
+        return result;
     }
 
     // ============== Fiscal profile ==============

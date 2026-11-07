@@ -165,6 +165,16 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(SealingReconciliationOptions.SectionName));
         services.TryAddSingleton(TimeProvider.System);
         services.AddHostedService<SealingReconciliationScheduler>();
+        // SIG-1 — intentos de firmar, verificar el PIN o rechazar cuando chocan con otra escritura.
+        services
+            .AddOptions<TaxVision.Signature.Application.Requests.Public.PublicSigningConflictRetryOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.Signature.Application.Requests.Public.PublicSigningConflictRetryOptions.SectionName
+                )
+            )
+            .Validate(o => o.MaxAttempts > 0, "Signature:PublicConflictRetry:MaxAttempts must be positive.")
+            .ValidateOnStart();
 
         // Distributed lock + cache (Redis). Si no hay connection string se degrada a no-op.
         var redisConnectionString = configuration.GetConnectionString("Redis");

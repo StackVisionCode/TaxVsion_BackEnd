@@ -32,7 +32,13 @@ public sealed class CloudStorageOptions
     // Rescate de escaneos atascados (CST-1).
     public bool StuckScanRescueEnabled { get; set; } = true;
 
-    /// <summary>Antigüedad mínima en PendingScan/Scanning; mayor que el peor vaciado de la cola en serie.</summary>
+    /// <summary>
+    /// Escaneos a la vez en esta instancia (CST-16). Cada uno ocupa una conexión de ClamAV, un archivo temporal
+    /// y un turno de ContentScanner: no conviene pasar de su <c>MaxConcurrentScans</c>.
+    /// </summary>
+    public int ScanParallelism { get; set; } = 2;
+
+    /// <summary>Antigüedad mínima en PendingScan/Scanning; mayor que el peor vaciado de la cola.</summary>
     public int StuckScanThresholdMinutes { get; set; } = 120;
 
     public int StuckScanRescueIntervalMinutes { get; set; } = 15;

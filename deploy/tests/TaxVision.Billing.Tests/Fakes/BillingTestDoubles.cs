@@ -166,6 +166,21 @@ internal sealed class RecordingBillingMetrics : IBillingMetrics
     public void RecordStockSyncInsufficient() => StockSyncInsufficient++;
 }
 
+/// <summary>Mapa onboarding → tenant en memoria.</summary>
+internal sealed class InMemoryOnboardingTenantMapRepository : IOnboardingTenantMapRepository
+{
+    public Dictionary<Guid, Guid> Rows { get; } = [];
+
+    public Task UpsertAsync(Guid onboardingId, Guid tenantId, DateTime nowUtc, CancellationToken ct = default)
+    {
+        Rows[onboardingId] = tenantId;
+        return Task.CompletedTask;
+    }
+
+    public Task<Guid?> FindTenantIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+        Task.FromResult(Rows.TryGetValue(onboardingId, out var tenantId) ? tenantId : (Guid?)null);
+}
+
 /// <summary>Facturas en memoria por Id.</summary>
 internal sealed class InMemoryInvoiceRepository(params Invoice[] seed) : IInvoiceRepository
 {
@@ -179,7 +194,10 @@ internal sealed class InMemoryInvoiceRepository(params Invoice[] seed) : IInvoic
     ) => Task.FromResult(Rows.FirstOrDefault(i => i.Id == invoiceId));
 
     public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
-        Task.FromResult<Invoice?>(null);
+        Task.FromResult(Rows.FirstOrDefault(i => i.OnboardingId == onboardingId));
+
+    public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
+        Task.FromResult(Rows.FirstOrDefault(i => i.Id == invoiceId && i.OnboardingId is not null));
 
     public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
         Guid tenantId,

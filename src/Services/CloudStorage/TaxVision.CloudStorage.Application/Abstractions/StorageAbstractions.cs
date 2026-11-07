@@ -27,6 +27,12 @@ public interface IFileObjectRepository
     Task<FileObject?> GetForUpdateAsync(Guid tenantId, Guid fileId, CancellationToken ct);
 
     /// <summary>
+    /// Pide el turno exclusivo para escanear el archivo hasta el fin de la transacción en curso, sin
+    /// tocar su fila: un borrado no espera al antivirus. False si otro escaneo lo tiene.
+    /// </summary>
+    Task<bool> TryClaimScanAsync(Guid fileId, CancellationToken ct);
+
+    /// <summary>
     /// Listado plano del tenant (sin la papelera). <paramref name="restrictedCustomerId"/> es el
     /// limite de seguridad del portal de cliente (siempre aplicado si viene, nunca opcional);
     /// ownerType/ownerId son un filtro adicional solo para staff interno — cuando el caller es
@@ -181,6 +187,9 @@ public interface IFolderRepository
     void Remove(Folder folder);
     Task<Folder?> GetAsync(Guid tenantId, Guid folderId, CancellationToken ct);
 
+    /// <summary>Lee la carpeta bloqueando la fila hasta el commit. Exige una transacción abierta.</summary>
+    Task<Folder?> GetForUpdateAsync(Guid tenantId, Guid folderId, CancellationToken ct);
+
     /// <summary>
     /// Subcarpetas directas de parentFolderId (null = raiz del owner). Ver nota de
     /// ownerType/ownerId en <see cref="IFileObjectRepository.ListInFolderAsync"/> — mismo
@@ -233,6 +242,16 @@ public interface IFolderRepository
         OwnerType ownerType,
         Guid? ownerId,
         Guid? excludeFolderId,
+        CancellationToken ct
+    );
+
+    /// <summary>La carpeta viva con ese nombre bajo ese padre y dueño: la ganadora de una carrera de alta.</summary>
+    Task<Folder?> GetByNameUnderParentAsync(
+        Guid tenantId,
+        Guid? parentFolderId,
+        string name,
+        OwnerType ownerType,
+        Guid? ownerId,
         CancellationToken ct
     );
 

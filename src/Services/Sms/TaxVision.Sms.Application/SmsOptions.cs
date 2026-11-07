@@ -19,6 +19,9 @@ public sealed class SmsOptions
     /// <summary>Tope de mensajes por request de lote.</summary>
     public int MaxBatchSize { get; set; } = 1000;
 
+    /// <summary>Intentos de una escritura que choca con otra sobre el mismo mensaje (cada uno relee la fila).</summary>
+    public int ConflictRetryAttempts { get; set; } = 3;
+
     /// <summary>Reconciliación de estado por pull (backstop de los DLR por webhook).</summary>
     public SmsReconciliationOptions Reconciliation { get; set; } = new();
 }
@@ -44,4 +47,10 @@ public sealed class SmsReconciliationOptions
 
     /// <summary>Un resultado desconocido sin confirmación más viejo que esto se cierra sin cobro (TTL de la reserva).</summary>
     public int OutcomeUnknownTimeoutMinutes { get; set; } = 60;
+
+    /// <summary>Vida del candado de líder: con varias réplicas, una sola corre cada vuelta. Supera lo que dura una.</summary>
+    public int LeaderLockSeconds { get; set; } = 300;
+
+    /// <summary>Un DLR de un mensaje que nunca apareció se borra pasado este plazo.</summary>
+    public int PendingReceiptRetentionDays { get; set; } = 7;
 }

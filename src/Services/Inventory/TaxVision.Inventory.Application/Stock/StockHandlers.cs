@@ -88,7 +88,9 @@ public static class SetStockThresholdsHandler
     )
     {
         var nowUtc = DateTime.UtcNow;
-        var level = await stock.GetByCatalogItemAsync(command.TenantId, command.CatalogItemId, ct);
+
+        // Con candado: el primer AdjustStock del ítem también lo puede estar creando (INV-5).
+        var level = await stock.GetByCatalogItemForUpdateAsync(command.TenantId, command.CatalogItemId, ct);
         if (level is null)
         {
             var created = StockLevel.Create(

@@ -5,8 +5,8 @@ using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.ValueObjects;
+using TaxVision.Subscription.Tests.TestDoubles;
 using TaxVision.Subscription.Infrastructure.Catalog;
-using TaxVision.Subscription.Infrastructure.Catalog.Concurrency;
 using TaxVision.Subscription.Infrastructure.Persistence;
 using Xunit;
 
@@ -110,7 +110,7 @@ public sealed class CommercialModuleShadowReconcilerTests
     }
 
     private static CommercialModuleShadowReconciler CreateReconciler(SubscriptionDbContext db) =>
-        new(db, new InMemoryModuleEditSerializer(), NullLogger<CommercialModuleShadowReconciler>.Instance);
+        new(db, new NoOpModuleEditSerializer(), NullLogger<CommercialModuleShadowReconciler>.Instance);
 
     private static Module CommercialModule()
     {

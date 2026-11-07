@@ -39,6 +39,7 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.Property(c => c.LastModifiedByUserId);
         b.Property(c => c.ArchivedAtUtc);
         b.Property(c => c.ArchivedByUserId);
+        b.Property(c => c.RowVersion).IsRowVersion();
 
         // Origen técnico del alta: columnas de la raíz para que el índice único lleve TenantId.
         b.Ignore(c => c.Origin);

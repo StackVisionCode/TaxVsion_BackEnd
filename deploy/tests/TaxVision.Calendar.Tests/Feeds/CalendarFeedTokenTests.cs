@@ -237,6 +237,8 @@ public sealed class CalendarFeedTokenTests
         public void Add(Appointment appointment) { }
 
         public void Remove(Appointment appointment) { }
+
+        public void DiscardPendingChanges() { }
     }
 
     public enum Reason
@@ -353,6 +355,8 @@ public sealed class CalendarFeedTokenTests
         public void Add(Appointment appointment) { }
 
         public void Remove(Appointment appointment) { }
+
+        public void DiscardPendingChanges() { }
     }
 
     private sealed class RecordingCache : ICalendarFeedCache

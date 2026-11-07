@@ -29,6 +29,14 @@ public sealed class Tenant : BaseEntity
     /// nunca llegó un <c>TenantUpdatedIntegrationEvent</c> (nombre y zona son los del alta).</summary>
     public DateTime? SourceUpdatedAtUtc { get; private set; }
 
+    /// <summary>Última versión de Tenant aplicada por <c>TenantStatusChangedIntegrationEvent</c>.</summary>
+    public long? LastStatusVersion { get; private set; }
+
+    /// <summary>Última versión de Tenant aplicada por <c>TenantUpdatedIntegrationEvent</c>. Va aparte de la de estado:
+    /// la versión es una sola por oficina y cada aviso trae solo su parte, así que un renombre v6 no invalida un
+    /// cambio de estado v5.</summary>
+    public long? LastProfileVersion { get; private set; }
+
     public static Result<Tenant> Register(
         Guid id,
         string name,
@@ -104,11 +112,20 @@ public sealed class Tenant : BaseEntity
 
     /// <summary>
     /// Renombre / cambio de zona publicado por Tenant (estado completo). Descarta un evento más viejo
-    /// que el ya aplicado; uno igual se reaplica (idempotente). Devuelve <c>true</c> si se aplicó.
+    /// que el ya aplicado. Devuelve <c>true</c> si se aplicó.
     /// </summary>
-    public bool ApplyTenantUpdate(string name, string defaultTimeZoneId, DateTime sourceUpdatedAtUtc)
+    public bool ApplyTenantUpdate(
+        string name,
+        string defaultTimeZoneId,
+        DateTime sourceUpdatedAtUtc,
+        long? tenantVersion = null
+    )
     {
-        if (SourceUpdatedAtUtc is { } applied && sourceUpdatedAtUtc < applied)
+        // Sin versión (mensaje viejo) ordena el reloj.
+        if (tenantVersion is null && SourceUpdatedAtUtc is { } applied && sourceUpdatedAtUtc < applied)
+            return false;
+
+        if (tenantVersion <= LastProfileVersion)
             return false;
 
         if (string.IsNullOrWhiteSpace(name) || !IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalized))
@@ -117,6 +134,17 @@ public sealed class Tenant : BaseEntity
         Name = name.Trim();
         DefaultTimeZoneId = normalized;
         SourceUpdatedAtUtc = sourceUpdatedAtUtc;
+        LastProfileVersion = tenantVersion ?? LastProfileVersion;
+        return true;
+    }
+
+    /// <summary>Descarta un aviso de estado igual o más viejo que el aplicado. Sin versión (mensaje viejo) pasa.</summary>
+    public bool AcceptStatusVersion(long? tenantVersion)
+    {
+        if (tenantVersion <= LastStatusVersion)
+            return false;
+
+        LastStatusVersion = tenantVersion ?? LastStatusVersion;
         return true;
     }
 

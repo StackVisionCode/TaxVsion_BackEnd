@@ -37,6 +37,7 @@ public sealed class AppointmentConfiguration : IEntityTypeConfiguration<Appointm
         builder.Property(a => a.SplitFromSeriesId);
         builder.Property(a => a.CreatedAtUtc).IsRequired();
         builder.Property(a => a.CancelledAtUtc);
+        builder.Property(a => a.ChildrenRevision).IsRequired();
         builder.Property(a => a.RowVersion).IsRowVersion();
 
         builder

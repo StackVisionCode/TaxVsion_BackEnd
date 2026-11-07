@@ -1,4 +1,8 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Domain;
+using BuildingBlocks.Web.Common;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 
@@ -14,6 +18,8 @@ namespace BuildingBlocks.Web.Hosting;
 /// <item>Los eventos van a la cola local durable <see cref="DomainEventsQueue"/>: sobreviven a un reinicio.</item>
 /// <item>Cada <c>XxxDomainEventHandler</c> devuelve el evento de integración; Wolverine lo manda en cascada por
 /// el outbox.</item>
+/// <item>El <c>X-Correlation-Id</c> de la petición viaja en el sobre y los handlers de dominio lo reciben en
+/// <see cref="ICorrelationContext"/> (BB-9).</item>
 /// </list>
 /// Requisitos del servicio: <c>UseEntityFrameworkCoreTransactions()</c>, <c>AutoApplyTransactions()</c>, el
 /// DbContext con <c>AddDbContext</c> normal y <c>Ignore(x =&gt; x.DomainEvents)</c> en el mapeo. Con
@@ -31,7 +37,9 @@ public static class DomainEventDispatchExtensions
         ArgumentNullException.ThrowIfNull(options);
 
         options.PublishDomainEventsFromEntityFrameworkCore<AggregateRoot, IDomainEvent>(root => root.DomainEvents);
-        options.PublishDomainEventsFromEntityFrameworkCore<TenantlessAggregateRoot, IDomainEvent>(root => root.DomainEvents);
+        options.PublishDomainEventsFromEntityFrameworkCore<TenantlessAggregateRoot, IDomainEvent>(root =>
+            root.DomainEvents
+        );
 
         options.Publish(rule =>
         {
@@ -39,6 +47,13 @@ public static class DomainEventDispatchExtensions
             rule.ToLocalQueue(DomainEventsQueue);
         });
         options.LocalQueue(DomainEventsQueue).UseDurableInbox();
+
+        options.Services.TryAddScoped<ICorrelationContext, CorrelationContext>();
+        options.Services.AddScoped<RequestEnvelopeCorrelation>();
+        options.Policies.AddMiddleware(
+            typeof(DomainEventCorrelationMiddleware),
+            chain => typeof(IDomainEvent).IsAssignableFrom(chain.MessageType)
+        );
 
         return options;
     }

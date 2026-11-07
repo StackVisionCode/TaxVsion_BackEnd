@@ -9,6 +9,9 @@ public sealed class FakeWalletTopUpCheckoutClient : IWalletTopUpCheckoutClient
     public int Calls { get; private set; }
     public List<WalletTopUpCheckoutClientRequest> Requests { get; } = [];
 
+    /// <summary>Si tiene valor, la próxima sesión falla con este error.</summary>
+    public Error? NextFailure { get; set; }
+
     public Task<Result<WalletTopUpCheckoutClientResult>> CreateCheckoutAsync(
         WalletTopUpCheckoutClientRequest request,
         CancellationToken ct = default
@@ -16,6 +19,9 @@ public sealed class FakeWalletTopUpCheckoutClient : IWalletTopUpCheckoutClient
     {
         Calls++;
         Requests.Add(request);
+        if (NextFailure is { } failure)
+            return Task.FromResult(Result.Failure<WalletTopUpCheckoutClientResult>(failure));
+
         return Task.FromResult(
             Result.Success(
                 new WalletTopUpCheckoutClientResult(

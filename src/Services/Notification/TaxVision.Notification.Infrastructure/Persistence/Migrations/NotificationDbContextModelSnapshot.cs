@@ -259,6 +259,48 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("UserEmailDirectoryEntries", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Campaigns.CampaignDispatchSend", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DispatchId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "DispatchId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CampaignDispatchSends_TenantId_DispatchId_Unique");
+
+                    b.ToTable("CampaignDispatchSends", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Layouts.EmailLayout", b =>
                 {
                     b.Property<Guid>("Id")
@@ -454,6 +496,12 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("RetryCount")
                         .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateTime?>("SentAtUtc")
                         .HasColumnType("datetime2");
@@ -693,6 +741,9 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(64)")
                         .HasDefaultValue("");
 
+                    b.Property<DateTime?>("LastAttemptChangeAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Recipient")
                         .IsRequired()
                         .HasMaxLength(320)
@@ -700,6 +751,12 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("RelatedEventId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateTime?>("SentAtUtc")
                         .HasColumnType("datetime2");

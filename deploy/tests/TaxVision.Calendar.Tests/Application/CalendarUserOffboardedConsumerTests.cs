@@ -528,6 +528,8 @@ public sealed class CalendarUserOffboardedConsumerTests
         public void Add(Appointment appointment) => _all.Add(appointment);
 
         public void Remove(Appointment appointment) => _all.Remove(appointment);
+
+        public void DiscardPendingChanges() { }
     }
 
     private sealed class FakeFeedTokens(params CalendarFeedToken[] seed) : ICalendarFeedTokenRepository

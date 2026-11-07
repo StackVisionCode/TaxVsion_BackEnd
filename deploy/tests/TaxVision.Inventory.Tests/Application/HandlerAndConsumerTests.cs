@@ -1,6 +1,7 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CatalogIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Inventory.Application.Abstractions;
 using TaxVision.Inventory.Application.Consumers;
 using TaxVision.Inventory.Application.Permissions.Consumers;
 using TaxVision.Inventory.Application.Stock;
@@ -164,6 +165,178 @@ public sealed class SupplierHandlerTests
 public sealed class CatalogItemConsumerTests
 {
     private static readonly Guid Tenant = Guid.NewGuid();
+    private static readonly DateTime T0 = new(2026, 11, 6, 10, 0, 0, DateTimeKind.Utc);
+
+    private static CatalogItemCreatedIntegrationEvent Created(Guid itemId, DateTime occurredOn) =>
+        new()
+        {
+            TenantId = Tenant,
+            OccurredOn = occurredOn,
+            ItemId = itemId,
+            CategoryId = Guid.NewGuid(),
+            Name = "Widget",
+            Kind = "Product",
+            TrackInventory = true,
+            UnitPrice = 100,
+            Currency = "USD",
+        };
+
+    private static CatalogItemDeactivatedIntegrationEvent Deactivated(
+        Guid itemId,
+        DateTime occurredOn,
+        bool? trackInventory = true
+    ) =>
+        new()
+        {
+            TenantId = Tenant,
+            OccurredOn = occurredOn,
+            ItemId = itemId,
+            TrackInventory = trackInventory,
+        };
+
+    private static CatalogItemTrackingChangedIntegrationEvent TrackingChanged(
+        Guid itemId,
+        DateTime occurredOn,
+        bool trackInventory = true,
+        bool isActive = true
+    ) =>
+        new()
+        {
+            TenantId = Tenant,
+            OccurredOn = occurredOn,
+            ItemId = itemId,
+            TrackInventory = trackInventory,
+            IsActive = isActive,
+        };
+
+    private static Task HandleAsync(FakeStockRepository stock, CatalogItemCreatedIntegrationEvent evt) =>
+        CatalogItemCreatedConsumer.Handle(
+            evt,
+            stock,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            NullLogger<StockLevel>.Instance,
+            CancellationToken.None
+        );
+
+    private static Task HandleAsync(FakeStockRepository stock, CatalogItemDeactivatedIntegrationEvent evt) =>
+        CatalogItemDeactivatedConsumer.Handle(
+            evt,
+            stock,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            NullLogger<StockLevel>.Instance,
+            CancellationToken.None
+        );
+
+    private static Task HandleAsync(FakeStockRepository stock, CatalogItemTrackingChangedIntegrationEvent evt) =>
+        CatalogItemTrackingChangedConsumer.Handle(
+            evt,
+            stock,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            NullLogger<StockLevel>.Instance,
+            CancellationToken.None
+        );
+
+    [Fact]
+    public async Task TrackingChanged_reactivation_retracks_untracked_level()
+    {
+        var stock = new FakeStockRepository();
+        var itemId = Guid.NewGuid();
+        await HandleAsync(stock, Created(itemId, T0));
+        await HandleAsync(stock, Deactivated(itemId, T0.AddMinutes(1)));
+        Assert.False(stock.Levels[0].IsTracked);
+
+        await HandleAsync(stock, TrackingChanged(itemId, T0.AddMinutes(2)));
+
+        Assert.True(stock.Levels[0].IsTracked);
+        Assert.Equal(T0.AddMinutes(2), stock.Levels[0].CatalogStateAtUtc);
+    }
+
+    [Fact]
+    public async Task TrackingChanged_with_no_level_opens_tracked_level()
+    {
+        var stock = new FakeStockRepository();
+
+        await HandleAsync(stock, TrackingChanged(Guid.NewGuid(), T0));
+
+        var level = Assert.Single(stock.Levels);
+        Assert.True(level.IsTracked);
+        Assert.Equal(0, level.QuantityOnHand);
+    }
+
+    [Fact]
+    public async Task TrackingChanged_with_no_level_and_nothing_to_track_opens_nothing()
+    {
+        var stock = new FakeStockRepository();
+
+        await HandleAsync(stock, TrackingChanged(Guid.NewGuid(), T0, trackInventory: false));
+
+        Assert.Empty(stock.Levels);
+    }
+
+    [Fact]
+    public async Task TrackingChanged_tracked_but_inactive_keeps_the_level_untracked()
+    {
+        var stock = new FakeStockRepository();
+        var itemId = Guid.NewGuid();
+        await HandleAsync(stock, Created(itemId, T0));
+
+        await HandleAsync(stock, TrackingChanged(itemId, T0.AddMinutes(1), trackInventory: true, isActive: false));
+
+        Assert.False(stock.Levels[0].IsTracked);
+    }
+
+    [Fact]
+    public async Task Older_catalog_event_is_ignored()
+    {
+        var stock = new FakeStockRepository();
+        var itemId = Guid.NewGuid();
+        await HandleAsync(stock, Created(itemId, T0));
+        await HandleAsync(stock, TrackingChanged(itemId, T0.AddMinutes(2)));
+
+        await HandleAsync(stock, Deactivated(itemId, T0.AddMinutes(1)));
+
+        Assert.True(stock.Levels[0].IsTracked);
+        Assert.Equal(T0.AddMinutes(2), stock.Levels[0].CatalogStateAtUtc);
+    }
+
+    [Fact]
+    public async Task Deactivated_before_Created_leaves_level_untracked()
+    {
+        var stock = new FakeStockRepository();
+        var itemId = Guid.NewGuid();
+
+        await HandleAsync(stock, Deactivated(itemId, T0.AddMinutes(1)));
+        await HandleAsync(stock, Created(itemId, T0));
+
+        Assert.False(Assert.Single(stock.Levels).IsTracked);
+    }
+
+    /// <summary>Un evento en vuelo durante el despliegue no trae el campo: se comporta como antes.</summary>
+    [Fact]
+    public async Task Deactivated_without_level_and_without_the_new_field_opens_nothing()
+    {
+        var stock = new FakeStockRepository();
+
+        await HandleAsync(stock, Deactivated(Guid.NewGuid(), T0, trackInventory: null));
+
+        Assert.Empty(stock.Levels);
+    }
+
+    [Fact]
+    public async Task Catalog_consumers_read_the_level_with_the_lock()
+    {
+        var stock = new FakeStockRepository();
+        var itemId = Guid.NewGuid();
+
+        await HandleAsync(stock, Created(itemId, T0));
+        await HandleAsync(stock, TrackingChanged(itemId, T0.AddMinutes(1)));
+        await HandleAsync(stock, Deactivated(itemId, T0.AddMinutes(2)));
+
+        Assert.Equal(3, stock.Calls.Count(c => c == nameof(IStockRepository.GetByCatalogItemForUpdateAsync)));
+    }
 
     [Fact]
     public async Task CatalogItemCreated_opens_stock_level_for_trackable_product()

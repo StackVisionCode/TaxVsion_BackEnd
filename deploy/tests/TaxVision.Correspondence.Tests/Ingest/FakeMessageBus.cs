@@ -12,6 +12,10 @@ namespace TaxVision.Correspondence.Tests.Ingest;
 internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
+    public List<object> Invoked { get; } = [];
+
+    /// <summary>Corre en línea el comando invocado, como <c>bus.InvokeAsync</c>.</summary>
+    public Func<object, Task<object?>>? OnInvoke { get; set; }
 
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
@@ -54,8 +58,11 @@ internal sealed class FakeMessageBus : IMessageBus
         set { }
     }
 
-    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        Invoked.Add(message);
+        return Task.CompletedTask;
+    }
 
     public Task InvokeAsync(
         object message,
@@ -64,8 +71,11 @@ internal sealed class FakeMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotImplementedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public async Task<T> InvokeAsync<T>(
+        object message,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => OnInvoke is null ? throw new NotImplementedException() : (T)(await OnInvoke(message))!;
 
     public Task<T> InvokeAsync<T>(
         object message,

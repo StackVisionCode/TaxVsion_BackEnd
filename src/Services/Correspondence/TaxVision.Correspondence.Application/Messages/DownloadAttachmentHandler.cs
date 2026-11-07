@@ -1,10 +1,10 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Inbox;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Correspondence.Application.Messages;
 
@@ -17,12 +17,18 @@ namespace TaxVision.Correspondence.Application.Messages;
 /// <see cref="ICorrespondenceTempBucketUploader"/>) → marcar descargado. Cualquier falla en el
 /// camino marca el attachment como <see cref="AttachmentDownloadStatus.Failed"/> antes de
 /// devolver el error — nunca lo deja colgado en <see cref="AttachmentDownloadStatus.InProgress"/>.
+///
+/// <para>
+/// Sin transacción propia (COR-08): Connectors y MinIO tardan hasta 30 s cada uno, con la fila bloqueada. InProgress
+/// nunca fue visible fuera de esa transacción, así que no se guarda: un corte a mitad no deja el adjunto colgado.
+/// </para>
 /// </summary>
 public static class DownloadAttachmentHandler
 {
     // Firma del pedido a CloudStorage; AttachmentSaveRejectedConsumer filtra los rechazos con este valor.
     public const string RequestingService = "correspondence";
 
+    [NonTransactional]
     public static async Task<Result<DownloadAttachmentResult>> Handle(
         DownloadAttachmentCommand command,
         IIncomingEmailRepository incomingEmails,
@@ -60,7 +66,7 @@ public static class DownloadAttachmentHandler
         if (attachment.HasPermanentStorageRejection)
             return Result.Failure<DownloadAttachmentResult>(AttachmentFailureErrors.For(attachment));
 
-        var markInProgressResult = await MarkInProgressAsync(attachment, unitOfWork, ct);
+        var markInProgressResult = attachment.MarkInProgress();
         if (markInProgressResult.IsFailure)
             return Result.Failure<DownloadAttachmentResult>(markInProgressResult.Error);
 
@@ -76,22 +82,20 @@ public static class DownloadAttachmentHandler
         if (uploadResult.IsFailure)
             return await FailAsync(attachment, uploadResult.Error, unitOfWork, ct);
 
-        var markDownloadedResult = await PublishAndMarkDownloadedAsync(
-            command,
-            email,
-            attachment,
-            uploadResult.Value,
-            fileId,
-            fetchResult.Value.Content.LongLength,
-            bus,
-            correlation,
-            unitOfWork,
+        return await bus.InvokeAsync<Result<DownloadAttachmentResult>>(
+            new CompleteAttachmentDownloadCommand(
+                command.TenantId,
+                email.Id,
+                attachment.Id,
+                command.ActorId,
+                fileId,
+                uploadResult.Value.SourceBucket,
+                uploadResult.Value.SourceObjectKey,
+                fetchResult.Value.Content.LongLength,
+                correlation.CorrelationId
+            ),
             ct
         );
-        if (markDownloadedResult.IsFailure)
-            return Result.Failure<DownloadAttachmentResult>(markDownloadedResult.Error);
-
-        return Result.Success(ToResult(attachment));
     }
 
     private static async Task<Result<(IncomingEmail Email, IncomingEmailAttachment Attachment)>> LoadAsync(
@@ -130,20 +134,6 @@ public static class DownloadAttachmentHandler
             : Result.Success((email, attachment));
     }
 
-    private static async Task<Result> MarkInProgressAsync(
-        IncomingEmailAttachment attachment,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        var markResult = attachment.MarkInProgress();
-        if (markResult.IsFailure)
-            return markResult;
-
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success();
-    }
-
     private static Task<Result<ConnectorsAttachmentBytes>> FetchBytesAsync(
         DownloadAttachmentCommand command,
         IncomingEmail email,
@@ -171,52 +161,6 @@ public static class DownloadAttachmentHandler
     ) => tempBucketUploader.UploadAsync(fileId, bytes.Content, attachment.Filename, attachment.ContentType, ct);
 
     /// <summary>
-    /// Publica <see cref="SaveFileRequestedIntegrationEvent"/> y marca el attachment como
-    /// descargado en la MISMA transacción (outbox de Wolverine): si el commit falla, el evento
-    /// nunca sale y el attachment queda como estaba, listo para reintentar.
-    /// </summary>
-    private static async Task<Result> PublishAndMarkDownloadedAsync(
-        DownloadAttachmentCommand command,
-        IncomingEmail email,
-        IncomingEmailAttachment attachment,
-        TempBucketUploadResult upload,
-        Guid fileId,
-        long sizeBytes,
-        IMessageBus bus,
-        ICorrelationContext correlation,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        await bus.PublishAsync(
-            new SaveFileRequestedIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                FileId = fileId,
-                RequestingService = RequestingService,
-                SourceBucket = upload.SourceBucket,
-                SourceObjectKey = upload.SourceObjectKey,
-                ActorId = command.ActorId,
-                OwnerType = "Customer",
-                OwnerId = email.CustomerId,
-                FolderType = "EmailIncoming",
-                TaxYear = email.ReceivedAtUtc.Year,
-                OriginalName = attachment.Filename,
-                ContentType = attachment.ContentType,
-                SizeBytes = sizeBytes,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
-        var markResult = attachment.MarkDownloaded(fileId);
-        if (markResult.IsFailure)
-            return markResult;
-
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success();
-    }
-
-    /// <summary>
     /// Marca el attachment como Failed y persiste antes de propagar el error original al caller
     /// HTTP. <see cref="IncomingEmailAttachment.MarkFailed"/> solo puede rechazar la transición si
     /// el estado ya cambió por fuera de este flujo (no debería pasar acá, pero se chequea igual —
@@ -237,6 +181,6 @@ public static class DownloadAttachmentHandler
         return Result.Failure<DownloadAttachmentResult>(error);
     }
 
-    private static DownloadAttachmentResult ToResult(IncomingEmailAttachment attachment) =>
+    internal static DownloadAttachmentResult ToResult(IncomingEmailAttachment attachment) =>
         new(attachment.Id, attachment.DownloadStatus.ToString(), attachment.CloudStorageFileId!.Value);
 }

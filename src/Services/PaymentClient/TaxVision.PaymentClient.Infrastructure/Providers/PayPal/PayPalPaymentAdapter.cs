@@ -117,7 +117,9 @@ public sealed class PayPalPaymentAdapter(IHttpClientFactory httpClientFactory, I
                         ProviderChargeReference: orderId,
                         Status: PaymentStatus.Failed,
                         FailureCode: code ?? $"paypal_http_{(int)response.StatusCode}",
-                        FailureMessage: detail ?? "PayPal declined the capture."
+                        FailureMessage: detail ?? "PayPal declined the capture.",
+                        // Un 5xx no dice si la captura salió: igual que un timeout.
+                        OutcomeUnknown: response.StatusCode >= HttpStatusCode.InternalServerError
                     )
                 );
             }
@@ -126,8 +128,17 @@ public sealed class PayPalPaymentAdapter(IHttpClientFactory httpClientFactory, I
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
+            // La captura pudo salir: sin respuesta (o ilegible) no se sabe. La reconciliación consulta la orden.
             logger.LogWarning(ex, "PayPal capture threw for order {OrderId}.", orderId);
-            return Result.Failure<ChargeAuthorizationResult>(new Error("PayPal.Capture.Failed", ex.Message));
+            return Result.Success(
+                new ChargeAuthorizationResult(
+                    ProviderChargeReference: orderId,
+                    Status: PaymentStatus.Failed,
+                    FailureCode: "PayPal.Capture.Unavailable",
+                    FailureMessage: ex.Message,
+                    OutcomeUnknown: true
+                )
+            );
         }
     }
 
@@ -301,6 +312,37 @@ public sealed class PayPalPaymentAdapter(IHttpClientFactory httpClientFactory, I
             logger.LogWarning(ex, "PayPal charge status lookup threw for reference {Reference}.", reference);
             return Result.Failure<WebhookEventPayload>(new Error("PayPal.ChargeStatus.Failed", ex.Message));
         }
+    }
+
+    /// <summary>La orden es el método con el que se pidió el cobro. Sin captura no hubo cargo: solo nosotros
+    /// capturamos. Una captura en curso sí lo es. Sin orden guardada no se puede saber y el pago no se toca.</summary>
+    public async Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeSearch search,
+        CancellationToken ct
+    )
+    {
+        if (string.IsNullOrWhiteSpace(search.ChargeMethodReference))
+            return Result.Failure<ChargeAuthorizationResult?>(
+                new Error("PayPal.ChargeSearch.NoOrder", "The payment has no PayPal order to look up.")
+            );
+
+        var status = await GetChargeStatusAsync(credentials, new ChargeStatusLookup(search.ChargeMethodReference), ct);
+        if (status.IsFailure)
+            return Result.Failure<ChargeAuthorizationResult?>(status.Error);
+
+        var payload = status.Value;
+        return Result.Success<ChargeAuthorizationResult?>(
+            payload.Status is PaymentStatus.Processing or PaymentStatus.RequiresAction or PaymentStatus.Pending
+            && !payload.ChargeInProgress
+                ? null
+                : new ChargeAuthorizationResult(
+                    payload.ProviderChargeReference,
+                    payload.Status,
+                    FailureCode: payload.FailureCode,
+                    FailureMessage: payload.FailureMessage
+                )
+        );
     }
 
     /// <summary>
@@ -484,7 +526,7 @@ public sealed class PayPalPaymentAdapter(IHttpClientFactory httpClientFactory, I
                 )
             ),
             "PENDING" => Result.Success(
-                new WebhookEventPayload(reference, PaymentStatus.Processing, reason, null, null)
+                new WebhookEventPayload(reference, PaymentStatus.Processing, reason, null, null, ChargeInProgress: true)
             ),
             "REFUNDED" or "PARTIALLY_REFUNDED" => Result.Failure<WebhookEventPayload>(
                 new Error(

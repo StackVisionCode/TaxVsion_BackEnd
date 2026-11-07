@@ -46,7 +46,10 @@ public sealed record InvoiceDocumentRequest(
     // Condiciones congeladas en la factura (ajustes de facturación). Null en facturas de antes de la F1.
     string? PaymentTerms = null,
     string? PaymentInstructions = null,
-    string? InvoiceFooter = null
+    string? InvoiceFooter = null,
+    // BIL-PDF1: lo pagado y el saldo, para que el PDF no muestre solo el total.
+    decimal AmountPaid = 0m,
+    decimal AmountDue = 0m
 );
 
 /// <summary>Parte de la factura para el PDF. Teléfono, correo y web son opcionales: solo el emisor los

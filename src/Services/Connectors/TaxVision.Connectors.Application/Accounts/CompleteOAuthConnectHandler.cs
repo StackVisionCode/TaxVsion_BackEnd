@@ -1,8 +1,8 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Application.Sync;
@@ -10,7 +10,7 @@ using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Audit;
 using TaxVision.Connectors.Domain.Shared;
-using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Accounts;
 
@@ -21,18 +21,18 @@ namespace TaxVision.Connectors.Application.Accounts;
 /// <c>AccountsController.Reauth</c>), así que si el watch setup falla la cuenta queda Draft con la
 /// connection ya persistida y el usuario puede reintentar sin volver a autorizar con el proveedor.
 ///
-/// Se llama en proceso (no vía <c>bus.InvokeAsync(new SetupWatchCommand(...))</c>) para compartir la
-/// MISMA transacción/DbContext que el <c>SaveChangesAsync</c> de arriba — ver el docblock de
-/// <see cref="WatchActivationService"/> para el bug real que este approach evita.
+/// El canje del código y el alta del watch corren sin transacción (CON-03): cada resultado se confirma en su propio
+/// guardado, así que un fallo del watch deja la connection ya persistida para reintentar sin volver a autorizar.
 ///
 /// Reconectar (nueva grant sobre una cuenta con una OAuthConnection Revoked/Expired) reutiliza la
 /// misma fila de <c>OAuthConnection</c>/<c>OAuthToken</c> en vez de crear una nueva —
 /// <c>OAuthConnections.AccountId</c> tiene un índice único, así que un segundo <c>OAuthConnection</c>
-/// para la misma cuenta nunca es insertable (ver <see cref="OAuthConnection.Reconnect"/>). Si la
-/// connection existente sigue Active/Pending, falla limpio: el usuario debe desconectar primero.
+/// para la misma cuenta nunca es insertable (ver <see cref="OAuthConnection.Reconnect"/>). Si
+/// <see cref="OAuthConnection.CanReconnect"/> dice que no, falla limpio: el usuario debe desconectar primero.
 /// </summary>
 public static class CompleteOAuthConnectHandler
 {
+    [NonTransactional]
     public static async Task<Result<CompleteOAuthConnectResult>> Handle(
         CompleteOAuthConnectCommand cmd,
         ITenantEmailAccountRepository accountRepository,
@@ -47,7 +47,7 @@ public static class CompleteOAuthConnectHandler
         IProviderSyncCursorRepository providerSyncCursorRepository,
         IUserPermissionsProjectionReader initiatorProjections,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IOutboxUnit unit,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -138,19 +138,14 @@ public static class CompleteOAuthConnectHandler
             if (existingConnectionResult.IsSuccess)
             {
                 existingConnection = existingConnectionResult.Value;
-                widensActiveGrant =
-                    existingConnection.Status == OAuthConnectionStatus.Active
-                    && existingConnection.MissingScopes(client.ConfiguredScope).Count > 0;
-                if (
-                    !widensActiveGrant
-                    && existingConnection.Status is OAuthConnectionStatus.Active or OAuthConnectionStatus.Pending
-                )
+                if (!existingConnection.CanReconnect(client.ConfiguredScope))
                     return Result.Failure<CompleteOAuthConnectResult>(
                         new Error(
                             "CompleteOAuthConnectHandler.AlreadyConnected",
                             "This account already has an active OAuth connection. Disconnect it first before reconnecting."
                         )
                     );
+                widensActiveGrant = existingConnection.Status == OAuthConnectionStatus.Active;
             }
         }
 
@@ -253,8 +248,7 @@ public static class CompleteOAuthConnectHandler
             accountRepository,
             watchSubscriptionRepository,
             watchClientFactory,
-            unitOfWork,
-            bus,
+            unit,
             correlation,
             ct
         );

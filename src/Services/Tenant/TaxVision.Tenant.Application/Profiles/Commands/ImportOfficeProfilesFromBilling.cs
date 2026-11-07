@@ -5,11 +5,15 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Tenant.Application.Profiles.Abstractions;
 using TaxVision.Tenant.Domain.Profiles;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Tenant.Application.Profiles.Commands;
 
 /// <summary>PlatformAdmin: copia una vez los emisores de Billing a las oficinas que aún no tienen perfil.</summary>
 public sealed record ImportOfficeProfilesFromBillingCommand(Guid ActorId);
+
+/// <summary>Una página ya leída de Billing: se confirma sola, así un choque no se lleva las anteriores.</summary>
+public sealed record ImportOfficeProfilesPageCommand(Guid ActorId, IReadOnlyList<BillingIssuerProfile> Items);
 
 /// <summary>Skipped = suma de los tres motivos: no es una oficina, ya tenía perfil, nada utilizable.</summary>
 public sealed record ImportOfficeProfilesResponse(
@@ -42,23 +46,19 @@ public sealed record ImportPageOutcome(
 /// <summary>
 /// Recorre el listado interno de Billing página a página. Solo llena oficinas sin perfil (nunca pisa uno
 /// guardado), así que se puede repetir sin efectos. Los valores viejos mal formados se descartan campo
-/// por campo (cada uno queda en el log) y el resto se importa. Guarda cada página y recién después
-/// publica <c>TenantProfileChanged</c> por cada perfil importado.
+/// por campo (cada uno queda en el log) y el resto se importa. El HTTP a Billing va fuera de toda transacción;
+/// cada página se guarda en <see cref="ImportOfficeProfilesPageHandler"/>. Si una choca, quedan las anteriores y
+/// repetir la importación sigue donde iba.
 /// </summary>
 public static class ImportOfficeProfilesFromBillingHandler
 {
     public const int PageSize = 100;
 
-    // Marcador que estampaba Billing en un emisor sin calle antes de F0; no es un dato.
-    private const string LegacyPlaceholder = "—";
-
+    [NonTransactional]
     public static async Task<Result<ImportOfficeProfilesResponse>> Handle(
         ImportOfficeProfilesFromBillingCommand command,
         IBillingIssuerProfileClient billing,
-        IOfficeProfileRepository profiles,
-        IUnitOfWork unitOfWork,
         IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<ImportOfficeProfilesFromBillingCommand> logger,
         CancellationToken ct
     )
@@ -78,8 +78,10 @@ public static class ImportOfficeProfilesFromBillingHandler
                 return Result.Failure<ImportOfficeProfilesResponse>(fetched.Error);
             }
 
-            var outcome = await ImportPage(fetched.Value.Items, command.ActorId, profiles, logger, ct);
-            await PersistAndPublish(outcome.Imported, unitOfWork, bus, correlation, ct);
+            var outcome = await bus.InvokeAsync<ImportPageOutcome>(
+                new ImportOfficeProfilesPageCommand(command.ActorId, fetched.Value.Items),
+                ct
+            );
             totals = totals.Add(outcome);
 
             if (IsLastPage(fetched.Value, page))
@@ -96,6 +98,31 @@ public static class ImportOfficeProfilesFromBillingHandler
             totals.SkippedNothingUsable
         );
         return Result.Success(totals);
+    }
+
+    private static bool IsLastPage(BillingIssuerProfilePage page, int pageNumber) =>
+        page.Items.Count == 0 || (long)pageNumber * PageSize >= page.TotalCount;
+}
+
+/// <summary>Guarda la página y recién después publica <c>TenantProfileChanged</c> por cada perfil importado.</summary>
+public static class ImportOfficeProfilesPageHandler
+{
+    // Marcador que estampaba Billing en un emisor sin calle antes de F0; no es un dato.
+    private const string LegacyPlaceholder = "—";
+
+    public static async Task<ImportPageOutcome> Handle(
+        ImportOfficeProfilesPageCommand command,
+        IOfficeProfileRepository profiles,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        ILogger<ImportOfficeProfilesPageCommand> logger,
+        CancellationToken ct
+    )
+    {
+        var outcome = await ImportPage(command.Items, command.ActorId, profiles, logger, ct);
+        await PersistAndPublish(outcome.Imported, unitOfWork, bus, correlation, ct);
+        return outcome;
     }
 
     private static async Task<ImportPageOutcome> ImportPage(
@@ -170,9 +197,6 @@ public static class ImportOfficeProfilesFromBillingHandler
         foreach (var profile in imported)
             await bus.PublishAsync(OfficeProfileChangedEvents.From(profile, correlation.CorrelationId));
     }
-
-    private static bool IsLastPage(BillingIssuerProfilePage page, int pageNumber) =>
-        page.Items.Count == 0 || (long)pageNumber * PageSize >= page.TotalCount;
 
     private static OfficeProfileDraft ToDraft(BillingIssuerProfile item) =>
         new(

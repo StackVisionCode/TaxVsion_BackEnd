@@ -14,6 +14,7 @@ public static class TenantStatusChangedDomainEventHandler
             TenantId = changed.TenantId,
             Status = changed.Status.ToString(),
             IsActive = changed.IsActive,
+            TenantVersion = changed.Version,
             CorrelationId = envelope.CorrelationId ?? string.Empty,
         };
 }

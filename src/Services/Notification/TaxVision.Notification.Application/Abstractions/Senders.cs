@@ -47,6 +47,19 @@ public sealed record PushMessage(
     string? Link = null
 );
 
+/// <summary>
+/// Rastro del push fuera de la transacción del consumer (NOT-07): el log se confirma antes de llamar a FCM y el
+/// resultado en otra unidad. Un rollback posterior no lo borra, y el reintento encuentra lo ya enviado.
+/// </summary>
+public interface IPushAttemptRecorder
+{
+    Task RecordAttemptAsync(NotificationLog log, CancellationToken ct = default);
+
+    Task RecordSentAsync(Guid tenantId, Guid logId, CancellationToken ct = default);
+
+    Task RecordFailedAsync(Guid tenantId, Guid logId, string error, CancellationToken ct = default);
+}
+
 public interface IPushSender
 {
     Task<Result> SendAsync(PushMessage message, CancellationToken ct = default);

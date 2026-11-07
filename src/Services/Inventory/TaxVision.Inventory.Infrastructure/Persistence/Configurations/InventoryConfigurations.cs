@@ -20,6 +20,7 @@ public sealed class StockLevelConfiguration : IEntityTypeConfiguration<StockLeve
         builder.Property(s => s.IsTracked).IsRequired();
         builder.Property(s => s.CreatedAtUtc).IsRequired();
         builder.Property(s => s.UpdatedAtUtc).IsRequired();
+        builder.Property(s => s.CatalogStateAtUtc);
 
         builder
             .HasIndex(s => new { s.TenantId, s.CatalogItemId })

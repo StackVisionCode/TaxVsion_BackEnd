@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Notes.Application.Backfill;
 using TaxVision.Notes.Application.Backfill.Abstractions;
 using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Projections;
@@ -13,16 +14,17 @@ namespace TaxVision.Notes.Application.Projections.CustomerEvents;
 // (SOFT — solo existencia/visibilidad, nunca ownership de negocio) que un CustomerId referenciado
 // por una nota realmente pertenece al tenant. Mismo criterio reactivo que Correspondence
 // (Fase 2): como no existe ningún endpoint M2M de enumeración de tenants en el monorepo, la
-// primera vez que Notes "ve" un tenant es al recibir cualquier evento de Customer — por eso
-// EnsureBackfilledAsync es siempre la primera línea de todo handler de este grupo.
+// primera vez que Notes "ve" un tenant es al recibir cualquier evento de Customer — por eso todo
+// handler de este grupo devuelve en cascada RunTenantCustomerBackfillCommand si el tenant no se ha
+// sembrado. El HTTP a Customer va en ese comando, fuera de la transacción de este evento.
 // ---------------------------------------------------------------------------
 
 public static class CustomerCreatedConsumer
 {
-    public static async Task Handle(
+    public static async Task<RunTenantCustomerBackfillCommand?> Handle(
         CustomerCreatedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
-        ITenantCustomerBackfillService backfill,
+        ITenantBackfillStateRepository backfillStates,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
@@ -35,7 +37,7 @@ public static class CustomerCreatedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            var backfill = await RunTenantCustomerBackfillCommand.IfMissingAsync(evt.TenantId, backfillStates, ct);
 
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (existing is not null)
@@ -61,6 +63,7 @@ public static class CustomerCreatedConsumer
                 evt.TenantId,
                 evt.CustomerId
             );
+            return backfill;
         }
     }
 }

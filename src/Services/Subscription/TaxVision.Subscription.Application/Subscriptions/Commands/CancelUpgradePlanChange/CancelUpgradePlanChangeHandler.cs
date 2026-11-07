@@ -16,7 +16,6 @@ public static class CancelUpgradePlanChangeHandler
     public static async Task<Result<CancelCheckoutResponse>> Handle(
         CancelUpgradePlanChangeCommand command,
         ISubscriptionRepository subscriptions,
-        IHostedCheckoutCancellationClient cancellation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -40,18 +39,11 @@ public static class CancelUpgradePlanChangeHandler
             return Result.Success(new CancelCheckoutResponse(AlreadyCancelled: true, Guid.Empty));
 
         var request = cancelled.Value;
-        if (request.SaaSPaymentId is { } paymentId)
-        {
-            var providerResult = await cancellation.CancelAsync(command.TenantId, paymentId, ct);
-            if (providerResult.IsFailure)
-                logger.LogWarning(
-                    "Provider cancel for upgrade request {RequestId} returned failure: {Error}; proceeding — local state is Cancelled.",
-                    request.Id,
-                    providerResult.Error.Code
-                );
-        }
 
         await unitOfWork.SaveChangesAsync(ct);
+
+        if (request.SaaSPaymentId is { } paymentId)
+            await bus.PublishAsync(new CancelHostedCheckoutCommand(command.TenantId, paymentId));
 
         await bus.PublishAsync(
             new PlanChangeUpgradeCancelledIntegrationEvent

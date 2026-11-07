@@ -1,3 +1,4 @@
+using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout;
@@ -14,6 +15,41 @@ namespace TaxVision.Subscription.Tests.Application;
 /// <c>StartSeatCheckoutHandlerTests</c>.</summary>
 public sealed class StartRenewalCheckoutHandlerTests
 {
+    // Corre el orquestador con los handlers reales de reserva y adjunto, como los enruta Wolverine.
+    private static Task<Result<StartRenewalCheckoutResponse>> Start(
+        StartRenewalCheckoutCommand command,
+        ISubscriptionRepository subscriptions,
+        IPlanRepository plans,
+        IRenewalCheckoutIntentRepository intents,
+        IRenewalCheckoutPaymentClient client,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var bus = new CapturingMessageBus();
+        bus.OnInvoke = async (message, token) =>
+            message switch
+            {
+                ReserveRenewalCheckoutCommand reserve => await ReserveRenewalCheckoutHandler.Handle(
+                    reserve,
+                    subscriptions,
+                    plans,
+                    intents,
+                    unitOfWork,
+                    token
+                ),
+                AttachRenewalCheckoutCommand attach => await AttachRenewalCheckoutHandler.Handle(
+                    attach,
+                    intents,
+                    unitOfWork,
+                    bus,
+                    token
+                ),
+                _ => throw new NotSupportedException(),
+            };
+        return StartRenewalCheckoutHandler.Handle(command, bus, client, ct);
+    }
+
     private static StartRenewalCheckoutCommand Command(Guid tenantId) =>
         new(tenantId, "owner@acme.test", "https://app/ok", "https://app/cancel", "Stripe", "Card", Guid.NewGuid());
 
@@ -29,6 +65,36 @@ public sealed class StartRenewalCheckoutHandlerTests
             )
         );
 
+    // SUB-7: la intención ya está confirmada; repetir la renovación reusa su clave.
+    [Fact]
+    public async Task A_provider_failure_keeps_the_intent_and_the_retry_reuses_its_key()
+    {
+        var (subscription, plan) = PastDueSubscription();
+        var intents = new FakeRenewalCheckoutIntentRepository();
+        var failing = new FakeRenewalCheckoutPaymentClient(
+            Result.Failure<RenewalCheckoutClientResult>(new Error("Renewal.Checkout.ProviderError", "boom"))
+        );
+        var retryClient = OkClient();
+
+        await StartWithAsync(failing);
+        var retry = await StartWithAsync(retryClient);
+
+        Assert.True(retry.IsSuccess);
+        Assert.Single(intents.Added);
+        Assert.Equal(failing.LastRequest!.IdempotencyKey, retryClient.LastRequest!.IdempotencyKey);
+
+        Task<Result<StartRenewalCheckoutResponse>> StartWithAsync(FakeRenewalCheckoutPaymentClient client) =>
+            Start(
+                Command(subscription.TenantId),
+                new FakeSubscriptionRepo(subscription),
+                new FakePlanRepo(plan),
+                intents,
+                client,
+                new FakeUnitOfWork(),
+                CancellationToken.None
+            );
+    }
+
     [Fact]
     public async Task Creates_an_intent_and_returns_the_checkout_url_from_a_lapse_state()
     {
@@ -37,7 +103,7 @@ public sealed class StartRenewalCheckoutHandlerTests
         var client = OkClient();
         var unitOfWork = new FakeUnitOfWork();
 
-        var result = await StartRenewalCheckoutHandler.Handle(
+        var result = await Start(
             Command(subscription.TenantId),
             new FakeSubscriptionRepo(subscription),
             new FakePlanRepo(plan),
@@ -67,7 +133,7 @@ public sealed class StartRenewalCheckoutHandlerTests
         var intents = new FakeRenewalCheckoutIntentRepository();
         var client = OkClient();
 
-        var first = await StartRenewalCheckoutHandler.Handle(
+        var first = await Start(
             Command(subscription.TenantId),
             new FakeSubscriptionRepo(subscription),
             new FakePlanRepo(plan),
@@ -76,7 +142,7 @@ public sealed class StartRenewalCheckoutHandlerTests
             new FakeUnitOfWork(),
             CancellationToken.None
         );
-        var second = await StartRenewalCheckoutHandler.Handle(
+        var second = await Start(
             Command(subscription.TenantId),
             new FakeSubscriptionRepo(subscription),
             new FakePlanRepo(plan),
@@ -99,7 +165,7 @@ public sealed class StartRenewalCheckoutHandlerTests
         var (subscription, plan) = PastDueSubscription();
         subscription.RecoverFromPastDue(Guid.Empty, DateTime.UtcNow); // vuelve a Active
 
-        var result = await StartRenewalCheckoutHandler.Handle(
+        var result = await Start(
             Command(subscription.TenantId),
             new FakeSubscriptionRepo(subscription),
             new FakePlanRepo(plan),
@@ -118,7 +184,7 @@ public sealed class StartRenewalCheckoutHandlerTests
     {
         var (subscription, plan) = PastDueSubscription();
 
-        var result = await StartRenewalCheckoutHandler.Handle(
+        var result = await Start(
             Command(subscription.TenantId),
             new FakeSubscriptionRepo(subscription),
             new FakePlanRepo(plan),

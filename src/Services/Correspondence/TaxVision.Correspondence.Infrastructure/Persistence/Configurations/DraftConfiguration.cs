@@ -49,6 +49,8 @@ internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
         builder.Property(d => d.CreatedAtUtc).IsRequired();
         builder.Property(d => d.UpdatedAtUtc).IsRequired();
         builder.Property(d => d.LastAutoSavedAtUtc);
+        builder.Property(d => d.LastDeliveryOutcomeAtUtc);
+        builder.Property(d => d.RowVersion).IsRowVersion();
 
         // ReplyContext tiene setter privado (no es un wrapper de solo lectura sobre un backing
         // field) — EF puede mapearlo directamente vía Property() +

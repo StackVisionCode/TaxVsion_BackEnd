@@ -249,20 +249,16 @@ public sealed class GenerationQueueDurabilityIntegrationTests : IAsyncLifetime
 
     private sealed class AcceptingStorage : IDocumentStorageClient
     {
-        public Task<Result> RequestSaveAsync(
-            Guid tenantId,
+        public Task<Result<StorageUploadResult>> UploadAsync(
             Guid fileId,
             byte[] content,
             string fileName,
             string contentType,
-            string ownerType,
-            Guid ownerId,
-            string folderType,
-            int? taxYear,
-            Guid actorId,
-            string correlationId,
             CancellationToken ct = default
-        ) => Task.FromResult(Result.Success());
+        ) =>
+            Task.FromResult(
+                Result.Success(new StorageUploadResult(fileId, "temp", $"documents/{fileId:N}", 4, contentType))
+            );
     }
 
     private sealed class NoBranding : IDocumentBrandingRepository

@@ -28,7 +28,16 @@ public static class TenantEmailAccountConnectedConsumer
             var existing = await repository.GetByAccountIdAsync(evt.TenantId, evt.AccountId, ct);
             if (existing is not null)
             {
-                existing.ReconnectAt(evt.ProviderCode, evt.EmailAddress, evt.ConnectedAtUtc);
+                if (!existing.ReconnectAt(evt.ProviderCode, evt.EmailAddress, evt.ConnectedAtUtc))
+                {
+                    logger.LogInformation(
+                        "ConnectedMailbox {AccountId}: connected event from {ConnectedAtUtc} is older than the last update; ignored.",
+                        evt.AccountId,
+                        evt.ConnectedAtUtc
+                    );
+                    return;
+                }
+
                 logger.LogInformation(
                     "ConnectedMailbox {AccountId} already projected for tenant {TenantId}; reconciled as reconnected.",
                     evt.AccountId,

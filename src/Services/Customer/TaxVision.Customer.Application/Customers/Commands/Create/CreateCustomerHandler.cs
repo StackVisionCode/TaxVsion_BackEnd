@@ -18,6 +18,7 @@ public static class CreateCustomerHandler
         ICustomerRepository repository,
         ICustomerDuplicateDetector duplicates,
         ITenantEmployeeDirectoryRepository employeeDirectory,
+        ICustomerCreationLock creationLock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -29,6 +30,8 @@ public static class CreateCustomerHandler
             return Result.Failure<CustomerResponse>(voResult.Error);
 
         var vo = voResult.Value;
+
+        await AcquireCreationLockAsync(creationLock, cmd.TenantId, vo.Email, ct);
 
         // El mismo detector que usa el import: dos puertas al mismo dato con reglas distintas terminan
         // en que la laxa se usa para meter lo que la otra rechaza.
@@ -80,6 +83,28 @@ public static class CreateCustomerHandler
             await PublishPreparerAssignedEventAsync(customer, cmd.CreatedByUserId, correlation, bus);
 
         return Result.Success(MapToResponse(customer));
+    }
+
+    // El email siempre existe: lo exigen el alta y la importación. Sin candado a tiempo, el usuario reintenta.
+    private static async Task AcquireCreationLockAsync(
+        ICustomerCreationLock creationLock,
+        Guid tenantId,
+        EmailAddress email,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            await creationLock.AcquireAsync(tenantId, email.NormalizedValue, ct);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new ConflictException(
+                "Customer.CreationBusy",
+                "A client with this email is being created right now. Try again in a moment.",
+                ex
+            );
+        }
     }
 
     /// <summary>

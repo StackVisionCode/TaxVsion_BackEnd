@@ -37,6 +37,12 @@ public sealed class StatusPaymentProvider(
         return result;
     }
 
+    public Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    ) => throw new NotSupportedException();
+
     public Task<Result<ProviderCustomerToken>> GetOrCreateCustomerAsync(
         Guid tenantId,
         string email,

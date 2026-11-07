@@ -139,6 +139,8 @@ public static class DependencyInjection
 
         services.AddScoped<IMailboxFailureUnit, MailboxFailureUnit>();
         services.AddScoped<IOAuthTokenManager, OAuthTokenManager>();
+        services.AddScoped<IOAuthTokenStore, OAuthTokenStore>();
+        services.AddScoped<IOutboxUnit, OutboxUnit>();
         services.AddHostedService<ProactiveTokenRefreshJob>();
 
         services.AddHttpClient<GmailApiClient>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(30));
@@ -163,6 +165,7 @@ public static class DependencyInjection
         services.AddHttpClient<GraphWatchClient>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<IWatchProviderClientFactory, WatchProviderClientFactory>();
         services.AddScoped<IWatchRenewalService, WatchRenewalService>();
+        services.Configure<WatchRenewalOptions>(configuration.GetSection(WatchRenewalOptions.SectionName));
         services.AddHostedService<WatchRenewalJob>();
 
         services.AddScoped<IProviderSyncCursorRepository, ProviderSyncCursorRepository>();
@@ -182,10 +185,7 @@ public static class DependencyInjection
         services.AddScoped<MessageFetchFailureTracker>();
         services.AddSingleton(
             new MailboxResyncLimits(
-                configuration.GetValue(
-                    MailboxResyncLimits.MaxWindowDaysKey,
-                    MailboxResyncLimits.Default.MaxWindowDays
-                )
+                configuration.GetValue(MailboxResyncLimits.MaxWindowDaysKey, MailboxResyncLimits.Default.MaxWindowDays)
             )
         );
 

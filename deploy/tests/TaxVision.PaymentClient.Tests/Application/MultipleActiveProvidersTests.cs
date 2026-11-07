@@ -132,7 +132,7 @@ public sealed class MultipleActiveProvidersTests
     {
         await SeedOfficeWithStripeAndPayPalAsync();
 
-        var result = await ChargeTenantPaymentHandler.Handle(
+        var result = await TestChargeFlow.ChargeAsync(
             new ChargeTenantPaymentCommand(
                 _tenantId,
                 PaymentProviderCode.PayPal,
@@ -178,7 +178,7 @@ public sealed class MultipleActiveProvidersTests
         PaymentLink link,
         PaymentProviderCode provider
     ) =>
-        RedeemPaymentLinkHandler.Handle(
+        TestChargeFlow.RedeemAsync(
             new RedeemPaymentLinkCommand(link.Token.Value, provider, "client-payment-token", ReceiptEmail: null),
             new PaymentLinkRepository(_db),
             new TenantPaymentRepository(_db),

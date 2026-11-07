@@ -335,6 +335,7 @@ public sealed class CustomerCommandEventCountTests
                 new FixedCorrelationContext(),
                 new Duplicates(Duplicate),
                 new EligibleStaff(),
+                new CustomerFormCreationHarness.CreationLock([]),
             };
             var method = handler
                 .GetMethods(BindingFlags.Public | BindingFlags.Static)

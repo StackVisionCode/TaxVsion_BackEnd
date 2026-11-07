@@ -6,5 +6,9 @@ namespace TaxVision.Tasks.Application.Backfill.Abstractions;
 /// </summary>
 public interface ITenantCustomerBackfillService
 {
-    Task EnsureBackfilledAsync(Guid tenantId, CancellationToken ct = default);
+    /// <summary>Solo mira el estado local: no llama a Customer.</summary>
+    Task<bool> NeedsBackfillAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Pagina contra Customer y guarda por página. No se llama con una transacción abierta.</summary>
+    Task BackfillAsync(Guid tenantId, CancellationToken ct = default);
 }

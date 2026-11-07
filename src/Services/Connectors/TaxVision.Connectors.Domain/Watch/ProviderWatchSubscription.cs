@@ -73,6 +73,8 @@ public sealed class ProviderWatchSubscription : BaseEntity
         );
     }
 
+    public byte[] RowVersion { get; private set; } = [];
+
     /// <summary>Setup o renewal exitoso — reemplaza la referencia del proveedor y resetea el contador de fallos.</summary>
     public void Renew(string subscriptionRef, DateTime expiresAtUtc, DateTime renewedAtUtc)
     {

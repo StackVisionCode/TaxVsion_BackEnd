@@ -180,6 +180,10 @@ internal static class EmbeddedDocumentTemplates
             <div><span>{{ adj.label }}</span><span>-{{ adj.amount }} {{ invoice.currency }}</span></div>
             {% endfor %}
             <div class="grand"><span>Total</span><span>{{ invoice.total }} {{ invoice.currency }}</span></div>
+            {% if invoice.hasPayments %}
+            <div><span>Paid</span><span>{{ invoice.amountPaid }} {{ invoice.currency }}</span></div>
+            <div class="grand"><span>Balance due</span><span>{{ invoice.amountDue }} {{ invoice.currency }}</span></div>
+            {% endif %}
           </div>
 
           {% if invoice.settlementType == "FullyCoveredByCode" %}

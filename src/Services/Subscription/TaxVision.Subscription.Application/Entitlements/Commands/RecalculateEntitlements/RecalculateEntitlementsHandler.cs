@@ -58,7 +58,10 @@ public static class RecalculateEntitlementsHandler
         var changedKeys = ComputeChangedKeys(previous, snapshot);
         var maxStaffUsers = await ComputeMaxStaffUsersAsync(command.TenantId, snapshot, seats, ct);
 
-        await snapshots.UpsertAsync(snapshot, ct);
+        await snapshots.UpsertAsync(snapshot, snapshot.RevisionNumber - 1, ct);
+
+        // Guardar antes de publicar: el perdedor de una carrera reintenta sin anunciar su revisión.
+        await unitOfWork.SaveChangesAsync(ct);
         await cache.RemoveAsync(EntitlementCacheKeys.Summary(command.TenantId), ct);
 
         await bus.PublishAsync(
@@ -76,7 +79,6 @@ public static class RecalculateEntitlementsHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
             "Entitlement snapshot recalculated for tenant {TenantId}: revision {Revision}, {ChangedCount} key(s) changed.",
