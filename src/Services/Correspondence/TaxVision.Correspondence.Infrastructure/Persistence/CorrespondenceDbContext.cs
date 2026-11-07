@@ -45,6 +45,7 @@ public sealed class CorrespondenceDbContext(
 ) : DbContext(options), IUnitOfWork
 {
     public DbSet<CustomerEmailAddress> CustomerEmailAddresses => Set<CustomerEmailAddress>();
+    public DbSet<MailboxOwnership> MailboxOwnerships => Set<MailboxOwnership>();
     public DbSet<TenantBackfillState> TenantBackfillStates => Set<TenantBackfillState>();
     public DbSet<IncomingEmail> IncomingEmails => Set<IncomingEmail>();
     public DbSet<IncomingEmailRecipient> IncomingEmailRecipients => Set<IncomingEmailRecipient>();
@@ -87,7 +88,7 @@ public sealed class CorrespondenceDbContext(
     /// el tenant del actor autenticado. Fail-closed — sin tenant en contexto, compara contra
     /// <see cref="Guid.Empty"/> (0 filas). <c>DraftRepository.ListAbandonedAsync</c>
     /// (DraftCleanupJob) y <c>TenantBackfillStateRepository.ListAllTenantIdsAsync</c>
-    /// (CustomerEmailReconciliationJob) son los únicos 2 accesos cross-tenant genuinos — usan
+    /// (MailboxOwnershipReconciliationJob) son los únicos 2 accesos cross-tenant genuinos — usan
     /// <c>IgnoreQueryFilters()</c> explícito. Ningún job de este servicio despacha vía
     /// <c>bus.InvokeAsync</c>, así que no hace falta sellar <c>bus.TenantId</c> en ninguno.
     /// </summary>

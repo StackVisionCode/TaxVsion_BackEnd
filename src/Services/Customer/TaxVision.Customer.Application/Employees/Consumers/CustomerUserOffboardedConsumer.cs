@@ -134,7 +134,9 @@ public static class CustomerUserOffboardedConsumer
         var actorUserId = ActorOf(msg);
         if (successor is { } successorId)
         {
-            if (customer.HandOverPreparer(msg.UserId, successorId, actorUserId).IsFailure)
+            // Solo se anuncia un traspaso real: Communication rerutearía al sucesor sin serlo.
+            var wasPrimary = customer.AssignedPreparerUserId == msg.UserId;
+            if (customer.HandOverPreparer(msg.UserId, successorId, actorUserId).IsFailure || !wasPrimary)
                 return false;
             await bus.PublishAsync(
                 new CustomerPreparerAssignedIntegrationEvent

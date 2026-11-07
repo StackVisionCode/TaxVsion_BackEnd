@@ -2,11 +2,11 @@ using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Sessions;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.Sessions;
 using TaxVision.Auth.Domain.Audit;
-using TaxVision.Auth.Domain.Onboarding.EmailVerification;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Domain.EmailVerification;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 
@@ -295,17 +295,6 @@ internal sealed class FakeTenantProvisioningClient(Result result) : ITenantProvi
     public CreateTenantForOnboardingRequest? LastRequest { get; private set; }
 
     public Task<Result> CreateTenantAsync(CreateTenantForOnboardingRequest request, CancellationToken ct = default)
-    {
-        LastRequest = request;
-        return Task.FromResult(result);
-    }
-}
-
-internal sealed class FakeAuthInternalOwnerCreationClient(Result result) : IAuthInternalOwnerCreationClient
-{
-    public CreateTenantOwnerForOnboardingRequest? LastRequest { get; private set; }
-
-    public Task<Result> CreateOwnerAsync(CreateTenantOwnerForOnboardingRequest request, CancellationToken ct = default)
     {
         LastRequest = request;
         return Task.FromResult(result);

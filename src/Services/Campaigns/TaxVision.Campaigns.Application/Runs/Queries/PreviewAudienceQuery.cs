@@ -1,7 +1,5 @@
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Options;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
-using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Audience;
 using TaxVision.Campaigns.Domain.Campaigns;
 
@@ -35,11 +33,7 @@ public static class PreviewAudienceHandler
     public static async Task<Result<AudiencePreviewResponse>> Handle(
         PreviewAudienceQuery query,
         ICampaignRepository campaigns,
-        IContactRepository contacts,
-        IContactListRepository lists,
-        ICustomerAudienceClient customerClient,
-        ICampaignCustomerAssignmentReader assignmentReader,
-        IOptions<CampaignsVisibilityOptions> visibility,
+        CampaignAudienceService audience,
         CancellationToken ct
     )
     {
@@ -47,27 +41,16 @@ public static class PreviewAudienceHandler
         if (campaign is null)
             return Result.Failure<AudiencePreviewResponse>(CampaignErrors.NotFound);
 
-        var (includeCustomers, restrictCustomerIds) = await AudienceResolver.ResolveCustomerScopeAsync(
-            query.TenantId,
-            query.TriggeredByUserId,
-            query.IncludeCustomers,
-            query.CustomerIds,
-            query.CanViewAllCustomers,
-            visibility.Value.Enabled,
-            assignmentReader,
-            ct
-        );
-
-        var resolved = await AudienceResolver.ResolveAsync(
-            query.TenantId,
-            campaign.Channels,
-            query.ContactListIds ?? [],
-            query.Manual ?? [],
-            contacts,
-            lists,
-            includeCustomers,
-            customerClient,
-            restrictCustomerIds,
+        var resolved = await audience.ResolveAsync(
+            campaign,
+            new CampaignAudienceRequest(
+                query.TriggeredByUserId,
+                query.ContactListIds ?? [],
+                query.Manual ?? [],
+                query.IncludeCustomers,
+                query.CustomerIds,
+                query.CanViewAllCustomers
+            ),
             ct
         );
         if (resolved.IsFailure)

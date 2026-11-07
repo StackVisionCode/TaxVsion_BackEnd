@@ -29,7 +29,7 @@ public sealed class EnsureInvoicePaymentLinkHandlerTests
             )
             .Value;
         Assert.True(invoice.LinkAsReplacementFor(Guid.NewGuid(), 10_000, Now).IsSuccess);
-        Assert.True(invoice.Issue("INV-2026-00002", Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00002").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
         Assert.True(invoice.ApplyCarriedCredit(Now).IsSuccess);
         Assert.Equal(InvoiceStatus.PartiallyPaid, invoice.Status);
         var links = new RecordingPaymentLinkClient();
@@ -61,7 +61,7 @@ public sealed class EnsureInvoicePaymentLinkHandlerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue("INV-2026-00003", Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00003").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
         var unitOfWork = new CountingUnitOfWork();
 
         await EnsureInvoicePaymentLinkHandler.Handle(

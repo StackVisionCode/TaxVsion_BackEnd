@@ -70,7 +70,10 @@ public sealed class TaskCommandEventCountTests
         Assert.All(created, task => Assert.Single(emitted.OfType<TaskCreatedIntegrationEvent>(), e => e.TaskId == task.Id));
         Assert.All(created, task => Assert.Single(emitted.OfType<ReminderRequestedIntegrationEvent>(), e => e.TargetId == task.Id));
         Assert.Equal(created.Count, emitted.OfType<TaskCreatedIntegrationEvent>().Count());
-        Assert.Empty(emitted.OfType<TaskAssignedIntegrationEvent>());
+        // D-TSK-1: cada tarea raíz de la plantilla avisa una vez a su asignado.
+        var roots = created.Where(task => task.ParentTaskId is null).ToList();
+        Assert.All(roots, task => Assert.Single(emitted.OfType<TaskAssignedIntegrationEvent>(), e => e.TaskId == task.Id));
+        Assert.Equal(roots.Count, emitted.OfType<TaskAssignedIntegrationEvent>().Count());
     }
 
     [Fact]
@@ -86,7 +89,33 @@ public sealed class TaskCommandEventCountTests
         var emitted = await fixture.EmittedAsync();
         Assert.Single(emitted.OfType<TaskCreatedIntegrationEvent>());
         Assert.Single(emitted.OfType<ReminderRequestedIntegrationEvent>());
-        Assert.Empty(emitted.OfType<TaskAssignedIntegrationEvent>());
+        // D-TSK-1: el alta de la serie avisa la asignación de su primera instancia.
+        Assert.Equal(Preparer, Assert.Single(emitted.OfType<TaskAssignedIntegrationEvent>()).AssigneeUserId);
+    }
+
+    [Fact]
+    public async Task SeriesNextOccurrence_DoesNotEmitTaskAssigned()
+    {
+        var fixture = new Fixture();
+        var series = new InMemoryTaskSeriesRepository();
+        var materializer = new TaskSeriesMaterializer(fixture.Tasks, series);
+        await fixture.RunAsync(
+            typeof(CreateTaskSeriesHandler),
+            new CreateTaskSeriesCommand(TenantId, Manager, "Monthly bookkeeping", null, TaskPriority.Normal, null, null, null, Preparer, false, "FREQ=MONTHLY;INTERVAL=1", "America/New_York", RecurrenceMode.FixedSchedule, DateTime.UtcNow.AddDays(2), null, null),
+            series,
+            materializer
+        );
+        await fixture.EmittedAsync();
+        var first = Assert.Single(fixture.Tasks.Stored);
+
+        await fixture.RunAsync(typeof(CompleteTaskHandler), new CompleteTaskCommand(TenantId, first.Id, Manager, true), series, materializer);
+
+        // D-TSK-1: la materialización automática pide recordatorio, pero no vuelve a avisar la asignación.
+        var emitted = await fixture.EmittedAsync();
+        var next = Assert.Single(fixture.Tasks.Stored, task => task.Id != first.Id);
+        Assert.Equal(2, next.OccurrenceNumber);
+        Assert.Single(emitted.OfType<ReminderRequestedIntegrationEvent>(), e => e.TargetId == next.Id);
+        Assert.DoesNotContain(emitted.OfType<TaskAssignedIntegrationEvent>(), e => e.TaskId == next.Id);
     }
 
     [Fact]

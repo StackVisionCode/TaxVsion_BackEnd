@@ -188,6 +188,30 @@ public sealed class CodesController(
         return ToActionResult(result);
     }
 
+    public sealed record ForceCommitLateReservationRequest(string? Note);
+
+    /// <summary>Da por bueno un canje tardío (GRW-1). Solo prospera si PaymentApp confirma el pago; deja auditoría.</summary>
+    [HttpPost("late-commit-reviews/{reviewId:guid}/force-commit")]
+    [AllowActorTypes(ActorType.PlatformAdmin)]
+    [RateLimit("growth.g.codes_revoke")]
+    [HasPermission(GrowthPermissions.AdminCrossTenant)]
+    [ProducesResponseType<ForceCommitLateReservationResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ForceCommitLateReservation(
+        Guid reviewId,
+        ForceCommitLateReservationRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId) || tenantId != PlatformTenant.Id)
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result<ForceCommitLateReservationResponse>>(
+            new ForceCommitLateReservationCommand(reviewId, actorId, request.Note),
+            ct
+        );
+        return ToActionResult(result);
+    }
+
     private async Task<(Guid OwnerTenantId, Guid? TenantScopeId)?> ResolveOwnershipAsync(
         CreateCodeRequest request,
         Guid callerTenantId,

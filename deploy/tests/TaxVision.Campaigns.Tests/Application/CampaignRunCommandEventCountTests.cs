@@ -253,6 +253,12 @@ public sealed class CampaignRunCommandEventCountTests
                 new FakeSenderProfileRepository(),
                 new FakeUnitOfWork(),
                 new FakeCorrelationContext(),
+                new CampaignRunStarter(
+                    Wallet,
+                    new FakeCorrelationContext(),
+                    NullLogger<CampaignRunStarter>.Instance
+                ),
+                new CampaignRunDispatcher(Campaigns, new FakeSenderProfileRepository()),
             };
             var method = handler
                 .GetMethods(BindingFlags.Public | BindingFlags.Static)

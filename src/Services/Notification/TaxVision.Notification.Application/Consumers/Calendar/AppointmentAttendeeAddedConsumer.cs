@@ -1,6 +1,5 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -31,9 +30,7 @@ public static class AppointmentAttendeeAddedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
-        IUserNotificationPreferenceRepository preferences,
         NotificationDispatcher dispatcher,
-        ILogger<AppointmentAttendeeAddedIntegrationEvent> logger,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -41,17 +38,7 @@ public static class AppointmentAttendeeAddedConsumer
         if (evt.Email is not { Length: > 0 } email)
             return;
 
-        var recipients = await CalendarRecipients.AllowedAsync(
-            [new AppointmentRecipient(email, evt.UserId)],
-            evt.TenantId,
-            preferences,
-            logger,
-            TemplateKey,
-            ct
-        );
-
-        if (recipients.Count == 0)
-            return;
+        IReadOnlyList<AppointmentRecipient> recipients = [new AppointmentRecipient(email, evt.UserId)];
 
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
@@ -74,6 +61,7 @@ public static class AppointmentAttendeeAddedConsumer
                 recipients,
                 evt.TenantId,
                 TemplateKey,
+                NotificationKinds.CalendarAttendeeAdded,
                 new Dictionary<string, object?>
                 {
                     ["appointment_title"] = evt.Title,

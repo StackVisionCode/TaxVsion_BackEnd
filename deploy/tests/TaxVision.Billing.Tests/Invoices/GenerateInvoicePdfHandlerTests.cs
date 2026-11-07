@@ -117,6 +117,36 @@ public sealed class GenerateInvoicePdfHandlerTests
         Assert.Equal(firstKey, documents.Key);
     }
 
+    // BIL-7: con la misma clave, Documents devuelve el PDF "pendiente" y la anulada nunca sale con su marca.
+    [Fact]
+    public async Task VoidedInvoice_UsesDistinctIdempotencyKey()
+    {
+        var invoice = Issued(80000);
+        invoice.AttachPaymentLink(Guid.NewGuid(), "https://pay.example.test/x", Now);
+        var documents = new RecordingDocuments();
+        await RunAsync(invoice, documents);
+        var issuedKey = documents.Key;
+
+        Assert.True(invoice.Void("mistake", Now, Actor).IsSuccess);
+        await RunAsync(invoice, documents);
+
+        Assert.NotEqual(issuedKey, documents.Key);
+    }
+
+    // BIL-7: la anulada ya sale con su propio PDF; ese PDF no ofrece pagar.
+    [Fact]
+    public async Task VoidedInvoice_PdfOffersNoPayment()
+    {
+        var invoice = Issued(80000);
+        invoice.AttachPaymentLink(Guid.NewGuid(), "https://pay.example.test/x", Now);
+        Assert.True(invoice.Void("mistake", Now, Actor).IsSuccess);
+        var documents = new RecordingDocuments();
+
+        await RunAsync(invoice, documents);
+
+        Assert.Null(documents.Sent!.PaymentUrl);
+    }
+
     private static Invoice Issued(long cents)
     {
         var invoice = Invoice
@@ -130,7 +160,7 @@ public sealed class GenerateInvoicePdfHandlerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue("INV-2026-00043", Now, Now.AddDays(30), Actor).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00043").Value, Now, Now.AddDays(30), Actor).IsSuccess);
         return invoice;
     }
 
@@ -175,7 +205,7 @@ public sealed class GenerateInvoicePdfHandlerTests
         );
         Assert.True(draft.IsSuccess);
         var invoice = draft.Value;
-        Assert.True(invoice.Issue("INV-2026-00042", Now, Now.AddDays(30), Actor).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00042").Value, Now, Now.AddDays(30), Actor).IsSuccess);
 
         var documents = new RecordingDocuments();
         await GenerateInvoicePdfHandler.Handle(

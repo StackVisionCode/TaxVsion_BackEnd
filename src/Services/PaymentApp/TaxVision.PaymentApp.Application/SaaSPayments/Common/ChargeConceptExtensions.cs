@@ -17,9 +17,11 @@ public static class ChargeConceptExtensions
         if (paymentResult.IsFailure)
             return paymentResult;
         var concept = ChargeConcept.Create(code, displayName);
-        if (concept.IsSuccess)
-            paymentResult.Value.AttachConcept(concept.Value);
-        return paymentResult;
+        if (concept.IsFailure)
+            return paymentResult;
+
+        var attached = paymentResult.Value.AttachConcept(concept.Value);
+        return attached.IsFailure ? Result.Failure<SaaSPayment>(attached.Error) : paymentResult;
     }
 
     // Resuelve concept por PaymentType cuando el handler no tiene datos específicos (ChargeSaaSPayment,

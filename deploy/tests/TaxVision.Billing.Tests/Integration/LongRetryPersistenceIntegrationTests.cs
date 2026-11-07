@@ -3,7 +3,6 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using JasperFx;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Billing.Application.Abstractions;
@@ -21,20 +20,15 @@ namespace TaxVision.Billing.Tests.Integration;
 /// <summary>
 /// BIL-3b contra el SQL Server real: el reintento largo queda guardado como Scheduled en
 /// wolverine_incoming_envelopes y se ejecuta después de reiniciar el host. Usa un esquema propio
-/// (<see cref="Schema"/>), no el "integration" de Billing, para no cruzarse con el Billing que está corriendo.
+/// (<see cref="Schema"/>), no el "integration" de Billing, dentro de la base temporal (BIL-14).
 /// </summary>
-public sealed class LongRetryPersistenceIntegrationTests : IAsyncLifetime
+[Collection(BillingTestDatabase.Collection)]
+public sealed class LongRetryPersistenceIntegrationTests(BillingTestDatabase database) : IAsyncLifetime
 {
     private const string Schema = "bil3b_retry_test";
     private static readonly DateTime Now = new(2026, 11, 4, 12, 0, 0, DateTimeKind.Utc);
 
-    private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("BILLING_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-billing000001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set BILLING_DB_CONNECTION or the Billing user-secrets to run this test.");
+    private readonly string _connectionString = database.ConnectionString;
 
     private readonly Invoice _invoice = IssuedInvoice();
 
@@ -191,7 +185,7 @@ public sealed class LongRetryPersistenceIntegrationTests : IAsyncLifetime
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue("INV-2026-00001", Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
         return invoice;
     }
 }

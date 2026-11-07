@@ -35,7 +35,6 @@ internal sealed class CustomerImportCloudStorageClient(
     IServiceTokenAcquirer tokenAcquirer,
     IMinioClient minioClient,
     IOptions<CustomerMinioOptions> minioOptions,
-    IMessageBus bus,
     ICorrelationContext correlation,
     ILogger<CustomerImportCloudStorageClient> logger
 ) : ICustomerImportCloudStorageClient
@@ -54,6 +53,7 @@ internal sealed class CustomerImportCloudStorageClient(
         string fileName,
         string contentType,
         Guid actorId,
+        IMessageBus bus,
         CancellationToken ct = default
     )
     {

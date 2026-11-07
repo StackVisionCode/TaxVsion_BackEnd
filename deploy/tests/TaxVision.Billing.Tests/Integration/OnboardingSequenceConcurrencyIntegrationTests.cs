@@ -9,7 +9,6 @@ using JasperFx;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Billing.Application.Abstractions;
@@ -34,16 +33,7 @@ public sealed class OnboardingSequenceConcurrencyIntegrationTests : IAsyncLifeti
     private const string DatabaseName = "billing_bil11_sequence_it";
     private const int Onboardings = 10;
 
-    private static readonly SqlConnectionStringBuilder Server = new(
-        Environment.GetEnvironmentVariable("BILLING_DB_CONNECTION")
-            ?? new ConfigurationBuilder()
-                .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-billing000001")
-                .Build()
-                .GetConnectionString("Default")
-            ?? throw new InvalidOperationException(
-                "Set BILLING_DB_CONNECTION or the Billing user-secrets to run this test."
-            )
-    );
+    private static readonly SqlConnectionStringBuilder Server = new(BillingTestDatabase.LocalConnectionString);
 
     private static readonly string Connection = new SqlConnectionStringBuilder(Server.ConnectionString)
     {

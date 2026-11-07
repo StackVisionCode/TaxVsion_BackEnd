@@ -67,6 +67,39 @@ public sealed class EventBasedEmailDispatchGatewayTests
         Assert.Equal(1, uow.SaveCount);
     }
 
+    // SCR-10: del render al log, por el mismo camino que usan los consumers.
+    [Fact]
+    public async Task Log_stores_rendered_versions()
+    {
+        var logRepo = new RecordingNotificationLogRepository();
+        var gateway = new EventBasedEmailDispatchGateway(
+            new RecordingIntegrationEventPublisher(),
+            logRepo,
+            new NoOpUnitOfWork(),
+            TestDeliveryGates.Open(),
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+        var render = new ScribeRenderedEmail(
+            "Welcome",
+            "<p>Hi</p>",
+            "Hi",
+            [],
+            EmailDispatchScope.System,
+            "auth.welcome",
+            TemplateVersion: 7,
+            LayoutVersion: 3
+        );
+
+        await gateway.QueueEmailAsync(
+            render.ToDispatchRequest(Guid.NewGuid(), "customer@test.com", "auth.welcome", Guid.NewGuid(), "corr-1"),
+            CancellationToken.None
+        );
+
+        var log = Assert.Single(logRepo.Logs);
+        Assert.Equal(7, log.RenderedTemplateVersion);
+        Assert.Equal(3, log.RenderedLayoutVersion);
+    }
+
     [Fact]
     public async Task QueueEmailAsync_sends_confidential_email_only_to_the_postmaster_queue()
     {
@@ -493,7 +526,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
             .Create(
                 tenantId: Guid.NewGuid(),
                 channel: NotificationChannel.Email,
-                recipient: "test@customer.com",
+                recipient: NotificationRecipient.ForEmail("test@customer.com").Value,
                 subject: "Test",
                 templateKey: "test.key",
                 relatedEventId: null,

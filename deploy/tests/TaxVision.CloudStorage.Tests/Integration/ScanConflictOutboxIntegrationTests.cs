@@ -2,8 +2,11 @@ using System.Collections.Concurrent;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Hosting;
 using JasperFx.CodeGeneration.Model;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,6 +14,8 @@ using TaxVision.CloudStorage.Api.Messaging;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Commands;
+using TaxVision.CloudStorage.Application.Files.DomainEvents;
+using TaxVision.CloudStorage.Application.Moderation;
 using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Quotas;
@@ -51,6 +56,33 @@ public sealed class ScanConflictOutboxIntegrationTests(CloudStorageConcurrencyFi
 
         Assert.True(await _probe.WaitForAsync(fileId, TimeSpan.FromSeconds(30)));
         Assert.Equal(FileStatus.Available, await ReadStatusAsync(fileId));
+        await Task.Delay(SettleTime);
+        Assert.Equal(["it-scan-control"], _probe.Correlations(fileId));
+        await host.StopAsync(TimeSpan.FromSeconds(10));
+    }
+
+    // CST-9, el camino real: comando en línea, evento de dominio por la cola durable y aviso por el outbox.
+    [Fact]
+    public async Task An_approved_review_announces_the_file_once_after_the_commit()
+    {
+        var fileId = await SeedFileAsync(pendingReview: true);
+        using var host = await StartHostAsync(new InlineVirusScanner(() => Task.CompletedTask));
+
+        var result = await host.MessageBus()
+            .InvokeAsync<Result>(
+                new ApproveContentReviewCommand(
+                    _tenantId,
+                    fileId,
+                    Guid.NewGuid(),
+                    new RequestAuditContext(null, null, "it-review")
+                )
+            );
+
+        Assert.True(result.IsSuccess);
+        Assert.True(await _probe.WaitForAsync(fileId, TimeSpan.FromSeconds(30)));
+        Assert.Equal(FileStatus.Available, await ReadStatusAsync(fileId));
+        await Task.Delay(SettleTime);
+        Assert.Equal(["it-review"], _probe.Correlations(fileId));
         await host.StopAsync(TimeSpan.FromSeconds(10));
     }
 
@@ -76,6 +108,54 @@ public sealed class ScanConflictOutboxIntegrationTests(CloudStorageConcurrencyFi
         await host.StopAsync(TimeSpan.FromSeconds(10));
     }
 
+    // Fila L: ClamAV corre sin transacción abierta; el escaneo en curso lo sostiene un candado de sesión.
+    [Fact]
+    public async Task The_virus_scan_runs_without_an_open_transaction()
+    {
+        var fileId = await SeedFileAsync();
+        (int Holders, int InTransaction) claim = (-1, -1);
+        FileStatus? statusWhileScanning = null;
+        using var host = await StartHostAsync(
+            new InlineVirusScanner(async () =>
+            {
+                claim = await ScanClaimHoldersAsync(fileId);
+                statusWhileScanning = await ReadStatusAsync(fileId);
+            })
+        );
+
+        await host.MessageBus().PublishAsync(new ScanFileCommand(_tenantId, fileId, "it-scan-outside-tx"));
+
+        Assert.True(await _probe.WaitForAsync(fileId, TimeSpan.FromSeconds(30)));
+        Assert.Equal((1, 0), claim);
+        Assert.Equal(FileStatus.Scanning, statusWhileScanning);
+        Assert.Equal(FileStatus.Available, await ReadStatusAsync(fileId));
+        await host.StopAsync(TimeSpan.FromSeconds(10));
+    }
+
+    // Quién tiene el candado del escaneo y cuántos de esos tienen una transacción abierta.
+    private async Task<(int Holders, int InTransaction)> ScanClaimHoldersAsync(Guid fileId)
+    {
+        await using var connection = new SqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            """
+            SELECT COUNT(*), COUNT(t.session_id)
+            FROM sys.dm_tran_locks l
+            LEFT JOIN sys.dm_tran_session_transactions t ON t.session_id = l.request_session_id
+            WHERE l.resource_type = 'APPLICATION'
+              AND l.resource_database_id = DB_ID()
+              AND l.request_status = 'GRANT'
+              AND l.resource_description LIKE @resource
+            """,
+            connection
+        );
+        // La descripción trae el nombre del recurso recortado a 32 caracteres.
+        command.Parameters.AddWithValue("@resource", $"%cloudstorage:scan:{fileId:N}"[..33] + "%");
+        await using var reader = await command.ExecuteReaderAsync();
+        await reader.ReadAsync();
+        return (reader.GetInt32(0), reader.GetInt32(1));
+    }
+
     private async Task<IHost> StartHostAsync(IVirusScanner scanner)
     {
         var host = Host.CreateDefaultBuilder()
@@ -85,6 +165,7 @@ public sealed class ScanConflictOutboxIntegrationTests(CloudStorageConcurrencyFi
                 services.AddSingleton<ITenantContext>(new TemporaryDatabase.FixedTenant(_tenantId));
                 services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CloudStorageDbContext>());
                 services.AddScoped<IFileObjectRepository, FileObjectRepository>();
+                services.AddScoped<IScanClaims, SqlScanClaims>();
                 services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
                 services.AddScoped<IStorageAuditRepository, StorageAuditRepository>();
                 services.AddSingleton<IObjectStorage>(_storage);
@@ -101,6 +182,9 @@ public sealed class ScanConflictOutboxIntegrationTests(CloudStorageConcurrencyFi
                 options
                     .Discovery.DisableConventionalDiscovery()
                     .IncludeType(typeof(ScanFileHandler))
+                    .IncludeType(typeof(RecordScanVerdictHandler))
+                    .IncludeType(typeof(ApproveContentReviewHandler))
+                    .IncludeType(typeof(FileBecameAvailableDomainEventHandler))
                     .IncludeType(typeof(AvailableProbeHandler));
                 options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
                 options.Durability.Mode = DurabilityMode.Solo;
@@ -110,6 +194,7 @@ public sealed class ScanConflictOutboxIntegrationTests(CloudStorageConcurrencyFi
                     .UseEntityFrameworkCoreTransactions()
                     .WithDbContextAbstraction<IUnitOfWork, CloudStorageDbContext>();
                 options.Policies.AutoApplyTransactions();
+                options.UseTaxVisionDomainEvents();
                 options.ConfigureScanQueue(2);
                 options.PublishMessage<FileAvailableIntegrationEvent>().ToLocalQueue("cst-available-probe");
                 options.UseTaxVisionConflictPolicy(
@@ -122,7 +207,7 @@ public sealed class ScanConflictOutboxIntegrationTests(CloudStorageConcurrencyFi
         return host;
     }
 
-    private async Task<Guid> SeedFileAsync()
+    private async Task<Guid> SeedFileAsync(bool pendingReview = false)
     {
         var fileId = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -148,7 +233,14 @@ public sealed class ScanConflictOutboxIntegrationTests(CloudStorageConcurrencyFi
         _storage.Existing.Add((_options.TempBucket, file.ObjectKey));
 
         var limit = TenantStorageLimit.Create(_tenantId, "starter", 100_000_000, 100_000_000);
-        Assert.True(limit.Reserve(file.SizeBytes).IsSuccess);
+        if (pendingReview)
+        {
+            Assert.True(file.MarkScanning().IsSuccess);
+            var checksum = ChecksumSha256.Create(Sha256).Value;
+            Assert.True(file.MarkPendingReview("Doubt", "application/pdf", checksum, now).IsSuccess);
+        }
+        else
+            Assert.True(limit.Reserve(file.SizeBytes).IsSuccess);
 
         await using var db = fixture.NewContext(_tenantId);
         db.StorageLimits.Add(limit);
@@ -199,8 +291,16 @@ public sealed class ScanConflictOutboxIntegrationTests(CloudStorageConcurrencyFi
 public sealed class AvailableProbe
 {
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource> _received = new();
+    private readonly ConcurrentDictionary<Guid, ConcurrentQueue<string?>> _correlations = new();
 
-    public void Record(Guid fileId) => Slot(fileId).TrySetResult();
+    public void Record(Guid fileId, string? correlationId)
+    {
+        _correlations.GetOrAdd(fileId, _ => new()).Enqueue(correlationId);
+        Slot(fileId).TrySetResult();
+    }
+
+    public IReadOnlyList<string?> Correlations(Guid fileId) =>
+        _correlations.TryGetValue(fileId, out var received) ? [.. received] : [];
 
     public async Task<bool> WaitForAsync(Guid fileId, TimeSpan timeout)
     {
@@ -221,5 +321,6 @@ public sealed class AvailableProbe
 
 public static class AvailableProbeHandler
 {
-    public static void Handle(FileAvailableIntegrationEvent evt, AvailableProbe probe) => probe.Record(evt.FileId);
+    public static void Handle(FileAvailableIntegrationEvent evt, AvailableProbe probe) =>
+        probe.Record(evt.FileId, evt.CorrelationId);
 }

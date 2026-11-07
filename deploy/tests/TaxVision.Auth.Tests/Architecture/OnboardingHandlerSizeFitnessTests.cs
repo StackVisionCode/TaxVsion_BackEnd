@@ -17,7 +17,7 @@ public sealed class OnboardingHandlerSizeFitnessTests
     public void CompleteOnboardingRegistrationHandler_Handle_StaysSmall()
     {
         var path = HandlerSourceLocator.FindRepoFile(
-            "src/Services/Auth/Application/Onboarding/Registration/Commands/CompleteOnboardingRegistration.cs"
+            "src/Services/Auth/Onboarding/Application/Registration/Commands/CompleteOnboardingRegistration.cs"
         );
         var lineCount = HandlerSourceLocator.CountHandleMethodBodyLines(path);
 

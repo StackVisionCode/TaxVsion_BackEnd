@@ -53,9 +53,9 @@ public sealed record SignatureFileMetadata(
 /// <para>
 /// Fase D0/D1 — DownloadAsync sigue via HTTP+M2M (fuera del scope de D1, ver
 /// project_cloudstorage_hardening_plan.md): el token lo toma
-/// <see cref="ISignatureServiceTokenAcquirer"/>, igual que Notification. UploadAsync en
+/// <see cref="ISignatureServiceTokenAcquirer"/>, igual que Notification. StageAsync en
 /// cambio ya no llama a CloudStorage por HTTP — sube el objeto directo a MinIO con
-/// credenciales propias (IAM scoped) y publica SaveFileRequestedIntegrationEvent; el
+/// credenciales propias (IAM scoped) y devuelve SaveFileRequestedIntegrationEvent; el
 /// TenantId se pasa explícito porque este cliente se llama desde un consumer background
 /// sin request context.
 /// </para>
@@ -66,14 +66,9 @@ public interface ISignatureCloudStorageClient
     Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
 
     /// <summary>
-    /// Sube un archivo y pide guardarlo en el acto: <c>SaveFileRequested</c> sale antes del commit de quien llama.
-    /// Es para quien espera el escaneo sin confirmar o no guarda nada; el resto usa <see cref="StageAsync"/>.
-    /// </summary>
-    Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default);
-
-    /// <summary>
     /// SIG-6: deja el archivo en MinIO y devuelve el <c>SaveFileRequested</c> sin publicarlo. Quien llama lo publica
-    /// por su outbox, en la transacción que registra el <c>FileId</c>.
+    /// por su outbox, en la transacción que registra el <c>FileId</c>. Si espera el escaneo sin confirmar, lo pide con
+    /// <c>RequestPartialCopyScanCommand</c>.
     /// </summary>
     Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
         Guid tenantId,

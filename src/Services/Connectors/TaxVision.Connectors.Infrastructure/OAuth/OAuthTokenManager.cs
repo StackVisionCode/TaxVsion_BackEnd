@@ -177,9 +177,11 @@ public sealed class OAuthTokenManager(
         var accessCipher = protector.Protect(granted.AccessToken);
         var refreshCipher = granted.RefreshToken is null ? null : protector.Protect(granted.RefreshToken);
 
-        // Antes de soltar el lock y sin atarse al que llamó: el proveedor ya rotó el token.
+        // Antes de soltar el lock y sin atarse al que llamó: el proveedor ya rotó el token. Solo si nadie guardó
+        // otro desde la lectura; el access token recibido sirve igual para este pedido.
         await tokenStore.SaveAsync(
             accountId,
+            connection.Token!.RowVersion,
             token =>
             {
                 token.UpdateAccessToken(accessCipher, now.AddSeconds(granted.ExpiresInSeconds), now);

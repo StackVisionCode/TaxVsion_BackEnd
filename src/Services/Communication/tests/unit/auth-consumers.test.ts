@@ -171,9 +171,9 @@ describe('bindAuthConsumers — contrato de campos con Auth (.NET)', () => {
       eventType: 'auth.user.reactivated.v1',
     });
 
-    expect(userPermissions.markActive).toHaveBeenCalledWith('user-portal-1', expect.any(Date));
-    expect(userDirectory.markActive).toHaveBeenCalledWith('user-portal-1');
-    expect(customerPortalAccounts.markActiveByUserId).toHaveBeenCalledWith('user-portal-1');
+    expect(userPermissions.markActive).toHaveBeenCalledWith('user-portal-1', expect.any(Date), expect.any(Date));
+    expect(userDirectory.markActive).toHaveBeenCalledWith('user-portal-1', expect.any(Date));
+    expect(customerPortalAccounts.markActiveByUserId).toHaveBeenCalledWith('user-portal-1', expect.any(Date));
   });
 
   it('D-7: auth.user.deactivated.v1 solo bloquea el acceso (3 proyecciones), sin salir de grupos ni avisar a salas', async () => {
@@ -184,9 +184,9 @@ describe('bindAuthConsumers — contrato de campos con Auth (.NET)', () => {
       eventType: 'auth.user.deactivated.v1',
     });
 
-    expect(userPermissions.markInactive).toHaveBeenCalledWith('user-suspended', expect.any(Date));
-    expect(userDirectory.markInactive).toHaveBeenCalledWith('user-suspended');
-    expect(customerPortalAccounts.markInactiveByUserId).toHaveBeenCalledWith('user-suspended');
+    expect(userPermissions.markInactive).toHaveBeenCalledWith('user-suspended', expect.any(Date), expect.any(Date));
+    expect(userDirectory.markInactive).toHaveBeenCalledWith('user-suspended', expect.any(Date));
+    expect(customerPortalAccounts.markInactiveByUserId).toHaveBeenCalledWith('user-suspended', expect.any(Date));
     // La salida de grupos (mensaje de sistema + aviso a la sala) es solo del retiro.
     expect(emitter.emitToConversation).not.toHaveBeenCalled();
   });
@@ -202,6 +202,41 @@ describe('bindAuthConsumers — contrato de campos con Auth (.NET)', () => {
     expect(userPermissions.markActive).not.toHaveBeenCalled();
     expect(userDirectory.markActive).not.toHaveBeenCalled();
     expect(customerPortalAccounts.markActiveByUserId).not.toHaveBeenCalled();
+  });
+});
+
+// Con prefetch 20 y reintentos el orden de llegada no es el de Auth: cada proyección guarda la fecha
+// del último aviso aplicado y descarta los más viejos. El handler le pasa la del sobre (occurredOn).
+describe('bindAuthConsumers — orden de deactivated/reactivated', () => {
+  const t1 = '2026-11-01T10:00:00.000Z';
+  const t2 = '2026-11-01T10:05:00.000Z';
+
+  it('pasa la fecha del aviso (occurredOn) a las tres proyecciones al desactivar', async () => {
+    const { handlers, userPermissions, userDirectory, customerPortalAccounts } = setup();
+
+    await handlers.get('auth.user.deactivated.v1')!({
+      ...envelope({ userId: 'user-1' }),
+      eventType: 'auth.user.deactivated.v1',
+      occurredOnUtc: t1,
+    });
+
+    expect(userPermissions.markInactive).toHaveBeenCalledWith('user-1', expect.any(Date), new Date(t1));
+    expect(userDirectory.markInactive).toHaveBeenCalledWith('user-1', new Date(t1));
+    expect(customerPortalAccounts.markInactiveByUserId).toHaveBeenCalledWith('user-1', new Date(t1));
+  });
+
+  it('pasa la fecha del aviso (occurredOn) a las tres proyecciones al reactivar', async () => {
+    const { handlers, userPermissions, userDirectory, customerPortalAccounts } = setup();
+
+    await handlers.get('auth.user.reactivated.v1')!({
+      ...envelope({ userId: 'user-1' }),
+      eventType: 'auth.user.reactivated.v1',
+      occurredOnUtc: t2,
+    });
+
+    expect(userPermissions.markActive).toHaveBeenCalledWith('user-1', expect.any(Date), new Date(t2));
+    expect(userDirectory.markActive).toHaveBeenCalledWith('user-1', new Date(t2));
+    expect(customerPortalAccounts.markActiveByUserId).toHaveBeenCalledWith('user-1', new Date(t2));
   });
 });
 

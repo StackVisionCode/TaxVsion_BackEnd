@@ -34,7 +34,12 @@ public static class SubmitSignatureHandler
             return Result.Failure(resolution.Error);
 
         var (request, signer) = (resolution.Value.Request, resolution.Value.Signer);
-        var evidenceValidation = ValidateEvidence(cmd, signer);
+        var evidenceValidation = request.ValidateSignatureEvidence(
+            signer.Id,
+            cmd.Method,
+            cmd.TypedName,
+            cmd.SignatureImageFileId
+        );
         if (evidenceValidation.IsFailure)
             return evidenceValidation;
 
@@ -158,44 +163,6 @@ public static class SubmitSignatureHandler
 
     private static string BuildPartialCopyBatchKey(Guid requestId, Guid signerId, IReadOnlyList<Guid> documentIds) =>
         $"signature.partial_copy:{requestId:N}:{signerId:N}:{string.Join('-', documentIds.Order().Select(id => id.ToString("N")))}:v1";
-
-    private static Result ValidateEvidence(SubmitSignatureCommand cmd, Signer signer) =>
-        cmd.Method switch
-        {
-            SignatureCaptureMethod.Typed => ValidateTypedName(cmd.TypedName, signer),
-            SignatureCaptureMethod.Drawn or SignatureCaptureMethod.Uploaded => ValidateImageFileId(
-                cmd.SignatureImageFileId
-            ),
-            _ => Result.Failure(new Error("Signature.Public.UnknownMethod", "Unknown signature capture method.")),
-        };
-
-    private static Result ValidateTypedName(string? typedName, Signer signer)
-    {
-        if (string.IsNullOrWhiteSpace(typedName))
-            return Result.Failure(
-                new Error("Signature.Public.TypedNameEmpty", "Typed name is required for Typed method.")
-            );
-
-        var normalizedTyped = typedName.Trim();
-        var normalizedExpected = signer.FullName.Value.Trim();
-        if (!string.Equals(normalizedTyped, normalizedExpected, StringComparison.OrdinalIgnoreCase))
-            return Result.Failure(
-                new Error("Signature.Public.TypedNameMismatch", "Typed name must match the signer full name.")
-            );
-        return Result.Success();
-    }
-
-    private static Result ValidateImageFileId(Guid? fileId)
-    {
-        if (fileId is null || fileId == Guid.Empty)
-            return Result.Failure(
-                new Error(
-                    "Signature.Public.ImageRequired",
-                    "SignatureImageFileId is required for Drawn/Uploaded methods."
-                )
-            );
-        return Result.Success();
-    }
 
     private static int SignedCount(SignatureRequest request) =>
         request.Signers.Count(s => s.Status == SignerStatus.Signed);

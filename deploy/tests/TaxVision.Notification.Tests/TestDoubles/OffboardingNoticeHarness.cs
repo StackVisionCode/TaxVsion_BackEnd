@@ -51,7 +51,7 @@ internal sealed class OffboardingNoticeHarness
             _gatewayPublisher,
             logs,
             new NoOpUnitOfWork(),
-            TestDeliveryGates.Open(),
+            TestDeliveryGates.For(preferences, directory),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         Correlation = new TestCorrelationContext();
@@ -59,7 +59,6 @@ internal sealed class OffboardingNoticeHarness
             _dispatcher.Dispatcher,
             Resolver,
             new FakeEmails(inactiveInDirectory ?? []),
-            preferences,
             new RecordingGateway(gateway, Queued),
             Scribe,
             new FakeTenantHostResolver(host),
@@ -167,8 +166,11 @@ internal sealed class OffboardingNoticeHarness
             CancellationToken ct = default
         )
         {
-            queued.Add(request);
-            return await inner.QueueEmailAsync(request, ct);
+            // Solo lo que salió: lo que el gate calla no cuenta como encolado.
+            var result = await inner.QueueEmailAsync(request, ct);
+            if (result.Status != NotificationDispatchAttemptStatus.Suppressed)
+                queued.Add(request);
+            return result;
         }
     }
 

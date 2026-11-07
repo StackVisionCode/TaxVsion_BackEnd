@@ -388,7 +388,7 @@ public static class FormFileScanResultConsumer
         var before = request
             .Submission!.Attachments.Where(item => item.FileId == fileId)
             .ToDictionary(item => item.Id, item => item.Status);
-        var outcome = request.ApplyFileVerdict(fileId, projected.ToVerdict(), nowUtc);
+        var outcome = request.Files.ApplyVerdict(fileId, projected.ToVerdict(), nowUtc);
         if (outcome == FileVerdictOutcome.Ignored)
             return false;
 

@@ -50,7 +50,7 @@ public static class DocumentGenerationCompletedConsumer
                 return;
             }
 
-            invoice.AttachPdf(evt.FileId, clock.GetUtcNow().UtcDateTime);
+            invoice.AttachPdf(evt.FileId, evt.IdempotencyKey, clock.GetUtcNow().UtcDateTime);
             await unitOfWork.SaveChangesAsync(ct);
 
             logger.LogInformation("Invoice {InvoiceId} linked to PDF FileId {FileId}.", invoice.Id, evt.FileId);

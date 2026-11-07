@@ -93,6 +93,7 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(OnboardingPaymentStatus.Succeeded, result.Value.Status);
+        Assert.Equal(0, provider.Calls);
     }
 
     private static SaaSPayment CreateProcessingOnboardingPayment()
@@ -337,19 +338,29 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
         ) => throw new NotSupportedException();
     }
 
+    // Reimplementa IPaymentProvider: sin eso el handler, que llama por la interfaz, llegaría al método base.
     private sealed class ThrowingPaymentProvider(PaymentProviderCode code)
-        : FakePaymentProvider(code, new ChargeAuthorizationResult("unused", PaymentStatus.Processing))
+        : FakePaymentProvider(code, new ChargeAuthorizationResult("unused", PaymentStatus.Processing)),
+            IPaymentProvider
     {
+        public int Calls { get; private set; }
+
         public new Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
             string providerChargeReference,
             CancellationToken ct
-        ) => throw new InvalidOperationException("Provider should not be called for terminal payments.");
+        ) => Fail();
 
         public new Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
             string providerChargeReference,
             Money amount,
             CancellationToken ct
-        ) => throw new InvalidOperationException("Provider should not be called for terminal payments.");
+        ) => Fail();
+
+        private Task<Result<ChargeAuthorizationResult>> Fail()
+        {
+            Calls++;
+            throw new InvalidOperationException("Provider should not be called for terminal payments.");
+        }
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

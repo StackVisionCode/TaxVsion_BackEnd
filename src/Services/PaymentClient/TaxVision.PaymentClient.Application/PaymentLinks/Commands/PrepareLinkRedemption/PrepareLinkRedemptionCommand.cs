@@ -51,21 +51,12 @@ public static class PrepareLinkRedemptionHandler
         if (link is null)
             return Result.Failure<LinkRedemptionPlan>(notFound);
 
-        // El token es la única prueba de posesión (§32.2) — sin este chequeo, alguien con el
-        // link podría seguir probando tarjetas indefinidamente (§41.4/K.1).
-        if (
-            link.Status != PaymentLinkStatus.Active
-            && link.FailedRedemptionAttempts >= PaymentLinkAttemptPolicy.MaxRedemptionAttemptsPerLink
-        )
+        // Al pagador, un link que ya no se canjea le sale como inexistente.
+        var redeemable = link.EnsureRedeemable(nowUtc);
+        if (redeemable.IsFailure)
             return Result.Failure<LinkRedemptionPlan>(
-                new Error(
-                    "PaymentLink.RedemptionThrottled",
-                    "Too many failed redemption attempts; this link has been blocked."
-                )
+                redeemable.Error == PaymentLink.NotRedeemableError ? notFound : redeemable.Error
             );
-
-        if (!link.IsRedeemable(nowUtc))
-            return Result.Failure<LinkRedemptionPlan>(notFound);
 
         // Fase 2B: cobra con el proveedor que ELIGIÓ el taxpayer (no Stripe fijo). Debe tener adapter
         // registrado — si no, el método nunca fue ofrecible y esto es un intento inválido.

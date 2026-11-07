@@ -35,6 +35,7 @@ public sealed class AccountConnectionTransactionIntegrationTests : IAsyncLifetim
                 services.AddScoped<ISmtpCredentialsRepository, SmtpCredentialsRepository>();
                 services.AddScoped<IImapCredentialsRepository, ImapCredentialsRepository>();
                 services.AddScoped<IProviderSyncCursorRepository, ProviderSyncCursorRepository>();
+                services.AddAccountConnectionFlow();
                 services.AddSingleton<IUserPermissionsProjectionReader, FakeUserPermissionsProjectionReader>();
             },
             options =>

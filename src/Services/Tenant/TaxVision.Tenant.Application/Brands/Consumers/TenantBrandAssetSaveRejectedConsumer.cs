@@ -1,5 +1,4 @@
 using System.Linq;
-using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -28,10 +27,10 @@ public static class TenantBrandAssetSaveRejectedConsumer
         FileSaveRejectedIntegrationEvent msg,
         ITenantBrandRepository repo,
         IUnitOfWork unitOfWork,
-        ICacheService cache,
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantBrand> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -63,7 +62,8 @@ public static class TenantBrandAssetSaveRejectedConsumer
         }
 
         var key = asset.Key;
-        if (!brand.DiscardPendingAsset(key, msg.FileId))
+        var nowUtc = clock.GetUtcNow().UtcDateTime;
+        if (!brand.DiscardPendingAsset(key, msg.FileId, nowUtc))
         {
             logger.LogWarning(
                 "Tenant {TenantId} brand asset {Key} (file {FileId}) rejected by CloudStorage ({Reason}) but it is no longer pending; ignoring.",
@@ -84,7 +84,7 @@ public static class TenantBrandAssetSaveRejectedConsumer
         );
 
         await unitOfWork.SaveChangesAsync(ct);
-        await BrandCommandSupport.InvalidateAsync(cache, msg.TenantId, brand.Surface, ct);
-        await BrandLogoEvents.PublishRemovedIfLogoAsync(bus, correlation, msg.TenantId, brand.Surface, key);
+        await BrandCommandSupport.RequestInvalidationAsync(bus, msg.TenantId, brand.Surface);
+        await BrandLogoEvents.PublishRemovedIfLogoAsync(bus, correlation, msg.TenantId, brand.Surface, key, nowUtc);
     }
 }

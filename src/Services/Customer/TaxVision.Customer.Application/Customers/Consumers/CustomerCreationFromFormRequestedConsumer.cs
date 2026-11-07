@@ -262,7 +262,7 @@ public static class CustomerCreationFromFormRequestedConsumer
     private static async Task RecordOriginAsync(CreationContext context, Guid customerId, CancellationToken ct)
     {
         var customer =
-            await context.Repository.GetByIdAsync(customerId, ct)
+            await context.Repository.GetByIdAsync(context.Command.TenantId, customerId, ct)
             ?? throw new InvalidOperationException("The customer created from the form was not found.");
         var origin = CustomerOrigin.Create(context.Command.SourceService, context.Command.SourceReferenceId);
         Result recorded = origin.IsSuccess ? customer.RecordOrigin(origin.Value) : origin;

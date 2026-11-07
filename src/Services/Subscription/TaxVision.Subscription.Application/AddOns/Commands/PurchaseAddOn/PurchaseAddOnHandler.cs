@@ -7,7 +7,6 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.AddOns;
-using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
 using Wolverine;
 
@@ -15,19 +14,9 @@ namespace TaxVision.Subscription.Application.AddOns.Commands.PurchaseAddOn;
 
 public static class PurchaseAddOnHandler
 {
-    private static readonly SubscriptionStatus[] PurchasableStatuses =
-    [
-        SubscriptionStatus.Trialing,
-        SubscriptionStatus.Active,
-    ];
-
     public static async Task<Result<Guid>> Handle(
         PurchaseAddOnCommand command,
-        ISubscriptionRepository subscriptions,
-        IPlanRepository plans,
-        IModuleRepository modules,
-        IAddOnDefinitionRepository addOnDefinitions,
-        ISubscriptionTenantSettingsRepository settingsRepository,
+        AddOnPurchaseEligibility eligibility,
         ITenantAddOnRepository tenantAddOns,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -42,16 +31,10 @@ public static class PurchaseAddOnHandler
         if (replay is not null)
             return replay;
 
-        var validation = await AddOnPurchaseEligibility.EnsurePurchasableAsync(
+        var validation = await eligibility.EnsurePurchasableAsync(
             command.TenantId,
             command.AddOnCode,
             command.Quantity,
-            subscriptions,
-            plans,
-            modules,
-            addOnDefinitions,
-            settingsRepository,
-            tenantAddOns,
             ct
         );
         if (validation.IsFailure)
@@ -60,47 +43,20 @@ public static class PurchaseAddOnHandler
         var (subscription, definition) = validation.Value;
         var nowUtc = DateTime.UtcNow;
 
-        // Co-terminación: el add-on hereda el ciclo del plan y su precio se resuelve para ese ciclo.
-        var billingCycle = subscription.BillingCycle;
-        var unitPrice = definition.ResolveUnitPrice(billingCycle, command.Quantity);
-        if (unitPrice.IsFailure)
-            return Result.Failure<Guid>(unitPrice.Error);
-
-        var addOnResult = TenantAddOn.Purchase(
-            command.TenantId,
+        var purchased = AddOnPurchasePolicy.Purchase(
+            subscription,
             definition,
             command.Quantity,
-            unitPrice.Value,
-            billingCycle,
             command.AutoRenew,
             command.RequestedByUserId,
             nowUtc,
-            RequestedAddOnId(command)
+            RequestedAddOnId(command),
+            IdempotencyKeyFactory.AddOnInitialCharge
         );
-        if (addOnResult.IsFailure)
-            return Result.Failure<Guid>(addOnResult.Error);
+        if (purchased.IsFailure)
+            return Result.Failure<Guid>(purchased.Error);
 
-        var addOn = addOnResult.Value;
-
-        // El primer período termina con el de la base; su cargo se proratea abajo.
-        var coTerm = addOn.CoTermTo(subscription.CurrentPeriodEndUtc, command.RequestedByUserId, nowUtc);
-        if (coTerm.IsFailure)
-            return Result.Failure<Guid>(coTerm.Error);
-
-        var initialCharge = PrepareInitialCharge(
-            addOn,
-            subscription,
-            command.RequestedByUserId,
-            nowUtc,
-            correlation.CorrelationId
-        );
-        if (initialCharge.IsFailure)
-            return Result.Failure<Guid>(initialCharge.Error);
-
-        // Serializa compras simultáneas del tenant por la RowVersion de la suscripción.
-        var recorded = subscription.RecordPurchase(command.RequestedByUserId, nowUtc);
-        if (recorded.IsFailure)
-            return Result.Failure<Guid>(recorded.Error);
+        var (addOn, charge) = purchased.Value;
 
         await tenantAddOns.AddAsync(addOn, ct);
 
@@ -118,12 +74,12 @@ public static class PurchaseAddOnHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-        if (initialCharge.Value is not null)
-            await bus.PublishAsync(initialCharge.Value);
+        if (charge is not null)
+            await bus.PublishAsync(RenewalDue(addOn, charge, correlation.CorrelationId));
 
         metrics.RecordAddOnPurchased(addOn.AddOnCode);
-        if (initialCharge.Value is not null)
-            metrics.RecordAddOnBilled(addOn.AddOnCode, initialCharge.Value.AmountCents);
+        if (charge is not null)
+            metrics.RecordAddOnBilled(addOn.AddOnCode, charge.AmountCents);
 
         await AuditEntryFactory.AppendAsync(
             audit,
@@ -187,46 +143,21 @@ public static class PurchaseAddOnHandler
             );
     }
 
-    // Cargo del período parcial inicial, prorrateado por días sobre el período vigente de la base.
-    // La base no se proratea; esto aplica solo al add-on. Devuelve null si no hay nada que cobrar.
-    private static Result<AddOnRenewalDueIntegrationEvent?> PrepareInitialCharge(
+    private static AddOnRenewalDueIntegrationEvent RenewalDue(
         TenantAddOn addOn,
-        TenantSubscription subscription,
-        Guid actorUserId,
-        DateTime nowUtc,
+        InitialCharge charge,
         string correlationId
-    )
-    {
-        var prorated = ProrationCalculator.InitialPeriod(
-            addOn.UnitPrice,
-            subscription.CurrentPeriodStartUtc,
-            subscription.CurrentPeriodEndUtc,
-            nowUtc
-        );
-        if (prorated.IsFailure)
-            return Result.Failure<AddOnRenewalDueIntegrationEvent?>(prorated.Error);
-
-        if (prorated.Value.Amount <= 0m)
-            return Result.Success<AddOnRenewalDueIntegrationEvent?>(null);
-
-        var key = IdempotencyKeyFactory.AddOnInitialCharge(addOn.Id, addOn.CurrentPeriodStartUtc);
-        var begun = addOn.BeginInitialCharge(key, actorUserId, nowUtc);
-        if (begun.IsFailure)
-            return Result.Failure<AddOnRenewalDueIntegrationEvent?>(begun.Error);
-
-        return Result.Success<AddOnRenewalDueIntegrationEvent?>(
-            new AddOnRenewalDueIntegrationEvent
-            {
-                TenantId = addOn.TenantId,
-                CorrelationId = correlationId,
-                TenantAddOnId = addOn.Id,
-                AddOnCode = addOn.AddOnCode,
-                PeriodStartUtc = addOn.CurrentPeriodStartUtc,
-                PeriodEndUtc = addOn.CurrentPeriodEndUtc,
-                IdempotencyKey = key,
-                AmountCents = (long)Math.Round(prorated.Value.Amount * 100m, MidpointRounding.AwayFromZero),
-                Currency = prorated.Value.Currency,
-            }
-        );
-    }
+    ) =>
+        new()
+        {
+            TenantId = addOn.TenantId,
+            CorrelationId = correlationId,
+            TenantAddOnId = addOn.Id,
+            AddOnCode = addOn.AddOnCode,
+            PeriodStartUtc = addOn.CurrentPeriodStartUtc,
+            PeriodEndUtc = addOn.CurrentPeriodEndUtc,
+            IdempotencyKey = charge.IdempotencyKey,
+            AmountCents = charge.AmountCents,
+            Currency = charge.Currency,
+        };
 }

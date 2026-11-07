@@ -185,8 +185,10 @@ public sealed class RescueStuckScanHandlerTests
         );
     }
 
-    private static Task RescueAsync(RescueFixture fixture) =>
-        RescueStuckScanHandler.Handle(
+    private static async Task RescueAsync(RescueFixture fixture)
+    {
+        fixture.File.ClearDomainEvents();
+        await RescueStuckScanHandler.Handle(
             new RescueStuckScanCommand(fixture.File.TenantId, fixture.File.Id),
             fixture.Files,
             fixture.Limits,
@@ -199,6 +201,8 @@ public sealed class RescueStuckScanHandlerTests
             NullLogger<RescueStuckScanCommand>.Instance,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(fixture.Bus, fixture.File);
+    }
 
     private sealed record RescueFixture(
         FileObject File,

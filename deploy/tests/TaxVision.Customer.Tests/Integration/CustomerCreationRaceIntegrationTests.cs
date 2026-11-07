@@ -303,6 +303,7 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
             string fileName,
             string contentType,
             Guid actorId,
+            Wolverine.IMessageBus bus,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success());
 

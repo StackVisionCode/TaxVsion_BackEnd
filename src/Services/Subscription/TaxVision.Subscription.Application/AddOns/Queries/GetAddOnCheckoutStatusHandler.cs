@@ -25,8 +25,8 @@ public static class GetAddOnCheckoutStatusHandler
                 intent.Status.ToString(),
                 intent.AddOnCode,
                 intent.Quantity,
-                intent.ProratedTotalCents,
-                intent.Currency,
+                intent.ProratedTotal.Cents,
+                intent.ProratedTotal.Currency,
                 intent.CheckoutUrl
             )
         );

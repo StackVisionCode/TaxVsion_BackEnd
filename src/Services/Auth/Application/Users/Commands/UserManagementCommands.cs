@@ -41,9 +41,7 @@ public static class DeactivateUserHandler
         DeactivateUserCommand command,
         IUserRepository users,
         ITenantAdminLock adminLock,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocations,
+        SessionAccessCutoff accessCutoff,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -52,12 +50,13 @@ public static class DeactivateUserHandler
         CancellationToken ct
     )
     {
-        if (command.TargetUserId == command.RequestedByUserId)
-            return Result.Failure(new Error("User.SelfAction", "You cannot deactivate your own account."));
-
         var target = await users.GetByIdAsync(command.TargetUserId, ct);
         if (target is null || target.TenantId != command.TenantId)
             return Result.Failure(new Error("User.NotFound", "User does not exist in this tenant."));
+
+        var byOther = target.EnsureCanBeDeactivatedBy(command.RequestedByUserId);
+        if (byOther.IsFailure)
+            return byOther;
 
         if (!target.IsActive)
             return Result.Success();
@@ -84,23 +83,14 @@ public static class DeactivateUserHandler
                 );
         }
 
-        target.Deactivate(DateTime.UtcNow);
+        var deactivated = target.Deactivate(command.RequestedByUserId, DateTime.UtcNow);
+        if (deactivated.IsFailure)
+            return deactivated;
 
         // A5 (R12) — denylist + anuncio + revocación. Antes denylisteaba y revocaba pero NO anunciaba,
         // así que la pestaña abierta del usuario dado de baja se quedaba con la sesión muerta hasta su
         // siguiente request en vez de recibir el logout al instante.
-        await SessionAccessCutoff.ForUserAsync(target, "admin_revoke", sessions, denylist, revocations, ct);
-
-        await bus.PublishAsync(
-            new UserDeactivatedIntegrationEvent
-            {
-                TenantId = target.TenantId,
-                UserId = target.Id,
-                Email = target.Email,
-                ActorType = target.ActorType.ToString(),
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
+        await accessCutoff.ForUserAsync(target, "admin_revoke", ct);
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -117,6 +107,16 @@ public static class DeactivateUserHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new UserDeactivatedIntegrationEvent
+            {
+                TenantId = target.TenantId,
+                UserId = target.Id,
+                Email = target.Email,
+                ActorType = target.ActorType.ToString(),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         return Result.Success();
     }
 }
@@ -152,9 +152,9 @@ public static class ReactivateUserHandler
         if (target.IsActive)
             return Result.Success();
 
-        // Offboard es terminal: no se puede reactivar a un usuario retirado.
-        if (target.Status == UserStatus.Offboarded)
-            return Result.Failure(new Error("User.Offboarded", "This user was offboarded and can't be reactivated."));
+        var reactivable = target.EnsureCanBeReactivated();
+        if (reactivable.IsFailure)
+            return reactivable;
 
         // Los usuarios de portal de cliente NO consumen asiento del plan (mismo criterio que el alta:
         // CreateInvitation salta el seat guard para CustomerPortal). Reactivar uno no debe fallar por
@@ -173,18 +173,9 @@ public static class ReactivateUserHandler
                 return seatResult;
         }
 
-        target.Reactivate();
-
-        await bus.PublishAsync(
-            new UserReactivatedIntegrationEvent
-            {
-                TenantId = target.TenantId,
-                UserId = target.Id,
-                Email = target.Email,
-                ActorType = target.ActorType.ToString(),
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
+        var reactivated = target.Reactivate(DateTime.UtcNow);
+        if (reactivated.IsFailure)
+            return reactivated;
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -201,6 +192,16 @@ public static class ReactivateUserHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new UserReactivatedIntegrationEvent
+            {
+                TenantId = target.TenantId,
+                UserId = target.Id,
+                Email = target.Email,
+                ActorType = target.ActorType.ToString(),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         return Result.Success();
     }
 }
@@ -229,81 +230,44 @@ public static class OffboardUserHandler
         OffboardUserCommand command,
         IUserRepository users,
         ITenantAdminLock adminLock,
-        IMfaRepository mfa,
-        IInvitationRepository invitations,
+        OffboardingHygiene hygiene,
         IOffboardingRunRepository offboardingRuns,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocations,
-        IAuthAuditWriter audit,
-        IRequestContext request,
-        ICorrelationContext correlation,
+        SessionAccessCutoff accessCutoff,
+        AuthAuditTrail audit,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         CancellationToken ct
     )
     {
-        if (command.TargetUserId == command.RequestedByUserId)
-            return Result.Failure(new Error("User.SelfAction", "You cannot remove your own account."));
-
         var target = await users.GetByIdAsync(command.TargetUserId, ct);
         if (target is null || target.TenantId != command.TenantId)
             return Result.Failure(new Error("User.NotFound", "User does not exist in this tenant."));
+
+        var byOther = target.EnsureCanBeOffboardedBy(command.RequestedByUserId);
+        if (byOther.IsFailure)
+            return byOther;
 
         // Idempotente: ya retirado → no re-publica.
         if (target.Status == UserStatus.Offboarded)
             return Result.Success();
 
-        // El retiro es para quien TRABAJA en la oficina: reasigna su trabajo a un sucesor, transfiere sus
-        // archivos compartidos, suelta sus conectores y libera su asiento. Un cliente de portal no tiene nada
-        // de eso, y su acceso se quita desde su propio perfil. Se corta acá y no solo en la pantalla: la API
-        // no puede depender de que la UI no lo ofrezca.
-        if (target.ActorType == UserActorType.CustomerPortal)
-        {
-            return Result.Failure(
-                new Error(
-                    "User.PortalClient",
-                    "Portal clients aren't removed from the office. Manage their access from the client's profile."
-                )
-            );
-        }
+        var allowed = await EnsureAllowedAsync(target, users, adminLock, ct);
+        if (allowed.IsFailure)
+            return allowed;
 
-        // No dejar al tenant sin ningún admin. Solo cuenta si el objetivo es un admin ACTIVO: retirar a uno
-        // ya suspendido no cambia cuántos admins activos quedan. Se cuenta bajo el candado del tenant.
-        if (target.ActorType == UserActorType.TenantAdmin && target.IsActive)
-        {
-            await adminLock.AcquireAsync(command.TenantId, ct);
-            if (await users.CountActiveAdminsAsync(command.TenantId, ct) <= 1)
-                return Result.Failure(new Error("User.LastAdmin", "You cannot remove the last active administrator."));
-        }
-
-        // Si viene sucesor, debe ser staff activo del mismo tenant.
-        if (command.SuccessorUserId is { } successorId)
-        {
-            var successor = await users.GetByIdAsync(successorId, ct);
-            var successorValid =
-                successorId != target.Id
-                && successor is not null
-                && successor.TenantId == command.TenantId
-                && successor.IsActive
-                && successor.ActorType is UserActorType.TenantEmployee or UserActorType.TenantAdmin;
-            if (!successorValid)
-                return Result.Failure(
-                    new Error("User.Successor", "The successor must be an active employee of this tenant.")
-                );
-        }
-
-        // La ficha se valida antes de tocar nada: un motivo inválido no deja un retiro a medias.
-        var details = OffboardingDetails.Create(
+        var successor = command.SuccessorUserId is { } successorId ? await users.GetByIdAsync(successorId, ct) : null;
+        var details = OffboardingPolicy.PrepareDetails(
+            target,
             command.RequestedByUserId,
             command.SuccessorUserId,
+            successor,
             command.Reason,
             command.ReasonNote
         );
         if (details.IsFailure)
             return details;
 
-        var offboard = target.Offboard(DateTime.UtcNow);
+        var offboard = target.Offboard(command.RequestedByUserId, DateTime.UtcNow);
         if (offboard.IsFailure)
             return offboard;
 
@@ -312,20 +276,8 @@ public static class OffboardUserHandler
         var removedAvatars = target.RemoveAvatar();
 
         // Corta el acceso al instante: mismo camino probado que Deactivate (A5: ahora también anuncia).
-        await SessionAccessCutoff.ForUserAsync(target, "admin_revoke", sessions, denylist, revocations, ct);
-
-        // Higiene (el acceso ya está cortado): sin segundo factor ni invitaciones vivas a su nombre.
-        var hadMfa = target.MfaEnabled;
-        await MfaFactors.ClearAsync(target, mfa, ct);
-        var cancelledInvitations = await CancelPendingInvitationsSentByAsync(
-            target,
-            command.RequestedByUserId,
-            invitations,
-            audit,
-            request,
-            correlation,
-            ct
-        );
+        await accessCutoff.ForUserAsync(target, "admin_revoke", ct);
+        var cleaned = await hygiene.RunAsync(target, command.RequestedByUserId, ct);
 
         // Acuse por servicio: la corrida nace en la misma transacción que el evento, así todo acuse la encuentra.
         var run = OffboardingRun.Start(
@@ -339,6 +291,25 @@ public static class OffboardUserHandler
             return run;
         await offboardingRuns.AddAsync(run.Value, ct);
 
+        await audit.RecordAsync(
+            command.TenantId,
+            command.RequestedByUserId,
+            AuthAuditAction.UserOffboarded,
+            true,
+            ct,
+            targetType: "User",
+            targetId: target.Id,
+            // El motivo y la nota quedan en la ficha (solo admins), no en la bitácora de seguridad.
+            detailsJson: JsonSerializer.Serialize(
+                new
+                {
+                    mfaCleared = cleaned.MfaCleared,
+                    cancelledInvitations = cleaned.CancelledInvitations,
+                    successorUserId = command.SuccessorUserId,
+                }
+            )
+        );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new UserOffboardedIntegrationEvent
             {
@@ -349,93 +320,39 @@ public static class OffboardUserHandler
                 OffboardedByUserId = command.RequestedByUserId,
                 SuccessorUserId = command.SuccessorUserId,
                 RemovedAtUtc = target.RemovedAtUtc ?? DateTime.UtcNow,
-                CorrelationId = correlation.CorrelationId,
+                CorrelationId = audit.CorrelationId,
             }
         );
-
-        await audit.AddAsync(
-            AuthAuditLog.Record(
-                command.TenantId,
-                command.RequestedByUserId,
-                AuthAuditAction.UserOffboarded,
-                true,
-                request.IpAddress,
-                request.UserAgent,
-                correlation.CorrelationId,
-                targetType: "User",
-                targetId: target.Id,
-                // El motivo y la nota quedan en la ficha (solo admins), no en la bitácora de seguridad.
-                detailsJson: JsonSerializer.Serialize(
-                    new
-                    {
-                        mfaCleared = hadMfa,
-                        cancelledInvitations,
-                        successorUserId = command.SuccessorUserId,
-                    }
-                )
-            ),
-            ct
-        );
-        await unitOfWork.SaveChangesAsync(ct);
 
         var avatarDeletion = UserAvatarMessages.FilesDeletionRequested(
             target,
             removedAvatars,
             OffboardedAvatarReason,
-            correlation.CorrelationId
+            audit.CorrelationId
         );
         if (avatarDeletion is not null)
             await bus.PublishAsync(avatarDeletion);
         if (hadAvatar)
-            await bus.PublishAsync(UserAvatarMessages.ProfileUpdated(target, correlation.CorrelationId));
+            await bus.PublishAsync(UserAvatarMessages.ProfileUpdated(target, audit.CorrelationId));
 
         return Result.Success();
     }
 
-    /// <summary>
-    /// Cancela las invitaciones de staff pendientes que envió quien se va: llevan roles que él eligió y nadie
-    /// en la oficina las vigila. Igual que la cancelación manual, no avisa al invitado (el enlace deja de valer);
-    /// si la oficina lo quiere igual, lo invita de nuevo un admin. Las de portal no se tocan: son del cliente.
-    /// </summary>
-    private static async Task<int> CancelPendingInvitationsSentByAsync(
+    // El conteo de admins va bajo el candado del tenant.
+    private static async Task<Result> EnsureAllowedAsync(
         User target,
-        Guid actorUserId,
-        IInvitationRepository invitations,
-        IAuthAuditWriter audit,
-        IRequestContext request,
-        ICorrelationContext correlation,
+        IUserRepository users,
+        ITenantAdminLock adminLock,
         CancellationToken ct
     )
     {
-        var cancelled = 0;
-        var now = DateTime.UtcNow;
-        foreach (var invitation in await invitations.ListPendingStaffSentByAsync(target.TenantId, target.Id, ct))
-        {
-            if (invitation.Cancel(actorUserId, now).IsFailure)
-                continue;
+        var belongs = OffboardingPolicy.EnsureBelongsToTheOffice(target);
+        if (belongs.IsFailure || !OffboardingPolicy.ReducesActiveAdmins(target))
+            return belongs;
 
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    invitation.TenantId,
-                    actorUserId,
-                    AuthAuditAction.InvitationCancelled,
-                    true,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId,
-                    targetType: "Invitation",
-                    targetId: invitation.Id,
-                    detailsJson: InviterOffboardedDetails
-                ),
-                ct
-            );
-            cancelled++;
-        }
-
-        return cancelled;
+        await adminLock.AcquireAsync(target.TenantId, ct);
+        return OffboardingPolicy.EnsureAnotherAdminRemains(await users.CountActiveAdminsAsync(target.TenantId, ct));
     }
-
-    private const string InviterOffboardedDetails = """{"reason":"inviter_offboarded"}""";
 }
 
 // ---------------------------------------------------------------------------
@@ -473,12 +390,6 @@ public static class UpdateMyProfileHandler
         if (timeZoneResult.IsFailure)
             return timeZoneResult;
 
-        // Solo publicar cuando el nombre realmente cambio — evita ruido en el bus
-        // (y en la proyeccion de displayName de Communication) cuando el usuario
-        // solo actualizo su TimeZoneId. Lleva la foto actual: el evento es el perfil completo.
-        if (nameChanged)
-            await bus.PublishAsync(UserAvatarMessages.ProfileUpdated(user, correlation.CorrelationId));
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 user.TenantId,
@@ -492,6 +403,11 @@ public static class UpdateMyProfileHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        // Solo publicar cuando el nombre realmente cambio — evita ruido en el bus
+        // (y en la proyeccion de displayName de Communication) cuando el usuario
+        // solo actualizo su TimeZoneId. Lleva la foto actual: el evento es el perfil completo.
+        if (nameChanged)
+            await bus.PublishAsync(UserAvatarMessages.ProfileUpdated(user, correlation.CorrelationId));
         return Result.Success();
     }
 }
@@ -570,24 +486,6 @@ public static class AssignUserRolesHandler
         // The user's own deny layer still applies after a role change: effective = roles − denies.
         var deniedPermissionIds = await roles.GetDeniedPermissionIdsAsync(target.Id, ct);
 
-        await bus.PublishAsync(
-            new UserRolesChangedIntegrationEvent
-            {
-                TenantId = target.TenantId,
-                UserId = target.Id,
-                PermissionsVersion = target.PermissionsVersion,
-                RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
-                RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
-                PermissionCodes = UserAccessResolver.ResolveEffectivePermissionCodes(
-                    tenantRoles,
-                    catalog,
-                    deniedPermissionIds
-                ),
-                ActorType = target.ActorType.ToString(),
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 command.TenantId,
@@ -606,6 +504,23 @@ public static class AssignUserRolesHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new UserRolesChangedIntegrationEvent
+            {
+                TenantId = target.TenantId,
+                UserId = target.Id,
+                PermissionsVersion = target.PermissionsVersion,
+                RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
+                RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
+                PermissionCodes = UserAccessResolver.ResolveEffectivePermissionCodes(
+                    tenantRoles,
+                    catalog,
+                    deniedPermissionIds
+                ),
+                ActorType = target.ActorType.ToString(),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         return Result.Success();
     }
 }

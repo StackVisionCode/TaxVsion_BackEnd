@@ -1,4 +1,7 @@
+extern alias BbTesting;
+
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Common;
 using JasperFx;
 using JasperFx.CodeGeneration.Model;
@@ -13,28 +16,42 @@ using TaxVision.PaymentApp.Infrastructure.Persistence.Repositories;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.SqlServer;
+using BbTesting::TaxVision.BuildingBlocks.Testing.Integration;
+using Xunit;
+
+[assembly: TestFramework(TemporaryDatabaseTestFramework.TypeName, TemporaryDatabaseTestFramework.AssemblyName)]
 
 namespace TaxVision.PaymentApp.Tests.Integration;
 
 /// <summary>
-/// Host mínimo de Wolverine con la persistencia de PaymentApp: PaymentAppDbContext sobre la base local (solo las
-/// filas del tenant de la prueba) y las tablas de sobres en un esquema propio que se borra al terminar. Mismas piezas
-/// que Program.cs (transacciones EF, AutoApplyTransactions, middleware de tenant), sin Rabbit ni jobs.
+/// Host mínimo de Wolverine con la persistencia de PaymentApp, sobre una base temporal (BB-10): una corrida abortada
+/// no le deja pagos ni sobres a la flota, que cobra lo que encuentra. Mismas piezas que Program.cs (transacciones EF,
+/// AutoApplyTransactions, middleware de tenant), sin Rabbit ni jobs.
 /// </summary>
 internal static class PaymentAppWolverineHost
 {
-    private static readonly Lazy<string> ConnectionString = new(() =>
-        Environment.GetEnvironmentVariable("PAYMENTAPP_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-paymentapp001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set PAYMENTAPP_DB_CONNECTION or the PaymentApp user-secrets to run this test."
-        )
+    private static readonly TemporaryTestDatabase Database = new(
+        "payapp_tint",
+        () =>
+            Environment.GetEnvironmentVariable("PAYMENTAPP_DB_CONNECTION")
+            ?? new ConfigurationBuilder()
+                .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-paymentapp001")
+                .Build()
+                .GetConnectionString("Default")
+            ?? throw new InvalidOperationException(
+                "Set PAYMENTAPP_DB_CONNECTION or the PaymentApp user-secrets to run this test."
+            ),
+        connection =>
+        {
+            using var db = new PaymentAppDbContext(
+                new DbContextOptionsBuilder<PaymentAppDbContext>().UseSqlServer(connection).Options,
+                new NoTenant()
+            );
+            db.Database.Migrate();
+        }
     );
 
-    public static string Connection => ConnectionString.Value;
+    public static string Connection => Database.ConnectionString;
 
     public static string NewSchema(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..(prefix.Length + 9)];
 
@@ -93,6 +110,14 @@ internal static class PaymentAppWolverineHost
         command.CommandText = sql;
         command.Parameters.AddWithValue("@tenant", tenantId);
         await command.ExecuteNonQueryAsync();
+    }
+
+    private sealed class NoTenant : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid id) { }
     }
 
     /// <summary>Borra el esquema de prueba entero: primero las FK (wolverine_nodes tiene una), después lo demás.</summary>

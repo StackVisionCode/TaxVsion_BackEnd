@@ -116,6 +116,43 @@ public sealed class AppointmentConcurrencyIntegrationTests : IAsyncLifetime
         );
     }
 
+    // CAL-8: una semana hacia adelante, cada excepción cae donde estaba la siguiente; el índice único no debe saltar.
+    [Fact]
+    public async Task MovingTheSeriesOneWeek_ConsecutiveCancellations_StayCancelled()
+    {
+        var id = await SeedSeriesAsync();
+        var firstDate = DateOnly.FromDateTime(Now);
+        await using (var db = _database.NewContext())
+        {
+            var series = await LoadAsync(db, id);
+            var starts = OccurrenceExpander.Expand(series, Now.AddDays(-1), Now.AddDays(40)).Value;
+            Assert.True(series.CancelOccurrence(starts[1].OriginalStartUtc, _organizer, false, Now).IsSuccess);
+            Assert.True(series.CancelOccurrence(starts[2].OriginalStartUtc, _organizer, false, Now).IsSuccess);
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = _database.NewContext())
+        {
+            var series = await LoadAsync(db, id);
+            var moved = EventTiming
+                .RecurringOf(firstDate.AddDays(7), new TimeOnly(9, 0), TimeSpan.FromHours(1), "America/New_York")
+                .Value;
+            Assert.True(
+                series
+                    .EditEntireSeries(moved, RecurrenceRule.Create("FREQ=WEEKLY").Value, _organizer, false, Now)
+                    .IsSuccess
+            );
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = _database.NewContext();
+        var stored = await LoadAsync(read, id);
+        var remaining = OccurrenceExpander.Expand(stored, Now.AddDays(-1), Now.AddDays(50)).Value;
+        Assert.Equal(2, stored.Exceptions.Count);
+        Assert.Equal(firstDate.AddDays(7), DateOnly.FromDateTime(remaining[0].StartUtc));
+        Assert.Equal(firstDate.AddDays(28), DateOnly.FromDateTime(remaining[1].StartUtc));
+    }
+
     /// <summary>Tras BB-12 el conflicto ya no es un <c>DbUpdateException</c>: el lote perdido sigue sin frenar a los demás.</summary>
     [Fact]
     public async Task RetentionJob_AChunkInConflict_DoesNotStopTheNextOne()

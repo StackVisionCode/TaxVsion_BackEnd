@@ -23,6 +23,7 @@ public static class RevealOfficeEfinHandler
         IEfinProtector protector,
         IUnitOfWork unitOfWork,
         ILogger<RevealOfficeEfinCommand> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -30,7 +31,7 @@ public static class RevealOfficeEfinHandler
         if (compliance?.Efin is null)
             return Result.Failure<RevealedEfinResponse>(OfficeComplianceErrors.EfinNotSet);
 
-        var record = compliance.RecordEfinReveal(command.ActorId, DateTime.UtcNow);
+        var record = compliance.RecordEfinReveal(command.ActorId, clock.GetUtcNow().UtcDateTime);
         if (record.IsFailure)
             return Result.Failure<RevealedEfinResponse>(record.Error);
 

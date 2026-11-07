@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Security.Claims;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -132,6 +133,83 @@ public sealed class ShareLinkAccessRaceIntegrationTests(CloudStorageConcurrencyF
         await host.StopAsync(TimeSpan.FromSeconds(10));
     }
 
+    [Fact(Timeout = 120_000)]
+    public async Task TwoPrivateAccesses_AtOnce_BothEnterAndBothCount()
+    {
+        var (linkId, token) = await SeedFileLinkAsync(maxAccessCount: null, visibility: ShareVisibility.TenantOnly);
+        using var host = await StartHostAsync();
+
+        var results = await Task.WhenAll(OpenPrivateAsync(host, token), OpenPrivateAsync(host, token));
+
+        Assert.All(results, result => Assert.IsType<RedirectResult>(result));
+        Assert.True(_barrier.BothArrived);
+        Assert.Equal(2, (await ReadLinkAsync(linkId)).AccessCount);
+        Assert.Equal(2, await CountLogsAsync("share.accessed"));
+        await _accessed.AssertExactlyAsync(2);
+        await host.StopAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact(Timeout = 120_000)]
+    public async Task TwoPrivateAccesses_WithCapOfOne_OnlyOneEnters()
+    {
+        var (linkId, token) = await SeedFileLinkAsync(maxAccessCount: 1, visibility: ShareVisibility.TenantOnly);
+        using var host = await StartHostAsync();
+
+        var results = await Task.WhenAll(OpenPrivateAsync(host, token), OpenPrivateAsync(host, token));
+
+        Assert.Single(results, result => result is RedirectResult);
+        Assert.Single(results, result => result is NotFoundResult);
+        Assert.True(_barrier.BothArrived);
+        var link = await ReadLinkAsync(linkId);
+        Assert.Equal(1, link.AccessCount);
+        Assert.Equal(ShareStatus.Exhausted, link.Status);
+        Assert.Equal(1, await CountLogsAsync("share.accessed"));
+        await _accessed.AssertExactlyAsync(1);
+        await host.StopAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>El listado solo escribe el contador de contraseñas: ahí estaba el 409 público que faltaba.</summary>
+    [Fact(Timeout = 120_000)]
+    public async Task TwoWrongPasswordsOnAFolderListing_AtOnce_BothCount()
+    {
+        var (linkId, token) = await SeedFolderLinkAsync(
+            maxAccessCount: null,
+            new FakeShareLinkPasswordHasher().Hash(Password)
+        );
+        using var host = await StartHostAsync();
+
+        var results = await Task.WhenAll(
+            ListFolderAsync(host, token, "wrong-password"),
+            ListFolderAsync(host, token, "wrong-password")
+        );
+
+        Assert.All(results, result => Assert.IsType<NotFoundResult>(result));
+        Assert.True(_barrier.BothArrived);
+        Assert.Equal(2, (await ReadLinkAsync(linkId)).FailedPasswordAttempts);
+        await host.StopAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private async Task<IActionResult> OpenPrivateAsync(IHost host, string token)
+    {
+        using var scope = host.Services.CreateScope();
+        var controller = ActivatorUtilities.CreateInstance<PrivateShareController>(scope.ServiceProvider);
+        var identity = new ClaimsIdentity(
+            [new Claim("tenant_id", _tenantId.ToString()), new Claim("sub", _userId.ToString())],
+            "test"
+        );
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) },
+        };
+        return await controller.ResolvePrivate(token, null, CancellationToken.None);
+    }
+
+    private static async Task<IActionResult> ListFolderAsync(IHost host, string token, string password)
+    {
+        using var scope = host.Services.CreateScope();
+        return await NewController(scope).ResolvePublicFolder(token, password, null, null, CancellationToken.None);
+    }
+
     private static async Task<IActionResult> OpenAsync(IHost host, string token, string? password = null)
     {
         using var scope = host.Services.CreateScope();
@@ -154,18 +232,25 @@ public sealed class ShareLinkAccessRaceIntegrationTests(CloudStorageConcurrencyF
         return controller;
     }
 
-    private async Task<(Guid LinkId, string Token)> SeedFileLinkAsync(int? maxAccessCount, string? passwordHash = null)
+    private async Task<(Guid LinkId, string Token)> SeedFileLinkAsync(
+        int? maxAccessCount,
+        string? passwordHash = null,
+        ShareVisibility visibility = ShareVisibility.Public
+    )
     {
         var file = NewAvailableFile();
         await using var db = fixture.NewContext(_tenantId);
         db.Files.Add(file);
-        var (link, token) = NewLink(file.Id, ShareResourceType.File, maxAccessCount, passwordHash);
+        var (link, token) = NewLink(file.Id, ShareResourceType.File, maxAccessCount, passwordHash, visibility);
         db.ShareLinks.Add(link);
         await db.SaveChangesAsync();
         return (link.Id, token);
     }
 
-    private async Task<(Guid LinkId, string Token)> SeedFolderLinkAsync(int? maxAccessCount)
+    private async Task<(Guid LinkId, string Token)> SeedFolderLinkAsync(
+        int? maxAccessCount,
+        string? passwordHash = null
+    )
     {
         var now = DateTime.UtcNow;
         var folder = Folder
@@ -187,7 +272,7 @@ public sealed class ShareLinkAccessRaceIntegrationTests(CloudStorageConcurrencyF
         await using var db = fixture.NewContext(_tenantId);
         db.Folders.Add(folder);
         db.Files.Add(file);
-        var (link, token) = NewLink(folder.Id, ShareResourceType.Folder, maxAccessCount, null);
+        var (link, token) = NewLink(folder.Id, ShareResourceType.Folder, maxAccessCount, passwordHash);
         db.ShareLinks.Add(link);
         await db.SaveChangesAsync();
         return (link.Id, token);
@@ -197,7 +282,8 @@ public sealed class ShareLinkAccessRaceIntegrationTests(CloudStorageConcurrencyF
         Guid resourceId,
         ShareResourceType resourceType,
         int? maxAccessCount,
-        string? passwordHash
+        string? passwordHash,
+        ShareVisibility visibility = ShareVisibility.Public
     ) =>
         ShareLink
             .Create(
@@ -205,7 +291,7 @@ public sealed class ShareLinkAccessRaceIntegrationTests(CloudStorageConcurrencyF
                 _tenantId,
                 resourceId,
                 resourceType,
-                ShareVisibility.Public,
+                visibility,
                 SharePermission.Download,
                 passwordHash,
                 null,
@@ -283,6 +369,8 @@ public sealed class ShareLinkAccessRaceIntegrationTests(CloudStorageConcurrencyF
                 options
                     .Discovery.DisableConventionalDiscovery()
                     .IncludeType(typeof(ResolvePublicShareHandler))
+                    .IncludeType(typeof(ResolvePrivateShareHandler))
+                    .IncludeType(typeof(ResolvePublicFolderContentsHandler))
                     .IncludeType(typeof(PreparePublicFolderZipHandler))
                     .IncludeType(typeof(AccessedProbeHandler));
                 options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;

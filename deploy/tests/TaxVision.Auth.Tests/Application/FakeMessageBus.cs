@@ -16,6 +16,8 @@ internal sealed class FakeMessageBus : IMessageBus
 
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
+        if (Published.Count == 0)
+            TenantIdAtFirstPublish = TenantId;
         if (message is not null)
             Published.Add(message);
         return ValueTask.CompletedTask;
@@ -49,11 +51,8 @@ internal sealed class FakeMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotImplementedException();
 
-    public string? TenantId
-    {
-        get => null;
-        set { }
-    }
+    public string? TenantId { get; set; }
+    public string? TenantIdAtFirstPublish { get; private set; }
 
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
     {

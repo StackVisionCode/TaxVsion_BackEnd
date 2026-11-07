@@ -3,7 +3,6 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Terms;
 using Wolverine;
@@ -79,6 +78,7 @@ public static class AcceptTermsFromOnboardingHandler
             ct
         );
 
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new TenantTermsAcceptedIntegrationEvent
             {
@@ -88,8 +88,6 @@ public static class AcceptTermsFromOnboardingHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(new TermsAcceptanceResponse(version.Version, nowUtc));
     }
 }

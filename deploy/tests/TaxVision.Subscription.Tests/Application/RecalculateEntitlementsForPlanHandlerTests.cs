@@ -72,6 +72,11 @@ public sealed class RecalculateEntitlementsForPlanHandlerTests
             return Task.FromResult(page);
         }
 
+        public Task<TenantSubscription?> GetWithFullHistoryAsync(Guid tenantId, CancellationToken ct = default) =>
+
+            GetByTenantIdAsync(tenantId, ct);
+
+
         public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

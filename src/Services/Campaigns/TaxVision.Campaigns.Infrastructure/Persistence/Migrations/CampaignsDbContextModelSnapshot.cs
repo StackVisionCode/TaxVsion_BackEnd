@@ -808,50 +808,6 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.ToTable("CampaignTemplateContents", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Campaigns.Infrastructure.Customers.Directory.CustomerDirectoryEntry", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("CustomerId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<string>("PhoneE164")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("Version")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "CustomerId")
-                        .IsUnique();
-
-                    b.HasIndex("TenantId", "Email");
-
-                    b.ToTable("CustomerDirectoryEntries", (string)null);
-                });
-
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.CampaignContent", b =>
                 {
                     b.HasOne("TaxVision.Campaigns.Domain.Campaigns.Campaign", null)

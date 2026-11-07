@@ -1,7 +1,7 @@
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
-using TaxVision.Auth.Application.Onboarding.ReceiptDownload.Queries;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Application.ReceiptDownload.Queries;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 

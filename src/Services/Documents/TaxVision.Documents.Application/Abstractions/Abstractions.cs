@@ -19,9 +19,10 @@ public interface IDocumentGenerationRepository
 {
     Task<DocumentGeneration?> GetByIdAsync(Guid tenantId, Guid generationId, CancellationToken ct = default);
 
-    /// <summary>Deduplicación por (TenantId, IdempotencyKey). Devuelve la generación existente si la hubiera.</summary>
+    /// <summary>Deduplicación por (TenantId, SourceService, IdempotencyKey), la clave del índice único.</summary>
     Task<DocumentGeneration?> GetByIdempotencyKeyAsync(
         Guid tenantId,
+        string sourceService,
         string idempotencyKey,
         CancellationToken ct = default
     );

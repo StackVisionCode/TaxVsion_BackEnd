@@ -1,7 +1,6 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using TaxVision.PaymentApp.Domain.Webhooks;
@@ -14,14 +13,7 @@ namespace TaxVision.PaymentApp.Tests.Integration;
 public sealed class SaaSPaymentReviewIntegrationTests : IAsyncLifetime
 {
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("PAYMENTAPP_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-paymentapp001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set PAYMENTAPP_DB_CONNECTION or the PaymentApp user-secrets to run this test."
-        );
+        PaymentAppWolverineHost.Connection;
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private Guid _paymentId;

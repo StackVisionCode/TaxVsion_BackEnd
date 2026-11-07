@@ -253,7 +253,10 @@ public sealed class PayPalGateway(
                 TrimForLog(errorBody)
             );
             return Result.Failure<PayPalRefundCaptureResult>(
-                new Error("PayPal.Refund.Failed", $"PayPal returned HTTP {(int)response.StatusCode}.")
+                new Error(
+                    IsServerError(response) ? "PayPal.Refund.Unavailable" : "PayPal.Refund.Failed",
+                    $"PayPal returned HTTP {(int)response.StatusCode}."
+                )
             );
         }
 

@@ -162,7 +162,7 @@ public sealed class InvoicePaidPublishingTests
     private static Invoice CreateIssuedInvoice()
     {
         var invoice = CreateDraftInvoice();
-        var issued = invoice.Issue("INV-2026-00001", Now, Now.AddDays(30), ActorUserId);
+        var issued = invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId);
         Assert.True(issued.IsSuccess);
         return invoice;
     }

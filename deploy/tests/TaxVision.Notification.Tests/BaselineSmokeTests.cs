@@ -65,6 +65,10 @@ public sealed class BaselineSmokeTests
             portal,
             TestPlatform.Settings,
             new FakeTenantHostResolver(),
+            new AuthAccountTokenReader(
+                new NoProtectedPayloadCodec(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<AuthAccountTokenReader>.Instance
+            ),
             correlation,
             CancellationToken.None
         );
@@ -157,7 +161,7 @@ public sealed class BaselineSmokeTests
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
-        var dispatcher = new NotificationDispatcher(
+        var dispatcher = TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
@@ -169,8 +173,7 @@ public sealed class BaselineSmokeTests
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
         var meetingId = Guid.NewGuid();
@@ -202,7 +205,7 @@ public sealed class BaselineSmokeTests
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
-        var dispatcher = new NotificationDispatcher(
+        var dispatcher = TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
@@ -214,8 +217,7 @@ public sealed class BaselineSmokeTests
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
         var evt = new MeetingRecordingFailedIntegrationEvent
@@ -243,7 +245,7 @@ public sealed class BaselineSmokeTests
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
-        var dispatcher = new NotificationDispatcher(
+        var dispatcher = TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
@@ -255,8 +257,7 @@ public sealed class BaselineSmokeTests
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
         var evt = new CallRecordingReadyIntegrationEvent
@@ -286,7 +287,7 @@ public sealed class BaselineSmokeTests
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
-        var dispatcher = new NotificationDispatcher(
+        var dispatcher = TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
@@ -298,8 +299,7 @@ public sealed class BaselineSmokeTests
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
         var evt = new CallRecordingFailedIntegrationEvent

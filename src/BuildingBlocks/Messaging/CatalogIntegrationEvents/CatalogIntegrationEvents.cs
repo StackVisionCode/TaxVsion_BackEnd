@@ -6,6 +6,7 @@ namespace BuildingBlocks.Messaging.CatalogIntegrationEvents;
 /// Eventos del microservicio Catalog. Los consumidores (ej. un futuro Inventory, o Billing para
 /// snapshotear líneas de factura) reaccionan sin que Catalog conozca su dominio. TenantId/CorrelationId
 /// vienen de <see cref="IntegrationEvent"/>. El precio se publica como monto + moneda (multi-moneda).
+/// <c>Created</c>, <c>Deactivated</c> y <c>TrackingChanged</c> van por <c>taxvision-events</c>.
 /// </summary>
 [MessageIdentity("BuildingBlocks.Messaging.CatalogIntegrationEvents.CatalogItemCreatedIntegrationEvent")]
 public sealed record CatalogItemCreatedIntegrationEvent : IntegrationEvent
@@ -20,6 +21,10 @@ public sealed record CatalogItemCreatedIntegrationEvent : IntegrationEvent
     public required string Currency { get; init; }
 }
 
+/// <summary>
+/// Contrato para un consumidor futuro (p. ej. Billing). Para escucharlo, ligar una cola a
+/// <c>taxvision-catalog-items</c>: no viaja por <c>taxvision-events</c>.
+/// </summary>
 [MessageIdentity("BuildingBlocks.Messaging.CatalogIntegrationEvents.CatalogItemUpdatedIntegrationEvent")]
 public sealed record CatalogItemUpdatedIntegrationEvent : IntegrationEvent
 {
@@ -34,6 +39,10 @@ public sealed record CatalogItemUpdatedIntegrationEvent : IntegrationEvent
     public bool? IsActive { get; init; }
 }
 
+/// <summary>
+/// Contrato para un consumidor futuro (p. ej. Billing). Para escucharlo, ligar una cola a
+/// <c>taxvision-catalog-items</c>: no viaja por <c>taxvision-events</c>.
+/// </summary>
 [MessageIdentity("BuildingBlocks.Messaging.CatalogIntegrationEvents.CatalogItemPriceChangedIntegrationEvent")]
 public sealed record CatalogItemPriceChangedIntegrationEvent : IntegrationEvent
 {

@@ -13,7 +13,8 @@ public sealed class UpdateNoteContentHandlerTests
             NoteContent.Create("<p>original</p>").Value,
             NoteReference.Create(NoteTargetType.None, null).Value,
             NoteVisibility.Team,
-            null
+            null,
+            DateTime.UtcNow
         ).Value;
 
     [Fact]
@@ -35,6 +36,7 @@ public sealed class UpdateNoteContentHandlerTests
             uow,
             bus,
             new NoOpCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -62,6 +64,7 @@ public sealed class UpdateNoteContentHandlerTests
             new NoOpUnitOfWork(),
             new FakeMessageBus(),
             new NoOpCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -88,6 +91,7 @@ public sealed class UpdateNoteContentHandlerTests
             new NoOpUnitOfWork(),
             new FakeMessageBus(),
             new NoOpCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -114,6 +118,7 @@ public sealed class UpdateNoteContentHandlerTests
             new NoOpUnitOfWork(),
             new FakeMessageBus(),
             new NoOpCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 

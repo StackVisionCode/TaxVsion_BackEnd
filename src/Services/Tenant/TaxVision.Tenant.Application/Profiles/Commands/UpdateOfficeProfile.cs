@@ -23,13 +23,14 @@ public static class UpdateOfficeProfileHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
         var existing = await profiles.GetAsync(command.TenantId, ct);
         var profile = existing ?? OfficeProfile.CreateEmpty(command.TenantId);
 
-        var update = profile.Update(command.Draft, command.ActorId, DateTime.UtcNow);
+        var update = profile.Update(command.Draft, command.ActorId, clock.GetUtcNow().UtcDateTime);
         if (update.IsFailure)
             return Result.Failure<OfficeProfileResponse>(update.Error);
 

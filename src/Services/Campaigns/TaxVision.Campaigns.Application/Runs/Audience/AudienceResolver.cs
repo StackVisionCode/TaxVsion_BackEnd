@@ -139,10 +139,8 @@ public static class AudienceResolver
 
                 // El directorio de Customer puede traer el teléfono en formato de presentación
                 // ("+1 (829) 592-4420") o el email con mayúsculas → normalizar para dedupe/entrega.
-                var custEmail = string.IsNullOrWhiteSpace(customer.Email)
-                    ? null
-                    : customer.Email.Trim().ToLowerInvariant();
-                var custPhone = PhoneNumbers.ToE164(customer.PhoneE164);
+                var custEmail = EmailAddress.Normalize(customer.Email);
+                var custPhone = PhoneE164.Normalize(customer.PhoneE164);
                 foreach (var channel in activeChannels)
                 {
                     var destination = channel switch
@@ -171,8 +169,8 @@ public static class AudienceResolver
         // 3) Audiencia manual (no son contactos guardados → id generado por entrada, nunca "manual").
         foreach (var entry in manual)
         {
-            var email = string.IsNullOrWhiteSpace(entry.Email) ? null : entry.Email.Trim().ToLowerInvariant();
-            var phone = PhoneNumbers.ToE164(entry.PhoneE164); // null si no es E.164 → no genera unidad SMS
+            var email = EmailAddress.Normalize(entry.Email);
+            var phone = PhoneE164.Normalize(entry.PhoneE164); // null si no es E.164 → no genera unidad SMS
             if (email is null && phone is null)
                 continue;
 

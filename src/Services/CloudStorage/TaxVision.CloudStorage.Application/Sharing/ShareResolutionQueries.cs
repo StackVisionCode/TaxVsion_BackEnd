@@ -126,6 +126,7 @@ public static class ResolvePublicShareHandler
         {
             var locked = password == SharePasswordOutcome.Locked;
             AuditDenied(link, null, query.Ip, query.UserAgent, audit, clock);
+            await unitOfWork.SaveChangesAsync(ct);
             await ShareLinkResolutionSignals.PublishAccessDeniedAsync(
                 bus,
                 link,
@@ -133,7 +134,6 @@ public static class ResolvePublicShareHandler
                 locked ? "PasswordLocked" : "WrongPassword",
                 ct
             );
-            await unitOfWork.SaveChangesAsync(ct);
             return locked ? ShareAccessResult.PasswordLocked() : ShareAccessResult.Denied();
         }
 
@@ -141,8 +141,8 @@ public static class ResolvePublicShareHandler
         if (file is null || file.Status != FileStatus.Available)
         {
             AuditDenied(link, null, query.Ip, query.UserAgent, audit, clock);
-            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "public", "ResourceNotAvailable", ct);
             await unitOfWork.SaveChangesAsync(ct);
+            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "public", "ResourceNotAvailable", ct);
             return ShareAccessResult.Denied();
         }
 
@@ -156,8 +156,8 @@ public static class ResolvePublicShareHandler
         );
         link.RegisterAccess(now);
         AuditAccessed(link, file.Id, query.Ip, query.UserAgent, audit, clock);
-        await ShareLinkResolutionSignals.PublishAccessedAsync(bus, link, file.Id, file.CreatedBy, "public", ct);
         await unitOfWork.SaveChangesAsync(ct);
+        await ShareLinkResolutionSignals.PublishAccessedAsync(bus, link, file.Id, file.CreatedBy, "public", ct);
         return ShareAccessResult.Redirect(url.ToString());
     }
 
@@ -175,10 +175,10 @@ public static class ResolvePublicShareHandler
     )
     {
         AuditDenied(link, null, ip, userAgent, audit, clock);
+        await unitOfWork.SaveChangesAsync(ct);
         await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "public", reason, ct);
         if (reason == "NotUsable" && link.IsExpired(now) && link.Status == ShareStatus.Active)
             await ShareLinkResolutionSignals.PublishExpiredAsync(bus, link, ct);
-        await unitOfWork.SaveChangesAsync(ct);
     }
 
     private static bool IsServedByPublicEndpoint(ShareLink link, ResolvePublicShareQuery query) =>
@@ -284,18 +284,18 @@ public static class ResolvePrivateShareHandler
         if (!link.IsUsable(now) || link.Visibility is ShareVisibility.Public or ShareVisibility.ExternalLink)
         {
             AuditDenied(link, query, audit, clock);
+            await unitOfWork.SaveChangesAsync(ct);
             await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "NotUsable", ct);
             if (link.IsExpired(now) && link.Status == ShareStatus.Active)
                 await ShareLinkResolutionSignals.PublishExpiredAsync(bus, link, ct);
-            await unitOfWork.SaveChangesAsync(ct);
             return ShareAccessResult.Denied();
         }
 
         if (query.JwtTenantId != link.TenantId)
         {
             AuditDenied(link, query, audit, clock);
-            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "TenantMismatch", ct);
             await unitOfWork.SaveChangesAsync(ct);
+            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "TenantMismatch", ct);
             return ShareAccessResult.Denied();
         }
 
@@ -303,8 +303,8 @@ public static class ResolvePrivateShareHandler
         if (authorization == ShareAuthorization.Denied)
         {
             AuditDenied(link, query, audit, clock);
-            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "NotAuthorized", ct);
             await unitOfWork.SaveChangesAsync(ct);
+            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "NotAuthorized", ct);
             return ShareAccessResult.Denied();
         }
 
@@ -312,8 +312,8 @@ public static class ResolvePrivateShareHandler
         if (file is null || file.Status != FileStatus.Available)
         {
             AuditDenied(link, query, audit, clock);
-            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "ResourceNotAvailable", ct);
             await unitOfWork.SaveChangesAsync(ct);
+            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "ResourceNotAvailable", ct);
             return ShareAccessResult.Denied();
         }
 
@@ -322,8 +322,8 @@ public static class ResolvePrivateShareHandler
         if (authorization == ShareAuthorization.RequiresResourceScope && !query.Scope.CanAccess(file))
         {
             AuditDenied(link, query, audit, clock);
-            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "NotAuthorized", ct);
             await unitOfWork.SaveChangesAsync(ct);
+            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "NotAuthorized", ct);
             return ShareAccessResult.Denied();
         }
 
@@ -350,8 +350,8 @@ public static class ResolvePrivateShareHandler
                 clock.UtcNow
             )
         );
-        await ShareLinkResolutionSignals.PublishAccessedAsync(bus, link, file.Id, file.CreatedBy, "private", ct);
         await unitOfWork.SaveChangesAsync(ct);
+        await ShareLinkResolutionSignals.PublishAccessedAsync(bus, link, file.Id, file.CreatedBy, "private", ct);
         return ShareAccessResult.Redirect(url.ToString());
     }
 

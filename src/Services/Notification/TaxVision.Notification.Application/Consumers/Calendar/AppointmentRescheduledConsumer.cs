@@ -1,11 +1,9 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
 
@@ -32,22 +30,12 @@ public static class AppointmentRescheduledConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
-        IUserNotificationPreferenceRepository preferences,
         NotificationDispatcher dispatcher,
-        ILogger<AppointmentRescheduledIntegrationEvent> logger,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
-        var recipients = await CalendarRecipients.AllowedAsync(
-            evt.Recipients,
-            evt.TenantId,
-            preferences,
-            logger,
-            TemplateKey,
-            ct
-        );
-
+        var recipients = evt.Recipients;
         if (recipients.Count == 0)
             return;
 
@@ -72,6 +60,7 @@ public static class AppointmentRescheduledConsumer
                 recipients,
                 evt.TenantId,
                 TemplateKey,
+                NotificationKinds.CalendarAppointmentRescheduled,
                 new Dictionary<string, object?>
                 {
                     ["scope"] = evt.Scope,

@@ -53,12 +53,6 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         return GetAsync(tenantId, fileId, ct);
     }
 
-    /// <summary>Archivos cuyo escaneo ya tomó otro: TryClaimScanAsync devuelve false.</summary>
-    public HashSet<Guid> ScansInProgress { get; } = [];
-
-    public Task<bool> TryClaimScanAsync(Guid fileId, CancellationToken ct) =>
-        Task.FromResult(!ScansInProgress.Contains(fileId));
-
     public Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
@@ -797,8 +791,13 @@ internal sealed class FakeObjectStorage : IObjectStorage
     /// <summary>Null (el default) = comportamiento previo, revienta si algun test la llama sin haberla seteado antes.</summary>
     public long? SizeToReturn { get; set; }
 
+    /// <summary>Tamaño por objeto; gana sobre <see cref="SizeToReturn"/>.</summary>
+    public Dictionary<(string Bucket, string ObjectKey), long> ObjectSizes { get; } = [];
+
     public Task<long> GetSizeAsync(string bucket, string objectKey, CancellationToken ct) =>
-        SizeToReturn is { } size ? Task.FromResult(size) : throw new NotImplementedException();
+        ObjectSizes.TryGetValue((bucket, objectKey), out var known) ? Task.FromResult(known)
+        : SizeToReturn is { } size ? Task.FromResult(size)
+        : throw new NotImplementedException();
 
     /// <summary>Seedable para probar el guard de idempotencia de SaveFileFromSourceHandler (destino ya copiado en un intento anterior).</summary>
     public HashSet<(string Bucket, string ObjectKey)> Existing { get; } = [];
@@ -847,8 +846,12 @@ internal sealed class FakeObjectStorage : IObjectStorage
         return Task.CompletedTask;
     }
 
+    public bool ThrowOnDelete { get; set; }
+
     public Task DeleteAsync(string bucket, string objectKey, CancellationToken ct)
     {
+        if (ThrowOnDelete)
+            throw new InvalidOperationException("Simulated storage outage.");
         Deleted.Add((bucket, objectKey));
         Operations.Add($"delete:{bucket}");
         return Task.CompletedTask;
@@ -996,9 +999,26 @@ internal sealed class FakeUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
 }
 
 /// <summary>Fake minimo de IMessageBus — solo captura lo publicado via PublishAsync; el resto lanza si se usa.</summary>
+/// <summary>Turno de escaneo en memoria: los archivos de <see cref="ScansInProgress"/> ya los tiene otro.</summary>
+internal sealed class FakeScanClaims : IScanClaims
+{
+    public HashSet<Guid> ScansInProgress { get; } = [];
+
+    public Task<IAsyncDisposable?> TryClaimAsync(Guid fileId, CancellationToken ct) =>
+        Task.FromResult<IAsyncDisposable?>(ScansInProgress.Contains(fileId) ? null : new Claim());
+
+    private sealed class Claim : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}
+
 internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
+
+    /// <summary>Atiende <c>InvokeAsync</c> (p. ej. con el handler real del mensaje); sin esto, revienta.</summary>
+    public Func<object, Task>? OnInvoke { get; set; }
 
     /// <summary>Se llama al publicar (p. ej. para comprobar que ya se guardó).</summary>
     public Action<object>? OnPublish { get; init; }
@@ -1048,7 +1068,7 @@ internal sealed class FakeMessageBus : IMessageBus
     }
 
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+        OnInvoke is { } invoke ? invoke(message) : throw new NotImplementedException();
 
     public Task InvokeAsync(
         object message,

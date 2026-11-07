@@ -87,7 +87,7 @@ public sealed class FormFileScanResultConsumerTests
 
         var attachment = Assert.Single(request.Submission!.Attachments);
         Assert.Equal(FormAttachmentStatus.UnderReview, attachment.Status);
-        Assert.Equal(0, request.ExpireStalePendingAttachments(Now.AddDays(30), Now.AddDays(30)));
+        Assert.Equal(0, request.Files.ExpireStalePending(Now.AddDays(30), Now.AddDays(30)));
 
         await FormFileScanResultConsumer.Handle(
             new FileAvailableIntegrationEvent
@@ -122,7 +122,7 @@ public sealed class FormFileScanResultConsumerTests
     private static void RegisterFile(FormRequest request, Guid fileId) =>
         Assert.True(
             request
-                .RegisterAttachment(
+                .Files.Register(
                     new FormAnswerAddress(FileComponent, null),
                     fileId,
                     "return.pdf",

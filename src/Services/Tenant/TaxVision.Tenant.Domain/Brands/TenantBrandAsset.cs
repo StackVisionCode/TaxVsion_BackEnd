@@ -35,10 +35,10 @@ public sealed class TenantBrandAsset : TenantEntity
         string contentType,
         long sizeBytes,
         int? width,
-        int? height
+        int? height,
+        DateTime nowUtc
     )
     {
-        var now = DateTime.UtcNow;
         var entity = new TenantBrandAsset
         {
             Id = Guid.NewGuid(),
@@ -51,15 +51,15 @@ public sealed class TenantBrandAsset : TenantEntity
             Height = height,
             Status = BrandAssetStatus.Pending,
             ConfirmedAtUtc = null,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
         };
         entity.SetTenant(tenantId);
         return entity;
     }
 
     /// <summary>Reemplaza el asset por un nuevo upload en curso (vuelve a Pending hasta el escaneo).</summary>
-    internal void MarkPending(Guid fileId, string contentType, long sizeBytes, int? width, int? height)
+    internal void MarkPending(Guid fileId, string contentType, long sizeBytes, int? width, int? height, DateTime nowUtc)
     {
         FileId = fileId;
         ContentType = contentType;
@@ -68,7 +68,7 @@ public sealed class TenantBrandAsset : TenantEntity
         Height = height;
         Status = BrandAssetStatus.Pending;
         ConfirmedAtUtc = null;
-        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedAtUtc = nowUtc;
     }
 
     /// <summary>Confirma con los metadatos REALES devueltos por CloudStorage tras el escaneo.</summary>
@@ -80,6 +80,6 @@ public sealed class TenantBrandAsset : TenantEntity
         Height = height;
         Status = BrandAssetStatus.Confirmed;
         ConfirmedAtUtc = confirmedAtUtc;
-        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedAtUtc = confirmedAtUtc;
     }
 }

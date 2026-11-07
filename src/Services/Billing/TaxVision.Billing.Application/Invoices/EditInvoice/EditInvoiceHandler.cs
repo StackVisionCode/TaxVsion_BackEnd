@@ -48,9 +48,7 @@ public static class EditInvoiceHandler
         if (invoice is null)
             return Result.Failure<EditInvoiceResult>(new Error("Billing.Invoice.NotFound", "Invoice does not exist."));
 
-        // Toda factura ya EMITIDA (Issued/Sent/PartiallyPaid/Paid) descontó stock al emitir y tiene ancla
-        // de cobro + PDF: hay que reconciliar. Solo un borrador no tocó nada aún.
-        var wasIssued = invoice.Status is not InvoiceStatus.Draft;
+        var wasIssued = invoice.HasBeenIssued;
 
         var customer = new CustomerSnapshot(
             command.Customer.CustomerId,

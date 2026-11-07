@@ -7,6 +7,9 @@ public sealed record Money
     public decimal Amount { get; }
     public string Currency { get; }
 
+    /// <summary>El monto en centavos, como lo guardan las intenciones y lo cobra PaymentApp.</summary>
+    public long Cents => (long)(Amount * 100m);
+
     private Money(decimal amount, string currency)
     {
         Amount = amount;
@@ -23,6 +26,9 @@ public sealed record Money
 
         return Result.Success(new Money(amount, currency.Trim().ToUpperInvariant()));
     }
+
+    /// <summary>Monto que ya viene en centavos, del catálogo o de la base: la moneda se conserva como está.</summary>
+    public static Money FromCents(long cents, string currency) => new(cents / 100m, currency);
 
     public static Money Zero(string currency) => new(0m, currency.Trim().ToUpperInvariant());
 }

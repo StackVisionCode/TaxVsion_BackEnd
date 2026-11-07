@@ -37,7 +37,124 @@ public sealed class SubmitSignatureHandlerTests
         Assert.Empty(bus.Messages.OfType<SignatureRequestCompletedIntegrationEvent>());
     }
 
-    private static (SignatureRequest Request, Signer First, Signer Second) NewInProgressWithTwoSigners()
+    [Fact]
+    public async Task TypedNameMismatch_FailsBeforeCapturingFieldValues()
+    {
+        var (request, first, _) = NewInProgressWithTwoSigners(withTextField: true);
+        var textField = first.Fields.Single(field => field.Kind == SignatureFieldKind.Text);
+        var bus = new CapturingBus();
+
+        var result = await SubmitAsync(
+            request,
+            first,
+            bus,
+            new SubmitSignatureCommand(
+                "token",
+                SignatureCaptureMethod.Typed,
+                "Someone Else",
+                null,
+                "127.0.0.1",
+                "tests",
+                FieldValues: [new SubmitFieldValueDto(textField.Id, "Spouse")]
+            )
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Public.TypedNameMismatch", result.Error.Code);
+        Assert.Equal("Typed name must match the signer full name.", result.Error.Message);
+        Assert.Empty(first.FieldValues);
+        Assert.NotEqual(SignerStatus.Signed, first.Status);
+        Assert.Empty(bus.Messages);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    public async Task TypedNameEmpty_Fails(string? typedName)
+    {
+        var (request, first, _) = NewInProgressWithTwoSigners();
+
+        var result = await SubmitAsync(
+            request,
+            first,
+            new CapturingBus(),
+            new SubmitSignatureCommand("token", SignatureCaptureMethod.Typed, typedName, null, "127.0.0.1", "tests")
+        );
+
+        Assert.Equal("Signature.Public.TypedNameEmpty", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task TypedName_IgnoresCaseAndOuterSpaces_AndKeepsWhatWasTyped()
+    {
+        var (request, first, _) = NewInProgressWithTwoSigners();
+
+        var result = await SubmitAsync(
+            request,
+            first,
+            new CapturingBus(),
+            new SubmitSignatureCommand("token", SignatureCaptureMethod.Typed, "  sIGNER oNE ", null, "127.0.0.1", "tests")
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Equal("sIGNER oNE", first.TypedName);
+    }
+
+    [Theory]
+    [InlineData(SignatureCaptureMethod.Drawn)]
+    [InlineData(SignatureCaptureMethod.Uploaded)]
+    public async Task ImageMethodWithoutImage_Fails(SignatureCaptureMethod method)
+    {
+        var (request, first, _) = NewInProgressWithTwoSigners();
+
+        var result = await SubmitAsync(
+            request,
+            first,
+            new CapturingBus(),
+            new SubmitSignatureCommand("token", method, null, Guid.Empty, "127.0.0.1", "tests")
+        );
+
+        Assert.Equal("Signature.Public.ImageRequired", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task UnknownMethod_Fails()
+    {
+        var (request, first, _) = NewInProgressWithTwoSigners();
+
+        var result = await SubmitAsync(
+            request,
+            first,
+            new CapturingBus(),
+            new SubmitSignatureCommand("token", (SignatureCaptureMethod)99, null, null, "127.0.0.1", "tests")
+        );
+
+        Assert.Equal("Signature.Public.UnknownMethod", result.Error.Code);
+    }
+
+    private static Task<Result> SubmitAsync(
+        SignatureRequest request,
+        Signer signer,
+        CapturingBus bus,
+        SubmitSignatureCommand command
+    ) =>
+        SubmitSignatureHandler.Handle(
+            command,
+            new FixedToken(
+                new SigningTokenPayload(request.TenantId, request.Id, signer.Id, request.RevocationEpoch, request.ExpiresAtUtc, "jti")
+            ),
+            new SingleRequestRepository(request),
+            new NoDenylist(),
+            new NoopUnitOfWork(),
+            bus,
+            new FixedCorrelation(),
+            new NoopListCache(),
+            CancellationToken.None
+        );
+
+    private static (SignatureRequest Request, Signer First, Signer Second) NewInProgressWithTwoSigners(
+        bool withTextField = false
+    )
     {
         var limits = TestSignatureLimits.Default;
         var request = SignatureRequest
@@ -46,6 +163,20 @@ public sealed class SubmitSignatureHandlerTests
         var document = request.AddDocument(limits, Guid.NewGuid(), "Engagement").Value;
         var first = AddSignerWithField(request, document.Id, "one@example.test", "Signer One");
         var second = AddSignerWithField(request, document.Id, "two@example.test", "Signer Two");
+        if (withTextField)
+            Assert.True(
+                request
+                    .PlaceField(
+                        TestSignatureLimits.MaxFieldsPerSigner,
+                        first.Id,
+                        document.Id,
+                        SignatureFieldKind.Text,
+                        FieldPosition.Create(1, 0.3, 0.3, 0.2, 0.05).Value,
+                        null,
+                        false
+                    )
+                    .IsSuccess
+            );
         Assert.True(
             request
                 .AttachVerifiedDocument(

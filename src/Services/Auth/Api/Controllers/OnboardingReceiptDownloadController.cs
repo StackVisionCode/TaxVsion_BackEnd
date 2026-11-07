@@ -4,7 +4,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using TaxVision.Auth.Application.Onboarding.ReceiptDownload.Queries;
+using TaxVision.Auth.Onboarding.Application.ReceiptDownload.Queries;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;

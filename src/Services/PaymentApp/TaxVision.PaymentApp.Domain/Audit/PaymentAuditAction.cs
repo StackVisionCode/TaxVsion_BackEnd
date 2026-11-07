@@ -28,4 +28,7 @@ public enum PaymentAuditAction
     OnboardingPaymentMethodAvailabilityChanged = 17,
     SaaSPaymentReviewRequired = 18,
     SaaSPaymentReviewResolved = 19,
+
+    // El proveedor rechazó el reembolso: no se movió dinero.
+    SaaSPaymentRefundRejected = 20,
 }

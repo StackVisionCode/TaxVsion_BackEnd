@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Scribe.Application.Abstractions;
@@ -41,15 +42,22 @@ public sealed class TenantSubdomainChangedConsumerTests
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
+    // BB-7, como TenantProfileChanged: el cambio que llega antes que TenantCreated se reintenta, no se descarta.
     [Fact]
-    public async Task Handle_skips_when_no_TenantProfileRef_exists()
+    public async Task Change_before_the_row_exists_is_retried_and_applies_once_it_exists()
     {
+        var tenantId = Guid.NewGuid();
         var repository = new InMemoryTenantProfileRefRepository();
         var unitOfWork = new FakeUnitOfWork();
+        var change = Event(tenantId, isPrimary: true);
 
-        await HandleAsync(Event(Guid.NewGuid(), isPrimary: true), repository, unitOfWork);
-
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() => HandleAsync(change, repository, unitOfWork));
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+
+        var created = repository.Seed(TenantProfileRef.Create(tenantId, "Acme Tax Office", "acme-tax", DateTime.UtcNow));
+        await HandleAsync(change, repository, unitOfWork);
+
+        Assert.Equal("acme-new", created.SubDomain);
     }
 
     // SCR-04: el mensaje viejo que llega tarde no deshace el cambio más nuevo.

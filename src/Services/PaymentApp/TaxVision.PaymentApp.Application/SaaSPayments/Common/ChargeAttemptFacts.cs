@@ -1,5 +1,6 @@
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
+using TaxVision.PaymentApp.Domain.SaaSPayments;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Common;
 
@@ -50,7 +51,7 @@ public sealed record ChargeAttemptFacts(
 
         return new ChargeAttemptFacts(
             Math.Max(1, payment.AttemptCount),
-            SaaSPaymentChargeOutcome.MaxDunningAttempts,
+            DunningPolicy.MaxAttempts,
             payment.AmountCents,
             payment.Currency,
             brand,

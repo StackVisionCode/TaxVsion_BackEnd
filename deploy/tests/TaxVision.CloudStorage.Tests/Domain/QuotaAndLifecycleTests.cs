@@ -216,7 +216,7 @@ public sealed class QuotaAndLifecycleTests
         var file = NewUploadedFile(now);
         file.MarkPendingScan(now);
 
-        Assert.True(file.MarkScanAbandoned("blob_missing: gone", now).IsSuccess);
+        Assert.True(file.MarkScanAbandoned("blob_missing: gone", now, "blob_missing").IsSuccess);
 
         Assert.Equal(FileStatus.ScanFailed, file.Status);
         Assert.Equal("blob_missing: gone", file.ScanReport);
@@ -229,7 +229,7 @@ public sealed class QuotaAndLifecycleTests
         var file = NewUploadedFile(now);
         file.MarkPendingScan(now);
         file.RequeueScan(now, maxAttempts: 3);
-        file.MarkScanAbandoned("scan_stalled", now);
+        file.MarkScanAbandoned("scan_stalled", now, "scan_stalled");
 
         Assert.True(file.RequestRescan(now.AddMinutes(1)).IsSuccess);
 

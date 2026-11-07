@@ -24,12 +24,7 @@ public sealed class CustomerImportCleanupIntegrationTests : IAsyncLifetime
     private readonly Guid _tenant = Guid.NewGuid();
     private readonly FakeCloudStorage _cloudStorage = new();
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("CUSTOMER_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("8c4e7963-1ddb-441e-af2d-755d58fb86a3")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set CUSTOMER_DB_CONNECTION or the Customer user-secrets.");
+        CustomerIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -50,6 +45,7 @@ public sealed class CustomerImportCleanupIntegrationTests : IAsyncLifetime
             string fileName,
             string contentType,
             Guid actorId,
+            Wolverine.IMessageBus bus,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success());
 

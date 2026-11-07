@@ -35,6 +35,7 @@ public sealed class CustomerCreatedConsumerTests
             evt,
             repository,
             new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
             unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<CustomerEmailAddress>.Instance,
@@ -60,7 +61,7 @@ public sealed class CustomerCreatedConsumerTests
         client.Seed(tenantId, new RemoteCustomerSummary(Guid.NewGuid(), "old@example.com", true));
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
-        var backfill = new TenantCustomerBackfillService(new FakeTenantBackfillStateRepository(), bus);
+        var backfill = new TenantCustomerBackfillService(new FakeTenantBackfillStateRepository());
         var evt = new CustomerCreatedIntegrationEvent
         {
             TenantId = tenantId,
@@ -76,6 +77,7 @@ public sealed class CustomerCreatedConsumerTests
             evt,
             repository,
             backfill,
+            bus,
             unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<CustomerEmailAddress>.Instance,
@@ -111,6 +113,7 @@ public sealed class CustomerCreatedConsumerTests
             evt,
             repository,
             new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
             unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<CustomerEmailAddress>.Instance,
@@ -120,6 +123,7 @@ public sealed class CustomerCreatedConsumerTests
             evt,
             repository,
             new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
             unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<CustomerEmailAddress>.Instance,
@@ -149,6 +153,7 @@ public sealed class CustomerCreatedConsumerTests
             evt,
             repository,
             new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
             unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<CustomerEmailAddress>.Instance,
@@ -186,6 +191,7 @@ public sealed class CustomerCreatedConsumerTests
             },
             repository,
             new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
             unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<CustomerEmailAddress>.Instance,

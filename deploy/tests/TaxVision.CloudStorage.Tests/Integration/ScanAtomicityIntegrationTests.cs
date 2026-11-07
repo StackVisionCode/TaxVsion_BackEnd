@@ -4,7 +4,6 @@ using JasperFx.CodeGeneration.Model;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.CloudStorage.Api.Messaging;
@@ -25,8 +24,8 @@ using Wolverine.SqlServer;
 namespace TaxVision.CloudStorage.Tests.Integration;
 
 /// <summary>
-/// CST-3 contra el SQL Server real: si la transacción del escaneo falla después del último SaveChanges, no
-/// queda cambio de estado, no sale ningún sobre y el objeto sigue en temp. Tablas de Wolverine en un
+/// CST-3 contra el SQL Server real: si la transacción del veredicto falla después de su SaveChanges, solo queda
+/// el reclamo (Scanning), no sale ningún sobre y el objeto sigue en temp. Tablas de Wolverine en un
 /// esquema propio que se borra al terminar.
 /// </summary>
 public sealed class ScanAtomicityIntegrationTests : IAsyncLifetime
@@ -40,14 +39,7 @@ public sealed class ScanAtomicityIntegrationTests : IAsyncLifetime
     private string _objectKey = default!;
 
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("CLOUDSTORAGE_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("taxvision-cloudstorage-development")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set CLOUDSTORAGE_DB_CONNECTION or the CloudStorage user-secrets to run this test."
-        );
+        CloudStorageIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -118,7 +110,7 @@ public sealed class ScanAtomicityIntegrationTests : IAsyncLifetime
         );
         await host.StopAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Equal(FileStatus.PendingScan, await ReadStatusAsync());
+        Assert.Equal(FileStatus.Scanning, await ReadStatusAsync());
         Assert.Equal(0, await CountEnvelopesAsync("wolverine_outgoing_envelopes"));
         Assert.Equal(0, await CountEnvelopesAsync("wolverine_incoming_envelopes"));
         Assert.DoesNotContain((_options.TempBucket, _objectKey), _storage.Deleted);
@@ -136,6 +128,7 @@ public sealed class ScanAtomicityIntegrationTests : IAsyncLifetime
                 services.AddSingleton<ITenantContext>(new FixedTenant(_tenantId));
                 services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CloudStorageDbContext>());
                 services.AddScoped<IFileObjectRepository, FileObjectRepository>();
+                services.AddScoped<IScanClaims, SqlScanClaims>();
                 services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
                 services.AddScoped<IStorageAuditRepository, StorageAuditRepository>();
                 services.AddSingleton<IObjectStorage>(_storage);
@@ -148,7 +141,10 @@ public sealed class ScanAtomicityIntegrationTests : IAsyncLifetime
             })
             .UseWolverine(options =>
             {
-                options.Discovery.DisableConventionalDiscovery().IncludeType(typeof(ScanFileHandler));
+                options
+                    .Discovery.DisableConventionalDiscovery()
+                    .IncludeType(typeof(ScanFileHandler))
+                    .IncludeType(typeof(RecordScanVerdictHandler));
                 options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
                 options.Durability.Mode = DurabilityMode.Solo;
                 options.PersistMessagesWithSqlServer(_connectionString, Schema);

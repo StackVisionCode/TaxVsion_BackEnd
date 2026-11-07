@@ -107,8 +107,8 @@ public static class SetCustomerFiscalProfileHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        return customer is null || customer.TenantId != cmd.TenantId ? null : customer;
+        var customer = await repository.GetByIdAsync(cmd.TenantId, cmd.CustomerId, ct);
+        return customer is null ? null : customer;
     }
 
     private static (byte[]? account, byte[]? routing) EncryptBankingIfPresent(

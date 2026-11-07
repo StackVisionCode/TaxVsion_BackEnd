@@ -20,9 +20,6 @@ internal sealed class PrefetchedDocumentStorage(IReadOnlyDictionary<Guid, byte[]
                 )
         );
 
-    public Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default) =>
-        throw new NotSupportedException("CloudStorage is not called inside a job unit.");
-
     public Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
         Guid tenantId,
         SignatureFileUpload upload,

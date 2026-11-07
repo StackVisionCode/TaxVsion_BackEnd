@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers.FromForms;
 using TaxVision.Customer.Domain.Audit;
+using TaxVision.Customer.Domain.Customers;
 using Wolverine;
 using CreationOutcomes = BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormOutcomes;
 using Outcomes = BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerProfileUpdateFromFormOutcomes;
@@ -46,8 +47,8 @@ public static class CustomerProfileUpdateFromFormRequestedConsumer
                 return;
 
             var customerId = command.Participant.CustomerId;
-            var customer = customerId is { } id ? await repository.GetByIdAsync(id, ct) : null;
-            if (customer is null || customer.TenantId != command.TenantId)
+            var customer = customerId is { } id ? await repository.GetByIdAsync(command.TenantId, id, ct) : null;
+            if (customer is null)
             {
                 await PublishRejectedAsync(bus, command, correlation, Fail(payload, Outcomes.CustomerNotFound));
                 return;
@@ -57,6 +58,13 @@ public static class CustomerProfileUpdateFromFormRequestedConsumer
             if (!canManage)
             {
                 await PublishRejectedAsync(bus, command, correlation, Fail(payload, Outcomes.NotAuthorized));
+                return;
+            }
+
+            // Un archivado no se edita; reintentar no cambia nada, así que se rechaza con su motivo.
+            if (customer.Status == CustomerStatus.Archived)
+            {
+                await PublishRejectedAsync(bus, command, correlation, Fail(payload, Outcomes.CustomerArchived));
                 return;
             }
 

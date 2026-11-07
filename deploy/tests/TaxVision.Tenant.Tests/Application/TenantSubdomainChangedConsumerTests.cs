@@ -18,7 +18,7 @@ public sealed class TenantSubdomainChangedConsumerTests
     [Fact]
     public async Task Primary_rename_updates_the_slug_saves_once_and_invalidates_the_list_cache()
     {
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC").Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow).Value;
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new CountingUnitOfWork();
         var cache = new RecordingCache();
@@ -33,7 +33,7 @@ public sealed class TenantSubdomainChangedConsumerTests
     [Fact]
     public async Task Handle_OldSlugMismatch_ThrowsDependencyNotReady()
     {
-        var tenant = TenantEntity.Create("Acme Tax Office", "first-slug", "UTC").Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "first-slug", "UTC", DateTime.UtcNow).Value;
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new CountingUnitOfWork();
 
@@ -49,7 +49,7 @@ public sealed class TenantSubdomainChangedConsumerTests
     [Fact]
     public async Task Redelivered_rename_is_a_noop()
     {
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-new", "UTC").Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-new", "UTC", DateTime.UtcNow).Value;
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new CountingUnitOfWork();
 
@@ -61,7 +61,7 @@ public sealed class TenantSubdomainChangedConsumerTests
     [Fact]
     public async Task Non_primary_rename_leaves_the_tenant_untouched()
     {
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC").Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow).Value;
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new CountingUnitOfWork();
         var cache = new RecordingCache();

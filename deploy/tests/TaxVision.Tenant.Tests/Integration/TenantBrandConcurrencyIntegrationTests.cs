@@ -19,8 +19,7 @@ public sealed class TenantBrandConcurrencyIntegrationTests : IAsyncLifetime
     private readonly Guid _oldFileId = Guid.NewGuid();
     private readonly Guid _newFileId = Guid.NewGuid();
     private readonly string _connectionString =
-        new ConfigurationBuilder().AddUserSecrets<Program>().AddEnvironmentVariables().Build().GetConnectionString("Default")
-        ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured for Tenant.Api.");
+        TenantIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -39,8 +38,8 @@ public sealed class TenantBrandConcurrencyIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await using var db = NewContext();
-        var brand = TenantBrand.Create(_tenantId, BrandSurface.Crm);
-        Assert.True(brand.SetAssetPending(BrandAssetKey.Logo, _oldFileId, "image/png", 100, 10, 10).IsSuccess);
+        var brand = TenantBrand.Create(_tenantId, BrandSurface.Crm, DateTime.UtcNow);
+        Assert.True(brand.SetAssetPending(BrandAssetKey.Logo, _oldFileId, "image/png", 100, 10, 10, DateTime.UtcNow).IsSuccess);
         db.TenantBrands.Add(brand);
         await db.SaveChangesAsync();
     }
@@ -63,7 +62,7 @@ public sealed class TenantBrandConcurrencyIntegrationTests : IAsyncLifetime
         await using (var upload = NewContext())
         {
             var fresh = await new TenantBrandRepository(upload).GetAsync(_tenantId, BrandSurface.Crm);
-            Assert.True(fresh!.SetAssetPending(BrandAssetKey.Logo, _newFileId, "image/png", 200, 20, 20).IsSuccess);
+            Assert.True(fresh!.SetAssetPending(BrandAssetKey.Logo, _newFileId, "image/png", 200, 20, 20, DateTime.UtcNow).IsSuccess);
             await upload.SaveChangesAsync();
         }
 

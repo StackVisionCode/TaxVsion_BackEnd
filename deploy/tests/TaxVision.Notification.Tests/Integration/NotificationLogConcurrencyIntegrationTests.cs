@@ -18,7 +18,7 @@ public sealed class NotificationLogConcurrencyIntegrationTests : IAsyncLifetime
     private async Task<(Guid LogId, Guid AttemptId)> SeedSentAsync()
     {
         var log = NotificationLog
-            .Create(_tenant, NotificationChannel.Email, "to@not08.test", "Subject", "tpl", null, null)
+            .Create(_tenant, NotificationChannel.Email, NotificationRecipient.ForEmail("to@not08.test").Value, "Subject", "tpl", null, null)
             .Value;
         var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
         log.UpdateAttemptStatus(attempt.Id, NotificationDispatchAttemptStatus.Sent, "pm-1");
@@ -103,6 +103,7 @@ public sealed class NotificationLogConcurrencyIntegrationTests : IAsyncLifetime
                 null
             )
             .Value;
+        message.MarkSending();
         await using (var seed = _database.NewContext())
         {
             seed.OutboundEmailMessages.Add(message);

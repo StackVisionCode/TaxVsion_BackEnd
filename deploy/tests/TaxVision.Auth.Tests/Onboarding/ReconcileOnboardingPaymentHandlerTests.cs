@@ -3,13 +3,13 @@ using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using TaxVision.Auth.Application.Onboarding;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
-using TaxVision.Auth.Domain.Onboarding.ValueObjects;
-using TaxVision.Auth.Infrastructure.Onboarding.Concurrency;
+using TaxVision.Auth.Onboarding.Application;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Domain.ValueObjects;
+using TaxVision.Auth.Onboarding.Infrastructure.Concurrency;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
@@ -48,9 +48,10 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new ReconcileOnboardingPaymentCommand(onboarding.Id),
             onboardings,
             paymentApp,
-            BuildCompleter(tokenReferences, bus),
+            BuildCompleter(tokenReferences),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
+            bus,
             new FakeCorrelationContext(),
             new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
@@ -97,9 +98,10 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new ReconcileOnboardingPaymentCommand(onboarding.Id, IncludeRegistrationUrl: false),
             onboardings,
             paymentApp,
-            BuildCompleter(tokenReferences, bus),
+            BuildCompleter(tokenReferences),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
+            bus,
             new FakeCorrelationContext(),
             new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
@@ -139,9 +141,10 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new ReconcileOnboardingPaymentCommand(onboarding.Id),
             new FakeTenantOnboardingRepository { Existing = onboarding },
             paymentApp,
-            BuildCompleter(new FakeTokenReferenceStore(), bus),
+            BuildCompleter(new FakeTokenReferenceStore()),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
+            bus,
             new FakeCorrelationContext(),
             new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
@@ -178,9 +181,10 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new ReconcileOnboardingPaymentCommand(onboarding.Id),
             new FakeTenantOnboardingRepository { Existing = onboarding },
             paymentApp,
-            BuildCompleter(new FakeTokenReferenceStore(), bus),
+            BuildCompleter(new FakeTokenReferenceStore()),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
+            bus,
             new FakeCorrelationContext(),
             new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
@@ -218,9 +222,10 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new ReconcileOnboardingPaymentCommand(onboarding.Id),
             new FakeTenantOnboardingRepository { Existing = onboarding },
             paymentApp,
-            BuildCompleter(new FakeTokenReferenceStore(), bus),
+            BuildCompleter(new FakeTokenReferenceStore()),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
+            bus,
             new FakeCorrelationContext(),
             new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
@@ -270,9 +275,10 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new ReconcileOnboardingPaymentCommand(onboarding.Id),
             new FakeTenantOnboardingRepository { Existing = onboarding },
             paymentApp,
-            BuildCompleter(tokenReferences, bus),
+            BuildCompleter(tokenReferences),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
+            bus,
             new FakeCorrelationContext(),
             new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
@@ -308,14 +314,12 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
         };
 
     private static OnboardingSuccessCompleter BuildCompleter(
-        FakeTokenReferenceStore tokenReferences,
-        FakeMessageBus bus
+        FakeTokenReferenceStore tokenReferences
     ) =>
         new(
             new SecureTokenService(),
             tokenReferences,
             Options.Create(RegistrationOptions),
-            bus,
             TaxVision.Auth.Tests.Application.FixedPlatformSettings.For("taxoffix.io"),
             NullLogger<OnboardingSuccessCompleter>.Instance
         );

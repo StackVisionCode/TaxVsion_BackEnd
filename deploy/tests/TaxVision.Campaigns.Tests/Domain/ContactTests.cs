@@ -5,6 +5,17 @@ namespace TaxVision.Campaigns.Tests.Domain;
 
 public sealed class ContactTests
 {
+    [Theory]
+    [InlineData("no-at-sign")]
+    [InlineData("ana@")]
+    public void Create_InvalidEmail_IsRejected(string email)
+    {
+        var result = Contact.Create(Guid.NewGuid(), "Ana", email, null, ContactSource.Manual);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ContactErrors.EmailInvalid, result.Error);
+    }
+
     private static readonly Guid Tenant = Guid.NewGuid();
 
     [Fact]

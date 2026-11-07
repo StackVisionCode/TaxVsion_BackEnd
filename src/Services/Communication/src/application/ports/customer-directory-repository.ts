@@ -38,7 +38,11 @@ export interface CustomerDirectoryRepository {
    */
   findActiveByEmail?(tenantId: string, email: string): Promise<CustomerDirectoryEntrySnapshot[]>;
 
-  markInactive(customerId: string): Promise<void>;
+  /** `statusChangedAtUtc` (occurredOn del aviso): si viene, solo aplica si es mas nuevo que el ultimo aplicado. */
+  markInactive(customerId: string, statusChangedAtUtc?: Date): Promise<void>;
+
+  /** Cliente restaurado o activado: vuelve al directorio. Mismo control de orden que `markInactive`. */
+  markActive(customerId: string, statusChangedAtUtc?: Date): Promise<void>;
 
   /** Archivar borra la foto en Customer: la proyeccion la limpia igual. */
   clearAvatar(customerId: string): Promise<void>;

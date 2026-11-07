@@ -1,11 +1,9 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
 
@@ -34,22 +32,12 @@ public static class AppointmentScheduledConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
-        IUserNotificationPreferenceRepository preferences,
         NotificationDispatcher dispatcher,
-        ILogger<AppointmentScheduledIntegrationEvent> logger,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
-        var recipients = await CalendarRecipients.AllowedAsync(
-            evt.Recipients,
-            evt.TenantId,
-            preferences,
-            logger,
-            TemplateKey,
-            ct
-        );
-
+        var recipients = evt.Recipients;
         if (recipients.Count == 0)
             return;
 
@@ -74,6 +62,7 @@ public static class AppointmentScheduledConsumer
                 recipients,
                 evt.TenantId,
                 TemplateKey,
+                NotificationKinds.CalendarAppointmentScheduled,
                 new Dictionary<string, object?>
                 {
                     ["appointment_title"] = evt.Title,

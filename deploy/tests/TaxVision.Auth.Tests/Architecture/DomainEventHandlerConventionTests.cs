@@ -10,7 +10,12 @@ namespace TaxVision.Auth.Tests.Architecture;
 // Con UseTaxVisionDomainEvents() todo evento de dominio de Auth va a la cola domain-events.
 public sealed class DomainEventHandlerConventionTests : DomainEventHandlerConventionRules
 {
-    protected override IEnumerable<Assembly> DomainAssemblies => [typeof(User).Assembly];
+    protected override IEnumerable<Assembly> DomainAssemblies =>
+        [typeof(User).Assembly, typeof(TaxVision.Auth.Onboarding.Domain.TenantOnboardings.TenantOnboarding).Assembly];
 
-    protected override IEnumerable<Assembly> HandlerAssemblies => [typeof(DeactivateUserHandler).Assembly];
+    protected override IEnumerable<Assembly> HandlerAssemblies =>
+        [
+            typeof(DeactivateUserHandler).Assembly,
+            typeof(TaxVision.Auth.Onboarding.Application.Sagas.TenantOnboardingProcessManager).Assembly,
+        ];
 }

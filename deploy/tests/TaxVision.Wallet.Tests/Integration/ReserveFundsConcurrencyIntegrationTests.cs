@@ -25,7 +25,7 @@ public sealed class ReserveFundsConcurrencyIntegrationTests : IAsyncLifetime
         await using (var db = WalletTestDatabase.NewContext(_tenantId))
         {
             var wallet = WalletAggregate.Create(_tenantId).Value;
-            db.LedgerEntries.Add(wallet.Credit(10 * OneDollarMicros, $"topup:{Guid.NewGuid():N}").Value);
+            db.LedgerEntries.Add(wallet.Credit(Usd(10 * OneDollarMicros), $"topup:{Guid.NewGuid():N}").Value);
             db.Wallets.Add(wallet);
             await db.SaveChangesAsync();
         }

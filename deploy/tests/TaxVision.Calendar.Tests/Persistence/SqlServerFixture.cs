@@ -1,6 +1,7 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Calendar.Infrastructure.Persistence;
+using TaxVision.Calendar.Tests.Integration;
 using Xunit;
 
 namespace TaxVision.Calendar.Tests.Persistence;
@@ -11,10 +12,7 @@ namespace TaxVision.Calendar.Tests.Persistence;
 /// </summary>
 public static class SqlServerFixture
 {
-    public static string ConnectionString =>
-        Environment.GetEnvironmentVariable("CALENDAR_TEST_DB_CONNECTION")
-        ?? "Server=localhost,1433;Database=TaxVision_Calendar;Trusted_Connection=True;"
-            + "TrustServerCertificate=True;Encrypt=False";
+    public static string ConnectionString => CalendarIntegrationDatabase.ConnectionString;
 
     public static CalendarDbContext CreateContext(Guid tenantId)
     {

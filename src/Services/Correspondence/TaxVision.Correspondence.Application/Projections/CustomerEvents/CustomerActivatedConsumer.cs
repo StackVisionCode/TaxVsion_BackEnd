@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Domain.Projections;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
 
@@ -18,6 +19,7 @@ public static class CustomerActivatedConsumer
         CustomerActivatedIntegrationEvent evt,
         ICustomerEmailAddressRepository repository,
         ITenantCustomerBackfillService backfill,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerEmailAddress> logger,
@@ -26,7 +28,7 @@ public static class CustomerActivatedConsumer
     {
         using (correlation.Push(evt.CorrelationId))
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            await backfill.EnsureBackfilledAsync(evt.TenantId, bus, ct);
 
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (existing is null)

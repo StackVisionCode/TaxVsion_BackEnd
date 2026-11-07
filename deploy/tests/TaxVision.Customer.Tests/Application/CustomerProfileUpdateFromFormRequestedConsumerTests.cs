@@ -8,13 +8,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers.Consumers;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using TaxVision.Customer.Domain.Audit;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Domain.FiscalProfiles;
 using TaxVision.Customer.Domain.Relations;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
-using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -33,9 +33,14 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
 
         Assert.Equal("+18095559999", customer.PrimaryPhone!.E164Value);
         Assert.Single(customer.Addresses);
-        var applied = Assert.Single(harness.Bus.Published.OfType<CustomerProfileUpdateFromFormAppliedIntegrationEvent>());
+        var applied = Assert.Single(
+            harness.Bus.Published.OfType<CustomerProfileUpdateFromFormAppliedIntegrationEvent>()
+        );
         // CUS-BB1: el teléfono cambió, así que las proyecciones reciben un CustomerUpdated (antes no salía).
-        Assert.Equal("+18095559999", Assert.Single(harness.Bus.Published.OfType<CustomerUpdatedIntegrationEvent>()).PrimaryPhone);
+        Assert.Equal(
+            "+18095559999",
+            Assert.Single(harness.Bus.Published.OfType<CustomerUpdatedIntegrationEvent>()).PrimaryPhone
+        );
         Assert.Equal(2, harness.Bus.Published.Count);
         Assert.Empty(applied.Failures);
         Assert.Contains("customer.primary_phone", applied.AppliedTargets);
@@ -53,6 +58,28 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
 
         Assert.IsType<CustomerProfileUpdateFromFormRejectedIntegrationEvent>(Assert.Single(harness.Bus.Published));
         Assert.Equal("+18095551234", customer.PrimaryPhone!.E164Value); // sin cambios
+    }
+
+    // CUS-3: antes lanzaba y acababa en la cola de errores; un dependiente salía además como "aplicado".
+    [Fact]
+    public async Task Archived_customer_is_rejected_with_its_own_reason_and_nothing_changes()
+    {
+        var harness = new Harness();
+        var customer = harness.SeedCustomer();
+        customer.Archive(Staff);
+        customer.ClearDomainEvents();
+
+        await harness.SendAsync(customer.Id, Values(Phone("+18095559999"), Dependents()));
+
+        var rejected = Assert.IsType<CustomerProfileUpdateFromFormRejectedIntegrationEvent>(
+            Assert.Single(harness.Bus.Published)
+        );
+        Assert.All(
+            rejected.Failures,
+            failure => Assert.Equal(CustomerProfileUpdateFromFormOutcomes.CustomerArchived, failure.Code)
+        );
+        Assert.Equal("+18095551234", customer.PrimaryPhone!.E164Value);
+        Assert.Empty(customer.Relations);
     }
 
     [Fact]
@@ -284,8 +311,8 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
         public List<DomainCustomer> All { get; } = [];
         public string? ConflictBlindIndex { get; set; }
 
-        public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct) =>
-            Task.FromResult(All.Find(c => c.Id == id));
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
+            Task.FromResult(All.Find(c => c.TenantId == tenantId && c.Id == id));
 
         public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
             Task.FromResult(All.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));
@@ -367,8 +394,11 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
             CancellationToken ct
         ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
 
-        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
-            Task.FromResult(OffboardingClientCounts.None);
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct
+        ) => Task.FromResult(OffboardingClientCounts.None);
 
         public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(
             Guid tenantId,

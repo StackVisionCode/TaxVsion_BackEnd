@@ -6,6 +6,7 @@ using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
+using TaxVision.Connectors.Domain.Sync;
 using TaxVision.Connectors.Tests.OAuth;
 using TaxVision.Connectors.Tests.Providers;
 using TaxVision.Connectors.Tests.Sync;
@@ -59,20 +60,26 @@ public class CompleteOAuthConnectHandlerTests
     ) =>
         CompleteOAuthConnectHandler.Handle(
             cmd,
-            fixture.AccountRepository,
-            fixture.ConnectionRepository,
             new FakeOAuthProviderClientFactory(fixture.ProviderClient),
-            fixture.Protector,
-            fixture.AuditLogRepository,
-            fixture.WatchSubscriptionRepository,
-            new FakeWatchProviderClientFactory(fixture.WatchClient),
-            fixture.SmtpCredentials,
-            fixture.ImapCredentials,
-            fixture.SyncCursors,
+            new OAuthGrantStore(fixture.AccountRepository, fixture.ConnectionRepository, fixture.Protector),
+            new AccountProviderSwitcher(
+                fixture.SmtpCredentials,
+                fixture.ImapCredentials,
+                fixture.ConnectionRepository,
+                fixture.WatchSubscriptionRepository,
+                fixture.SyncCursors
+            ),
+            new AccountConnectionFinisher(
+                fixture.AccountRepository,
+                fixture.WatchSubscriptionRepository,
+                new FakeWatchProviderClientFactory(fixture.WatchClient),
+                fixture.AuditLogRepository,
+                fixture.UnitOfWork,
+                new FakeCorrelationContext()
+            ),
             fixture.Projections,
             fixture.UnitOfWork,
             new HandlerTransactionUnit(fixture.UnitOfWork, fixture.Bus),
-            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -104,6 +111,9 @@ public class CompleteOAuthConnectHandlerTests
         var published = Assert.Single(fixture.Bus.Published);
         var connectedEvent = Assert.IsType<ConnectorsTenantEmailAccountConnectedIntegrationEvent>(published);
         Assert.Equal("newoffice@gmail.com", connectedEvent.EmailAddress);
+        Assert.NotNull(connectedEvent.OwnerUserId);
+        Assert.Equal(fixture.AccountRepository.Accounts[0].OwnerUserId, connectedEvent.OwnerUserId);
+        Assert.False(connectedEvent.IsOffice);
         Assert.Single(fixture.AuditLogRepository.Entries);
     }
 
@@ -474,6 +484,91 @@ public class CompleteOAuthConnectHandlerTests
     /// visto en producción el 2026-10-19: el UI quedaba mostrando "Imap" aunque la connection activa
     /// era Gmail OAuth, porque el handler nunca llamaba <c>account.ChangeProvider</c>.
     /// </summary>
+    // CON-13: el cursor del proveedor anterior reventaba el history.list de Gmail.
+    [Fact]
+    public async Task Handle_ReconnectWithDifferentProvider_ResetsTheSyncCursor()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        const string email = "office@example.com";
+        var account = TenantEmailAccount.Create(tenantId, email, ProviderCode.Imap, userId, Now).Value;
+        account.Disconnect(Now);
+        await fixture.AccountRepository.AddAsync(account);
+        await fixture.SyncCursors.AddAsync(ProviderSyncCursor.Create(account.Id, "1:42", Now).Value);
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => email;
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, userId, "auth-code", email)
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(fixture.SyncCursors.Cursors);
+    }
+
+    [Fact]
+    public async Task Handle_ReconnectWithTheSameProvider_KeepsCredentialsAndCursor()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        const string email = "office@gmail.com";
+        var account = TenantEmailAccount.Create(tenantId, email, ProviderCode.Gmail, userId, Now).Value;
+        account.Disconnect(Now);
+        await fixture.AccountRepository.AddAsync(account);
+        var cipher = EncryptedSecret.Create(new byte[] { 1 }, new byte[12], new byte[16], 1).Value;
+        await fixture.ImapCredentials.AddAsync(
+            ImapCredentials.Create(account.Id, "imap.example.com", 993, true, email, cipher).Value
+        );
+        await fixture.SmtpCredentials.AddAsync(
+            SmtpCredentials.Create(account.Id, "smtp.example.com", 587, true, email, cipher).Value
+        );
+        await fixture.SyncCursors.AddAsync(ProviderSyncCursor.Create(account.Id, "history-1", Now).Value);
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => email;
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, userId, "auth-code", email)
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(fixture.ImapCredentials.Credentials);
+        Assert.Single(fixture.SmtpCredentials.Credentials);
+        Assert.Single(fixture.SyncCursors.Cursors);
+    }
+
+    [Fact]
+    public async Task Handle_ProviderChangeOnAnActiveAccount_FailsWithoutSavingOrPurging()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        const string email = "office@example.com";
+        var account = TenantEmailAccount.Create(tenantId, email, ProviderCode.Imap, userId, Now).Value;
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        await fixture.AccountRepository.AddAsync(account);
+        var cipher = EncryptedSecret.Create(new byte[] { 1 }, new byte[12], new byte[16], 1).Value;
+        await fixture.ImapCredentials.AddAsync(
+            ImapCredentials.Create(account.Id, "imap.example.com", 993, true, email, cipher).Value
+        );
+        await fixture.SyncCursors.AddAsync(ProviderSyncCursor.Create(account.Id, "1:42", Now).Value);
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => email;
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, userId, "auth-code", email)
+        );
+
+        Assert.Equal("TenantEmailAccount.CannotChangeProvider", result.Error.Code);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
+        Assert.Equal(ProviderCode.Imap, account.ProviderCode);
+        Assert.Single(fixture.ImapCredentials.Credentials);
+        Assert.Single(fixture.SyncCursors.Cursors);
+        Assert.Empty(fixture.Bus.Published);
+    }
+
     [Fact]
     public async Task Handle_ReconnectWithDifferentProvider_SwitchesProviderCodeAndPurgesStaleCreds()
     {

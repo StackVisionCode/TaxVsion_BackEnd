@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Auth.Domain.Common;
 using TaxVision.Auth.Domain.TenantDomains.Events;
 
 namespace TaxVision.Auth.Domain.TenantDomains;
@@ -116,14 +117,14 @@ public sealed class TenantDomain : AggregateRoot
         if (tenantId == Guid.Empty)
             return Result.Failure<TenantDomain>(new Error("TenantDomain.Tenant", "Tenant is required."));
 
-        var normalizedHost = host?.Trim().ToLowerInvariant() ?? string.Empty;
-        if (normalizedHost.Length is 0 or > 253 || !normalizedHost.Contains('.'))
-            return Result.Failure<TenantDomain>(new Error("TenantDomain.HostInvalid", "Host is invalid."));
+        var normalizedHost = HostName.Create(host);
+        if (normalizedHost.IsFailure)
+            return Result.Failure<TenantDomain>(normalizedHost.Error);
 
         var domain = new TenantDomain
         {
             DomainType = TenantDomainType.CustomHostname,
-            Host = normalizedHost,
+            Host = normalizedHost.Value.Value,
             Status = TenantDomainStatus.Pending,
             IsPrimary = false,
             CreatedByUserId = createdByUserId,

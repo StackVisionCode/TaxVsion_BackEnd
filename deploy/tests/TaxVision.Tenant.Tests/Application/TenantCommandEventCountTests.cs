@@ -188,7 +188,7 @@ public sealed class TenantCommandEventCountTests
     }
 
     private static TenantEntity NewTenant(Guid? onboardingId = null) =>
-        TenantEntity.Create("Acme Tax", "acme-tax", "Etc/UTC", onboardingId).Value;
+        TenantEntity.Create("Acme Tax", "acme-tax", "Etc/UTC", DateTime.UtcNow, onboardingId).Value;
 
     private static OnboardingCancelRequestedIntegrationEvent CancelEvent(Guid onboardingId, Guid tenantId) =>
         new()
@@ -224,6 +224,7 @@ public sealed class TenantCommandEventCountTests
             {
                 _ when type == message.GetType() => message,
                 _ when type == typeof(CancellationToken) => CancellationToken.None,
+                _ when type == typeof(TimeProvider) => TimeProvider.System,
                 _ when type == typeof(IMessageBus) => _bus,
                 _ when type == typeof(ITenantRepository) => new SingleTenantRepository(tenant),
                 _ when type == typeof(IUnitOfWork) => new CountingUnitOfWork(),

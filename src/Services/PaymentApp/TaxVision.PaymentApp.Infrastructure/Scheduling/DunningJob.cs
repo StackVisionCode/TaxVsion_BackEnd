@@ -9,10 +9,10 @@ namespace TaxVision.PaymentApp.Infrastructure.Scheduling;
 
 /// <summary>
 /// Reintenta cobros Failed cuyo <c>NextRetryAtUtc</c> ya llegó. El backoff (1h → 6h → 24h →
-/// se abandona) vive en <c>SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc</c> — este job solo
+/// se abandona) vive en <c>DunningPolicy</c> del dominio — este job solo
 /// encuentra los candidatos y despacha un <see cref="RetrySaaSPaymentCommand"/> por cada uno.
 /// Cuando el retry agota el backoff, <c>RetrySaaSPaymentHandler</c> ya deja
-/// <c>NextRetryAtUtc = null</c> (vía <c>MarkFailed(willRetry: false, ...)</c>), así que ese
+/// <c>NextRetryAtUtc = null</c> (vía <c>DunningDecision.NoRetry</c>), así que ese
 /// pago simplemente deja de aparecer en la próxima corrida — Subscription se entera del
 /// abandono definitivo por el <c>*PaymentFailedIntegrationEvent</c> con <c>WillRetry = false</c>.
 /// </summary>

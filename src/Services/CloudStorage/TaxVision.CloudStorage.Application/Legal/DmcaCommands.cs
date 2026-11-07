@@ -90,6 +90,7 @@ public static class RegisterDmcaTakedownHandler
                 now
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new FileBlockedByDmcaTakedownIntegrationEvent
             {
@@ -100,7 +101,6 @@ public static class RegisterDmcaTakedownHandler
                 CorrelationId = command.Audit.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(notice.Id);
     }
 }
@@ -155,6 +155,7 @@ public static class SubmitDmcaCounterNoticeHandler
                 now
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new DmcaCounterNoticeSubmittedIntegrationEvent
             {
@@ -165,7 +166,6 @@ public static class SubmitDmcaCounterNoticeHandler
                 CorrelationId = command.Audit.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }
@@ -226,6 +226,7 @@ public static class ReinstateDmcaFileHandler
                 now
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new FileReinstatedFromTakedownIntegrationEvent
             {
@@ -236,7 +237,6 @@ public static class ReinstateDmcaFileHandler
                 CorrelationId = command.Audit.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }

@@ -31,7 +31,7 @@ public static class FormSignatureCompletedConsumer
                 return;
             if (
                 FormSignatureResultSupport.Failed(
-                    request.MarkSignatureCompleted(revision),
+                    request.Summary.MarkSignatureCompleted(revision),
                     "Completed",
                     requestId,
                     revision,

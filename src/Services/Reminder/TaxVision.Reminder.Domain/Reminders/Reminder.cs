@@ -48,6 +48,9 @@ public sealed class Reminder : AggregateRoot, IHasOwner
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? FiredAtUtc { get; private set; }
 
+    /// <summary>Hora del evento que fijó el ancla vigente: ordena pedidos y movimientos tardíos.</summary>
+    public DateTime? AnchorAsOfUtc { get; private set; }
+
     /// <summary>Cuándo llegó a un estado terminal: <c>Dismissed</c>, <c>Cancelled</c> o <c>Missed</c>.</summary>
     public DateTime? ResolvedAtUtc { get; private set; }
 
@@ -183,12 +186,17 @@ public sealed class Reminder : AggregateRoot, IHasOwner
     /// se transiciona a <c>Missed</c>. Avisar de algo cuya hora ya pasó es ruido.
     /// </para>
     /// </summary>
-    public Result RescheduleToNewAnchor(DateTime newAnchorUtc, DateTime nowUtc, int? newLeadMinutes = null)
+    public Result RescheduleToNewAnchor(
+        DateTime newAnchorUtc,
+        DateTime nowUtc,
+        int? newLeadMinutes = null,
+        DateTime? anchorAsOfUtc = null
+    )
     {
         if (Status is not (ReminderStatus.Scheduled or ReminderStatus.Snoozed))
             return Result.Failure(ReminderErrors.InvalidTransition(Status, nameof(RescheduleToNewAnchor)));
 
-        if (!Schedule.IsAnchored)
+        if (!Schedule.IsAnchored || anchorAsOfUtc < AnchorAsOfUtc)
             return Result.Success();
 
         var recalculated = Schedule.WithNewAnchor(newAnchorUtc, nowUtc, newLeadMinutes);
@@ -196,12 +204,25 @@ public sealed class Reminder : AggregateRoot, IHasOwner
             return Result.Failure(recalculated.Error);
 
         Schedule = recalculated.Value;
+        AnchorAsOfUtc = anchorAsOfUtc ?? AnchorAsOfUtc;
 
         if (Schedule.FireAtUtc <= nowUtc)
             return TransitionToMissed(nowUtc);
 
         Status = ReminderStatus.Scheduled;
         return Result.Success();
+    }
+
+    /// <summary>
+    /// REM-5: un pedido repetido trae el ancla vigente y corrige la deriva. Si es anterior al último
+    /// cambio conocido, no deshace un movimiento.
+    /// </summary>
+    public Result CorrectAnchorFromRequest(DateTime anchorUtc, DateTime requestedAtUtc, DateTime nowUtc)
+    {
+        if (Schedule.AnchorAtUtc == anchorUtc || requestedAtUtc <= (AnchorAsOfUtc ?? CreatedAtUtc))
+            return Result.Success();
+
+        return RescheduleToNewAnchor(anchorUtc, nowUtc, anchorAsOfUtc: requestedAtUtc);
     }
 
     /// <summary>

@@ -3,7 +3,6 @@ using BuildingBlocks.Messaging.CatalogIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Inventory.Application.Abstractions;
 using TaxVision.Inventory.Application.Consumers;
@@ -25,14 +24,7 @@ public sealed class StockConcurrencyIntegrationTests : IAsyncLifetime
     private static readonly TimeSpan BarrierTimeout = TimeSpan.FromSeconds(2);
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("INVENTORY_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e3b1a9f6-2c8d-4a17-9b54-7f2e6c1d8a90")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set INVENTORY_DB_CONNECTION or the Inventory user-secrets to run this test."
-        );
+        InventoryIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -194,6 +186,40 @@ public sealed class StockConcurrencyIntegrationTests : IAsyncLifetime
         );
     }
 
+    // INV-4: un ajuste manual con el id de la factura en la referencia no cuenta como descontado por ella.
+    [Fact]
+    public async Task CommitInvoiceSale_ignores_manual_movement_with_invoice_reference()
+    {
+        var itemId = await SeedLevelAsync(10);
+        var invoiceId = Guid.NewGuid();
+        await RunAloneAsync((stock, db) => Commit(stock, db, invoiceId, itemId, 3));
+        await RunAloneAsync(
+            (stock, db) =>
+                Unwrap(
+                    AdjustStockHandler.Handle(
+                        new AdjustStockCommand(
+                            _tenantId,
+                            Guid.NewGuid(),
+                            itemId,
+                            StockMovementType.Sale,
+                            1,
+                            invoiceId.ToString(),
+                            null
+                        ),
+                        stock,
+                        db,
+                        CancellationToken.None
+                    )
+                )
+        );
+
+        var result = await RunAloneAsync((stock, db) => Commit(stock, db, invoiceId, itemId, 3));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(6, await QuantityAsync(itemId));
+        Assert.Equal(2, (await MovementsAsync(itemId)).Count);
+    }
+
     // ───────── helpers ─────────
 
     private static readonly string[] ReadsLevel =
@@ -304,6 +330,15 @@ public sealed class StockConcurrencyIntegrationTests : IAsyncLifetime
             await transaction.CommitAsync();
         else
             await transaction.RollbackAsync();
+        return result;
+    }
+
+    private async Task<Result> RunAloneAsync(Func<IStockRepository, InventoryDbContext, Task<Result>> operation)
+    {
+        await using var db = NewContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var result = await operation(new StockRepository(db), db);
+        await transaction.CommitAsync();
         return result;
     }
 

@@ -40,7 +40,7 @@ public static class CustomerCreatedConsumer
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (existing is not null)
             {
-                ReconcileExisting(existing, normalizedEmail, evt.DisplayName);
+                ReconcileExisting(existing, normalizedEmail, evt.DisplayName, evt.OccurredOn);
                 logger.LogInformation(
                     "CustomerEmailProjection already exists for {CustomerId}; reconciled.",
                     evt.CustomerId
@@ -52,7 +52,8 @@ public static class CustomerCreatedConsumer
                     evt.TenantId,
                     evt.CustomerId,
                     normalizedEmail,
-                    evt.DisplayName
+                    evt.DisplayName,
+                    evt.OccurredOn
                 );
                 await repository.AddAsync(projection, ct);
                 logger.LogInformation(
@@ -72,13 +73,14 @@ public static class CustomerCreatedConsumer
     private static string NormalizeEmail(string email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 
-    private static void ReconcileExisting(CustomerEmailProjection existing, string normalizedEmail, string displayName)
+    private static void ReconcileExisting(
+        CustomerEmailProjection existing,
+        string normalizedEmail,
+        string displayName,
+        DateTime occurredOnUtc
+    )
     {
-        if (existing.NormalizedEmail != normalizedEmail)
-            existing.ChangeEmail(normalizedEmail);
-        if (existing.DisplayName != displayName)
-            existing.UpdateDisplayName(displayName);
-        if (existing.IsArchived)
+        if (existing.ApplyIfNewer(normalizedEmail, displayName, occurredOnUtc) && existing.IsArchived)
             existing.MarkReactivated();
     }
 }

@@ -139,6 +139,9 @@ builder.Host.UseWolverine(options =>
     options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
+    // BB-2: toda cola local durable; la reconciliación programada del adjunto sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
+
     // NTS-8: durable para que el pedido salga con la transacción del evento, y en serie: el primero siembra y los
     // repetidos de una ráfaga encuentran el estado hecho.
     options.LocalQueueFor<RunTenantCustomerBackfillCommand>().UseDurableInbox().Sequential();

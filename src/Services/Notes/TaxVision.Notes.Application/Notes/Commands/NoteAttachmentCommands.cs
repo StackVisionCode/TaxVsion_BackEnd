@@ -35,6 +35,7 @@ public static class AttachFileToNoteHandler
         IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -56,7 +57,8 @@ public static class AttachFileToNoteHandler
             command.CloudStorageFileId,
             command.DisplayName,
             command.ContentType,
-            command.SizeBytes
+            command.SizeBytes,
+            clock.GetUtcNow().UtcDateTime
         );
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
@@ -92,6 +94,7 @@ public static class DetachFileFromNoteHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -109,7 +112,7 @@ public static class DetachFileFromNoteHandler
         )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
-        var result = note.DetachFile(command.CloudStorageFileId);
+        var result = note.DetachFile(command.CloudStorageFileId, clock.GetUtcNow().UtcDateTime);
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
 

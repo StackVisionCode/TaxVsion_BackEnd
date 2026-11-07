@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -25,7 +26,7 @@ public static class ShareLinkFolderItemAddedConsumer
             var title = "Archivo movido a una carpeta compartida";
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.CreatedByUserId:N}",
+                NotificationRecipient.ForUser(evt.CreatedByUserId),
                 title,
                 NotificationCategory.StorageAndQuota,
                 "cloudstorage.sharelink.folder_item_added",

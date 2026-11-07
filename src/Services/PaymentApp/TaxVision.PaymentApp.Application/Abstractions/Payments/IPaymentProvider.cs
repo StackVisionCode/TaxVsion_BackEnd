@@ -34,7 +34,8 @@ public interface IPaymentProvider
     Task<Result<CaptureResult>> CaptureAsync(string providerChargeReference, Money amount, CancellationToken ct);
 
     /// <summary><paramref name="idempotencyKey"/> es estable por solicitud: un reintento con la misma clave
-    /// no crea un segundo reembolso en el proveedor.</summary>
+    /// no crea un segundo reembolso en el proveedor. Un fallo pasajero (sin respuesta, 5xx, 429) lleva un código que
+    /// termina en <c>Unavailable</c> (<see cref="ProviderRefundFailures"/>); cualquier otro es un rechazo.</summary>
     Task<Result<RefundResult>> RefundAsync(
         string providerChargeReference,
         Money amount,

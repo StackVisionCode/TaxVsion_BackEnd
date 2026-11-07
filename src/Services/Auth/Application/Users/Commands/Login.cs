@@ -1,13 +1,6 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Options;
-using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Common;
-using TaxVision.Auth.Domain.Audit;
-using TaxVision.Auth.Domain.Mfa;
-using TaxVision.Auth.Domain.RefreshTokens;
+using TaxVision.Auth.Application.Users.Login;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
@@ -92,483 +85,48 @@ public static class LockoutPolicy
     public static readonly TimeSpan TakeoverTicketValidity = TimeSpan.FromMinutes(2);
 }
 
+/// <summary>
+/// Orquesta los pasos del login (<see cref="LoginDiscovery"/>, <see cref="LoginPasswordCheck"/>,
+/// <see cref="LoginMfaStep"/> y <see cref="LoginSessionStep"/>). Guardar y publicar se queda aquí.
+/// </summary>
 public static class LoginHandler
 {
     public static async Task<Result<LoginResponse>> Handle(
         LoginCommand command,
-        IUserRepository users,
-        IUserLoginLock loginLock,
-        ITenantRegistry tenants,
-        IPasswordHasher hasher,
-        IRoleRepository roles,
-        IMfaRepository mfa,
-        IAuthSessionIssuer issuer,
-        ISessionRepository sessions,
-        ISessionTakeoverTicketStore takeoverTickets,
-        ISecureTokenService tokens,
-        ILoginThrottler throttler,
-        IAuthAuditWriter audit,
-        IRequestContext request,
-        ICorrelationContext correlation,
+        LoginDiscovery discovery,
+        LoginPasswordCheck passwordCheck,
+        LoginMfaStep mfaStep,
+        LoginSessionStep sessionStep,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        IOptions<MfaOptions> mfaOptions,
         CancellationToken ct
     )
     {
-        var invalidCredentials = new Error("Auth.Invalid", "Invalid credentials.");
         var now = DateTime.UtcNow;
 
-        // 1. Throttle por IP (defensa complementaria al rate limiting del Gateway).
-        var retryAfter = await throttler.GetIpRetryAfterAsync(request.IpAddress, ct);
-        if (retryAfter is not null)
-        {
-            return Result.Failure<LoginResponse>(
-                new Error("Auth.LockedOut", "Too many attempts. Try again later.").WithRetryAfter(retryAfter.Value)
-            );
-        }
+        var (attempt, refusal) = await discovery.FindAsync(command, ct);
+        if (attempt is null)
+            return await CloseAsync(refusal!, unitOfWork, bus, ct);
 
-        // 2. Tenant. Respuesta genérica hacia el anónimo (anti-enumeración);
-        //    el motivo real queda solo en auditoría.
-        var tenant = await tenants.GetByIdAsync(command.TenantId, ct);
-        if (tenant is null || !tenant.IsActive)
-        {
-            await throttler.RegisterFailureAsync(request.IpAddress, ct);
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    command.TenantId,
-                    null,
-                    AuthAuditAction.LoginFailed,
-                    false,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId,
-                    detailsJson: """{"reason":"tenant_inactive_or_missing"}"""
-                ),
-                ct
-            );
+        var decision =
+            await passwordCheck.VerifyAsync(attempt, command.Password, now, ct)
+            ?? await mfaStep.DecideAsync(attempt, command.DeviceToken, now, ct)
+            ?? await sessionStep.OpenAsync(attempt, LoginSessionEntry.Password, ct);
+
+        return await CloseAsync(decision, unitOfWork, bus, ct);
+    }
+
+    private static async Task<Result<LoginResponse>> CloseAsync(
+        LoginDecision decision,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        CancellationToken ct
+    )
+    {
+        if (decision.MustSave)
             await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure<LoginResponse>(invalidCredentials);
-        }
-
-        var email = command.Email.Trim().ToLowerInvariant();
-        var user = command.AccountKind is { } accountKind
-            ? await users.GetByEmailAsync(command.TenantId, email, accountKind, ct)
-            : await users.GetByEmailAsync(command.TenantId, email, UserAccountKind.Staff, ct)
-                ?? await users.GetByEmailAsync(command.TenantId, email, UserAccountKind.Portal, ct);
-
-        if (user is null)
-        {
-            await throttler.RegisterFailureAsync(request.IpAddress, ct);
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    command.TenantId,
-                    null,
-                    AuthAuditAction.LoginFailed,
-                    false,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId,
-                    detailsJson: """{"reason":"unknown_email"}"""
-                ),
-                ct
-            );
-            await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure<LoginResponse>(invalidCredentials);
-        }
-
-        // 3. Lockout autoritativo por cuenta.
-        if (user.IsLockedOut(now))
-        {
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    user.TenantId,
-                    user.Id,
-                    AuthAuditAction.LoginLockedOut,
-                    false,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId
-                ),
-                ct
-            );
-            await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure<LoginResponse>(
-                new Error("Auth.LockedOut", "Account is temporarily locked. Try again later.").WithRetryAfter(
-                    user.LockoutEndUtc!.Value - now
-                )
-            );
-        }
-
-        // 4. Verificación de contraseña.
-        if (!hasher.Verify(command.Password, user.PasswordHash))
-        {
-            await loginLock.AcquireAsync(user, ct);
-            var alreadyLocked = user.IsLockedOut(now);
-            if (!alreadyLocked)
-                user.RegisterFailedLogin(now, LockoutPolicy.MaxFailedAttempts, LockoutPolicy.LockoutDuration);
-            await throttler.RegisterFailureAsync(request.IpAddress, ct);
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    user.TenantId,
-                    user.Id,
-                    AuthAuditAction.LoginFailed,
-                    false,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId,
-                    detailsJson: """{"reason":"bad_password"}"""
-                ),
-                ct
-            );
-
-            if (!alreadyLocked && user.IsLockedOut(now))
-            {
-                await bus.PublishAsync(
-                    new SecurityAlertIntegrationEvent
-                    {
-                        TenantId = user.TenantId,
-                        UserId = user.Id,
-                        AlertType = SecurityAlertType.AccountLockedOut,
-                        IpAddress = request.IpAddress,
-                        UserAgent = request.UserAgent,
-                        CorrelationId = correlation.CorrelationId,
-                    }
-                );
-            }
-
-            await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure<LoginResponse>(invalidCredentials);
-        }
-
-        if (!user.IsActive)
-        {
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    user.TenantId,
-                    user.Id,
-                    AuthAuditAction.LoginFailed,
-                    false,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId,
-                    detailsJson: """{"reason":"user_inactive"}"""
-                ),
-                ct
-            );
-            await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure<LoginResponse>(invalidCredentials);
-        }
-
-        // Fase 2 — corte de acceso por facturación: la suscripción del tenant está Suspended/Expired.
-        // Se bloquea a empleados y clientes; el TenantAdmin/PlatformAdmin pasa para poder ir a renovar.
-        if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
-        {
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    user.TenantId,
-                    user.Id,
-                    AuthAuditAction.LoginFailed,
-                    false,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId,
-                    detailsJson: """{"reason":"subscription_inactive"}"""
-                ),
-                ct
-            );
-            await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure<LoginResponse>(
-                new Error(
-                    "Auth.SubscriptionInactive",
-                    "This office's subscription is inactive. Please renew to restore access."
-                )
-            );
-        }
-
-        if (user.HasLoginFailures)
-            await loginLock.AcquireAsync(user, ct);
-        user.RegisterSuccessfulLogin();
-
-        // 5. Evaluación MFA (política del tenant + preferencia del usuario).
-        var mfaRequired = await MfaRequirement.EvaluateAsync(user, mfa, ct, mfaOptions.Value.Enforced);
-
-        if (mfaRequired)
-        {
-            var confirmedMethods = (await mfa.GetMethodsAsync(user.Id, ct))
-                .Where(method => method.IsConfirmed)
-                .ToList();
-
-            if (confirmedMethods.Count == 0)
-            {
-                // Sin método registrado: se deja entrar con la bandera de enrolamiento obligatorio
-                // para que el frontend fuerce el setup. Sesión única: si ya hay sesión activa, se exige
-                // takeover (el flag mfaSetupRequired viaja en el vale y vuelve al confirmar).
-                var setupOutcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
-                    user,
-                    tenant,
-                    ["pwd"],
-                    command.DeviceName,
-                    mustEnrollMfa: true,
-                    SessionSurface.Workspace,
-                    roles,
-                    issuer,
-                    sessions,
-                    takeoverTickets,
-                    ct
-                );
-
-                if (setupOutcome.TakeoverRequired)
-                {
-                    await audit.AddAsync(
-                        AuthAuditLog.Record(
-                            user.TenantId,
-                            user.Id,
-                            AuthAuditAction.LoginSucceeded,
-                            true,
-                            request.IpAddress,
-                            request.UserAgent,
-                            correlation.CorrelationId,
-                            detailsJson: """{"takeoverRequired":true,"mfaSetupRequired":true}"""
-                        ),
-                        ct
-                    );
-                    await unitOfWork.SaveChangesAsync(ct);
-                    return Result.Success(
-                        LoginResponse.ForTakeover(
-                            setupOutcome.TakeoverTicket!.Value.ToString(),
-                            (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
-                            mfaSetupRequired: true,
-                            actorType: user.ActorType.ToString()
-                        )
-                    );
-                }
-
-                var setupTokens = setupOutcome.Tokens!;
-                await audit.AddAsync(
-                    AuthAuditLog.Record(
-                        user.TenantId,
-                        user.Id,
-                        AuthAuditAction.LoginSucceeded,
-                        true,
-                        request.IpAddress,
-                        request.UserAgent,
-                        correlation.CorrelationId,
-                        detailsJson: """{"mfaSetupRequired":true}"""
-                    ),
-                    ct
-                );
-                await unitOfWork.SaveChangesAsync(ct);
-                return Result.Success(
-                    LoginResponse.ForTokens(
-                        new AuthTokensResponse(
-                            setupTokens.AccessToken,
-                            setupTokens.RefreshToken,
-                            setupTokens.ExpiresInSeconds
-                        ),
-                        mfaSetupRequired: true,
-                        actorType: user.ActorType.ToString()
-                    )
-                );
-            }
-
-            // Dispositivo confiable: omite el segundo factor.
-            if (!string.IsNullOrWhiteSpace(command.DeviceToken))
-            {
-                var device = await mfa.GetTrustedDeviceByHashAsync(tokens.Hash(command.DeviceToken), ct);
-                if (device is { IsActive: true } && device.UserId == user.Id)
-                {
-                    // Dispositivo confiable: omite el 2.º factor. Sesión única: igual pasa por el gate.
-                    var trustedOutcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
-                        user,
-                        tenant,
-                        ["pwd"],
-                        command.DeviceName,
-                        mustEnrollMfa: false,
-                        SessionSurface.Workspace,
-                        roles,
-                        issuer,
-                        sessions,
-                        takeoverTickets,
-                        ct
-                    );
-
-                    if (trustedOutcome.TakeoverRequired)
-                    {
-                        await audit.AddAsync(
-                            AuthAuditLog.Record(
-                                user.TenantId,
-                                user.Id,
-                                AuthAuditAction.LoginSucceeded,
-                                true,
-                                request.IpAddress,
-                                request.UserAgent,
-                                correlation.CorrelationId,
-                                detailsJson: """{"takeoverRequired":true,"trustedDevice":true}"""
-                            ),
-                            ct
-                        );
-                        await unitOfWork.SaveChangesAsync(ct);
-                        return Result.Success(
-                            LoginResponse.ForTakeover(
-                                trustedOutcome.TakeoverTicket!.Value.ToString(),
-                                (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
-                                actorType: user.ActorType.ToString()
-                            )
-                        );
-                    }
-
-                    var trustedTokens = trustedOutcome.Tokens!;
-                    await audit.AddAsync(
-                        AuthAuditLog.Record(
-                            user.TenantId,
-                            user.Id,
-                            AuthAuditAction.LoginSucceeded,
-                            true,
-                            request.IpAddress,
-                            request.UserAgent,
-                            correlation.CorrelationId,
-                            detailsJson: """{"trustedDevice":true}"""
-                        ),
-                        ct
-                    );
-                    await unitOfWork.SaveChangesAsync(ct);
-                    return Result.Success(
-                        LoginResponse.ForTokens(
-                            new AuthTokensResponse(
-                                trustedTokens.AccessToken,
-                                trustedTokens.RefreshToken,
-                                trustedTokens.ExpiresInSeconds
-                            ),
-                            actorType: user.ActorType.ToString()
-                        )
-                    );
-                }
-            }
-
-            // Crear desafío MFA (paso 2 pendiente).
-            var challengeMethod =
-                confirmedMethods.FirstOrDefault(method => method.IsPreferred)
-                ?? confirmedMethods.FirstOrDefault(method => method.Type == MfaMethodType.Totp)
-                ?? confirmedMethods[0];
-
-            var loginTicket = tokens.GenerateToken();
-            string? otpHash = null;
-
-            if (challengeMethod.Type is MfaMethodType.Email or MfaMethodType.Sms)
-            {
-                var otpCode = tokens.GenerateNumericCode();
-                otpHash = tokens.Hash(otpCode);
-                await bus.PublishAsync(
-                    new MfaChallengeRequestedIntegrationEvent
-                    {
-                        TenantId = user.TenantId,
-                        UserId = user.Id,
-                        Channel = challengeMethod.Type.ToString(),
-                        Destination = challengeMethod.Destination ?? user.Email,
-                        Code = otpCode,
-                        Purpose = "login",
-                        ExpiresAtUtc = now.Add(LockoutPolicy.MfaTicketValidity),
-                        CorrelationId = correlation.CorrelationId,
-                    }
-                );
-            }
-
-            var challenge = MfaChallenge.Create(
-                user.TenantId,
-                user.Id,
-                challengeMethod.Id,
-                tokens.Hash(loginTicket),
-                otpHash,
-                LockoutPolicy.MfaTicketValidity
-            );
-            await mfa.AddChallengeAsync(challenge, ct);
-
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    user.TenantId,
-                    user.Id,
-                    AuthAuditAction.MfaChallengeSent,
-                    true,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId,
-                    detailsJson: $$"""{"method":"{{challengeMethod.Type}}"}"""
-                ),
-                ct
-            );
-            await unitOfWork.SaveChangesAsync(ct);
-
-            return Result.Success(
-                LoginResponse.ForMfaChallenge(
-                    loginTicket,
-                    confirmedMethods.Select(method => method.Type.ToString()).Distinct().ToArray(),
-                    (int)LockoutPolicy.MfaTicketValidity.TotalSeconds
-                )
-            );
-        }
-
-        // 6. Sin MFA: sesión única → si el usuario ya tiene una sesión activa, exige takeover en vez
-        //    de emitir; si no, emite directo.
-        var outcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
-            user,
-            tenant,
-            ["pwd"],
-            command.DeviceName,
-            mustEnrollMfa: false,
-            SessionSurface.Workspace,
-            roles,
-            issuer,
-            sessions,
-            takeoverTickets,
-            ct
-        );
-
-        if (outcome.TakeoverRequired)
-        {
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    user.TenantId,
-                    user.Id,
-                    AuthAuditAction.LoginSucceeded,
-                    true,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId,
-                    detailsJson: """{"takeoverRequired":true}"""
-                ),
-                ct
-            );
-            await unitOfWork.SaveChangesAsync(ct);
-            return Result.Success(
-                LoginResponse.ForTakeover(
-                    outcome.TakeoverTicket!.Value.ToString(),
-                    (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
-                    actorType: user.ActorType.ToString()
-                )
-            );
-        }
-
-        var issued = outcome.Tokens!;
-        await audit.AddAsync(
-            AuthAuditLog.Record(
-                user.TenantId,
-                user.Id,
-                AuthAuditAction.LoginSucceeded,
-                true,
-                request.IpAddress,
-                request.UserAgent,
-                correlation.CorrelationId
-            ),
-            ct
-        );
-        await unitOfWork.SaveChangesAsync(ct);
-
-        return Result.Success(
-            LoginResponse.ForTokens(
-                new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds),
-                actorType: user.ActorType.ToString()
-            )
-        );
+        if (decision.Notice is not null)
+            await bus.PublishAsync(decision.Notice);
+        return decision.Outcome;
     }
 }

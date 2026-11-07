@@ -4,7 +4,6 @@ using BuildingBlocks.Tenancy;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.CloudStorage.Api.Messaging;
@@ -40,14 +39,7 @@ public sealed class ScanQueueDurabilityIntegrationTests : IAsyncLifetime
     private string _objectKey = default!;
 
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("CLOUDSTORAGE_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("taxvision-cloudstorage-development")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set CLOUDSTORAGE_DB_CONNECTION or the CloudStorage user-secrets to run this test."
-        );
+        CloudStorageIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -121,7 +113,8 @@ public sealed class ScanQueueDurabilityIntegrationTests : IAsyncLifetime
         }
 
         Assert.True(await CountIncomingEnvelopesAsync() > 0, "ScanFileCommand was not persisted while the host was down.");
-        Assert.Equal(FileStatus.PendingScan, await ReadStatusAsync());
+        // El reclamo ya confirmó Scanning (fila L); el veredicto no.
+        Assert.Equal(FileStatus.Scanning, await ReadStatusAsync());
 
         var released = new GateVirusScanner();
         released.Open();
@@ -143,6 +136,7 @@ public sealed class ScanQueueDurabilityIntegrationTests : IAsyncLifetime
                 services.AddSingleton<ITenantContext>(new FixedTenant(_tenantId));
                 services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CloudStorageDbContext>());
                 services.AddScoped<IFileObjectRepository, FileObjectRepository>();
+                services.AddScoped<IScanClaims, SqlScanClaims>();
                 services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
                 services.AddScoped<IStorageAuditRepository, StorageAuditRepository>();
                 services.AddSingleton<IObjectStorage>(_storage);
@@ -155,7 +149,10 @@ public sealed class ScanQueueDurabilityIntegrationTests : IAsyncLifetime
             })
             .UseWolverine(options =>
             {
-                options.Discovery.DisableConventionalDiscovery().IncludeType(typeof(ScanFileHandler));
+                options
+                    .Discovery.DisableConventionalDiscovery()
+                    .IncludeType(typeof(ScanFileHandler))
+                    .IncludeType(typeof(RecordScanVerdictHandler));
                 options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
                 options.Durability.Mode = DurabilityMode.Solo;
                 options.PersistMessagesWithSqlServer(_connectionString, Schema);

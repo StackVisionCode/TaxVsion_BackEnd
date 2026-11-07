@@ -1,6 +1,5 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -9,20 +8,13 @@ using TaxVision.Subscription.Infrastructure.Persistence;
 namespace TaxVision.Subscription.Tests.Integration;
 
 /// <summary>
-/// SQL Server real (SUBSCRIPTION_DB_CONNECTION o user-secrets de Subscription). Cada prueba usa un tenant
+/// SQL Server real, en la base temporal de las T-INT (BB-10). Cada prueba usa un tenant
 /// propio y borra solo sus filas al terminar. No arranca el host: así no corren los jobs hospedados.
 /// </summary>
 internal sealed class SubscriptionIntegrationDb
 {
     private static readonly Lazy<string> ConnectionString = new(() =>
-        Environment.GetEnvironmentVariable("SUBSCRIPTION_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-subscription1")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set SUBSCRIPTION_DB_CONNECTION or the Subscription user-secrets to run this test."
-        )
+        SubscriptionIntegrationDatabase.ConnectionString
     );
 
     public Guid TenantId { get; } = Guid.NewGuid();

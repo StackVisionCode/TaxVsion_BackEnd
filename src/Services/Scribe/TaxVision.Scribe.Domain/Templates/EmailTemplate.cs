@@ -106,7 +106,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             string? Description
         )> variableDefinitions,
         DateTime nowUtc,
-        int? seedContentVersion = null
+        int? seedContentVersion = null,
+        string? seedContentHash = null
     )
     {
         if (Channel != TemplateChannel.Email)
@@ -128,7 +129,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             layoutVersionNumber,
             variableDefinitions,
             nowUtc,
-            seedContentVersion
+            seedContentVersion,
+            seedContentHash
         );
     }
 
@@ -144,7 +146,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             string? Description
         )> variableDefinitions,
         DateTime nowUtc,
-        int? seedContentVersion = null
+        int? seedContentVersion = null,
+        string? seedContentHash = null
     )
     {
         if (Channel != TemplateChannel.Push)
@@ -171,7 +174,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             null,
             variableDefinitions,
             nowUtc,
-            seedContentVersion
+            seedContentVersion,
+            seedContentHash
         );
     }
 
@@ -195,7 +199,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             string? Description
         )> variableDefinitions,
         DateTime nowUtc,
-        int? seedContentVersion
+        int? seedContentVersion,
+        string? seedContentHash
     )
     {
         if (Status != EmailContentStatus.Active)
@@ -225,7 +230,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             Channel,
             variableDefinitions,
             nowUtc,
-            seedContentVersion
+            seedContentVersion,
+            seedContentHash
         );
         if (versionResult.IsFailure)
             return versionResult;

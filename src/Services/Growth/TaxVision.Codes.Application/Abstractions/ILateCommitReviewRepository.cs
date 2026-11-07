@@ -12,4 +12,22 @@ public interface ILateCommitReviewRepository
 
     /// <summary>Pendientes de todos los tenants, las más viejas primero (consulta de PlatformAdmin).</summary>
     Task<IReadOnlyList<LateCommitReview>> ListPendingAsync(int take, CancellationToken ct = default);
+
+    /// <summary>La revisión con la huella de su reserva, sin rastrear y de cualquier tenant (PlatformAdmin).</summary>
+    Task<LateCommitReviewTarget?> FindTargetAsync(Guid reviewId, CancellationToken ct = default);
+
+    /// <summary>La revisión rastreada, de cualquier tenant, para resolverla (PlatformAdmin).</summary>
+    Task<LateCommitReview?> GetForResolutionAsync(Guid reviewId, CancellationToken ct = default);
 }
+
+/// <summary>Lo necesario para repetir el commit de una revisión.</summary>
+public sealed record LateCommitReviewTarget(
+    Guid ReviewId,
+    Guid TenantId,
+    Guid CodeReservationId,
+    string PaymentSource,
+    Guid RelatedPaymentId,
+    Guid SourceEventId,
+    string SnapshotHash,
+    DateTime? ResolvedAtUtc
+);

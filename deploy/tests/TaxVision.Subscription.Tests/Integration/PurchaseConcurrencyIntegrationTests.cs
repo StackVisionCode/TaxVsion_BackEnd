@@ -109,11 +109,7 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
         {
             var result = await PurchaseAddOnHandler.Handle(
                 new PurchaseAddOnCommand(_db.TenantId, definition.Code.Value, 1, AutoRenew: true, Guid.NewGuid(), clientKey),
-                new TenantSubscriptionRepository(db),
-                new FakePlanRepo(null),
-                new FakeModuleRepo(),
-                new FakeAddOnDefinitionRepository(definition),
-                new SubscriptionTenantSettingsRepository(db),
+                new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(new TenantSubscriptionRepository(db), new FakePlanRepo(null), new FakeModuleRepo(), new FakeAddOnDefinitionRepository(definition), new SubscriptionTenantSettingsRepository(db), new GatedTenantAddOnRepo(new TenantAddOnRepository(db), gate)),
                 new GatedTenantAddOnRepo(new TenantAddOnRepository(db), gate),
                 db,
                 bus,

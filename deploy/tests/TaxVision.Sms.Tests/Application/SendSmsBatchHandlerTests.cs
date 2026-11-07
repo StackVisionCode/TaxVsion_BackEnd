@@ -14,7 +14,7 @@ using TaxVision.Sms.Tests.Fakes;
 
 namespace TaxVision.Sms.Tests.Application;
 
-public sealed class SendSmsBatchHandlerTests
+public sealed partial class SendSmsBatchHandlerTests
 {
     private static readonly Guid Tenant = Guid.NewGuid();
     private static readonly Guid Customer = Guid.NewGuid();

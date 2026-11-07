@@ -59,6 +59,44 @@ public sealed class ProjectionTests
     // -------------------- FileMetadataRef --------------------
 
     [Fact]
+    public void FileAvailableAfterDeleted_StaysDeleted()
+    {
+        var projection = FileMetadataRef.ForAvailable(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "tenants/t1/doc.pdf",
+            "application/pdf",
+            1024,
+            new string('a', 64)
+        );
+        projection.MarkDeleted();
+
+        projection.MarkAvailable("tenants/t1/late.pdf", "application/pdf", 2048, new string('b', 64));
+
+        Assert.Equal(FileScanStatus.Deleted, projection.Status);
+        Assert.Equal("tenants/t1/doc.pdf", projection.ObjectKey);
+    }
+
+    // Consulta directa a CloudStorage: el archivo se restauró de la papelera y Signature no escucha esa restauración.
+    [Fact]
+    public void ConfirmAvailable_DeletedButStorageSaysAvailable_ComesBack()
+    {
+        var projection = FileMetadataRef.ForAvailable(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "tenants/t1/doc.pdf",
+            "application/pdf",
+            1024,
+            new string('a', 64)
+        );
+        projection.MarkDeleted();
+
+        projection.ConfirmAvailable("tenants/t1/doc.pdf", "application/pdf", 1024, new string('a', 64));
+
+        Assert.Equal(FileScanStatus.Available, projection.Status);
+    }
+
+    [Fact]
     public void FileMetadataRef_available_factory_stores_checksum()
     {
         var projection = FileMetadataRef.ForAvailable(

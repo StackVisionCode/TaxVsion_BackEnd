@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Permissions.Admin.Commands;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Roles;
@@ -35,9 +36,7 @@ public sealed class RestoreTenantAdminHandlerTests
             _users,
             roles,
             _tenantContext,
-            _sessions,
-            _denylist,
-            _revocations,
+            new SessionAccessCutoff(_sessions, _denylist, _revocations),
             _audit,
             new FakeRequestContext(),
             new FakeCorrelationContext(),

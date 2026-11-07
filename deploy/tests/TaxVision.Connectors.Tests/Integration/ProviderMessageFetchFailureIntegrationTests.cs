@@ -1,7 +1,6 @@
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Connectors.Domain.Sync;
 using TaxVision.Connectors.Infrastructure.Persistence;
 using TaxVision.Connectors.Infrastructure.Persistence.Repositories;
@@ -16,14 +15,7 @@ public sealed class ProviderMessageFetchFailureIntegrationTests : IAsyncLifetime
 {
     private readonly Guid _accountId = Guid.NewGuid();
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("CONNECTORS_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("d5a2f07b-0550-4e76-a692-df921f63f798")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set CONNECTORS_DB_CONNECTION or the Connectors Api user-secrets to run this test."
-        );
+        ConnectorsIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant : ITenantContext
     {

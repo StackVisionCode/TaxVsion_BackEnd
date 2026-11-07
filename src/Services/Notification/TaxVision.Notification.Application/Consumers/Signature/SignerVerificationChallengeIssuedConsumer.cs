@@ -165,16 +165,20 @@ public static class SignerVerificationChallengeIssuedConsumer
     {
         var channel = ChannelFor(evt.Method);
         // AppPush no tiene "dirección" de entrega — el destino son los tokens del signer.
-        var recipient = channel == NotificationChannel.Push ? evt.SignerId.ToString() : evt.DeliveryAddress;
-        var logResult = NotificationLog.Create(
-            evt.TenantId,
-            channel,
-            recipient,
-            BuildSubject(evt, brand),
-            TemplateKey,
-            evt.EventId,
-            correlationId
-        );
+        var recipient = channel == NotificationChannel.Push
+            ? Result.Success(NotificationRecipient.ForPushTarget(evt.SignerId))
+            : NotificationRecipient.ForPhone(evt.DeliveryAddress);
+        var logResult = recipient.IsFailure
+            ? Result.Failure<NotificationLog>(recipient.Error)
+            : NotificationLog.Create(
+                evt.TenantId,
+                channel,
+                recipient.Value,
+                BuildSubject(evt, brand),
+                TemplateKey,
+                evt.EventId,
+                correlationId
+            );
         if (logResult.IsFailure)
         {
             logger.LogWarning(

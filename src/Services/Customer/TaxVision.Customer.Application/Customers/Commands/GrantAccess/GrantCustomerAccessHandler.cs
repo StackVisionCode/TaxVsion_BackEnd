@@ -16,8 +16,8 @@ public static class GrantCustomerAccessHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null || customer.TenantId != cmd.TenantId)
+        var customer = await repository.GetByIdAsync(cmd.TenantId, cmd.CustomerId, ct);
+        if (customer is null)
             return Result.Failure(new Error("Customer.NotFound", "Customer not found."));
 
         // El asignado debe ser staff activo del mismo tenant (misma invariante que AssignPreparer).

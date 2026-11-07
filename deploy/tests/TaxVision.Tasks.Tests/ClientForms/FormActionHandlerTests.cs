@@ -68,7 +68,7 @@ public sealed class FormActionHandlerTests
     {
         var fixture = Fixture();
         var run = Planned(fixture);
-        fixture.Request.CompleteAction(run.CommandId!.Value, "Customer", CustomerId, null, Now);
+        fixture.Request.Actions.Complete(run.CommandId!.Value, "Customer", CustomerId, null, Now);
         var bus = new FakeMessageBus();
 
         var result = await RetryAsync(fixture, run.Id, bus);
@@ -96,7 +96,7 @@ public sealed class FormActionHandlerTests
     {
         var fixture = Fixture();
         var run = Planned(fixture);
-        fixture.Request.RejectAction(run.CommandId!.Value, "Customer.CreatorNotEligible", null, null, Now);
+        fixture.Request.Actions.Reject(run.CommandId!.Value, "Customer.CreatorNotEligible", null, null, Now);
         var bus = new FakeMessageBus();
 
         var result = await RetryAsync(fixture, run.Id, bus);
@@ -114,7 +114,7 @@ public sealed class FormActionHandlerTests
     {
         var fixture = Fixture();
         var run = Planned(fixture);
-        fixture.Request.RejectAction(run.CommandId!.Value, "Customer.CreatorNotInDirectory", null, null, Now);
+        fixture.Request.Actions.Reject(run.CommandId!.Value, "Customer.CreatorNotInDirectory", null, null, Now);
         var bus = new FakeMessageBus();
 
         var first = await RetryAsync(fixture, run.Id, bus);
@@ -303,7 +303,7 @@ public sealed class FormActionHandlerTests
             FormFileReassignmentOutcomes.Reassigned,
             fixture.Request.Submission!.Attachments.Single().OwnerReassignment
         );
-        Assert.Empty(fixture.Request.FilesPendingOwnerReassignment());
+        Assert.Empty(fixture.Request.Files.PendingOwnerReassignment());
         Assert.Empty(bus.Published);
     }
 

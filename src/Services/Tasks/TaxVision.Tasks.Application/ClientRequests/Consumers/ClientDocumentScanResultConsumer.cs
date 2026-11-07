@@ -146,6 +146,7 @@ public static class ClientDocumentScanResultConsumer
             if (!request.MarkDocumentRejected(fileId, reason, DateTime.UtcNow))
                 return;
 
+            await unitOfWork.SaveChangesAsync(ct);
             await bus.PublishAsync(
                 new ClientRequestDocumentRejectedIntegrationEvent
                 {
@@ -162,7 +163,6 @@ public static class ClientDocumentScanResultConsumer
                     StaffRecipientUserId = request.StaffRecipientUserId,
                 }
             );
-            await unitOfWork.SaveChangesAsync(ct);
         }
     }
 

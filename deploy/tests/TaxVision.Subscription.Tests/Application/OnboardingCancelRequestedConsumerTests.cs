@@ -138,6 +138,11 @@ public sealed class OnboardingCancelRequestedConsumerTests
     {
         public TenantSubscription? Existing { get; set; }
 
+        public Task<TenantSubscription?> GetWithFullHistoryAsync(Guid tenantId, CancellationToken ct = default) =>
+
+            GetByTenantIdAsync(tenantId, ct);
+
+
         public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

@@ -9,7 +9,7 @@ public sealed class GetCurrentTenantHandlerTests
     [Fact]
     public async Task Returns_id_name_subdomain_and_time_zone_of_the_tenant()
     {
-        var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "America/Chicago").Value;
+        var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "America/Chicago", DateTime.UtcNow).Value;
 
         var result = await GetCurrentTenantHandler.Handle(
             new GetCurrentTenantQuery(tenant.Id),

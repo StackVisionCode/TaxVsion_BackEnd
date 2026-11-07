@@ -49,7 +49,7 @@ public sealed class PermissionsReconciliationServiceTests
             "hash",
             UserActorType.TenantEmployee
         ).Value;
-        inactive.Deactivate(DateTime.UtcNow);
+        inactive.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
 
         await using (var scope = provider.CreateAsyncScope())
         {

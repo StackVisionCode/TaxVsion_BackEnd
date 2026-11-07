@@ -172,7 +172,8 @@ public sealed class NotificationDispatcherPushTests
             .Create(
                 TenantId,
                 NotificationChannel.Push,
-                UserId.ToString(),
+                NotificationRecipient.ForPushTarget(UserId),
+
                 "Title",
                 "task.form_request_assigned.push.v1",
                 eventId,
@@ -381,7 +382,7 @@ public sealed class NotificationDispatcherPushTests
         INotificationLogRepository logs,
         INotificationDispatchMetrics metrics
     ) =>
-        new(
+        TestDispatchers.Create(
             NoOpSmsSender.Instance,
             pushSender,
             pushDeviceTokens,
@@ -393,8 +394,7 @@ public sealed class NotificationDispatcherPushTests
             new NoOpIntegrationEventPublisher(),
             new NoOpUnitOfWork(),
             metrics,
-            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(logs),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(logs)
         );
 
     private sealed class CountingDispatchMetrics : INotificationDispatchMetrics
@@ -458,7 +458,7 @@ public sealed class NotificationDispatcherPushTests
         INotificationLogRepository logs,
         IUnitOfWork uow
     ) =>
-        new(
+        TestDispatchers.Create(
             NoOpSmsSender.Instance,
             pushSender,
             pushDeviceTokens,
@@ -470,8 +470,7 @@ public sealed class NotificationDispatcherPushTests
             new NoOpIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(logs),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(logs)
         );
 
     private sealed class NoOpIntegrationEventPublisher : IIntegrationEventPublisher

@@ -1,8 +1,5 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Logging;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
-using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Runs;
 using Wolverine;
@@ -39,10 +36,8 @@ public static class StartCampaignRunHandler
     public static async Task<Result<CampaignRunResponse>> Handle(
         StartCampaignRunCommand command,
         ICampaignRepository campaigns,
-        IWalletSpendClient wallet,
+        CampaignRunStarter starter,
         IMessageBus bus,
-        ICorrelationContext correlation,
-        ILogger<CampaignRun> logger,
         CancellationToken ct
     )
     {
@@ -53,73 +48,15 @@ public static class StartCampaignRunHandler
             return Result.Failure<CampaignRunResponse>(CampaignErrors.Archived);
 
         var units = ExpandUnits(campaign.Channels, command.Recipients);
-        return await StartAndDispatchAsync(
+        return await starter.StartAsync(
             campaign,
             "Manual",
             command.TriggeredByUserId,
             units,
-            wallet,
             command.CallerBearerToken,
             bus,
-            correlation,
-            logger,
             ct
         );
-    }
-
-    /// <summary>
-    /// Núcleo compartido del envío manual y del basado en audiencia (contactos/listas). Pasado el paso 1 no sale ninguna
-    /// excepción: el reintento en línea abriría otro run y reservaría otra vez. Lo que quede a medias lo retoma el barrido.
-    /// </summary>
-    internal static async Task<Result<CampaignRunResponse>> StartAndDispatchAsync(
-        Campaign campaign,
-        string triggerKind,
-        Guid triggeredByUserId,
-        IReadOnlyCollection<RunRecipientDraft> units,
-        IWalletSpendClient wallet,
-        string? callerBearerToken,
-        IMessageBus bus,
-        ICorrelationContext correlation,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        var opened = await bus.InvokeAsync<Result<OpenedCampaignRun>>(
-            new OpenCampaignRunCommand(campaign.TenantId, campaign.Id, triggeredByUserId, triggerKind, units),
-            ct
-        );
-        if (opened.IsFailure)
-            return Result.Failure<CampaignRunResponse>(opened.Error);
-        if (!opened.Value.AwaitsFunding)
-            return Result.Success(opened.Value.Run);
-
-        var run = opened.Value.Run;
-        try
-        {
-            var funding = await CampaignRunFunding.ReserveAsync(
-                wallet,
-                campaign.TenantId,
-                run.Id,
-                opened.Value.Billable,
-                callerBearerToken,
-                ct
-            );
-            return await bus.InvokeAsync<Result<CampaignRunResponse>>(
-                new ApplyCampaignRunFundingCommand(
-                    campaign.TenantId,
-                    run.Id,
-                    funding,
-                    Slot: null,
-                    correlation.CorrelationId
-                ),
-                ct
-            );
-        }
-        catch (Exception ex) when (!ct.IsCancellationRequested)
-        {
-            logger.LogError(ex, "Run {RunId} stays Created after a failed funding step; the sweep resumes it.", run.Id);
-            return Result.Success(run);
-        }
     }
 
     private static IReadOnlyCollection<RunRecipientDraft> ExpandUnits(

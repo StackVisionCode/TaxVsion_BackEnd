@@ -50,7 +50,7 @@ public static class FormCustomerLinker
     // Se publica después de guardar el vínculo (quien llama hace PublishAsync tras el SaveChanges).
     public static void RequestFileReassignment(FormRequest request, DeferredMessages outgoing, string correlationId)
     {
-        if (request.FilesPendingOwnerReassignment().Count > 0)
+        if (request.Files.PendingOwnerReassignment().Count > 0)
             outgoing.Add(new ReassignParticipantFilesRequested(request.TenantId, request.Id, correlationId));
     }
 
@@ -111,7 +111,7 @@ public static class FormCustomerLinker
                 sibling.Id,
                 ct
             );
-            var attached = sibling.TryAttachCustomer(customerId, conflict.HasValue, conflict, nowUtc);
+            var attached = sibling.CustomerLinking.TryAttach(customerId, conflict.HasValue, conflict, nowUtc);
             if (attached.IsFailure)
                 continue;
             AfterAttach(sibling, attached.Value, outgoing, correlationId);
@@ -148,7 +148,7 @@ public static class FormCustomerLinker
                 ct
             )
             : null;
-        var attached = request.TryAttachCustomer(customerId, conflict.HasValue, conflict, nowUtc);
+        var attached = request.CustomerLinking.TryAttach(customerId, conflict.HasValue, conflict, nowUtc);
         if (attached.IsSuccess)
         {
             AfterAttach(request, attached.Value, outgoing, correlationId);

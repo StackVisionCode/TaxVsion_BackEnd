@@ -115,13 +115,21 @@ public sealed class Contact : TenantEntity
     )
     {
         var n = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
-        var e = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+        string? e = null;
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            if (email.Trim().Length > MaxEmailLength)
+                return Result.Failure<(string?, string?, string?)>(ContactErrors.EmailTooLong);
+            e = EmailAddress.Normalize(email);
+            if (e is null)
+                return Result.Failure<(string?, string?, string?)>(ContactErrors.EmailInvalid);
+        }
 
         // El teléfono, si viene, debe ser E.164 (con código de país) — se normaliza o se rechaza.
         string? p = null;
         if (!string.IsNullOrWhiteSpace(phone))
         {
-            p = PhoneNumbers.ToE164(phone);
+            p = Domain.PhoneE164.Normalize(phone);
             if (p is null)
                 return Result.Failure<(string?, string?, string?)>(ContactErrors.PhoneNotE164);
         }
@@ -130,8 +138,6 @@ public sealed class Contact : TenantEntity
             return Result.Failure<(string?, string?, string?)>(ContactErrors.DestinationRequired);
         if (n is { Length: > MaxNameLength })
             return Result.Failure<(string?, string?, string?)>(ContactErrors.NameTooLong);
-        if (e is { Length: > MaxEmailLength })
-            return Result.Failure<(string?, string?, string?)>(ContactErrors.EmailTooLong);
 
         return Result.Success((n, e, p));
     }

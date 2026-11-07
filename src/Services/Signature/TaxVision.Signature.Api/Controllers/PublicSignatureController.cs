@@ -112,7 +112,7 @@ public sealed class PublicSignatureController(
     public async Task<IActionResult> AcceptConsent([FromRoute] string token, CancellationToken ct)
     {
         var (ip, ua) = ExtractClientContext();
-        var result = await bus.InvokeAsync<Result>(new AcceptConsentCommand(token, ip, ua), ct);
+        var result = await InvokeWithConcurrencyRetryAsync(new AcceptConsentCommand(token, ip, ua), ct);
         return MapResult(result);
     }
 
@@ -171,6 +171,7 @@ public sealed class PublicSignatureController(
             content = stream.ToArray();
         }
 
+        // Sin reintento: no escribe el agregado, así que no choca; reintentar solo duplicaría la subida.
         var (ip, ua) = ExtractClientContext();
         var result = await bus.InvokeAsync<Result<Guid>>(new AttachSignatureImageCommand(token, content, ip, ua), ct);
         return result.IsSuccess
@@ -216,7 +217,8 @@ public sealed class PublicSignatureController(
     )
     {
         var (ip, ua) = ExtractClientContext();
-        var result = await bus.InvokeAsync<Result>(
+        // Reintentar no manda dos códigos: el perdedor no publicó nada y, si el rival ya lo emitió, choca con la espera.
+        var result = await InvokeWithConcurrencyRetryAsync(
             new IssueVerificationChallengeCommand(token, body.Method, ip, ua),
             ct
         );
@@ -235,7 +237,7 @@ public sealed class PublicSignatureController(
     )
     {
         var (ip, ua) = ExtractClientContext();
-        var result = await bus.InvokeAsync<Result>(
+        var result = await InvokeWithConcurrencyRetryAsync(
             new VerifyChallengeCommand(token, body.Method, body.Answer, ip, ua),
             ct
         );

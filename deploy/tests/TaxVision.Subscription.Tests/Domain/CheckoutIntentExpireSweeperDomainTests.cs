@@ -59,7 +59,7 @@ public sealed class CheckoutIntentExpireSweeperDomainTests
                 false,
                 Money.Create(10m, "USD").Value,
                 BillingCycle.Monthly,
-                1000,
+                Money.FromCents(1000, "USD"),
                 Guid.NewGuid(),
                 now.AddHours(-2)
             )
@@ -74,7 +74,7 @@ public sealed class CheckoutIntentExpireSweeperDomainTests
                 false,
                 Money.Create(10m, "USD").Value,
                 BillingCycle.Monthly,
-                1000,
+                Money.FromCents(1000, "USD"),
                 Guid.NewGuid(),
                 now
             )
@@ -89,7 +89,7 @@ public sealed class CheckoutIntentExpireSweeperDomainTests
                 false,
                 Money.Create(10m, "USD").Value,
                 BillingCycle.Monthly,
-                1000,
+                Money.FromCents(1000, "USD"),
                 Guid.NewGuid(),
                 now
             )

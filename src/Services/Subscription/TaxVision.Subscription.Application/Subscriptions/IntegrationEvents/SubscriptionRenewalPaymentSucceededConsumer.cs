@@ -33,7 +33,7 @@ public static class SubscriptionRenewalPaymentSucceededConsumer
 
         using (correlation.Push(correlationId))
         {
-            var subscription = await subscriptions.GetByTenantIdAsync(evt.TenantId, ct);
+            var subscription = await subscriptions.GetWithFullHistoryAsync(evt.TenantId, ct);
             if (subscription is null || subscription.Id != evt.TenantSubscriptionId)
             {
                 logger.LogWarning(

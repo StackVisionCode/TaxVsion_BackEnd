@@ -57,7 +57,7 @@ public sealed class FormRequestDomainTests
         var address = new FormAnswerAddress("fd_upload", null);
         var fileId = Guid.NewGuid();
         Assert.True(
-            request.RegisterAttachment(address, fileId, "tax.pdf", "application/pdf", 20, 2, 10, null, Now).IsSuccess
+            request.Files.Register(address, fileId, "tax.pdf", "application/pdf", 20, 2, 10, null, Now).IsSuccess
         );
 
         var result = request.Submit(ProtectedAnswers(), [fileId], [], FormActor.PortalUser(UserId), Now.AddMinutes(1));
@@ -72,7 +72,7 @@ public sealed class FormRequestDomainTests
         var request = Create(FormParticipantRef.Customer(CustomerId)).Value;
         var fileId = RegisterPending(request);
 
-        var outcome = request.ApplyFileVerdict(
+        var outcome = request.Files.ApplyVerdict(
             fileId,
             new FormFileVerdict(FormFileVerdictStatus.Available, "Customer", Guid.NewGuid(), "ClientForms", Now),
             Now
@@ -86,16 +86,16 @@ public sealed class FormRequestDomainTests
     public void Linked_external_accepts_participant_and_customer_file_owners()
     {
         var request = Create(FormParticipantRef.External(ParticipantId)).Value;
-        Assert.Equal(CustomerLinkResult.Linked, request.TryAttachCustomer(CustomerId, false, null, Now).Value);
+        Assert.Equal(CustomerLinkResult.Linked, request.CustomerLinking.TryAttach(CustomerId, false, null, Now).Value);
         var participantFile = RegisterPending(request);
         var customerFile = RegisterPending(request);
 
-        var participantOutcome = request.ApplyFileVerdict(
+        var participantOutcome = request.Files.ApplyVerdict(
             participantFile,
             new FormFileVerdict(FormFileVerdictStatus.Available, "FormParticipant", ParticipantId, "ClientForms", Now),
             Now
         );
-        var customerOutcome = request.ApplyFileVerdict(
+        var customerOutcome = request.Files.ApplyVerdict(
             customerFile,
             new FormFileVerdict(FormFileVerdictStatus.Available, "Customer", CustomerId, "ClientForms", Now),
             Now
@@ -110,9 +110,9 @@ public sealed class FormRequestDomainTests
     {
         var request = Create(FormParticipantRef.Customer(CustomerId)).Value;
         var fileId = RegisterPending(request);
-        Assert.Equal(1, request.ExpireStalePendingAttachments(Now.AddMinutes(1), Now.AddHours(1)));
+        Assert.Equal(1, request.Files.ExpireStalePending(Now.AddMinutes(1), Now.AddHours(1)));
 
-        var outcome = request.ApplyFileVerdict(
+        var outcome = request.Files.ApplyVerdict(
             fileId,
             new FormFileVerdict(
                 FormFileVerdictStatus.Available,
@@ -136,7 +136,7 @@ public sealed class FormRequestDomainTests
         var fileId = RegisterPending(request);
         Assert.Equal(
             FileVerdictOutcome.Available,
-            request.ApplyFileVerdict(
+            request.Files.ApplyVerdict(
                 fileId,
                 new FormFileVerdict(
                     FormFileVerdictStatus.Available,
@@ -148,9 +148,9 @@ public sealed class FormRequestDomainTests
                 Now
             )
         );
-        request.TryAttachCustomer(CustomerId, false, null, Now.AddMinutes(1));
+        request.CustomerLinking.TryAttach(CustomerId, false, null, Now.AddMinutes(1));
 
-        var replay = request.ApplyFileVerdict(
+        var replay = request.Files.ApplyVerdict(
             fileId,
             new FormFileVerdict(
                 FormFileVerdictStatus.Available,
@@ -195,9 +195,9 @@ public sealed class FormRequestDomainTests
     {
         var request = Create(FormParticipantRef.External(ParticipantId)).Value;
         var conflictId = Guid.NewGuid();
-        Assert.Equal(CustomerLinkResult.Blocked, request.TryAttachCustomer(CustomerId, true, conflictId, Now).Value);
+        Assert.Equal(CustomerLinkResult.Blocked, request.CustomerLinking.TryAttach(CustomerId, true, conflictId, Now).Value);
 
-        var result = request.RetryCustomerLink(false, null, Now.AddMinutes(1));
+        var result = request.CustomerLinking.Retry(false, null, Now.AddMinutes(1));
 
         Assert.Equal(CustomerLinkResult.Linked, result.Value);
         Assert.Equal(CustomerId, request.EffectiveCustomerId);
@@ -297,7 +297,7 @@ public sealed class FormRequestDomainTests
         var fileId = Guid.NewGuid();
         Assert.True(
             request
-                .RegisterAttachment(
+                .Files.Register(
                     new FormAnswerAddress("fd_upload", null),
                     fileId,
                     "tax.pdf",

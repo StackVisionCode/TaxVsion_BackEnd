@@ -10,10 +10,8 @@ public interface ITenantBackfillStateRepository
     Task AddAsync(TenantBackfillState entity, CancellationToken ct = default);
 
     /// <summary>
-    /// Fase 16 — universo de tenants que <c>CustomerEmailReconciliationJob</c> (plan §32 R1) debe
-    /// recorrer: un tenant que todavía no completó el backfill inicial no tiene proyección local
-    /// que reconciliar, así que no tiene sentido incluirlo (el backfill mismo se encarga de
-    /// poblarlo por primera vez).
+    /// Fase 16 — universo de tenants que <c>MailboxOwnershipReconciliationJob</c> (COR-10) debe
+    /// recorrer: los tenants que Correspondence ya descubrió. Un tenant sin fila sigue preguntando a Connectors.
     /// </summary>
     Task<IReadOnlyList<Guid>> ListAllTenantIdsAsync(CancellationToken ct = default);
 }

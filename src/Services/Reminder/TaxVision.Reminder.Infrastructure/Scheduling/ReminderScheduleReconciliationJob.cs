@@ -7,10 +7,9 @@ using TaxVision.Reminder.Application.Reminders.Abstractions;
 namespace TaxVision.Reminder.Infrastructure.Scheduling;
 
 /// <summary>
-/// Red de seguridad del ADR-R-04. EF y Quartz no comparten transacción y el orden elegido es EF
-/// primero: un recordatorio puede quedar <c>Scheduled</c> en la BD sin trigger vivo si el proceso
-/// muere entre <c>SaveChanges</c> y <c>ScheduleJob</c>, o si alguien toca <c>QRTZ_TRIGGERS</c> a
-/// mano. Sin este barrido ese recordatorio no dispara nunca y nadie se entera.
+/// Red de seguridad del ADR-R-04. EF y Quartz no comparten transacción: un recordatorio puede quedar
+/// <c>Scheduled</c> en la BD sin trigger vivo si el trigger se pierde, por ejemplo si alguien toca
+/// <c>QRTZ_TRIGGERS</c> a mano. Sin este barrido ese recordatorio no dispara nunca y nadie se entera.
 ///
 /// <para>
 /// <b>El detalle que hace o rompe este job es <c>IgnoreQueryFilters()</c></b> dentro de

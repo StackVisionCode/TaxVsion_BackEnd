@@ -29,9 +29,8 @@ public static class GenerateInvoicePdfHandler
             return; // Nada que generar (borrador borrado o no emitido); no reintentar.
 
         // URL estable de cobro ya persistida por el paso Ensure. Si aún no hay (edge: factura pagada, o
-        // el Ensure no corrió), el PDF sale sin botón — no lo bloqueamos acá.
-        var activeLink = invoice.ActivePaymentLink;
-        var paymentUrl = activeLink?.CheckoutUrl;
+        // el Ensure no corrió), el PDF sale sin botón — no lo bloqueamos acá. La anulada no ofrece pagar.
+        var paymentUrl = invoice.Status == InvoiceStatus.Voided ? null : invoice.ActivePaymentLink?.CheckoutUrl;
 
         var request = new InvoiceDocumentRequest(
             InvoiceId: invoice.Id,
@@ -74,18 +73,12 @@ public static class GenerateInvoicePdfHandler
             AmountDue: ToDollars(invoice.AmountDue.AmountCents)
         );
 
-        // Idempotencia versionada (punto 8 del review): incluye el ESTADO, la versión y el payable — así
-        // la versión PAGADA (con marca de agua + recibo) se genera como PDF nuevo en vez de devolver el
-        // no-pagado cacheado. Un cambio de plantilla/idioma/datos fiscales requeriría subir la versión.
-        var payablePart = activeLink is null ? "nolink" : activeLink.ExternalPayableId.ToString("N");
-        var statusPart = invoice.Status == InvoiceStatus.Paid ? "paid" : "v1";
-        // BIL-PDF1: un saldo nuevo es un PDF nuevo; el mismo saldo reusa el generado. La pagada siempre debe 0.
-        var balancePart = invoice.Status == InvoiceStatus.Paid ? string.Empty : $":due{invoice.AmountDue.AmountCents}";
-        var idempotencyKey = $"invoice-pdf:{invoice.Id:N}:{statusPart}:{payablePart}{balancePart}";
+        // Idempotencia versionada (punto 8 del review): la versión PAGADA o ANULADA se genera como PDF nuevo en vez de
+        // devolver el cacheado. Un cambio de plantilla/idioma/datos fiscales requeriría subir la versión.
         var result = await documents.GenerateAsync(
             request,
             invoice.TenantId,
-            idempotencyKey,
+            invoice.PdfGenerationKey(),
             correlation.CorrelationId,
             ct
         );

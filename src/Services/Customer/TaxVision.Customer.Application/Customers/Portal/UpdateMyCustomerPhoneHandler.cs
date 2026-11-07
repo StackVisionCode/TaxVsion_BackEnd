@@ -19,8 +19,8 @@ public static class UpdateMyCustomerPhoneHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(command.CustomerId, ct);
-        if (customer is null || customer.TenantId != command.TenantId || customer.Status == CustomerStatus.Archived)
+        var customer = await repository.GetByIdAsync(command.TenantId, command.CustomerId, ct);
+        if (customer is null || customer.Status == CustomerStatus.Archived)
             return Result.Failure(new Error("Customer.NotFound", "Customer not found."));
 
         PhoneNumber? phone = null;

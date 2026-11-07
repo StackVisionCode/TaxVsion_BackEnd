@@ -4,7 +4,7 @@ namespace TaxVision.Notification.Application.Abstractions;
 
 /// <summary>
 /// Señala que <see cref="IScribeRenderClient.RenderAsync"/> devolvió un <see cref="Result{T}"/> de
-/// falla — Scribe caído, lento, o el request rechazado. Deliberadamente una excepción (no un
+/// falla transitoria — Scribe caído o lento. Deliberadamente una excepción (no un
 /// <c>Result</c> propagado como valor) para que la política global de retry+cooldown de Wolverine
 /// (<c>Program.cs</c>, <c>OnException&lt;Exception&gt;</c>) reintente el mensaje completo en vez de
 /// que el consumer complete "con éxito" habiendo descartado el email (Hardening plan, Fase 7 — bug

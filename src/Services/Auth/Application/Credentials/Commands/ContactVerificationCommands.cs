@@ -26,6 +26,7 @@ public static class RequestEmailChangeHandler
         ITenantRegistry tenants,
         ICredentialTokenRepository credentials,
         ISecureTokenService tokens,
+        IAccountTokenProtector tokenProtector,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -61,21 +62,6 @@ public static class RequestEmailChangeHandler
         await credentials.AddEmailVerificationAsync(verification, ct);
         var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
 
-        await bus.PublishAsync(
-            new EmailChangeRequestedIntegrationEvent
-            {
-                TenantId = user.TenantId,
-                UserId = user.Id,
-                CurrentEmail = user.Email,
-                NewEmail = newEmail,
-                RawToken = rawToken,
-                ExpiresAtUtc = verification.ExpiresAtUtc,
-                ActorType = user.ActorType.ToString(),
-                TenantName = tenant?.Name,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 user.TenantId,
@@ -89,6 +75,26 @@ public static class RequestEmailChangeHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        var tokenFields = tokenProtector.Seal(
+            AuthTokenPayloadSchemas.EmailChange,
+            AuthTokenPayloadSchemas.EmailChangeBinding(user.TenantId, user.Id),
+            rawToken
+        );
+        await bus.PublishAsync(
+            new EmailChangeRequestedIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                CurrentEmail = user.Email,
+                NewEmail = newEmail,
+                RawToken = tokenFields.RawToken,
+                ProtectedToken = tokenFields.ProtectedToken,
+                ExpiresAtUtc = verification.ExpiresAtUtc,
+                ActorType = user.ActorType.ToString(),
+                TenantName = tenant?.Name,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         return Result.Success();
     }
 }
@@ -130,21 +136,11 @@ public static class ConfirmEmailChangeHandler
         }
 
         var previousEmail = user.Email;
-        user.ChangeEmail(verification.NewEmail);
-        verification.MarkUsed();
+        var changed = user.ChangeEmail(verification.NewEmail);
+        if (changed.IsFailure)
+            return changed;
 
-        await bus.PublishAsync(
-            new SecurityAlertIntegrationEvent
-            {
-                TenantId = user.TenantId,
-                UserId = user.Id,
-                AlertType = SecurityAlertType.EmailChanged,
-                IpAddress = request.IpAddress,
-                UserAgent = request.UserAgent,
-                DetailsJson = $$"""{"previousEmail":"{{previousEmail}}"}""",
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
+        verification.MarkUsed();
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -159,6 +155,18 @@ public static class ConfirmEmailChangeHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new SecurityAlertIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                AlertType = SecurityAlertType.EmailChanged,
+                IpAddress = request.IpAddress,
+                UserAgent = request.UserAgent,
+                DetailsJson = $$"""{"previousEmail":"{{previousEmail}}"}""",
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         return Result.Success();
     }
 }
@@ -203,20 +211,6 @@ public static class RequestPhoneVerificationHandler
         await credentials.AddPhoneVerificationAsync(verification, ct);
         await throttler.RegisterOtpSentAsync(user.Id, ct);
 
-        await bus.PublishAsync(
-            new MfaChallengeRequestedIntegrationEvent
-            {
-                TenantId = user.TenantId,
-                UserId = user.Id,
-                Channel = "Sms",
-                Destination = phone,
-                Code = code,
-                Purpose = "phone_verification",
-                ExpiresAtUtc = verification.ExpiresAtUtc,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 user.TenantId,
@@ -230,6 +224,19 @@ public static class RequestPhoneVerificationHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new MfaChallengeRequestedIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                Channel = "Sms",
+                Destination = phone,
+                Code = code,
+                Purpose = "phone_verification",
+                ExpiresAtUtc = verification.ExpiresAtUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         return Result.Success();
     }
 }

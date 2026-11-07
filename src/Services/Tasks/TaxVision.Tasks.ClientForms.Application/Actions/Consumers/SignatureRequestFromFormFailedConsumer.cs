@@ -29,7 +29,7 @@ public static class SignatureRequestFromFormFailedConsumer
             var request = await FormActionResultSupport.LoadAsync(evt.TenantId, requestId, requests, logger, ct);
             if (request is null)
                 return;
-            if (request.MarkSignatureFailed(revision).IsFailure)
+            if (request.Summary.MarkSignatureFailed(revision).IsFailure)
                 return;
             var outgoing = new DeferredMessages();
             await planner.PlanAfterSignatureAsync(request, revision, false, outgoing, evt.OccurredOn, ct);

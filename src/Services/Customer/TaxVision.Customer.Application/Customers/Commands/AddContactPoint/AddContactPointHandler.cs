@@ -15,10 +15,9 @@ public static class AddContactPointHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
+        var customer = await repository.GetByIdAsync(cmd.TenantId, cmd.CustomerId, ct);
         if (
             customer is null
-            || customer.TenantId != cmd.TenantId
             // Visibilidad por asignación: un cliente que no le toca se comporta como inexistente,
             // igual que en la lectura. Un 403 confirmaría que ese id existe.
             || !CustomerAccessPolicy.CanAccess(customer, cmd.ModifiedByUserId, cmd.CallerCanViewAllCustomers)

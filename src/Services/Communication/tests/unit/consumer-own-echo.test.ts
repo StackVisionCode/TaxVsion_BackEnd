@@ -75,11 +75,11 @@ describe('ConsumerRuntime — eco propio del fanout', () => {
   it('un evento de otro servicio sin handler sigue avisando (no se esconde un handler que falte)', async () => {
     const dispatch = await startRuntime();
 
-    await dispatch(message('connectors.raw_message_received.v1', undefined));
+    await dispatch(message('connectors.something_new.v1', undefined));
 
     expect(channel.ack).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: 'connectors.raw_message_received.v1' }),
+      expect.objectContaining({ eventType: 'connectors.something_new.v1' }),
       'consumer: event type has no registered handler; ack to skip',
     );
   });

@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using Wolverine.Attributes;
 
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
@@ -8,7 +9,12 @@ public sealed record PasswordResetRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }
     public required string Email { get; init; }
-    public required string RawToken { get; init; }
+    // NOT-04: solo viaja si Auth no pudo cifrar; no se borra para no romper mensajes en cola.
+    public string? RawToken { get; init; }
+
+    // NOT-04: el mismo token cifrado (AuthTokenPayloadSchemas). Notification lo prefiere.
+    public ProtectedPayload? ProtectedToken { get; init; }
+
     public required DateTime ExpiresAtUtc { get; init; }
 
     // Decide el destino del link: CustomerPortal → portal, staff → CRM. Opcional para que un

@@ -241,8 +241,8 @@ public sealed class CustomerDuplicateGuardTests
             return Task.CompletedTask;
         }
 
-        public Task<DomainCustomer?> GetByIdAsync(Guid customerId, CancellationToken ct) =>
-            Task.FromResult(All.Find(c => c.Id == customerId));
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+            Task.FromResult(All.Find(c => c.TenantId == tenantId && c.Id == customerId));
 
         public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
             Task.FromResult(All.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));

@@ -15,8 +15,7 @@ public static class ReservationBuilder
             .Open(
                 tenantId,
                 ReservationReference.Create(referenceType, referenceId).Value,
-                "USD",
-                reservedMicros,
+                Usd(reservedMicros),
                 reservedUnits,
                 1
             )

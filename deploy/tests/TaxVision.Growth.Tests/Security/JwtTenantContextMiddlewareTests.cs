@@ -81,7 +81,7 @@ public sealed class JwtTenantContextMiddlewareTests
         var message = new TenantlessIntegrationEvent();
         var tenantContext = new TenantContext();
 
-        Assert.Throws<InvalidOperationException>(() => GrowthTenantMessageMiddleware.Before(message, tenantContext));
+        Assert.Throws<ArgumentException>(() => GrowthTenantMessageMiddleware.Before(message, tenantContext));
         Assert.False(tenantContext.HasTenant);
     }
 

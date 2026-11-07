@@ -67,7 +67,7 @@ public static class CreateTaskSeriesHandler
             return Result.Failure<TaskSeriesResponse>(created.Error);
 
         seriesRepository.Add(created.Value);
-        var first = await materializer.MaterializeNextAsync(created.Value, null, null, ct);
+        var first = await materializer.MaterializeFirstAsync(created.Value, ct);
         if (first.IsFailure)
             return Result.Failure<TaskSeriesResponse>(first.Error);
 

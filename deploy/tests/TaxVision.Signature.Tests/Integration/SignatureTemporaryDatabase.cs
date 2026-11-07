@@ -23,7 +23,7 @@ internal sealed class SignatureTemporaryDatabase
     {
         await DropLeftoversAsync();
         await using var db = NewContext(Guid.Empty);
-        await db.Database.EnsureCreatedAsync();
+        await db.Database.MigrateAsync();
     }
 
     public async Task DropAsync()

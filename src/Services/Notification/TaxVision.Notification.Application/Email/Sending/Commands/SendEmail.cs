@@ -73,6 +73,7 @@ public static class SendEmailHandler
 
         var message = result.Value;
         await repository.AddAsync(message, ct);
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new EmailSendRequestedIntegrationEvent
             {
@@ -81,7 +82,6 @@ public static class SendEmailHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(OutboundEmailMapper.ToResponse(message));
     }

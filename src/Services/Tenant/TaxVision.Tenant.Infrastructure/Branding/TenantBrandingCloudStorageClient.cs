@@ -27,7 +27,6 @@ internal sealed class TenantBrandingCloudStorageClient(
     ITenantServiceTokenAcquirer tokenAcquirer,
     IMinioClient minioClient,
     IOptions<TenantMinioOptions> minioOptions,
-    IMessageBus bus,
     ICorrelationContext correlation,
     ILogger<TenantBrandingCloudStorageClient> logger
 ) : ITenantBrandingCloudStorageClient
@@ -78,6 +77,7 @@ internal sealed class TenantBrandingCloudStorageClient(
         Guid tenantId,
         TenantLogoUpload upload,
         TenantBrandStoredFile stored,
+        IMessageBus bus,
         CancellationToken ct = default
     )
     {

@@ -135,17 +135,17 @@ public sealed class SentMessage : AggregateRoot
         if (string.IsNullOrWhiteSpace(subject))
             return Result.Failure<SentMessage>(new Error("SentMessage.Subject", "Subject is required."));
 
-        var fromValidation = ValidateEmailAddress(fromAddress, "SentMessage.FromAddress");
-        if (fromValidation.IsFailure)
-            return Result.Failure<SentMessage>(fromValidation.Error);
+        var from = ParseAddress(fromAddress, "SentMessage.FromAddress");
+        if (from.IsFailure)
+            return Result.Failure<SentMessage>(from.Error);
 
         string? normalizedReplyTo = null;
         if (replyTo is not null)
         {
-            var replyToValidation = ValidateEmailAddress(replyTo, "SentMessage.ReplyTo");
-            if (replyToValidation.IsFailure)
-                return Result.Failure<SentMessage>(replyToValidation.Error);
-            normalizedReplyTo = replyToValidation.Value;
+            var parsedReplyTo = ParseAddress(replyTo, "SentMessage.ReplyTo");
+            if (parsedReplyTo.IsFailure)
+                return Result.Failure<SentMessage>(parsedReplyTo.Error);
+            normalizedReplyTo = parsedReplyTo.Value.Value;
         }
 
         if (string.IsNullOrWhiteSpace(providerCode) || providerCode.Length > 50)
@@ -161,7 +161,7 @@ public sealed class SentMessage : AggregateRoot
             CorrelationId = correlationId,
             IdempotencyKey = idempotencyKey,
             Subject = Truncate(subject, 500),
-            FromAddress = fromValidation.Value,
+            FromAddress = from.Value.Value,
             FromDisplayName = fromDisplayName is { Length: > 100 } ? fromDisplayName[..100] : fromDisplayName,
             ReplyTo = normalizedReplyTo,
             Stream = stream,
@@ -190,11 +190,11 @@ public sealed class SentMessage : AggregateRoot
     /// <summary>Agrega un destinatario. Rechaza duplicados (misma Address+Type dentro del mensaje).</summary>
     public Result<SentMessageRecipient> AddRecipient(string address, RecipientType type, string? displayName)
     {
-        var validation = ValidateEmailAddress(address, "SentMessage.Recipient.Address");
-        if (validation.IsFailure)
-            return Result.Failure<SentMessageRecipient>(validation.Error);
+        var parsed = ParseAddress(address, "SentMessage.Recipient.Address");
+        if (parsed.IsFailure)
+            return Result.Failure<SentMessageRecipient>(parsed.Error);
 
-        var normalized = validation.Value;
+        var normalized = parsed.Value.Value;
         if (_recipients.Exists(r => r.Address == normalized && r.Type == type))
             return Result.Failure<SentMessageRecipient>(
                 new Error("SentMessage.DuplicateRecipient", $"Recipient {normalized} ({type}) already added.")
@@ -322,10 +322,10 @@ public sealed class SentMessage : AggregateRoot
                 )
             );
 
-        var from = ValidateEmailAddress(systemFromAddress, "SentMessage.FromAddress");
+        var from = ParseAddress(systemFromAddress, "SentMessage.FromAddress");
         if (from.IsFailure)
             return Result.Failure(from.Error);
-        var reply = ValidateEmailAddress(replyTo, "SentMessage.ReplyTo");
+        var reply = ParseAddress(replyTo, "SentMessage.ReplyTo");
         if (reply.IsFailure)
             return Result.Failure(reply.Error);
         if (string.IsNullOrWhiteSpace(systemProviderCode) || systemProviderCode.Length > 50)
@@ -337,9 +337,9 @@ public sealed class SentMessage : AggregateRoot
         DeliveryLane = DeliveryLane.SystemProvider;
         RequiredProviderScope = ProviderScope.System;
         ProviderCode = systemProviderCode;
-        FromAddress = from.Value;
+        FromAddress = from.Value.Value;
         FromDisplayName = fromDisplayName is { Length: > 100 } ? fromDisplayName[..100] : fromDisplayName;
-        ReplyTo = reply.Value;
+        ReplyTo = reply.Value.Value;
         InternetMessageId = null;
         LastEventAtUtc = nowUtc;
         _events.Add(
@@ -382,6 +382,25 @@ public sealed class SentMessage : AggregateRoot
         );
         AddDomainEvent(new SentMessageSuppressedDomainEvent(TenantId, Id, Callback, reason, eventAtUtc));
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Marca los destinatarios que están en la lista de supresión. Si no queda ninguno, el mensaje entero pasa
+    /// a Suppressed sin intentar el envío y devuelve true: no hay a quién mandarle.
+    /// </summary>
+    public Result<bool> ApplySuppression(IReadOnlySet<string> suppressedAddresses, DateTime suppressedAtUtc)
+    {
+        if (Status != SentMessageStatus.Queued)
+            return Result.Failure<bool>(InvalidTransition(SentMessageStatus.Suppressed));
+
+        foreach (var recipient in _recipients.Where(r => suppressedAddresses.Contains(r.Address)))
+            MarkRecipientSuppressed(recipient.Id, "Address in suppression list.", suppressedAtUtc);
+
+        if (_recipients.Count == 0 || _recipients.Exists(r => r.Status != RecipientStatus.Suppressed))
+            return Result.Success(false);
+
+        var suppressed = MarkAsSuppressed("All recipients are in the suppression list.", suppressedAtUtc);
+        return suppressed.IsSuccess ? Result.Success(true) : Result.Failure<bool>(suppressed.Error);
     }
 
     /// <summary>
@@ -461,8 +480,8 @@ public sealed class SentMessage : AggregateRoot
 
     public SentMessageRecipient? FindRecipientByAddress(string address)
     {
-        var normalized = address.Trim().ToLowerInvariant();
-        return _recipients.Find(r => r.Address == normalized);
+        var parsed = EmailAddress.Create(address);
+        return parsed.IsFailure ? null : _recipients.Find(r => r.Address == parsed.Value.Value);
     }
 
     /// <summary>
@@ -665,16 +684,12 @@ public sealed class SentMessage : AggregateRoot
         _attachments.AddRange(attachments);
     }
 
-    private static Result<string> ValidateEmailAddress(string address, string errorCode)
+    private static Result<EmailAddress> ParseAddress(string address, string errorCode)
     {
-        if (string.IsNullOrWhiteSpace(address))
-            return Result.Failure<string>(new Error(errorCode, "Email address is required."));
-
-        var trimmed = address.Trim();
-        if (trimmed.Length > 320 || !trimmed.Contains('@') || trimmed.StartsWith('@') || trimmed.EndsWith('@'))
-            return Result.Failure<string>(new Error(errorCode, $"'{address}' is not a valid email address."));
-
-        return Result.Success(trimmed.ToLowerInvariant());
+        var parsed = EmailAddress.Create(address);
+        return parsed.IsSuccess
+            ? parsed
+            : Result.Failure<EmailAddress>(new Error(errorCode, parsed.Error.Message));
     }
 
     private Error InvalidTransition(SentMessageStatus target) =>

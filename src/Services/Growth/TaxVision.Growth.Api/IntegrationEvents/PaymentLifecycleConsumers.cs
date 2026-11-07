@@ -25,8 +25,8 @@ public static class PaymentSucceededConsumer
         {
             if (string.IsNullOrWhiteSpace(message.PromotionSnapshotHash))
             {
-                throw new GrowthFinancialEventException(
-                    "Growth.PaymentEvent.SnapshotRequired",
+                throw GrowthErrorClassification.ToException(
+                    GrowthErrorClassification.SnapshotRequiredCode,
                     "A code reservation success must include PromotionSnapshotHash."
                 );
             }
@@ -72,19 +72,15 @@ public static class PaymentSucceededConsumer
     private static QualifyingPaymentSource ParsePaymentSource(string paymentSource) =>
         Enum.TryParse<QualifyingPaymentSource>(paymentSource, ignoreCase: true, out var parsed)
             ? parsed
-            : throw new GrowthFinancialEventException(
-                "Growth.PaymentEvent.InvalidSource",
+            : throw GrowthErrorClassification.ToException(
+                GrowthErrorClassification.InvalidPaymentSourceCode,
                 $"Payment source '{paymentSource}' is not supported."
             );
 
     private static void EnsureApplied<T>(Result<T> result)
     {
-        if (result.IsSuccess)
-            return;
-        // Regla fija: reintentar no cambia nada; queda en LateCommitReviews y va a la cola de errores.
-        if (result.Error.Code == CommitReservationHandler.LateCommitPendingReviewCode)
-            throw new GrowthBusinessRuleException(result.Error.Code, result.Error.Message);
-        throw new GrowthFinancialEventException(result.Error.Code, result.Error.Message);
+        if (result.IsFailure)
+            throw GrowthErrorClassification.ToException(result.Error);
     }
 }
 
@@ -132,9 +128,9 @@ internal static class PaymentReservationCancellation
 
         // A terminal payment failure can arrive after a success/commit. That stale
         // event must not reverse a committed redemption. Other failures remain
-        // retryable and eventually visible in the dead-letter queue.
+        // visible in the dead-letter queue, after retrying only the transient ones.
         if (result.IsFailure && result.Error.Code != "Codes.CodeReservation.InvalidTransition")
-            throw new GrowthFinancialEventException(result.Error.Code, result.Error.Message);
+            throw GrowthErrorClassification.ToException(result.Error);
     }
 }
 

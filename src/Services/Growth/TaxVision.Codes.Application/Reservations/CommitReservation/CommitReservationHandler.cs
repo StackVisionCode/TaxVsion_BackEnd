@@ -11,11 +11,13 @@ public static class CommitReservationHandler
     /// <summary>Commit tardío sin verificación posible: queda en LateCommitReviews para PlatformAdmin.</summary>
     public const string LateCommitPendingReviewCode = "Codes.CommitReservation.LateCommitPendingReview";
 
-    // Códigos con que IPaymentOutcomeVerifier niega hoy el commit tardío (verificador fail-closed).
+    // Negativas del verificador que no mejoran reintentando: el commit tardío queda en revisión.
     private static readonly HashSet<string> LateCommitDenialCodes =
     [
-        "Codes.PaymentOutcomeVerifier.NotImplemented",
-        "Codes.PaymentOutcomeVerifier.Disabled",
+        PaymentOutcomeVerifierErrors.NotImplemented,
+        PaymentOutcomeVerifierErrors.Disabled,
+        PaymentOutcomeVerifierErrors.NotConfirmed,
+        PaymentOutcomeVerifierErrors.UnsupportedSource,
     ];
 
     public static async Task<Result<CommitReservationResponse>> Handle(
@@ -121,10 +123,14 @@ public static class CommitReservationHandler
                 if (previousStatus == CodeReservationStatus.Expired)
                 {
                     var verificationResult = await paymentOutcomeVerifier.VerifySucceededAsync(
-                        command.TenantId,
-                        reservation.Payment,
-                        command.SourceEventId,
-                        reservation.SnapshotHash,
+                        new PaymentOutcomeQuery(
+                            command.TenantId,
+                            reservation.Id,
+                            reservation.Payment,
+                            reservation.Subject,
+                            command.SourceEventId,
+                            reservation.SnapshotHash
+                        ),
                         operationCt
                     );
                     if (verificationResult.IsFailure)

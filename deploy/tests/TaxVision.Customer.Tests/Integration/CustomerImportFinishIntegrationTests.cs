@@ -9,7 +9,6 @@ using JasperFx;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -34,12 +33,7 @@ namespace TaxVision.Customer.Tests.Integration;
 public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("CUSTOMER_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("8c4e7963-1ddb-441e-af2d-755d58fb86a3")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set CUSTOMER_DB_CONNECTION or the Customer user-secrets.");
+        CustomerIntegrationDatabase.ConnectionString;
 
     private readonly string _schema = $"cusbb3_{Guid.NewGuid():N}"[..15];
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -100,7 +94,7 @@ public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
         _interceptor.FailWhenSaving = ImportStatus.Failed;
 
         await Assert.ThrowsAnyAsync<Exception>(() =>
-            RunCustomerImportHandler.FailAttemptAsync(Scopes, attemptId, "File is empty.", CancellationToken.None)
+            ImportAttemptLifecycle.FailAsync(Scopes, attemptId, "File is empty.", CancellationToken.None)
         );
 
         Assert.Equal(ImportStatus.Applying, await StatusOfAsync(attemptId));
@@ -110,11 +104,11 @@ public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
     private IServiceScopeFactory Scopes => _host.Services.GetRequiredService<IServiceScopeFactory>();
 
     private Task FinishAsync(Guid attemptId) =>
-        RunCustomerImportHandler.FinishAttemptAsync(
+        ImportAttemptLifecycle.FinishAsync(
             Scopes,
             attemptId,
-            new RunCustomerImportHandler.StartInfo(_tenantId, _userId, DuplicateStrategy.Skip, ImportSourceKind.Csv),
-            new RunCustomerImportHandler.ChunkAggregate(3, 0, 0, 0, [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()], []),
+            new ImportStartInfo(_tenantId, _userId, DuplicateStrategy.Skip, ImportSourceKind.Csv),
+            new ImportChunkAggregate(3, 0, 0, 0, [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()], []),
             total: 3,
             NullLogger.Instance,
             CancellationToken.None
@@ -249,7 +243,16 @@ public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
 
     private sealed class NoCloudStorage : ICustomerImportCloudStorageClient
     {
-        public Task<Result> UploadAsync(Guid t, Guid f, byte[] c, string n, string ct, Guid a, CancellationToken token = default) =>
+        public Task<Result> UploadAsync(
+            Guid t,
+            Guid f,
+            byte[] c,
+            string n,
+            string ct,
+            Guid a,
+            Wolverine.IMessageBus bus,
+            CancellationToken token = default
+        ) =>
             Task.FromResult(Result.Success());
 
         public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>

@@ -6,7 +6,6 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
@@ -30,16 +29,7 @@ public sealed class OnboardingInvoicePdfIntegrationTests : IAsyncLifetime
 
     private static readonly DateTime Now = new(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc);
 
-    private static readonly SqlConnectionStringBuilder Server = new(
-        Environment.GetEnvironmentVariable("BILLING_DB_CONNECTION")
-            ?? new ConfigurationBuilder()
-                .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-billing000001")
-                .Build()
-                .GetConnectionString("Default")
-            ?? throw new InvalidOperationException(
-                "Set BILLING_DB_CONNECTION or the Billing user-secrets to run this test."
-            )
-    );
+    private static readonly SqlConnectionStringBuilder Server = new(BillingTestDatabase.LocalConnectionString);
 
     private static readonly string Connection = new SqlConnectionStringBuilder(Server.ConnectionString)
     {

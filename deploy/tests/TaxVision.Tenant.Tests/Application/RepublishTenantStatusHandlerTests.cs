@@ -12,7 +12,7 @@ public sealed class RepublishTenantStatusHandlerTests
     [Fact]
     public async Task Handle_ClosedTenant_PublishesCurrentStatus()
     {
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", Guid.NewGuid()).Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow, Guid.NewGuid()).Value;
         tenant.CloseForOnboardingCancellation();
         var bus = new RecordingMessageBus();
 
@@ -34,7 +34,7 @@ public sealed class RepublishTenantStatusHandlerTests
     [Fact]
     public async Task Handle_PublishesTheTenantVersion()
     {
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC").Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow).Value;
         tenant.Suspend();
         var bus = new RecordingMessageBus();
 

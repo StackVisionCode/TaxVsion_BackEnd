@@ -309,6 +309,12 @@ file sealed class FakeTenantPaymentRepository : ITenantPaymentRepository
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
+    public Task<TenantPayment?> GetByConnectChargeReferenceAsync(
+        Guid tenantId,
+        string providerChargeReferenceOnConnect,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
     public Task<IReadOnlyList<AwaitingProviderPayment>> GetAwaitingProviderConfirmationAsync(
         DateTime stuckBeforeUtc,
         DateTime createdAfterUtc,

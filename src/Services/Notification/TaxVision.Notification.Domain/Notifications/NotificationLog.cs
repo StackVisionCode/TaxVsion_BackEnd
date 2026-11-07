@@ -49,6 +49,10 @@ public sealed class NotificationLog : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
 
+    // SCR-10: qué versión de plantilla y de layout usó Scribe. Null en filas viejas y fuera del correo.
+    public int? RenderedTemplateVersion { get; private set; }
+    public int? RenderedLayoutVersion { get; private set; }
+
     // Toca la raíz cuando cambia un intento: sin esto el token no vería ese cambio.
     public DateTime? LastAttemptChangeAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
@@ -64,25 +68,24 @@ public sealed class NotificationLog : TenantEntity
     public static Result<NotificationLog> Create(
         Guid tenantId,
         NotificationChannel channel,
-        string recipient,
+        NotificationRecipient recipient,
         string subject,
         string templateKey,
         Guid? relatedEventId,
         string? correlationId,
-        string? kind = null
+        string? kind = null,
+        int? renderedTemplateVersion = null,
+        int? renderedLayoutVersion = null
     )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<NotificationLog>(new Error("Notification.Tenant", "Tenant is required."));
 
-        if (string.IsNullOrWhiteSpace(recipient))
-            return Result.Failure<NotificationLog>(new Error("Notification.Recipient", "Recipient is required."));
-
         var log = new NotificationLog
         {
             Id = Guid.NewGuid(),
             Channel = channel,
-            Recipient = recipient.Trim(),
+            Recipient = recipient.Value,
             Subject = Truncate(subject, 200),
             Kind = Truncate(kind ?? templateKey, 64),
             TemplateKey = Truncate(templateKey, 64),
@@ -90,6 +93,8 @@ public sealed class NotificationLog : TenantEntity
             RelatedEventId = relatedEventId,
             CorrelationId = correlationId is { Length: > 128 } ? correlationId[..128] : correlationId,
             CreatedAtUtc = DateTime.UtcNow,
+            RenderedTemplateVersion = renderedTemplateVersion,
+            RenderedLayoutVersion = renderedLayoutVersion,
         };
         log.SetTenant(tenantId);
         return Result.Success(log);

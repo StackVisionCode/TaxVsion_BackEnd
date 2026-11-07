@@ -96,8 +96,7 @@ public static class ReconcileStuckSaaSPaymentHandler
                 var notFound = payment.MarkFailed(
                     statusResult.Error.Code,
                     statusResult.Error.Message,
-                    willRetry: false,
-                    nextRetryAtUtc: null,
+                    DunningDecision.NoRetry,
                     Guid.Empty,
                     nowUtc
                 );
@@ -137,16 +136,10 @@ public static class ReconcileStuckSaaSPaymentHandler
 
             case PaymentStatus.Failed
             or PaymentStatus.Cancelled:
-                var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(
-                    payment,
-                    nowUtc,
-                    failedAttemptRecorded: true
-                );
                 var failed = payment.MarkFailed(
                     outcome.FailureCode ?? "Provider.Unknown",
                     outcome.FailureMessage ?? "The provider reported the charge as failed.",
-                    willRetry: nextRetryAtUtc is not null,
-                    nextRetryAtUtc,
+                    DunningPolicy.Decide(payment, nowUtc, failedAttemptRecorded: true),
                     Guid.Empty,
                     nowUtc
                 );

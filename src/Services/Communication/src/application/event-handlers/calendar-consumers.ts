@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { scheduleMeeting, type ScheduleMeetingDeps } from '../use-cases/schedule-meeting.js';
 import { rescheduleMeeting, type RescheduleMeetingDeps } from '../use-cases/reschedule-meeting.js';
+import { cancelMeeting, type CancelMeetingDeps } from '../use-cases/cancel-meeting.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
@@ -23,7 +24,8 @@ type CalendarConsumerDeps = {
   meetings: MeetingRepository;
   publisher: IntegrationEventPublisher;
 } & Omit<ScheduleMeetingDeps, 'meetings' | 'publisher'> &
-  Omit<RescheduleMeetingDeps, 'meetings' | 'publisher'>;
+  Omit<RescheduleMeetingDeps, 'meetings' | 'publisher'> &
+  Omit<CancelMeetingDeps, 'meetings' | 'publisher'>;
 
 export function bindCalendarConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
@@ -31,6 +33,7 @@ export function bindCalendarConsumers(
 ): void {
   register('calendar.appointment_scheduled.v1', (env) => appointmentScheduledHandler(env, deps));
   register('calendar.appointment_rescheduled.v1', (env) => appointmentRescheduledHandler(env, deps));
+  register('calendar.appointment_cancelled.v1', (env) => appointmentCancelledHandler(env, deps));
   // Misma sala, otro disparador: el job de Calendar reclama la que nunca llego. El handler ya ignora
   // lo que no es virtual, y este evento solo se emite para citas virtuales.
   register('calendar.appointment_meeting_room_requested.v1', (env) =>
@@ -147,5 +150,51 @@ async function appointmentRescheduledHandler(env: IncomingEnvelope, deps: Calend
   // lo unico que puede arreglarlo, y solo se dispara si esto lanza.
   if (!moved.isSuccess) {
     throw new Error(`No se pudo mover la sala ${meetingId}: ${moved.error.code}`);
+  }
+}
+
+/**
+ * La cita se cancelo: su sala tambien, con el aviso de una cancelacion normal (evento + socket). Una
+ * ocurrencia suelta de una serie no toca la sala, que es de la serie entera. Igual que al mover, el
+ * `meetingId` viaja en el evento.
+ *
+ * Idempotente: solo cancela una sala `Scheduled`. Ya cancelada, terminada o vencida no hace nada, y una
+ * en vivo tampoco se corta: la gente ya esta adentro.
+ */
+async function appointmentCancelledHandler(env: IncomingEnvelope, deps: CalendarConsumerDeps): Promise<void> {
+  const payload = env.payload as ScheduledPayload & {
+    scope?: string;
+    Scope?: string;
+    meetingId?: string;
+    MeetingId?: string;
+    reason?: string | null;
+    Reason?: string | null;
+  };
+
+  if ((payload.scope ?? payload.Scope) === 'ThisOccurrence') return;
+  const tenantId = read(payload, 'tenantId', 'TenantId') as string | undefined;
+  const meetingId = payload.meetingId ?? payload.MeetingId;
+  if (!tenantId || !meetingId) return;
+
+  const meeting = await deps.meetings.findById(tenantId, meetingId);
+  if (!meeting) return;
+  const snapshot = meeting.toSnapshot();
+  if (snapshot.status !== 'Scheduled') return;
+
+  const reason = payload.reason ?? payload.Reason;
+  const cancelled = await cancelMeeting(
+    {
+      tenantId,
+      correlationId: (read(payload, 'correlationId', 'CorrelationId') as string | undefined) || randomUUID(),
+      meetingId,
+      hostUserId: snapshot.hostUserId,
+      ...(reason ? { reason } : {}),
+    },
+    deps,
+  );
+
+  // Mismo criterio que al mover: el fallo lo arregla el reintento de la cola.
+  if (!cancelled.isSuccess) {
+    throw new Error(`No se pudo cancelar la sala ${meetingId}: ${cancelled.error.code}`);
   }
 }

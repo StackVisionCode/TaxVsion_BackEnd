@@ -11,9 +11,7 @@ public static class TenantStatusChangedConsumer
     public static async Task Handle(
         TenantStatusChangedIntegrationEvent evt,
         ITenantRegistry tenants,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocations,
+        SessionAccessCutoff accessCutoff,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -37,14 +35,7 @@ public static class TenantStatusChangedConsumer
             // hasta 15 minutos después de suspender el tenant. Ahora denylistea el sid y lo anuncia.
             if (!evt.IsActive)
             {
-                await SessionAccessCutoff.ForTenantAsync(
-                    evt.ChangedTenantId,
-                    "tenant_suspended",
-                    sessions,
-                    denylist,
-                    revocations,
-                    ct
-                );
+                await accessCutoff.ForTenantAsync(evt.ChangedTenantId, "tenant_suspended", ct);
             }
 
             await unitOfWork.SaveChangesAsync(ct);

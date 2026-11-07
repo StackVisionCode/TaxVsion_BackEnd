@@ -14,13 +14,18 @@ namespace TaxVision.Notification.Application.Abstractions;
 /// de esta fase este campo no existía y Scribe lo devolvía en vano — el consumer nunca lo pasaba). El
 /// default vacío preserva a los consumers que aún no arman <c>Dictionary</c> con logo (ninguno hoy)
 /// o a tests que construyen <c>ScribeRenderedEmail</c> con los 3 argumentos originales.
+/// <paramref name="TemplateVersion"/> y <paramref name="LayoutVersion"/> (SCR-10) dicen qué contenido se
+/// usó. Null si Scribe aún no los manda.
 /// </summary>
 public sealed record ScribeRenderedEmail(
     string Subject,
     string Html,
     string? Text,
     IReadOnlyList<EmailInlineAssetReference> InlineAssets,
-    EmailDispatchScope DispatchScope
+    EmailDispatchScope DispatchScope,
+    string? TemplateKey = null,
+    int? TemplateVersion = null,
+    int? LayoutVersion = null
 )
 {
     public ScribeRenderedEmail(string Subject, string Html, string? Text)

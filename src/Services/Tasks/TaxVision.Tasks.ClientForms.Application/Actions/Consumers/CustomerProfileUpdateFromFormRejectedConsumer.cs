@@ -35,7 +35,7 @@ public static class CustomerProfileUpdateFromFormRejectedConsumer
             foreach (var failure in evt.Failures)
                 failures.Add(new FormProfileUpdateOutcome(failure.Target, false, failure.Code));
 
-            var marked = request.MarkProfileUpdateRejected(evt.CommandId, failures, evt.OccurredOn);
+            var marked = request.ProfileUpdate.MarkRejected(evt.CommandId, failures, evt.OccurredOn);
             if (marked.IsFailure)
                 return;
             await unitOfWork.SaveChangesAsync(ct);

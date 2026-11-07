@@ -42,7 +42,7 @@ public sealed class SeatCheckoutProvisioningConcurrencyIntegrationTests : IAsync
                 autoRenew: true,
                 Money.Create(15m, "USD").Value,
                 BillingCycle.Monthly,
-                proratedTotalCents: 1500L * quantity,
+                proratedTotal: Money.FromCents(1500L * quantity, "USD"),
                 Guid.NewGuid(),
                 nowUtc.AddMinutes(-2)
             )

@@ -21,6 +21,7 @@ internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
     public List<object> Invoked { get; } = [];
+    public Exception? InvokeThrows { get; set; }
 
     /// <summary>Resultado devuelto por InvokeAsync&lt;Result&gt;, el tipo que invocan los handlers de Connectors.</summary>
     public Result InvokeResult { get; set; } = Result.Success();
@@ -89,6 +90,9 @@ internal sealed class FakeMessageBus : IMessageBus
     {
         if (message is not null)
             Invoked.Add(message);
+
+        if (InvokeThrows is not null)
+            throw InvokeThrows;
 
         if (typeof(T) == typeof(Result))
             return Task.FromResult((T)(object)InvokeResult);
@@ -347,14 +351,20 @@ internal sealed class FakeOAuthConnectionRepository : IOAuthConnectionRepository
 internal sealed class InlineOAuthTokenStore(IOAuthConnectionRepository connections, IUnitOfWork unitOfWork)
     : IOAuthTokenStore
 {
-    public async Task SaveAsync(Guid accountId, Action<OAuthToken> update, CancellationToken ct = default)
+    public async Task<bool> SaveAsync(
+        Guid accountId,
+        byte[] expectedRowVersion,
+        Action<OAuthToken> update,
+        CancellationToken ct = default
+    )
     {
         var connection = await connections.GetByAccountIdAsync(accountId, ct);
         if (connection.IsFailure || connection.Value.Token is null)
-            return;
+            return false;
 
         update(connection.Value.Token);
         await unitOfWork.SaveChangesAsync(ct);
+        return true;
     }
 }
 

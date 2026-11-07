@@ -459,8 +459,8 @@ public sealed class TenantPayment : AggregateRoot
         return Result.Success();
     }
 
-    /// <summary>Registra lo que el proveedor devolvió del pagador tras el cobro. Nunca falla: un
-    /// dato inválido se descarta y se conserva el anterior.</summary>
+    /// <summary>Registra lo que el proveedor devolvió del pagador tras el cobro. Nunca falla, a propósito: son datos
+    /// cosméticos y no deben tumbar un cobro ya hecho. Un dato inválido se descarta y se conserva el anterior.</summary>
     public void RecordProviderPayerDetails(
         string? payerName,
         string? payerEmail,
@@ -468,15 +468,24 @@ public sealed class TenantPayment : AggregateRoot
         string? cardLast4
     ) => Payer = Payer.WithProviderData(payerName, payerEmail, cardBrand, cardLast4);
 
-    /// <summary>Anota que se consultó al proveedor (resuelva o no). No toca <see cref="UpdatedAtUtc"/>:
-    /// el pago sigue igual de atascado; solo rota la cola de la revisión.</summary>
+    /// <summary>Anota que se consultó al proveedor (resuelva o no). Nunca falla, a propósito, y no toca
+    /// <see cref="UpdatedAtUtc"/>: el pago sigue igual de atascado; solo rota la cola de la revisión.</summary>
     public void RecordProviderCheck(DateTime checkedAtUtc) => LastProviderCheckAtUtc = checkedAtUtc;
 
     /// <summary>Aún esperando que el proveedor confirme (lo que revisa el job de atascados).</summary>
     public bool IsAwaitingProviderConfirmation => Status is PaymentStatus.Processing or PaymentStatus.RequiresAction;
 
+    /// <summary>Coloca o levanta el legal hold. Es una acción humana: exige actor y, si el valor no cambia, no hace nada.</summary>
     public Result SetLegalHold(bool isLegalHeld, Guid actorUserId, DateTime nowUtc)
     {
+        if (actorUserId == Guid.Empty)
+            return Result.Failure(
+                new Error("TenantPayment.ActorRequired", "An actor is required to change a legal hold.")
+            );
+
+        if (IsLegalHeld == isLegalHeld)
+            return Result.Success();
+
         IsLegalHeld = isLegalHeld;
         Touch(actorUserId, nowUtc);
         return Result.Success();

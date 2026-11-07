@@ -1,5 +1,7 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Wallet.Domain.ValueObjects;
+using TaxVision.Wallet.Domain.Wallet;
 
 namespace TaxVision.Wallet.Domain.Reservations;
 
@@ -51,15 +53,14 @@ public sealed class WalletReservation : TenantEntity
     public static Result<WalletReservation> Open(
         Guid tenantId,
         ReservationReference reference,
-        string currency,
-        long reservedMicros,
+        WalletMoney reserved,
         int reservedUnits,
         int priceBookVersion
     )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<WalletReservation>(ReservationErrors.TenantRequired);
-        if (reservedMicros <= 0)
+        if (reserved.Micros <= 0)
             return Result.Failure<WalletReservation>(ReservationErrors.AmountNotPositive);
 
         var reservation = new WalletReservation
@@ -67,8 +68,8 @@ public sealed class WalletReservation : TenantEntity
             Id = Guid.NewGuid(),
             ReferenceType = reference.Type,
             ReferenceId = reference.Id,
-            Currency = currency,
-            ReservedMicros = reservedMicros,
+            Currency = reserved.Currency,
+            ReservedMicros = reserved.Micros,
             ReservedUnits = reservedUnits,
             PriceBookVersion = priceBookVersion,
             Status = ReservationStatus.Open,
@@ -79,21 +80,26 @@ public sealed class WalletReservation : TenantEntity
     }
 
     /// <summary>
-    /// Liquida la reserva: <paramref name="consumedMicros"/> + <paramref name="releasedMicros"/> deben sumar
+    /// Liquida la reserva: <paramref name="consumed"/> + <paramref name="released"/> deben sumar
     /// exactamente <see cref="ReservedMicros"/>. Marca <see cref="ReservationStatus.Settled"/> (idempotente a
     /// nivel de agregado: una segunda llamada falla con <see cref="ReservationErrors.AlreadySettled"/>).
     /// </summary>
-    public Result Settle(long consumedMicros, long releasedMicros)
+    public Result Settle(WalletMoney consumed, WalletMoney released)
     {
         if (Status == ReservationStatus.Settled)
             return Result.Failure(ReservationErrors.AlreadySettled);
         if (Status == ReservationStatus.Expired)
             return Result.Failure(ReservationErrors.Expired);
-        if (consumedMicros < 0 || releasedMicros < 0 || consumedMicros + releasedMicros != ReservedMicros)
+        var total = consumed.Add(released);
+        if (total.IsFailure)
+            return Result.Failure(total.Error);
+        if (total.Value.Currency != Currency)
+            return Result.Failure(WalletErrors.CurrencyMismatch);
+        if (consumed.Micros < 0 || released.Micros < 0 || total.Value.Micros != ReservedMicros)
             return Result.Failure(ReservationErrors.SettlementMismatch);
 
-        ConsumedMicros = consumedMicros;
-        ReleasedMicros = releasedMicros;
+        ConsumedMicros = consumed.Micros;
+        ReleasedMicros = released.Micros;
         Status = ReservationStatus.Settled;
         SettledAtUtc = DateTime.UtcNow;
         return Result.Success();

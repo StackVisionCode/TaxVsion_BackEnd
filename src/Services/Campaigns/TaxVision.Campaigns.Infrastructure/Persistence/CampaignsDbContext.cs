@@ -44,11 +44,6 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
     // mantenida por el snapshot CustomerAssignmentsChanged de Customer. Acota la audiencia "Clients".
     public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
 
-    // Proyección local del directorio de clientes (id+nombre+email+teléfono+estado), mantenida por los
-    // eventos Customer Created/Updated/Archived/… — fuente de verdad local de "quién es cliente".
-    public DbSet<Customers.Directory.CustomerDirectoryEntry> CustomerDirectoryEntries =>
-        Set<Customers.Directory.CustomerDirectoryEntry>();
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());

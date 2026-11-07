@@ -10,7 +10,7 @@ using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.RateLimit;
 using TaxVision.Postmaster.Application.Sending.Commands.MarkSendAttempted;
 using TaxVision.Postmaster.Application.Sending.Commands.RecordSendResult;
-using TaxVision.Postmaster.Application.Sending.Commands.ReleaseSendAttempt;
+using TaxVision.Postmaster.Application.Sending.Lanes;
 using TaxVision.Postmaster.Domain.Providers;
 using TaxVision.Postmaster.Domain.Sending;
 using Wolverine;
@@ -27,8 +27,6 @@ public static class DispatchSentMessageHandler
 {
     /// <summary>Tope por adjunto en memoria (F6, el <c>.ics</c>): Notification ya aplica 256 KB al total.</summary>
     public const int MaxInlineAttachmentBytes = 256 * 1024;
-
-    private static readonly TimeSpan DefaultRateLimitRetryAfter = TimeSpan.FromSeconds(60);
 
     /// <param name="envelope">La entrega actual (la inyecta Wolverine); null en llamadas directas.</param>
     [NonTransactional]
@@ -102,7 +100,7 @@ public static class DispatchSentMessageHandler
                     evt.TenantId,
                     NotificationsEmailSendRequestedConsumer.ParseProviderScope(evt.RequiredProviderScope),
                     NotificationsEmailSendRequestedConsumer.ParsePriorityHint(evt.PriorityHint),
-                    NotificationsEmailSendRequestedConsumer.SystemFallbackAllowed(evt),
+                    SystemLaneSender.SystemFallbackAllowed(evt),
                     ct
                 );
                 if (resolved.Status != ProviderResolutionStatus.Resolved)
@@ -139,8 +137,8 @@ public static class DispatchSentMessageHandler
                 return;
             }
 
-            await SendThroughMailboxAsync(
-                new MailboxSend(
+            var outcome = await MailboxLaneSender.SendAsync(
+                new MailboxLaneSender.MailboxSend(
                     command,
                     message,
                     content,
@@ -149,191 +147,21 @@ public static class DispatchSentMessageHandler
                     Math.Max(1, envelope?.Attempts ?? 1)
                 ),
                 mailboxSender,
-                new SystemLane(providerResolver, rateLimiter, emailSender),
+                new MailboxLaneSender.SystemLane(providerResolver, rateLimiter, emailSender),
                 tenantDirectory,
+                bus,
+                logger,
+                ct
+            );
+            await RecordAsync(
                 bus,
                 recordRetry,
-                logger,
-                ct
+                command,
+                outcome.Result,
+                "Unknown Connectors send failure.",
+                outcome.Fallback
             );
         }
-    }
-
-    private sealed record MailboxSend(
-        DispatchSentMessageCommand Command,
-        SentMessage Message,
-        RenderedContent Content,
-        IReadOnlyList<InlineAssetBytes> InlineAssets,
-        IReadOnlyList<OutboundAttachmentBytes> Attachments,
-        int Delivery
-    );
-
-    /// <summary>Lo que hace falta para salir por el proveedor del sistema desde la vía buzón.</summary>
-    private sealed record SystemLane(
-        IProviderResolver Resolver,
-        IEmailProviderRateLimiter RateLimiter,
-        IEmailSender Sender
-    );
-
-    /// <summary>
-    /// Sin threading en v1 (D3 §11): el evento de Notification no trae identificadores nativos para responder
-    /// un hilo. Los inline assets salen igual que por SMTP (<c>MailboxLaneParityTests</c>).
-    /// </summary>
-    private static async Task SendThroughMailboxAsync(
-        MailboxSend send,
-        IConnectedMailboxSender mailboxSender,
-        SystemLane systemLane,
-        ITenantDirectoryRepository tenantDirectory,
-        IMessageBus bus,
-        RecordSendResultRetryOptions recordRetry,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        var sendResult = await mailboxSender.SendAsync(
-            send.Message,
-            send.Content,
-            send.Command.Mailbox!,
-            inReplyToInternetMessageId: null,
-            references: null,
-            replyToProviderMessageId: null,
-            send.Attachments,
-            send.InlineAssets,
-            ct
-        );
-
-        // Connectors rechazó por su cupo por cuenta (429): no salió, se difiere igual que en SMTP.
-        if (!sendResult.Success && sendResult.RetryAfter is { } retryAfter)
-            await DeferAsync(bus, send, retryAfter, ct);
-
-        MailboxFallback? fallback = null;
-        if (ShouldFallBack(send.Message, send.Command.Request, sendResult))
-        {
-            var outcome = await FallBackToSystemAsync(
-                send,
-                sendResult.ErrorReason ?? "Office mailbox send failed.",
-                systemLane,
-                tenantDirectory,
-                bus,
-                logger,
-                ct
-            );
-            fallback = outcome.Fallback;
-            sendResult = outcome.Result ?? sendResult;
-        }
-
-        await RecordAsync(bus, recordRetry, send.Command, sendResult, "Unknown Connectors send failure.", fallback);
-    }
-
-    private static bool ShouldFallBack(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        SendResult sendResult
-    ) =>
-        !sendResult.Success
-        && sendResult.RetryAfter is null
-        && sendResult.MailboxFailure is { } failure
-        && MailboxFallbackPolicy.ShouldFallBack(
-            NotificationsEmailSendRequestedConsumer.ParseProviderScope(evt.RequiredProviderScope),
-            message.Stream,
-            failure
-        );
-
-    /// <param name="Fallback">La vía del sistema aplicada al mensaje; null si no se pudo intentar.</param>
-    /// <param name="Result">El envío (o el fallo de cupo) por el sistema; null si vale el fallo del buzón.</param>
-    private sealed record FallbackOutcome(MailboxFallback? Fallback, SendResult? Result);
-
-    /// <summary>
-    /// El buzón de la oficina falló por su culpa (desconectado, proveedor caído…): el mismo correo sale por
-    /// el proveedor del sistema en nombre de la oficina, con Reply-To al buzón para que las respuestas le
-    /// lleguen. Nunca con un resultado desconocido (<see cref="MailboxSendFailure.OutcomeUnknown"/>).
-    /// </summary>
-    private static async Task<FallbackOutcome> FallBackToSystemAsync(
-        MailboxSend send,
-        string mailboxFailureReason,
-        SystemLane systemLane,
-        ITenantDirectoryRepository tenantDirectory,
-        IMessageBus bus,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        var evt = send.Command.Request;
-        var resolved = await systemLane.Resolver.ResolveAsync(
-            evt.TenantId,
-            ProviderScope.System,
-            NotificationsEmailSendRequestedConsumer.ParsePriorityHint(evt.PriorityHint),
-            systemFallbackAllowed: false,
-            ct
-        );
-        if (resolved.Status != ProviderResolutionStatus.Resolved)
-            return new FallbackOutcome(null, null);
-
-        var system = resolved.Provider!;
-        var onBehalfOf = (await tenantDirectory.FindAsync(evt.TenantId, ct))?.SenderName;
-        var fallback = new MailboxFallback(
-            mailboxFailureReason,
-            system.ProviderCode,
-            system.FromAddress,
-            NotificationsEmailSendRequestedConsumer.FromDisplayNameFor(onBehalfOf, system, ProviderScope.System),
-            send.Command.Mailbox!.FromAddress,
-            DateTime.UtcNow
-        );
-        if (fallback.ApplyTo(send.Message).IsFailure)
-            return new FallbackOutcome(null, null);
-
-        logger.LogInformation(
-            "Office mailbox send failed for SentMessage {SentMessageId}; retrying through the system provider.",
-            send.Message.Id
-        );
-
-        var quota = NotificationsEmailSendRequestedConsumer.ResolveStreamQuota(send.Message.Stream, system);
-        if (quota is null)
-            return new FallbackOutcome(
-                fallback,
-                Failed(
-                    $"BulkRateLimitNotConfigured: provider '{system.ProviderCode}' has no BulkRateLimitPerMinute configured for the Bulk stream."
-                )
-            );
-
-        var decision = await systemLane.RateLimiter.AcquireAsync(
-            system.ProviderCode,
-            evt.TenantId,
-            send.Message.Stream,
-            quota.Value,
-            ct
-        );
-        if (!decision.Allowed)
-        {
-            await DeferAsync(bus, send, decision.RetryAfter ?? DefaultRateLimitRetryAfter, ct);
-            return new FallbackOutcome(
-                fallback,
-                Failed($"RateLimited: still over the provider quota after {send.Delivery} deliveries.")
-            );
-        }
-
-        var result = await systemLane.Sender.SendAsync(
-            send.Message,
-            send.Content,
-            system,
-            send.InlineAssets,
-            send.Attachments,
-            ct
-        );
-        return new FallbackOutcome(fallback, result);
-    }
-
-    /// <summary>
-    /// Nada salió y conviene esperar: se libera el intento y Wolverine reprograma este paso tras la espera.
-    /// En la última entrega vuelve sin lanzar y el caller lo da por fallido.
-    /// </summary>
-    private static async Task DeferAsync(IMessageBus bus, MailboxSend send, TimeSpan retryAfter, CancellationToken ct)
-    {
-        if (send.Delivery >= NotificationsEmailSendRequestedConsumer.MaxRateLimitedDeliveries)
-            return;
-
-        await bus.InvokeAsync(new ReleaseSendAttemptCommand(send.Message.Id), ct);
-        throw new EmailRateLimitedException(send.Command.IdempotencyKey, retryAfter);
     }
 
     // Se registra aunque se esté apagando el host: el proveedor ya contestó.
@@ -351,7 +179,7 @@ public static class DispatchSentMessageHandler
             retry
         );
 
-    private static SendResult Failed(string reason) => new(false, null, reason, []);
+    internal static SendResult Failed(string reason) => new(false, null, reason, []);
 
     /// <summary>
     /// Los adjuntos fallan CERRADO, al revés que el logo: si no se pueden bajar, el correo no sale. Una

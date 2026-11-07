@@ -24,8 +24,8 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
 
     public PaymentProviderCode Code => PaymentProviderCode.Stripe;
 
-    private const string PaymentIntentSucceeded = "payment_intent.succeeded";
-    private const string PaymentIntentFailed = "payment_intent.payment_failed";
+    internal const string PaymentIntentSucceeded = "payment_intent.succeeded";
+    internal const string PaymentIntentFailed = "payment_intent.payment_failed";
     private const string PaymentIntentCanceled = "payment_intent.canceled";
     private const string ChargeRefunded = "charge.refunded";
     private const string ChargeDisputeCreated = "charge.dispute.created";
@@ -481,7 +481,7 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
         return Task.FromResult(result);
     }
 
-    private static Result<WebhookEventPayload> ParsePaymentIntent(Event stripeEvent, PaymentStatus mappedStatus)
+    internal static Result<WebhookEventPayload> ParsePaymentIntent(Event stripeEvent, PaymentStatus mappedStatus)
     {
         if (stripeEvent.Data.Object is not PaymentIntent intent)
             return Result.Failure<WebhookEventPayload>(

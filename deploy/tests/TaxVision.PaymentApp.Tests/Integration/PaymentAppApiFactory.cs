@@ -17,8 +17,8 @@ namespace TaxVision.PaymentApp.Tests.Integration;
 /// clave RS256 real de dev-keys/ — en vez de replicarla, se sobreescribe la config con un secreto
 /// HS256 generado en memoria SOLO para este proceso de test, nunca leído de ningún user-secret real
 /// ni escrito a disco. Sin Rabbit y sin jobs: no compite con la flota por la cola payment-app-events ni
-/// cobra pagos de la base local (dunning, conciliación). La persistencia de mensajes se queda: sin ella,
-/// las transacciones EF de los handlers fallan.
+/// cobra pagos (dunning, conciliación). La persistencia de mensajes se queda, porque sin ella las transacciones
+/// EF de los handlers fallan, pero en la base temporal (BB-10): la flota no ve sus sobres ni le deja los suyos.
 /// </summary>
 public sealed class PaymentAppApiFactory : WebApplicationFactory<Program>
 {
@@ -29,6 +29,7 @@ public sealed class PaymentAppApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        builder.UseSetting("ConnectionStrings:Default", PaymentAppWolverineHost.Connection);
         builder.ConfigureAppConfiguration(
             (_, config) =>
                 config.AddInMemoryCollection(

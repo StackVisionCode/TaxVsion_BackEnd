@@ -237,13 +237,14 @@ public sealed class ScribeNotificationTemplateSeeder(
                     : publishedVersion?.HtmlFileId;
             if (publishedFileId is Guid contentFileId)
             {
-                var stored = publishedVersion!.SeedContentVersion ?? 0;
+                // SCR-01: decide la huella. Sin hash (sembrada antes de la columna) se republica una vez.
+                var contentChanged = publishedVersion!.SeedContentHash != definition.ContentHash;
                 // Layout pineado viejo: el render usa version.LayoutVersionNumber, así que si el layout
                 // republicó a una versión nueva hay que re-pinear el template aunque el contenido no cambie.
                 var layoutStale =
                     definition.Channel == TemplateChannel.Email
                     && publishedVersion.LayoutVersionNumber != layoutVersionNumber;
-                if (stored >= definition.ContentVersion && !layoutStale)
+                if (!contentChanged && !layoutStale)
                 {
                     var download = await storageService.DownloadTextAsync(contentFileId, tenantId: null, ct);
                     if (download.IsSuccess)
@@ -267,9 +268,9 @@ public sealed class ScribeNotificationTemplateSeeder(
                 else
                 {
                     logger.LogInformation(
-                        "Template '{TemplateKey}' content v{Stored} -> v{New}; republishing.",
+                        "Template '{TemplateKey}' content changed (label v{Stored} -> v{New}); republishing.",
                         definition.TemplateKey,
-                        stored,
+                        publishedVersion.SeedContentVersion,
                         definition.ContentVersion
                     );
                 }
@@ -430,7 +431,8 @@ public sealed class ScribeNotificationTemplateSeeder(
                 upload.FileId,
                 definition.Variables,
                 DateTime.UtcNow,
-                definition.ContentVersion
+                definition.ContentVersion,
+                definition.ContentHash
             )
             : template.AddDraftVersion(
                 definition.Subject,
@@ -446,7 +448,8 @@ public sealed class ScribeNotificationTemplateSeeder(
                 layoutVersionNumber,
                 NotificationTemplateSeedSource.VariablesWithPreheader(definition),
                 DateTime.UtcNow,
-                definition.ContentVersion
+                definition.ContentVersion,
+                definition.ContentHash
             );
 
     /// <summary>

@@ -42,8 +42,10 @@ public static class WalletTopUpResultConsumer
 
             // Solo se acredita si la orden es USD y el cobro coincide en moneda y monto; si no, revisión humana.
             var evtCurrency = evt.Currency?.Trim().ToUpperInvariant();
+            var amount = topUp.CreditAmount();
             if (
-                topUp.Currency != Domain.Wallet.Wallet.DefaultCurrency
+                amount.IsFailure
+                || topUp.Currency != Domain.Wallet.Wallet.DefaultCurrency
                 || evtCurrency != topUp.Currency
                 || evt.AmountCents != topUp.AmountCents
             )
@@ -63,8 +65,6 @@ public static class WalletTopUpResultConsumer
                 return;
             }
 
-            var amountMicros = topUp.AmountMicros;
-
             var wallet = await wallets.GetByTenantAsync(evt.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
             if (wallet is null)
             {
@@ -77,7 +77,7 @@ public static class WalletTopUpResultConsumer
                 await wallets.AddAsync(wallet, ct);
             }
 
-            var credited = wallet.Credit(amountMicros, opKey: $"topup:{evt.TopUpId:N}", referenceId: evt.TopUpId);
+            var credited = wallet.Credit(amount.Value, opKey: $"topup:{evt.TopUpId:N}", referenceId: evt.TopUpId);
             if (credited.IsFailure)
             {
                 topUp.MarkNeedsReview($"credit_rejected:{credited.Error.Code}");
@@ -94,7 +94,7 @@ public static class WalletTopUpResultConsumer
 
             await wallets.AddLedgerEntryAsync(credited.Value, ct);
             await wallets.AddFundingCreditAsync(
-                FundingCredit.Create(evt.TenantId, Source, evt.SaaSPaymentId, amountMicros),
+                FundingCredit.Create(evt.TenantId, Source, evt.SaaSPaymentId, amount.Value.Micros),
                 ct
             );
             topUp.MarkCredited(evt.SaaSPaymentId);

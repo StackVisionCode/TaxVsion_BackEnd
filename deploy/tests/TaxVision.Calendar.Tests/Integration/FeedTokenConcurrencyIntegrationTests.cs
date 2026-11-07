@@ -13,12 +13,10 @@ namespace TaxVision.Calendar.Tests.Integration;
 
 /// <summary>
 /// Doble clic en «Regenerate feed URL»: dos emisiones a la vez no pueden dejar dos tokens activos.
-/// Con SQL real (CALENDAR_TEST_DB_CONNECTION o los user-secrets del Api); limpia su tenant al final.
+/// Con SQL real, en la base temporal (BB-10); limpia su tenant al final.
 /// </summary>
 public sealed class FeedTokenConcurrencyIntegrationTests : IAsyncLifetime
 {
-    private const string ApiUserSecretsId = "b7f4a1d2-9c3e-4a58-8f21-6d0e5b3c74a9";
-
     private readonly Guid _tenant = Guid.NewGuid();
     private readonly Guid _user = Guid.NewGuid();
 
@@ -72,10 +70,7 @@ public sealed class FeedTokenConcurrencyIntegrationTests : IAsyncLifetime
         return new CalendarDbContext(options, new FixedTenant(_tenant));
     }
 
-    private static string ConnectionString() =>
-        Environment.GetEnvironmentVariable("CALENDAR_TEST_DB_CONNECTION")
-        ?? new ConfigurationBuilder().AddUserSecrets(ApiUserSecretsId).Build().GetConnectionString("Default")
-        ?? throw new InvalidOperationException("No Calendar test database configured.");
+    private static string ConnectionString() => CalendarIntegrationDatabase.ConnectionString;
 
     /// <summary>Los dos lados leen antes de que cualquiera guarde: reproduce la carrera sin azar.</summary>
     private sealed class TwoPartyBarrier

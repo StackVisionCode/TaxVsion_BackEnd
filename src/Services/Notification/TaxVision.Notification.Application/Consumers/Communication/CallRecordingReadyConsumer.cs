@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
@@ -29,7 +30,7 @@ public static class CallRecordingReadyConsumer
             {
                 await dispatcher.RecordInAppAsync(
                     evt.TenantId,
-                    $"user:{participant:N}",
+                    NotificationRecipient.ForUser(participant),
                     subject,
                     NotificationCategory.Collaboration,
                     "communication.call.recording_ready",

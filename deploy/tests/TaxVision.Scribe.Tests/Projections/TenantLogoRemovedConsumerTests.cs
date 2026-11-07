@@ -64,6 +64,27 @@ public sealed class TenantLogoRemovedConsumerTests
     }
 
     [Fact]
+    public async Task Handle_removal_before_any_logo_leaves_a_tombstone_that_rejects_older_updates()
+    {
+        var tenantId = Guid.NewGuid();
+        var repository = new FakeTenantLogoRefRepository();
+        var removedAt = DateTime.UtcNow;
+        var unitOfWork = new FakeUnitOfWork();
+        var evt = new TenantLogoRemovedIntegrationEvent { TenantId = tenantId, RemovedAtUtc = removedAt };
+
+        await HandleAsync(evt, repository, unitOfWork);
+
+        var stored = await repository.GetAsync(tenantId, TenantLogoSurface.Crm);
+        Assert.NotNull(stored);
+        Assert.False(stored.IsActive);
+        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        Assert.False(stored.Update(Guid.NewGuid(), "image/png", 1024, null, null, removedAt.AddMinutes(-5)));
+        Assert.False(stored.IsActive);
+        Assert.True(stored.Update(Guid.NewGuid(), "image/png", 1024, null, null, removedAt.AddMinutes(5)));
+        Assert.True(stored.IsActive);
+    }
+
+    [Fact]
     public async Task Handle_ignores_a_removal_older_than_the_projected_logo()
     {
         var tenantId = Guid.NewGuid();
@@ -76,19 +97,6 @@ public sealed class TenantLogoRemovedConsumerTests
         await HandleAsync(evt, repository, unitOfWork);
 
         Assert.True((await repository.GetAsync(tenantId, TenantLogoSurface.Crm))!.IsActive);
-        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
-    }
-
-    [Fact]
-    public async Task Handle_skips_when_no_TenantLogoRef_exists()
-    {
-        var tenantId = Guid.NewGuid();
-        var repository = new FakeTenantLogoRefRepository();
-        var unitOfWork = new FakeUnitOfWork();
-        var evt = new TenantLogoRemovedIntegrationEvent { TenantId = tenantId, RemovedAtUtc = DateTime.UtcNow };
-
-        await HandleAsync(evt, repository, unitOfWork);
-
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 }

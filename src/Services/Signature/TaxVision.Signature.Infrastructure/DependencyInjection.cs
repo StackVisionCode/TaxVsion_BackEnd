@@ -21,8 +21,10 @@ using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Application.Profiles.EffectiveSignature;
 using TaxVision.Signature.Application.RateLimiting.Abstractions;
+using TaxVision.Signature.Application.Requests.Commands.FromForm;
 using TaxVision.Signature.Application.Requests.Preparer;
 using TaxVision.Signature.Application.Sealing;
+using TaxVision.Signature.Application.Templates.Commands.Instantiate;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
 using TaxVision.Signature.Infrastructure.Locking;
@@ -97,9 +99,18 @@ public static class DependencyInjection
         services.AddScoped<ISignaturePlatformSettingsProvider, SignaturePlatformSettingsProvider>();
         // Estilo de estampado (marco, fecha, letra automática): lo leen sellado, copias parciales y vista pública.
         services.AddScoped<IStampStyleResolver, StampStyleResolver>();
+        services.AddScoped<SignatureImageScanGate>();
+        services.AddScoped<SealingDocumentProcessor>();
+        services.AddScoped<SealingCertificateBuilder>();
+        services.AddScoped<SignatureRequestFromFormBuilder>();
+        services.AddScoped<SignatureRequestFromTemplateBuilder>();
         services.AddScoped<IRequestDocumentVerifier, RequestDocumentVerifier>();
         services.AddScoped<ISignedDocumentDeliveryRepository, SignedDocumentDeliveryRepository>();
         services.AddScoped<ISignedDocumentDeliveryIssuer, SignedDocumentDeliveryIssuer>();
+        services
+            .AddOptions<DeliveryIssuanceLockOptions>()
+            .Bind(configuration.GetSection(DeliveryIssuanceLockOptions.SectionName));
+        services.AddScoped<IDeliveryIssuanceLock, SqlDeliveryIssuanceLock>();
         services.AddScoped<CustomerPortalCopier>();
         services.AddScoped<DeliverableFiles>();
         // El token de la entrega viaja cifrado a Notification (misma clave ENCRYPTION_MASTER_KEY).
@@ -111,6 +122,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditChainVerifier, HmacAuditChainVerifier>();
         services.AddScoped<SqlAuditChainLock>();
         services.AddScoped<ISealedAuditGapQuery, SealedAuditGapQuery>();
+        services.AddScoped<ICompletedAuditBackfillStore, CompletedAuditBackfillStore>();
 
         // CMS signer (BouncyCastle). Registrado sólo si hay certificado configurado —
         // permite arrancar en dev sin PFX. En producción es obligatorio para PAdES-B.
@@ -265,7 +277,7 @@ public static class DependencyInjection
 
         // Fase D1 — cliente MinIO propio de Signature, credenciales scoped (IAM
         // signature-source, ver deploy/docker/minio/policies/signature-source.json),
-        // nunca las root de CloudStorage. Solo para el UploadAsync del sellado; el
+        // nunca las root de CloudStorage. Solo para el StageAsync del sellado; el
         // DownloadAsync del original sigue via el HttpClient de abajo.
         services.AddSingleton<Minio.IMinioClient>(sp =>
         {

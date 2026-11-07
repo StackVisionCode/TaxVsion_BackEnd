@@ -33,6 +33,7 @@ public sealed class CreateTenantHandlerTests
                 new NoopCorrelationContext(),
                 new NoCache(),
                 NullLogger<CreateTenantCommand>.Instance,
+                TimeProvider.System,
                 CancellationToken.None
             )
         );

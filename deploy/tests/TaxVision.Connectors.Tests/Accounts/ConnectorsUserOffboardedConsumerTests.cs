@@ -1,221 +1,32 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
-using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
-using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Accounts.Consumers;
-using TaxVision.Connectors.Domain.Accounts;
-using TaxVision.Connectors.Domain.Shared;
-using TaxVision.Connectors.Domain.Watch;
 using TaxVision.Connectors.Tests.OAuth;
-using TaxVision.Connectors.Tests.Providers;
-using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.Accounts;
 
-/// <summary>
-/// Al retirar (offboard) a un empleado: sus buzones PERSONALES se desconectan y se purgan sus
-/// secretos; los de OFICINA (y los de otros empleados) no se tocan.
-/// </summary>
+/// <summary>El evento de retiro solo reenvía la purga de los buzones personales a su comando sin transacción.</summary>
 public sealed class ConnectorsUserOffboardedConsumerTests
 {
-    private static readonly DateTime Now = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
-    private sealed class Harness
+    [Fact]
+    public async Task Offboarding_forwards_the_purge_to_its_command()
     {
-        public FakeTenantEmailAccountRepository Accounts { get; } = new();
-        public FakeOAuthConnectionRepository OAuth { get; } = new();
-        public FakeImapCredentialsRepository Imap { get; } = new();
-        public FakeSmtpCredentialsRepository Smtp { get; } = new();
-        public FakeProviderWatchSubscriptionRepository Watches { get; } = new();
-        public FakeOAuthProviderClient ProviderClient { get; } = new(ProviderCode.Gmail);
-        public FakeEncryptedSecretProtector Protector { get; } = new();
-        public FakeProviderConnectionAuditLogRepository Audit { get; } = new();
-        public FakeUnitOfWork UnitOfWork { get; } = new();
-        public FakeMessageBus Bus { get; } = new();
-
-        public Task Run(Guid tenantId, Guid leaverUserId) =>
-            ConnectorsUserOffboardedConsumer.Handle(
-                new UserOffboardedIntegrationEvent
-                {
-                    TenantId = tenantId,
-                    UserId = leaverUserId,
-                    Email = "leaver@example.com",
-                    ActorType = "TenantEmployee",
-                    RemovedAtUtc = Now,
-                },
-                Accounts,
-                OAuth,
-                Imap,
-                Smtp,
-                Watches,
-                new FakeOAuthProviderClientFactory(ProviderClient),
-                Protector,
-                Audit,
-                UnitOfWork,
-                Bus,
-                new FakeCorrelationContext(),
-                NullLogger<TenantEmailAccount>.Instance,
-                CancellationToken.None
-            );
-
-        public TenantEmailAccount SeedConnectedMailbox(Guid tenantId, Guid? ownerUserId, string email)
+        var bus = new FakeMessageBus();
+        var evt = new UserOffboardedIntegrationEvent
         {
-            var account = TenantEmailAccount
-                .Create(tenantId, email, ProviderCode.Gmail, Guid.NewGuid(), Now, ownerUserId: ownerUserId)
-                .Value;
-            account.MarkConnected(Now);
-            account.Activate(Now);
-            Accounts.Accounts.Add(account);
+            TenantId = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            Email = "leaver@example.com",
+            ActorType = "TenantEmployee",
+            RemovedAtUtc = DateTime.UtcNow,
+            CorrelationId = "corr-1",
+        };
 
-            var connection = OAuthConnection.Create(account.Id, ProviderCode.Gmail, "client-1", "scope", Now).Value;
-            var token = OAuthToken
-                .Create(
-                    connection.Id,
-                    Protector.Protect("access"),
-                    Protector.Protect("refresh-token"),
-                    Now.AddHours(1),
-                    Now
-                )
-                .Value;
-            connection.AttachToken(token);
-            OAuth.Connections.Add(connection);
+        await ConnectorsUserOffboardedConsumer.Handle(evt, bus);
 
-            Imap.Credentials.Add(
-                ImapCredentials
-                    .Create(account.Id, "imap.gmail.com", 993, true, email, Protector.Protect("imap-pass"))
-                    .Value
-            );
-            Smtp.Credentials.Add(
-                SmtpCredentials
-                    .Create(account.Id, "smtp.gmail.com", 587, true, email, Protector.Protect("smtp-pass"))
-                    .Value
-            );
-            return account;
-        }
-    }
-
-    [Fact]
-    public async Task Personal_mailbox_is_disconnected_and_its_secrets_purged()
-    {
-        var tenantId = Guid.NewGuid();
-        var leaver = Guid.NewGuid();
-        var harness = new Harness();
-        var account = harness.SeedConnectedMailbox(tenantId, leaver, "leaver@gmail.com");
-
-        await harness.Run(tenantId, leaver);
-
-        Assert.Equal(TenantEmailAccountStatus.Disconnected, account.Status);
-        Assert.Empty(harness.OAuth.Connections); // token + connection purgados
-        Assert.Empty(harness.Imap.Credentials);
-        Assert.Empty(harness.Smtp.Credentials);
-        Assert.Contains("refresh-token", harness.ProviderClient.RevokedRefreshTokens);
-        Assert.Single(harness.Bus.Published);
-        Assert.Single(harness.Audit.Entries);
-    }
-
-    [Fact]
-    public async Task The_purge_is_saved_before_the_disconnected_events_are_published()
-    {
-        // Si el guardado fallara y Wolverine reintentara, publicar antes dejaría salir el aviso dos veces.
-        var tenantId = Guid.NewGuid();
-        var leaver = Guid.NewGuid();
-        var harness = new Harness();
-        harness.SeedConnectedMailbox(tenantId, leaver, "leaver@gmail.com");
-        harness.SeedConnectedMailbox(tenantId, leaver, "leaver@outlook.com");
-        var savesSeenAtPublish = new List<int>();
-        harness.Bus.OnPublish = _ => savesSeenAtPublish.Add(harness.UnitOfWork.SaveChangesCallCount);
-
-        await harness.Run(tenantId, leaver);
-
-        Assert.Equal([1, 1], savesSeenAtPublish);
         Assert.Equal(
-            2,
-            harness.Bus.Published.OfType<ConnectorsTenantEmailAccountDisconnectedIntegrationEvent>().Count()
+            new PurgeOffboardedMailboxesCommand(evt.TenantId, evt.UserId, "corr-1"),
+            Assert.Single(bus.Published)
         );
-    }
-
-    [Fact]
-    public async Task Office_and_other_users_mailboxes_are_left_untouched()
-    {
-        var tenantId = Guid.NewGuid();
-        var leaver = Guid.NewGuid();
-        var otherUser = Guid.NewGuid();
-        var harness = new Harness();
-        var office = harness.SeedConnectedMailbox(tenantId, ownerUserId: null, "office@taxpro.com");
-        var others = harness.SeedConnectedMailbox(tenantId, otherUser, "colleague@gmail.com");
-
-        await harness.Run(tenantId, leaver);
-
-        Assert.Equal(TenantEmailAccountStatus.Active, office.Status);
-        Assert.Equal(TenantEmailAccountStatus.Active, others.Status);
-        Assert.Equal(2, harness.OAuth.Connections.Count);
-        Assert.Empty(harness.Bus.Published);
-    }
-
-    [Fact]
-    public async Task No_personal_mailboxes_is_a_noop()
-    {
-        var tenantId = Guid.NewGuid();
-        var harness = new Harness();
-
-        await harness.Run(tenantId, Guid.NewGuid());
-
-        Assert.Empty(harness.Bus.Published);
-        Assert.Equal(0, harness.UnitOfWork.SaveChangesCallCount);
-    }
-
-    [Fact]
-    public async Task Offboarding_impact_counts_the_employees_personal_mailboxes()
-    {
-        var tenantId = Guid.NewGuid();
-        var leaver = Guid.NewGuid();
-        var harness = new Harness();
-        harness.SeedConnectedMailbox(tenantId, leaver, "leaver@gmail.com");
-        harness.SeedConnectedMailbox(tenantId, leaver, "leaver2@gmail.com");
-        harness.SeedConnectedMailbox(tenantId, ownerUserId: null, "office@taxpro.com"); // oficina no cuenta
-        harness.SeedConnectedMailbox(tenantId, Guid.NewGuid(), "colleague@gmail.com"); // de otro no cuenta
-
-        var result = await OffboardingImpactHandler.Handle(
-            new OffboardingImpactQuery(tenantId, leaver),
-            harness.Accounts,
-            CancellationToken.None
-        );
-
-        Assert.Equal(2, result.PersonalMailboxes);
-    }
-
-    [Fact]
-    public async Task A_failing_provider_revocation_does_not_stop_the_purge()
-    {
-        var tenantId = Guid.NewGuid();
-        var leaver = Guid.NewGuid();
-        var harness = new Harness();
-        harness.ProviderClient.ThrowOnRevoke = new TaskCanceledException("provider timeout");
-        var account = harness.SeedConnectedMailbox(tenantId, leaver, "leaver@gmail.com");
-
-        await harness.Run(tenantId, leaver);
-
-        Assert.Equal(TenantEmailAccountStatus.Disconnected, account.Status);
-        Assert.Empty(harness.OAuth.Connections);
-        Assert.Empty(harness.Imap.Credentials);
-        Assert.Equal(1, harness.UnitOfWork.SaveChangesCallCount);
-    }
-
-    [Fact]
-    public async Task The_inbound_push_of_a_purged_mailbox_stops_renewing()
-    {
-        var tenantId = Guid.NewGuid();
-        var leaver = Guid.NewGuid();
-        var harness = new Harness();
-        var account = harness.SeedConnectedMailbox(tenantId, leaver, "leaver@gmail.com");
-        var watch = ProviderWatchSubscription
-            .Create(account.Id, ProviderCode.Gmail, "history-1", "topic", DateTime.UtcNow.AddDays(3), DateTime.UtcNow)
-            .Value;
-        harness.Watches.Subscriptions.Add(watch);
-
-        await harness.Run(tenantId, leaver);
-
-        Assert.Equal(ProviderWatchStatus.Removed, watch.Status);
-        Assert.Empty(await harness.Watches.ListExpiringBeforeAsync(DateTime.UtcNow.AddDays(30)));
     }
 }

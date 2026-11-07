@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 
 namespace TaxVision.CloudStorage.Application.Files.Commands;
@@ -23,6 +25,7 @@ public static class ReassignFileOwnerHandler
         ReassignFileOwnerRequestedIntegrationEvent evt,
         IFileObjectRepository files,
         ISystemFolderProvisioner systemFolders,
+        IStorageAuditRepository audit,
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
@@ -36,8 +39,28 @@ public static class ReassignFileOwnerHandler
             var file = await files.GetAsync(evt.TenantId, evt.FileId, ct);
             if (file is null)
             {
-                // El archivo no existe (ya purgado, o id ajeno) — nada que re-asignar.
-                logger.LogInformation("ReassignFileOwner {FileId}: file not found, skipping.", evt.FileId);
+                // Signature conoce el FileId desde el sellado: si es reciente, SaveFileRequested puede seguir en vuelo.
+                // Agotados los reintentos va a la cola de errores, visible.
+                if (clock.UtcNow - evt.OccurredOn < TimeSpan.FromMinutes(options.Value.ReassignOwnerFileWaitMinutes))
+                    throw new DependencyNotReadyException("FileObject", $"file {evt.FileId} is not cataloged yet");
+
+                // Pasado el plazo ya no se espera: purgado o id ajeno. Queda en el log y en la auditoría.
+                logger.LogWarning("ReassignFileOwner {FileId}: file not found, skipping.", evt.FileId);
+                audit.Add(
+                    StorageAccessLog.Create(
+                        evt.TenantId,
+                        evt.FileId,
+                        evt.ActorId,
+                        "owner.reassign-skipped",
+                        "skipped",
+                        null,
+                        null,
+                        correlation.CorrelationId,
+                        $"reason=file_not_found;newOwnerType={evt.NewOwnerType}",
+                        clock.UtcNow
+                    )
+                );
+                await unitOfWork.SaveChangesAsync(ct);
                 return;
             }
 

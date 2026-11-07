@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Wallet.Domain.ValueObjects;
 
 namespace TaxVision.Wallet.Domain.Wallet;
 
@@ -46,6 +47,9 @@ public sealed class WalletTopUp : TenantEntity
     public DateTime UpdatedAtUtc { get; private set; }
 
     public long AmountMicros => AmountCents * 10_000;
+
+    /// <summary>Lo que se acredita al monedero: el importe de la orden en micros, con su moneda.</summary>
+    public Result<WalletMoney> CreditAmount() => WalletMoney.Create(AmountMicros, Currency);
 
     public static Result<WalletTopUp> Create(Guid tenantId, long amountCents, string currency, Guid requestedByUserId)
     {

@@ -2,11 +2,11 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using TaxVision.Auth.Application.Onboarding;
-using TaxVision.Auth.Application.Onboarding.Consumers;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Application;
+using TaxVision.Auth.Onboarding.Application.Consumers;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
@@ -23,14 +23,12 @@ public sealed class OnboardingPaymentSucceededConsumerTests
     };
 
     private static OnboardingSuccessCompleter BuildCompleter(
-        FakeTokenReferenceStore tokenReferences,
-        FakeMessageBus bus
+        FakeTokenReferenceStore tokenReferences
     ) =>
         new(
             new SecureTokenService(),
             tokenReferences,
             Options.Create(RegistrationOptions),
-            bus,
             TaxVision.Auth.Tests.Application.FixedPlatformSettings.For("taxoffix.io"),
             NullLogger<OnboardingSuccessCompleter>.Instance
         );
@@ -64,9 +62,10 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         await OnboardingPaymentSucceededConsumer.Handle(
             evt,
             onboardings,
-            BuildCompleter(tokenReferences, bus),
+            BuildCompleter(tokenReferences),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
+            bus,
             correlation,
             NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
             CancellationToken.None
@@ -131,9 +130,10 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         await OnboardingPaymentSucceededConsumer.Handle(
             evt,
             onboardings,
-            BuildCompleter(tokenReferences, bus),
+            BuildCompleter(tokenReferences),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
+            bus,
             correlation,
             NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
             CancellationToken.None
@@ -151,7 +151,7 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         var tokenReferences = new FakeTokenReferenceStore();
         var bus = new FakeMessageBus();
 
-        var result = await BuildCompleter(tokenReferences, bus)
+        var result = await BuildCompleter(tokenReferences)
             .CompleteAsync(
                 onboarding,
                 amountPaidCents: 4900,

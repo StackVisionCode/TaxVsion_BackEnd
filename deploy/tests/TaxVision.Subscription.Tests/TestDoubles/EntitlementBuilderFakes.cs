@@ -21,6 +21,11 @@ public sealed class FakeSubscriptionRepo(TenantSubscription? subscription) : ISu
         return true;
     }
 
+    public Task<TenantSubscription?> GetWithFullHistoryAsync(Guid tenantId, CancellationToken ct = default) =>
+
+        GetByTenantIdAsync(tenantId, ct);
+
+
     public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(subscription);
 

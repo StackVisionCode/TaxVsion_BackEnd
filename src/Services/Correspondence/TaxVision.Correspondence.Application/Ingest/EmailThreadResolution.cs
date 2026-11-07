@@ -6,9 +6,8 @@ namespace TaxVision.Correspondence.Application.Ingest;
 /// <summary>
 /// Resultado de <see cref="ThreadResolver.ResolveAsync"/>: o bien un <see cref="EmailThread"/>
 /// existente que matcheó alguna de las 4 capas (<see cref="MatchedLayer"/> dice cuál), o ningún
-/// match (<see cref="NoMatch"/>). <see cref="ThreadResolver"/> solo busca — el caller
-/// (<see cref="RawMessageReceivedConsumer"/>) decide entre <c>EmailThread.AppendMessage</c> y
-/// <c>EmailThread.NewFromMessage</c> según este resultado.
+/// match (<see cref="NoMatch"/>). <see cref="ThreadResolver"/> solo busca —
+/// <see cref="EmailThreadIngestion"/> decide entre agregar al hilo o crear uno.
 /// </summary>
 /// <param name="UnthreadedSentDraft">
 /// COR-16: la respuesta cita un correo nuevo enviado desde el CRM que todavía no tiene hilo; el caller le crea el

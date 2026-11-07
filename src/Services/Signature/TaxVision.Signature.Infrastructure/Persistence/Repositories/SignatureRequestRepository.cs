@@ -25,6 +25,8 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .Include(request => request.PreparerFields)
             .Include(request => request.Documents)
             .Include(request => request.CustomerCopies)
+            // SIG-13: un JOIN de 8 colecciones multiplica filas; por separado cada una viaja una vez.
+            .AsSplitQuery()
             .FirstOrDefaultAsync(request => request.Id == requestId && request.TenantId == tenantId, ct);
 
     public Task<SignatureRequest?> GetByExternalReferenceAsync(

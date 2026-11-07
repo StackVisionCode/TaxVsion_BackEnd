@@ -34,12 +34,13 @@ public partial class Tenant : TenantlessAggregateRoot
     /// proyección descarte uno más viejo, y es el token de concurrencia de la fila.</summary>
     public long Version { get; private set; }
 
-    public Tenant() { }
+    private Tenant() { }
 
     public static Result<Tenant> Create(
         string name,
         string subdomain,
         string defaultTimeZoneId,
+        DateTime nowUtc,
         Guid? onboardingId = null
     )
     {
@@ -61,7 +62,6 @@ public partial class Tenant : TenantlessAggregateRoot
         if (timeZoneResult.IsFailure)
             return Result.Failure<Tenant>(timeZoneResult.Error);
 
-        var nowUtc = DateTime.UtcNow;
         var tenant = new Tenant
         {
             Name = nameResult.Value,

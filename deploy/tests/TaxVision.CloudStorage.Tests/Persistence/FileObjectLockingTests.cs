@@ -61,15 +61,4 @@ public sealed class FileObjectLockingTests
             repository.GetForUpdateAsync(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None)
         );
     }
-
-    [Fact]
-    public async Task Claiming_a_scan_refuses_to_run_without_an_open_transaction()
-    {
-        await using var db = CreateContext();
-        var repository = new FileObjectRepository(db);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            repository.TryClaimScanAsync(Guid.NewGuid(), CancellationToken.None)
-        );
-    }
 }

@@ -287,7 +287,7 @@ public sealed class GetAccountSubscriptionHandlerTests
                 autoRenew: true,
                 Money.Create(29m, "USD").Value,
                 BillingCycle.Monthly,
-                totalCents,
+                Money.FromCents(totalCents, "USD"),
                 requestedByUserId: Guid.Empty,
                 nowUtc: createdAt
             )

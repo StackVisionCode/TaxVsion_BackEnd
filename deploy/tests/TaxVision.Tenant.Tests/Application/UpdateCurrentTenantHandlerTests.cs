@@ -17,7 +17,7 @@ public sealed class UpdateCurrentTenantHandlerTests
     [Fact]
     public async Task Rename_and_time_zone_change_saves_publishes_full_state_and_invalidates_the_list()
     {
-        var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "Etc/UTC").Value;
+        var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "Etc/UTC", DateTime.UtcNow).Value;
         var (repo, unitOfWork, cache) = Arrange(tenant);
 
         var result = await HandleAsync(
@@ -45,7 +45,7 @@ public sealed class UpdateCurrentTenantHandlerTests
     [Fact]
     public async Task Same_values_return_the_current_state_without_saving_or_publishing()
     {
-        var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "America/Chicago").Value;
+        var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "America/Chicago", DateTime.UtcNow).Value;
         var (repo, unitOfWork, cache) = Arrange(tenant);
 
         var result = await HandleAsync(new(tenant.Id, " Acme Tax ", "America/Chicago"), repo, unitOfWork, cache);
@@ -65,7 +65,7 @@ public sealed class UpdateCurrentTenantHandlerTests
         string expectedCode
     )
     {
-        var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "Etc/UTC").Value;
+        var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "Etc/UTC", DateTime.UtcNow).Value;
         var (repo, unitOfWork, cache) = Arrange(tenant);
 
         var result = await HandleAsync(new(tenant.Id, name, timeZoneId), repo, unitOfWork, cache);
@@ -105,6 +105,7 @@ public sealed class UpdateCurrentTenantHandlerTests
             unitOfWork,
             cache,
             NullLogger<UpdateCurrentTenantCommand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 

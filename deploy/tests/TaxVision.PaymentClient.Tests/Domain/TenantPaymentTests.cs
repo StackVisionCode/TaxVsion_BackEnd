@@ -194,7 +194,7 @@ public sealed class TenantPaymentTests
     public void RefundPartial_on_a_legally_held_payment_is_rejected()
     {
         var payment = CreateSucceededPayment();
-        payment.SetLegalHold(true, Guid.Empty, DateTime.UtcNow);
+        payment.SetLegalHold(true, Guid.NewGuid(), DateTime.UtcNow);
 
         var result = payment.RefundPartial(Money.Create(100, "USD").Value, "reason", Guid.Empty, DateTime.UtcNow);
 
@@ -331,6 +331,31 @@ public sealed class TenantPaymentTests
         );
         payment.MarkRequiresAction("redirect_to_url", "https://3ds.test", Guid.Empty, atUtc);
         return payment;
+    }
+
+    [Fact]
+    public void SetLegalHold_WithEmptyActor_Fails()
+    {
+        var payment = CreatePendingPayment();
+
+        var result = payment.SetLegalHold(true, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("TenantPayment.ActorRequired", result.Error.Code);
+        Assert.False(payment.IsLegalHeld);
+    }
+
+    [Fact]
+    public void SetLegalHold_SameValue_DoesNotTouchUpdatedAt()
+    {
+        var payment = CreatePendingPayment();
+        var updatedAt = payment.UpdatedAtUtc;
+
+        var result = payment.SetLegalHold(false, Guid.NewGuid(), updatedAt.AddHours(1));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(updatedAt, payment.UpdatedAtUtc);
+        Assert.Equal(Guid.Empty, payment.UpdatedBy);
     }
 
     private static PaymentPurpose Purpose() =>

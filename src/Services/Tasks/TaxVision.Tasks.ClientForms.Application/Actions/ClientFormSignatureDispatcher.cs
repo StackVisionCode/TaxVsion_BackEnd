@@ -42,12 +42,12 @@ public sealed class ClientFormSignatureDispatcher(
         if (copy is null || string.IsNullOrEmpty(copy.ContentHash))
             return null;
 
-        var revisionNumber = request.RevisionNumberForGeneration(generationId);
+        var revisionNumber = request.Summary.RevisionNumberForGeneration(generationId);
         if (revisionNumber is not { } revision)
             return null;
 
         // Idempotencia: si ya se pidió la firma de esta revisión, no re-disparar en una reentrega.
-        if (request.RevisionHasPendingSignature(revision))
+        if (request.Summary.RevisionHasPendingSignature(revision))
             return null;
 
         var signer = await ResolveSignerAsync(request, revision, ct);
@@ -56,7 +56,7 @@ public sealed class ClientFormSignatureDispatcher(
 
         var verification = await ResolveVerificationAsync(request, ct);
 
-        var marked = request.MarkSignatureRequesting(revision, copy.FileId, copy.ContentHash!);
+        var marked = request.Summary.MarkSignatureRequesting(revision, copy.FileId, copy.ContentHash!);
         if (marked.IsFailure)
             return null;
 

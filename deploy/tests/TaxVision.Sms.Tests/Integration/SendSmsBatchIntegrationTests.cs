@@ -2,7 +2,6 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Sms.Application;
 using TaxVision.Sms.Application.Abstractions;
@@ -27,12 +26,7 @@ public sealed class SendSmsBatchIntegrationTests : IAsyncLifetime
     private readonly FakeSmsProvider _provider;
 
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("SMS_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("b8e2f1a4-7c3d-4e9a-9f21-3c5d8a1b6e42")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set SMS_DB_CONNECTION or the Sms user-secrets to run this test.");
+        SmsIntegrationDatabase.ConnectionString;
 
     public SendSmsBatchIntegrationTests()
     {

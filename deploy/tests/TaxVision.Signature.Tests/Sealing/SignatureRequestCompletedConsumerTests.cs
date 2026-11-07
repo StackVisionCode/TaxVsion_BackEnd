@@ -22,7 +22,7 @@ namespace TaxVision.Signature.Tests.Sealing;
 /// que sí quedó sellado). SIG-3: sin candado se reintenta y cada ejecución sella todo lo listo. SIG-6: la fase A
 /// no escribe y la fase B registra y publica junto.
 /// </summary>
-public sealed class SignatureRequestCompletedConsumerTests
+public sealed partial class SignatureRequestCompletedConsumerTests
 {
     [Fact]
     public async Task TransientStorageFailure_Throws_DoesNotPublishSealingFailed()
@@ -357,7 +357,12 @@ public sealed class SignatureRequestCompletedConsumerTests
         CapturingBus bus,
         int attempts,
         bool lockAcquired = true,
-        IReadOnlyList<Guid>? documentIds = null
+        IReadOnlyList<Guid>? documentIds = null,
+        IFileMetadataRefRepository? fileRefs = null,
+        ITenantBrandingRefRepository? branding = null,
+        ICertificateOfCompletionRenderer? certificates = null,
+        DateTime? readyAtUtc = null,
+        ISignatureRequestRepository? repository = null
     ) =>
         SignatureRequestCompletedConsumer.Handle(
             new SignatureDocumentsReadyForSealingIntegrationEvent
@@ -367,16 +372,19 @@ public sealed class SignatureRequestCompletedConsumerTests
                 SignatureRequestId = request.Id,
                 CreatedByUserId = request.CreatedByUserId,
                 DocumentIds = documentIds ?? request.Documents.Select(d => d.Id).ToList(),
-                ReadyAtUtc = DateTime.UtcNow,
+                ReadyAtUtc = readyAtUtc ?? DateTime.UtcNow,
                 IdempotencyKey = "sealing-tests",
             },
-            new SingleRequestRepository(request),
-            storage,
-            new NoFileRefs(),
-            new NoBranding(),
-            sealer,
-            new FixedStampStyle(),
-            new FixedCertificateRenderer(),
+            repository ?? new SingleRequestRepository(request),
+            new SignatureImageScanGate(fileRefs ?? new NoFileRefs(), storage, NullLogger<SignatureRequest>.Instance),
+            new SealingDocumentProcessor(storage, sealer, new FixedStampStyle(), NullLogger<SignatureRequest>.Instance),
+            new SealingCertificateBuilder(
+                certificates ?? new FixedCertificateRenderer(),
+                sealer,
+                storage,
+                branding ?? new NoBranding(),
+                NullLogger<SignatureRequest>.Instance
+            ),
             new FixedLock(lockAcquired),
             bus,
             new FixedCorrelation(),
@@ -388,7 +396,9 @@ public sealed class SignatureRequestCompletedConsumerTests
     private static SignatureRequest NewCompletedRequest(
         int documents,
         Guid? signatureImageFileId = null,
-        bool generateCertificate = false
+        bool generateCertificate = false,
+        SignatureCaptureMethod captureMethod = SignatureCaptureMethod.Drawn,
+        CertificateGenerationMode certificateMode = CertificateGenerationMode.SingleForRequest
     )
     {
         var limits = TestSignatureLimits.Default;
@@ -403,7 +413,8 @@ public sealed class SignatureRequestCompletedConsumerTests
                 72,
                 false,
                 false,
-                generateCertificate
+                generateCertificate,
+                certificateGenerationMode: certificateMode
             )
             .Value;
         for (var i = 1; i <= documents; i++)
@@ -445,7 +456,7 @@ public sealed class SignatureRequestCompletedConsumerTests
             ? request.MarkSignerSigned(
                 signer.Id,
                 DateTime.UtcNow,
-                SignatureCaptureMethod.Drawn,
+                captureMethod,
                 null,
                 imageFileId,
                 "127.0.0.1",
@@ -461,26 +472,41 @@ public sealed class SignatureRequestCompletedConsumerTests
     {
         public Error? UploadError { get; init; }
         public Result<SignatureFileMetadata>? FileLookup { get; init; }
+        public Dictionary<Guid, byte[]> Files { get; } = [];
+        public HashSet<Guid> FailingDownloads { get; } = [];
+        public int? FailOnStage { get; init; }
+        public List<Guid> Downloads { get; } = [];
+        public List<SignatureFileUpload> Staged { get; } = [];
 
-        public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
-            Task.FromResult(Result.Success<byte[]>([1, 2, 3]));
-
-        public Task<Result<Guid>> UploadAsync(
-            Guid tenantId,
-            SignatureFileUpload upload,
-            CancellationToken ct = default
-        ) => Task.FromResult(UploadError is { } error ? Result.Failure<Guid>(error) : Result.Success(Guid.NewGuid()));
+        public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default)
+        {
+            Downloads.Add(fileId);
+            return Task.FromResult(
+                FailingDownloads.Contains(fileId)
+                    ? Result.Failure<byte[]>(new Error(SignatureStorage.TransientCode, "MinIO GET failed."))
+                    : Result.Success(Files.GetValueOrDefault(fileId, [1, 2, 3]))
+            );
+        }
 
         public Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
             Guid tenantId,
             SignatureFileUpload upload,
             CancellationToken ct = default
-        ) =>
-            Task.FromResult(
+        )
+        {
+            Staged.Add(upload);
+            if (Staged.Count == FailOnStage)
+                return Task.FromResult(
+                    Result.Failure<SaveFileRequestedIntegrationEvent>(
+                        new Error("Signature.Storage.Refused", "Refused by MinIO.")
+                    )
+                );
+            return Task.FromResult(
                 UploadError is { } error
                     ? Result.Failure<SaveFileRequestedIntegrationEvent>(error)
                     : Result.Success(FileRequest(tenantId, Guid.NewGuid()))
             );
+        }
 
         public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -505,20 +531,30 @@ public sealed class SignatureRequestCompletedConsumerTests
     {
         private int _calls;
         public int FailOnCall { get; init; }
+        public Exception? Failure { get; init; }
+        public CertificateSealInfo? Certificate { get; init; }
+        public List<SealingRequest> Requests { get; } = [];
 
         public SealingResult Seal(SealingRequest request)
         {
+            Requests.Add(request);
             if (++_calls == FailOnCall)
-                throw new InvalidOperationException("Invalid PDF structure.");
+                throw Failure ?? new InvalidOperationException("Invalid PDF structure.");
             return new SealingResult([1, 2, (byte)_calls], new string((char)('b' + _calls), 64));
         }
 
-        public CertificateSealInfo? DescribeSealCertificate() => null;
+        public CertificateSealInfo? DescribeSealCertificate() => Certificate;
     }
 
     private sealed class FixedCertificateRenderer : ICertificateOfCompletionRenderer
     {
-        public CertificateResult Render(CertificateOfCompletionModel model) => new([9], new string('f', 64));
+        public List<CertificateOfCompletionModel> Models { get; } = [];
+
+        public CertificateResult Render(CertificateOfCompletionModel model)
+        {
+            Models.Add(model);
+            return new([9], new string('f', 64));
+        }
     }
 
     private sealed class NoFileRefs : IFileMetadataRefRepository

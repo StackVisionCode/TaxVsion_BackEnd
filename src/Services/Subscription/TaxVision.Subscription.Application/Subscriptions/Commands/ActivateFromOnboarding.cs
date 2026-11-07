@@ -111,6 +111,9 @@ public static class ActivateFromOnboardingHandler
             await billingPreferences.AddAsync(preferenceResult.Value, ct);
         }
 
+        // Guardar antes de publicar: entra por InvokeAsync y el reintento en línea conserva lo ya publicado.
+        await unitOfWork.SaveChangesAsync(ct);
+
         // Sellar el tenant real: este handler corre con un token M2M scoped a PlatformTenant.Id
         // (la Saga todavia no tiene sesion de usuario), asi que sin esto RecalculateEntitlements
         // vería el filtro fail-closed de RBAC Fase 5 — mismo motivo que TenantCreatedConsumer.
@@ -126,8 +129,6 @@ public static class ActivateFromOnboardingHandler
             }
         );
         await bus.PublishAsync(new RecalculateEntitlementsCommand(command.TenantId));
-
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
     }

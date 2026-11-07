@@ -24,6 +24,7 @@ public static class SecurityCoordinatorOffboardedConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<OfficeCompliance> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -34,7 +35,7 @@ public static class SecurityCoordinatorOffboardedConsumer
         )
         {
             var compliance = await compliances.GetAsync(evt.TenantId, ct);
-            var nowUtc = DateTime.UtcNow;
+            var nowUtc = clock.GetUtcNow().UtcDateTime;
             if (
                 compliance is null
                 || !compliance.VacateSecurityCoordinatorOnOffboarding(evt.UserId, evt.OffboardedByUserId, nowUtc)

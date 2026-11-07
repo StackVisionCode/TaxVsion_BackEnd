@@ -71,6 +71,8 @@ public static class DisconnectAccountHandler
                         EmailAddress = account.EmailAddress,
                         ProviderCode = account.ProviderCode.ToString(),
                         DisconnectedAtUtc = now,
+                        OwnerUserId = account.OwnerUserId,
+                        IsOffice = account.IsOffice,
                     }
                 );
 

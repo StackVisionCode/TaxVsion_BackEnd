@@ -10,7 +10,8 @@ using TaxVision.Signature.Application.Abstractions;
 namespace TaxVision.Signature.Tests.Integration;
 
 /// <summary>
-/// SIG-1: firmar, verificar el PIN y rechazar sobreviven a un conflicto suelto; agotados los intentos, 409.
+/// SIG-1: firmar, verificar el PIN o el código, rechazar, consentir y pedir el código sobreviven a un conflicto suelto;
+/// agotados los intentos, 409.
 /// </summary>
 public sealed class PublicSignatureControllerIntegrationTests(SignatureApiFactory baseFactory)
     : IClassFixture<SignatureApiFactory>
@@ -24,6 +25,9 @@ public sealed class PublicSignatureControllerIntegrationTests(SignatureApiFactor
             { "sign", new { Method = "Typed", TypedName = "Jane Signer" } },
             { "verify-pin", new { Pin = "123456" } },
             { "reject", new { Reason = "No" } },
+            { "verify-challenge", new { Method = "EmailOtp", Answer = "123456" } },
+            { "consent", new { } },
+            { "challenge", new { Method = "EmailOtp" } },
         };
 
     [Theory]

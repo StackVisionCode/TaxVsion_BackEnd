@@ -21,7 +21,7 @@ namespace TaxVision.PaymentClient.Tests.Application;
 
 /// <summary>Canje del enlace público: un intento vivo (3DS pendiente) no deja abrir otro cobro, y la
 /// clave de idempotencia es fija por intento.</summary>
-public sealed class RedeemPaymentLinkHandlerTests
+public sealed partial class RedeemPaymentLinkHandlerTests
 {
     private static readonly DateTime NowUtc = DateTime.UtcNow;
 

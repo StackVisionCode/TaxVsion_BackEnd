@@ -58,6 +58,7 @@ public static class IssueCustomerPortalInvitationHandler
         ITenantRegistry tenants,
         IInvitationRepository invitations,
         IInvitationTokenService tokens,
+        IAccountTokenProtector tokenProtector,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -130,24 +131,6 @@ public static class IssueCustomerPortalInvitationHandler
             isResend = false;
         }
 
-        // El token viaja solo por el bus interno (outbox durable) hasta Notification.
-        await bus.PublishAsync(
-            new InvitationCreatedIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                InvitationId = invitation.Id,
-                Email = email,
-                ActorType = UserActorType.CustomerPortal.ToString(),
-                RawToken = token.RawToken,
-                ExpiresAtUtc = invitation.ExpiresAtUtc,
-                TenantName = tenant.Name,
-                TenantSubdomain = tenant.SubDomain,
-                InviterName = inviterName,
-                IsResend = isResend,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 command.TenantId,
@@ -164,6 +147,29 @@ public static class IssueCustomerPortalInvitationHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        // El token viaja solo por el bus interno (outbox durable) hasta Notification.
+        var tokenFields = tokenProtector.Seal(
+            AuthTokenPayloadSchemas.Invitation,
+            AuthTokenPayloadSchemas.InvitationBinding(command.TenantId, invitation.Id),
+            token.RawToken
+        );
+        await bus.PublishAsync(
+            new InvitationCreatedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                InvitationId = invitation.Id,
+                Email = email,
+                ActorType = UserActorType.CustomerPortal.ToString(),
+                RawToken = tokenFields.RawToken,
+                ProtectedToken = tokenFields.ProtectedToken,
+                ExpiresAtUtc = invitation.ExpiresAtUtc,
+                TenantName = tenant.Name,
+                TenantSubdomain = tenant.SubDomain,
+                InviterName = inviterName,
+                IsResend = isResend,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         return Result.Success(
             new PortalInvitationResult(

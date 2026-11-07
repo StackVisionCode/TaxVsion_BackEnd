@@ -4,6 +4,7 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -100,7 +101,7 @@ public static class InvoiceSentConsumer
                     var title = $"Factura {evt.InvoiceNumber} enviada";
                     await dispatcher.RecordInAppAsync(
                         evt.TenantId,
-                        $"user:{userId:N}",
+                        NotificationRecipient.ForUser(userId),
                         title,
                         NotificationCategory.Billing,
                         "billing.invoice_sent_to_customer",

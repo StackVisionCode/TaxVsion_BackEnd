@@ -11,7 +11,6 @@ using JasperFx;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Customer.Application.Abstractions;
@@ -37,12 +36,7 @@ namespace TaxVision.Customer.Tests.Integration;
 public sealed class CustomerDomainEventIntegrationTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("CUSTOMER_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("8c4e7963-1ddb-441e-af2d-755d58fb86a3")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set CUSTOMER_DB_CONNECTION or the Customer user-secrets.");
+        CustomerIntegrationDatabase.ConnectionString;
 
     private readonly string _schema = $"cusbb1_{Guid.NewGuid():N}"[..15];
     private readonly Guid _tenantId = Guid.NewGuid();

@@ -85,8 +85,8 @@ public static class CopyFileHandler
 
         files.Add(copy);
         audit.Add(CreateAudit(command, source, copy, clock.UtcNow));
-        await bus.PublishAsync(new ScanFileCommand(command.TenantId, copy.Id, command.Audit.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(new ScanFileCommand(command.TenantId, copy.Id, command.Audit.CorrelationId));
 
         return Result.Success(new CopiedFileResponse(copy.Id, copy.Status));
     }

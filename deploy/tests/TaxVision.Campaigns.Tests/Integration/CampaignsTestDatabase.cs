@@ -1,19 +1,26 @@
+extern alias BbTesting;
+
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using TaxVision.Campaigns.Infrastructure.Persistence;
+using BbTesting::TaxVision.BuildingBlocks.Testing.Integration;
+using Xunit;
+
+[assembly: TestFramework(TemporaryDatabaseTestFramework.TypeName, TemporaryDatabaseTestFramework.AssemblyName)]
 
 namespace TaxVision.Campaigns.Tests.Integration;
 
 /// <summary>
-/// Base local de Campaigns para las T-INT: <c>CAMPAIGNS_DB_CONNECTION</c> o los user-secrets de la Api.
-/// Cada prueba usa un tenant propio y borra solo sus filas.
+/// Base temporal de las T-INT de Campaigns (BB-10): la flota no la lee, así que una corrida abortada no le deja filas
+/// ni sobres. Una por proceso (ver <see cref="TemporaryTestDatabase"/>). Cada prueba usa un tenant propio. La base local
+/// (<c>CAMPAIGNS_DB_CONNECTION</c> o los user-secrets de la Api) solo ubica el servidor.
 /// </summary>
 internal static class CampaignsTestDatabase
 {
-    public static readonly string ConnectionString =
+    public static readonly string ServerConnectionString =
         Environment.GetEnvironmentVariable("CAMPAIGNS_DB_CONNECTION")
         ?? new ConfigurationBuilder()
             .AddUserSecrets("b8e4f2a1-6c3d-4a9e-9b17-2f5c8d0a1e34")
@@ -22,6 +29,21 @@ internal static class CampaignsTestDatabase
         ?? throw new InvalidOperationException(
             "Set CAMPAIGNS_DB_CONNECTION or the Campaigns user-secrets to run this test."
         );
+
+    private static readonly TemporaryTestDatabase Temporary = new(
+        "cmp_tint",
+        () => ServerConnectionString,
+        connection =>
+        {
+            using var db = new CampaignsDbContext(
+                new DbContextOptionsBuilder<CampaignsDbContext>().UseSqlServer(connection).Options,
+                new FixedTenant(Guid.Empty)
+            );
+            db.Database.EnsureCreated();
+        }
+    );
+
+    public static string ConnectionString => Temporary.ConnectionString;
 
     public static CampaignsDbContext NewContext(Guid tenantId, params IInterceptor[] interceptors) =>
         new(

@@ -752,6 +752,12 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("RelatedEventId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("RenderedLayoutVersion")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RenderedTemplateVersion")
+                        .HasColumnType("int");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()

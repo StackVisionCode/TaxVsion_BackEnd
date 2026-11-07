@@ -3,8 +3,6 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
-using TaxVision.Campaigns.Application.Campaigns.Abstractions;
-using TaxVision.Campaigns.Application.Permissions.Abstractions;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
 using TaxVision.Campaigns.Domain.Scheduling;
 using Wolverine;
@@ -24,8 +22,7 @@ public static class CampaignSchedulesUserOffboardedConsumer
     public static async Task Handle(
         UserOffboardedIntegrationEvent evt,
         ICampaignScheduleRepository schedules,
-        ICampaignRepository campaigns,
-        IUserPermissionsProjectionRepository permissions,
+        ScheduleOffboardingResolver resolver,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -44,7 +41,7 @@ public static class CampaignSchedulesUserOffboardedConsumer
                 return;
 
             var nowUtc = DateTime.UtcNow;
-            if (await ResolveEligibleSuccessorAsync(evt, permissions, ct) is { } successor)
+            if (await resolver.ResolveEligibleSuccessorAsync(evt, ct) is { } successor)
             {
                 await HandOverAsync(open, evt, successor, schedules, nowUtc, ct);
                 await unitOfWork.SaveChangesAsync(ct);
@@ -61,7 +58,9 @@ public static class CampaignSchedulesUserOffboardedConsumer
             await unitOfWork.SaveChangesAsync(ct);
             // Guardar antes de publicar: un guardado que falla no deja salir el aviso.
             if (paused.Count > 0)
-                await bus.PublishAsync(await PausedNoticeAsync(evt, paused, campaigns, nowUtc, correlation, ct));
+                await bus.PublishAsync(
+                    await resolver.PausedNoticeAsync(evt, paused, nowUtc, correlation.CorrelationId, ct)
+                );
             logger.LogInformation(
                 "Offboarding {UserId}: no eligible successor; {Count} campaign schedule(s) paused.",
                 evt.UserId,
@@ -69,16 +68,6 @@ public static class CampaignSchedulesUserOffboardedConsumer
             );
         }
     }
-
-    // Elegible = activo en este tenant y con permiso de programar envíos (regla compartida con Resume).
-    private static Task<EligibleScheduleSender?> ResolveEligibleSuccessorAsync(
-        UserOffboardedIntegrationEvent evt,
-        IUserPermissionsProjectionRepository permissions,
-        CancellationToken ct
-    ) =>
-        evt.SuccessorUserId is not { } candidate || candidate == evt.UserId
-            ? Task.FromResult<EligibleScheduleSender?>(null)
-            : ScheduleSenderEligibility.ResolveAsync(permissions, evt.TenantId, candidate, ct);
 
     private static async Task HandOverAsync(
         IReadOnlyList<CampaignSchedule> open,
@@ -122,37 +111,5 @@ public static class CampaignSchedulesUserOffboardedConsumer
             paused.Add(schedule);
         }
         return paused;
-    }
-
-    private static async Task<CampaignSchedulesPausedOnOffboardingIntegrationEvent> PausedNoticeAsync(
-        UserOffboardedIntegrationEvent evt,
-        IReadOnlyList<CampaignSchedule> paused,
-        ICampaignRepository campaigns,
-        DateTime nowUtc,
-        ICorrelationContext correlation,
-        CancellationToken ct
-    )
-    {
-        var names = new Dictionary<Guid, string>();
-        var items = new List<PausedCampaignSchedule>();
-        foreach (var schedule in paused)
-        {
-            if (!names.TryGetValue(schedule.CampaignId, out var name))
-            {
-                name = (await campaigns.GetByIdAsync(evt.TenantId, schedule.CampaignId, ct))?.Name ?? string.Empty;
-                names[schedule.CampaignId] = name;
-            }
-            items.Add(new PausedCampaignSchedule(schedule.Id, schedule.CampaignId, name));
-        }
-
-        return new CampaignSchedulesPausedOnOffboardingIntegrationEvent
-        {
-            TenantId = evt.TenantId,
-            OffboardedUserId = evt.UserId,
-            OffboardedByUserId = evt.OffboardedByUserId,
-            Schedules = items,
-            PausedAtUtc = nowUtc,
-            CorrelationId = correlation.CorrelationId,
-        };
     }
 }

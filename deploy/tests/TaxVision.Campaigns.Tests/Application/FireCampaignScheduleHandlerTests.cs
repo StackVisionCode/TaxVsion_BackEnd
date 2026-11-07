@@ -93,17 +93,24 @@ public sealed class FireCampaignScheduleHandlerTests
             FireCampaignScheduleHandler.Handle(
                 new FireCampaignScheduleCommand(Tenant, schedule.Id, leaseToken, slot),
                 Schedules,
-                Campaigns,
-                Runs,
-                Contacts,
-                Lists,
-                Customers,
-                new FakeCampaignCustomerAssignmentReader(),
-                Microsoft.Extensions.Options.Options.Create(new CampaignsVisibilityOptions()),
+                new ScheduledRunOpener(
+                    Campaigns,
+                    Runs,
+                    new CampaignAudienceService(
+                        Contacts,
+                        Lists,
+                        Customers,
+                        new FakeCampaignCustomerAssignmentReader(),
+                        Microsoft.Extensions.Options.Options.Create(new CampaignsVisibilityOptions())
+                    )
+                ),
                 Microsoft.Extensions.Options.Options.Create(Options),
-                Wallet,
+                new CampaignRunStarter(
+                    Wallet,
+                    new FakeCorrelationContext(),
+                    NullLogger<CampaignRunStarter>.Instance
+                ),
                 Bus,
-                new FakeCorrelationContext(),
                 NullLogger<CampaignSchedule>.Instance,
                 CancellationToken.None
             );

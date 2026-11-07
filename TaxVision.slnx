@@ -37,6 +37,9 @@
     <Project Path="src/Services/Auth/Application/TaxVision.Auth.Application.csproj" />
     <Project Path="src/Services/Auth/Domain/TaxVision.Auth.Domain.csproj" />
     <Project Path="src/Services/Auth/Infrastructure/TaxVision.Auth.Infrastructure.csproj" />
+    <Project Path="src/Services/Auth/Onboarding/Application/TaxVision.Auth.Onboarding.Application.csproj" />
+    <Project Path="src/Services/Auth/Onboarding/Domain/TaxVision.Auth.Onboarding.Domain.csproj" />
+    <Project Path="src/Services/Auth/Onboarding/Infrastructure/TaxVision.Auth.Onboarding.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/Services/Customer/">
     <Project Path="src/Services/Customer/TaxVision.Customer.Api/TaxVision.Customer.Api.csproj" />

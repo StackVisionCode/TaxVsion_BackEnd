@@ -104,7 +104,7 @@ public static class RegisterPortalFormAttachmentHandler
         var known = await verdicts.GetAsync(command.FileId, ct);
         // Un veredicto proyectado de otro tenant no se aplica: el adjunto espera el suyo.
         var verdict = known is not null && known.TenantId == request.TenantId ? known.ToVerdict() : null;
-        return request.RegisterAttachment(
+        return request.Files.Register(
             address.Value,
             command.FileId,
             command.DisplayName,

@@ -34,9 +34,8 @@ using Xunit;
 namespace TaxVision.Subscription.Tests.Integration;
 
 /// <summary>
-/// BB-13. <see cref="AddOnCheckoutPaidConsumer"/> publica antes de guardar y entra por mensaje. Lo publicado se cuenta
-/// al llegar a un puerto: contar <c>wolverine_outgoing_envelopes</c> da falso verde. Medido: por mensaje no se filtra
-/// el aviso del intento revertido; por InvokeAsync, sí. Base temporal propia.
+/// BB-13 y BB-16. <see cref="AddOnCheckoutPaidConsumer"/> entra por mensaje y ya guarda antes de publicar. Lo publicado
+/// se cuenta al llegar a un puerto: contar <c>wolverine_outgoing_envelopes</c> da falso verde. Base temporal propia.
 /// </summary>
 public sealed class AddOnCheckoutPaidRetryIntegrationTests : IAsyncLifetime
 {
@@ -45,6 +44,7 @@ public sealed class AddOnCheckoutPaidRetryIntegrationTests : IAsyncLifetime
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly FailOnceInterceptor _failure = new();
+    private readonly FailCommitOnceInterceptor _commitFailure = new();
     private readonly string _connectionString = new SqlConnectionStringBuilder(SubscriptionIntegrationDb.Connection)
     {
         InitialCatalog = $"{Prefix}{Guid.NewGuid():N}"[..(Prefix.Length + 12)],
@@ -95,10 +95,9 @@ public sealed class AddOnCheckoutPaidRetryIntegrationTests : IAsyncLifetime
         Assert.Equal([await StoredAddOnAsync()], received);
     }
 
-    // Control: con InvokeAsync el mismo fallo sí deja salir el aviso del intento revertido. Prueba que la medición
-    // ve la filtración cuando la hay; si esto cambia, hay que volver a mirar la guía.
+    // BB-16: guardando antes de publicar, un guardado fallido no deja nada que filtrar ni por InvokeAsync.
     [Fact(Timeout = 120_000)]
-    public async Task ByInvoke_TransientSaveFailure_LeaksTheRevertedAddOn()
+    public async Task ByInvoke_TransientSaveFailure_SendsOnlyTheStoredAddOn()
     {
         _host = await StartHostAsync(localQueue: false);
         var paid = await SeedPaidEventAsync();
@@ -108,8 +107,25 @@ public sealed class AddOnCheckoutPaidRetryIntegrationTests : IAsyncLifetime
 
         var stored = await StoredAddOnAsync();
         await Task.Delay(SettleTime);
-        var received = AddOnActivatedProbeHandler.ReceivedFor(_tenantId);
         Assert.Equal(1, _failure.Failures);
+        Assert.Equal([stored], AddOnActivatedProbeHandler.ReceivedFor(_tenantId));
+    }
+
+    // Control: un fallo en el commit llega con el aviso ya publicado, y por InvokeAsync el reintento lo conserva.
+    // Prueba que la medición ve la filtración cuando la hay; si esto cambia, hay que volver a mirar la guía.
+    [Fact(Timeout = 120_000)]
+    public async Task ByInvoke_TransientCommitFailure_LeaksTheRevertedAddOn()
+    {
+        _host = await StartHostAsync(localQueue: false);
+        var paid = await SeedPaidEventAsync();
+        _commitFailure.Next = () => new TimeoutException("Simulated SQL timeout.");
+
+        await _host.Services.GetRequiredService<IMessageBus>().InvokeAsync(paid);
+
+        var stored = await StoredAddOnAsync();
+        await Task.Delay(SettleTime);
+        var received = AddOnActivatedProbeHandler.ReceivedFor(_tenantId);
+        Assert.Equal(1, _commitFailure.Failures);
         Assert.Equal(2, received.Count);
         Assert.Contains(stored, received);
     }
@@ -173,7 +189,7 @@ public sealed class AddOnCheckoutPaidRetryIntegrationTests : IAsyncLifetime
                 true,
                 Money.Create(29m, "USD").Value,
                 BillingCycle.Monthly,
-                2900,
+                Money.FromCents(2900, "USD"),
                 Guid.NewGuid(),
                 nowUtc
             )
@@ -219,7 +235,7 @@ public sealed class AddOnCheckoutPaidRetryIntegrationTests : IAsyncLifetime
                 var services = options.Services;
                 services.AddBuildingBlocks();
                 services.AddDbContext<SubscriptionDbContext>(db =>
-                    db.UseSqlServer(_connectionString).AddInterceptors(_failure)
+                    db.UseSqlServer(_connectionString).AddInterceptors(_failure, _commitFailure)
                 );
                 services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<SubscriptionDbContext>());
                 services.AddScoped<ISubscriptionRepository, TenantSubscriptionRepository>();
@@ -306,6 +322,31 @@ public sealed class AddOnCheckoutPaidRetryIntegrationTests : IAsyncLifetime
         public bool HasTenant => true;
 
         public void SetTenant(Guid id) { }
+    }
+
+    /// <summary>Falla una vez el commit de la transacción del handler.</summary>
+    private sealed class FailCommitOnceInterceptor : DbTransactionInterceptor
+    {
+        private int _failures;
+
+        public Func<Exception>? Next { get; set; }
+        public int Failures => Volatile.Read(ref _failures);
+
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(
+            System.Data.Common.DbTransaction transaction,
+            TransactionEventData eventData,
+            InterceptionResult result,
+            CancellationToken cancellationToken = default
+        )
+        {
+            if (Next is { } failure)
+            {
+                Next = null;
+                Interlocked.Increment(ref _failures);
+                throw failure();
+            }
+            return ValueTask.FromResult(result);
+        }
     }
 
     /// <summary>Falla una vez el guardado que crea el add-on.</summary>

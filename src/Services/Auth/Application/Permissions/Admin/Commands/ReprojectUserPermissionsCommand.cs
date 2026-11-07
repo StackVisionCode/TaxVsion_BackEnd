@@ -65,6 +65,8 @@ public static class ReprojectUserPermissionsHandler
         var userRoles = await roles.GetUserRolesAsync(user.Id, ct);
         var permissionCodes = await roles.GetEffectivePermissionCodesAsync(user.Id, ct);
 
+        user.MarkPermissionsBackfilled(DateTime.UtcNow);
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new UserRolesChangedIntegrationEvent
             {
@@ -78,9 +80,6 @@ public static class ReprojectUserPermissionsHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        user.MarkPermissionsBackfilled(DateTime.UtcNow);
-        await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
             "ReprojectUserPermissions: re-published UserRolesChanged for {UserId} (tenant {TenantId}) at version {Version} with {CodeCount} permission code(s).",

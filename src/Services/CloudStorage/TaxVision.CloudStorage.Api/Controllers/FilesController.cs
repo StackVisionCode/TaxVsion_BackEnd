@@ -327,7 +327,15 @@ public sealed class FilesController(
             new MoveFileToFolderCommand(tenantId, actorId, scope, fileId, request.FolderId, AuditContext()),
             ct
         );
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        if (result.IsSuccess)
+            return NoContent();
+
+        // En la papelera: es un conflicto de estado. El mapeo común deja este código en 400.
+        var status =
+            result.Error == FileErrors.InvalidTransition
+                ? StatusCodes.Status409Conflict
+                : result.Error.ToHttpStatusCode();
+        return StatusCode(status, result.Error);
     }
 
     [HttpPost("{fileId:guid}/copies")]

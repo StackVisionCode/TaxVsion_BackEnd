@@ -13,6 +13,7 @@ using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.FileTypes;
 using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Quotas;
+using TaxVision.CloudStorage.Infrastructure.Persistence;
 using TaxVision.CloudStorage.Infrastructure.Persistence.Repositories;
 using TaxVision.CloudStorage.Infrastructure.Storage;
 using TaxVision.CloudStorage.Infrastructure.Time;
@@ -118,7 +119,7 @@ public sealed class FileObjectConcurrencyIntegrationTests(CloudStorageConcurrenc
     }
 
     [Fact]
-    public async Task A_save_request_that_loses_the_quota_race_is_rejected_and_keeps_the_source()
+    public async Task A_save_request_that_loses_the_quota_race_is_rejected_and_cleans_the_source()
     {
         const long max = 1_000;
         var fileId = Guid.NewGuid();
@@ -130,7 +131,7 @@ public sealed class FileObjectConcurrencyIntegrationTests(CloudStorageConcurrenc
 
         await using var db = fixture.NewContext(_tenantId);
         await using var transaction = await db.Database.BeginTransactionAsync();
-        var storage = new FakeObjectStorage();
+        var storage = new FakeObjectStorage { SizeToReturn = 600 };
         var bus = new FakeMessageBus();
 
         await SaveFileFromSourceHandler.Handle(
@@ -174,7 +175,7 @@ public sealed class FileObjectConcurrencyIntegrationTests(CloudStorageConcurrenc
         Assert.Equal("QuotaExceeded", Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>()).Reason);
         Assert.Empty(bus.Published.OfType<ScanFileCommand>());
         Assert.Empty(storage.Copied);
-        Assert.Empty(storage.Deleted);
+        Assert.Equal(("taxvision-temp", $"documents/{fileId:N}/race.pdf"), Assert.Single(storage.Deleted));
         await using var check = fixture.NewContext(_tenantId);
         Assert.False(await check.Files.AnyAsync(f => f.Id == fileId));
         Assert.Equal(600, (await ReadLimitAsync()).ReservedBytes);
@@ -190,26 +191,43 @@ public sealed class FileObjectConcurrencyIntegrationTests(CloudStorageConcurrenc
         await rival.SaveChangesAsync();
     }
 
-    // Una transacción por escaneo, como la abre Wolverine.
+    // Como en Wolverine: el escaneo sin transacción y el veredicto en la suya, en otro contexto.
     private async Task ScanAsync(Guid fileId, FakeObjectStorage storage, IVirusScanner scanner)
     {
         await using var db = fixture.NewContext(_tenantId);
-        await using var transaction = await db.Database.BeginTransactionAsync();
+        var bus = new FakeMessageBus { OnInvoke = message => RecordVerdictAsync((RecordScanVerdictCommand)message, storage) };
         await ScanFileHandler.Handle(
             new ScanFileCommand(_tenantId, fileId, "it-duplicate-scan"),
+            new SqlScanClaims(db),
             new FileObjectRepository(db),
             new StorageLimitRepository(db),
-            new StorageAuditRepository(db),
             storage,
             scanner,
             new CleanContentScanner(),
             new PdfInspector(),
             Options.Create(_options),
             new FakeUploadPolicyResolver(),
+            db,
+            bus,
+            NullLogger<ScanFileCommand>.Instance,
+            CancellationToken.None
+        );
+    }
+
+    private async Task RecordVerdictAsync(RecordScanVerdictCommand command, FakeObjectStorage storage)
+    {
+        await using var db = fixture.NewContext(_tenantId);
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await RecordScanVerdictHandler.Handle(
+            command,
+            new FileObjectRepository(db),
+            new StorageLimitRepository(db),
+            new StorageAuditRepository(db),
+            storage,
+            Options.Create(_options),
             new SystemClock(),
             db,
             new FakeMessageBus(),
-            NullLogger<ScanFileCommand>.Instance,
             CancellationToken.None
         );
         await transaction.CommitAsync();

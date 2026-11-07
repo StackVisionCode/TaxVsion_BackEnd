@@ -39,7 +39,7 @@ public sealed class UserConcurrencyIntegrationTests : IAsyncLifetime
         var deactivating = await first.Users.SingleAsync(user => user.Id == _userId);
         var bumping = await second.Users.SingleAsync(user => user.Id == _userId);
 
-        deactivating.Deactivate(DateTime.UtcNow);
+        deactivating.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
         bumping.BumpPermissionsVersion();
 
         await first.SaveChangesAsync();

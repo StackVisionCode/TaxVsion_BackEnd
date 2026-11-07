@@ -23,6 +23,7 @@ internal sealed class StaleAttachmentResolver(
     {
         var cutoff = DateTime.UtcNow - olderThan;
 
+        // Cross-tenant: el barrido recorre todas las oficinas.
         var stale = await context
             .Tasks.IgnoreQueryFilters()
             .Include(t => t.Attachments)

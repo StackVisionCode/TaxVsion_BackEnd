@@ -38,7 +38,7 @@ public interface IStockRepository
     /// antes de leer el ledger. Exige transacción abierta; si vence la espera, lanza TimeoutException.</summary>
     Task AcquireInvoiceSaleLockAsync(Guid tenantId, Guid invoiceId, CancellationToken ct = default);
 
-    /// <summary>Todos los movimientos con esta referencia (el id de factura). Con ellos el commit de la
+    /// <summary>Los movimientos de sistema con esta referencia (el id de factura). Con ellos el commit de la
     /// venta calcula el estado ACTUAL descontado por la factura y reconcilia por delta: así emitir, editar
     /// (cambia cantidades) y anular (repone todo) son la misma operación idempotente.</summary>
     Task<IReadOnlyList<StockMovement>> GetMovementsByReferenceAsync(

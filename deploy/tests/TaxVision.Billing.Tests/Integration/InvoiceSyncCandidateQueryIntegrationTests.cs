@@ -1,6 +1,5 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.ValueObjects;
 using TaxVision.Billing.Infrastructure.Persistence;
@@ -14,20 +13,15 @@ namespace TaxVision.Billing.Tests.Integration;
 /// deja afuera las alineadas, los borradores y las de antes del corte. Las fechas de las facturas de prueba
 /// son de 2001, así que la ventana no toca facturas reales.
 /// </summary>
-public sealed class InvoiceSyncCandidateQueryIntegrationTests : IAsyncLifetime
+[Collection(BillingTestDatabase.Collection)]
+public sealed class InvoiceSyncCandidateQueryIntegrationTests(BillingTestDatabase database) : IAsyncLifetime
 {
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly DateTime _changed = new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddMinutes(
         Random.Shared.Next(0, 500_000)
     );
 
-    private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("BILLING_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-billing000001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set BILLING_DB_CONNECTION or the Billing user-secrets to run this test.");
+    private readonly string _connectionString = database.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -100,7 +94,7 @@ public sealed class InvoiceSyncCandidateQueryIntegrationTests : IAsyncLifetime
     private Invoice Issued(DateTime at, string number)
     {
         var invoice = Draft(at);
-        Assert.True(invoice.Issue(number, at, at.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create(number).Value, at, at.AddDays(30), Guid.NewGuid()).IsSuccess);
         return invoice;
     }
 }

@@ -181,7 +181,7 @@ public sealed class SubscriptionStatusChangedPublishingTests
         var subscription = ActiveSubscription(out var plan);
         subscription.SuspendForPolicyViolation("unpaid", Guid.Empty, DateTime.UtcNow);
         var intent = SubscriptionRenewalIntent
-            .Create(subscription.TenantId, 4900, "USD", BillingCycle.Monthly, Guid.NewGuid(), DateTime.UtcNow)
+            .Create(subscription.TenantId, Money.FromCents(4900, "USD"), BillingCycle.Monthly, Guid.NewGuid(), DateTime.UtcNow)
             .Value;
         intent.AttachCheckout(Guid.NewGuid(), "https://pay/x", DateTime.UtcNow.AddHours(24), DateTime.UtcNow);
         var fixture = new Fixture(subscription, plan, new FakeRenewalCheckoutIntentRepository(intent));

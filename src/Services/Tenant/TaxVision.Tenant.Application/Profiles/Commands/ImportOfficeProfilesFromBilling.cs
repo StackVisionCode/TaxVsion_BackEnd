@@ -117,10 +117,18 @@ public static class ImportOfficeProfilesPageHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<ImportOfficeProfilesPageCommand> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
-        var outcome = await ImportPage(command.Items, command.ActorId, profiles, logger, ct);
+        var outcome = await ImportPage(
+            command.Items,
+            command.ActorId,
+            clock.GetUtcNow().UtcDateTime,
+            profiles,
+            logger,
+            ct
+        );
         await PersistAndPublish(outcome.Imported, unitOfWork, bus, correlation, ct);
         return outcome;
     }
@@ -128,6 +136,7 @@ public static class ImportOfficeProfilesPageHandler
     private static async Task<ImportPageOutcome> ImportPage(
         IReadOnlyList<BillingIssuerProfile> items,
         Guid actorId,
+        DateTime nowUtc,
         IOfficeProfileRepository profiles,
         ILogger logger,
         CancellationToken ct
@@ -144,7 +153,6 @@ public static class ImportOfficeProfilesPageHandler
         int notAnOffice = 0,
             existingProfile = 0,
             nothingUsable = 0;
-        var nowUtc = DateTime.UtcNow;
         foreach (var item in items)
         {
             // Filas de Billing de oficinas que ya no existen (o de pruebas) no se importan.

@@ -40,6 +40,9 @@ public static class AdjustStockHandler
             return Result.Failure<StockLevelDto>(InventoryErrors.InvalidCatalogItem);
         if (command.Quantity == 0)
             return Result.Failure<StockLevelDto>(InventoryErrors.InvalidQuantity);
+        // Sin usuario se confundiría con un movimiento de sistema (M2M), que es el que cuenta para una factura.
+        if (command.UserId == Guid.Empty)
+            return Result.Failure<StockLevelDto>(InventoryErrors.ActorRequired);
 
         var nowUtc = DateTime.UtcNow;
         // Con candado: un ajuste o venta concurrente espera y lee la cantidad ya confirmada.
@@ -63,7 +66,7 @@ public static class AdjustStockHandler
                 command.TenantId,
                 command.CatalogItemId,
                 command.Type,
-                command.Quantity,
+                LedgerQuantity(command),
                 move.Value.Previous,
                 move.Value.New,
                 command.Reference,
@@ -76,6 +79,16 @@ public static class AdjustStockHandler
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(level.ToDto());
     }
+
+    // Mismo criterio que StockLevel.RegisterMovement: el tipo da el sentido; solo el ajuste y el traslado llevan signo.
+    private static int LedgerQuantity(AdjustStockCommand command) =>
+        command.Type
+            is StockMovementType.Purchase
+                or StockMovementType.Return
+                or StockMovementType.Sale
+                or StockMovementType.Damaged
+            ? Math.Abs(command.Quantity)
+            : command.Quantity;
 }
 
 public static class SetStockThresholdsHandler

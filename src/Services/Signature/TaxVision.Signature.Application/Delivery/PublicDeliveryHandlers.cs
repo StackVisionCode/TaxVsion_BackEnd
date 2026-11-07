@@ -5,6 +5,7 @@ using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Domain.Delivery;
 using TaxVision.Signature.Domain.Settings;
+using Wolverine;
 
 namespace TaxVision.Signature.Application.Delivery;
 
@@ -156,6 +157,7 @@ public static class RequestNewDeliveryLinkHandler
         ITenantSignatureSettingsRepository settings,
         ISignedDocumentDeliveryIssuer issuer,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -184,7 +186,7 @@ public static class RequestNewDeliveryLinkHandler
             return Result.Failure(reissued.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await issuer.PublishAsync(reissued.Value, request, ct);
+        await issuer.PublishAsync(reissued.Value, request, bus, ct);
         return Result.Success();
     }
 }

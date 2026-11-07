@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.Numbering;
-using TaxVision.Billing.Domain.Receipts;
 
 namespace TaxVision.Billing.Infrastructure.Persistence.Repositories;
 
@@ -118,15 +117,4 @@ public sealed class InvoiceNumberSequenceRepository(BillingDbContext dbContext) 
 
         return sequence;
     }
-}
-
-/// <summary>SCAFFOLD B1: stub. La implementación EF real llega en B3 (comprobantes de pago).</summary>
-public sealed class PaymentReceiptRepository(BillingDbContext dbContext) : IPaymentReceiptRepository
-{
-    private readonly BillingDbContext _dbContext = dbContext;
-
-    public Task<PaymentReceipt?> GetByIdAsync(Guid tenantId, Guid receiptId, CancellationToken ct = default) =>
-        Task.FromResult<PaymentReceipt?>(null);
-
-    public Task AddAsync(PaymentReceipt receipt, CancellationToken ct = default) => Task.CompletedTask;
 }

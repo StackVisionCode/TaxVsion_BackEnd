@@ -1,10 +1,10 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Domain.Requests;
+using Wolverine;
 
 namespace TaxVision.Signature.Application.Delivery;
 
@@ -12,7 +12,9 @@ namespace TaxVision.Signature.Application.Delivery;
 /// Cuando un archivo final de una solicitud (documento sellado o certificado) queda DISPONIBLE en
 /// CloudStorage, revisa si ya están todos los que se van a entregar y, entonces, emite una entrega por
 /// firmante con TODOS sus archivos: un solo correo aunque la solicitud tenga varios documentos y
-/// certificados. Idempotente: una entrega por firmante; un evento repetido o concurrente no duplica.
+/// certificados. Idempotente: una entrega por firmante; un evento repetido no duplica y uno concurrente espera
+/// el candado de <see cref="IDeliveryIssuanceLock"/>. No se atrapa el choque con el índice único: el guardado
+/// final de Wolverine repetiría el mismo insert.
 /// </summary>
 public static class SignedDocumentsReadyConsumer
 {
@@ -22,6 +24,7 @@ public static class SignedDocumentsReadyConsumer
         DeliverableFiles deliverableFiles,
         ISignedDocumentDeliveryIssuer issuer,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SignatureRequest> logger,
         CancellationToken ct
@@ -49,19 +52,10 @@ public static class SignedDocumentsReadyConsumer
             if (issued.Count == 0)
                 return;
 
-            try
-            {
-                await unitOfWork.SaveChangesAsync(ct);
-            }
-            catch (ConflictException)
-            {
-                // Otro FileAvailable de la misma solicitud ganó la carrera y ya emitió las entregas.
-                logger.LogInformation("Deliveries for request {RequestId} were issued concurrently.", request.Id);
-                return;
-            }
+            await unitOfWork.SaveChangesAsync(ct);
 
             foreach (var delivery in issued)
-                await issuer.PublishAsync(delivery, request, ct);
+                await issuer.PublishAsync(delivery, request, bus, ct);
 
             logger.LogInformation(
                 "Issued {Count} signed-document deliveries for request {RequestId}.",

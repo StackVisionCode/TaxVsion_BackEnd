@@ -158,6 +158,8 @@ public static class WatchActivationService
                 EmailAddress = account.EmailAddress,
                 ProviderCode = account.ProviderCode.ToString(),
                 ConnectedAtUtc = now,
+                OwnerUserId = account.OwnerUserId,
+                IsOffice = account.IsOffice,
             }
         );
 }

@@ -484,8 +484,8 @@ public sealed class CustomerConcurrencyIntegrationTests(CustomerTemporaryDatabas
         return customer.Id;
     }
 
-    private static async Task<DomainCustomer> LoadAsync(CustomerDbContext db, Guid id) =>
-        (await new CustomerRepository(db).GetByIdAsync(id, CancellationToken.None))!;
+    private async Task<DomainCustomer> LoadAsync(CustomerDbContext db, Guid id) =>
+        (await new CustomerRepository(db).GetByIdAsync(_tenant, id, CancellationToken.None))!;
 
     // Por SQL: la columna es del esquema, no de lo que la entidad exponga.
     private async Task<byte[]> RowVersionAsync(Guid id) =>
@@ -547,7 +547,7 @@ public static class PublishBeforeSaveProbeHandler
         CancellationToken ct
     )
     {
-        var customer = await customers.GetByIdAsync(message.CustomerId, ct);
+        var customer = await customers.GetByIdAsync(message.TenantId, message.CustomerId, ct);
         Assert.True(customer!.AssignPreparer(message.PreparerUserId, message.PreparerUserId).IsSuccess);
 
         await bus.PublishAsync(

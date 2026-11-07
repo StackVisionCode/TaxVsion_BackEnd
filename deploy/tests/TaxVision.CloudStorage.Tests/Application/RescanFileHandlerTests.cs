@@ -98,7 +98,7 @@ public sealed class RescanFileHandlerTests
             .Value;
         Assert.True(file.MarkPendingScan(createdAt).IsSuccess);
         Assert.True(file.MarkScanning().IsSuccess);
-        Assert.True(file.MarkScanFailed("Unexpected error: SocketException: refused", createdAt).IsSuccess);
+        Assert.True(file.MarkScanFailed("Unexpected error: SocketException: refused", createdAt, "scan_error").IsSuccess);
 
         var files = new FakeFileObjectRepository();
         files.Seed(file);

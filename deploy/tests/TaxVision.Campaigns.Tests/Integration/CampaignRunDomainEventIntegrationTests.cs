@@ -47,7 +47,7 @@ public sealed class CampaignRunDomainEventIntegrationTests : IAsyncLifetime
     private const string Prefix = "cmpbb1_";
     private const string EnvelopeSchema = "cmpbb1";
 
-    private readonly string _connectionString = new SqlConnectionStringBuilder(CampaignsTestDatabase.ConnectionString)
+    private readonly string _connectionString = new SqlConnectionStringBuilder(CampaignsTestDatabase.ServerConnectionString)
     {
         InitialCatalog = $"{Prefix}{Guid.NewGuid():N}"[..(Prefix.Length + 12)],
     }.ConnectionString;
@@ -246,6 +246,7 @@ public sealed class CampaignRunDomainEventIntegrationTests : IAsyncLifetime
                 services.AddScoped<ICampaignRepository, CampaignRepository>();
                 services.AddScoped<ICampaignRunRepository, CampaignRunRepository>();
                 services.AddScoped<ICampaignScheduleRepository, CampaignScheduleRepository>();
+                services.AddCampaignRunOrchestration();
                 services.AddScoped<IContactRepository, ContactRepository>();
                 services.AddScoped<IContactListRepository, ContactListRepository>();
                 services.AddScoped<ISenderProfileRepository, SenderProfileRepository>();

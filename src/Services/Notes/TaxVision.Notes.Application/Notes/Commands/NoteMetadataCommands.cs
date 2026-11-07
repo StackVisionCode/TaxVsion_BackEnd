@@ -34,6 +34,7 @@ public static class ChangeNoteVisibilityHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -51,7 +52,7 @@ public static class ChangeNoteVisibilityHandler
         )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
-        var result = note.ChangeVisibility(command.NewVisibility, command.ActorUserId);
+        var result = note.ChangeVisibility(command.NewVisibility, command.ActorUserId, clock.GetUtcNow().UtcDateTime);
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
 
@@ -72,6 +73,7 @@ public static class PinNoteHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -89,7 +91,7 @@ public static class PinNoteHandler
         )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
-        var result = note.Pin(command.ActorUserId);
+        var result = note.Pin(command.ActorUserId, clock.GetUtcNow().UtcDateTime);
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
 
@@ -110,6 +112,7 @@ public static class UnpinNoteHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -127,7 +130,7 @@ public static class UnpinNoteHandler
         )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
-        var result = note.Unpin(command.ActorUserId);
+        var result = note.Unpin(command.ActorUserId, clock.GetUtcNow().UtcDateTime);
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
 
@@ -154,6 +157,7 @@ public static class SetNoteColorHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -180,7 +184,7 @@ public static class SetNoteColorHandler
             color = colorResult.Value;
         }
 
-        var result = note.SetColor(color, command.ActorUserId);
+        var result = note.SetColor(color, command.ActorUserId, clock.GetUtcNow().UtcDateTime);
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
 

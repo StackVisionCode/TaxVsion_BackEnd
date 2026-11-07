@@ -134,7 +134,7 @@ public sealed class InvoiceSyncPolicyTests
     private static Invoice Issued()
     {
         var invoice = Draft();
-        Assert.True(invoice.Issue("INV-2026-00001", Changed, Changed.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Changed, Changed.AddDays(30), ActorUserId).IsSuccess);
         return invoice;
     }
 }

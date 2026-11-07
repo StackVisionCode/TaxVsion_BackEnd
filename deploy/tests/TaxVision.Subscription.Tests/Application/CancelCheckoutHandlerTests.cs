@@ -27,7 +27,7 @@ public sealed class CancelCheckoutHandlerTests
                 autoRenew: true,
                 Money.Create(15m, "USD").Value,
                 BillingCycle.Monthly,
-                proratedTotalCents: 3000,
+                proratedTotal: Money.FromCents(3000, "USD"),
                 Guid.NewGuid(),
                 DateTime.UtcNow
             )

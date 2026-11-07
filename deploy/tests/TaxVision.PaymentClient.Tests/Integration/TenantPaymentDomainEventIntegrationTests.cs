@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -11,23 +13,27 @@ using JasperFx;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Stripe;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
+using TaxVision.PaymentClient.Application.TenantConnect.Commands.ProcessConnectWebhook;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.RegisterTenantPaymentWebhook;
 using TaxVision.PaymentClient.Application.TenantPayments.Commands.ChargeTenantPayment;
 using TaxVision.PaymentClient.Application.TenantPayments.Commands.ExecuteTenantPaymentCharge;
 using TaxVision.PaymentClient.Application.TenantPayments.Commands.PrepareTenantPayment;
 using TaxVision.PaymentClient.Application.TenantPayments.Commands.RecordTenantPaymentCharge;
 using TaxVision.PaymentClient.Application.TenantPayments.DomainEventHandlers;
+using TaxVision.PaymentClient.Domain.Connect;
 using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
 using TaxVision.PaymentClient.Domain.TenantPayments;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 using TaxVision.PaymentClient.Infrastructure.Persistence;
 using TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
+using TaxVision.PaymentClient.Infrastructure.Providers.Stripe;
 using TaxVision.PaymentClient.Infrastructure.Scheduling;
 using TaxVision.PaymentClient.Tests.Application;
 using Wolverine;
@@ -46,12 +52,7 @@ namespace TaxVision.PaymentClient.Tests.Integration;
 public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("PAYMENTCLIENT_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("7c2a4f19-3e6b-4d02-8a91-paymentclient1")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set PAYMENTCLIENT_DB_CONNECTION or the PaymentClient user-secrets.");
+        PaymentClientIntegrationDatabase.ConnectionString;
 
     private static readonly PaymentWebhookOptions WebhookSettings = new()
     {
@@ -60,6 +61,8 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
         RetryDelaySeconds = 60,
         PendingMarginMinutes = 15,
     };
+
+    private const string ConnectWebhookSecret = "whsec_connect";
 
     private readonly string _schema = $"pclbb1_{Guid.NewGuid():N}"[..15];
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -85,6 +88,11 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
         await using (var db = NewContext())
         {
             await db.AuditEntries.Where(e => e.TenantId == _tenantId).ExecuteDeleteAsync();
+            await db.WebhookEvents.IgnoreQueryFilters().Where(e => e.TenantId == _tenantId).ExecuteDeleteAsync();
+            await db
+                .TenantConnectAccounts.IgnoreQueryFilters()
+                .Where(a => a.TenantId == _tenantId)
+                .ExecuteDeleteAsync();
             await db.TenantPayments.IgnoreQueryFilters().Where(p => p.TenantId == _tenantId).ExecuteDeleteAsync();
             await db.TenantPaymentConfigs.IgnoreQueryFilters().Where(c => c.TenantId == _tenantId).ExecuteDeleteAsync();
         }
@@ -159,6 +167,112 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
             0,
             await CountRowsAsync("wolverine_outgoing_envelopes", nameof(RegisterTenantPaymentWebhookCommand))
         );
+    }
+
+    [Fact]
+    public async Task ConnectWebhook_ChargeSucceeded_SignalInOutboxOnce()
+    {
+        var (paymentId, payload) = await SeedConnectChargeAsync();
+
+        Assert.True((await DeliverConnectAsync(payload)).IsSuccess);
+        Assert.True((await DeliverConnectAsync(payload)).IsSuccess);
+
+        Assert.Equal(PaymentStatus.Succeeded, await StatusOfAsync(paymentId));
+        Assert.Equal(1, await CountRowsAsync("wolverine_incoming_envelopes", "TenantPaymentSucceededDomainEvent"));
+        Assert.True(
+            await WaitUntilAsync(async () =>
+                await CountRowsAsync("wolverine_outgoing_envelopes", nameof(TenantPaymentSucceededIntegrationEvent))
+                == 1
+            )
+        );
+    }
+
+    [Fact]
+    public async Task ConnectWebhook_FailureAfterSave_NoSignalAndRedeliveryApplies()
+    {
+        var (paymentId, payload) = await SeedConnectChargeAsync();
+        _interceptor.FailOnSucceededPayment = true;
+
+        Assert.NotNull(await Record.ExceptionAsync(() => DeliverConnectAsync(payload)));
+
+        Assert.Equal(PaymentStatus.RequiresAction, await StatusOfAsync(paymentId));
+        Assert.Equal(0, await CountRowsAsync("wolverine_incoming_envelopes", "TenantPaymentSucceededDomainEvent"));
+
+        _interceptor.FailOnSucceededPayment = false;
+        Assert.True((await DeliverConnectAsync(payload)).IsSuccess);
+
+        Assert.Equal(PaymentStatus.Succeeded, await StatusOfAsync(paymentId));
+        Assert.Equal(1, await CountRowsAsync("wolverine_incoming_envelopes", "TenantPaymentSucceededDomainEvent"));
+    }
+
+    private Task<Result> DeliverConnectAsync(string payload) =>
+        _host
+            .Services.GetRequiredService<IMessageBus>()
+            .InvokeAsync<Result>(new ProcessConnectWebhookCommand(payload, SignConnect(payload)));
+
+    private async Task<(Guid PaymentId, string Payload)> SeedConnectChargeAsync()
+    {
+        var accountId = $"acct_{Guid.NewGuid():N}";
+        var reference = $"pi_{Guid.NewGuid():N}";
+        var now = DateTime.UtcNow;
+        var payment = TenantPayment
+            .Create(
+                _tenantId,
+                IdempotencyKey.Create($"pcl-9-{Guid.NewGuid():N}").Value,
+                Money.Create(2500, "USD").Value,
+                null,
+                PaymentPurpose.Create(PaymentPurposeKind.InvoicePayment, "inv-pcl9").Value,
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("ACME TAX SVC").Value,
+                Guid.Empty,
+                now
+            )
+            .Value;
+        var split = SplitPaymentBreakdown.Create(2400, 100, null).Value;
+        Assert.True(payment.MarkProcessingViaConnect(reference, split, null, null, Guid.Empty, now).IsSuccess);
+        Assert.True(payment.MarkRequiresAction("use_stripe_sdk", "", Guid.Empty, now).IsSuccess);
+
+        await using var db = NewContext();
+        db.TenantConnectAccounts.Add(
+            TenantConnectAccount
+                .Create(
+                    _tenantId,
+                    PaymentProviderCode.Stripe,
+                    ConnectAccountType.Express,
+                    StripeConnectAccountId.Create(accountId).Value,
+                    now
+                )
+                .Value
+        );
+        db.TenantPayments.Add(payment);
+        await db.SaveChangesAsync();
+
+        var payload =
+            "{\"id\":\"evt_"
+            + Guid.NewGuid().ToString("N")
+            + "\",\"object\":\"event\",\"type\":\"payment_intent.succeeded\","
+            + "\"api_version\":\""
+            + StripeConfiguration.ApiVersion
+            + "\",\"created\":1762171200,\"livemode\":false,"
+            + "\"pending_webhooks\":1,\"account\":\""
+            + accountId
+            + "\",\"request\":{\"id\":null,\"idempotency_key\":null},"
+            + "\"data\":{\"object\":{\"id\":\""
+            + reference
+            + "\",\"object\":\"payment_intent\",\"amount\":2500,"
+            + "\"currency\":\"usd\",\"status\":\"succeeded\"}}}";
+        return (payment.Id, payload);
+    }
+
+    // Formato de Stripe: t=<unix>,v1=HMAC-SHA256(secret, "<t>.<payload>").
+    private static string SignConnect(string payload)
+    {
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var hash = HMACSHA256.HashData(
+            Encoding.UTF8.GetBytes(ConnectWebhookSecret),
+            Encoding.UTF8.GetBytes($"{timestamp}.{payload}")
+        );
+        return $"t={timestamp},v1={Convert.ToHexStringLower(hash)}";
     }
 
     private Task<Result<Guid>> ChargeAsync() =>
@@ -273,6 +387,7 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
                     .IncludeType(typeof(PrepareTenantPaymentHandler))
                     .IncludeType(typeof(ExecuteTenantPaymentChargeHandler))
                     .IncludeType(typeof(RecordTenantPaymentChargeHandler))
+                    .IncludeType(typeof(ProcessConnectWebhookHandler))
                     .IncludeType(typeof(TenantPaymentSucceededDomainEventHandler));
                 options.PersistMessagesWithSqlServer(ConnectionString, _schema);
                 options.AutoBuildMessageStorageOnStartup = AutoCreate.CreateOrUpdate;
@@ -294,7 +409,18 @@ public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
                 options.Services.AddSingleton(InMemoryPaymentClient.FakeAdapters(_stripe));
                 options.Services.AddSingleton<ISecretProtector, PrefixSecretProtector>();
                 options.Services.AddSingleton<IPaymentClientMetrics, NoOpPaymentClientMetrics>();
-                options.Services.Configure<PlatformStripeCredentials>(_ => { });
+                options.Services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
+                options.Services.AddScoped<IPayoutScheduleRepository, PayoutScheduleRepository>();
+                options.Services.AddSingleton<IStripeConnectGateway, StripeConnectGateway>();
+                options.Services.AddSingleton(
+                    Options.Create(
+                        new PlatformStripeCredentials
+                        {
+                            PlatformSecretKey = "sk_unused",
+                            ConnectWebhookSecret = ConnectWebhookSecret,
+                        }
+                    )
+                );
                 options
                     .UseEntityFrameworkCoreTransactions()
                     .WithDbContextAbstraction<IUnitOfWork, PaymentClientDbContext>();

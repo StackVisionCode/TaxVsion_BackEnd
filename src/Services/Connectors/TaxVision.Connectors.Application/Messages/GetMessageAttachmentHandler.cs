@@ -4,16 +4,18 @@ using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Audit;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Messages;
 
 /// <summary>
 /// Resuelve metadata (filename/contentType/size) vía GetMessageAsync antes de pedir los bytes —
 /// nunca se confía en filename/contentType que mande el caller (el body solo trae tenantId+accountId,
-/// §36 Fase 9 item 2), siempre se resuelve del lado del proveedor.
+/// §36 Fase 9 item 2), siempre se resuelve del lado del proveedor. Sin transacción: la auditoría se guarda sola.
 /// </summary>
 public static class GetMessageAttachmentHandler
 {
+    [NonTransactional]
     public static async Task<Result<MessageAttachmentDownload>> Handle(
         GetMessageAttachmentQuery query,
         ITenantEmailAccountRepository accountRepository,

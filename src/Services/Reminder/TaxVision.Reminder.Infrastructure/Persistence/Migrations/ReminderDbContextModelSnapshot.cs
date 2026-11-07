@@ -136,6 +136,9 @@ namespace TaxVision.Reminder.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("AnchorAsOfUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");

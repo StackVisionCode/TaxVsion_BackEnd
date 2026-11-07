@@ -1,4 +1,4 @@
-using TaxVision.Auth.Domain.Onboarding.EmailVerification;
+using TaxVision.Auth.Onboarding.Domain.EmailVerification;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 

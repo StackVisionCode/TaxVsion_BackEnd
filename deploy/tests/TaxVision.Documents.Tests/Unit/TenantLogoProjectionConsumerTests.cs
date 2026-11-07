@@ -95,6 +95,30 @@ public sealed class TenantLogoProjectionConsumerTests
     }
 
     [Fact]
+    public async Task RemovedBeforeOlderUpdated_LogoStaysRemoved()
+    {
+        var repo = new InMemoryLogoRepository();
+
+        await RemoveAsync(repo, Removed(Now, TenantBrandSurfaces.Crm));
+        await UpdateAsync(repo, Updated(Guid.NewGuid(), Now.AddMinutes(-5), TenantBrandSurfaces.Crm));
+
+        Assert.False((await repo.GetAsync(TenantId, TenantLogoSurface.Crm))!.HasLogo);
+    }
+
+    [Fact]
+    public async Task A_newer_update_replaces_the_tombstone()
+    {
+        var repo = new InMemoryLogoRepository();
+        var logo = Guid.NewGuid();
+
+        await RemoveAsync(repo, Removed(Now, TenantBrandSurfaces.Crm));
+        await UpdateAsync(repo, Updated(logo, Now.AddMinutes(5), TenantBrandSurfaces.Crm));
+
+        var row = Assert.Single(await repo.ListByTenantAsync(TenantId));
+        Assert.Equal(logo, row.LogoFileId);
+    }
+
+    [Fact]
     public async Task A_replayed_update_leaves_a_single_row()
     {
         var repo = new InMemoryLogoRepository();

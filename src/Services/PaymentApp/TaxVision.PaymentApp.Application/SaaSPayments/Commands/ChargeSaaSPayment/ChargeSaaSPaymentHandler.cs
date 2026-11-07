@@ -84,7 +84,7 @@ public static class ChargeSaaSPaymentHandler
             payment,
             payerResult.Error,
             command.RequestedByUserId,
-            SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, DateTime.UtcNow),
+            DunningPolicy.Decide(payment, DateTime.UtcNow),
             metrics
         );
 

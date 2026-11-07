@@ -30,7 +30,7 @@ public static class FormSignatureCanceledConsumer
             if (request is null)
                 return;
             if (
-                FormSignatureResultSupport.Failed(request.MarkSignatureCanceled(revision), "Canceled", requestId, revision, logger)
+                FormSignatureResultSupport.Failed(request.Summary.MarkSignatureCanceled(revision), "Canceled", requestId, revision, logger)
             )
                 return;
             var outgoing = new DeferredMessages();

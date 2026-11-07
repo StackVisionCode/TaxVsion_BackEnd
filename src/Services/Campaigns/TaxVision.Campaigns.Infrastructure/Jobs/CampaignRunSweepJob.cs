@@ -13,7 +13,7 @@ public sealed class CampaignRunSweepOptions
 {
     public const string SectionName = "Campaigns:RunSweep";
 
-    /// <summary>Apagado hasta reprocesar la DLQ de resultados (si no, marcaría Unknown lo que está en la DLQ).</summary>
+    /// <summary>Encendido en appsettings.json desde 2026-11-07. Lo que esté en la DLQ de resultados se marca Unknown.</summary>
     public bool Enabled { get; set; }
 
     /// <summary>Edad a partir de la cual un run en Dispatching se cierra por tiempo (por encima del DLR típico de SMS).</summary>

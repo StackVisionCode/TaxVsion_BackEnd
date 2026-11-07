@@ -42,7 +42,11 @@ public interface IPlanRepository
 
 public interface ISubscriptionRepository
 {
+    /// <summary>Con las renovaciones abiertas, las Failed y las del período vigente o siguiente, no toda la historia.</summary>
     Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Con todas las renovaciones: eventos de cobro por clave y pantallas que muestran el historial.</summary>
+    Task<TenantSubscription?> GetWithFullHistoryAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantSubscription subscription, CancellationToken ct = default);
 
     /// <summary>PayFlow (Fase 16) — idempotencia de internal/subscriptions/activate-from-onboarding.</summary>
@@ -328,11 +332,7 @@ public interface ITenantEntitlementSnapshotRepository
 
     /// <summary>SUB-5: <paramref name="expectedPreviousRevision"/> es la revisión sobre la que se calculó (0 si no había
     /// fila). Si otro recálculo avanzó primero, el guardado falla por conflicto y Wolverine reintenta.</summary>
-    Task UpsertAsync(
-        TenantEntitlementSnapshot snapshot,
-        long expectedPreviousRevision,
-        CancellationToken ct = default
-    );
+    Task UpsertAsync(TenantEntitlementSnapshot snapshot, long expectedPreviousRevision, CancellationToken ct = default);
 }
 
 /// <summary>RateLimit Fase 6 — catálogo completo, consultado por otros servicios vía

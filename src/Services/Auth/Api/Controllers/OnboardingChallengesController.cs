@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Onboarding.EmailVerification.Commands;
+using TaxVision.Auth.Onboarding.Application.EmailVerification.Commands;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;

@@ -1,4 +1,6 @@
-﻿using TaxVision.Scribe.Domain.Templates;
+﻿using System.Security.Cryptography;
+using System.Text;
+using TaxVision.Scribe.Domain.Templates;
 
 namespace TaxVision.Scribe.Application.Templates.Seed;
 
@@ -20,8 +22,7 @@ public sealed record NotificationTemplateSeed(
     string Subject,
     string Html,
     IReadOnlyList<(string Name, VariableType Type, bool Required, string? DefaultValue, string? Description)> Variables,
-    // Subir esto cuando cambie el HTML/subject del seed: el seeder republica una versión nueva
-    // si supera al SeedContentVersion guardado (política "código manda" para System).
+    // Solo etiqueta legible: el seeder republica por ContentHash (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
     // v9: plantilla de factura, la primera sobre tenant-base.
     // v11: F7 — nueva plantilla sig.partial_copy.v1 (copia inmediata al firmar).
@@ -39,7 +40,7 @@ public sealed record NotificationTemplateSeed(
     // v23 (por plantilla): tenant.wisp_review_due.v1 nueva — revisión anual del WISP (F4 Cumplimiento).
     // v24 (por plantilla): 6 plantillas nuevas de avisos del retiro de empleados (OffboardingNoticesVersion).
     // v25 (por plantilla): auth.user_offboarding_incomplete.v1 nueva — retiro sin todos los acuses en plazo.
-    int ContentVersion = 22,
+    int ContentVersion = 1,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -48,7 +49,33 @@ public sealed record NotificationTemplateSeed(
     string LayoutKey = "system-base",
     TemplateChannel Channel = TemplateChannel.Email,
     string? Text = null
-);
+)
+{
+    /// <summary>
+    /// SCR-01: huella de lo que se publica; es lo que decide republicar. Incluye el preheader, que vive en su
+    /// propio diccionario, y normaliza los fines de línea para no depender de la máquina que compiló.
+    /// </summary>
+    public string ContentHash
+    {
+        get
+        {
+            var variables = NotificationTemplateSeedSource
+                .VariablesWithPreheader(this)
+                .Select(v => $"{v.Name}\u001f{v.Type}\u001f{v.Required}\u001f{v.DefaultValue}\u001f{v.Description}")
+                .Order(StringComparer.Ordinal);
+            var content = string.Join(
+                "\n",
+                Subject,
+                Html,
+                Text,
+                string.Join('\u001e', variables),
+                LayoutKey,
+                Channel.ToString()
+            );
+            return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content.ReplaceLineEndings("\n"))));
+        }
+    }
+}
 
 /// <summary>
 /// Los 23 templates que Notification renderizaba localmente convertidos a Fluid HTML sobre
@@ -475,7 +502,6 @@ public static class NotificationTemplateSeedSource
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
             ],
-            // Explícita y mayor que el default: el seeder publica solo si supera la SeedContentVersion guardada.
             ContentVersion: 23
         );
 

@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Consumers.Postmaster;
 using TaxVision.Notification.Domain.Emailing.Sending;
@@ -43,6 +44,7 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
             publisher,
             uow,
             new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliverySucceededIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
@@ -75,6 +77,7 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
             publisher,
             uow,
             new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliverySucceededIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
@@ -107,6 +110,7 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
             publisher,
             uow,
             new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliveryFailedIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
@@ -114,6 +118,99 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
         Assert.Equal("550 mailbox not found", message.Error);
         var published = Assert.IsType<EmailDeliveryFailedIntegrationEvent>(Assert.Single(publisher.Published));
         Assert.Equal("550 mailbox not found", published.Error);
+    }
+
+    [Fact]
+    public async Task SucceededCallback_after_a_bounce_keeps_it_and_publishes_nothing()
+    {
+        var message = CreateSendingMessage();
+        message.MarkBounced("Permanent: unknown user");
+        var publisher = new RecordingIntegrationEventPublisher();
+        var uow = new NoOpUnitOfWork();
+
+        await PostmasterOutboundEmailSucceededConsumer.Handle(
+            new PostmasterEmailDeliverySucceededIntegrationEvent
+            {
+                TenantId = message.TenantId,
+                NotificationLogId = message.Id,
+                DispatchAttemptId = Guid.NewGuid(),
+                SentMessageId = Guid.NewGuid(),
+                ProviderMessageId = "postmaster-msg-1",
+                EventAtUtc = DateTime.UtcNow,
+            },
+            new RecordingOutboundEmailRepository(message),
+            publisher,
+            uow,
+            new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliverySucceededIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(EmailStatus.Bounced, message.Status);
+        Assert.Empty(publisher.Published);
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task FailedCallback_after_a_bounce_keeps_it_and_publishes_nothing()
+    {
+        var message = CreateSendingMessage();
+        message.MarkBounced("Permanent: unknown user");
+        var publisher = new RecordingIntegrationEventPublisher();
+        var uow = new NoOpUnitOfWork();
+
+        await PostmasterOutboundEmailFailedConsumer.Handle(
+            new PostmasterEmailDeliveryFailedIntegrationEvent
+            {
+                TenantId = message.TenantId,
+                NotificationLogId = message.Id,
+                DispatchAttemptId = Guid.NewGuid(),
+                SentMessageId = Guid.NewGuid(),
+                Reason = "late failure",
+                EventAtUtc = DateTime.UtcNow,
+            },
+            new RecordingOutboundEmailRepository(message),
+            publisher,
+            uow,
+            new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliveryFailedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(EmailStatus.Bounced, message.Status);
+        Assert.Empty(publisher.Published);
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task BouncedCallback_repeated_publishes_one_failure_event()
+    {
+        var message = CreateSendingMessage();
+        var repo = new RecordingOutboundEmailRepository(message);
+        var publisher = new RecordingIntegrationEventPublisher();
+        var evt = new PostmasterEmailDeliveryBouncedIntegrationEvent
+        {
+            TenantId = message.TenantId,
+            NotificationLogId = message.Id,
+            DispatchAttemptId = Guid.NewGuid(),
+            SentMessageId = Guid.NewGuid(),
+            BounceType = "Permanent",
+            Reason = "550 5.1.1 unknown user",
+            EventAtUtc = DateTime.UtcNow,
+        };
+
+        for (var delivery = 0; delivery < 2; delivery++)
+            await PostmasterOutboundEmailBouncedConsumer.Handle(
+                evt,
+                repo,
+                publisher,
+                new NoOpUnitOfWork(),
+                new NoOpCorrelationContext(),
+                NullLogger<PostmasterEmailDeliveryBouncedIntegrationEvent>.Instance,
+                CancellationToken.None
+            );
+
+        Assert.Single(publisher.Published);
     }
 
     [Fact]
@@ -141,6 +238,7 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
             publisher,
             uow,
             new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliveryBouncedIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
@@ -176,6 +274,7 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
             publisher,
             uow,
             new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliverySuppressedIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
@@ -205,6 +304,7 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
             publisher,
             uow,
             new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliveryProviderNotConfiguredIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
@@ -238,6 +338,7 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
             publisher,
             uow,
             new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliverySucceededIntegrationEvent>.Instance,
             CancellationToken.None
         );
 

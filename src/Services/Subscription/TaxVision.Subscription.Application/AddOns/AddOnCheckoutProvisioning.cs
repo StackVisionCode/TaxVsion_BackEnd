@@ -63,7 +63,7 @@ public static class AddOnCheckoutProvisioning
         await tenantAddOns.AddAsync(addOn, ct);
 
         metrics.RecordAddOnPurchased(addOn.AddOnCode);
-        metrics.RecordAddOnBilled(addOn.AddOnCode, intent.ProratedTotalCents);
+        metrics.RecordAddOnBilled(addOn.AddOnCode, intent.ProratedTotal.Cents);
 
         await AuditEntryFactory.AppendAsync(
             audit,
@@ -79,7 +79,7 @@ public static class AddOnCheckoutProvisioning
                 addOn.AddOnCode,
                 addOn.Quantity,
                 Status = addOn.Status.ToString(),
-                BilledCents = intent.ProratedTotalCents,
+                BilledCents = intent.ProratedTotal.Cents,
                 Method = provisioningMethod,
             },
             reason: null,

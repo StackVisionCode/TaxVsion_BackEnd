@@ -179,11 +179,14 @@ public sealed class GenerateOnboardingReceiptDocumentHandlerTests
 
         public Task<DocumentGeneration?> GetByIdempotencyKeyAsync(
             Guid tenantId,
+            string sourceService,
             string idempotencyKey,
             CancellationToken ct = default
         ) =>
             Task.FromResult(
-                _generations.FirstOrDefault(g => g.TenantId == tenantId && g.IdempotencyKey == idempotencyKey)
+                _generations.FirstOrDefault(g =>
+                    g.TenantId == tenantId && g.SourceService == sourceService && g.IdempotencyKey == idempotencyKey
+                )
             );
 
         public Task<DocumentGeneration?> GetByFileIdAsync(Guid fileId, CancellationToken ct = default) =>

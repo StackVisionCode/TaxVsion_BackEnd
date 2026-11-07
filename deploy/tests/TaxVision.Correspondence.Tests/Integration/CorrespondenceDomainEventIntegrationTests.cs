@@ -345,6 +345,9 @@ public sealed class CorrespondenceDomainEventIntegrationTests : IAsyncLifetime
                 options.Services.AddScoped<IDraftRepository, DraftRepository>();
                 options.Services.AddScoped<IDeliveryNoticeRepository, DeliveryNoticeRepository>();
                 options.Services.AddScoped<ThreadResolver>();
+                options.Services.AddScoped<IngestRejectionRecorder>();
+                options.Services.AddScoped<IncomingSenderResolver>();
+                options.Services.AddScoped<IncomingMailIngestor>();
                 options.Services.AddSingleton<IIngestMetrics, FakeIngestMetrics>();
                 options.Services.AddSingleton(Options.Create(new CorrespondenceIngestOptions()));
 

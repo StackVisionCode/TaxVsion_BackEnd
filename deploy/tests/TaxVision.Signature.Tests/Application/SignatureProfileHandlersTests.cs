@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
@@ -10,6 +11,7 @@ using TaxVision.Signature.Application.Profiles.Queries.List;
 using TaxVision.Signature.Domain.Platform;
 using TaxVision.Signature.Domain.Profiles;
 using TaxVision.Signature.Domain.Settings;
+using TaxVision.Signature.Tests.Delivery;
 using Xunit;
 
 namespace TaxVision.Signature.Tests.Application;
@@ -54,6 +56,7 @@ public sealed class SignatureProfileHandlersTests
     {
         var repo = new FakeRepository();
         var storage = new FakeCloudStorage();
+        var bus = new CapturingBus();
 
         var result = await CreateSignatureProfileHandler.Handle(
             new CreateSignatureProfileCommand(
@@ -70,6 +73,7 @@ public sealed class SignatureProfileHandlersTests
             storage,
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
+            bus,
             CancellationToken.None
         );
 
@@ -77,6 +81,8 @@ public sealed class SignatureProfileHandlersTests
         Assert.True(result.Value.IsDefault);
         Assert.Equal(1, storage.Uploads);
         Assert.Single(repo.Items);
+        var saved = Assert.IsType<SaveFileRequestedIntegrationEvent>(Assert.Single(bus.Messages));
+        Assert.Equal(repo.Items.Single().FileId, saved.FileId);
     }
 
     [Fact]
@@ -100,6 +106,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeCloudStorage(),
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
+            new CapturingBus(),
             CancellationToken.None
         );
 
@@ -129,6 +136,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeCloudStorage(),
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
+            new CapturingBus(),
             CancellationToken.None
         );
 
@@ -154,6 +162,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeCloudStorage(),
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
+            new CapturingBus(),
             CancellationToken.None
         );
 
@@ -179,6 +188,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeCloudStorage(),
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
+            new CapturingBus(),
             CancellationToken.None
         );
 
@@ -275,6 +285,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeCloudStorage(),
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
+            new CapturingBus(),
             CancellationToken.None
         );
 
@@ -302,6 +313,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeCloudStorage(),
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
+            new CapturingBus(),
             CancellationToken.None
         );
 
@@ -329,6 +341,7 @@ public sealed class SignatureProfileHandlersTests
             new FakeCloudStorage(),
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
+            new CapturingBus(),
             CancellationToken.None
         );
 
@@ -504,22 +517,20 @@ public sealed class SignatureProfileHandlersTests
 
     private sealed class FakeCloudStorage : ISignatureCloudStorageClient
     {
-        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
+        public Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
             Guid tenantId,
             SignatureFileUpload upload,
             CancellationToken ct = default
-        ) => throw new NotSupportedException();
+        )
+        {
+            Uploads++;
+            return Task.FromResult(Result.Success(StagedFile.For(tenantId, Guid.NewGuid(), upload)));
+        }
 
         public int Uploads { get; private set; }
 
         public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             Task.FromResult(Result.Success(Array.Empty<byte>()));
-
-        public Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default)
-        {
-            Uploads++;
-            return Task.FromResult(Result.Success(Guid.NewGuid()));
-        }
 
         public Task<Result<Guid>> CopyToCustomerAsync(
             Guid tenantId,

@@ -1,6 +1,5 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Payables.ResolvePayable;
 using TaxVision.PaymentClient.Domain.Payables;
@@ -18,14 +17,7 @@ public sealed class PayableResolverConcurrencyIntegrationTests : IAsyncLifetime
 {
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("PAYMENTCLIENT_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("7c2a4f19-3e6b-4d02-8a91-paymentclient1")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set PAYMENTCLIENT_DB_CONNECTION or the PaymentClient user-secrets to run this test."
-        );
+        PaymentClientIntegrationDatabase.ConnectionString;
 
     private PayableReference _payable = null!;
 

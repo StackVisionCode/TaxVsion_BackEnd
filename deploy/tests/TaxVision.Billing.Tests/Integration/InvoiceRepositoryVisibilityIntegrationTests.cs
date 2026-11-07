@@ -1,7 +1,6 @@
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.ValueObjects;
 using TaxVision.Billing.Infrastructure.Persistence;
@@ -14,7 +13,8 @@ namespace TaxVision.Billing.Tests.Integration;
 /// BIL-2 contra el SQL Server real: la lectura por Id respeta la asignación (P2). Factura del cliente C
 /// asignado al usuario A: B no la ve, A sí, y sin alcance (null) también. Tenant propio; se borra al terminar.
 /// </summary>
-public sealed class InvoiceRepositoryVisibilityIntegrationTests : IAsyncLifetime
+[Collection(BillingTestDatabase.Collection)]
+public sealed class InvoiceRepositoryVisibilityIntegrationTests(BillingTestDatabase database) : IAsyncLifetime
 {
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _customerId = Guid.NewGuid();
@@ -22,13 +22,7 @@ public sealed class InvoiceRepositoryVisibilityIntegrationTests : IAsyncLifetime
     private readonly Guid _otherUser = Guid.NewGuid();
     private Guid _invoiceId;
 
-    private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("BILLING_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-billing000001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set BILLING_DB_CONNECTION or the Billing user-secrets to run this test.");
+    private readonly string _connectionString = database.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

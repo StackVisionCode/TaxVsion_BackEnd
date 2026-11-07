@@ -122,7 +122,7 @@ public sealed class SignedDocumentDeliveryTests
         var issuer = kit.Issuer();
         var issued = await issuer.PrepareCompletedAsync(kit.Request, CancellationToken.None);
 
-        await issuer.PublishAsync(issued[0], kit.Request, CancellationToken.None);
+        await issuer.PublishAsync(issued[0], kit.Request, kit.Bus, CancellationToken.None);
 
         var evt = Assert.IsType<SignedDocumentsDeliveryReadyIntegrationEvent>(Assert.Single(kit.Bus.Messages));
         Assert.Equal("Completed", evt.Purpose);
@@ -152,7 +152,7 @@ public sealed class SignedDocumentDeliveryTests
         var issuer = kit.Issuer();
         var issued = await issuer.PrepareCompletedAsync(kit.Request, CancellationToken.None);
 
-        await issuer.PublishAsync(issued[0], kit.Request, CancellationToken.None);
+        await issuer.PublishAsync(issued[0], kit.Request, kit.Bus, CancellationToken.None);
 
         var evt = Assert.IsType<SignedDocumentsDeliveryReadyIntegrationEvent>(Assert.Single(kit.Bus.Messages));
         Assert.Equal(expectedPerSigner * 2, evt.AttachmentFileIds.Count);
@@ -166,7 +166,7 @@ public sealed class SignedDocumentDeliveryTests
         var issued = await issuer.PrepareCompletedAsync(kit.Request, CancellationToken.None);
 
         foreach (var delivery in issued)
-            await issuer.PublishAsync(delivery, kit.Request, CancellationToken.None);
+            await issuer.PublishAsync(delivery, kit.Request, kit.Bus, CancellationToken.None);
 
         var events = kit.Bus.Messages.OfType<SignedDocumentsDeliveryReadyIntegrationEvent>().ToList();
         Assert.True(events.Single(evt => evt.Signer.SignerId == kit.FirstSigner.Id).AvailableInClientPortal);
@@ -379,6 +379,7 @@ public sealed class SignedDocumentDeliveryTests
             kit.DeliverableFiles(),
             kit.Issuer(),
             new NoOpUnitOfWork(),
+            kit.Bus,
             new FixedCorrelation(),
             NullLogger<SignatureRequest>.Instance,
             CancellationToken.None
@@ -394,6 +395,7 @@ public sealed class SignedDocumentDeliveryTests
             kit.DeliverableFiles(),
             kit.Issuer(),
             new NoOpUnitOfWork(),
+            kit.Bus,
             CancellationToken.None
         );
 
@@ -417,6 +419,7 @@ public sealed class SignedDocumentDeliveryTests
             kit.Settings,
             kit.Issuer(),
             new NoOpUnitOfWork(),
+            kit.Bus,
             CancellationToken.None
         );
 }

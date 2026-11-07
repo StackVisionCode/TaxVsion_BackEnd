@@ -570,6 +570,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
 
+                    b.Property<DateTime?>("SourceOccurredOnUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 

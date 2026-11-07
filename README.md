@@ -6178,8 +6178,8 @@ comparte la misma justificación que los otros dos.
 
 - `.env`: `CONNECTORS_DB_CONNECTION`, `GMAIL_CLIENT_ID/SECRET`, `MSGRAPH_CLIENT_ID/SECRET/TENANT_ID`,
   `CONNECTORS_GMAIL_WATCH_TOPIC`, `CONNECTORS_GRAPH_NOTIFICATION_URL`,
-  `CONNECTORS_GRAPH_WATCH_CLIENT_STATE`, `CONNECTORS_GMAIL_PUSH_AUDIENCE` (opcional,
-  scoping del JWT de Pub/Sub).
+  `CONNECTORS_GRAPH_WATCH_CLIENT_STATE`, `CONNECTORS_GMAIL_PUSH_AUDIENCE` (audiencia del
+  JWT de Pub/Sub; obligatoria fuera de Development: sin ella Connectors no arranca).
 - `Connectors:RateLimit` / `Connectors:MessageBodyRateLimit` / `Connectors:AttachmentRateLimit`
   / `Connectors:SendRateLimit` — limites per-provider/per-tenant, con defaults en codigo
   (10 req/s, 10/min, 5/min, 20/min) si la seccion no esta en `appsettings.json`.

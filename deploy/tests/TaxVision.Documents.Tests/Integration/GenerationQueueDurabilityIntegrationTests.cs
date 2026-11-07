@@ -8,7 +8,6 @@ using BuildingBlocks.Web.Common;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Documents.Api.Messaging;
@@ -38,14 +37,7 @@ public sealed class GenerationQueueDurabilityIntegrationTests : IAsyncLifetime
     private readonly Guid _invoiceId = Guid.NewGuid();
 
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("DOCUMENTS_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-documents00001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set DOCUMENTS_DB_CONNECTION or the Documents user-secrets to run this test."
-        );
+        DocumentsIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

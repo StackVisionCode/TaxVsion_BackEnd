@@ -5,7 +5,7 @@ using Minio;
 using Minio.DataModel.Args;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users.Avatars;
-using TaxVision.Auth.Infrastructure.Onboarding.Storage;
+using TaxVision.Auth.Infrastructure.Storage;
 
 namespace TaxVision.Auth.Infrastructure.Storage;
 

@@ -1,13 +1,7 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
-using TaxVision.Campaigns.Application.Contacts.Abstractions;
-using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Audience;
 using TaxVision.Campaigns.Domain.Campaigns;
-using TaxVision.Campaigns.Domain.Runs;
 using Wolverine;
 using Wolverine.Attributes;
 
@@ -17,7 +11,7 @@ namespace TaxVision.Campaigns.Application.Runs.Commands;
 /// Arranca una ejecución (<c>send-now</c>) resolviendo la audiencia desde <b>listas de contactos</b>
 /// y/o <b>entradas manuales</b> (Customer llega en fase posterior). La resolución (opt-out, sin destino,
 /// dedupe) vive en <see cref="AudienceResolver"/>; el arranque + fan-out se comparte con el send-now
-/// manual (<see cref="StartCampaignRunHandler.StartAndDispatchAsync"/>). SIN dinero.
+/// manual (<see cref="CampaignRunStarter.StartAsync"/>). SIN dinero.
 /// </summary>
 public sealed record StartCampaignRunFromAudienceCommand(
     Guid TenantId,
@@ -40,20 +34,14 @@ public sealed record StartCampaignRunFromAudienceCommand(
 
 public static class StartCampaignRunFromAudienceHandler
 {
-    // Sin transacción: la audiencia y el Wallet son llamadas HTTP (patrón BB-8, ver StartAndDispatchAsync).
+    // Sin transacción: la audiencia y el Wallet son llamadas HTTP (patrón BB-8, ver CampaignRunStarter.StartAsync).
     [NonTransactional]
     public static async Task<Result<CampaignRunResponse>> Handle(
         StartCampaignRunFromAudienceCommand command,
         ICampaignRepository campaigns,
-        IContactRepository contacts,
-        IContactListRepository lists,
-        ICustomerAudienceClient customerClient,
-        ICampaignCustomerAssignmentReader assignmentReader,
-        IOptions<CampaignsVisibilityOptions> visibility,
-        IWalletSpendClient wallet,
+        CampaignAudienceService audience,
+        CampaignRunStarter starter,
         IMessageBus bus,
-        ICorrelationContext correlation,
-        ILogger<CampaignRun> logger,
         CancellationToken ct
     )
     {
@@ -63,81 +51,28 @@ public static class StartCampaignRunFromAudienceHandler
         if (campaign.Status == CampaignStatus.Archived)
             return Result.Failure<CampaignRunResponse>(CampaignErrors.Archived);
 
-        var resolved = await ResolveUnitsAsync(
+        var resolved = await audience.ResolveAsync(
             campaign,
-            command.TriggeredByUserId,
-            command.ContactListIds ?? [],
-            command.Manual ?? [],
-            command.IncludeCustomers,
-            command.CustomerIds,
-            command.CanViewAllCustomers,
-            contacts,
-            lists,
-            customerClient,
-            assignmentReader,
-            visibility.Value,
+            new CampaignAudienceRequest(
+                command.TriggeredByUserId,
+                command.ContactListIds ?? [],
+                command.Manual ?? [],
+                command.IncludeCustomers,
+                command.CustomerIds,
+                command.CanViewAllCustomers
+            ),
             ct
         );
         if (resolved.IsFailure)
             return Result.Failure<CampaignRunResponse>(resolved.Error);
 
-        return await StartCampaignRunHandler.StartAndDispatchAsync(
+        return await starter.StartAsync(
             campaign,
             command.TriggerKind,
             command.TriggeredByUserId,
             resolved.Value,
-            wallet,
             command.CallerBearerToken,
             bus,
-            correlation,
-            logger,
-            ct
-        );
-    }
-
-    /// <summary>
-    /// Resuelve la audiencia del run (listas, manual y fuente "Clients" acotada por visibilidad). La usa
-    /// también el disparo del agendado.
-    /// </summary>
-    internal static async Task<Result<IReadOnlyList<RunRecipientDraft>>> ResolveUnitsAsync(
-        Campaign campaign,
-        Guid actorUserId,
-        IReadOnlyCollection<Guid> contactListIds,
-        IReadOnlyCollection<ManualAudienceEntry> manual,
-        bool includeCustomersRequested,
-        IReadOnlyCollection<Guid>? customerIds,
-        bool canViewAllCustomers,
-        IContactRepository contacts,
-        IContactListRepository lists,
-        ICustomerAudienceClient customerClient,
-        ICampaignCustomerAssignmentReader assignmentReader,
-        CampaignsVisibilityOptions visibility,
-        CancellationToken ct
-    )
-    {
-        // Alcance de la fuente "Clients": selección explícita (CustomerIds) y/o "todos", acotado por la
-        // visibilidad por asignación (P2) cuando el actor no ve todo. Ver AudienceResolver.ResolveCustomerScopeAsync.
-        var (includeCustomers, restrictCustomerIds) = await AudienceResolver.ResolveCustomerScopeAsync(
-            campaign.TenantId,
-            actorUserId,
-            includeCustomersRequested,
-            customerIds,
-            canViewAllCustomers,
-            visibility.Enabled,
-            assignmentReader,
-            ct
-        );
-
-        return await AudienceResolver.ResolveAsync(
-            campaign.TenantId,
-            campaign.Channels,
-            contactListIds,
-            manual,
-            contacts,
-            lists,
-            includeCustomers,
-            customerClient,
-            restrictCustomerIds,
             ct
         );
     }

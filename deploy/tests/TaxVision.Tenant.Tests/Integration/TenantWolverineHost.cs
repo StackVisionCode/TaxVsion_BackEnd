@@ -46,6 +46,7 @@ internal static class TenantWolverineHost
                 options.Durability.DrainTimeout = TimeSpan.FromSeconds(2);
 
                 options.Services.AddBuildingBlocks();
+                options.Services.AddSingleton(TimeProvider.System);
                 options.Services.AddDbContext<TenantDbContext>(db =>
                     db.UseSqlServer(connectionString).AddInterceptors(interceptors)
                 );

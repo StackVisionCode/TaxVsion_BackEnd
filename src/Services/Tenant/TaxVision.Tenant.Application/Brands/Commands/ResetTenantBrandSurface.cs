@@ -1,5 +1,4 @@
 using System.Linq;
-using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -24,12 +23,13 @@ public static class ResetTenantBrandSurfaceHandler
         ITenantBrandRepository repo,
         ITenantBrandingCloudStorageClient client,
         IUnitOfWork unitOfWork,
-        ICacheService cache,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
+        var nowUtc = clock.GetUtcNow().UtcDateTime;
         var brand = await repo.GetAsync(cmd.TenantId, cmd.Surface, ct);
         if (brand is null)
             return Result.Success(); // ya está en default
@@ -42,16 +42,23 @@ public static class ResetTenantBrandSurfaceHandler
             if (deleteResult.IsFailure)
                 return deleteResult;
 
-            brand.RemoveAsset(asset.Key);
+            brand.RemoveAsset(asset.Key, nowUtc);
         }
 
-        brand.ResetColors();
+        brand.ResetColors(nowUtc);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await BrandCommandSupport.InvalidateAsync(cache, cmd.TenantId, cmd.Surface, ct);
+        await BrandCommandSupport.RequestInvalidationAsync(bus, cmd.TenantId, cmd.Surface);
 
         foreach (var asset in assets)
-            await BrandLogoEvents.PublishRemovedIfLogoAsync(bus, correlation, cmd.TenantId, cmd.Surface, asset.Key);
+            await BrandLogoEvents.PublishRemovedIfLogoAsync(
+                bus,
+                correlation,
+                cmd.TenantId,
+                cmd.Surface,
+                asset.Key,
+                nowUtc
+            );
 
         return Result.Success();
     }

@@ -5,6 +5,7 @@ public static class CustomerProfileUpdateFromFormOutcomes
 {
     public const string NotAuthorized = "Customer.ProfileUpdateNotAuthorized";
     public const string CustomerNotFound = "Customer.NotFound";
+    public const string CustomerArchived = "Customer.Archived";
     public const string TargetNotSupported = "Customer.FormTargetNotSupported";
     public const string ValueInvalid = "Customer.FormValueInvalid";
     public const string NoFiscalProfile = "Customer.NoFiscalProfile";

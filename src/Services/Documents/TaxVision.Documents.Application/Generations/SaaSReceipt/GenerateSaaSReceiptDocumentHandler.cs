@@ -46,7 +46,12 @@ public static class GenerateSaaSReceiptDocumentHandler
                 return Result.Failure<GenerateSaaSReceiptDocumentResult>(validation.Error);
 
             var nowUtc = clock.GetUtcNow().UtcDateTime;
-            var existing = await repository.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
+            var existing = await repository.GetByIdempotencyKeyAsync(
+                command.TenantId,
+                command.SourceService,
+                command.IdempotencyKey,
+                ct
+            );
             // Un pedido tardío (backfill) significa que el recibo nunca apareció: fallido o atascado se reintenta.
             if (
                 existing is not null
@@ -83,7 +88,12 @@ public static class GenerateSaaSReceiptDocumentHandler
             catch (ConflictException)
             {
                 // Dos entregas del mismo evento a la vez: gana una y la otra devuelve esa.
-                var winner = await repository.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
+                var winner = await repository.GetByIdempotencyKeyAsync(
+                    command.TenantId,
+                    command.SourceService,
+                    command.IdempotencyKey,
+                    ct
+                );
                 if (winner is not null)
                     return Result.Success(new GenerateSaaSReceiptDocumentResult(winner.Id, winner.Status.ToString()));
                 throw;

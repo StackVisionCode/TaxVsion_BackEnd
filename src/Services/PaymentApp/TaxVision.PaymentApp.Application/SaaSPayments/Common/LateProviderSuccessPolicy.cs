@@ -58,7 +58,7 @@ public static class LateProviderSuccessPolicy
         if (providerStatus != PaymentStatus.Succeeded)
             return null;
 
-        if (transitionError.Code == "WebhookEvent.AmountMismatch")
+        if (transitionError.Code == SaaSPayment.AmountMismatchCode)
             return SaaSPayment.ReviewReasonAmountMismatch;
 
         return transitionError.Code == "SaaSPayment.InvalidTransition" && IsClosedWithoutCharge(payment.Status)

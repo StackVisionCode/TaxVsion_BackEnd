@@ -201,6 +201,9 @@ builder.Host.UseWolverine(options =>
     options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
+    // TEN-6: la invalidación de la caché de marca sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
+
     // BB-1: eventos de dominio de Tenant; en serie para que los avisos salgan en el orden del commit.
     options.UseTaxVisionDomainEvents();
     options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();

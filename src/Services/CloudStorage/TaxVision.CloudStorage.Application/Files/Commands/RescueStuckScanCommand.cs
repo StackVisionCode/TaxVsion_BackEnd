@@ -51,7 +51,6 @@ public static class RescueStuckScanHandler
                 audit,
                 clock,
                 unitOfWork,
-                bus,
                 ct
             );
             logger.LogWarning("Stuck scan {FileId} has no stored object; marked blob_missing.", file.Id);
@@ -73,7 +72,6 @@ public static class RescueStuckScanHandler
                 audit,
                 clock,
                 unitOfWork,
-                bus,
                 ct
             );
             logger.LogWarning("Stuck scan {FileId} exhausted its requeues; marked scan_stalled.", file.Id);
@@ -109,11 +107,10 @@ public static class RescueStuckScanHandler
         IStorageAuditRepository audit,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
-        if (file.MarkScanAbandoned(report, clock.UtcNow).IsFailure)
+        if (file.MarkScanAbandoned(report, clock.UtcNow, reason, correlationId).IsFailure)
             return;
         (await limits.GetAsync(file.TenantId, ct))?.Release(file.SizeBytes);
         audit.Add(
@@ -131,19 +128,5 @@ public static class RescueStuckScanHandler
             )
         );
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(
-            new FileScanFailedIntegrationEvent
-            {
-                TenantId = file.TenantId,
-                FileId = file.Id,
-                ObjectKey = file.ObjectKey,
-                Reason = reason,
-                OwnerType = file.OwnerType.ToString(),
-                OwnerId = file.OwnerId,
-                FolderType = file.FolderType.ToString(),
-                CreatedBy = file.CreatedBy,
-                CorrelationId = correlationId,
-            }
-        );
     }
 }

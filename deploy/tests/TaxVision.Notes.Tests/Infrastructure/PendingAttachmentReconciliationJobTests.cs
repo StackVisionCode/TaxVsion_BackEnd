@@ -36,7 +36,7 @@ public sealed class PendingAttachmentReconciliationJobTests
         );
         var pending = NoteWithAttachment(Guid.NewGuid(), out var pendingFile);
         var available = NoteWithAttachment(Guid.NewGuid(), out var availableFile);
-        available.MarkAttachmentAvailable(availableFile);
+        available.MarkAttachmentAvailable(availableFile, DateTime.UtcNow);
         db.Notes.AddRange(pending, available);
         await db.SaveChangesAsync();
 
@@ -58,10 +58,11 @@ public sealed class PendingAttachmentReconciliationJobTests
             NoteContent.Create("<p>hi</p>").Value,
             NoteReference.Create(NoteTargetType.None, null).Value,
             NoteVisibility.Private,
-            null
+            null,
+            DateTime.UtcNow
         ).Value;
         fileId = Guid.NewGuid();
-        note.AttachFile(fileId, "receipt.pdf", "application/pdf", 1024);
+        note.AttachFile(fileId, "receipt.pdf", "application/pdf", 1024, DateTime.UtcNow);
         return note;
     }
 

@@ -244,6 +244,46 @@ public sealed class PaymentLinkTests
         Assert.Equal(PaymentLinkStatus.Revoked, link.Status);
     }
 
+    [Fact]
+    public void EnsureRedeemable_AfterMaxFailures_ReturnsThrottled()
+    {
+        var link = CreateActiveLink();
+
+        for (var i = 0; i < PaymentLinkAttemptPolicy.MaxRedemptionAttemptsPerLink; i++)
+            link.MarkBlockedAfterExcessiveFailures(NowUtc);
+
+        var result = link.EnsureRedeemable(NowUtc);
+
+        Assert.Equal("PaymentLink.RedemptionThrottled", result.Error.Code);
+        Assert.Equal("Too many failed redemption attempts; this link has been blocked.", result.Error.Message);
+    }
+
+    [Fact]
+    public void EnsureRedeemable_ActiveLink_Succeeds()
+    {
+        var link = CreateActiveLink();
+        link.MarkBlockedAfterExcessiveFailures(NowUtc);
+
+        Assert.True(link.EnsureRedeemable(NowUtc).IsSuccess);
+    }
+
+    [Fact]
+    public void EnsureRedeemable_RevokedBelowTheLimit_IsNotRedeemable()
+    {
+        var link = CreateActiveLink();
+        link.Revoke("duplicate link", NowUtc);
+
+        Assert.Equal(PaymentLink.NotRedeemableError, link.EnsureRedeemable(NowUtc).Error);
+    }
+
+    [Fact]
+    public void EnsureRedeemable_PastItsExpiration_IsNotRedeemable()
+    {
+        var link = CreateActiveLink(TimeSpan.FromMinutes(1));
+
+        Assert.Equal(PaymentLink.NotRedeemableError, link.EnsureRedeemable(NowUtc.AddMinutes(2)).Error);
+    }
+
     private static PaymentPurpose Purpose() =>
         PaymentPurpose.Create(PaymentPurposeKind.InvoicePayment, "inv-001").Value;
 

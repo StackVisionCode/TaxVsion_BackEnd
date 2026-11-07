@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
-using TaxVision.Auth.Application.Onboarding;
-using TaxVision.Auth.Application.Onboarding.TokenReferences.Queries;
+using TaxVision.Auth.Onboarding.Application;
+using TaxVision.Auth.Onboarding.Application.TokenReferences.Queries;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 

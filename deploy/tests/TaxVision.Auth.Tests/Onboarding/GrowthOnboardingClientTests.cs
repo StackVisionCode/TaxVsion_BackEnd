@@ -6,8 +6,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
-using TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
-using TaxVision.Auth.Infrastructure.Onboarding.Security;
+using TaxVision.Auth.Infrastructure.Security;
+using TaxVision.Auth.Onboarding.Infrastructure.HttpClients;
+using TaxVision.Auth.Onboarding.Infrastructure.Security;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 
@@ -52,7 +53,7 @@ public sealed class GrowthOnboardingClientTests
             .GetRequiredService<IServiceScopeFactory>();
         return new GrowthOnboardingClient(
             http,
-            new OnboardingServiceTokenCache(scopes),
+            new ServiceTokenCache(scopes),
             new HttpResiliencePipelineRegistry(),
             NullLogger<GrowthOnboardingClient>.Instance
         );

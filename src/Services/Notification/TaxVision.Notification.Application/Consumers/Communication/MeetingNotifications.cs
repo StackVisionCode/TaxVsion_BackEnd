@@ -1,5 +1,4 @@
 using BuildingBlocks.Platform;
-using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers.Calendar;
@@ -9,10 +8,9 @@ using TaxVision.Notification.Domain.Preferences;
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
 /// <summary>
-/// Lo que comparten los avisos de reunión (F6): hora local con la zona de la oficina, el gate de
-/// preferencia (categoría <see cref="NotificationCategory.Calendar"/>, como las citas), el in-app a un
-/// conjunto de usuarios y el <c>.ics</c>. Un externo sin cuenta no tiene preferencia ni bandeja: recibe
-/// el correo siempre.
+/// Lo que comparten los avisos de reunión (F6): hora local con la zona de la oficina, el in-app a un
+/// conjunto de usuarios y el <c>.ics</c>. El correo lo filtra el gate del gateway (categoría
+/// <see cref="NotificationCategory.Calendar"/>); un externo sin cuenta lo recibe siempre.
 /// </summary>
 internal static class MeetingNotifications
 {
@@ -25,36 +23,6 @@ internal static class MeetingNotifications
 
     public static string Title(string? meetingTitle) =>
         string.IsNullOrWhiteSpace(meetingTitle) ? "Meeting" : meetingTitle.Trim();
-
-    public static async Task<bool> EmailAllowedAsync(
-        IUserNotificationPreferenceRepository preferences,
-        Guid tenantId,
-        Guid? userId,
-        ILogger logger,
-        string templateKey,
-        CancellationToken ct
-    )
-    {
-        if (userId is not { } id)
-            return true;
-
-        var enabled = await preferences.IsEnabledAsync(
-            tenantId,
-            id,
-            NotificationCategory.Calendar,
-            NotificationChannel.Email,
-            ct
-        );
-        if (!enabled)
-            logger.LogInformation(
-                "Meeting email suppressed by user preference: tenant {TenantId}, user {UserId}, template {TemplateKey}.",
-                tenantId,
-                id,
-                templateKey
-            );
-
-        return enabled;
-    }
 
     /// <summary>In-app a cada usuario (sin repetir y sin el actor, que ya sabe lo que hizo).</summary>
     public static async Task PublishInAppAsync(
@@ -81,7 +49,7 @@ internal static class MeetingNotifications
 
             await dispatcher.RecordInAppAsync(
                 tenantId,
-                $"user:{userId:N}",
+                NotificationRecipient.ForUser(userId),
                 title,
                 NotificationCategory.Calendar,
                 kind,

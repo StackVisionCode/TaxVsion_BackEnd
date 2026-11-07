@@ -64,6 +64,9 @@ public sealed record AppointmentCancelledIntegrationEvent : IntegrationEvent
     public DateTime? OriginalStartUtc { get; init; }
     public string? Reason { get; init; }
 
+    /// <summary>La sala, si la cita es virtual: Communication la cancela sin buscarla por la cita.</summary>
+    public Guid? MeetingId { get; init; }
+
     public IReadOnlyList<AppointmentRecipient> Recipients { get; init; } = [];
 }
 
@@ -105,7 +108,10 @@ public sealed record AppointmentAttendeeAddedIntegrationEvent : IntegrationEvent
     public Guid? CustomerId { get; init; }
     public string? Email { get; init; }
     public required string Title { get; init; }
+
+    /// <summary>Si es serie, el de su primera ocurrencia; null solo si la regla no da ninguna.</summary>
     public DateTime? StartUtc { get; init; }
+
     public required string TimeZoneId { get; init; }
     public required bool IsRecurring { get; init; }
     public required bool IsVirtual { get; init; }

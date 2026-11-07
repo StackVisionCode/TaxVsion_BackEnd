@@ -47,6 +47,32 @@ public sealed class RecycleBinDomainTests
     }
 
     [Fact]
+    public void MoveToFolder_SoftDeletedFile_Fails()
+    {
+        var file = AvailableFile(Guid.NewGuid());
+        var folderBefore = file.FolderId;
+        file.SoftDelete(DateTime.UtcNow, TimeSpan.FromDays(30));
+
+        var result = file.MoveToFolder(Guid.NewGuid(), DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.InvalidTransition, result.Error);
+        Assert.Equal(folderBefore, file.FolderId);
+    }
+
+    [Fact]
+    public void MoveToFolder_ActiveFile_Moves()
+    {
+        var file = AvailableFile(Guid.NewGuid());
+        var folderId = Guid.NewGuid();
+
+        var result = file.MoveToFolder(folderId, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(folderId, file.FolderId);
+    }
+
+    [Fact]
     public void Restore_of_a_file_that_is_not_in_the_recycle_bin_fails()
     {
         var file = AvailableFile(Guid.NewGuid());

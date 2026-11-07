@@ -2,12 +2,12 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Postmaster.Application.Abstractions;
@@ -20,6 +20,7 @@ using TaxVision.Postmaster.Application.Sending.Commands.DispatchSentMessage;
 using TaxVision.Postmaster.Application.Sending.Commands.MarkSendAttempted;
 using TaxVision.Postmaster.Application.Sending.Commands.RecordSendResult;
 using TaxVision.Postmaster.Application.Sending.Commands.ReleaseSendAttempt;
+using TaxVision.Postmaster.Application.Sending.Commands.SendCorrespondenceMessage;
 using TaxVision.Postmaster.Application.Suppression;
 using TaxVision.Postmaster.Domain.Sending;
 using TaxVision.Postmaster.Infrastructure.Idempotency;
@@ -34,24 +35,18 @@ using Wolverine.Tracking;
 namespace TaxVision.Postmaster.Tests.Integration;
 
 /// <summary>
-/// Contra el SQL Server real (user-secrets de Postmaster o POSTMASTER_DB_CONNECTION): host mínimo de
-/// Wolverine con las transacciones de Program.cs y remitentes falsos (nunca sale un correo). Las tablas
-/// de Wolverine van en un esquema propio; las filas del tenant de la prueba y el esquema se borran al final.
+/// En una base temporal propia (BB-10): la flota no la lee, así que una corrida abortada no le deja filas ni sobres.
+/// Host mínimo de Wolverine con las transacciones de Program.cs y remitentes falsos (nunca sale un correo).
 /// </summary>
+[Collection(PostmasterTemporaryDatabase.Collection)]
 public sealed class EmailSendIntegrationTests : IAsyncLifetime
 {
     private const string Schema = "pms_email_send_it";
     private readonly Guid _tenantId = Guid.NewGuid();
 
-    private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("POSTMASTER_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("44669d5c-4874-4994-affe-1ca09fec4a42")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set POSTMASTER_DB_CONNECTION or the Postmaster user-secrets to run this test."
-        );
+    private readonly PostmasterTemporaryDatabase _database = new("pms_email_send_it");
+
+    private string ConnectionString => _database.ConnectionString;
 
     // Los handlers del envío que levanta el host mínimo.
     private static readonly Type[] HandlerTypes =
@@ -61,28 +56,13 @@ public sealed class EmailSendIntegrationTests : IAsyncLifetime
         typeof(MarkSendAttemptedHandler),
         typeof(ReleaseSendAttemptHandler),
         typeof(RecordSendResultHandler),
+        typeof(PrepareCorrespondenceMessageHandler),
+        typeof(SendCorrespondenceMessageHandler),
     ];
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public Task InitializeAsync() => _database.CreateAsync();
 
-    public async Task DisposeAsync()
-    {
-        await using (var connection = new SqlConnection(_connectionString))
-        {
-            await connection.OpenAsync();
-            await using var command = connection.CreateCommand();
-            command.CommandText = """
-                DELETE FROM SentMessageEvents WHERE TenantId = @tenant;
-                DELETE FROM DeliveryAttempts WHERE TenantId = @tenant;
-                DELETE FROM SentMessageRecipients WHERE TenantId = @tenant;
-                DELETE FROM SentMessages WHERE TenantId = @tenant;
-                DELETE FROM EmailIdempotency WHERE TenantId = @tenant;
-                """;
-            command.Parameters.AddWithValue("@tenant", _tenantId);
-            await command.ExecuteNonQueryAsync();
-        }
-        await DropWolverineSchemaAsync();
-    }
+    public async Task DisposeAsync() => await _database.DisposeAsync();
 
     [Fact]
     public async Task FailureAfterProviderAccepted_DoesNotResend()
@@ -136,6 +116,63 @@ public sealed class EmailSendIntegrationTests : IAsyncLifetime
         Assert.True(visible, "The idempotency reservation was not committed before the email went out.");
     }
 
+    [Fact]
+    public async Task InvalidTo_LeavesNoMessageNorReservationAndTellsNotification()
+    {
+        var sender = new CountingEmailSender();
+        var evt = CreateEvent() with { To = "no-es-un-correo" };
+
+        using var host = await StartHostAsync(sender, interceptor: null);
+        var tracked = await host.TrackActivity()
+            .Timeout(TimeSpan.FromSeconds(30))
+            .DoNotAssertOnExceptionsDetected()
+            .PublishMessageAndWaitAsync(evt);
+        await host.StopAsync(TimeSpan.FromSeconds(10));
+
+        var failed = tracked
+            .FindEnvelopesWithMessageType<PostmasterEmailDeliveryFailedIntegrationEvent>()
+            .Select(record => (PostmasterEmailDeliveryFailedIntegrationEvent)record.Message!)
+            .Distinct()
+            .Single();
+        Assert.Equal("recipient.invalid", failed.Reason);
+        Assert.Equal(0, sender.SendCount);
+        Assert.Equal(0, await CountAsync("SentMessages"));
+        Assert.Equal(0, await CountAsync("EmailIdempotency"));
+    }
+
+    // COR-19: con Wolverine real, un Failure confirma lo rastreado; nada puede quedar guardado.
+    [Fact]
+    public async Task CorrespondenceInvalidTo_FailsAndLeavesNoMessageNorReservation()
+    {
+        var command = new SendCorrespondenceMessageCommand(
+            _tenantId,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Integration",
+            "<p>Hi</p>",
+            "Hi",
+            ["no-es-un-correo"],
+            [],
+            [],
+            [],
+            InReplyToInternetMessageId: null,
+            References: null,
+            ReplyToProviderMessageId: null
+        );
+
+        using var host = await StartHostAsync(new CountingEmailSender(), interceptor: null);
+        using var scope = host.Services.CreateScope();
+        var result = await scope
+            .ServiceProvider.GetRequiredService<IMessageBus>()
+            .InvokeAsync<Result<SendCorrespondenceMessageResult>>(command);
+        await host.StopAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SendCorrespondenceMessageHandler.InvalidRecipient", result.Error.Code);
+        Assert.Equal(0, await CountAsync("SentMessages"));
+        Assert.Equal(0, await CountAsync("EmailIdempotency"));
+    }
+
     private NotificationsEmailSendRequestedIntegrationEvent CreateEvent() =>
         new()
         {
@@ -176,7 +213,7 @@ public sealed class EmailSendIntegrationTests : IAsyncLifetime
             {
                 services.AddDbContext<PostmasterDbContext>(o =>
                 {
-                    o.UseSqlServer(_connectionString);
+                    o.UseSqlServer(ConnectionString);
                     if (interceptor is not null)
                         o.AddInterceptors(interceptor);
                 });
@@ -195,7 +232,17 @@ public sealed class EmailSendIntegrationTests : IAsyncLifetime
                         ),
                     }
                 );
-                services.AddSingleton<IConnectedMailboxResolver>(new FakeConnectedMailboxResolver());
+                services.AddSingleton<IConnectedMailboxResolver>(
+                    new FakeConnectedMailboxResolver
+                    {
+                        ResolveReturnValue = new MailboxResolveResult(
+                            MailboxResolutionStatus.Resolved,
+                            new ResolvedMailbox(Guid.NewGuid(), "gmail", "office@example.test", "It"),
+                            null
+                        ),
+                    }
+                );
+                services.AddSingleton(new RecordSendResultRetryOptions());
                 services.AddSingleton<ISuppressionListRepository>(new FakeSuppressionListRepository());
                 services.AddSingleton<IEmailProviderRateLimiter>(new FakeEmailProviderRateLimiter());
                 services.AddSingleton(sender);
@@ -212,7 +259,7 @@ public sealed class EmailSendIntegrationTests : IAsyncLifetime
                     discovery.IncludeType(type);
                 options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
                 options.Durability.Mode = DurabilityMode.Solo;
-                options.PersistMessagesWithSqlServer(_connectionString, Schema);
+                options.PersistMessagesWithSqlServer(ConnectionString, Schema);
                 options.Policies.UseDurableOutboxOnAllSendingEndpoints();
                 options
                     .UseEntityFrameworkCoreTransactions()
@@ -229,7 +276,7 @@ public sealed class EmailSendIntegrationTests : IAsyncLifetime
 
     private async Task<int> CountAsync(string table)
     {
-        await using var connection = new SqlConnection(_connectionString);
+        await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = $"SELECT COUNT(*) FROM [{table}] WHERE TenantId = @tenant";
@@ -239,7 +286,7 @@ public sealed class EmailSendIntegrationTests : IAsyncLifetime
 
     private async Task<(string Status, DateTime? AttemptedAt, string? ErrorReason)> ReadSentMessageAsync()
     {
-        await using var connection = new SqlConnection(_connectionString);
+        await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText =
@@ -260,7 +307,7 @@ public sealed class EmailSendIntegrationTests : IAsyncLifetime
     /// </summary>
     private async Task<bool> ReservationIsVisibleAsync(string idempotencyKey)
     {
-        await using var connection = new SqlConnection(_connectionString);
+        await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -277,37 +324,6 @@ public sealed class EmailSendIntegrationTests : IAsyncLifetime
         {
             return false;
         }
-    }
-
-    // Borra solo lo que Wolverine creó en el esquema de la prueba.
-    private async Task DropWolverineSchemaAsync()
-    {
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            DECLARE @sql nvarchar(max) = N'';
-            SELECT @sql += N'ALTER TABLE ' + QUOTENAME(s.name) + N'.' + QUOTENAME(t.name)
-                + N' DROP CONSTRAINT ' + QUOTENAME(fk.name) + N';'
-              FROM sys.foreign_keys fk JOIN sys.tables t ON t.object_id = fk.parent_object_id
-              JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = @schema;
-            SELECT @sql += N'DROP PROCEDURE ' + QUOTENAME(s.name) + N'.' + QUOTENAME(o.name) + N';'
-              FROM sys.procedures o JOIN sys.schemas s ON s.schema_id = o.schema_id WHERE s.name = @schema;
-            SELECT @sql += N'DROP FUNCTION ' + QUOTENAME(s.name) + N'.' + QUOTENAME(o.name) + N';'
-              FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id
-              WHERE s.name = @schema AND o.type IN ('FN', 'IF', 'TF');
-            SELECT @sql += N'DROP TABLE ' + QUOTENAME(s.name) + N'.' + QUOTENAME(o.name) + N';'
-              FROM sys.tables o JOIN sys.schemas s ON s.schema_id = o.schema_id WHERE s.name = @schema;
-            SELECT @sql += N'DROP SEQUENCE ' + QUOTENAME(s.name) + N'.' + QUOTENAME(o.name) + N';'
-              FROM sys.sequences o JOIN sys.schemas s ON s.schema_id = o.schema_id WHERE s.name = @schema;
-            SELECT @sql += N'DROP TYPE ' + QUOTENAME(s.name) + N'.' + QUOTENAME(t.name) + N';'
-              FROM sys.types t JOIN sys.schemas s ON s.schema_id = t.schema_id
-              WHERE s.name = @schema AND t.is_user_defined = 1;
-            IF SCHEMA_ID(@schema) IS NOT NULL SELECT @sql += N'DROP SCHEMA ' + QUOTENAME(@schema) + N';';
-            EXEC sp_executesql @sql;
-            """;
-        command.Parameters.AddWithValue("@schema", Schema);
-        await command.ExecuteNonQueryAsync();
     }
 
     private sealed class NoTenantContext : ITenantContext

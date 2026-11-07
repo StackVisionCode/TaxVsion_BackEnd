@@ -21,12 +21,117 @@ public sealed class NotesFileScanResultConsumerTests
             NoteContent.Create("<p>hi</p>").Value,
             NoteReference.Create(NoteTargetType.None, null).Value,
             NoteVisibility.Private,
-            null
+            null,
+            DateTime.UtcNow
         ).Value;
         var fileId = Guid.NewGuid();
-        note.AttachFile(fileId, "receipt.pdf", "application/pdf", 1024);
+        note.AttachFile(fileId, "receipt.pdf", "application/pdf", 1024, DateTime.UtcNow);
         repo.Seed(note);
         return (note, fileId);
+    }
+
+    private static Note SeedSecondNote(FakeNoteRepository repo, Guid tenantId, Guid fileId)
+    {
+        var note = Note.Create(
+            tenantId,
+            Guid.NewGuid(),
+            NoteContent.Create("<p>second</p>").Value,
+            NoteReference.Create(NoteTargetType.None, null).Value,
+            NoteVisibility.Private,
+            null,
+            DateTime.UtcNow
+        ).Value;
+        note.AttachFile(fileId, "receipt.pdf", "application/pdf", 1024, DateTime.UtcNow);
+        repo.Seed(note);
+        return note;
+    }
+
+    private static FileAvailableIntegrationEvent Available(Guid tenantId, Guid fileId) =>
+        new()
+        {
+            TenantId = tenantId,
+            FileId = fileId,
+            ObjectKey = "key",
+            ContentType = "application/pdf",
+            SizeBytes = 1024,
+            ChecksumSha256 = "abc",
+            CreatedBy = Guid.NewGuid(),
+        };
+
+    [Fact]
+    public async Task Handle_FileInTwoNotes_UpdatesBoth()
+    {
+        var tenantId = Guid.NewGuid();
+        var repo = new FakeNoteRepository();
+        var (first, fileId) = SeedNoteWithAttachment(repo, tenantId);
+        var second = SeedSecondNote(repo, tenantId, fileId);
+        var uow = new NoOpUnitOfWork();
+
+        await NotesFileScanResultConsumer.Handle(
+            Available(tenantId, fileId),
+            repo,
+            uow,
+            new NoOpCorrelationContext(),
+            NullLogger<Note>.Instance,
+            TimeProvider.System,
+            CancellationToken.None
+        );
+
+        Assert.Equal(NoteAttachmentStatus.Available, first.Attachments.Single().Status);
+        Assert.Equal(NoteAttachmentStatus.Available, second.Attachments.Single().Status);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task Handle_FileInNotesOfTwoTenants_OnlyTouchesTheEventTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        var repo = new FakeNoteRepository();
+        var (foreign, fileId) = SeedNoteWithAttachment(repo, Guid.NewGuid());
+        var own = SeedSecondNote(repo, tenantId, fileId);
+
+        await NotesFileScanResultConsumer.Handle(
+            Available(tenantId, fileId),
+            repo,
+            new NoOpUnitOfWork(),
+            new NoOpCorrelationContext(),
+            NullLogger<Note>.Instance,
+            TimeProvider.System,
+            CancellationToken.None
+        );
+
+        Assert.Equal(NoteAttachmentStatus.Available, own.Attachments.Single().Status);
+        Assert.Equal(NoteAttachmentStatus.Pending, foreign.Attachments.Single().Status);
+    }
+
+    [Fact]
+    public async Task Handle_FileDeletedInTwoNotes_DetachesBothAndPublishesEach()
+    {
+        var tenantId = Guid.NewGuid();
+        var repo = new FakeNoteRepository();
+        var (first, fileId) = SeedNoteWithAttachment(repo, tenantId);
+        var second = SeedSecondNote(repo, tenantId, fileId);
+        var bus = new FakeMessageBus();
+
+        await NotesFileScanResultConsumer.Handle(
+            new FileDeletedIntegrationEvent
+            {
+                TenantId = tenantId,
+                FileId = fileId,
+                CreatedBy = Guid.NewGuid(),
+            },
+            repo,
+            new NoOpUnitOfWork(),
+            bus,
+            new NoOpCorrelationContext(),
+            NullLogger<Note>.Instance,
+            TimeProvider.System,
+            CancellationToken.None
+        );
+
+        Assert.Equal(NoteAttachmentStatus.Detached, first.Attachments.Single().Status);
+        Assert.Equal(NoteAttachmentStatus.Detached, second.Attachments.Single().Status);
+        Assert.Equal(2, bus.Published.Count);
     }
 
     [Fact]
@@ -52,6 +157,7 @@ public sealed class NotesFileScanResultConsumerTests
             uow,
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -65,7 +171,7 @@ public sealed class NotesFileScanResultConsumerTests
         var tenantId = Guid.NewGuid();
         var repo = new FakeNoteRepository();
         var (note, fileId) = SeedNoteWithAttachment(repo, tenantId);
-        note.DetachFile(fileId);
+        note.DetachFile(fileId, DateTime.UtcNow);
 
         await NotesFileScanResultConsumer.Handle(
             new FileAvailableIntegrationEvent
@@ -82,6 +188,7 @@ public sealed class NotesFileScanResultConsumerTests
             new NoOpUnitOfWork(),
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -108,6 +215,7 @@ public sealed class NotesFileScanResultConsumerTests
             uow,
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -137,6 +245,7 @@ public sealed class NotesFileScanResultConsumerTests
             uow,
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -208,6 +317,7 @@ public sealed class NotesFileScanResultConsumerTests
             uow,
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -232,17 +342,19 @@ public sealed class NotesFileScanResultConsumerTests
             new NoOpUnitOfWork(),
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
         Assert.Equal(NoteAttachmentStatus.UnderReview, note.Attachments.Single().Status);
 
-        note.MarkAttachmentAvailable(fileId);
+        note.MarkAttachmentAvailable(fileId, DateTime.UtcNow);
         await NotesFileScanResultConsumer.Handle(
             review,
             repo,
             new NoOpUnitOfWork(),
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
         Assert.Equal(NoteAttachmentStatus.Available, note.Attachments.Single().Status);
@@ -269,6 +381,7 @@ public sealed class NotesFileScanResultConsumerTests
             bus,
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -299,6 +412,7 @@ public sealed class NotesFileScanResultConsumerTests
             uow,
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -327,6 +441,7 @@ public sealed class NotesFileScanResultConsumerTests
             uow,
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 

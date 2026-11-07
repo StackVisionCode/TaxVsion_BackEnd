@@ -34,7 +34,9 @@ internal static class TenantEmailAccountDtoFactory
             return [];
 
         var client = clientFactory.Resolve(account.ProviderCode);
-        return client.IsFailure ? [] : OAuthScopes.Missing(granted, client.Value.ConfiguredScope);
+        return client.IsFailure
+            ? []
+            : OAuthScopeSet.Parse(granted).Missing(OAuthScopeSet.Parse(client.Value.ConfiguredScope));
     }
 
     private static TenantEmailAccountDto ToDto(TenantEmailAccount a, IReadOnlyList<string> missingScopes) =>

@@ -1,8 +1,6 @@
-using System.Data;
 using System.Linq.Expressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Audit;
@@ -44,27 +42,6 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             )
             .IgnoreQueryFilters()
             .SingleOrDefaultAsync(ct);
-    }
-
-    // Timeout 0: quien no lo consigue no espera. El candado se suelta solo con la transacción.
-    public async Task<bool> TryClaimScanAsync(Guid fileId, CancellationToken ct)
-    {
-        var transaction =
-            db.Database.CurrentTransaction
-            ?? throw new InvalidOperationException("Claiming a scan requires an open transaction.");
-
-        await using var command = db.Database.GetDbConnection().CreateCommand();
-        command.Transaction = transaction.GetDbTransaction();
-        command.CommandText = "sp_getapplock";
-        command.CommandType = CommandType.StoredProcedure;
-        command.Parameters.Add(new SqlParameter("@Resource", $"cloudstorage:scan:{fileId:N}"));
-        command.Parameters.Add(new SqlParameter("@LockMode", "Exclusive"));
-        command.Parameters.Add(new SqlParameter("@LockOwner", "Transaction"));
-        command.Parameters.Add(new SqlParameter("@LockTimeout", 0));
-        var result = new SqlParameter("@Result", SqlDbType.Int) { Direction = ParameterDirection.ReturnValue };
-        command.Parameters.Add(result);
-        await command.ExecuteNonQueryAsync(ct);
-        return (int)result.Value! >= 0;
     }
 
     public async Task<IReadOnlyList<FileObject>> ListAsync(

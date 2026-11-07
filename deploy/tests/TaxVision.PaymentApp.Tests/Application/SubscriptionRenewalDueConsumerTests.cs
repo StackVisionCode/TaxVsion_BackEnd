@@ -16,7 +16,7 @@ namespace TaxVision.PaymentApp.Tests.Application;
 
 /// <summary>Rama off-session vs flow manual segun la proyeccion local de
 /// TenantBillingPreference y los metodos guardados en TenantProviderCustomer.</summary>
-public sealed class SubscriptionRenewalDueConsumerTests
+public sealed partial class SubscriptionRenewalDueConsumerTests
 {
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _subscriptionId = Guid.NewGuid();
@@ -439,8 +439,15 @@ public sealed class SubscriptionRenewalDueConsumerTests
     {
         public bool ChargeInvoked { get; private set; }
 
-        public ValueTask PublishAsync<T>(T message, Wolverine.DeliveryOptions? options = null) =>
-            ValueTask.CompletedTask;
+        public object? Invoked { get; private set; }
+
+        public List<object> Published { get; } = [];
+
+        public ValueTask PublishAsync<T>(T message, Wolverine.DeliveryOptions? options = null)
+        {
+            Published.Add(message!);
+            return ValueTask.CompletedTask;
+        }
 
         public Task<T> InvokeAsync<T>(
             object message,
@@ -449,6 +456,7 @@ public sealed class SubscriptionRenewalDueConsumerTests
         )
         {
             ChargeInvoked = true;
+            Invoked = message;
             // El consumer legacy espera Result<Guid> — simular éxito.
             if (typeof(T) == typeof(BuildingBlocks.Results.Result<Guid>))
                 return Task.FromResult((T)(object)BuildingBlocks.Results.Result.Success(Guid.NewGuid()));

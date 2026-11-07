@@ -239,6 +239,39 @@ public sealed class DocumentFileSaveRejectedConsumerTests
         Assert.Empty(bus.Published.OfType<FilesDeletionRequestedIntegrationEvent>());
     }
 
+    // BIL-7: Billing compara esta clave para no pisar el PDF vigente con uno tardío.
+    [Fact]
+    public async Task Completed_event_carries_the_generation_idempotency_key()
+    {
+        var fileId = Guid.NewGuid();
+        var generation = UploadingGeneration(fileId);
+        var bus = new RecordingMessageBus();
+
+        await DocumentFileAvailableConsumer.Handle(
+            new FileAvailableIntegrationEvent
+            {
+                TenantId = TenantId,
+                CorrelationId = "corr-1",
+                FileId = fileId,
+                ObjectKey = "object-key",
+                ContentType = "application/pdf",
+                SizeBytes = 10,
+                ChecksumSha256 = new string('a', 64),
+                CreatedBy = Guid.NewGuid(),
+            },
+            new InMemoryRepository(generation),
+            new RecordingUnitOfWork(),
+            bus,
+            new TestCorrelationContext("corr-1"),
+            TimeProvider.System,
+            NullLogger<FileAvailableIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var completed = Assert.Single(bus.Published.OfType<DocumentGenerationCompletedIntegrationEvent>());
+        Assert.Equal(generation.IdempotencyKey, completed.IdempotencyKey);
+    }
+
     private static Task HandleAsync(
         FileSaveRejectedIntegrationEvent evt,
         IDocumentGenerationRepository repository,
@@ -308,11 +341,14 @@ public sealed class DocumentFileSaveRejectedConsumerTests
 
         public Task<DocumentGeneration?> GetByIdempotencyKeyAsync(
             Guid tenantId,
+            string sourceService,
             string idempotencyKey,
             CancellationToken ct = default
         ) =>
             Task.FromResult(
-                _generations.FirstOrDefault(g => g.TenantId == tenantId && g.IdempotencyKey == idempotencyKey)
+                _generations.FirstOrDefault(g =>
+                    g.TenantId == tenantId && g.SourceService == sourceService && g.IdempotencyKey == idempotencyKey
+                )
             );
 
         public Task<DocumentGeneration?> GetByFileIdAsync(Guid fileId, CancellationToken ct = default) =>

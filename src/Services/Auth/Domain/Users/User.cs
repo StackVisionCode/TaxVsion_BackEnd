@@ -2,6 +2,7 @@ using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.TimeZones;
+using TaxVision.Auth.Domain.Common;
 using TaxVision.Auth.Domain.Users.Events;
 
 namespace TaxVision.Auth.Domain.Users;
@@ -14,7 +15,7 @@ public sealed class User : AggregateRoot
 
     public string Name { get; private set; } = default!;
     public string LastName { get; private set; } = default!;
-    public string Email { get; private set; } = default!;
+    public EmailAddress Email { get; private set; } = default!;
     public string PasswordHash { get; private set; } = default!;
     public UserActorType ActorType { get; private set; }
 
@@ -72,9 +73,15 @@ public sealed class User : AggregateRoot
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? DeactivatedAtUtc { get; private set; }
 
+    /// <summary>Motivo de la última desactivación. Null en las filas anteriores a CUS-10 (se tratan como de la oficina).</summary>
+    public UserDeactivationReason? DeactivationReason { get; private set; }
+
+    /// <summary>Fecha del último archivado o restauración del cliente aplicado: descarta los avisos viejos.</summary>
+    public DateTime? CustomerStatusChangedAtUtc { get; private set; }
+
     /// <summary>PayFlow (Fase 16) — presente solo para el TenantAdmin creado por la Saga de
-    /// onboarding (<c>internal/tenants/{tenantId}/owners</c>). Único índice filtrado: protege
-    /// contra que un reintento del mismo comando M2M cree un segundo TenantAdmin.</summary>
+    /// onboarding (<c>CreateTenantOwnerFromOnboardingCommand</c>). Único índice filtrado: protege
+    /// contra que un reintento del mismo comando cree un segundo TenantAdmin.</summary>
     public Guid? OnboardingId { get; private set; }
 
     /// <summary>Token de concurrencia: dos ediciones del mismo usuario no se pisan en silencio.</summary>
@@ -100,7 +107,8 @@ public sealed class User : AggregateRoot
         if (string.IsNullOrWhiteSpace(lastName))
             return Result.Failure<User>(new Error("User.LastName", "Last name is required."));
 
-        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+        var address = EmailAddress.Create(email);
+        if (address.IsFailure)
             return Result.Failure<User>(new Error("User.Email", "Email is invalid."));
 
         if (string.IsNullOrWhiteSpace(passwordHash))
@@ -144,7 +152,7 @@ public sealed class User : AggregateRoot
             Id = Guid.NewGuid(),
             Name = name.Trim(),
             LastName = lastName.Trim(),
-            Email = email.Trim().ToLowerInvariant(),
+            Email = address.Value,
             PasswordHash = passwordHash,
             ActorType = actorType,
             CustomerId = customerId,
@@ -220,10 +228,15 @@ public sealed class User : AggregateRoot
         return Result.Success();
     }
 
-    public void ChangeEmail(string newEmail)
+    public Result ChangeEmail(string newEmail)
     {
-        Email = newEmail.Trim().ToLowerInvariant();
+        var address = EmailAddress.Create(newEmail);
+        if (address.IsFailure)
+            return Result.Failure(new Error("User.Email", "Email is invalid."));
+
+        Email = address.Value;
         EmailVerified = true;
+        return Result.Success();
     }
 
     public void SetPhoneNumber(string phoneNumber)
@@ -238,18 +251,18 @@ public sealed class User : AggregateRoot
     /// </summary>
     public Result UpdatePhoneNumber(string? phoneNumber)
     {
-        var phone = phoneNumber?.Trim() ?? string.Empty;
-        if (phone.Length == 0)
+        if (string.IsNullOrWhiteSpace(phoneNumber))
         {
             PhoneNumber = null;
             PhoneVerified = false;
             return Result.Success();
         }
 
-        if (phone.Length is < 7 or > 20 || !phone.All(c => char.IsDigit(c) || c is '+' or '-' or ' '))
-            return Result.Failure(new Error("User.Phone", "Phone number is invalid."));
+        var phone = Common.PhoneNumber.Create(phoneNumber);
+        if (phone.IsFailure)
+            return Result.Failure(phone.Error);
 
-        PhoneNumber = phone;
+        PhoneNumber = phone.Value.Value;
         PhoneVerified = false;
         return Result.Success();
     }
@@ -368,33 +381,116 @@ public sealed class User : AggregateRoot
 
     public void MarkPermissionsBackfilled(DateTime nowUtc) => PermissionsBackfilledAt = nowUtc;
 
-    public void Deactivate(DateTime utcNow)
+    /// <summary>Nadie se da de baja a sí mismo. El handler la consulta antes que las reglas del tenant.</summary>
+    public Result EnsureCanBeDeactivatedBy(Guid byUserId) =>
+        byUserId == Id
+            ? Result.Failure(new Error("User.SelfAction", "You cannot deactivate your own account."))
+            : Result.Success();
+
+    public Result Deactivate(Guid byUserId, DateTime utcNow)
+    {
+        var allowed = EnsureCanBeDeactivatedBy(byUserId);
+        if (allowed.IsFailure)
+            return allowed;
+
+        var released = ReleaseSlotPriority();
+        if (released.IsFailure)
+            return released;
+
+        MarkDeactivated(utcNow, UserDeactivationReason.Admin);
+        return Result.Success();
+    }
+
+    /// <summary>Compensación del onboarding cancelado: apaga también al dueño; su oficina no llegó a existir.</summary>
+    public void DeactivateForCancelledOnboarding(DateTime utcNow) =>
+        MarkDeactivated(utcNow, UserDeactivationReason.OnboardingCancelled);
+
+    /// <summary>D-POR-1: el cliente archivado pierde el portal. Idempotente; un aviso más viejo que el último aplicado
+    /// no cambia nada, y una cuenta ya desactivada conserva su motivo.</summary>
+    public Result ApplyCustomerArchived(DateTime archivedAtUtc, DateTime utcNow)
+    {
+        if (ActorType != UserActorType.CustomerPortal)
+            return Result.Failure(NotPortal);
+        if (IsStaleCustomerStatus(archivedAtUtc))
+            return Result.Success();
+
+        CustomerStatusChangedAtUtc = archivedAtUtc;
+        if (IsActive)
+            MarkDeactivated(utcNow, UserDeactivationReason.CustomerArchived);
+        return Result.Success();
+    }
+
+    /// <summary>D-POR-1: restaurar el cliente devuelve el portal solo si lo cortó el archivado.</summary>
+    public Result ApplyCustomerRestored(DateTime restoredAtUtc, DateTime utcNow)
+    {
+        if (ActorType != UserActorType.CustomerPortal)
+            return Result.Failure(NotPortal);
+        if (IsStaleCustomerStatus(restoredAtUtc))
+            return Result.Success();
+
+        CustomerStatusChangedAtUtc = restoredAtUtc;
+        if (IsActive || DeactivationReason != UserDeactivationReason.CustomerArchived)
+            return Result.Success();
+        return Reactivate(utcNow);
+    }
+
+    private static readonly Error NotPortal = new("User.NotPortal", "Only customer portal accounts follow the customer.");
+
+    private bool IsStaleCustomerStatus(DateTime occurredAtUtc) =>
+        CustomerStatusChangedAtUtc is { } last && occurredAtUtc <= last;
+
+    private void MarkDeactivated(DateTime utcNow, UserDeactivationReason reason)
     {
         IsActive = false;
-        ReleaseSlotPriority();
         DeactivatedAtUtc = utcNow;
+        DeactivationReason = reason;
         // No degradar un retiro terminal a "desactivado" (Offboarded ya implica inactivo).
         if (Status != UserStatus.Offboarded)
             Status = UserStatus.Deactivated;
     }
 
-    public void Reactivate(DateTime? nowUtc = null)
+    /// <summary>Offboard es terminal. El handler la consulta antes de gastar un asiento.</summary>
+    public Result EnsureCanBeReactivated() =>
+        Status == UserStatus.Offboarded
+            ? Result.Failure(new Error("User.Offboarded", "This user was offboarded and can't be reactivated."))
+            : Result.Success();
+
+    public Result Reactivate(DateTime nowUtc)
     {
+        var allowed = EnsureCanBeReactivated();
+        if (allowed.IsFailure)
+            return allowed;
+
         IsActive = true;
-        AssignSlotPriorityIfMissing(nowUtc ?? DateTime.UtcNow);
+        AssignSlotPriorityIfMissing(nowUtc);
         DeactivatedAtUtc = null;
+        DeactivationReason = null;
         Status = UserStatus.Active;
+        return Result.Success();
     }
 
+    /// <summary>Nadie se retira a sí mismo. El handler la consulta antes que las reglas del tenant.</summary>
+    public Result EnsureCanBeOffboardedBy(Guid byUserId) =>
+        byUserId == Id
+            ? Result.Failure(new Error("User.SelfAction", "You cannot remove your own account."))
+            : Result.Success();
+
     /// <summary>Retira al usuario del tenant: estado TERMINAL, no reversible. Idempotente.</summary>
-    public Result Offboard(DateTime utcNow)
+    public Result Offboard(Guid byUserId, DateTime utcNow)
     {
+        var allowed = EnsureCanBeOffboardedBy(byUserId);
+        if (allowed.IsFailure)
+            return allowed;
+
         if (Status == UserStatus.Offboarded)
             return Result.Success();
 
+        var released = ReleaseSlotPriority();
+        if (released.IsFailure)
+            return released;
+
         Status = UserStatus.Offboarded;
         IsActive = false;
-        ReleaseSlotPriority();
         RemovedAtUtc = utcNow;
         DeactivatedAtUtc ??= utcNow;
         return Result.Success();
@@ -425,7 +521,7 @@ public sealed class User : AggregateRoot
             return Result.Success();
 
         if (IsOwner)
-            return Result.Failure(new Error("User.OwnerSlot", "The account owner cannot release their slot."));
+            return Result.Failure(new Error("User.OwnerSlot", "The account owner cannot be suspended or removed."));
 
         SlotPriorityAt = null;
         AddDomainEvent(new UserSlotPriorityReleased(TenantId, Id));

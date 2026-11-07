@@ -42,10 +42,15 @@ public static class AcceptConsentHandler
             return Result.Failure(resolution.Error);
 
         var (request, signer) = (resolution.Value.Request, resolution.Value.Signer);
+        var alreadyAccepted = signer.HasAcceptedConsent;
         var acceptedAt = DateTime.UtcNow;
         var acceptance = request.AcceptSignerConsent(signer.Id, acceptedAt, cmd.ClientIp, cmd.UserAgent);
         if (acceptance.IsFailure)
             return acceptance;
+
+        // Ya aceptado (doble clic o reintento tras perder): ni otra constancia ni otro aviso.
+        if (alreadyAccepted)
+            return Result.Success();
 
         var snapshot = consentTextProvider.Resolve(request.Category, DefaultConsentLanguage);
         var evt = ConsentEvent.RecordAcceptance(

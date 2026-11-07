@@ -44,4 +44,36 @@ public sealed class LateCommitReviewRepository(GrowthDbContext dbContext, ITenan
             .OrderBy(r => r.CreatedAtUtc)
             .Take(take)
             .ToListAsync(ct);
+
+    // IgnoreQueryFilters: resolución de PlatformAdmin, cross-tenant como el listado.
+    public async Task<LateCommitReviewTarget?> FindTargetAsync(Guid reviewId, CancellationToken ct = default)
+    {
+        var review = await dbContext
+            .LateCommitReviews.IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == reviewId, ct);
+        if (review is null)
+            return null;
+
+        var reservation = await dbContext
+            .CodeReservations.IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == review.CodeReservationId && r.TenantId == review.TenantId, ct);
+        if (reservation is null)
+            return null;
+
+        return new LateCommitReviewTarget(
+            review.Id,
+            review.TenantId,
+            review.CodeReservationId,
+            review.PaymentSource,
+            review.RelatedPaymentId,
+            review.SourceEventId,
+            reservation.SnapshotHash.Value,
+            review.ResolvedAtUtc
+        );
+    }
+
+    public Task<LateCommitReview?> GetForResolutionAsync(Guid reviewId, CancellationToken ct = default) =>
+        dbContext.LateCommitReviews.IgnoreQueryFilters().FirstOrDefaultAsync(r => r.Id == reviewId, ct);
 }

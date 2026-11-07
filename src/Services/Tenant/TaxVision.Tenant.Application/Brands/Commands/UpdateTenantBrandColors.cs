@@ -1,9 +1,9 @@
-using BuildingBlocks.Caching;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tenant.Application.Brands.Abstractions;
 using TaxVision.Tenant.Domain.Enums;
 using TaxVision.Tenant.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.Tenant.Application.Brands.Commands;
 
@@ -25,7 +25,8 @@ public static class UpdateTenantBrandColorsHandler
         UpdateTenantBrandColorsCommand cmd,
         ITenantBrandRepository repo,
         IUnitOfWork unitOfWork,
-        ICacheService cache,
+        IMessageBus bus,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -35,22 +36,23 @@ public static class UpdateTenantBrandColorsHandler
         if (Invalid(cmd.AccentColorHex, out var accentError))
             return Result.Failure(accentError);
 
-        var brand = await BrandCommandSupport.GetOrCreateAsync(repo, cmd.TenantId, cmd.Surface, ct);
+        var nowUtc = clock.GetUtcNow().UtcDateTime;
+        var brand = await BrandCommandSupport.GetOrCreateAsync(repo, cmd.TenantId, cmd.Surface, nowUtc, ct);
 
-        Apply(brand, BrandColorToken.Primary, cmd.PrimaryColorHex);
-        Apply(brand, BrandColorToken.Accent, cmd.AccentColorHex);
+        Apply(brand, BrandColorToken.Primary, cmd.PrimaryColorHex, nowUtc);
+        Apply(brand, BrandColorToken.Accent, cmd.AccentColorHex, nowUtc);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await BrandCommandSupport.InvalidateAsync(cache, cmd.TenantId, cmd.Surface, ct);
+        await BrandCommandSupport.RequestInvalidationAsync(bus, cmd.TenantId, cmd.Surface);
         return Result.Success();
     }
 
-    private static void Apply(Domain.Brands.TenantBrand brand, BrandColorToken token, string? hex)
+    private static void Apply(Domain.Brands.TenantBrand brand, BrandColorToken token, string? hex, DateTime nowUtc)
     {
         if (hex is null)
-            brand.RemoveColor(token);
+            brand.RemoveColor(token, nowUtc);
         else
-            brand.SetColor(token, hex); // ya validado arriba, no puede fallar
+            brand.SetColor(token, hex, nowUtc); // ya validado arriba, no puede fallar
     }
 
     private static bool Invalid(string? hex, out Error error)

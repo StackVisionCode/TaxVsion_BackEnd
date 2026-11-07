@@ -34,9 +34,12 @@ internal sealed class FakeNoteRepository : INoteRepository
     public Task<Note?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         Task.FromResult(_byId.TryGetValue(id, out var note) && note.TenantId == tenantId ? note : null);
 
-    public Task<Note?> GetByAttachmentFileIdAsync(Guid cloudStorageFileId, CancellationToken ct = default) =>
-        Task.FromResult(
-            _byId.Values.FirstOrDefault(n => n.Attachments.Any(a => a.CloudStorageFileId == cloudStorageFileId))
+    public Task<IReadOnlyList<Note>> ListByAttachmentFileIdAsync(
+        Guid cloudStorageFileId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<Note>>(
+            _byId.Values.Where(n => n.Attachments.Any(a => a.CloudStorageFileId == cloudStorageFileId)).ToList()
         );
 
     public Task<PagedResult<Note>> ListByReferenceAsync(

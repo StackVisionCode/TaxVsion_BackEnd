@@ -28,28 +28,17 @@ public static class ReserveAddOnCheckoutHandler
 {
     public static async Task<Result<AddOnCheckoutReservation>> Handle(
         ReserveAddOnCheckoutCommand reservation,
-        ISubscriptionRepository subscriptions,
-        IPlanRepository plans,
-        IModuleRepository modules,
-        IAddOnDefinitionRepository addOnDefinitions,
-        ISubscriptionTenantSettingsRepository settings,
-        ITenantAddOnRepository tenantAddOns,
+        AddOnPurchaseEligibility eligibility,
         IAddOnPurchaseIntentRepository intents,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
     {
         var command = reservation.Request;
-        var eligible = await AddOnPurchaseEligibility.EnsurePurchasableAsync(
+        var eligible = await eligibility.EnsurePurchasableAsync(
             command.TenantId,
             command.AddOnCode,
             command.Quantity,
-            subscriptions,
-            plans,
-            modules,
-            addOnDefinitions,
-            settings,
-            tenantAddOns,
             ct
         );
         if (eligible.IsFailure)
@@ -83,8 +72,8 @@ public static class ReserveAddOnCheckoutHandler
         Result.Success(
             new AddOnCheckoutReservation(
                 intent.Id,
-                intent.ProratedTotalCents,
-                intent.Currency,
+                intent.ProratedTotal.Cents,
+                intent.ProratedTotal.Currency,
                 intent.Quantity,
                 definition.Name
             )
@@ -119,8 +108,8 @@ public static class ReserveAddOnCheckoutHandler
         return Result.Success(
             new AddOnCheckoutReservation(
                 open.Id,
-                open.ProratedTotalCents,
-                open.Currency,
+                open.ProratedTotal.Cents,
+                open.ProratedTotal.Currency,
                 open.Quantity,
                 definition.Name,
                 new StartAddOnCheckoutResponse(
@@ -170,7 +159,7 @@ public static class ReserveAddOnCheckoutHandler
             command.AutoRenew,
             unitPrice.Value,
             billingCycle,
-            totalCents,
+            Money.FromCents(totalCents, unitPrice.Value.Currency),
             command.RequestedByUserId,
             DateTime.UtcNow
         );

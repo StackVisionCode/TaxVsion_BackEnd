@@ -68,6 +68,33 @@ public sealed class OAuthTokenRefreshIntegrationTests : IAsyncLifetime
         Assert.Equal(1, _provider.CallCount);
     }
 
+    // Connectors H: dos refrescos leen el mismo token; el que guarda segundo no pisa al primero.
+    [Fact(Timeout = 120_000)]
+    public async Task ConcurrentRefresh_FromTheSameRead_KeepsTheTokenSavedFirst()
+    {
+        var accountId = await SeedAsync();
+        var protector = new FakeEncryptedSecretProtector();
+        _provider.OnRefresh = _ =>
+        {
+            // Otro nodo refresca y guarda mientras este espera al proveedor.
+            using var other = _host.NewContext();
+            var token = other.OAuthConnections.Include(c => c.Token).Single(c => c.AccountId == accountId).Token!;
+            token.UpdateAccessToken(protector.Protect("other-access"), DateTime.UtcNow.AddHours(1), DateTime.UtcNow);
+            token.UpdateRefreshToken(protector.Protect("other-refresh"));
+            other.SaveChanges();
+            return new OAuthTokenGrant("late-access", "late-refresh", 3600);
+        };
+
+        await using var scope = _host.Services.CreateAsyncScope();
+        var result = await scope.ServiceProvider.GetRequiredService<IOAuthTokenManager>().GetValidAccessTokenAsync(accountId);
+
+        Assert.Equal("late-access", result.Value);
+        await using var read = _host.NewContext();
+        var stored = await read.OAuthConnections.AsNoTracking().Include(c => c.Token).SingleAsync(c => c.AccountId == accountId);
+        Assert.Equal("other-refresh", protector.Unprotect(stored.Token!.RefreshTokenCipher));
+        Assert.Equal("other-access", protector.Unprotect(stored.Token.AccessTokenCipher));
+    }
+
     private async Task<Guid> SeedAsync()
     {
         var now = DateTime.UtcNow;

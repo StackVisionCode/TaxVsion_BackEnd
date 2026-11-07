@@ -182,6 +182,7 @@ public static class PrepareZipDownloadHandler
                 clock.UtcNow
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         foreach (var (file, _) in combined)
         {
             await bus.PublishAsync(
@@ -197,7 +198,6 @@ public static class PrepareZipDownloadHandler
                 }
             );
         }
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(new ZipDownloadPlan(entries));
     }

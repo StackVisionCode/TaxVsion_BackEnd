@@ -125,7 +125,7 @@ public static class RetryFormCustomerLinkHandler
         );
         if (conflict.HasValue)
             return Result.Failure<Guid>(FormRequestErrors.CustomerHasOpenRequest);
-        var retried = request.RetryCustomerLink(false, null, command.NowUtc);
+        var retried = request.CustomerLinking.Retry(false, null, command.NowUtc);
         return retried.IsFailure ? Result.Failure<Guid>(retried.Error) : Result.Success(customerId);
     }
 }

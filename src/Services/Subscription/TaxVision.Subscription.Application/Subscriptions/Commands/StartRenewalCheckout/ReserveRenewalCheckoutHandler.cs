@@ -3,6 +3,7 @@ using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Domain.Subscriptions;
+using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout;
 
@@ -61,7 +62,7 @@ public static class ReserveRenewalCheckoutHandler
     }
 
     private static Result<RenewalCheckoutReservation> Reserved(SubscriptionRenewalIntent intent) =>
-        Result.Success(new RenewalCheckoutReservation(intent.Id, intent.AmountCents, intent.Currency));
+        Result.Success(new RenewalCheckoutReservation(intent.Id, intent.Amount.Cents, intent.Amount.Currency));
 
     /// <summary>
     /// Guard del doble cobro, el mismo que ya tienen asientos, add-ons y el upgrade: mientras la sesión
@@ -82,8 +83,8 @@ public static class ReserveRenewalCheckoutHandler
         return Result.Success(
             new RenewalCheckoutReservation(
                 open.Id,
-                open.AmountCents,
-                open.Currency,
+                open.Amount.Cents,
+                open.Amount.Currency,
                 new StartRenewalCheckoutResponse(
                     open.Id,
                     open.CheckoutUrl!,
@@ -136,8 +137,7 @@ public static class ReserveRenewalCheckoutHandler
 
         return SubscriptionRenewalIntent.Create(
             command.TenantId,
-            price.Value.AmountCents,
-            price.Value.Currency,
+            Money.FromCents(price.Value.AmountCents, price.Value.Currency),
             subscription.BillingCycle,
             command.RequestedByUserId,
             DateTime.UtcNow

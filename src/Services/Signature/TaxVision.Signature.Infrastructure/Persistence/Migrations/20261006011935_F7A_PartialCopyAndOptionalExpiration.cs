@@ -11,11 +11,11 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Rename histórico: EF no lo detectó solo porque el modelo cambió el property.
-            migrationBuilder.RenameColumn(
-                name: "SendSignedDocumentToSigners",
-                table: "SignatureRequests",
-                newName: "SendSealedDocumentToSigners"
+            // Rename histórico, solo en bases viejas: una instalación limpia ya tiene el nombre nuevo (SIG-20).
+            migrationBuilder.Sql(
+                "IF EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'SendSignedDocumentToSigners' AND Object_ID = OBJECT_ID(N'SignatureRequests')) "
+                    + "AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = N'SendSealedDocumentToSigners' AND Object_ID = OBJECT_ID(N'SignatureRequests')) "
+                    + "EXEC sp_rename N'SignatureRequests.SendSignedDocumentToSigners', N'SendSealedDocumentToSigners', N'COLUMN';"
             );
 
             migrationBuilder.AddColumn<DateTime>(

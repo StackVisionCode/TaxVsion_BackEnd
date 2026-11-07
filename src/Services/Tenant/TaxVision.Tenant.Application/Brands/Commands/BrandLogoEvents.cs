@@ -55,7 +55,8 @@ internal static class BrandLogoEvents
         ICorrelationContext correlation,
         Guid tenantId,
         BrandSurface surface,
-        BrandAssetKey key
+        BrandAssetKey key,
+        DateTime removedAtUtc
     )
     {
         if (key != BrandAssetKey.Logo || ContractSurfaceOf(surface) is not { } contractSurface)
@@ -66,7 +67,7 @@ internal static class BrandLogoEvents
             {
                 TenantId = tenantId,
                 Surface = contractSurface,
-                RemovedAtUtc = DateTime.UtcNow,
+                RemovedAtUtc = removedAtUtc,
                 CorrelationId = correlation.CorrelationId,
             }
         );

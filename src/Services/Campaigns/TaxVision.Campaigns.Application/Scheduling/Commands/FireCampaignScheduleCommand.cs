@@ -1,16 +1,10 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TaxVision.Campaigns.Application.Campaigns.Abstractions;
-using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Runs;
-using TaxVision.Campaigns.Application.Runs.Abstractions;
-using TaxVision.Campaigns.Application.Runs.Audience;
 using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
-using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Runs;
 using TaxVision.Campaigns.Domain.Scheduling;
 using Wolverine;
@@ -50,24 +44,14 @@ public static class SkipScheduledSlotHandler
 /// </summary>
 public static class FireCampaignScheduleHandler
 {
-    // Actor de sistema cuando el agendado no tiene creador.
-    private static readonly Guid SchedulerActor = new("5c4ed011-0000-0000-0000-0000005c4ed0");
-
     [NonTransactional]
     public static async Task<Result<CampaignRunResponse>> Handle(
         FireCampaignScheduleCommand command,
         ICampaignScheduleRepository schedules,
-        ICampaignRepository campaigns,
-        ICampaignRunRepository runs,
-        IContactRepository contacts,
-        IContactListRepository lists,
-        ICustomerAudienceClient customerClient,
-        ICampaignCustomerAssignmentReader assignmentReader,
-        IOptions<CampaignsVisibilityOptions> visibility,
+        ScheduledRunOpener runOpener,
         IOptions<CampaignSchedulerOptions> schedulerOptions,
-        IWalletSpendClient wallet,
+        CampaignRunStarter starter,
         IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<CampaignSchedule> logger,
         CancellationToken ct
     )
@@ -85,19 +69,7 @@ public static class FireCampaignScheduleHandler
 
         var withinMaxDelay = DateTime.UtcNow - command.SlotUtc <= schedulerOptions.Value.MaxFireDelay;
         var slot = new ScheduledSlot(schedule.Id, command.SlotUtc, command.LeaseToken);
-        var opened = await OpenRunAsync(
-            schedule,
-            slot,
-            campaigns,
-            runs,
-            contacts,
-            lists,
-            customerClient,
-            assignmentReader,
-            visibility.Value,
-            bus,
-            ct
-        );
+        var opened = await runOpener.OpenAsync(schedule, slot, bus, ct);
 
         if (opened.IsFailure && opened.Error == CampaignRunErrors.AudienceIncomplete)
         {
@@ -134,8 +106,7 @@ public static class FireCampaignScheduleHandler
             return Result.Success(opened.Value.Run);
 
         var runId = opened.Value.Run.Id;
-        var funding = await CampaignRunFunding.ReserveAsync(
-            wallet,
+        var funding = await starter.ReserveAsync(
             schedule.TenantId,
             runId,
             opened.Value.Billable,
@@ -165,10 +136,7 @@ public static class FireCampaignScheduleHandler
             CampaignsMetrics.RecordScheduleFireSkipped("wallet_unavailable");
         }
 
-        var applied = await bus.InvokeAsync<Result<CampaignRunResponse>>(
-            new ApplyCampaignRunFundingCommand(schedule.TenantId, runId, funding, slot, correlation.CorrelationId),
-            ct
-        );
+        var applied = await starter.ApplyFundingAsync(schedule.TenantId, runId, funding, slot, bus, ct);
         if (applied.IsSuccess)
             logger.LogInformation(
                 "Fired schedule {ScheduleId} (campaign {CampaignId}) → run {RunId}.",
@@ -191,58 +159,5 @@ public static class FireCampaignScheduleHandler
             ct
         );
         return Result.Failure<CampaignRunResponse>(skipped.IsFailure ? skipped.Error : reason);
-    }
-
-    /// <summary>El run que ya tiene el slot (un intento anterior no terminó) o uno nuevo con la audiencia de ahora.</summary>
-    private static async Task<Result<OpenedCampaignRun>> OpenRunAsync(
-        CampaignSchedule schedule,
-        ScheduledSlot slot,
-        ICampaignRepository campaigns,
-        ICampaignRunRepository runs,
-        IContactRepository contacts,
-        IContactListRepository lists,
-        ICustomerAudienceClient customerClient,
-        ICampaignCustomerAssignmentReader assignmentReader,
-        CampaignsVisibilityOptions visibility,
-        IMessageBus bus,
-        CancellationToken ct
-    )
-    {
-        var campaign = await campaigns.GetByIdAsync(schedule.TenantId, schedule.CampaignId, ct);
-        if (campaign is null)
-            return Result.Failure<OpenedCampaignRun>(CampaignErrors.NotFound);
-        if (campaign.Status == CampaignStatus.Archived)
-            return Result.Failure<OpenedCampaignRun>(CampaignErrors.Archived);
-
-        var existing = await runs.GetByIdAsync(schedule.TenantId, ScheduledRunId.For(schedule.Id, slot.SlotUtc), ct);
-        if (existing is not null)
-            return existing.Status == CampaignRunStatus.Created
-                ? Result.Success(OpenedCampaignRun.From(existing))
-                : Result.Failure<OpenedCampaignRun>(CampaignRunErrors.NotCreated);
-
-        // A1 — dispara en nombre de quien agendó (o del sucesor) y con SU visibilidad de clientes.
-        var actor = schedule.EffectiveRunAsUserId ?? SchedulerActor;
-        var resolved = await StartCampaignRunFromAudienceHandler.ResolveUnitsAsync(
-            campaign,
-            actor,
-            schedule.ContactListIds(),
-            [],
-            schedule.IncludeCustomers,
-            schedule.CustomerIds(),
-            schedule.CreatorCanViewAllCustomers,
-            contacts,
-            lists,
-            customerClient,
-            assignmentReader,
-            visibility,
-            ct
-        );
-        if (resolved.IsFailure)
-            return Result.Failure<OpenedCampaignRun>(resolved.Error);
-
-        return await bus.InvokeAsync<Result<OpenedCampaignRun>>(
-            new OpenCampaignRunCommand(schedule.TenantId, campaign.Id, actor, "Scheduled", resolved.Value, slot),
-            ct
-        );
     }
 }

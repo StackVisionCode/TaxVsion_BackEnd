@@ -8,7 +8,6 @@ using BuildingBlocks.Tenancy;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -39,14 +38,7 @@ public sealed class EmailConsumerTransactionIntegrationTests : IAsyncLifetime
     private IHost _host = null!;
 
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("NOTIFICATION_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("f7c2d8e1-3b5a-4c97-8d1e-notification1")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set NOTIFICATION_DB_CONNECTION or the Notification user-secrets to run this test."
-        );
+        NotificationIntegrationDatabase.ConnectionString;
 
     public async Task InitializeAsync()
     {
@@ -57,6 +49,7 @@ public sealed class EmailConsumerTransactionIntegrationTests : IAsyncLifetime
                 services.AddScoped<IUnitOfWork>(p => p.GetRequiredService<NotificationDbContext>());
                 services.AddSingleton<ITenantContext>(new FixedTenant(_tenantId));
                 services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
+                services.AddScoped<HandlerBus>();
                 services.AddScoped<IIntegrationEventPublisher, WolverineIntegrationEventPublisher>();
                 services.AddScoped<IUserNotificationPreferenceRepository, UserNotificationPreferenceRepository>();
                 services.AddScoped<IUserEmailDirectoryRepository, UserEmailDirectoryRepository>();

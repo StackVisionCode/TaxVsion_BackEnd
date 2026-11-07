@@ -81,6 +81,29 @@ public sealed class PaymentLink : TenantEntity
     /// de verdad, no solo el status persistido.</summary>
     public bool IsRedeemable(DateTime nowUtc) => Status == PaymentLinkStatus.Active && nowUtc < ExpiresAtUtc;
 
+    public static readonly Error RedemptionThrottledError = new(
+        "PaymentLink.RedemptionThrottled",
+        "Too many failed redemption attempts; this link has been blocked."
+    );
+
+    public static readonly Error NotRedeemableError = new(
+        "PaymentLink.NotRedeemable",
+        "This link cannot be redeemed."
+    );
+
+    /// <summary>El token es la única prueba de posesión (§32.2): un link bloqueado por intentos fallidos lo dice, para
+    /// que no se sigan probando tarjetas (§41.4/K.1).</summary>
+    public Result EnsureRedeemable(DateTime nowUtc)
+    {
+        if (
+            Status != PaymentLinkStatus.Active
+            && FailedRedemptionAttempts >= PaymentLinkAttemptPolicy.MaxRedemptionAttemptsPerLink
+        )
+            return Result.Failure(RedemptionThrottledError);
+
+        return IsRedeemable(nowUtc) ? Result.Success() : Result.Failure(NotRedeemableError);
+    }
+
     /// <summary>Un intento vivo o ya cobrado bloquea uno nuevo (evita el doble cobro).
     /// <paramref name="currentAttemptStatus"/> es el estado del pago en <see cref="RelatedTenantPaymentId"/>.</summary>
     public Result AttachPaymentAttempt(Guid tenantPaymentId, PaymentStatus? currentAttemptStatus, DateTime nowUtc)

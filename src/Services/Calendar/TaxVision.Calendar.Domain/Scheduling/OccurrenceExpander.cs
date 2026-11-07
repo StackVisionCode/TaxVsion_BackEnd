@@ -255,6 +255,62 @@ public static class OccurrenceExpander
         return null;
     }
 
+    /// <summary>La primera ocurrencia de la regla que empieza en o después de <paramref name="fromUtc"/>; null si ya terminó.</summary>
+    public static DateTime? NextStart(Appointment appointment, DateTime fromUtc)
+    {
+        foreach (var startUtc in EnumerateRuleStarts(appointment, DateTime.MaxValue))
+        {
+            if (startUtc >= fromUtc)
+                return startUtc;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Qué número de ocurrencia es cada excepción dentro de la regla (0 es la primera). La que apunta a un
+    /// inicio que la regla no produce no aparece.
+    /// </summary>
+    public static Dictionary<DateTime, int> ExceptionPositions(Appointment appointment)
+    {
+        var positions = new Dictionary<DateTime, int>();
+        var starts = new HashSet<DateTime>();
+        var lastUtc = DateTime.MinValue;
+        foreach (var exception in appointment.Exceptions)
+        {
+            starts.Add(exception.OriginalStartUtc);
+            if (exception.OriginalStartUtc > lastUtc)
+                lastUtc = exception.OriginalStartUtc;
+        }
+
+        if (starts.Count == 0)
+            return positions;
+
+        var position = 0;
+        foreach (var startUtc in EnumerateRuleStarts(appointment, lastUtc.AddSeconds(1)))
+        {
+            if (starts.Contains(startUtc))
+                positions[startUtc] = position;
+            position++;
+        }
+
+        return positions;
+    }
+
+    /// <summary>Los inicios de la regla hasta esa posición; menos si la regla termina antes.</summary>
+    public static List<DateTime> StartsThrough(Appointment appointment, int lastPosition)
+    {
+        var starts = new List<DateTime>();
+        foreach (var startUtc in EnumerateRuleStarts(appointment, DateTime.MaxValue))
+        {
+            starts.Add(startUtc);
+            if (starts.Count > lastPosition)
+                break;
+        }
+
+        return starts;
+    }
+
     /// <summary>
     /// Los inicios que produce la regla, en UTC y en orden. Es la unica parte que ve Ical.Net y la
     /// unica que convierte.

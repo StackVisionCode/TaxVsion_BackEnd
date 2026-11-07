@@ -158,7 +158,7 @@ public sealed class RetryFormActionRunConcurrencyTests
         var run = await services
             .GetRequiredService<FormActionPlanner>()
             .RequestCustomerCreationAsync(request, null, Now, default);
-        request.RejectAction(run.Value.Run.CommandId!.Value, "Customer.CreatorNotInDirectory", null, null, Now);
+        request.Actions.Reject(run.Value.Run.CommandId!.Value, "Customer.CreatorNotInDirectory", null, null, Now);
         await db.SaveChangesAsync();
         return (request.Id, run.Value.Run.Id);
     }
@@ -231,6 +231,11 @@ public sealed class RetryFormActionRunConcurrencyTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            // BB-10: base temporal; con la local compartiría los sobres de la flota.
+            builder.UseSetting(
+                "ConnectionStrings:Default",
+                TaxVision.Tasks.Tests.Integration.TasksIntegrationDatabase.ConnectionString
+            );
             builder.ConfigureTestServices(services =>
             {
                 services.DisableAllExternalWolverineTransports();

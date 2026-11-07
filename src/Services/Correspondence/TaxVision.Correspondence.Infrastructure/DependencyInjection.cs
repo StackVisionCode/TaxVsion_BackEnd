@@ -12,7 +12,6 @@ using TaxVision.Correspondence.Application.Backfill;
 using TaxVision.Correspondence.Application.Compose;
 using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Application.RateLimiting.Abstractions;
-using TaxVision.Correspondence.Application.Reconciliation;
 using TaxVision.Correspondence.Infrastructure.CloudStorage;
 using TaxVision.Correspondence.Infrastructure.Connectors;
 using TaxVision.Correspondence.Infrastructure.Customers;
@@ -48,7 +47,6 @@ public static class DependencyInjection
         services.AddScoped<ITenantBackfillStateRepository, TenantBackfillStateRepository>();
         services.AddScoped<ITenantCustomerBackfillService, TenantCustomerBackfillService>();
         // Fase 16 — reconciliación periódica, reusa ICorrespondenceCustomerClient del backfill de arriba.
-        services.AddScoped<ICustomerEmailReconciliationService, CustomerEmailReconciliationService>();
         services.AddScoped<IIncomingEmailRepository, IncomingEmailRepository>();
         services.AddScoped<IEmailThreadRepository, EmailThreadRepository>();
         services.AddScoped<IUnmatchedIncomingEmailRepository, UnmatchedIncomingEmailRepository>();
@@ -65,6 +63,9 @@ public static class DependencyInjection
         // Fase 6 — resuelve threading (4 capas) para RawMessageReceivedConsumer; Wolverine lo
         // inyecta como cualquier otro parámetro de Handle, igual que los repositorios de arriba.
         services.AddScoped<ThreadResolver>();
+        services.AddScoped<IngestRejectionRecorder>();
+        services.AddScoped<IncomingSenderResolver>();
+        services.AddScoped<IncomingMailIngestor>();
         services.AddSingleton<IIngestMetrics, Observability.CorrespondenceIngestMetrics>();
 
         services
@@ -95,9 +96,6 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(NotAClientMailRetentionOptions.SectionName))
             .Validate(o => !o.Enabled || o.RetentionDays > 0, "RetentionDays must be greater than zero.")
             .ValidateOnStart();
-        services
-            .AddOptions<CustomerEmailReconciliationOptions>()
-            .Bind(configuration.GetSection(CustomerEmailReconciliationOptions.SectionName));
 
         // Fase 1 (hardening) — timeout 30s fijo. No estaba en el alcance textual de la Fase 1 del
         // plan (que solo nombra CorrespondenceCustomerClient/CloudStorageClient), pero es el mismo
@@ -174,21 +172,18 @@ public static class DependencyInjection
             }
         );
 
-        // Fase 16 — jobs de hardening final: DraftCleanupJob (plan §30, deshabilitado por default)
-        // y CustomerEmailReconciliationJob (plan §32 R1, habilitado por default).
+        // Fase 16 — job de hardening final: DraftCleanupJob (plan §30, deshabilitado por default).
         services.AddHostedService<DraftCleanupJob>();
         services.AddScoped<DraftSendReconciler>();
         services.AddSingleton<DraftSendReconciliationJob>();
         services.AddHostedService(sp => sp.GetRequiredService<DraftSendReconciliationJob>());
-        services.AddHostedService<CustomerEmailReconciliationJob>();
         services.AddHostedService<NotAClientMailRetentionJob>();
 
         // Auto-reparación de la proyección CustomerEmailAddress vía el endpoint global de reconciliación
         // de Customer (cross-tenant, un solo token de PlatformTenant) + job periódico. Reusa el
         // IServiceTokenAcquirer compartido de BuildingBlocks (forwarding registrado en
         // AddRateLimitTierQuotas → CorrespondenceServiceTokenAcquirer), que pide el token para
-        // PlatformTenant — única identidad que el gate del endpoint acepta. Distinto de
-        // CustomerEmailReconciliationJob de arriba (por-tenant, solo activos): este ve inactivos también.
+        // PlatformTenant — única identidad que el gate del endpoint acepta. Es el único job de esta proyección.
         services.AddHttpClient<
             ICustomerReconciliationClient,
             Reconciliation.CorrespondenceCustomerReconciliationClient
@@ -201,6 +196,14 @@ public static class DependencyInjection
             }
         );
         services.AddHostedService<Scheduling.CustomerProjectionReconciliationJob>();
+
+        // COR-10: dueños de buzones, para no llamar a Connectors en cada lectura de bandeja.
+        services.AddScoped<IMailboxOwnershipRepository, Persistence.Repositories.MailboxOwnershipRepository>();
+        services.AddScoped<Application.Projections.MailboxOwnershipReconciliation>();
+        services
+            .AddOptions<Scheduling.MailboxOwnershipReconciliationOptions>()
+            .Bind(configuration.GetSection(Scheduling.MailboxOwnershipReconciliationOptions.SectionName));
+        services.AddHostedService<Scheduling.MailboxOwnershipReconciliationJob>();
 
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
         // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma

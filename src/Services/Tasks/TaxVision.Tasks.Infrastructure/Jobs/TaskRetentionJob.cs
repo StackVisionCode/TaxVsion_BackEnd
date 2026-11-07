@@ -58,6 +58,7 @@ internal sealed class TaskRetentionJob(
         var context = scope.ServiceProvider.GetRequiredService<TasksDbContext>();
         var cutoff = DateTime.UtcNow.AddMonths(-settings.DetachedAttachmentMonths);
 
+        // Cross-tenant: la retención es de todas las oficinas.
         // En lotes: un primer barrido sobre una tabla vieja podría tocar cientos de miles de filas, y
         // un solo DELETE de ese tamaño bloquea la tabla mientras el producto la está usando.
         var deleted = await context

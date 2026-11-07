@@ -12,6 +12,7 @@ public sealed class FakeWalletRepository : IWalletRepository
     public List<LedgerEntry> LedgerEntries { get; } = [];
     public List<WalletTopUp> TopUps { get; } = [];
     public List<FundingCredit> FundingCredits { get; } = [];
+    public List<WalletBalanceMismatch> BalanceMismatches { get; } = [];
 
     public Task<WalletAggregate?> GetByTenantAsync(Guid tenantId, string currency, CancellationToken ct = default) =>
         Task.FromResult(Wallets.FirstOrDefault(w => w.TenantId == tenantId && w.Currency == currency));
@@ -39,6 +40,9 @@ public sealed class FakeWalletRepository : IWalletRepository
         var items = all.Skip((page - 1) * size).Take(size).ToList();
         return Task.FromResult(new PagedResult<LedgerEntry>(items, page, size, all.Count));
     }
+
+    public Task<IReadOnlyList<WalletBalanceMismatch>> ListBalanceMismatchesAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<WalletBalanceMismatch>>(BalanceMismatches);
 
     public Task AddTopUpAsync(WalletTopUp topUp, CancellationToken ct = default)
     {

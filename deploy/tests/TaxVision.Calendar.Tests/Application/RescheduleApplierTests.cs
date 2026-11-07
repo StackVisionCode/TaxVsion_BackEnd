@@ -100,6 +100,25 @@ public sealed class RescheduleApplierTests
         Assert.Empty(bus.Published.OfType<ReminderTargetMovedIntegrationEvent>());
     }
 
+    // CAL-8: la ocurrencia cancelada no recibe aviso nuevo por mover la serie.
+    [Fact]
+    public async Task EditEntireSeries_CancelledOccurrence_GetsNoReminderAtItsNewTime()
+    {
+        var monday = Next(DayOfWeek.Monday);
+        var tuesday = monday.AddDays(1);
+        var series = Weekly(_tenant, _organizer, monday, leadMinutes: 30);
+        var cancelled = WeeklyTargetsStart(monday.AddDays(14));
+        Assert.True(series.CancelOccurrence(cancelled, _organizer, false, DateTime.UtcNow).IsSuccess);
+        var bus = new FakeMessageBus();
+
+        var result = await Reschedule(series, bus, EntireSeries(series, tuesday));
+
+        Assert.True(result.IsSuccess);
+        var requested = bus.Published.OfType<ReminderRequestedIntegrationEvent>().Select(r => r.TargetId!.Value);
+        Assert.DoesNotContain(OccurrenceTargetId.For(series.Id, WeeklyTargetsStart(tuesday.AddDays(14))), requested);
+        Assert.Contains(OccurrenceTargetId.For(series.Id, WeeklyTargetsStart(tuesday.AddDays(7))), requested);
+    }
+
     /// <summary>La serie nueva del corte es la misma reunión: hereda el aviso y lo pide en el acto.</summary>
     [Fact]
     public async Task SplitSeries_FollowerInheritsLeadAndRequestsItsReminders()

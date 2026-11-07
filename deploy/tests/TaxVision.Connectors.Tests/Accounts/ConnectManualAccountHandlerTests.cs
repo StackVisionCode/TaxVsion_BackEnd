@@ -3,6 +3,8 @@ using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
+using TaxVision.Connectors.Domain.Sync;
+using TaxVision.Connectors.Domain.Watch;
 using TaxVision.Connectors.Tests.OAuth;
 using TaxVision.Connectors.Tests.Providers;
 using TaxVision.Connectors.Tests.Sync;
@@ -104,20 +106,32 @@ public class ConnectManualAccountHandlerTests
     ) =>
         ConnectManualAccountHandler.Handle(
             cmd,
-            fixture.AccountRepository,
-            fixture.ImapCredentialsRepository,
-            fixture.SmtpCredentialsRepository,
-            fixture.OAuthConnectionRepository,
-            fixture.ProviderSyncCursorRepository,
+            new ManualAccountProvisioner(
+                fixture.AccountRepository,
+                fixture.ImapCredentialsRepository,
+                fixture.SmtpCredentialsRepository,
+                fixture.Protector,
+                new AccountProviderSwitcher(
+                    fixture.SmtpCredentialsRepository,
+                    fixture.ImapCredentialsRepository,
+                    fixture.OAuthConnectionRepository,
+                    fixture.WatchSubscriptionRepository,
+                    fixture.ProviderSyncCursorRepository
+                ),
+                fixture.UnitOfWork
+            ),
             fixture.ConnectivityValidator,
-            fixture.Protector,
-            fixture.AuditLogRepository,
-            fixture.WatchSubscriptionRepository,
-            fixture.WatchClientFactory,
+            new AccountConnectionFinisher(
+                fixture.AccountRepository,
+                fixture.WatchSubscriptionRepository,
+                fixture.WatchClientFactory,
+                fixture.AuditLogRepository,
+                fixture.UnitOfWork,
+                new FakeCorrelationContext()
+            ),
             fixture.Projections,
             fixture.UnitOfWork,
             fixture.Unit,
-            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -275,6 +289,63 @@ public class ConnectManualAccountHandlerTests
 
     private static EncryptedSecret Cipher(Fixture fixture, string plaintext) =>
         EncryptedSecret.Create(plaintext, fixture.Protector).Value;
+
+    // CON-13: el camino inverso de OAuth → IMAP purga lo del proveedor saliente y deja credenciales nuevas.
+    [Fact]
+    public async Task Handle_OAuthMailboxReconnectedAsManual_SwitchesProviderAndPurgesOAuthArtifacts()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var existing = TenantEmailAccount
+            .Create(tenantId, "office@example.com", ProviderCode.Gmail, userId, Now, ownerUserId: userId)
+            .Value;
+        existing.Disconnect(Now);
+        fixture.AccountRepository.Accounts.Add(existing);
+        await fixture.OAuthConnectionRepository.AddAsync(
+            OAuthConnection.Create(existing.Id, ProviderCode.Gmail, "client", "scope", Now).Value
+        );
+        await fixture.WatchSubscriptionRepository.AddAsync(
+            ProviderWatchSubscription
+                .Create(existing.Id, ProviderCode.Gmail, "ref", "topic", Now.AddDays(7), Now)
+                .Value
+        );
+        await fixture.ProviderSyncCursorRepository.AddAsync(
+            ProviderSyncCursor.Create(existing.Id, "history-1", Now).Value
+        );
+
+        var result = await HandleAsync(fixture, ValidCommand(tenantId, userId));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(existing.Id, result.Value.AccountId);
+        var account = Assert.Single(fixture.AccountRepository.Accounts);
+        Assert.Equal(ProviderCode.Imap, account.ProviderCode);
+        Assert.Equal(TenantEmailAccountStatus.Active, account.Status);
+        Assert.Empty(fixture.OAuthConnectionRepository.Connections);
+        Assert.Empty(fixture.WatchSubscriptionRepository.Subscriptions);
+        Assert.Empty(fixture.ProviderSyncCursorRepository.Cursors);
+        Assert.Equal("imap.example.com", Assert.Single(fixture.ImapCredentialsRepository.Credentials).Host);
+        Assert.Equal("smtp.example.com", Assert.Single(fixture.SmtpCredentialsRepository.Credentials).Host);
+    }
+
+    [Fact]
+    public async Task Handle_ReconnectManualMailbox_KeepsTheSyncCursor()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var existing = TenantEmailAccount
+            .Create(tenantId, "office@example.com", ProviderCode.Imap, userId, Now, ownerUserId: userId)
+            .Value;
+        existing.Disconnect(Now);
+        fixture.AccountRepository.Accounts.Add(existing);
+        await fixture.ProviderSyncCursorRepository.AddAsync(ProviderSyncCursor.Create(existing.Id, "1:42", Now).Value);
+
+        var result = await HandleAsync(fixture, ValidCommand(tenantId, userId));
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(fixture.ProviderSyncCursorRepository.Cursors);
+    }
 
     [Fact]
     public async Task Handle_SameEmailInAnotherTenant_CreatesSeparateAccount()

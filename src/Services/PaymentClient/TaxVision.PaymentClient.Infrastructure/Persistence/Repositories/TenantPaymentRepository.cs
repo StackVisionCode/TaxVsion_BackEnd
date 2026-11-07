@@ -49,6 +49,20 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
                 ct
             );
 
+    public Task<TenantPayment?> GetByConnectChargeReferenceAsync(
+        Guid tenantId,
+        string providerChargeReferenceOnConnect,
+        CancellationToken ct = default
+    ) =>
+        WithChildren(db.TenantPayments)
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                payment =>
+                    payment.TenantId == tenantId
+                    && payment.ProviderChargeReferenceOnConnect == providerChargeReferenceOnConnect,
+                ct
+            );
+
     // IgnoreQueryFilters: jobs cross-tenant (RBAC Fase 5) — barren pagos atascados/vencidos de
     // todos los tenants, nunca sirven una request autenticada.
     public async Task<IReadOnlyList<AwaitingProviderPayment>> GetAwaitingProviderConfirmationAsync(

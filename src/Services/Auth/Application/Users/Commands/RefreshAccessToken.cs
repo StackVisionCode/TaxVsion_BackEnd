@@ -70,6 +70,7 @@ public static class RefreshAccessTokenHandler
                 ),
                 ct
             );
+            await unitOfWork.SaveChangesAsync(ct);
             await bus.PublishAsync(
                 new SecurityAlertIntegrationEvent
                 {
@@ -81,7 +82,6 @@ public static class RefreshAccessTokenHandler
                     CorrelationId = correlation.CorrelationId,
                 }
             );
-            await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<AuthTokensResponse>(invalid);
         }
 
@@ -107,6 +107,7 @@ public static class RefreshAccessTokenHandler
                     ),
                     ct
                 );
+                await unitOfWork.SaveChangesAsync(ct);
                 await bus.PublishAsync(
                     new SecurityAlertIntegrationEvent
                     {
@@ -118,7 +119,6 @@ public static class RefreshAccessTokenHandler
                         CorrelationId = correlation.CorrelationId,
                     }
                 );
-                await unitOfWork.SaveChangesAsync(ct);
             }
 
             return Result.Failure<AuthTokensResponse>(invalid);

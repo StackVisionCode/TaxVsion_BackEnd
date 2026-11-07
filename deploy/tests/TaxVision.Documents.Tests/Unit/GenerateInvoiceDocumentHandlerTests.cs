@@ -82,6 +82,23 @@ public sealed class GenerateInvoiceDocumentHandlerTests
         Assert.Equal(0, unitOfWork.SaveCount);
     }
 
+    [Fact]
+    public async Task Handle_SameKeyFromOtherSourceService_CreatesNewGeneration()
+    {
+        var invoiceId = Guid.NewGuid();
+        var key = $"shared-key:{invoiceId:N}";
+        var fromTasks = NewGeneration(invoiceId, key, DateTime.UtcNow, sourceService: "tasks");
+        var repository = new InMemoryRepository(fromTasks);
+        var bus = new RecordingMessageBus();
+
+        var result = await HandleAsync(NewCommand(invoiceId, key), repository, new RecordingUnitOfWork(), bus);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEqual(fromTasks.Id, result.Value.GenerationId);
+        var process = Assert.Single(bus.Published.OfType<ProcessInvoiceGenerationCommand>());
+        Assert.Equal(result.Value.GenerationId, process.GenerationId);
+    }
+
     private static Task<BuildingBlocks.Results.Result<GenerateInvoiceDocumentResult>> HandleAsync(
         GenerateInvoiceDocumentCommand command,
         IDocumentGenerationRepository repository,
@@ -100,7 +117,12 @@ public sealed class GenerateInvoiceDocumentHandlerTests
             CancellationToken.None
         );
 
-    private static DocumentGeneration NewGeneration(Guid invoiceId, string key, DateTime nowUtc) =>
+    private static DocumentGeneration NewGeneration(
+        Guid invoiceId,
+        string key,
+        DateTime nowUtc,
+        string sourceService = "billing"
+    ) =>
         DocumentGeneration
             .Request(
                 tenantId: Tenant,
@@ -109,7 +131,7 @@ public sealed class GenerateInvoiceDocumentHandlerTests
                 templateVersion: 1,
                 outputFormat: DocumentOutputFormat.Pdf,
                 owner: new GenerationOwner("Invoice", invoiceId),
-                sourceService: "billing",
+                sourceService: sourceService,
                 documentVersion: 1,
                 priority: DocumentPriority.Normal,
                 idempotencyKey: key,
@@ -157,11 +179,14 @@ public sealed class GenerateInvoiceDocumentHandlerTests
 
         public Task<DocumentGeneration?> GetByIdempotencyKeyAsync(
             Guid tenantId,
+            string sourceService,
             string idempotencyKey,
             CancellationToken ct = default
         ) =>
             Task.FromResult(
-                _generations.FirstOrDefault(g => g.TenantId == tenantId && g.IdempotencyKey == idempotencyKey)
+                _generations.FirstOrDefault(g =>
+                    g.TenantId == tenantId && g.SourceService == sourceService && g.IdempotencyKey == idempotencyKey
+                )
             );
 
         public Task<DocumentGeneration?> GetByFileIdAsync(Guid fileId, CancellationToken ct = default) =>

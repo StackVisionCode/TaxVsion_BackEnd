@@ -84,7 +84,7 @@ public sealed class ReconcilePendingAttachmentHandlerTests
     public async Task Handle_AttachmentDetached_DoesNothing()
     {
         var (repo, note, fileId) = Seed();
-        Assert.True(note.DetachFile(fileId).IsSuccess);
+        Assert.True(note.DetachFile(fileId, DateTime.UtcNow).IsSuccess);
         var files = new FakeScanStatusClient(RemoteFileStatus.Available);
         var uow = new NoOpUnitOfWork();
 
@@ -94,6 +94,7 @@ public sealed class ReconcilePendingAttachmentHandlerTests
             files,
             uow,
             NullLogger<ReconcilePendingAttachmentCommand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -115,6 +116,7 @@ public sealed class ReconcilePendingAttachmentHandlerTests
                 new FakeScanStatusClient(error: new HttpRequestException("down")),
                 uow,
                 NullLogger<ReconcilePendingAttachmentCommand>.Instance,
+                TimeProvider.System,
                 CancellationToken.None
             )
         );
@@ -132,10 +134,11 @@ public sealed class ReconcilePendingAttachmentHandlerTests
             NoteContent.Create("<p>hi</p>").Value,
             NoteReference.Create(NoteTargetType.None, null).Value,
             NoteVisibility.Private,
-            null
+            null,
+            DateTime.UtcNow
         ).Value;
         var fileId = Guid.NewGuid();
-        Assert.True(note.AttachFile(fileId, "receipt.pdf", "application/pdf", 1024).IsSuccess);
+        Assert.True(note.AttachFile(fileId, "receipt.pdf", "application/pdf", 1024, DateTime.UtcNow).IsSuccess);
         repo.Seed(note);
         return (repo, note, fileId);
     }
@@ -153,6 +156,7 @@ public sealed class ReconcilePendingAttachmentHandlerTests
             new FakeScanStatusClient(status),
             uow,
             NullLogger<ReconcilePendingAttachmentCommand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 

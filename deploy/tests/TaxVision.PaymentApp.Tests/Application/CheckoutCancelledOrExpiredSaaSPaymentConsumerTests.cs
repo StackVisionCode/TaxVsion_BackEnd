@@ -144,11 +144,7 @@ public sealed class CheckoutCancelledOrExpiredSaaSPaymentConsumerTests
         // Luego llega el event de cancelación del user. El historial debe quedar Cancelled.
         var tenantId = Guid.NewGuid();
         var payment = ProcessingPayment(tenantId);
-        payment.MarkFailed(
-            "Stripe.CheckoutSession.Expired",
-            "The checkout session expired.",
-            willRetry: false,
-            nextRetryAtUtc: null,
+        payment.MarkFailed("Stripe.CheckoutSession.Expired", "The checkout session expired.", DunningDecision.NoRetry,
             Guid.Empty,
             DateTime.UtcNow
         );

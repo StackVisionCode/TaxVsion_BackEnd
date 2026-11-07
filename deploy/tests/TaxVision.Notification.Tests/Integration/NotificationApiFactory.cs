@@ -27,6 +27,8 @@ public sealed class NotificationApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        // BB-10: base temporal; con la local compartiría los sobres de la flota.
+        builder.UseSetting("ConnectionStrings:Default", NotificationIntegrationDatabase.ConnectionString);
         builder.ConfigureAppConfiguration(
             (_, config) =>
                 config.AddInMemoryCollection(

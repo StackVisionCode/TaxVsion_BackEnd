@@ -4,6 +4,7 @@ import type {
   UserDirectoryRepository,
   UserDirectoryEntrySnapshot,
 } from '../../application/ports/user-directory-repository.js';
+import { newerStatus, stamp } from './status-order.js';
 
 export class PrismaUserDirectoryRepository implements UserDirectoryRepository, StaffDirectoryPager {
   constructor(private readonly prisma: PrismaClient) {}
@@ -66,16 +67,18 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository, S
     return rows.map(toSnapshot);
   }
 
-  async markInactive(userId: string): Promise<void> {
-    await this.prisma.userDirectoryEntry
-      .update({ where: { UserId: userId }, data: { IsActive: false } })
-      .catch(() => undefined);
+  async markInactive(userId: string, statusChangedAtUtc?: Date): Promise<void> {
+    await this.prisma.userDirectoryEntry.updateMany({
+      where: { UserId: userId, ...newerStatus(statusChangedAtUtc) },
+      data: { IsActive: false, ...stamp(statusChangedAtUtc) },
+    });
   }
 
-  async markActive(userId: string): Promise<void> {
-    await this.prisma.userDirectoryEntry
-      .update({ where: { UserId: userId }, data: { IsActive: true } })
-      .catch(() => undefined);
+  async markActive(userId: string, statusChangedAtUtc?: Date): Promise<void> {
+    await this.prisma.userDirectoryEntry.updateMany({
+      where: { UserId: userId, ...newerStatus(statusChangedAtUtc) },
+      data: { IsActive: true, ...stamp(statusChangedAtUtc) },
+    });
   }
 
   async searchByDisplayNameOrEmail(

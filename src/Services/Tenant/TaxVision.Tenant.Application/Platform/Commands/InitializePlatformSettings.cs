@@ -29,6 +29,7 @@ public static class InitializePlatformSettingsHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -42,7 +43,7 @@ public static class InitializePlatformSettingsHandler
             cmd.ApiHost,
             cmd.SupportEmail,
             cmd.BillingEmail,
-            DateTime.UtcNow
+            clock.GetUtcNow().UtcDateTime
         );
         if (created.IsFailure)
             return Result.Failure<bool>(created.Error);

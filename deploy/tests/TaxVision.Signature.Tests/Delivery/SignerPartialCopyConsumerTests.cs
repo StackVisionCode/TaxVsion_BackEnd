@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -149,8 +150,8 @@ public sealed class SignerPartialCopyConsumerTests
                     Files,
                     Audit,
                     new ReadableCodec(),
-                    Bus,
-                    new FixedCorrelation()
+                    new FixedCorrelation(),
+                    new FreeIssuanceLock()
                 ),
                 UnitOfWork,
                 new FixedCorrelation(),
@@ -183,12 +184,6 @@ public sealed class SignerPartialCopyConsumerTests
         FileScanStatus copyOutcome
     ) : ISignatureCloudStorageClient
     {
-        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
-            Guid tenantId,
-            SignatureFileUpload upload,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
-
         public List<Guid> Downloads { get; } = [];
 
         public Task<Result<byte[]>> DownloadAsync(Guid tenant, Guid fileId, CancellationToken ct = default)
@@ -201,7 +196,7 @@ public sealed class SignerPartialCopyConsumerTests
             );
         }
 
-        public async Task<Result<Guid>> UploadAsync(
+        public async Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
             Guid tenant,
             SignatureFileUpload upload,
             CancellationToken ct = default
@@ -212,7 +207,7 @@ public sealed class SignerPartialCopyConsumerTests
                 files.Available(tenantId, fileId, upload.Content.LongLength);
             else
                 await files.AddAsync(FileMetadataRef.ForRejected(tenantId, fileId, "StorageQuota.Exceeded"), ct);
-            return Result.Success(fileId);
+            return Result.Success(StagedFile.For(tenant, fileId, upload));
         }
 
         public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenant, Guid fileId, CancellationToken ct = default) =>

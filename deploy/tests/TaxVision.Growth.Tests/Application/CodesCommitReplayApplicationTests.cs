@@ -128,6 +128,44 @@ public sealed class CodesCommitReplayApplicationTests
         Assert.Single(setup.Reviews.Reviews);
     }
 
+    [Fact]
+    public async Task Commit_ExpiredReservation_PaymentNotConfirmed_GoesToReview()
+    {
+        var setup = await ReserveAndExpireAsync("subject-not-confirmed");
+
+        var result = await CommitAsync(
+            setup,
+            Guid.NewGuid(),
+            "late-not-confirmed",
+            new FixedVerifier(PaymentOutcomeVerifierErrors.NotConfirmed)
+        );
+
+        Assert.Equal(CommitReservationHandler.LateCommitPendingReviewCode, result.Error.Code);
+        Assert.Equal(PaymentOutcomeVerifierErrors.NotConfirmed, Assert.Single(setup.Reviews.Reviews).ErrorCode);
+    }
+
+    [Fact]
+    public async Task Commit_ExpiredReservation_VerifierUnavailable_IsRetriedNotReviewed()
+    {
+        var setup = await ReserveAndExpireAsync("subject-unavailable");
+
+        var result = await CommitAsync(
+            setup,
+            Guid.NewGuid(),
+            "late-unavailable",
+            new FixedVerifier(PaymentOutcomeVerifierErrors.Unavailable)
+        );
+
+        Assert.Equal(PaymentOutcomeVerifierErrors.Unavailable, result.Error.Code);
+        Assert.Empty(setup.Reviews.Reviews);
+    }
+
+    private sealed class FixedVerifier(string code) : IPaymentOutcomeVerifier
+    {
+        public Task<Result> VerifySucceededAsync(PaymentOutcomeQuery query, CancellationToken ct = default) =>
+            Task.FromResult(Result.Failure(new Error(code, "verifier says no")));
+    }
+
     private sealed record LateCommitSetup(
         InMemoryCodeDefinitionRepository Definitions,
         InMemoryCodeReservationRepository Reservations,
@@ -187,7 +225,8 @@ public sealed class CodesCommitReplayApplicationTests
     private static Task<Result<CommitReservationResponse>> CommitAsync(
         LateCommitSetup setup,
         Guid sourceEventId,
-        string idempotencyKey
+        string idempotencyKey,
+        IPaymentOutcomeVerifier? verifier = null
     ) =>
         CommitReservationHandler.Handle(
             new CommitReservationCommand(
@@ -203,7 +242,7 @@ public sealed class CodesCommitReplayApplicationTests
             setup.Reservations,
             setup.Redemptions,
             setup.Counters,
-            new NotImplementedPaymentOutcomeVerifier(),
+            verifier ?? new NotImplementedPaymentOutcomeVerifier(),
             setup.Reviews,
             setup.Idempotency,
             setup.Clock,
@@ -212,13 +251,7 @@ public sealed class CodesCommitReplayApplicationTests
 
     private sealed class NotImplementedPaymentOutcomeVerifier : IPaymentOutcomeVerifier
     {
-        public Task<Result> VerifySucceededAsync(
-            Guid tenantId,
-            PaymentReference payment,
-            Guid sourceEventId,
-            SnapshotHash expectedSnapshotHash,
-            CancellationToken ct = default
-        ) =>
+        public Task<Result> VerifySucceededAsync(PaymentOutcomeQuery query, CancellationToken ct = default) =>
             Task.FromResult(
                 Result.Failure(new Error("Codes.PaymentOutcomeVerifier.NotImplemented", "Late commit was denied."))
             );
@@ -226,12 +259,7 @@ public sealed class CodesCommitReplayApplicationTests
 
     private sealed class SuccessfulPaymentOutcomeVerifier : IPaymentOutcomeVerifier
     {
-        public Task<Result> VerifySucceededAsync(
-            Guid tenantId,
-            PaymentReference payment,
-            Guid sourceEventId,
-            SnapshotHash expectedSnapshotHash,
-            CancellationToken ct = default
-        ) => Task.FromResult(Result.Success());
+        public Task<Result> VerifySucceededAsync(PaymentOutcomeQuery query, CancellationToken ct = default) =>
+            Task.FromResult(Result.Success());
     }
 }

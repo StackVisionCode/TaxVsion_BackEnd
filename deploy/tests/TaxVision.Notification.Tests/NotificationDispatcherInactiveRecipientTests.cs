@@ -79,7 +79,7 @@ public sealed class NotificationDispatcherInactiveRecipientTests
     private static Task RecordInAppAsync(NotificationDispatcherHarness harness) =>
         harness.Dispatcher.RecordInAppAsync(
             TenantId,
-            $"user:{UserId:N}",
+            NotificationRecipient.ForUser(UserId),
             "Title",
             NotificationCategory.Reminders,
             "reminder.due",

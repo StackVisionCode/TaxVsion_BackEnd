@@ -3,7 +3,9 @@ using BuildingBlocks.Results;
 using TaxVision.Wallet.Application.Pricing;
 using TaxVision.Wallet.Application.Reservations.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
+using TaxVision.Wallet.Domain.Pricing;
 using TaxVision.Wallet.Domain.Reservations;
+using TaxVision.Wallet.Domain.ValueObjects;
 
 namespace TaxVision.Wallet.Application.Reservations.Commands;
 
@@ -62,16 +64,10 @@ public static class ReserveFundsHandler
         if (active is null)
             return Result.Failure<ReservationView>(PricingErrors.NoActiveVersion);
 
-        long cost = 0;
-        var units = 0;
-        foreach (var (channel, channelUnits) in command.Units.NonZero())
-        {
-            var price = active.UnitPriceMicros(channel);
-            if (price is null)
-                return Result.Failure<ReservationView>(PricingErrors.ChannelNotPriced(channel.ToString()));
-            cost += channelUnits * price.Value;
-            units += (int)channelUnits;
-        }
+        var quote = ReservationQuote.Calculate(active, command.Units.NonZero());
+        if (quote.IsFailure)
+            return Result.Failure<ReservationView>(quote.Error);
+        var (cost, units) = quote.Value;
 
         var wallet = await wallets.GetByTenantAsync(command.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
         if (wallet is null)
@@ -90,11 +86,14 @@ public static class ReserveFundsHandler
         if (cost <= 0)
             return Result.Success(new ReservationView(true, null, active.Version, 0, availableBefore, 0, currency));
 
+        var amount = WalletMoney.Create(cost, currency);
+        if (amount.IsFailure)
+            return Result.Failure<ReservationView>(amount.Error);
+
         var reservationResult = WalletReservation.Open(
             command.TenantId,
             reference,
-            currency,
-            cost,
+            amount.Value,
             units,
             active.Version
         );
@@ -103,7 +102,7 @@ public static class ReserveFundsHandler
 
         // Reserva atómica: el aggregate rechaza si Available < cost. No se persiste reserva en ese caso.
         var opKey = $"wallet-reserve:{reference.Type}:{reference.Id:N}";
-        var reserved = wallet.Reserve(cost, opKey, referenceId: reference.Id);
+        var reserved = wallet.Reserve(amount.Value, opKey, referenceId: reference.Id);
         if (reserved.IsFailure)
             return Result.Success(
                 new ReservationView(

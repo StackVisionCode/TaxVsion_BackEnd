@@ -19,6 +19,12 @@ public sealed class CloudStorageOptions
     /// </summary>
     public bool AutoSystemFolders { get; set; } = true;
 
+    /// <summary>
+    /// CST-15: minutos desde el evento en que una reasignación espera a que el archivo se catalogue. Tiene que
+    /// cubrir las esperas de <c>Messaging:DependencyNotReady</c>, para que lo fresco termine en la cola de errores.
+    /// </summary>
+    public int ReassignOwnerFileWaitMinutes { get; set; } = 60;
+
     /// <summary>Cuota del tenant cuando su plan aún no trae <c>storage.max_bytes</c>.</summary>
     public long DefaultStorageQuotaBytes { get; set; } = 10L * 1024 * 1024 * 1024;
 

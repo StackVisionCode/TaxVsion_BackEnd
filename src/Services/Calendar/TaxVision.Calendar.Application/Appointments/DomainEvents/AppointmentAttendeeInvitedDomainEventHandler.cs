@@ -30,7 +30,7 @@ public static class AppointmentAttendeeInvitedDomainEventHandler
             CustomerId = invited.CustomerId,
             Email = invited.Email,
             Title = appointment.Title.Value,
-            StartUtc = appointment.Timing.StartUtc,
+            StartUtc = AppointmentEvents.FirstStartOf(appointment),
             TimeZoneId = appointment.Timing.TimeZone.Id,
             IsRecurring = appointment.IsRecurring,
             IsVirtual = appointment.IsVirtual,

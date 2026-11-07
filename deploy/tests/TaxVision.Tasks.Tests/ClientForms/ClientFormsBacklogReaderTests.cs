@@ -48,7 +48,7 @@ public sealed class ClientFormsBacklogReaderTests
         var pending = CustomerRequest();
         Assert.True(
             pending
-                .RegisterAttachment(
+                .Files.Register(
                     new FormAnswerAddress(FileComponent, null),
                     Guid.NewGuid(),
                     "return.pdf",
@@ -63,7 +63,7 @@ public sealed class ClientFormsBacklogReaderTests
         );
         var submitted = CustomerRequest();
         Submit(submitted);
-        Assert.True(submitted.RequestAction("create_customer", "CreateCustomer", Guid.NewGuid(), Now).IsSuccess);
+        Assert.True(submitted.Actions.Request("create_customer", "CreateCustomer", Guid.NewGuid(), Now).IsSuccess);
         db.FormRequests.AddRange(pending, submitted);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();

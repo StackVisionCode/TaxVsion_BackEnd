@@ -69,7 +69,7 @@ public sealed class InvoicePaidDomainEventTests
                 onboardingId: Guid.NewGuid(),
                 planId: Guid.NewGuid(),
                 paymentId: Guid.NewGuid(),
-                invoiceNumber: "ONB-2026-00001",
+                invoiceNumber: InvoiceNumber.Create("ONB-2026-00001").Value,
                 new CustomerSnapshot(Guid.NewGuid(), "Owner", "owner@example.com", null, null, null),
                 new IssuerSnapshot(
                     "TaxVision",
@@ -114,7 +114,7 @@ public sealed class InvoicePaidDomainEventTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue("INV-2026-00001", Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
         return invoice;
     }
 }

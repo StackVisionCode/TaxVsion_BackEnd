@@ -1,9 +1,9 @@
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;
@@ -29,7 +29,7 @@ public sealed class OnboardingFinalizerTests
         );
         var bus = new FakeMessageBus();
 
-        var result = await NewFinalizer(growth, bus).FinalizeAsync(Command(late, onTime), CancellationToken.None);
+        var result = await NewFinalizer(growth).FinalizeAsync(Command(late, onTime), bus, CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
         Assert.Equal(2, growth.Commits.Count);
@@ -50,15 +50,15 @@ public sealed class OnboardingFinalizerTests
         );
         var bus = new FakeMessageBus();
 
-        var result = await NewFinalizer(growth, bus).FinalizeAsync(Command(reservation), CancellationToken.None);
+        var result = await NewFinalizer(growth).FinalizeAsync(Command(reservation), bus, CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Growth.Unreachable", result.Error.Code);
         Assert.Empty(bus.Published);
     }
 
-    private static OnboardingFinalizer NewFinalizer(IGrowthOnboardingClient growth, FakeMessageBus bus) =>
-        new(growth, bus, new FakeCorrelationContext(), NullLogger<OnboardingFinalizer>.Instance);
+    private static OnboardingFinalizer NewFinalizer(IGrowthOnboardingClient growth) =>
+        new(growth, new FakeCorrelationContext(), NullLogger<OnboardingFinalizer>.Instance);
 
     private static FinalizeReservationDto Reservation(int order) =>
         new(Guid.NewGuid(), "Promo", $"CODE{order}", 500, "snapshot", order);

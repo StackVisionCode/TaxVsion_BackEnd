@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Wallet.Application.Reservations.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Domain.Reservations;
+using TaxVision.Wallet.Domain.ValueObjects;
 using TaxVision.Wallet.Domain.Wallet;
 
 namespace TaxVision.Wallet.Application.Reservations.Commands;
@@ -77,17 +78,28 @@ public static class SettleReservationHandler
             return Result.Failure<SettlementView>(ReservationErrors.NotFound);
         }
 
+        var consumedAmount = WalletMoney.Create(consumed, reservation.Currency);
+        if (consumedAmount.IsFailure)
+            return Result.Failure<SettlementView>(consumedAmount.Error);
+        var releasedAmount = WalletMoney.Create(released, reservation.Currency);
+        if (releasedAmount.IsFailure)
+            return Result.Failure<SettlementView>(releasedAmount.Error);
+
         // Validar todo antes de mutar: después de tocar un agregado rastreado no se devuelve Failure.
-        if (wallet.HeldMicros < consumed + released)
-            return Result.Failure<SettlementView>(WalletErrors.InsufficientHold);
-        var settled = reservation.Settle(consumed, released);
+        var total = consumedAmount.Value.Add(releasedAmount.Value);
+        if (total.IsFailure)
+            return Result.Failure<SettlementView>(total.Error);
+        var covered = wallet.EnsureHoldCovers(total.Value);
+        if (covered.IsFailure)
+            return Result.Failure<SettlementView>(covered.Error);
+        var settled = reservation.Settle(consumedAmount.Value, releasedAmount.Value);
         if (settled.IsFailure)
             return Result.Failure<SettlementView>(settled.Error);
 
         if (consumed > 0)
         {
             var consume = wallet.Consume(
-                consumed,
+                consumedAmount.Value,
                 opKey: $"wallet-consume:{command.ReferenceType}:{command.ReferenceId:N}",
                 referenceId: command.ReferenceId
             );
@@ -99,7 +111,7 @@ public static class SettleReservationHandler
         if (released > 0)
         {
             var release = wallet.Release(
-                released,
+                releasedAmount.Value,
                 opKey: $"wallet-release:{command.ReferenceType}:{command.ReferenceId:N}",
                 referenceId: command.ReferenceId
             );

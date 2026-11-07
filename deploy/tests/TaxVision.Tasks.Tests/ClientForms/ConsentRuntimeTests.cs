@@ -292,7 +292,7 @@ public sealed class ConsentRuntimeTests
         );
         fixture.Records.Add(Accepted(fixture));
         var fileId = Guid.NewGuid();
-        fixture.Request.RegisterAttachment(
+        fixture.Request.Files.Register(
             new FormAnswerAddress("fd_upload001", null),
             fileId,
             "id.png",
@@ -303,7 +303,7 @@ public sealed class ConsentRuntimeTests
             null,
             Now
         );
-        fixture.Request.ApplyFileVerdict(
+        fixture.Request.Files.ApplyVerdict(
             fileId,
             new FormFileVerdict(FormFileVerdictStatus.PendingReview, null, null, null, Now),
             Now

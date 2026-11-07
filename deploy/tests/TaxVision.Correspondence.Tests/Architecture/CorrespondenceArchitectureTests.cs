@@ -27,6 +27,33 @@ public sealed class CorrespondenceArchitectureTests
     private static readonly System.Reflection.Assembly ApiAssembly =
         typeof(TaxVision.Correspondence.Api.Controllers.DraftsController).Assembly;
 
+    // COR-13: el consumer orquesta; los pasos viven en sus colaboradores.
+    [Fact]
+    public void RawMessageReceivedConsumer_has_at_most_six_dependencies()
+    {
+        var handle = typeof(TaxVision.Correspondence.Application.Ingest.RawMessageReceivedConsumer).GetMethod("Handle")!;
+
+        var dependencies = handle.GetParameters().Skip(1).Count(p => p.ParameterType != typeof(CancellationToken));
+
+        Assert.True(dependencies <= 6, $"RawMessageReceivedConsumer tiene {dependencies} dependencias.");
+    }
+
+    // COR-12: una sola corrida repara la proyección de emails, con una sola regla y un solo intervalo.
+    [Fact]
+    public void SingleCustomerProjectionReconciliationJob()
+    {
+        var jobs = InfrastructureAssembly
+            .GetTypes()
+            .Where(type => typeof(Microsoft.Extensions.Hosting.BackgroundService).IsAssignableFrom(type))
+            .Where(type => type.Name.StartsWith("Customer", StringComparison.Ordinal))
+            .Where(type => type.Name.Contains("Reconciliation", StringComparison.Ordinal))
+            .Select(type => type.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(["CustomerProjectionReconciliationJob"], jobs);
+    }
+
     [Fact]
     public void Domain_should_not_depend_on_application()
     {

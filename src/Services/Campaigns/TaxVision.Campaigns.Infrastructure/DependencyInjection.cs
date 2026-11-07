@@ -11,6 +11,7 @@ using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Permissions.Abstractions;
 using TaxVision.Campaigns.Application.RateLimiting.Abstractions;
+using TaxVision.Campaigns.Application.Runs;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
 using TaxVision.Campaigns.Application.Senders.Abstractions;
@@ -45,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<ISenderProfileRepository, SenderProfileRepository>();
         services.AddScoped<ICampaignTemplateRepository, CampaignTemplateRepository>();
         services.AddScoped<ICampaignScheduleRepository, CampaignScheduleRepository>();
+        services.AddCampaignRunOrchestration();
 
         // Audiencia desde Customer (M2M): cliente HTTP al endpoint interno del directorio de clientes.
         services
@@ -95,10 +97,6 @@ public static class DependencyInjection
             .AddOptions<Application.Runs.Audience.CampaignsVisibilityOptions>()
             .Bind(configuration.GetSection(Application.Runs.Audience.CampaignsVisibilityOptions.SectionName));
         services.AddScoped<ICampaignCustomerAssignmentReader, CampaignCustomerAssignmentReader>();
-
-        // Proyección local del directorio de clientes (mantenida por los consumers de eventos de Customer):
-        // fuente de verdad local para audiencia + regla contacto⇔cliente.
-        services.AddScoped<ICustomerDirectoryStore, Customers.Directory.CustomerDirectoryStore>();
 
         // Scheduler durable (SendMode Scheduled/Recurring): lease-based claim + fan-out por disparo.
         services

@@ -15,4 +15,10 @@ public sealed record ConnectorsTenantEmailAccountDisconnectedIntegrationEvent : 
     public required string EmailAddress { get; init; }
     public required string ProviderCode { get; init; }
     public required DateTime DisconnectedAtUtc { get; init; }
+
+    /// <summary>Dueño del buzón personal; null en uno de oficina. Lo proyecta Correspondence (COR-10).</summary>
+    public Guid? OwnerUserId { get; init; }
+
+    /// <summary>Con <see cref="OwnerUserId"/> nulo y esto en false, el evento es anterior a estos campos.</summary>
+    public bool IsOffice { get; init; }
 }

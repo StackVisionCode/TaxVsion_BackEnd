@@ -113,8 +113,8 @@ public sealed class RequestPortalInvitationHandlerTests
 
     private sealed class SingleCustomer(DomainCustomer customer) : ICustomerRepository
     {
-        public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct) =>
-            Task.FromResult<DomainCustomer?>(id == customer.Id ? customer : null);
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
+            Task.FromResult<DomainCustomer?>(id == customer.Id && tenantId == customer.TenantId ? customer : null);
 
         public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
             Task.FromResult(new[] { customer }.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));

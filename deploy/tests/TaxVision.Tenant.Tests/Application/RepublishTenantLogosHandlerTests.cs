@@ -25,7 +25,7 @@ public sealed class RepublishTenantLogosHandlerTests
             surface,
             b =>
             {
-                b.SetAssetPending(key, fileId, "image/png", 100, 40, 20);
+                b.SetAssetPending(key, fileId, "image/png", 100, 40, 20, DateTime.UtcNow);
                 b.ConfirmAsset(key, fileId, "image/png", 100, 40, 20, ConfirmedAt);
             }
         );
@@ -78,7 +78,7 @@ public sealed class RepublishTenantLogosHandlerTests
         repo.Seed(
             tenantId,
             BrandSurface.Portal,
-            b => b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var bus = await RunAsync(repo);

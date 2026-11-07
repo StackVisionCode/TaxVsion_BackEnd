@@ -10,6 +10,7 @@ public static class InventoryErrors
     public static Error InvalidName =>
         new("inventory.invalidName", "Name is required and must be within the max length.");
     public static Error InvalidQuantity => new("inventory.invalidQuantity", "Quantity must be a positive number.");
+    public static Error ActorRequired => new("inventory.actorRequired", "A user is required to adjust stock manually.");
     public static Error InvalidAmount => new("inventory.invalidAmount", "Amount must be zero or positive.");
     public static Error InvalidCurrency =>
         new("inventory.invalidCurrency", "Currency must be a 3-letter ISO 4217 code.");

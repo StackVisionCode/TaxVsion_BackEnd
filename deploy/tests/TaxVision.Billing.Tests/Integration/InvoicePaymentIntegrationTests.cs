@@ -1,7 +1,6 @@
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.ValueObjects;
 using TaxVision.Billing.Infrastructure.Persistence;
@@ -11,23 +10,18 @@ using Xunit;
 namespace TaxVision.Billing.Tests.Integration;
 
 /// <summary>
-/// Contra el SQL Server real (BILLING_DB_CONNECTION o user-secrets de Billing): dos contextos aplican
+/// Contra el SQL Server real (base temporal, BIL-14): dos contextos aplican
 /// pagos sobre la misma factura. El RowVersion de la factura y el índice único de InvoicePayments
 /// impiden que un pago se pierda o se aplique dos veces.
 /// </summary>
-public sealed class InvoicePaymentIntegrationTests : IAsyncLifetime
+[Collection(BillingTestDatabase.Collection)]
+public sealed class InvoicePaymentIntegrationTests(BillingTestDatabase database) : IAsyncLifetime
 {
     private static readonly DateTime Now = new(2026, 11, 4, 12, 0, 0, DateTimeKind.Utc);
     private readonly Guid _tenantId = Guid.NewGuid();
     private Guid _invoiceId;
 
-    private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("BILLING_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-billing000001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set BILLING_DB_CONNECTION or the Billing user-secrets to run this test.");
+    private readonly string _connectionString = database.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -56,7 +50,7 @@ public sealed class InvoicePaymentIntegrationTests : IAsyncLifetime
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue("INV-2026-00001", Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
         _invoiceId = invoice.Id;
 
         await using var db = NewContext();

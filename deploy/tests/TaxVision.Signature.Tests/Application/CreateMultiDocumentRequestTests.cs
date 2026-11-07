@@ -358,12 +358,6 @@ public sealed class CreateMultiDocumentRequestTests
         public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             throw new InvalidOperationException("Available local projections must avoid storage download.");
 
-        public Task<Result<Guid>> UploadAsync(
-            Guid tenantId,
-            SignatureFileUpload upload,
-            CancellationToken ct = default
-        ) => throw new InvalidOperationException("Create must not upload files.");
-
         public Task<Result<Guid>> CopyToCustomerAsync(
             Guid tenantId,
             Guid sourceFileId,

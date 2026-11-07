@@ -770,7 +770,7 @@ public sealed class AcceptInvitationHandlerTests
             "hashed:old",
             UserActorType.TenantEmployee
         ).Value;
-        former.Offboard(DateTime.UtcNow);
+        former.Offboard(Guid.NewGuid(), DateTime.UtcNow);
         var users = new InMemoryUserRepository();
         users.Add(former);
 

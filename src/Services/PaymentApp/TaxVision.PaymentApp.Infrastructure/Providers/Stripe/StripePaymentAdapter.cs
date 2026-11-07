@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -430,8 +431,14 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe Refund failed. Reference={Reference}", providerChargeReference);
+            // 5xx, sin respuesta o 429: se reintenta con la misma clave; un 4xx es rechazo.
+            var transient =
+                StripeChargeFailure.IsOutcomeUnknown(ex) || ex.HttpStatusCode == HttpStatusCode.TooManyRequests;
             return Result.Failure<RefundResult>(
-                new Error("Stripe.Refund.Failed", ex.StripeError?.Message ?? ex.Message)
+                new Error(
+                    transient ? "Stripe.Refund.Unavailable" : "Stripe.Refund.Failed",
+                    ex.StripeError?.Message ?? ex.Message
+                )
             );
         }
         finally

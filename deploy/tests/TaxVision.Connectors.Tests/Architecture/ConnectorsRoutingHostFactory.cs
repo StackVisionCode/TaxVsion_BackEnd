@@ -21,6 +21,7 @@ public sealed class ConnectorsRoutingHostFactory : WebApplicationFactory<Program
         builder.UseSetting("ConnectionStrings:Redis", "127.0.0.1:1,abortConnect=false");
         builder.UseSetting("RabbitMq:Uri", "amqp://guest:guest@127.0.0.1:1");
         builder.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)));
+        builder.UseSetting("Connectors:Webhooks:GmailPush:ExpectedAudience", "https://push.example.test/hook");
         builder.ConfigureTestServices(services =>
         {
             services.DisableAllExternalWolverineTransports();

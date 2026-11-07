@@ -691,11 +691,14 @@ public sealed class TenantSubscription : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>Solo una suscripción en prueba o activa compra add-ons o asientos.</summary>
+    public bool AcceptsPurchases => IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active);
+
     /// <summary>Compra directa de add-ons o asientos: toca la fila para que su RowVersion serialice dos
     /// compras simultáneas del mismo tenant (la segunda choca al guardar).</summary>
     public Result RecordPurchase(Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
+        if (!AcceptsPurchases)
             return Result.Failure(
                 new Error("Subscription.CannotPurchase", $"Cannot purchase while subscription is {Status}.")
             );

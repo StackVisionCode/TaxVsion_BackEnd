@@ -31,7 +31,7 @@ public static class UploadCustomerAvatarHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
+        var customer = await repository.GetByIdAsync(cmd.TenantId, cmd.CustomerId, ct);
         var access = CustomerAvatarAccess.Check(
             customer,
             cmd.TenantId,

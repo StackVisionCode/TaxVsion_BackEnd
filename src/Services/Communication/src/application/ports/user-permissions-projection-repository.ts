@@ -74,12 +74,13 @@ export interface UserPermissionsProjectionRepository {
     supportPermissionCode: string,
   ): Promise<readonly UserPermissionsProjectionSnapshot[]>;
 
-  markInactive(userId: string, now: Date): Promise<void>;
+  /** `statusChangedAtUtc` (occurredOn del aviso): si viene, solo aplica si es mas nuevo que el ultimo aplicado. */
+  markInactive(userId: string, now: Date, statusChangedAtUtc?: Date): Promise<void>;
 
   /** Contraparte de `markInactive` para `auth.user.reactivated.v1`: reactiva la fila SIN tocar
    * `permissions`/`permissionVersion` (el evento no los transporta; siguen en la fila desde antes de
    * la desactivación). Sin esto, un usuario reactivado quedaba fail-closed en Communication. */
-  markActive(userId: string, now: Date): Promise<void>;
+  markActive(userId: string, now: Date, statusChangedAtUtc?: Date): Promise<void>;
 
   /** Fase 2 — usuarios activos de un tenant que tienen el RoleId dado entre sus RoleIds.
    * Usado por RolePermissionsChangedConsumer para saber a quien recomputarle Permissions. */

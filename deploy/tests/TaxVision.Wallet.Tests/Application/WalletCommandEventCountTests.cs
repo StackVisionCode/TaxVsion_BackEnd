@@ -129,7 +129,7 @@ public sealed class WalletCommandEventCountTests
             if (withBalance)
             {
                 var wallet = WalletAggregate.Create(TenantId).Value;
-                wallet.Credit(10_000_000, "topup:seed");
+                wallet.Credit(Usd(10_000_000), "topup:seed");
                 Wallets.Wallets.Add(wallet);
                 // Lo sembrado ya está guardado: sus eventos ya salieron.
                 wallet.ClearDomainEvents();
@@ -144,7 +144,7 @@ public sealed class WalletCommandEventCountTests
             var referenceId = Guid.NewGuid();
             var cost = units * 10_000L;
             var wallet = Wallets.Wallets.Single();
-            wallet.Reserve(cost, $"wallet-reserve:{ReferenceType}:{referenceId:N}", referenceId);
+            wallet.Reserve(Usd(cost), $"wallet-reserve:{ReferenceType}:{referenceId:N}", referenceId);
             wallet.ClearDomainEvents();
             _reservations.Reservations.Add(ReservationBuilder.Open(TenantId, ReferenceType, referenceId, cost, units));
             return referenceId;

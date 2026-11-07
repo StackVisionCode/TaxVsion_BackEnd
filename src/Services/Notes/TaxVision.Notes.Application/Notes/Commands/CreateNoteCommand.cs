@@ -39,6 +39,7 @@ public static class CreateNoteHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<Note> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -62,7 +63,8 @@ public static class CreateNoteHandler
             contentResult.Value,
             referenceResult.Value,
             command.Visibility,
-            colorResult.Value
+            colorResult.Value,
+            clock.GetUtcNow().UtcDateTime
         );
         if (noteResult.IsFailure)
             return Result.Failure<NoteResponse>(noteResult.Error);

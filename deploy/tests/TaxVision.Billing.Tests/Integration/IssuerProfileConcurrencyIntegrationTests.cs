@@ -1,7 +1,6 @@
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Infrastructure.Persistence;
 using Xunit;
@@ -13,20 +12,13 @@ namespace TaxVision.Billing.Tests.Integration;
 /// BIL-8 contra SQL real: la versión del perfil se compara en memoria, así que dos eventos que cargan la misma
 /// fila la comparan contra el mismo valor. El token hace que el perdedor relea y su versión vieja se ignore.
 /// </summary>
-public sealed class IssuerProfileConcurrencyIntegrationTests : IAsyncLifetime
+[Collection(BillingTestDatabase.Collection)]
+public sealed class IssuerProfileConcurrencyIntegrationTests(BillingTestDatabase database) : IAsyncLifetime
 {
     private static readonly DateTime Now = new(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc);
     private readonly Guid _tenantId = Guid.NewGuid();
 
-    private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("BILLING_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-billing000001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set BILLING_DB_CONNECTION or the Billing user-secrets to run this test."
-        );
+    private readonly string _connectionString = database.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

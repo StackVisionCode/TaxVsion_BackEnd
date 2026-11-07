@@ -1,7 +1,6 @@
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Sms.Domain.Messages;
 using TaxVision.Sms.Domain.ValueObjects;
 using TaxVision.Sms.Infrastructure.Persistence;
@@ -14,12 +13,7 @@ public sealed class SmsMessageConcurrencyIntegrationTests : IAsyncLifetime
     private readonly Guid _tenant = Guid.NewGuid();
 
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("SMS_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("b8e2f1a4-7c3d-4e9a-9f21-3c5d8a1b6e42")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set SMS_DB_CONNECTION or the Sms user-secrets to run this test.");
+        SmsIntegrationDatabase.ConnectionString;
 
     private sealed class NoTenant : ITenantContext
     {

@@ -151,6 +151,7 @@ public sealed class TenantHostResolutionMiddleware(
             ct
         );
 
+        await unitOfWork.SaveChangesAsync(ct);
         // Ademas del audit log (detalle forense completo), se publica como integration
         // event para que otros servicios (alertas/SIEM) puedan reaccionar sin tener que
         // leer la tabla de auditoria de Auth. Deduplicado por host: el audit log ya tiene
@@ -167,8 +168,6 @@ public sealed class TenantHostResolutionMiddleware(
                 }
             );
         }
-
-        await unitOfWork.SaveChangesAsync(ct);
     }
 
     /// <summary>

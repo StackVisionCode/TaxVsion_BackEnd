@@ -15,12 +15,6 @@ public sealed class SignatureLayeringTests : LayeringRulesBase
 
     protected override Assembly ApplicationAssembly => typeof(SignatureStorage).Assembly;
 
-    // Deuda de esta regla sola: en Exemptions taparía al agregado también en las reglas de EF/Wolverine.
-    private static readonly IReadOnlyDictionary<string, string> SchemaExemptions = new Dictionary<string, string>
-    {
-        ["TaxVision.Signature.Domain.Requests.SignatureRequest"] = "SIG-11: [NotMapped] en los puentes obsoletos de F8",
-    };
-
     // Regla propia (SIG-11): Domain sin atributos de mapeo de EF.
     [Fact]
     public void Domain_ShouldNotDependOn_DataAnnotationsSchema()
@@ -28,7 +22,7 @@ public sealed class SignatureLayeringTests : LayeringRulesBase
         var violations = LayeringRules.FindViolations(
             DomainAssembly,
             "System.ComponentModel.DataAnnotations.Schema",
-            SchemaExemptions
+            new Dictionary<string, string>()
         );
 
         Assert.True(violations.Count == 0, "Domain usa DataAnnotations.Schema:\n  " + string.Join("\n  ", violations));

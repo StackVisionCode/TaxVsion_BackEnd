@@ -40,7 +40,7 @@ public sealed class CheckoutIntentExpirationJobIntegrationTests : IAsyncLifetime
                 true,
                 Money.Create(15m, "USD").Value,
                 BillingCycle.Monthly,
-                1500,
+                Money.FromCents(1500, "USD"),
                 Guid.NewGuid(),
                 created
             )
@@ -54,14 +54,14 @@ public sealed class CheckoutIntentExpirationJobIntegrationTests : IAsyncLifetime
                 true,
                 Money.Create(29m, "USD").Value,
                 BillingCycle.Monthly,
-                2900,
+                Money.FromCents(2900, "USD"),
                 Guid.NewGuid(),
                 created
             )
             .Value;
         addOn.AttachCheckout(Guid.NewGuid(), "https://checkout.test/addon", expiredAt, created);
         var renewal = SubscriptionRenewalIntent
-            .Create(_db.TenantId, 4900, "USD", BillingCycle.Monthly, Guid.NewGuid(), created)
+            .Create(_db.TenantId, Money.FromCents(4900, "USD"), BillingCycle.Monthly, Guid.NewGuid(), created)
             .Value;
         renewal.AttachCheckout(Guid.NewGuid(), "https://checkout.test/renewal", expiredAt, created);
         await using (var seed = _db.NewContext())
@@ -139,13 +139,13 @@ public sealed class CheckoutIntentExpirationJobIntegrationTests : IAsyncLifetime
                 true,
                 Money.Create(29m, "USD").Value,
                 BillingCycle.Monthly,
-                2900,
+                Money.FromCents(2900, "USD"),
                 Guid.NewGuid(),
                 created
             )
             .Value;
         var renewal = SubscriptionRenewalIntent
-            .Create(_db.TenantId, 4900, "USD", BillingCycle.Monthly, Guid.NewGuid(), created)
+            .Create(_db.TenantId, Money.FromCents(4900, "USD"), BillingCycle.Monthly, Guid.NewGuid(), created)
             .Value;
         await using (var seed = _db.NewContext())
         {
@@ -389,7 +389,7 @@ public sealed class CheckoutIntentExpirationJobIntegrationTests : IAsyncLifetime
                 true,
                 Money.Create(15m, "USD").Value,
                 BillingCycle.Monthly,
-                1500,
+                Money.FromCents(1500, "USD"),
                 Guid.NewGuid(),
                 created
             )

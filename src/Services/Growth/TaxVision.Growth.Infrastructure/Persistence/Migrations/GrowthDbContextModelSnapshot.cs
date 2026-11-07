@@ -534,8 +534,15 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<DateTime?>("ResolvedAtUtc")
                         .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("ResolvedByUserId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("SourceEventId")
                         .HasColumnType("uniqueidentifier");

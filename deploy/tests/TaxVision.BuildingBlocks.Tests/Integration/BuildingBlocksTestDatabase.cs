@@ -1,23 +1,34 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using TaxVision.BuildingBlocks.Testing.Integration;
+using Xunit;
+
+[assembly: TestFramework(TemporaryDatabaseTestFramework.TypeName, TemporaryDatabaseTestFramework.AssemblyName)]
 
 namespace TaxVision.BuildingBlocks.Tests.Integration;
 
 /// <summary>
-/// SQL Server local para las T-INT de BuildingBlocks: <c>BUILDINGBLOCKS_DB_CONNECTION</c> o los user-secrets
-/// de Tasks.Api (el piloto de la Ola 2). Cada prueba trabaja en un esquema propio y lo borra entero al terminar.
+/// Base temporal de las T-INT de BuildingBlocks (BB-10); <c>BUILDINGBLOCKS_DB_CONNECTION</c> o los user-secrets de
+/// Tasks.Api (el piloto de la Ola 2) solo ubican el servidor. Cada prueba trabaja en un esquema propio y lo borra
+/// entero al terminar.
 /// </summary>
 internal static class BuildingBlocksTestDatabase
 {
-    public static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("BUILDINGBLOCKS_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("12c547c3-e9a6-462e-82c4-bc6f5b0d4e41")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set BUILDINGBLOCKS_DB_CONNECTION or the Tasks.Api user-secrets to run this test."
-        );
+    private static readonly TemporaryTestDatabase Database = new(
+        "bb_tint",
+        () =>
+            Environment.GetEnvironmentVariable("BUILDINGBLOCKS_DB_CONNECTION")
+            ?? new ConfigurationBuilder()
+                .AddUserSecrets("12c547c3-e9a6-462e-82c4-bc6f5b0d4e41")
+                .Build()
+                .GetConnectionString("Default")
+            ?? throw new InvalidOperationException(
+                "Set BUILDINGBLOCKS_DB_CONNECTION or the Tasks.Api user-secrets to run this test."
+            ),
+        TemporaryTestDatabase.CreateEmpty
+    );
+
+    public static string ConnectionString => Database.ConnectionString;
 
     public static string NewSchema(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..(prefix.Length + 9)];
 

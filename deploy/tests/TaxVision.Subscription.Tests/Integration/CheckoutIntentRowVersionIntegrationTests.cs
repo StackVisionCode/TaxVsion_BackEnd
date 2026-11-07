@@ -29,13 +29,13 @@ public sealed class CheckoutIntentRowVersionIntegrationTests : IAsyncLifetime
                 autoRenew: true,
                 Money.Create(29m, "USD").Value,
                 BillingCycle.Monthly,
-                proratedTotalCents: 2900,
+                proratedTotal: Money.FromCents(2900, "USD"),
                 Guid.NewGuid(),
                 nowUtc
             )
             .Value;
         var renewalIntent = SubscriptionRenewalIntent
-            .Create(_db.TenantId, 4900, "USD", BillingCycle.Monthly, Guid.NewGuid(), nowUtc)
+            .Create(_db.TenantId, Money.FromCents(4900, "USD"), BillingCycle.Monthly, Guid.NewGuid(), nowUtc)
             .Value;
         await using (var seed = _db.NewContext())
         {

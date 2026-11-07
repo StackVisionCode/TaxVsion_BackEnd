@@ -114,7 +114,7 @@ public static class ApplyTaskTemplateHandler
             return Result.Failure<Applied>(series.Error);
 
         seriesRepository.Add(series.Value);
-        var first = await materializer.MaterializeNextAsync(series.Value, null, null, ct);
+        var first = await materializer.MaterializeFirstAsync(series.Value, ct);
         if (first.IsFailure)
             return Result.Failure<Applied>(first.Error);
 

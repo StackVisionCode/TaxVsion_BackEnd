@@ -14,7 +14,8 @@ public static class GetMySubscriptionHandler
         CancellationToken ct
     )
     {
-        var subscription = await subscriptions.GetByTenantIdAsync(query.TenantId, ct);
+        // El último fallo de cobro puede estar en una renovación ya cerrada.
+        var subscription = await subscriptions.GetWithFullHistoryAsync(query.TenantId, ct);
         if (subscription is null)
             return Result.Failure<MySubscriptionResponse>(
                 new Error("Subscription.NotFound", "Subscription does not exist.")

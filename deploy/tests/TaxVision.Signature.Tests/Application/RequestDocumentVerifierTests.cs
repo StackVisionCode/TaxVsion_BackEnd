@@ -277,12 +277,6 @@ public sealed class RequestDocumentVerifierTests
             );
         }
 
-        public Task<Result<Guid>> UploadAsync(
-            Guid tenantId,
-            SignatureFileUpload upload,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
-
         public Task<Result<Guid>> CopyToCustomerAsync(
             Guid tenantId,
             Guid sourceFileId,

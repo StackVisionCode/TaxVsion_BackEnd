@@ -62,6 +62,7 @@ public sealed class RevealOfficeEfinHandlerTests
             _protector,
             _unitOfWork,
             NullLogger<RevealOfficeEfinCommand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 }

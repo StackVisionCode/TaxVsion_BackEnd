@@ -602,4 +602,64 @@ public sealed class SentMessageTests
         Assert.True(result.IsFailure);
         Assert.Equal(DeliveryLane.TenantMailbox, message.DeliveryLane);
     }
+
+    [Fact]
+    public void All_recipients_suppressed_marks_message_suppressed()
+    {
+        var message = QueueWithRecipients("a@example.com", "b@example.com");
+
+        var applied = message.ApplySuppression(new HashSet<string> { "a@example.com", "b@example.com" }, DateTime.UtcNow);
+
+        Assert.True(applied.Value);
+        Assert.Equal(SentMessageStatus.Suppressed, message.Status);
+        Assert.All(message.Recipients, r => Assert.Equal(RecipientStatus.Suppressed, r.Status));
+        Assert.Contains(message.DomainEvents, e => e is SentMessageSuppressedDomainEvent);
+    }
+
+    [Fact]
+    public void Some_recipients_suppressed_keeps_the_message_queued()
+    {
+        var message = QueueWithRecipients("a@example.com", "b@example.com");
+
+        var applied = message.ApplySuppression(new HashSet<string> { "a@example.com" }, DateTime.UtcNow);
+
+        Assert.False(applied.Value);
+        Assert.Equal(SentMessageStatus.Queued, message.Status);
+        Assert.Single(message.Recipients, r => r.Status == RecipientStatus.Suppressed);
+    }
+
+    [Fact]
+    public void Suppression_on_a_message_already_sending_is_rejected()
+    {
+        var message = QueueWithRecipients("a@example.com");
+        message.MarkAsSending();
+
+        var applied = message.ApplySuppression(new HashSet<string> { "a@example.com" }, DateTime.UtcNow);
+
+        Assert.True(applied.IsFailure);
+        Assert.Equal(SentMessageStatus.Sending, message.Status);
+    }
+
+    private static SentMessage QueueWithRecipients(params string[] addresses)
+    {
+        var message = SentMessage
+            .Queue(
+                Guid.NewGuid(),
+                Guid.NewGuid().ToString("N"),
+                "Subject",
+                "from@example.com",
+                EmailStream.Transactional,
+                "system-smtp",
+                null,
+                null,
+                null,
+                null,
+                null,
+                DateTime.UtcNow
+            )
+            .Value;
+        foreach (var address in addresses)
+            message.AddRecipient(address, RecipientType.To, null);
+        return message;
+    }
 }

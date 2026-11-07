@@ -461,6 +461,9 @@ public sealed class RecordingSeriesMaterializer : ITaskSeriesMaterializer
         CancellationToken ct = default
     ) => Task.FromResult(Result.Failure<TaskItem>(TaskErrors.Series.NoFurtherOccurrence));
 
+    public Task<Result<TaskItem>> MaterializeFirstAsync(TaskSeries series, CancellationToken ct = default) =>
+        MaterializeNextAsync(series, null, null, ct);
+
     public Task<TaskItem?> ApplyInstanceClosedAsync(
         TaskItem task,
         DateTime? completedAtUtc,

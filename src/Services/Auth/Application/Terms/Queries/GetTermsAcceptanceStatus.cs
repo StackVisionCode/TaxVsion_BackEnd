@@ -1,6 +1,5 @@
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Domain.Onboarding.TermsVersions;
+using TaxVision.Auth.Domain.Terms;
 
 namespace TaxVision.Auth.Application.Terms.Queries;
 

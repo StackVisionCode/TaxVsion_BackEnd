@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
 using TaxVision.Billing.Application.Invoices.SyncInvoiceStock;
+using TaxVision.Billing.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Billing.Application.Invoices.IssueInvoice;
@@ -30,6 +31,11 @@ public static class IssueInvoiceHandler
         if (invoice is null)
             return Result.Failure<IssueInvoiceResult>(new Error("Billing.Invoice.NotFound", "Invoice does not exist."));
 
+        // Antes de reservar el número: Wolverine guarda aunque se devuelva Failure y el número se perdería.
+        var issuable = invoice.EnsureIssuable();
+        if (issuable.IsFailure)
+            return Result.Failure<IssueInvoiceResult>(issuable.Error);
+
         // Verificación de stock BLOQUEANTE y de solo lectura (D-BIL-2 (a)): si falta stock o Inventory no
         // responde, NO se emite. El descuento real lo hace SyncInvoiceStockCommand después del commit.
         var saleLines = invoice
@@ -48,10 +54,12 @@ public static class IssueInvoiceHandler
 
         var sequence = await sequences.GetOrCreateAsync(command.TenantId, periodKey, ct);
         var number = sequence.Allocate();
-        var invoiceNumber = $"INV-{periodKey}-{number:D5}";
+        var invoiceNumber = InvoiceNumber.Create($"INV-{periodKey}-{number:D5}");
+        if (invoiceNumber.IsFailure)
+            return Result.Failure<IssueInvoiceResult>(invoiceNumber.Error);
 
         // El vencimiento sale del plazo congelado en la factura (sin plazo: el histórico de 30 días).
-        var issueResult = invoice.Issue(invoiceNumber, nowUtc, invoice.DueDateFor(nowUtc), command.ActorUserId);
+        var issueResult = invoice.Issue(invoiceNumber.Value, nowUtc, invoice.DueDateFor(nowUtc), command.ActorUserId);
         if (issueResult.IsFailure)
             return Result.Failure<IssueInvoiceResult>(issueResult.Error);
 
@@ -73,6 +81,6 @@ public static class IssueInvoiceHandler
         if (saleLines.Count > 0)
             await bus.PublishAsync(new SyncInvoiceStockCommand(command.TenantId, command.InvoiceId));
 
-        return Result.Success(new IssueInvoiceResult(invoice.Id, invoiceNumber, invoice.Status.ToString()));
+        return Result.Success(new IssueInvoiceResult(invoice.Id, invoiceNumber.Value.Value, invoice.Status.ToString()));
     }
 }

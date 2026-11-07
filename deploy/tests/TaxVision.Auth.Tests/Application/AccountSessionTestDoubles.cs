@@ -447,7 +447,15 @@ internal sealed class AccountSessionFixture
         Tenant = Tenant
             .Register(tenantId, "office", "Office", BuildingBlocks.Tenancy.TenantKind.Customer, "America/New_York")
             .Value;
-        Admin = User.Register(tenantId, "Ada", "Admin", "ada@example.com", "hashed:secret", actorType).Value;
+        Admin = User.Register(
+            tenantId,
+            "Ada",
+            "Admin",
+            "ada@example.com",
+            "hashed:secret",
+            actorType,
+            actorType == UserActorType.CustomerPortal ? Guid.NewGuid() : null
+        ).Value;
         Tenants.Add(Tenant);
         Users.Add(Admin);
         Issuer = new TaxVision.Auth.Infrastructure.Security.AuthSessionIssuer(
@@ -770,6 +778,7 @@ internal sealed class InMemoryMfaRepository : IMfaRepository
     public List<MfaMethod> Methods { get; } = [];
     public List<RecoveryCode> Codes { get; } = [];
     public List<TrustedDevice> Devices { get; } = [];
+    public List<MfaChallenge> Challenges { get; } = [];
     public TenantMfaPolicy? Policy { get; set; }
 
     public void Enroll(User user)
@@ -799,8 +808,11 @@ internal sealed class InMemoryMfaRepository : IMfaRepository
 
     public void RemoveMethod(MfaMethod method) => Methods.Remove(method);
 
-    public Task AddChallengeAsync(MfaChallenge challenge, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+    public Task AddChallengeAsync(MfaChallenge challenge, CancellationToken ct = default)
+    {
+        Challenges.Add(challenge);
+        return Task.CompletedTask;
+    }
 
     public Task<MfaChallenge?> GetChallengeByTicketHashAsync(string ticketHash, CancellationToken ct = default) =>
         throw new NotSupportedException();
@@ -821,7 +833,7 @@ internal sealed class InMemoryMfaRepository : IMfaRepository
     }
 
     public Task<TrustedDevice?> GetTrustedDeviceByHashAsync(string deviceTokenHash, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+        Task.FromResult(Devices.FirstOrDefault(d => d.DeviceTokenHash == deviceTokenHash));
 
     public Task<IReadOnlyList<TrustedDevice>> GetTrustedDevicesAsync(Guid userId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<TrustedDevice>>(Devices.Where(d => d.UserId == userId).ToList());

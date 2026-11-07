@@ -102,7 +102,7 @@ internal sealed class FakeStockRepository : IStockRepository
     {
         Calls.Add(nameof(GetMovementsByReferenceAsync));
         IReadOnlyList<StockMovement> result = Movements
-            .Where(m => m.TenantId == tenantId && m.Reference == reference)
+            .Where(m => m.TenantId == tenantId && m.Reference == reference && m.MovedByUserId == Guid.Empty)
             .ToList();
         return Task.FromResult(result);
     }

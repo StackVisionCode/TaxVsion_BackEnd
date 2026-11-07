@@ -40,12 +40,7 @@ public sealed class StartAddOnCheckoutHandlerTests
             {
                 ReserveAddOnCheckoutCommand reserve => await ReserveAddOnCheckoutHandler.Handle(
                     reserve,
-                    subscriptions,
-                    plans,
-                    modules,
-                    definitions,
-                    settings,
-                    tenantAddOns,
+                    new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(subscriptions, plans, modules, definitions, settings, tenantAddOns),
                     intents,
                     unitOfWork,
                     token
@@ -96,7 +91,7 @@ public sealed class StartAddOnCheckoutHandlerTests
         Assert.Single(scenario.Intents.Added);
         Assert.Equal(AddOnPurchaseIntentStatus.Pending, scenario.Intents.Added[0].Status);
         Assert.Empty(scenario.TenantAddOns.Added);
-        Assert.Equal(scenario.Intents.Added[0].ProratedTotalCents, scenario.Client.LastRequest!.AmountCents);
+        Assert.Equal(scenario.Intents.Added[0].ProratedTotal.Cents, scenario.Client.LastRequest!.AmountCents);
         Assert.True(scenario.Client.LastRequest.AmountCents > 0);
     }
 

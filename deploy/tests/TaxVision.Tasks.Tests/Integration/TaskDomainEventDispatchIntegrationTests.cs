@@ -36,12 +36,7 @@ namespace TaxVision.Tasks.Tests.Integration;
 public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        new ConfigurationBuilder()
-            .AddUserSecrets("12c547c3-e9a6-462e-82c4-bc6f5b0d4e41")
-            .AddEnvironmentVariables()
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Falta ConnectionStrings:Default en los user-secrets de Tasks.Api.");
+        TasksIntegrationDatabase.ConnectionString;
 
     private readonly string _schema = $"tskbb1_{Guid.NewGuid():N}"[..15];
     private readonly Guid _tenantId = Guid.NewGuid();

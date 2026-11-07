@@ -1,5 +1,8 @@
+using System.Security.Cryptography;
 using BuildingBlocks.Common;
+using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -46,6 +49,7 @@ public sealed class AuthAccountEmailsTests
             Portal,
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
+            Tokens(),
             new Correlation(),
             CancellationToken.None
         );
@@ -79,6 +83,7 @@ public sealed class AuthAccountEmailsTests
             Portal,
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
+            Tokens(),
             new Correlation(),
             CancellationToken.None
         );
@@ -112,6 +117,7 @@ public sealed class AuthAccountEmailsTests
             Portal,
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
+            Tokens(),
             new Correlation(),
             CancellationToken.None
         );
@@ -148,6 +154,7 @@ public sealed class AuthAccountEmailsTests
             scribe,
             Portal,
             TestPlatform.Settings,
+            Tokens(),
             new Correlation(),
             CancellationToken.None
         );
@@ -178,6 +185,7 @@ public sealed class AuthAccountEmailsTests
             Portal,
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
+            Tokens(),
             new Correlation(),
             CancellationToken.None
         );
@@ -204,6 +212,7 @@ public sealed class AuthAccountEmailsTests
             new CapturingScribe(),
             Portal,
             TestPlatform.Settings,
+            Tokens(),
             new Correlation(),
             CancellationToken.None
         );
@@ -232,6 +241,7 @@ public sealed class AuthAccountEmailsTests
             Portal,
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
+            Tokens(),
             new Correlation(),
             CancellationToken.None
         );
@@ -243,6 +253,99 @@ public sealed class AuthAccountEmailsTests
             Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(confirmation.Message).To
         );
     }
+
+    // NOT-04 paso 2: el token protegido manda; RawToken queda solo como respaldo de la transición.
+    [Fact]
+    public async Task Protected_token_is_preferred_over_raw_token()
+    {
+        var scribe = new CapturingScribe();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var codec = Codec();
+
+        await PasswordResetRequestedConsumer.Handle(
+            new PasswordResetRequestedIntegrationEvent
+            {
+                TenantId = tenantId,
+                UserId = userId,
+                Email = "ana@example.com",
+                RawToken = "x",
+                ProtectedToken = codec.Protect(
+                    AuthTokenPayloadSchemas.PasswordReset,
+                    AuthTokenPayloadSchemas.PasswordResetBinding(tenantId, userId),
+                    new AuthAccountTokenPayload("protected-tok")
+                ),
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(30),
+                ActorType = "TenantEmployee",
+            },
+            new CapturingGateway(),
+            scribe,
+            Portal,
+            TestPlatform.Settings,
+            new FakeTenantHostResolver(Host),
+            Tokens(codec),
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(
+            $"https://{Host}/reset-password?token=protected-tok",
+            scribe.Rendered.Single().Variables["reset_link"]
+        );
+    }
+
+    // Un token protegido de otro usuario no abre: sin RawToken no se envía nada.
+    [Fact]
+    public async Task Protected_token_bound_to_another_user_is_not_sent()
+    {
+        var gateway = new CapturingGateway();
+        var tenantId = Guid.NewGuid();
+        var codec = Codec();
+
+        await PasswordResetRequestedConsumer.Handle(
+            new PasswordResetRequestedIntegrationEvent
+            {
+                TenantId = tenantId,
+                UserId = Guid.NewGuid(),
+                Email = "ana@example.com",
+                RawToken = "",
+                ProtectedToken = codec.Protect(
+                    AuthTokenPayloadSchemas.PasswordReset,
+                    AuthTokenPayloadSchemas.PasswordResetBinding(tenantId, Guid.NewGuid()),
+                    new AuthAccountTokenPayload("protected-tok")
+                ),
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(30),
+                ActorType = "TenantEmployee",
+            },
+            gateway,
+            new CapturingScribe(),
+            Portal,
+            TestPlatform.Settings,
+            new FakeTenantHostResolver(Host),
+            Tokens(codec),
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        Assert.Empty(gateway.Requests);
+    }
+
+    private static readonly IProtectedPayloadCodec SharedCodec = Codec();
+
+    private static IProtectedPayloadCodec Codec() =>
+        new JsonProtectedPayloadCodec(
+            new AesGcmRotatingSecretProtector(
+                Options.Create(
+                    new RotatingSecretProtectionOptions
+                    {
+                        MasterKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),
+                    }
+                )
+            )
+        );
+
+    private static AuthAccountTokenReader Tokens(IProtectedPayloadCodec? codec = null) =>
+        new(codec ?? SharedCodec, NullLogger<AuthAccountTokenReader>.Instance);
 
     private static EventBasedEmailDispatchGateway RealGateway(CapturingIntegrationEventPublisher publisher) =>
         new(

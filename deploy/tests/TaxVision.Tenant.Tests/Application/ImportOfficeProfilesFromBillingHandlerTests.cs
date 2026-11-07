@@ -29,6 +29,7 @@ public sealed class ImportOfficeProfilesFromBillingHandlerTests
                 _bus,
                 new NoopCorrelationContext(),
                 _logger,
+                TimeProvider.System,
                 CancellationToken.None
             );
 

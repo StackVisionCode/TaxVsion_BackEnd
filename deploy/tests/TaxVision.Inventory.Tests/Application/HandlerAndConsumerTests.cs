@@ -18,6 +18,58 @@ public sealed class StockHandlerTests
     private static readonly Guid User = Guid.NewGuid();
     private static readonly Guid Item = Guid.NewGuid();
 
+    [Theory]
+    [InlineData(StockMovementType.Sale)]
+    [InlineData(StockMovementType.Damaged)]
+    public async Task Adjust_sale_with_negative_quantity_stores_positive_quantity_in_ledger(StockMovementType type)
+    {
+        var stock = new FakeStockRepository();
+        stock.Seed(StockLevel.Create(Tenant, Item, 5, 0, 0, 0, DateTime.UtcNow).Value);
+
+        var result = await AdjustStockHandler.Handle(
+            new AdjustStockCommand(Tenant, User, Item, type, -2, null, null),
+            stock,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(3, result.Value.QuantityOnHand);
+        Assert.Equal(2, Assert.Single(stock.Movements).Quantity);
+    }
+
+    [Fact]
+    public async Task Adjust_keeps_the_sign_of_an_adjustment_in_ledger()
+    {
+        var stock = new FakeStockRepository();
+        stock.Seed(StockLevel.Create(Tenant, Item, 5, 0, 0, 0, DateTime.UtcNow).Value);
+
+        await AdjustStockHandler.Handle(
+            new AdjustStockCommand(Tenant, User, Item, StockMovementType.Adjustment, -2, null, null),
+            stock,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(-2, Assert.Single(stock.Movements).Quantity);
+    }
+
+    [Fact]
+    public async Task Adjust_without_user_is_rejected()
+    {
+        var stock = new FakeStockRepository();
+        stock.Seed(StockLevel.Create(Tenant, Item, 5, 0, 0, 0, DateTime.UtcNow).Value);
+
+        var result = await AdjustStockHandler.Handle(
+            new AdjustStockCommand(Tenant, Guid.Empty, Item, StockMovementType.Sale, 1, null, null),
+            stock,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Empty(stock.Movements);
+    }
+
     [Fact]
     public async Task Adjust_auto_creates_level_and_writes_ledger()
     {

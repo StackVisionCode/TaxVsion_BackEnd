@@ -1,4 +1,7 @@
+using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Catalog.Application.Categories;
+using TaxVision.Catalog.Application.Common;
 using TaxVision.Catalog.Domain;
 using TaxVision.Catalog.Domain.Categories;
 using TaxVision.Catalog.Tests.Fakes;
@@ -75,6 +78,78 @@ public sealed class CategoryHandlerTests
     }
 
     [Fact]
+    public async Task Update_creating_two_level_cycle_fails()
+    {
+        var repo = new FakeCategoryRepository();
+        var root = Seed(repo, "A", null);
+        var child = Seed(repo, "B", root.Id);
+
+        var result = await Update(repo, root, child.Id);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("catalog.categoryCycle", result.Error.Code);
+        Assert.Null(root.ParentCategoryId);
+    }
+
+    [Fact]
+    public async Task Update_creating_three_level_cycle_fails()
+    {
+        var repo = new FakeCategoryRepository();
+        var root = Seed(repo, "A", null);
+        var child = Seed(repo, "B", root.Id);
+        var grandchild = Seed(repo, "C", child.Id);
+
+        var result = await Update(repo, root, grandchild.Id);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("catalog.categoryCycle", result.Error.Code);
+        Assert.Null(root.ParentCategoryId);
+    }
+
+    [Fact]
+    public async Task Update_moving_under_unrelated_branch_succeeds()
+    {
+        var repo = new FakeCategoryRepository();
+        Seed(repo, "A", null);
+        var target = Seed(repo, "B", null);
+        var moved = Seed(repo, "C", null);
+
+        var result = await Update(repo, moved, target.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(target.Id, moved.ParentCategoryId);
+    }
+
+    [Fact]
+    public async Task Update_under_a_branch_that_already_has_a_cycle_fails()
+    {
+        // Ciclo viejo en los datos: subir por él nunca termina, el tope lo corta.
+        var repo = new FakeCategoryRepository();
+        var first = Seed(repo, "A", null);
+        var second = Seed(repo, "B", first.Id);
+        first.Update("A", null, second.Id, Now);
+        var moved = Seed(repo, "C", null);
+
+        var result = await Update(repo, moved, second.Id);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("catalog.categoryCycle", result.Error.Code);
+        Assert.Null(moved.ParentCategoryId);
+    }
+
+    [Fact]
+    public async Task Update_keeping_the_same_parent_succeeds()
+    {
+        var repo = new FakeCategoryRepository();
+        var root = Seed(repo, "A", null);
+        var child = Seed(repo, "B", root.Id);
+
+        var result = await Update(repo, child, root.Id);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
     public async Task List_returns_tenant_categories()
     {
         var repo = new FakeCategoryRepository();
@@ -88,4 +163,20 @@ public sealed class CategoryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value.Count);
     }
+
+    private static Category Seed(FakeCategoryRepository repo, string name, Guid? parentId)
+    {
+        var category = Category.Create(Tenant, User, name, null, parentId, Now).Value;
+        repo.Seed(category);
+        return category;
+    }
+
+    private static Task<Result<CategoryDto>> Update(FakeCategoryRepository repo, Category category, Guid? parentId) =>
+        UpdateCategoryHandler.Handle(
+            new UpdateCategoryCommand(Tenant, category.Id, category.Name, null, parentId),
+            repo,
+            new FakeUnitOfWork(),
+            Options.Create(new CategoryTreeOptions()),
+            CancellationToken.None
+        );
 }

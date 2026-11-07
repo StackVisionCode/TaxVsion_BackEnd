@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -41,7 +42,7 @@ public static class TaskOverdueConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{assignee:N}",
+                NotificationRecipient.ForUser(assignee),
                 title,
                 NotificationCategory.Collaboration,
                 "task.overdue",

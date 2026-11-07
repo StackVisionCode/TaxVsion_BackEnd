@@ -46,7 +46,7 @@ public sealed class CampaignRunRetryIntegrationTests : IAsyncLifetime
     private const string Prefix = "cmprtry_";
     private const string EnvelopeSchema = "cmprtry";
 
-    private readonly string _connectionString = new SqlConnectionStringBuilder(CampaignsTestDatabase.ConnectionString)
+    private readonly string _connectionString = new SqlConnectionStringBuilder(CampaignsTestDatabase.ServerConnectionString)
     {
         InitialCatalog = $"{Prefix}{Guid.NewGuid():N}"[..(Prefix.Length + 12)],
     }.ConnectionString;
@@ -334,6 +334,7 @@ public sealed class CampaignRunRetryIntegrationTests : IAsyncLifetime
                 services.AddScoped<ICampaignRepository, CampaignRepository>();
                 services.AddScoped<ICampaignRunRepository, CampaignRunRepository>();
                 services.AddScoped<ICampaignScheduleRepository, CampaignScheduleRepository>();
+                services.AddCampaignRunOrchestration();
                 services.AddScoped<IContactRepository, ContactRepository>();
                 services.AddScoped<IContactListRepository, ContactListRepository>();
                 services.AddScoped<ISenderProfileRepository, SenderProfileRepository>();

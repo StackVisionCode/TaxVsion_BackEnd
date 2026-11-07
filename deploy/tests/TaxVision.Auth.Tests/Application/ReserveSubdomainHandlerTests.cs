@@ -1,10 +1,11 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.TenantDomains.Commands;
-using TaxVision.Auth.Domain.Onboarding.SubdomainReservations;
+using TaxVision.Auth.Onboarding.Domain.SubdomainReservations;
+using TaxVision.Auth.Onboarding.Infrastructure.Persistence.Repositories;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Domain.Users;
 
@@ -127,7 +128,7 @@ public sealed class ReserveSubdomainHandlerTests
             new ReserveSubdomainCommand("ab", "admin@oficina1.com"),
             new FakeTenantDomainRepository(),
             reservations,
-            new FakeOnboardingSubdomainReservationRepository(),
+            new OnboardingSubdomainHoldReader(new FakeOnboardingSubdomainReservationRepository()),
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
@@ -151,7 +152,7 @@ public sealed class ReserveSubdomainHandlerTests
             new ReserveSubdomainCommand("oficina1", "admin@oficina1.com"),
             domains,
             reservations,
-            new FakeOnboardingSubdomainReservationRepository(),
+            new OnboardingSubdomainHoldReader(new FakeOnboardingSubdomainReservationRepository()),
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
@@ -182,7 +183,7 @@ public sealed class ReserveSubdomainHandlerTests
             new ReserveSubdomainCommand("oficina1", "admin@oficina1.com"),
             new FakeTenantDomainRepository(),
             reservations,
-            new FakeOnboardingSubdomainReservationRepository(),
+            new OnboardingSubdomainHoldReader(new FakeOnboardingSubdomainReservationRepository()),
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
@@ -217,7 +218,7 @@ public sealed class ReserveSubdomainHandlerTests
             new ReserveSubdomainCommand("oficina1", "admin@oficina1.com"),
             new FakeTenantDomainRepository(),
             reservations,
-            onboardingReservations,
+            new OnboardingSubdomainHoldReader(onboardingReservations),
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
@@ -243,7 +244,7 @@ public sealed class ReserveSubdomainHandlerTests
             new ReserveSubdomainCommand("Oficina1", "Admin@Oficina1.com"),
             new FakeTenantDomainRepository(),
             reservations,
-            new FakeOnboardingSubdomainReservationRepository(),
+            new OnboardingSubdomainHoldReader(new FakeOnboardingSubdomainReservationRepository()),
             DefaultOptions(),
             unitOfWork,
             bus,

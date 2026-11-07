@@ -1,6 +1,5 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Infrastructure.Persistence;
 
@@ -14,12 +13,7 @@ public sealed class CustomerContactPolicyProjectionIntegrationTests : IAsyncLife
 {
     private readonly Guid _tenant = Guid.NewGuid();
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("NOTIFICATION_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("f7c2d8e1-3b5a-4c97-8d1e-notification1")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set NOTIFICATION_DB_CONNECTION or the Notification user-secrets.");
+        NotificationIntegrationDatabase.ConnectionString;
 
     private sealed class NoTenant : ITenantContext
     {

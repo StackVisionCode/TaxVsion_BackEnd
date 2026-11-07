@@ -1,4 +1,3 @@
-using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
@@ -12,11 +11,7 @@ public sealed class SaaSPaymentDunningTests
     {
         var payment = CreateRenewalPayment();
 
-        payment.MarkFailed(
-            "card_declined",
-            "Declined.",
-            true,
-            DateTime.UtcNow.AddHours(1),
+        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
             Guid.Empty,
             DateTime.UtcNow
         );
@@ -34,15 +29,7 @@ public sealed class SaaSPaymentDunningTests
         // Antes un fallo desde Pending no sumaba intento y esto reintentaba cada hora para siempre.
         while (true)
         {
-            var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, nowUtc);
-            payment.MarkFailed(
-                "card_declined",
-                "Declined.",
-                nextRetryAtUtc is not null,
-                nextRetryAtUtc,
-                Guid.Empty,
-                nowUtc
-            );
+            payment.MarkFailed("card_declined", "Declined.", DunningPolicy.Decide(payment, nowUtc), Guid.Empty, nowUtc);
             if (payment.NextRetryAtUtc is null)
                 break;
 
@@ -63,7 +50,7 @@ public sealed class SaaSPaymentDunningTests
         var payment = CreateRenewalPayment();
         var first = payment.ProviderIdempotencyKeyForNextAttempt();
 
-        payment.MarkFailed("card_declined", "Declined.", true, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow), Guid.Empty, DateTime.UtcNow);
         var second = payment.ProviderIdempotencyKeyForNextAttempt();
 
         Assert.Equal(payment.IdempotencyKey, first);

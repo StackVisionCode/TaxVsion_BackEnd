@@ -1,6 +1,5 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Reminder.Domain.Reminders;
 using TaxVision.Reminder.Domain.ValueObjects;
 using TaxVision.Reminder.Infrastructure.Persistence;
@@ -77,12 +76,5 @@ public sealed class ReminderReconciliationIntegrationTests : IAsyncLifetime
 internal static class ReminderTestDatabase
 {
     public static string ConnectionString =>
-        Environment.GetEnvironmentVariable("REMINDER_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("7e9e9b63-4868-4cc3-8876-b96a161ee297")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set REMINDER_DB_CONNECTION or the Reminder Api user-secrets to run this test."
-        );
+        ReminderIntegrationDatabase.ConnectionString;
 }

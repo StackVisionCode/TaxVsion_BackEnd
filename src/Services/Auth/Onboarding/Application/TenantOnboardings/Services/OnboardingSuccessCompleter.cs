@@ -1,0 +1,220 @@
+using System.Globalization;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Platform;
+using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Domain.ValueObjects;
+using Wolverine;
+
+namespace TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
+
+/// <summary>
+/// Camino de éxito COMPARTIDO del onboarding (una vez que la operación quedó completada: pago exitoso o
+/// cobertura 100% por código). Emite el RegistrationToken, publica <c>OnboardingRegistrationReady</c>
+/// (para el email con el link /register), encola el <c>OnboardingFinalizeCommand</c> (commit de códigos
+/// + qualify + factura en Billing) y el <c>RequestOnboardingReceiptCommand</c> (recibo de pago al
+/// comprador, cortesía distinta de la factura). No guarda ni publica: devuelve los avisos y el caller los
+/// publica después de guardar, con su propio bus (BB-16). Reusado por el consumer de pago (net &gt; 0), por el
+/// reconcile y por el carril $0 en el checkout.
+/// </summary>
+public sealed class OnboardingSuccessCompleter(
+    ISecureTokenService tokens,
+    ITokenReferenceStore tokenReferences,
+    IOptions<OnboardingOptions> onboardingOptions,
+    IPlatformSettings platform,
+    ILogger<OnboardingSuccessCompleter> logger
+)
+{
+    public async Task<Result<OnboardingSuccessCompletionResult>> CompleteAsync(
+        TenantOnboarding onboarding,
+        long amountPaidCents,
+        string currency,
+        Guid? paymentId,
+        string? planName,
+        DateTime paidAtUtc,
+        string? providerPaymentReference,
+        string? paymentMethodMasked,
+        string correlationId,
+        bool sendRegistrationEmailNow,
+        CancellationToken ct
+    )
+    {
+        var rawToken = tokens.GenerateToken();
+        var hashResult = RegistrationTokenHash.Create(tokens.Hash(rawToken));
+        if (hashResult.IsFailure)
+        {
+            logger.LogError(
+                "Failed to build RegistrationTokenHash for onboarding {OnboardingId}: {ErrorCode}",
+                onboarding.Id,
+                hashResult.Error.Code
+            );
+            return Result.Failure<OnboardingSuccessCompletionResult>(hashResult.Error);
+        }
+
+        var tokenReference = Guid.NewGuid();
+        var setToken = onboarding.SetRegistrationToken(hashResult.Value, DateTime.UtcNow.AddHours(72), tokenReference);
+        if (setToken.IsFailure)
+        {
+            logger.LogWarning(
+                "SetRegistrationToken failed for onboarding {OnboardingId}: {ErrorCode}",
+                onboarding.Id,
+                setToken.Error.Code
+            );
+            return Result.Failure<OnboardingSuccessCompletionResult>(setToken.Error);
+        }
+
+        // Diferido (carril pagado): la referencia del raw token vive lo suficiente para que el sweeper
+        // publique el email más tarde. El mismo token ya vive 72h en el buzón del comprador, así que una
+        // referencia acotada es menos exposición. Inmediato ($0): TTL corto por defecto del store.
+        if (sendRegistrationEmailNow)
+            await tokenReferences.StoreAsync(tokenReference, rawToken, ct);
+        else
+            await tokenReferences.StoreAsync(
+                tokenReference,
+                rawToken,
+                TimeSpan.FromMinutes(onboardingOptions.Value.RegistrationTokenReferenceTtlMinutes),
+                ct
+            );
+
+        var registrationUrl = BuildRegistrationUrl(onboardingOptions.Value.RegistrationUrlBase, rawToken);
+        var notices = new List<object>();
+
+        // OBF-2.3: el email "completa tu oficina" sale INMEDIATAMENTE al liquidar el pago en todos los
+        // carriles — carril $0, webhook y reconcile pollados. Antes solo salía en $0 y los demás esperaban
+        // 45 min al scheduler; cualquier falla intermedia (token Redis vencido, scheduler quemó el intento)
+        // dejaba al comprador huérfano. Idempotencia a nivel aggregate: si otro carril ya marcó sent (ej.
+        // webhook y poll a la vez), el segundo es no-op — así nunca duplicamos el evento al consumer. El
+        // scheduler queda como safety net para la ventana entre liquidación y commit del outbox.
+        if (onboarding.RegistrationEmailSentAtUtc is null)
+        {
+            notices.Add(
+                new OnboardingRegistrationReadyIntegrationEvent
+                {
+                    TenantId = PlatformTenant.Id,
+                    OnboardingId = onboarding.Id,
+                    TokenReference = tokenReference,
+                    Email = onboarding.Email,
+                    FirstName = onboarding.FirstName,
+                    PlanName = planName,
+                    PriceFormatted = FormatPrice(amountPaidCents, currency),
+                    PaidAtUtc = paidAtUtc,
+                    RegistrationUrlBase = onboardingOptions.Value.RegistrationUrlBase,
+                    CorrelationId = correlationId,
+                }
+            );
+            onboarding.MarkRegistrationEmailSent(DateTime.UtcNow);
+        }
+
+        // Carril pagado sin código: persiste lo efectivamente cobrado en el aggregate ANTES de leer el
+        // desglose, para que una regeneración posterior del recibo (resend admin, reconcile-PaymentCompleted)
+        // lea el monto real y no null → 0. No-op si ya hay desglose (código) o si es el carril $0.
+        onboarding.RecordSettledAmount(amountPaidCents, currency);
+
+        // FINALIZE (Billing invoice + Growth commit/qualify) como comando local AUTO-CONTENIDO: lleva el
+        // desglose y las reservas tomados del onboarding EN MEMORIA (fresco), para no depender de recargar
+        // el aggregate (que podría leer datos previos al commit). Sin códigos: bruto = neto = lo cobrado.
+        var gross = onboarding.GrossAmountCents ?? amountPaidCents;
+        var discount = onboarding.TotalDiscountCents ?? 0;
+        var net = onboarding.NetAmountCents ?? amountPaidCents;
+        var settlement =
+            net == 0 ? "FullyCoveredByCode"
+            : discount > 0 ? "Mixed"
+            : "Paid";
+        var reservations = onboarding
+            .CodeReservations.OrderBy(r => r.Order)
+            .Select(r => new FinalizeReservationDto(
+                r.CodeReservationId,
+                r.BenefitType.ToString(),
+                r.Code,
+                r.DiscountCents,
+                r.SnapshotHash,
+                r.Order
+            ))
+            .ToList();
+
+        var planLabel = string.IsNullOrWhiteSpace(planName) ? $"Suscripción {platform.Current.BrandName}" : planName!;
+        var receiptCurrency = onboarding.Currency ?? currency;
+
+        notices.Add(
+            new OnboardingFinalizeCommand(
+                onboarding.Id,
+                onboarding.PlanId,
+                planLabel,
+                $"{onboarding.FirstName} {onboarding.LastName}".Trim(),
+                onboarding.Email,
+                paymentId,
+                gross,
+                discount,
+                net,
+                receiptCurrency,
+                settlement,
+                onboarding.ReferralAttributionId,
+                reservations
+            )
+        );
+
+        // Recibo de pago para el comprador (cortesía, distinto de la factura de Billing). Comando local
+        // reintentable e idempotente en Documents; el monto es lo efectivamente cobrado (0 en el carril $0).
+        notices.Add(
+            new RequestOnboardingReceiptCommand(
+                onboarding.Id,
+                onboarding.FirstName,
+                onboarding.LastName,
+                onboarding.Email,
+                planLabel,
+                amountPaidCents,
+                receiptCurrency,
+                paidAtUtc,
+                providerPaymentReference,
+                paymentMethodMasked,
+                correlationId
+            )
+        );
+
+        logger.LogInformation(
+            "Onboarding {OnboardingId} success path completed (paymentId={PaymentId}); TokenReference={TokenReference}.",
+            onboarding.Id,
+            paymentId,
+            tokenReference
+        );
+        return Result.Success(new OnboardingSuccessCompletionResult(tokenReference, registrationUrl, notices));
+    }
+
+    public async Task<string?> TryBuildRegistrationUrlAsync(TenantOnboarding onboarding, CancellationToken ct)
+    {
+        if (onboarding.RegistrationTokenReference is not { } tokenReference)
+            return null;
+
+        var rawToken = await tokenReferences.PeekAsync(tokenReference, ct);
+        return string.IsNullOrWhiteSpace(rawToken)
+            ? null
+            : BuildRegistrationUrl(onboardingOptions.Value.RegistrationUrlBase, rawToken);
+    }
+
+    private static string FormatPrice(long amountCents, string currency) =>
+        $"{(amountCents / 100m).ToString("F2", CultureInfo.InvariantCulture)} {currency}";
+
+    private static string BuildRegistrationUrl(string registrationUrlBase, string rawToken) =>
+        $"{registrationUrlBase.TrimEnd('/')}/register?token={Uri.EscapeDataString(rawToken)}";
+}
+
+public sealed record OnboardingSuccessCompletionResult(
+    Guid TokenReference,
+    string RegistrationUrl,
+    IReadOnlyList<object> Notices
+)
+{
+    /// <summary>Correo, factura y recibo. Se llama después de guardar: un guardado fallido no dispara nada.</summary>
+    public async Task PublishNoticesAsync(IMessageBus bus)
+    {
+        bus.TenantId = PlatformTenant.Id.ToString();
+        foreach (var notice in Notices)
+            await bus.PublishAsync(notice);
+    }
+}

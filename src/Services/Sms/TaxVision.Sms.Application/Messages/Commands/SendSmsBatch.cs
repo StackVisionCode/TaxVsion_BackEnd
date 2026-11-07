@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using BuildingBlocks.Results;
-using BuildingBlocks.Security;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Sms.Application.Abstractions;
@@ -11,7 +10,6 @@ using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Application.Webhooks;
 using TaxVision.Sms.Domain;
 using TaxVision.Sms.Domain.Messages;
-using TaxVision.Sms.Domain.ValueObjects;
 using Wolverine;
 using Wolverine.Attributes;
 
@@ -72,8 +70,6 @@ public sealed record SendSmsBatchResponse(Guid BatchId, string CorrelationId, IR
 /// </summary>
 public static class SendSmsBatchHandler
 {
-    private static readonly long DerivedKeyWindowTicks = TimeSpan.FromMinutes(10).Ticks;
-
     [NonTransactional]
     public static async Task<Result<SendSmsBatchResponse>> Handle(
         SendSmsBatchCommand command,
@@ -109,52 +105,23 @@ public static class SendSmsBatchHandler
             return Result.Failure<SendSmsBatchResponse>(new Error("sms.noProvider", "No SMS provider is configured."));
         var nowUtc = DateTime.UtcNow;
 
-        // Política de contacto del cliente: se resuelve antes de reservar, así lo filtrado no se cobra.
-        var smsDisabled = command.EnforceContactPolicy
-            ? (
-                await contactPolicies.GetSmsDisabledCustomerIdsAsync(
-                    command.TenantId,
-                    command.Items.Select(i => i.CustomerId).Distinct().ToList(),
-                    ct
-                )
-            ).ToHashSet()
-            : [];
-        var chargeableCount = command.Items.Count(i => !smsDisabled.Contains(i.CustomerId));
+        var gate = await SmsSendGate.ForContactPolicyAsync(command, contactPolicies, ct);
+        var chargeableCount = gate.ChargeableCount(command.Items);
         var chargeWallet = command.ChargeWallet && chargeableCount > 0;
 
-        // Cobro money-OUT (F6): reservar el saldo ANTES de despachar (solo envío individual; la campaña ya
-        // cobró). La referencia es el lote: un reintento con la misma clave reusa la reserva del Wallet.
         if (chargeWallet)
         {
-            var reserve = await wallet.ReserveAsync(
-                command.TenantId,
-                WalletReferenceTypes.IndividualSms,
-                batchId,
-                new WalletUnitCounts(0, chargeableCount, 0, 0),
-                command.CallerBearerToken,
-                ct
-            );
-            if (!reserve.Reachable)
-                return Result.Failure<SendSmsBatchResponse>(SmsErrors.WalletUnavailable);
-            if (!reserve.Authorized)
-                return Result.Failure<SendSmsBatchResponse>(
-                    SmsErrors.InsufficientFunds(reserve.DeficitMicros, reserve.Currency)
-                );
+            var reserveError = await ReserveWalletAsync(command, batchId, chargeableCount, wallet, ct);
+            if (reserveError is not null)
+                return Result.Failure<SendSmsBatchResponse>(reserveError);
         }
 
+        await gate.LoadAssignmentsAsync(command, visibility.Value, assignments, ct);
+
         var results = new List<SmsSendItemResult>(command.Items.Count);
-
-        // Visibilidad por asignación: un preparador solo le escribe a sus clientes. Se resuelve el set
-        // una vez para todo el lote — no una consulta por item. Null = sin restricción: servicio M2M,
-        // `customers.view_all` o el flag apagado.
-        var assignedTo = visibility.Value.Enabled && !command.CanViewAll ? command.ActorUserId : (Guid?)null;
-        var allowedCustomers = assignedTo is { } sender
-            ? (await assignments.GetAssignedCustomerIdsAsync(command.TenantId, sender, ct)).ToHashSet()
-            : null;
-
         foreach (var item in command.Items)
         {
-            if (allowedCustomers is not null && !allowedCustomers.Contains(item.CustomerId))
+            if (!gate.IsAssigned(item.CustomerId))
             {
                 results.Add(Failed(item, SmsErrors.CustomerNotAssigned.Code));
                 continue;
@@ -166,7 +133,7 @@ public static class SendSmsBatchHandler
                 correlationId,
                 batchId,
                 chargeWallet,
-                smsDisabled.Contains(item.CustomerId),
+                gate.BlockedByContactPolicy(item.CustomerId),
                 providers,
                 bus,
                 options.Value.ConflictRetryAttempts,
@@ -177,29 +144,8 @@ public static class SendSmsBatchHandler
             results.Add(result);
         }
 
-        // Liquidación del cobro (F6, D-SMS-3): consume lo que el proveedor aceptó y libera el resto. Si queda
-        // un ítem en curso o desconocido, la reserva sigue abierta. Un fallo del Wallet no tira el envío: la
-        // liquidación pasa a la cola durable.
         if (chargeWallet)
-        {
-            try
-            {
-                await SettleSmsBatchHandler.SettleAsync(
-                    command.TenantId,
-                    batchId,
-                    command.CallerBearerToken,
-                    messages,
-                    wallet,
-                    logger,
-                    ct
-                );
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "SMS batch {BatchId}: wallet settle failed; queued for retry.", batchId);
-                await bus.PublishAsync(new SettleSmsBatchCommand(command.TenantId, batchId));
-            }
-        }
+            await SettleWalletAsync(command, batchId, messages, wallet, bus, logger, ct);
 
         logger.LogInformation(
             "SMS batch {BatchId} processed {Count} message(s) for tenant {TenantId} (correlation {CorrelationId}).",
@@ -210,6 +156,61 @@ public static class SendSmsBatchHandler
         );
 
         return Result.Success(new SendSmsBatchResponse(batchId, correlationId, results));
+    }
+
+    // Cobro money-OUT (F6): se reserva el saldo ANTES de despachar (solo envío individual; la campaña ya cobró). La
+    // referencia es el lote: un reintento con la misma clave reusa la reserva del Wallet.
+    private static async Task<Error?> ReserveWalletAsync(
+        SendSmsBatchCommand command,
+        Guid batchId,
+        int chargeableCount,
+        IWalletSpendClient wallet,
+        CancellationToken ct
+    )
+    {
+        var reserve = await wallet.ReserveAsync(
+            command.TenantId,
+            WalletReferenceTypes.IndividualSms,
+            batchId,
+            new WalletUnitCounts(0, chargeableCount, 0, 0),
+            command.CallerBearerToken,
+            ct
+        );
+        if (!reserve.Reachable)
+            return SmsErrors.WalletUnavailable;
+
+        return reserve.Authorized ? null : SmsErrors.InsufficientFunds(reserve.DeficitMicros, reserve.Currency);
+    }
+
+    // Liquidación del cobro (F6, D-SMS-3): consume lo que el proveedor aceptó y libera el resto. Si queda un ítem en
+    // curso o desconocido, la reserva sigue abierta. Un fallo del Wallet no tira el envío: pasa a la cola durable.
+    private static async Task SettleWalletAsync(
+        SendSmsBatchCommand command,
+        Guid batchId,
+        ISmsMessageRepository messages,
+        IWalletSpendClient wallet,
+        IMessageBus bus,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            await SettleSmsBatchHandler.SettleAsync(
+                command.TenantId,
+                batchId,
+                command.CallerBearerToken,
+                messages,
+                wallet,
+                logger,
+                ct
+            );
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "SMS batch {BatchId}: wallet settle failed; queued for retry.", batchId);
+            await bus.PublishAsync(new SettleSmsBatchCommand(command.TenantId, batchId));
+        }
     }
 
     /// <summary>Id de lote determinístico a partir de (tenant, clave de la petición).</summary>
@@ -236,46 +237,25 @@ public static class SendSmsBatchHandler
     {
         var primary = providers[0];
 
-        // 1) Validaciones de entrada — un item inválido NO aborta el lote.
-        if (item.CustomerId == Guid.Empty)
-            return Failed(item, SmsErrors.InvalidCustomer.Code);
+        var prepared = SmsOutgoingItem.Prepare(item, tenantId, nowUtc);
+        if (prepared.IsFailure)
+            return Failed(item, prepared.Error.Code);
+        var outgoing = prepared.Value;
 
-        var phoneResult = PhoneE164.Create(item.To);
-        if (phoneResult.IsFailure)
-            return Failed(item, SmsErrors.InvalidDestination.Code);
-        var phone = phoneResult.Value;
-
-        var bodyResult = SmsBody.Create(item.Message);
-        if (bodyResult.IsFailure)
-            return Failed(item, SmsErrors.InvalidBody.Code);
-        var body = bodyResult.Value;
-        var storedBodyResult = SmsBody.Create(SensitiveNotificationContent.ForStorage(item.TemplateKey, body.Value));
-        if (storedBodyResult.IsFailure)
-            return Failed(item, storedBodyResult.Error.Code);
-        var storedBody = storedBodyResult.Value;
-
-        var mediaPayload = (item.Media ?? [])
-            .Select(m => new SmsMediaPayload(m.Url, m.ContentType, m.FileName, m.SizeBytes))
-            .ToList();
-
-        var idempotencyKey = string.IsNullOrWhiteSpace(item.IdempotencyKey)
-            ? DeriveIdempotencyKey(tenantId, item.CustomerId, phone.Value, body.Value, mediaPayload, nowUtc)
-            : item.IdempotencyKey.Trim();
-
-        // 2) Fase 1: reserva confirmada (o supresión por STOP o política). Solo el ganador de la clave envía.
+        // Fase 1: reserva confirmada (o supresión por STOP o política). Solo el ganador de la clave envía.
         var reservation = await ReserveAsync(
             bus,
             new ReserveSmsMessageCommand(
                 tenantId,
                 item.CustomerId,
-                phone,
-                storedBody,
-                idempotencyKey,
+                outgoing.Phone,
+                outgoing.StoredBody,
+                outgoing.IdempotencyKey,
                 correlationId,
                 batchId,
                 primary.Code,
                 item.SourceContext,
-                [.. mediaPayload.Select(m => new SmsMediaInput(m.Url, m.ContentType, m.FileName, m.SizeBytes))],
+                [.. outgoing.Media.Select(m => new SmsMediaInput(m.Url, m.ContentType, m.FileName, m.SizeBytes))],
                 item.RecipientName,
                 walletCharged,
                 blockedByContactPolicy
@@ -288,25 +268,24 @@ public static class SendSmsBatchHandler
         if (reserved.Outcome != SmsReservationOutcome.Reserved)
             return ItemResult(reserved.Message, item, reused: reserved.Outcome == SmsReservationOutcome.Existing);
 
-        // 3) Fase 2: envío fuera de la transacción.
-        var sendRequest = new SmsSendRequest(
-            tenantId,
-            item.CustomerId,
-            phone.Value,
-            body.Value,
-            mediaPayload,
-            correlationId,
-            idempotencyKey,
-            item.SourceContext
-        );
-        var (outcome, provider, providerMessageId, error) = await SendWithFailoverAsync(
+        // Fase 2: envío fuera de la transacción.
+        var attempt = await SmsFailoverSender.SendAsync(
             providers,
-            sendRequest,
+            new SmsSendRequest(
+                tenantId,
+                item.CustomerId,
+                outgoing.Phone.Value,
+                outgoing.Body.Value,
+                outgoing.Media,
+                correlationId,
+                outgoing.IdempotencyKey,
+                item.SourceContext
+            ),
             logger,
             ct
         );
 
-        // 4) Fase 3: resultado y evento en su propia transacción. Se registra aunque la petición se haya cancelado.
+        // Fase 3: resultado y evento en su propia transacción. Se registra aunque la petición se haya cancelado.
         // El SMS ya salió: un choque con la conciliación no puede cortar el lote.
         var recorded = await SmsConflictRetry.InvokeAsync(
             () =>
@@ -314,11 +293,11 @@ public static class SendSmsBatchHandler
                     new RecordSmsSendResultCommand(
                         tenantId,
                         reserved.Message.Id,
-                        outcome,
-                        (provider ?? primary).Code,
-                        providerMessageId,
-                        error?.Code,
-                        error?.Message
+                        attempt.Outcome,
+                        (attempt.Provider ?? primary).Code,
+                        attempt.ProviderMessageId,
+                        attempt.Error?.Code,
+                        attempt.Error?.Message
                     ),
                     CancellationToken.None
                 ),
@@ -344,86 +323,6 @@ public static class SendSmsBatchHandler
         }
     }
 
-    /// <summary>
-    /// Failover de PLATAFORMA solo si el proveedor dijo que no salió (rechazo, caído, media no soportada). Un
-    /// resultado desconocido o la baja en el carrier lo cortan: otro proveedor podría mandar un segundo SMS.
-    /// </summary>
-    private static async Task<(
-        SmsSendOutcome Outcome,
-        ISmsProvider? Provider,
-        string? ProviderMessageId,
-        Error? Error
-    )> SendWithFailoverAsync(
-        IReadOnlyList<ISmsProvider> providers,
-        SmsSendRequest request,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        Error? lastError = null;
-        foreach (var provider in providers)
-        {
-            var mediaError = SmsMediaValidator.Validate(provider.Capabilities, request.Media);
-            if (mediaError is not null)
-            {
-                lastError = mediaError;
-                logger.LogWarning(
-                    "SMS provider {Provider} cannot carry the media for {To} ({Code}); trying next.",
-                    provider.Code,
-                    request.To,
-                    mediaError.Code
-                );
-                continue;
-            }
-
-            Result<SmsSendResult> sendResult;
-            try
-            {
-                sendResult = await provider.SendAsync(request, ct);
-            }
-            catch (Exception ex)
-            {
-                // Un adapter que lanza pudo haber enviado: resultado desconocido, sin failover.
-                logger.LogWarning(
-                    ex,
-                    "SMS provider {Provider} threw sending to {To}; outcome unknown.",
-                    provider.Code,
-                    request.To
-                );
-                return (SmsSendOutcome.OutcomeUnknown, provider, null, SmsErrors.ProviderOutcomeUnknown);
-            }
-
-            if (sendResult.IsSuccess && sendResult.Value.Accepted)
-                return (SmsSendOutcome.Accepted, provider, sendResult.Value.ProviderMessageId, null);
-
-            lastError = sendResult.IsFailure
-                ? sendResult.Error
-                : new Error(
-                    sendResult.Value.ErrorCode ?? SmsErrors.ProviderRejected.Code,
-                    sendResult.Value.ErrorMessage ?? string.Empty
-                );
-            if (lastError.Code == SmsSendFailure.OutcomeUnknown)
-                return (
-                    SmsSendOutcome.OutcomeUnknown,
-                    provider,
-                    sendResult.IsSuccess ? sendResult.Value.ProviderMessageId : null,
-                    lastError
-                );
-            // El carrier ya bloqueó el número: otro proveedor no debe intentarlo.
-            if (lastError.Code == SmsSendFailure.RecipientOptedOut)
-                return (SmsSendOutcome.RecipientOptedOut, provider, null, lastError);
-
-            logger.LogWarning(
-                "SMS provider {Provider} did not accept {To} ({Code}); trying next if any.",
-                provider.Code,
-                request.To,
-                lastError.Code
-            );
-        }
-
-        return (SmsSendOutcome.Rejected, null, null, lastError ?? SmsErrors.ProviderRejected);
-    }
-
     private static SmsSendItemResult ItemResult(SmsMessageSnapshot message, SmsSendItemDto item, bool reused) =>
         new(
             message.Id,
@@ -437,25 +336,4 @@ public static class SendSmsBatchHandler
 
     private static SmsSendItemResult Failed(SmsSendItemDto item, string errorCode) =>
         new(null, item.CustomerId, item.To, "Failed", null, errorCode);
-
-    /// <summary>Red de seguridad para llamadas M2M sin clave. Incluye una ventana de 10 min: un reenvío legítimo
-    /// más tarde es otra clave. La media se canonicaliza (orden estable).</summary>
-    private static string DeriveIdempotencyKey(
-        Guid tenantId,
-        Guid customerId,
-        string to,
-        string body,
-        IReadOnlyList<SmsMediaPayload> media,
-        DateTime nowUtc
-    )
-    {
-        var mediaCanon = string.Join(
-            "|",
-            media.Select(m => $"{m.Url}:{m.ContentType}:{m.SizeBytes}").OrderBy(s => s, StringComparer.Ordinal)
-        );
-        var window = nowUtc.Ticks - nowUtc.Ticks % DerivedKeyWindowTicks;
-        var canonical = $"{tenantId:N}|{customerId:N}|{to}|{body}|{mediaCanon}|{window}";
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
-        return "auto-" + Convert.ToHexStringLower(hash);
-    }
 }

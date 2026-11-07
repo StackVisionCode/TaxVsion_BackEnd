@@ -10,9 +10,9 @@ public sealed class BrandResolutionTests
 {
     private static TenantBrand PlatformBrand()
     {
-        var brand = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm);
-        brand.SetColor(BrandColorToken.Primary, "#1E466B");
-        brand.SetColor(BrandColorToken.Accent, "#67BAF4");
+        var brand = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm, DateTime.UtcNow);
+        brand.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow);
+        brand.SetColor(BrandColorToken.Accent, "#67BAF4", DateTime.UtcNow);
         return brand;
     }
 
@@ -33,8 +33,8 @@ public sealed class BrandResolutionTests
     [Fact]
     public void Platform_colors_win_over_compiled_when_tenant_has_none()
     {
-        var platform = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm);
-        platform.SetColor(BrandColorToken.Primary, "#0F5132"); // sistema personalizado (Fase 4)
+        var platform = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm, DateTime.UtcNow);
+        platform.SetColor(BrandColorToken.Primary, "#0F5132", DateTime.UtcNow); // sistema personalizado (Fase 4)
 
         var response = BrandResolution.Resolve(BrandSurface.Crm, tenantBrand: null, platformBrand: platform);
 
@@ -45,8 +45,8 @@ public sealed class BrandResolutionTests
     [Fact]
     public void Tenant_color_overrides_and_is_marked_customized_per_token()
     {
-        var tenant = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm);
-        tenant.SetColor(BrandColorToken.Primary, "#AA0000"); // solo primary
+        var tenant = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm, DateTime.UtcNow);
+        tenant.SetColor(BrandColorToken.Primary, "#AA0000", DateTime.UtcNow); // solo primary
 
         var response = BrandResolution.Resolve(BrandSurface.Crm, tenant, PlatformBrand());
 
@@ -60,9 +60,9 @@ public sealed class BrandResolutionTests
     [Fact]
     public void Tenant_confirmed_asset_is_effective_and_customized()
     {
-        var tenant = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm);
+        var tenant = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm, DateTime.UtcNow);
         var fileId = Guid.NewGuid();
-        tenant.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, 40, 40);
+        tenant.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, 40, 40, DateTime.UtcNow);
         tenant.ConfirmAsset(BrandAssetKey.Logo, fileId, "image/png", 100, 40, 40, DateTime.UtcNow);
 
         var response = BrandResolution.Resolve(BrandSurface.Crm, tenant, PlatformBrand());
@@ -77,8 +77,8 @@ public sealed class BrandResolutionTests
     [Fact]
     public void Tenant_pending_asset_is_shown_so_the_admin_sees_processing()
     {
-        var tenant = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm);
-        tenant.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null);
+        var tenant = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm, DateTime.UtcNow);
+        tenant.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow);
 
         var response = BrandResolution.Resolve(BrandSurface.Crm, tenant, platformBrand: null);
 
@@ -92,7 +92,7 @@ public sealed class BrandResolutionTests
     {
         var platform = PlatformBrand();
         var fileId = Guid.NewGuid();
-        platform.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null);
+        platform.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow);
         platform.ConfirmAsset(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow);
 
         var response = BrandResolution.Resolve(BrandSurface.Crm, tenantBrand: null, platformBrand: platform);
@@ -106,7 +106,7 @@ public sealed class BrandResolutionTests
     public void Platform_pending_asset_is_never_served()
     {
         var platform = PlatformBrand();
-        platform.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null); // sin confirmar
+        platform.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow); // sin confirmar
 
         var response = BrandResolution.Resolve(BrandSurface.Crm, tenantBrand: null, platformBrand: platform);
 

@@ -59,9 +59,10 @@ public sealed record CreateReminderCommand(
 /// </para>
 ///
 /// <para>
-/// <b>EF primero, Quartz después</b> (ADR-R-04): si agendar falla, queda un recordatorio sin trigger
-/// que <c>ReminderScheduleReconciliationJob</c> repara en ≤5 min. Al revés quedaría un trigger
-/// apuntando a una fila inexistente, que no repara nadie.
+/// <b>EF primero, Quartz después</b> (ADR-R-04), pero Wolverine confirma <b>después</b> del handler: el
+/// trigger existe unos milisegundos antes que la fila confirmada. Si agendar falla, la fila se revierte
+/// y no queda nada. Si falla el commit, queda un trigger huérfano, inofensivo:
+/// <c>FireReminderHandler</c> lo descarta.
 /// </para>
 /// </summary>
 public static class CreateReminderHandler

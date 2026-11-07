@@ -169,12 +169,15 @@ export function bindAuthConsumers(
 
   // D-7: suspender solo bloquea el acceso (lo corta Auth y estas proyecciones). NO saca de los grupos:
   // es reversible y reactivar no lo devolveria. La salida de grupos es solo del retiro (offboarding-consumers).
+  // Orden: con prefetch 20 y reintentos un desactivar viejo puede llegar despues de un reactivar nuevo;
+  // cada proyeccion guarda la fecha del aviso (occurredOn) y descarta los mas viejos.
   register('auth.user.deactivated.v1', async (env) => {
     const userId = getString(env.payload, 'userId') ?? getString(env.payload, 'UserId');
     if (!userId) return;
-    await deps.userPermissions.markInactive(userId, new Date());
-    await deps.userDirectory.markInactive(userId);
-    await deps.customerPortalAccounts.markInactiveByUserId(userId);
+    const at = statusChangedAt(env);
+    await deps.userPermissions.markInactive(userId, new Date(), at);
+    await deps.userDirectory.markInactive(userId, at);
+    await deps.customerPortalAccounts.markInactiveByUserId(userId, at);
   });
 
   // Contraparte de `deactivated`: sin este consumer, reactivar un usuario en Auth
@@ -186,9 +189,10 @@ export function bindAuthConsumers(
   register('auth.user.reactivated.v1', async (env) => {
     const userId = getString(env.payload, 'userId') ?? getString(env.payload, 'UserId');
     if (!userId) return;
-    await deps.userPermissions.markActive(userId, new Date());
-    await deps.userDirectory.markActive(userId);
-    await deps.customerPortalAccounts.markActiveByUserId(userId);
+    const at = statusChangedAt(env);
+    await deps.userPermissions.markActive(userId, new Date(), at);
+    await deps.userDirectory.markActive(userId, at);
+    await deps.customerPortalAccounts.markActiveByUserId(userId, at);
   });
 
   /**
@@ -226,6 +230,12 @@ export function bindAuthConsumers(
       announceUserAccessChanged(user.tenantId, user.userId, null);
     }
   });
+}
+
+/** Fecha del aviso para ordenar activar/desactivar; sin fecha valida se aplica como antes. */
+function statusChangedAt(env: IncomingEnvelope): Date | undefined {
+  const at = new Date(env.occurredOnUtc);
+  return Number.isNaN(at.getTime()) ? undefined : at;
 }
 
 function getString(source: Record<string, unknown>, key: string): string | undefined {

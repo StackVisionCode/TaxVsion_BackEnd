@@ -190,12 +190,20 @@ public sealed class SealingMultiDocumentTests
         await SignatureRequestCompletedConsumer.Handle(
             readyEvent,
             repository,
-            storage,
-            new EmptyFileMetadataRepository(),
-            new EmptyBrandingRepository(),
-            new DeterministicSealer(),
-            new FixedStampStyle(),
-            new DeterministicCertificateRenderer(),
+            new SignatureImageScanGate(new EmptyFileMetadataRepository(), storage, NullLogger<SignatureRequest>.Instance),
+            new SealingDocumentProcessor(
+                storage,
+                new DeterministicSealer(),
+                new FixedStampStyle(),
+                NullLogger<SignatureRequest>.Instance
+            ),
+            new SealingCertificateBuilder(
+                new DeterministicCertificateRenderer(),
+                new DeterministicSealer(),
+                storage,
+                new EmptyBrandingRepository(),
+                NullLogger<SignatureRequest>.Instance
+            ),
             new AcquiredDistributedLock(),
             bus,
             correlation,
@@ -270,12 +278,20 @@ public sealed class SealingMultiDocumentTests
         await SignatureRequestCompletedConsumer.Handle(
             readyEvent,
             repository,
-            storage,
-            new EmptyFileMetadataRepository(),
-            new EmptyBrandingRepository(),
-            new DeterministicSealer(),
-            new FixedStampStyle(),
-            new DeterministicCertificateRenderer(),
+            new SignatureImageScanGate(new EmptyFileMetadataRepository(), storage, NullLogger<SignatureRequest>.Instance),
+            new SealingDocumentProcessor(
+                storage,
+                new DeterministicSealer(),
+                new FixedStampStyle(),
+                NullLogger<SignatureRequest>.Instance
+            ),
+            new SealingCertificateBuilder(
+                new DeterministicCertificateRenderer(),
+                new DeterministicSealer(),
+                storage,
+                new EmptyBrandingRepository(),
+                NullLogger<SignatureRequest>.Instance
+            ),
             new AcquiredDistributedLock(),
             bus,
             correlation,
@@ -488,13 +504,6 @@ public sealed class SealingMultiDocumentTests
                     ? Result.Success<byte[]>([1, 2, 3])
                     : Result.Failure<byte[]>(new Error("Storage.FileMissing", "File not found."))
             );
-
-        public Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default)
-        {
-            var fileId = Guid.NewGuid();
-            Uploads.Add((fileId, upload));
-            return Task.FromResult(Result.Success(fileId));
-        }
 
         public Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
             Guid tenantId,

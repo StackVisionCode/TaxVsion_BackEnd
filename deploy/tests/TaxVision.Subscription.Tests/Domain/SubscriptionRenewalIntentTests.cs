@@ -9,7 +9,7 @@ public sealed class SubscriptionRenewalIntentTests
 {
     private static SubscriptionRenewalIntent Pending() =>
         SubscriptionRenewalIntent
-            .Create(Guid.NewGuid(), 4900, "USD", BillingCycle.Monthly, Guid.NewGuid(), DateTime.UtcNow)
+            .Create(Guid.NewGuid(), Money.FromCents(4900, "USD"), BillingCycle.Monthly, Guid.NewGuid(), DateTime.UtcNow)
             .Value;
 
     [Fact]
@@ -17,8 +17,7 @@ public sealed class SubscriptionRenewalIntentTests
     {
         var result = SubscriptionRenewalIntent.Create(
             Guid.NewGuid(),
-            0,
-            "USD",
+            Money.FromCents(0, "USD"),
             BillingCycle.Monthly,
             Guid.NewGuid(),
             DateTime.UtcNow
@@ -34,8 +33,8 @@ public sealed class SubscriptionRenewalIntentTests
         var intent = Pending();
 
         Assert.Equal(SubscriptionRenewalIntentStatus.Pending, intent.Status);
-        Assert.Equal(4900, intent.AmountCents);
-        Assert.Equal("USD", intent.Currency);
+        Assert.Equal(4900, intent.Amount.Cents);
+        Assert.Equal("USD", intent.Amount.Currency);
     }
 
     [Fact]

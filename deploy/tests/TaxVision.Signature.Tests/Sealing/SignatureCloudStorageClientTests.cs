@@ -63,7 +63,6 @@ public sealed class SignatureCloudStorageClientTests
             new FixedToken(token),
             new MinioClient().WithEndpoint("minio.test:9000").WithCredentials("test", "test").Build(),
             Options.Create(new SignatureMinioOptions()),
-            new CapturingBus(),
             new FixedCorrelation(),
             NullLogger<SignatureCloudStorageClient>.Instance
         );

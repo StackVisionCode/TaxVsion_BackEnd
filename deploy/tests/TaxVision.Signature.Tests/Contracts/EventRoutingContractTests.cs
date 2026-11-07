@@ -8,6 +8,7 @@ public sealed class EventRoutingContractTests
         "SignatureDocumentSealedIntegrationEvent",
         "SignatureRequestSealingCompletedIntegrationEvent",
         "SignedDocumentsDeliveryReadyIntegrationEvent",
+        "SignatureRequestPurgedIntegrationEvent",
     ];
 
     [Fact]

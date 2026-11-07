@@ -80,9 +80,7 @@ public sealed class CalendarAppointmentConsumerTests
             harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
-            harness.Preferences,
             harness.Dispatcher,
-            NullLogger<AppointmentRescheduledIntegrationEvent>.Instance,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -121,15 +119,26 @@ public sealed class CalendarAppointmentConsumerTests
         Assert.Equal(0, harness.Render.Calls);
     }
 
+    /// <summary>NOT-03: un empleado inactivo no recibe el correo de la cita; el cliente invitado sí.</summary>
+    [Fact]
+    public async Task Inactive_attendee_gets_no_email()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+        harness.Directory.Seed(TenantId, EmployeeId, "empleado@example.com", isActive: false);
+
+        await Scheduled(harness, Invitation());
+
+        var email = Assert.Single(harness.Gateway.Queued);
+        Assert.Equal("cliente@example.com", email.To);
+    }
+
     private static Task Scheduled(Harness harness, AppointmentScheduledIntegrationEvent evt) =>
         AppointmentScheduledConsumer.Handle(
             evt,
             harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
-            harness.Preferences,
             harness.Dispatcher,
-            NullLogger<AppointmentScheduledIntegrationEvent>.Instance,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -154,27 +163,31 @@ public sealed class CalendarAppointmentConsumerTests
             ],
         };
 
-    private sealed class Harness(bool preferencesEnabled)
+    private sealed class Harness
     {
-        internal RecordingGateway Gateway { get; } = new();
-        internal RecordingRenderClient Render { get; } = new();
-        internal SwitchablePreferences Preferences { get; } = new(preferencesEnabled);
-        internal NotificationDispatcher Dispatcher { get; } =
-            new(
+        internal Harness(bool preferencesEnabled)
+        {
+            Preferences = new SwitchablePreferences(preferencesEnabled);
+            Gateway = new GatedEmailGateway(Preferences, Directory);
+            Dispatcher = TestDispatchers.Create(
                 new NoOpSmsSender(),
                 new NoOpPushSender(),
                 new NoOpPushDeviceTokenRepository(),
                 new NoOpNotificationLogRepository(),
-                TestDeliveryGates.For(
-                    new SwitchablePreferences(preferencesEnabled),
-                    new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
-                ),
+                TestDeliveryGates.For(new SwitchablePreferences(preferencesEnabled), Directory),
                 new CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
-                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
-                NullLogger<NotificationDispatcher>.Instance
+                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
             );
+        }
+
+        // El gateway real aplica el gate de entrega (inactivo, preferencia, catálogo).
+        internal InMemoryUserEmailDirectoryRepository Directory { get; } = new();
+        internal GatedEmailGateway Gateway { get; }
+        internal RecordingRenderClient Render { get; } = new();
+        internal SwitchablePreferences Preferences { get; }
+        internal NotificationDispatcher Dispatcher { get; }
     }
 
     private sealed class NoOpSmsSender : ISmsSender
@@ -249,25 +262,6 @@ public sealed class CalendarAppointmentConsumerTests
     private sealed class NoOpUnitOfWork : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
-    }
-
-    private sealed class RecordingGateway : IEmailDispatchGateway
-    {
-        public List<EmailDispatchRequest> Queued { get; } = [];
-
-        public Task<EmailDispatchResult> QueueEmailAsync(EmailDispatchRequest request, CancellationToken ct = default)
-        {
-            Queued.Add(request);
-            return Task.FromResult(
-                new EmailDispatchResult(
-                    Guid.NewGuid(),
-                    Guid.NewGuid(),
-                    NotificationDispatchAttemptStatus.Sent,
-                    null,
-                    null
-                )
-            );
-        }
     }
 
     private sealed class RecordingRenderClient : IScribeRenderClient

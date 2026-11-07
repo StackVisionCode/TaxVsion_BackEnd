@@ -467,6 +467,8 @@ public static class ErrorHttpMapping
             or "Signature.Request.Scheduled"
             or "Signature.Request.NotSchedulable"
             or "Signature.Request.NotScheduled"
+            or "Signature.Template.NotDraft"
+            or "Signature.Signer.Terminal"
             or "Signature.Document.NotAvailable" => StatusCodes.Status409Conflict,
             var code
                 when (

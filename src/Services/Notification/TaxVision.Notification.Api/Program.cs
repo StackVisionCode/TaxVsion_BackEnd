@@ -267,6 +267,9 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+    // NOT-22: lo publicado por los colaboradores entra en el outbox del handler.
+    options.Policies.AddMiddleware(typeof(TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware));
+
     options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 });

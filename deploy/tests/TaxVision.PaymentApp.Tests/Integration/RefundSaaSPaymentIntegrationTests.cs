@@ -3,7 +3,6 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
@@ -21,15 +20,7 @@ namespace TaxVision.PaymentApp.Tests.Integration;
 /// reintento no crea un segundo reembolso.</summary>
 public sealed class RefundSaaSPaymentIntegrationTests : IAsyncLifetime
 {
-    private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("PAYMENTAPP_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-paymentapp001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set PAYMENTAPP_DB_CONNECTION or the PaymentApp user-secrets to run this test."
-        );
+    private readonly string _connectionString = PaymentAppWolverineHost.Connection;
 
     private readonly Guid _tenantId = Guid.NewGuid();
 
@@ -43,6 +34,7 @@ public sealed class RefundSaaSPaymentIntegrationTests : IAsyncLifetime
         await using var command = connection.CreateCommand();
         command.CommandText =
             "DELETE FROM dbo.RefundLines WHERE TenantId = @tenant; "
+            + "DELETE FROM dbo.RefundRequests WHERE TenantId = @tenant; "
             + "DELETE a FROM dbo.SaaSPaymentAttempts a JOIN dbo.SaaSPayments p ON p.Id = a.SaaSPaymentId WHERE p.TenantId = @tenant; "
             + "DELETE FROM dbo.SaaSPayments WHERE TenantId = @tenant;";
         command.Parameters.AddWithValue("@tenant", _tenantId);
@@ -60,18 +52,15 @@ public sealed class RefundSaaSPaymentIntegrationTests : IAsyncLifetime
         }
 
         var provider = new IdempotentRefundProvider();
-        var interceptor = new ThrowOnceSaveInterceptor();
+        // Primer guardado: la intención (antes del proveedor). Segundo: el registro, que falla una vez.
+        var interceptor = new ThrowOnSaveInterceptor(failOnCall: 2);
+        var actor = Guid.NewGuid();
 
-        await using (var first = CreateContext(interceptor))
-        {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => HandleAsync(first, payment.Id, provider));
-        }
-
-        await using (var retry = CreateContext(interceptor))
-        {
-            var result = await HandleAsync(retry, payment.Id, provider);
-            Assert.True(result.IsSuccess);
-        }
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            HandleAsync(payment.Id, provider, actor, interceptor)
+        );
+        var result = await HandleAsync(payment.Id, provider, actor, interceptor);
+        Assert.True(result.IsSuccess);
 
         Assert.Equal(1, provider.EffectiveRefunds);
         Assert.Equal(2, provider.Calls);
@@ -82,23 +71,60 @@ public sealed class RefundSaaSPaymentIntegrationTests : IAsyncLifetime
         );
     }
 
-    private static Task<Result> HandleAsync(
-        PaymentAppDbContext db,
+    [Fact]
+    public async Task IdenticalRequestWithoutHeaderAfterCommit_RefundsOnce()
+    {
+        var payment = SucceededPayment();
+        await using (var seed = CreateContext())
+        {
+            seed.SaaSPayments.Add(payment);
+            await seed.SaveChangesAsync();
+        }
+
+        var provider = new IdempotentRefundProvider();
+        var actor = Guid.NewGuid();
+
+        // Dos peticiones iguales; la primera ya confirmada.
+        Assert.True((await HandleAsync(payment.Id, provider, actor)).IsSuccess);
+        Assert.True((await HandleAsync(payment.Id, provider, actor)).IsSuccess);
+
+        Assert.Equal(1, provider.EffectiveRefunds);
+        await using var read = CreateContext();
+        Assert.Equal(
+            1,
+            await read.Set<RefundLine>().IgnoreQueryFilters().CountAsync(r => r.SaaSPaymentId == payment.Id)
+        );
+    }
+
+    // Cada paso con su propio contexto, como el scope de cada InvokeAsync.
+    private Task<Result> HandleAsync(
         Guid paymentId,
-        IdempotentRefundProvider provider
-    ) =>
-        RefundSaaSPaymentHandler.Handle(
-            new RefundSaaSPaymentCommand(paymentId, 1000, "customer request", Guid.NewGuid()),
-            new SaaSPaymentRepository(db),
-            new FakePaymentAdapterFactory(provider),
-            new FakePaymentAuditLogWriter(),
-            db,
-            new FakePaymentAppMetrics(),
-            new NoThrottle(),
-            new FakeCorrelationContext(),
+        IdempotentRefundProvider provider,
+        Guid actor,
+        IInterceptor? interceptor = null
+    )
+    {
+        var contexts = new List<PaymentAppDbContext>();
+        var adapters = new FakePaymentAdapterFactory(provider);
+        var bus = TestRefundExecution.Bus(
+            () =>
+            {
+                var db = CreateContext(interceptor);
+                contexts.Add(db);
+                return (new SaaSPaymentRepository(db), db);
+            },
+            adapters
+        );
+        return RefundSaaSPaymentHandler.Handle(
+            new RefundSaaSPaymentCommand(paymentId, 1000, "customer request", actor),
+            bus,
+            adapters,
+            new NoAdminThrottle(),
+            TestRefundExecution.RefundOptions(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
+    }
 
     private SaaSPayment SucceededPayment()
     {
@@ -137,8 +163,8 @@ public sealed class RefundSaaSPaymentIntegrationTests : IAsyncLifetime
         return new PaymentAppDbContext(options.Options, tenant);
     }
 
-    // Falla el primer guardado, como una caída justo después de que el proveedor aceptó.
-    private sealed class ThrowOnceSaveInterceptor : SaveChangesInterceptor
+    // Falla un solo guardado, como una caída justo después de que el proveedor aceptó.
+    private sealed class ThrowOnSaveInterceptor(int failOnCall) : SaveChangesInterceptor
     {
         private int _calls;
 
@@ -147,7 +173,7 @@ public sealed class RefundSaaSPaymentIntegrationTests : IAsyncLifetime
             InterceptionResult<int> result,
             CancellationToken cancellationToken = default
         ) =>
-            Interlocked.Increment(ref _calls) == 1
+            Interlocked.Increment(ref _calls) == failOnCall
                 ? throw new InvalidOperationException("Simulated save failure.")
                 : base.SavingChangesAsync(eventData, result, cancellationToken);
     }
@@ -164,20 +190,6 @@ public sealed class RefundSaaSPaymentIntegrationTests : IAsyncLifetime
                 _refundsByKey[idempotencyKey] = refundId = $"re_{_refundsByKey.Count + 1}";
             return refundId;
         }
-    }
-
-    private sealed class NoThrottle : IPaymentAttemptThrottle
-    {
-        public Task<bool> IsWebhookThrottledAsync(Guid scopeId, CancellationToken ct = default) =>
-            Task.FromResult(false);
-
-        public Task RegisterWebhookAttemptAsync(Guid scopeId, CancellationToken ct = default) => Task.CompletedTask;
-
-        public Task<bool> IsAdminActionThrottledAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult(false);
-
-        public Task RegisterAdminActionAttemptAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.CompletedTask;
     }
 
     private sealed class TestTenantContext : ITenantContext

@@ -45,13 +45,13 @@ public sealed class EmailTemplateTests
     public void Publishing_activates_template_and_sets_current_version()
     {
         var template = CreateTemplate();
-        var versionId = Guid.NewGuid();
+        var version = CreateVersion(template);
 
-        var result = template.MarkPublished(versionId);
+        var result = template.Publish(version, null);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(EmailTemplateStatus.Active, template.Status);
-        Assert.Equal(versionId, template.CurrentVersionId);
+        Assert.Equal(version.Id, template.CurrentVersionId);
         Assert.NotNull(template.PublishedAtUtc);
     }
 
@@ -61,11 +61,14 @@ public sealed class EmailTemplateTests
         var template = CreateTemplate();
         template.Archive();
 
-        var result = template.MarkPublished(Guid.NewGuid());
+        var result = template.Publish(CreateVersion(template), null);
 
         Assert.True(result.IsFailure);
         Assert.Equal("EmailTemplate.Archived", result.Error.Code);
     }
+
+    private static EmailTemplateVersion CreateVersion(EmailTemplate template) =>
+        EmailTemplateVersion.Create(template.Id, 1, "Hi", "key", Guid.NewGuid(), null, null, null, null, null).Value;
 
     private static EmailTemplate CreateTemplate() =>
         EmailTemplate

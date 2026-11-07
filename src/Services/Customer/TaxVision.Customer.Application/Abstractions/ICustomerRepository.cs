@@ -5,7 +5,8 @@ namespace TaxVision.Customer.Application.Abstractions;
 
 public interface ICustomerRepository
 {
-    Task<CustomerEntity?> GetByIdAsync(Guid id, CancellationToken ct);
+    /// <summary>El agregado completo, solo si es de ese tenant.</summary>
+    Task<CustomerEntity?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct);
 
     /// <summary>
     /// Cliente con sus asignaciones, sin seguimiento y con el tenant explícito: lo usan los handlers de eventos
@@ -111,12 +112,7 @@ public interface ICustomerRepository
 
     /// <summary>Cliente creado por esa operación de origen, sin filtrar por estado: archivado o con otro
     /// email se sigue encontrando.</summary>
-    Task<Guid?> FindIdByOriginAsync(
-        Guid tenantId,
-        string sourceService,
-        Guid sourceReferenceId,
-        CancellationToken ct
-    );
+    Task<Guid?> FindIdByOriginAsync(Guid tenantId, string sourceService, Guid sourceReferenceId, CancellationToken ct);
 
     /// <summary>Carga en 1 query los clientes NO archivados del tenant cuyos ids estén en la colección, con
     /// sus asignaciones (Include) — para el reparto masivo: se mutan (AssignPreparer/GrantAccess) y se guardan.

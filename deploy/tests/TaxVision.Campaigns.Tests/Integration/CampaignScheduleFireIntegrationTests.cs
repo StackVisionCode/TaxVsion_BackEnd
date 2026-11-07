@@ -32,7 +32,7 @@ using Wolverine.SqlServer;
 namespace TaxVision.Campaigns.Tests.Integration;
 
 /// <summary>
-/// CMP-01 contra el SQL Server local: el disparo del agendado (run + unidades + avance + sobres) se confirma
+/// CMP-01 en la base temporal (BB-10): el disparo del agendado (run + unidades + avance + sobres) se confirma
 /// en una sola transacción de Wolverine. Los sobres van a un esquema propio y a una cola local que hace de
 /// sumidero (sin RabbitMQ).
 /// </summary>
@@ -206,6 +206,7 @@ public sealed class CampaignScheduleFireIntegrationTests : IAsyncLifetime
                 services.AddScoped<ICampaignRepository, CampaignRepository>();
                 services.AddScoped<ICampaignRunRepository, CampaignRunRepository>();
                 services.AddScoped<ICampaignScheduleRepository, CampaignScheduleRepository>();
+                services.AddCampaignRunOrchestration();
                 services.AddScoped<IContactRepository, ContactRepository>();
                 services.AddScoped<IContactListRepository, ContactListRepository>();
                 services.AddScoped<ISenderProfileRepository, SenderProfileRepository>();

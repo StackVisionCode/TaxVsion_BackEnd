@@ -7,7 +7,7 @@ public sealed class CampaignSchedulerOptions
 
     /// <summary>
     /// Autocuración: libera los agendados cuyo run activo ya terminó y pausa los que ya pasaron su horario
-    /// (D-CMP-1). Apagado hasta correr la reposición única.
+    /// (D-CMP-1). Encendido en appsettings.json desde 2026-11-07.
     /// </summary>
     public bool HealStuckSchedules { get; set; }
 

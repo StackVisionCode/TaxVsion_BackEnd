@@ -4,6 +4,7 @@ using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
@@ -30,7 +31,7 @@ public static class CallMissedConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.CalleeUserId:N}",
+                NotificationRecipient.ForUser(evt.CalleeUserId),
                 title,
                 NotificationCategory.Collaboration,
                 "communication.call.missed",

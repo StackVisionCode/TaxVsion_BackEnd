@@ -15,13 +15,21 @@ public sealed class TaskSeriesMaterializer(ITaskRepository tasks, ITaskSeriesRep
         DateTime? lastDueUtc,
         DateTime? completedAtUtc,
         CancellationToken ct = default
-    ) => Task.FromResult(Materialize(taskSeries, lastDueUtc, completedAtUtc));
+    ) => Task.FromResult(Materialize(taskSeries, lastDueUtc, completedAtUtc, recurringOccurrence: true));
+
+    public Task<Result<TaskItem>> MaterializeFirstAsync(TaskSeries taskSeries, CancellationToken ct = default) =>
+        Task.FromResult(Materialize(taskSeries, null, null, recurringOccurrence: false));
 
     /// <summary>
     /// Todo lo que hace vive en memoria: la serie y la tarea ya están rastreadas por el contexto y las
     /// guarda el handler. Por eso el método público sólo envuelve el resultado.
     /// </summary>
-    private Result<TaskItem> Materialize(TaskSeries taskSeries, DateTime? lastDueUtc, DateTime? completedAtUtc)
+    private Result<TaskItem> Materialize(
+        TaskSeries taskSeries,
+        DateTime? lastDueUtc,
+        DateTime? completedAtUtc,
+        bool recurringOccurrence
+    )
     {
         var planned = taskSeries.PlanNextOccurrence(lastDueUtc, completedAtUtc, DateTime.UtcNow);
         if (planned.IsFailure)
@@ -50,7 +58,8 @@ public sealed class TaskSeriesMaterializer(ITaskRepository tasks, ITaskSeriesRep
             due.Value,
             blueprint.Estimated,
             blueprint.AssigneeUserId,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            recurringOccurrence
         );
         if (created.IsFailure)
             return created;

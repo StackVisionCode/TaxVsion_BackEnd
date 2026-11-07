@@ -302,7 +302,9 @@ public sealed class Signer : BaseEntity
     {
         ArgumentNullException.ThrowIfNull(documentIds);
         ArgumentNullException.ThrowIfNull(inputs);
-        EnsureActive();
+        var canAct = CheckActive();
+        if (canAct.IsFailure)
+            return canAct;
 
         var selectedDocumentIds = documentIds.ToHashSet();
         if (selectedDocumentIds.Count == 0 || selectedDocumentIds.Contains(Guid.Empty))
@@ -396,7 +398,9 @@ public sealed class Signer : BaseEntity
         )
             return Result.Success<IReadOnlyList<Guid>>([]);
 
-        EnsureActive();
+        var canAct = CheckActive();
+        if (canAct.IsFailure)
+            return Result.Failure<IReadOnlyList<Guid>>(canAct.Error);
 
         var participating = participatingDocumentIds.ToHashSet();
         if (selected.Any(documentId => !participating.Contains(documentId)))
@@ -524,7 +528,9 @@ public sealed class Signer : BaseEntity
     /// <summary>Marca al firmante como Rejected con motivo opcional.</summary>
     internal Result RecordRejected(DateTime rejectedAtUtc, string? reason, string? clientIp, string? userAgent)
     {
-        EnsureActive();
+        var canAct = CheckActive();
+        if (canAct.IsFailure)
+            return canAct;
         Status = SignerStatus.Rejected;
         RejectedAtUtc = rejectedAtUtc;
         RejectReason = TruncateReason(reason);
@@ -541,7 +547,9 @@ public sealed class Signer : BaseEntity
         if (HasAcceptedConsent)
             return Result.Success();
 
-        EnsurePending();
+        var canAct = CheckPending();
+        if (canAct.IsFailure)
+            return canAct;
         HasAcceptedConsent = true;
         ConsentAcceptedAtUtc = acceptedAtUtc;
         ClientIp = TruncateIp(clientIp);
@@ -637,7 +645,9 @@ public sealed class Signer : BaseEntity
         if (IsPinVerified)
             return Result.Success();
 
-        EnsurePending();
+        var canAct = CheckPending();
+        if (canAct.IsFailure)
+            return canAct;
         IsPinVerified = true;
         PinVerifiedAtUtc = verifiedAtUtc;
         PinFailedAttempts = 0;
@@ -659,7 +669,9 @@ public sealed class Signer : BaseEntity
         VerificationPolicy policy
     )
     {
-        EnsurePending();
+        var canAct = CheckPending();
+        if (canAct.IsFailure)
+            return canAct;
 
         // Si el lock previo ya expiró, reseteamos antes de contar el intento actual.
         if (PinLockedUntilUtc is not null && PinLockedUntilUtc <= attemptedAtUtc)
@@ -698,7 +710,9 @@ public sealed class Signer : BaseEntity
                 new Error("Signature.Signer.ChallengeOwnership", "Challenge does not belong to this signer.")
             );
 
-        EnsurePending();
+        var canAct = CheckPending();
+        if (canAct.IsFailure)
+            return canAct;
         InvalidatePreviousChallengesOf(challenge.Method, now);
         _challenges.Add(challenge);
         return Result.Success();
@@ -708,7 +722,9 @@ public sealed class Signer : BaseEntity
     internal Result ConsumeChallenge(SignerVerificationChallenge challenge, DateTime now)
     {
         ArgumentNullException.ThrowIfNull(challenge);
-        EnsurePending();
+        var canAct = CheckPending();
+        if (canAct.IsFailure)
+            return canAct;
         challenge.MarkConsumed(now);
         return Result.Success();
     }
@@ -756,6 +772,16 @@ public sealed class Signer : BaseEntity
     // Helpers privados
     // ------------------------------------------------------------------
 
+    // Alcanzables desde el enlace público: quien ya firmó lo conserva mientras la solicitud sigue en curso.
+    private Result CheckPending() => Status == SignerStatus.Pending ? Result.Success() : Terminal();
+
+    private Result CheckActive() =>
+        Status is SignerStatus.Pending or SignerStatus.InProgress ? Result.Success() : Terminal();
+
+    private static Result Terminal() =>
+        Result.Failure(new Error("Signature.Signer.Terminal", "This signer can no longer act on this request."));
+
+    // Invariantes de edición en Draft: ningún camino de usuario llega con el firmante en estado terminal.
     private void EnsurePending()
     {
         if (Status != SignerStatus.Pending)

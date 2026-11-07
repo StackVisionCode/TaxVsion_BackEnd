@@ -33,7 +33,8 @@ public sealed class NotesControllerOwnershipTests
             NoteContent.Create("<p>x</p>").Value,
             NoteReference.Create(NoteTargetType.None, null).Value,
             NoteVisibility.Private,
-            null
+            null,
+            DateTime.UtcNow
         ).Value;
 
     [Fact]

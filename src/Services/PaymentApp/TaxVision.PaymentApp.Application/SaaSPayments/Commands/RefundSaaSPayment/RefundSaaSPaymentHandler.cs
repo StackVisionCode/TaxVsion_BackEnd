@@ -1,128 +1,118 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Persistence;
+using System.Security.Cryptography;
+using System.Text;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
-using TaxVision.PaymentApp.Application.Common;
-using TaxVision.PaymentApp.Domain.Audit;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
-using TaxVision.PaymentApp.Domain.ValueObjects;
+using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.RefundSaaSPayment;
 
+/// <summary>
+/// Reembolso de plataforma (patrón BB-8, PAY-3). Sin transacción abierta: guarda la intención, llama al proveedor con la
+/// clave de esa intención y registra el resultado en otra transacción. La misma petición (por cabecera, o por monto,
+/// motivo y admin dentro de <see cref="SaaSPaymentRefundOptions.DuplicateRequestWindow"/>) nunca reembolsa dos veces.
+/// </summary>
 public static class RefundSaaSPaymentHandler
 {
+    [NonTransactional]
     public static async Task<Result> Handle(
         RefundSaaSPaymentCommand command,
-        ISaaSPaymentRepository payments,
+        IMessageBus bus,
         IPaymentAdapterFactory providerFactory,
-        IPaymentAuditLogWriter audit,
-        IUnitOfWork unitOfWork,
-        IPaymentAppMetrics metrics,
         IPaymentAttemptThrottle throttle,
-        ICorrelationContext correlation,
+        IOptions<SaaSPaymentRefundOptions> options,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
     )
     {
-        var payment = await payments.GetByIdAsync(command.SaaSPaymentId, ct);
-        if (payment is null)
-            return Result.Failure(new Error("SaaSPayment.NotFound", "SaaSPayment does not exist."));
-
-        // Defensa en profundidad: más de 5 acciones de dinero por minuto sobre un mismo tenant es un
-        // error de automatización o una cuenta comprometida.
-        if (await throttle.IsAdminActionThrottledAsync(payment.TenantId, ct))
-            return Result.Failure(
-                new Error(
-                    "PaymentApp.AdminActionThrottled",
-                    "Too many admin actions for this tenant in the last minute."
-                )
-            );
-
-        if (payment.ExternalChargeReference is null)
-            return Result.Failure(
-                new Error(
-                    "SaaSPayment.NoChargeReference",
-                    "This payment was never charged with a provider — nothing to refund."
-                )
-            );
-
-        var amountResult = Money.Create(command.RefundAmountCents, payment.Amount.Currency);
-        if (amountResult.IsFailure)
-            return Result.Failure(amountResult.Error);
-
-        // Validar antes de pedirle el dinero al proveedor.
-        var canRefund = payment.CanRefund(amountResult.Value, command.Reason);
-        if (canRefund.IsFailure)
-            return canRefund;
-
-        var adapter = providerFactory.Resolve(payment.ProviderCode);
-        var refundResult = await adapter.RefundAsync(
-            payment.ExternalChargeReference.Value,
-            amountResult.Value,
-            command.Reason,
-            BuildIdempotencyKey(payment, amountResult.Value, command.ClientIdempotencyKey),
+        var hasClientKey = !string.IsNullOrWhiteSpace(command.ClientIdempotencyKey);
+        var prepared = await bus.InvokeAsync<Result<SaaSPaymentRefundPlan>>(
+            new PrepareSaaSPaymentRefundCommand(
+                command.SaaSPaymentId,
+                command.RefundAmountCents,
+                command.Reason,
+                command.ActorUserId,
+                RequestKey(command),
+                hasClientKey ? $"refund:{command.SaaSPaymentId:N}:{command.ClientIdempotencyKey!.Trim()}" : null,
+                hasClientKey ? null : options.Value.DuplicateRequestWindow,
+                EnforceAdminThrottle: true
+            ),
             ct
         );
-        if (refundResult.IsFailure)
+        if (prepared.IsFailure)
+            return prepared;
+
+        var plan = prepared.Value;
+        switch (plan.Kind)
         {
-            logger.LogWarning(
-                "Provider refund failed for SaaSPayment {SaaSPaymentId}: {Error}",
-                payment.Id,
-                refundResult.Error.Message
-            );
-            return Result.Failure(refundResult.Error);
+            case SaaSPaymentRefundPlanKind.AlreadyCompleted:
+                logger.LogInformation(
+                    "Refund request {RefundRequestId} of SaaSPayment {SaaSPaymentId} was already recorded; the provider is not called again.",
+                    plan.RequestId,
+                    command.SaaSPaymentId
+                );
+                return Result.Success();
+            case SaaSPaymentRefundPlanKind.NeedsReconciliation:
+                return NeedsReconciliation();
         }
 
-        var applyResult = payment.RefundPartial(
-            amountResult.Value,
-            command.Reason,
-            command.ActorUserId,
-            DateTime.UtcNow
-        );
-        if (applyResult.IsFailure)
-            return applyResult;
+        var adapter = providerFactory.Resolve(plan.Provider);
+        var refund = await adapter.RefundAsync(plan.ChargeReference, plan.Amount, plan.Reason, plan.ProviderKey, ct);
 
-        metrics.RecordRefunded(payment.ProviderCode.ToString());
-        await throttle.RegisterAdminActionAttemptAsync(payment.TenantId, ct);
+        RecordSaaSPaymentRefundCommand record;
+        if (refund.IsSuccess)
+            record = new(command.SaaSPaymentId, plan.RequestId, refund.Value.ProviderRefundReference);
+        else if (!ProviderRefundFailures.IsTransient(refund.Error))
+            record = new(command.SaaSPaymentId, plan.RequestId, null, RejectionCode: refund.Error.Code);
+        else if (adapter.Capabilities.SupportsIdempotencyKeys)
+        {
+            // La intención sigue abierta: la misma petición repite la misma clave.
+            logger.LogWarning(
+                "Provider refund for SaaSPayment {SaaSPaymentId} is temporarily unavailable: {Error}. Retry the same request.",
+                command.SaaSPaymentId,
+                refund.Error.Message
+            );
+            return Result.Failure(refund.Error);
+        }
+        else
+            record = new(command.SaaSPaymentId, plan.RequestId, null, Unrecorded: true);
 
-        await AuditEntryFactory.AppendAsync(
-            audit,
-            payment.TenantId,
-            nameof(SaaSPayment),
-            payment.Id,
-            MapAuditAction(payment.Status),
-            command.ActorUserId,
-            correlation.CorrelationId,
-            before: (object?)null,
-            after: new { payment.Status, RefundedCents = command.RefundAmountCents },
-            reason: command.Reason,
-            DateTime.UtcNow,
-            ct
-        );
+        var recorded = await bus.InvokeAsync<Result<SaaSPaymentRefundRecord>>(record, ct);
+        if (recorded.IsFailure)
+            return recorded;
 
-        await unitOfWork.SaveChangesAsync(ct);
-
-        logger.LogInformation(
-            "SaaSPayment {SaaSPaymentId} refunded {AmountCents} cents by {ActorUserId}; status now {Status}.",
-            payment.Id,
-            command.RefundAmountCents,
-            command.ActorUserId,
-            payment.Status
-        );
-
-        return Result.Success();
+        switch (recorded.Value.Kind)
+        {
+            case SaaSPaymentRefundRecordKind.Recorded:
+                await throttle.RegisterAdminActionAttemptAsync(plan.TenantId, ct);
+                return Result.Success();
+            case SaaSPaymentRefundRecordKind.Rejected:
+                return Result.Failure(refund.Error);
+            default:
+                return NeedsReconciliation();
+        }
     }
 
-    // Determinista: un reintento antes del commit repite la clave; con la cabecera del admin, también después.
-    private static string BuildIdempotencyKey(SaaSPayment payment, Money amount, string? clientKey) =>
-        string.IsNullOrWhiteSpace(clientKey)
-            ? $"refund:{payment.Id:N}:{payment.RefundedAmountCents}:{amount.AmountCents}"
-            : $"refund:{payment.Id:N}:{clientKey.Trim()}";
+    // La cabecera identifica la petición; sin ella, la huella (monto, admin y motivo).
+    private static string RequestKey(RefundSaaSPaymentCommand command)
+    {
+        if (!string.IsNullOrWhiteSpace(command.ClientIdempotencyKey))
+            return $"header:{command.ClientIdempotencyKey.Trim()}";
 
-    private static PaymentAuditAction MapAuditAction(PaymentStatus status) =>
-        status == PaymentStatus.Refunded
-            ? PaymentAuditAction.SaaSPaymentRefundedFull
-            : PaymentAuditAction.SaaSPaymentRefundedPartial;
+        var reason = SHA256.HashData(Encoding.UTF8.GetBytes(command.Reason?.Trim() ?? string.Empty));
+        return $"auto:{command.RefundAmountCents}:{command.ActorUserId:N}:{Convert.ToHexString(reason)[..16]}";
+    }
+
+    private static Result NeedsReconciliation() =>
+        Result.Failure(
+            new Error(
+                "SaaSPayment.RefundNeedsReconciliation",
+                "The provider may have refunded this request but it is not recorded. It will not be sent again; check the payment in the review list."
+            )
+        );
 }

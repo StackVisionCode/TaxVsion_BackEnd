@@ -220,7 +220,7 @@ public sealed class GetMyAccessHandlerTests
     public async Task An_inactive_user_gets_no_bootstrap()
     {
         var user = StaffUser();
-        user.Deactivate(DateTime.UtcNow);
+        user.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
 
         var result = await GetMyAccessHandler.Handle(
             new GetMyAccessQuery(user.Id),

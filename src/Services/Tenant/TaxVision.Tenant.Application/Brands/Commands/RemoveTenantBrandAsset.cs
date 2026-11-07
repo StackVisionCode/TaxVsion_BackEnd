@@ -1,5 +1,4 @@
 using System.Linq;
-using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -22,9 +21,9 @@ public static class RemoveTenantBrandAssetHandler
         ITenantBrandRepository repo,
         ITenantBrandingCloudStorageClient client,
         IUnitOfWork unitOfWork,
-        ICacheService cache,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -37,11 +36,12 @@ public static class RemoveTenantBrandAssetHandler
         if (deleteResult.IsFailure)
             return deleteResult;
 
-        brand.RemoveAsset(cmd.Key);
+        var nowUtc = clock.GetUtcNow().UtcDateTime;
+        brand.RemoveAsset(cmd.Key, nowUtc);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await BrandCommandSupport.InvalidateAsync(cache, cmd.TenantId, cmd.Surface, ct);
-        await BrandLogoEvents.PublishRemovedIfLogoAsync(bus, correlation, cmd.TenantId, cmd.Surface, cmd.Key);
+        await BrandCommandSupport.RequestInvalidationAsync(bus, cmd.TenantId, cmd.Surface);
+        await BrandLogoEvents.PublishRemovedIfLogoAsync(bus, correlation, cmd.TenantId, cmd.Surface, cmd.Key, nowUtc);
         return Result.Success();
     }
 }

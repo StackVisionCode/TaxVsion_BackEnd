@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Domain.Renewals;
 using TaxVision.Subscription.Domain.Subscriptions;
 
 namespace TaxVision.Subscription.Infrastructure.Persistence.Repositories;
@@ -8,6 +9,14 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
 {
     public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         WithRenewals(db.Subscriptions)
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(subscription => subscription.TenantId == tenantId, ct);
+
+    public Task<TenantSubscription?> GetWithFullHistoryAsync(Guid tenantId, CancellationToken ct = default) =>
+        db
+            .Subscriptions.Include(s => s.Renewals)
+            .Include(s => s.PlanChangeRequests)
+            .Include(s => s.PendingDowngrades)
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(subscription => subscription.TenantId == tenantId, ct);
 
@@ -181,6 +190,27 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Select(s => s.TenantId)
             .ToListAsync(ct);
 
-    private static IQueryable<TenantSubscription> WithRenewals(IQueryable<TenantSubscription> query) =>
-        query.Include(s => s.Renewals).Include(s => s.PlanChangeRequests).Include(s => s.PendingDowngrades);
+    // Una renovación por período crece sin límite: se carga lo abierto, lo Failed (saldar devuelve su clave
+    // para que PaymentApp no siga cobrando) y lo del período vigente o siguiente, que sostiene la idempotencia.
+    // Un Include filtrado no ve a su padre: el inicio del período vigente sale de una subconsulta.
+    private IQueryable<TenantSubscription> WithRenewals(IQueryable<TenantSubscription> query)
+    {
+        var parents = db.Subscriptions.IgnoreQueryFilters();
+        return query
+            .Include(s =>
+                s.Renewals.Where(renewal =>
+                    renewal.Status == RenewalStatus.Scheduled
+                    || renewal.Status == RenewalStatus.Processing
+                    || renewal.Status == RenewalStatus.RetryScheduled
+                    || renewal.Status == RenewalStatus.Failed
+                    || renewal.PeriodEndUtc
+                        > parents
+                            .Where(parent => parent.Id == renewal.TenantSubscriptionId)
+                            .Select(parent => parent.CurrentPeriodStartUtc)
+                            .First()
+                )
+            )
+            .Include(s => s.PlanChangeRequests)
+            .Include(s => s.PendingDowngrades);
+    }
 }

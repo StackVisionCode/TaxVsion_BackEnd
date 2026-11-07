@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -151,6 +152,61 @@ public sealed class ScanEndpointTests : IClassFixture<ScanEndpointTests.Factory>
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Scan_ModelNotLoaded_Returns503WithoutReadingBody()
+    {
+        var tempDirectory = NewTempDirectory();
+        var body = new BodyProbe();
+        using var noModel = _factory.WithWebHostBuilder(host =>
+        {
+            host.UseSetting("ContentScanner:TempDirectory", tempDirectory);
+            host.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<INsfwClassifier>();
+                services.AddSingleton<INsfwClassifier>(new UnloadedClassifier());
+                services.AddSingleton<IStartupFilter>(body);
+            });
+        });
+
+        var response = await KeyedClient(noModel).PostAsync("/v1/scan", Body("image/png"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Contains("model_unavailable", await response.Content.ReadAsStringAsync());
+        Assert.NotNull(response.Headers.RetryAfter);
+        Assert.False(body.WasRead);
+        Assert.Empty(Directory.GetFiles(tempDirectory));
+    }
+
+    [Fact]
+    public async Task Scan_KeyOfDifferentLength_Returns401()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Scanner-Key", Key + "-longer");
+
+        var response = await client.PostAsync("/v1/scan", Body("image/png"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Scan_KeyOfSameLengthButWrong_Returns401()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Scanner-Key", new string('x', Key.Length));
+
+        var response = await client.PostAsync("/v1/scan", Body("image/png"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Scan_CorrectKey_Passes()
+    {
+        var response = await Client().PostAsync("/v1/scan", Body("image/png"));
+
+        response.EnsureSuccessStatusCode();
+    }
+
     private HttpClient Client() => KeyedClient(_factory);
 
     private static HttpClient KeyedClient(WebApplicationFactory<Program> factory)
@@ -216,6 +272,66 @@ public sealed class ScanEndpointTests : IClassFixture<ScanEndpointTests.Factory>
                 services.AddSingleton<IFrameExtractor>(Extractor);
                 services.AddSingleton<INsfwClassifier>(Classifier);
             });
+        }
+    }
+
+    private sealed class UnloadedClassifier : INsfwClassifier
+    {
+        public bool IsReady => false;
+
+        public float Score(ReadOnlySpan<byte> rgb) =>
+            throw new InvalidOperationException("Content scanner model is not loaded.");
+    }
+
+    /// <summary>Envuelve el cuerpo de la petición para saber si alguien lo leyó.</summary>
+    private sealed class BodyProbe : IStartupFilter
+    {
+        public bool WasRead { get; private set; }
+
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
+            app =>
+            {
+                app.Use(
+                    (context, nextMiddleware) =>
+                    {
+                        context.Request.Body = new ProbeStream(context.Request.Body, () => WasRead = true);
+                        return nextMiddleware();
+                    }
+                );
+                next(app);
+            };
+
+        private sealed class ProbeStream(Stream inner, Action onRead) : Stream
+        {
+            public override bool CanRead => true;
+            public override bool CanSeek => false;
+            public override bool CanWrite => false;
+            public override long Length => throw new NotSupportedException();
+            public override long Position
+            {
+                get => throw new NotSupportedException();
+                set => throw new NotSupportedException();
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                onRead();
+                return inner.Read(buffer, offset, count);
+            }
+
+            public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+            {
+                onRead();
+                return inner.ReadAsync(buffer, ct);
+            }
+
+            public override void Flush() { }
+
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+            public override void SetLength(long value) => throw new NotSupportedException();
+
+            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         }
     }
 

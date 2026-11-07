@@ -149,7 +149,7 @@ public sealed class BulkAssignCustomersHandlerTests
                 _all.FindAll(c => c.TenantId == tenantId && ids.Contains(c.Id))
             );
 
-        public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) => throw new NotImplementedException();
 
         public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
             Task.FromResult(_all.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));

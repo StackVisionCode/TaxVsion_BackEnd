@@ -101,7 +101,8 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         DueDate? due,
         EstimatedHours? estimated,
         Guid? assigneeUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        bool recurringOccurrence = false
     )
     {
         if (tenantId == Guid.Empty || createdByUserId == Guid.Empty)
@@ -126,7 +127,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         task.SetTenant(tenantId);
 
         task.AddDomainEvent(
-            new TaskCreatedDomainEvent(task.Id, tenantId, createdByUserId, assigneeUserId, null, nowUtc)
+            new TaskCreatedDomainEvent(task.Id, tenantId, createdByUserId, assigneeUserId, null, nowUtc, recurringOccurrence)
         );
         return Result.Success(task);
     }

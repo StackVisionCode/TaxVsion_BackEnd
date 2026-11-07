@@ -96,6 +96,8 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
 {
     public List<Guid> ReservedReferences { get; } = [];
 
+    public string? LastCallerBearerToken { get; private set; }
+
     public WalletReserveResult ReserveResult { get; set; } = new(true, true, 0, 0, 0, "USD");
 
     /// <summary>Corre dentro de la reserva, para mirar qué había confirmado en ese momento.</summary>
@@ -111,6 +113,7 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
     )
     {
         ReservedReferences.Add(referenceId);
+        LastCallerBearerToken = callerBearerToken;
         OnReserve?.Invoke();
         return Task.FromResult(ReserveResult);
     }
@@ -153,9 +156,8 @@ internal static class TestRunFlow
                 ApplyCampaignRunFundingCommand apply => await ApplyCampaignRunFundingHandler.Handle(
                     apply,
                     runs,
-                    campaigns,
+                    new CampaignRunDispatcher(campaigns, new FakeSenderProfileRepository()),
                     schedules,
-                    new FakeSenderProfileRepository(),
                     unitOfWork,
                     bus,
                     NullLogger<CampaignRun>.Instance,

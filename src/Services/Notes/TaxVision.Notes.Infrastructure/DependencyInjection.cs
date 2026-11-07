@@ -6,6 +6,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using TaxVision.Notes.Application.Backfill;
 using TaxVision.Notes.Application.Backfill.Abstractions;
@@ -44,6 +45,7 @@ public static class DependencyInjection
 
         services.AddDbContext<NotesDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<NotesDbContext>());
+        services.TryAddSingleton(TimeProvider.System);
 
         services.AddScoped<INoteRepository, NoteRepository>();
         // Fase 5 — un solo HtmlSanitizer reusado (thread-safe, caro de reconstruir), ver comentario de la clase.

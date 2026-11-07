@@ -132,6 +132,7 @@ public static class CreateTenantDomainHandler
             ct
         );
 
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new TenantDomainProvisioningFailedIntegrationEvent
             {
@@ -142,7 +143,5 @@ public static class CreateTenantDomainHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        await unitOfWork.SaveChangesAsync(ct);
     }
 }

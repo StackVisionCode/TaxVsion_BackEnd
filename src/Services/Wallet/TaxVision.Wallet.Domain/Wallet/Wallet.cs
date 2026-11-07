@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Wallet.Domain.ValueObjects;
 using TaxVision.Wallet.Domain.Wallet.Events;
 
 namespace TaxVision.Wallet.Domain.Wallet;
@@ -61,49 +62,64 @@ public sealed class Wallet : AggregateRoot
     // ------------------------------------------------------------------ movimientos (dos deltas)
 
     /// <summary>TopUp (+a, 0): acredita un pago confirmado. Permitido aun en <see cref="WalletStatus.Frozen"/>.</summary>
-    public Result<LedgerEntry> Credit(long amountMicros, string opKey, Guid? referenceId = null) =>
-        Apply(MovementType.TopUp, deltaPosted: amountMicros, deltaHeld: 0, amountMicros, opKey, referenceId);
+    public Result<LedgerEntry> Credit(WalletMoney amount, string opKey, Guid? referenceId = null) =>
+        Apply(MovementType.TopUp, deltaPosted: amount.Micros, deltaHeld: 0, amount, opKey, referenceId);
 
     /// <summary>Reserve (0, +a): aparta disponible. Requiere <see cref="AvailableMicros"/> ≥ a y wallet no congelada.</summary>
-    public Result<LedgerEntry> Reserve(long amountMicros, string opKey, Guid? referenceId = null)
+    public Result<LedgerEntry> Reserve(WalletMoney amount, string opKey, Guid? referenceId = null)
     {
+        if (amount.Currency != Currency)
+            return Result.Failure<LedgerEntry>(WalletErrors.CurrencyMismatch);
         if (Status == WalletStatus.Frozen)
             return Result.Failure<LedgerEntry>(WalletErrors.Frozen);
-        if (AvailableMicros < amountMicros)
+        if (AvailableMicros < amount.Micros)
             return Result.Failure<LedgerEntry>(WalletErrors.InsufficientFunds);
-        return Apply(MovementType.Reserve, deltaPosted: 0, deltaHeld: amountMicros, amountMicros, opKey, referenceId);
+        return Apply(MovementType.Reserve, deltaPosted: 0, deltaHeld: amount.Micros, amount, opKey, referenceId);
     }
 
     /// <summary>Consume (−a, −a): cobra parte de una reserva. Requiere Held ≥ a (y por invariante Posted ≥ a).</summary>
-    public Result<LedgerEntry> Consume(long amountMicros, string opKey, Guid? referenceId = null)
+    public Result<LedgerEntry> Consume(WalletMoney amount, string opKey, Guid? referenceId = null)
     {
-        if (HeldMicros < amountMicros)
-            return Result.Failure<LedgerEntry>(WalletErrors.InsufficientHold);
+        var covered = EnsureHoldCovers(amount);
+        if (covered.IsFailure)
+            return Result.Failure<LedgerEntry>(covered.Error);
         return Apply(
             MovementType.Consume,
-            deltaPosted: -amountMicros,
-            deltaHeld: -amountMicros,
-            amountMicros,
+            deltaPosted: -amount.Micros,
+            deltaHeld: -amount.Micros,
+            amount,
             opKey,
             referenceId
         );
     }
 
     /// <summary>Release (0, −a): libera reserva no usada (NO es un refund). Requiere Held ≥ a.</summary>
-    public Result<LedgerEntry> Release(long amountMicros, string opKey, Guid? referenceId = null)
+    public Result<LedgerEntry> Release(WalletMoney amount, string opKey, Guid? referenceId = null)
     {
-        if (HeldMicros < amountMicros)
-            return Result.Failure<LedgerEntry>(WalletErrors.InsufficientHold);
-        return Apply(MovementType.Release, deltaPosted: 0, deltaHeld: -amountMicros, amountMicros, opKey, referenceId);
+        var covered = EnsureHoldCovers(amount);
+        if (covered.IsFailure)
+            return Result.Failure<LedgerEntry>(covered.Error);
+        return Apply(MovementType.Release, deltaPosted: 0, deltaHeld: -amount.Micros, amount, opKey, referenceId);
+    }
+
+    /// <summary>Comprueba sin mutar que lo reservado cubre el monto, para validar antes de tocar otro agregado.</summary>
+    public Result EnsureHoldCovers(WalletMoney amount)
+    {
+        if (amount.Currency != Currency)
+            return Result.Failure(WalletErrors.CurrencyMismatch);
+        return HeldMicros < amount.Micros ? Result.Failure(WalletErrors.InsufficientHold) : Result.Success();
     }
 
     /// <summary>UsageRefund (+a, 0): devuelve un consumo ya cobrado.</summary>
-    public Result<LedgerEntry> Refund(long amountMicros, string opKey, Guid? referenceId = null) =>
-        Apply(MovementType.UsageRefund, deltaPosted: amountMicros, deltaHeld: 0, amountMicros, opKey, referenceId);
+    public Result<LedgerEntry> Refund(WalletMoney amount, string opKey, Guid? referenceId = null) =>
+        Apply(MovementType.UsageRefund, deltaPosted: amount.Micros, deltaHeld: 0, amount, opKey, referenceId);
 
-    /// <summary>Adjustment (±a, 0): corrección económica autorizada. <paramref name="deltaMicros"/> puede ser negativo.</summary>
-    public Result<LedgerEntry> Adjust(long deltaMicros, string opKey, Guid? referenceId = null)
+    /// <summary>Adjustment (±a, 0): corrección económica autorizada. <paramref name="delta"/> puede ser negativo.</summary>
+    public Result<LedgerEntry> Adjust(WalletMoney delta, string opKey, Guid? referenceId = null)
     {
+        if (delta.Currency != Currency)
+            return Result.Failure<LedgerEntry>(WalletErrors.CurrencyMismatch);
+        var deltaMicros = delta.Micros;
         if (deltaMicros == 0)
             return Result.Failure<LedgerEntry>(WalletErrors.AmountNotPositive);
         if (string.IsNullOrWhiteSpace(opKey))
@@ -137,12 +153,14 @@ public sealed class Wallet : AggregateRoot
         MovementType movement,
         long deltaPosted,
         long deltaHeld,
-        long amountMicros,
+        WalletMoney amount,
         string opKey,
         Guid? referenceId
     )
     {
-        if (amountMicros <= 0)
+        if (amount.Currency != Currency)
+            return Result.Failure<LedgerEntry>(WalletErrors.CurrencyMismatch);
+        if (amount.Micros <= 0)
             return Result.Failure<LedgerEntry>(WalletErrors.AmountNotPositive);
         if (string.IsNullOrWhiteSpace(opKey))
             return Result.Failure<LedgerEntry>(WalletErrors.OperationKeyRequired);

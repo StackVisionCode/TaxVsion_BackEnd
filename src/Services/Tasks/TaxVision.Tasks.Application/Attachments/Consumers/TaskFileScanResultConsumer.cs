@@ -121,10 +121,10 @@ public static class TaskFileScanResultConsumer
             if (!task.MarkAttachmentDetached(evt.FileId, DateTime.UtcNow))
                 return;
 
+            await unitOfWork.SaveChangesAsync(ct);
             await bus.PublishAsync(
                 AttachmentEvents.Detached(task, attachment, correlation.CorrelationId, deletedAtSource: true)
             );
-            await unitOfWork.SaveChangesAsync(ct);
         }
     }
 
@@ -150,8 +150,8 @@ public static class TaskFileScanResultConsumer
             if (!task.MarkAttachmentRejected(fileId, reason, DateTime.UtcNow))
                 return;
 
-            await bus.PublishAsync(AttachmentEvents.Rejected(task, attachment, reason, correlation.CorrelationId));
             await unitOfWork.SaveChangesAsync(ct);
+            await bus.PublishAsync(AttachmentEvents.Rejected(task, attachment, reason, correlation.CorrelationId));
         }
     }
 

@@ -27,4 +27,29 @@ internal sealed class InMemoryLateCommitReviewRepository : ILateCommitReviewRepo
         Task.FromResult<IReadOnlyList<LateCommitReview>>(
             _reviews.Where(r => r.ResolvedAtUtc is null).OrderBy(r => r.CreatedAtUtc).Take(take).ToList()
         );
+
+    /// <summary>Huella de la reserva de cada revisión (la base la toma de CodeReservations).</summary>
+    internal Dictionary<Guid, string> SnapshotByReservation { get; } = [];
+
+    public Task<LateCommitReviewTarget?> FindTargetAsync(Guid reviewId, CancellationToken ct = default)
+    {
+        var review = _reviews.FirstOrDefault(r => r.Id == reviewId);
+        return Task.FromResult(
+            review is null || !SnapshotByReservation.TryGetValue(review.CodeReservationId, out var snapshot)
+                ? null
+                : new LateCommitReviewTarget(
+                    review.Id,
+                    review.TenantId,
+                    review.CodeReservationId,
+                    review.PaymentSource,
+                    review.RelatedPaymentId,
+                    review.SourceEventId,
+                    snapshot,
+                    review.ResolvedAtUtc
+                )
+        );
+    }
+
+    public Task<LateCommitReview?> GetForResolutionAsync(Guid reviewId, CancellationToken ct = default) =>
+        Task.FromResult(_reviews.FirstOrDefault(r => r.Id == reviewId));
 }

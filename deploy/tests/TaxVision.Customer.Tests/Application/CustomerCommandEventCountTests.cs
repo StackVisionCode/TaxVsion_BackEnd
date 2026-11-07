@@ -403,8 +403,8 @@ public sealed class CustomerCommandEventCountTests
     {
         public List<DomainCustomer> All { get; } = [.. seed];
 
-        public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct) =>
-            Task.FromResult(All.Find(c => c.Id == id));
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
+            Task.FromResult(All.Find(c => c.TenantId == tenantId && c.Id == id));
 
         public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
             Task.FromResult(All.Find(c => c.TenantId == tenantId && c.Id == customerId));

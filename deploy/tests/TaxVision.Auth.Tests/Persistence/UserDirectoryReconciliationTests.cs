@@ -54,7 +54,7 @@ public sealed class UserDirectoryReconciliationTests
         Assert.True(admin.BeginAvatarChange(avatarId, DateTime.UtcNow).IsSuccess);
         admin.ConfirmAvatar(avatarId);
         var deactivated = Register(TenantA, "Eli", "Off", "eli@a.test", UserActorType.TenantEmployee);
-        deactivated.Deactivate(DateTime.UtcNow);
+        deactivated.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
         var portal = Register(TenantB, "Cli", "Ent", "client@b.test", UserActorType.CustomerPortal, Guid.NewGuid());
         var platform = Register(PlatformTenant.Id, "Pat", "Support", "pat@x.test", UserActorType.PlatformAdmin);
         await using (var seed = CreateContext(databaseName))

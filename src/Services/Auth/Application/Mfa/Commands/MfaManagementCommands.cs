@@ -45,18 +45,6 @@ public static class DisableMfaHandler
 
         await MfaFactors.ClearAsync(user, mfa, ct);
 
-        await bus.PublishAsync(
-            new SecurityAlertIntegrationEvent
-            {
-                TenantId = user.TenantId,
-                UserId = user.Id,
-                AlertType = SecurityAlertType.MfaDisabled,
-                IpAddress = request.IpAddress,
-                UserAgent = request.UserAgent,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 user.TenantId,
@@ -70,6 +58,17 @@ public static class DisableMfaHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new SecurityAlertIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                AlertType = SecurityAlertType.MfaDisabled,
+                IpAddress = request.IpAddress,
+                UserAgent = request.UserAgent,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         return Result.Success();
     }
 }

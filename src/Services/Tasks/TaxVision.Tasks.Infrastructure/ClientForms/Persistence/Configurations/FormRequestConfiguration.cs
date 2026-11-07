@@ -92,6 +92,11 @@ public sealed class FormRequestConfiguration : IEntityTypeConfiguration<FormRequ
         builder.Ignore(request => request.Participant);
         builder.Ignore(request => request.CustomerLink);
         builder.Ignore(request => request.EffectiveCustomerId);
+        builder.Ignore(request => request.Actions);
+        builder.Ignore(request => request.Summary);
+        builder.Ignore(request => request.Files);
+        builder.Ignore(request => request.CustomerLinking);
+        builder.Ignore(request => request.ProfileUpdate);
 
         builder
             .HasOne<FormTemplateVersion>()

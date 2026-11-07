@@ -86,8 +86,7 @@ public sealed class RenewalChargesSupersededConsumerTests
         payment.MarkFailed(
             "card_declined",
             "Declined.",
-            willRetry,
-            willRetry ? DateTime.UtcNow.AddHours(1) : null,
+            willRetry ? DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)) : DunningDecision.NoRetry,
             Guid.Empty,
             DateTime.UtcNow
         );

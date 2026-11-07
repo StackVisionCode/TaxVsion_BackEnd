@@ -49,9 +49,58 @@ public sealed class SmsSendRequestedConsumerTests
         Assert.Null(item.Media);
     }
 
+    [Fact]
+    public async Task Batch_failure_publishes_sms_failed()
+    {
+        var customerId = Guid.NewGuid();
+        var bus = new InvokingBus
+        {
+            Response = Result.Failure<SendSmsBatchResponse>(
+                new Error("sms.noProvider", "No SMS provider is configured.")
+            ),
+        };
+        var evt = NewEvent(customerId);
+
+        var result = await SmsSendRequestedConsumer.Handle(evt, bus, CancellationToken.None);
+
+        var failed = Assert.IsType<SmsMessageFailedIntegrationEvent>(result);
+        Assert.Equal("sms.noProvider", failed.FailureCode);
+        Assert.Equal(Guid.Empty, failed.MessageId);
+        Assert.Equal(customerId, failed.CustomerId);
+        Assert.Equal(evt.TenantId, failed.TenantId);
+        Assert.Equal("corr-1", failed.CorrelationId);
+        Assert.Equal("signature:req:signer:otp", failed.SourceContext);
+    }
+
+    [Fact]
+    public async Task Batch_success_publishes_nothing()
+    {
+        var result = await SmsSendRequestedConsumer.Handle(
+            NewEvent(Guid.NewGuid()),
+            new InvokingBus(),
+            CancellationToken.None
+        );
+
+        Assert.Null(result);
+    }
+
+    private static SmsSendRequestedIntegrationEvent NewEvent(Guid customerId) =>
+        new()
+        {
+            TenantId = Guid.NewGuid(),
+            CorrelationId = "corr-1",
+            To = "+17865550123",
+            Body = "Your code: 654321",
+            CustomerId = customerId,
+            IdempotencyKey = "idem-key-1",
+            SourceContext = "signature:req:signer:otp",
+        };
+
     private sealed class InvokingBus : IMessageBus
     {
         public List<object> Invoked { get; } = [];
+        public Result<SendSmsBatchResponse> Response { get; init; } =
+            Result.Success(new SendSmsBatchResponse(Guid.NewGuid(), "corr-1", []));
 
         public Task<T> InvokeAsync<T>(
             object message,
@@ -60,8 +109,7 @@ public sealed class SmsSendRequestedConsumerTests
         )
         {
             Invoked.Add(message);
-            var response = new SendSmsBatchResponse(Guid.NewGuid(), "corr-1", []);
-            return Task.FromResult((T)(object)Result.Success(response));
+            return Task.FromResult((T)(object)Response);
         }
 
         public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null) => ValueTask.CompletedTask;

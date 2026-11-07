@@ -89,15 +89,7 @@ public static class ReserveSmsMessageHandler
             return Result.Failure<ReserveSmsMessageResponse>(created.Error);
         var message = created.Value;
 
-        // Política de contacto del cliente, o STOP por (tenant, número). Se guarda Suppressed con el cliente del envío.
-        if (command.BlockedByContactPolicy)
-            message.MarkSuppressed(
-                "Customer turned off SMS in the contact policy.",
-                nowUtc,
-                SmsMessage.ContactPolicySuppressionCode
-            );
-        else if (await optOuts.IsPhoneOptedOutAsync(command.TenantId, command.To.Value, ct))
-            message.MarkSuppressed("Recipient opted out (STOP).", nowUtc);
+        await SmsSendGate.ApplySuppressionAsync(message, command.BlockedByContactPolicy, optOuts, nowUtc, ct);
 
         if (message.Status == SmsMessageStatus.Suppressed)
         {

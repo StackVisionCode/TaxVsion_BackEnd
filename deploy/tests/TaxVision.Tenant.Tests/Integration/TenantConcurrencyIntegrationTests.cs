@@ -14,7 +14,7 @@ public sealed class TenantConcurrencyIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _database.CreateAsync();
-        var tenant = DomainTenant.Create("Acme", "acme-tax", "Etc/UTC").Value;
+        var tenant = DomainTenant.Create("Acme", "acme-tax", "Etc/UTC", DateTime.UtcNow).Value;
         _tenantId = tenant.Id;
         await using var db = _database.NewContext();
         db.Tenants.Add(tenant);

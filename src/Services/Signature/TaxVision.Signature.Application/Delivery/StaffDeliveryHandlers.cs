@@ -4,6 +4,7 @@ using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Domain.Audit;
 using TaxVision.Signature.Domain.Delivery;
 using TaxVision.Signature.Domain.Requests;
+using Wolverine;
 
 namespace TaxVision.Signature.Application.Delivery;
 
@@ -92,6 +93,7 @@ public static class ResendDeliveryHandler
         ISignedDocumentDeliveryRepository deliveries,
         ISignedDocumentDeliveryIssuer issuer,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -105,7 +107,7 @@ public static class ResendDeliveryHandler
             return Result.Failure<SignedDocumentDeliveryResponse>(reissued.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await issuer.PublishAsync(reissued.Value, request, ct);
+        await issuer.PublishAsync(reissued.Value, request, bus, ct);
         return Result.Success(SignedDocumentDeliveryResponse.From(delivery, DateTime.UtcNow));
     }
 }
@@ -119,6 +121,7 @@ public static class IssueDeliveriesHandler
         DeliverableFiles deliverableFiles,
         ISignedDocumentDeliveryIssuer issuer,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -137,7 +140,7 @@ public static class IssueDeliveriesHandler
         {
             await unitOfWork.SaveChangesAsync(ct);
             foreach (var delivery in issued)
-                await issuer.PublishAsync(delivery, request, ct);
+                await issuer.PublishAsync(delivery, request, bus, ct);
         }
 
         var now = DateTime.UtcNow;

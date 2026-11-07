@@ -259,6 +259,7 @@ public static class DependencyInjection
             TenantPlanCodeCacheInvalidator
         >();
         services.AddScoped<DirectPlanRateLimitReader>();
+        services.AddScoped<TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility>();
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

@@ -101,11 +101,7 @@ public sealed class PurchaseAddOnGuardsTests
 
         return PurchaseAddOnHandler.Handle(
             new PurchaseAddOnCommand(TenantId, definition.Code.Value, Quantity: 1, AutoRenew: true, Guid.NewGuid()),
-            new FakeSubscriptionRepo(subscription),
-            new FakePlanRepo(plan),
-            new FakeModuleRepo(module ?? AddOnTestCatalog.SellableModule("email")),
-            new FakeAddOnDefinitionRepository(definition),
-            new NoSettingsRepo(),
+            new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(new FakeSubscriptionRepo(subscription), new FakePlanRepo(plan), new FakeModuleRepo(module ?? AddOnTestCatalog.SellableModule("email")), new FakeAddOnDefinitionRepository(definition), new NoSettingsRepo(), addOns),
             addOns,
             new FakeUnitOfWork(),
             new CapturingMessageBus(),

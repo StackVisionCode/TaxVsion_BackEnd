@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Tenants.IntegrationEvents;
 using TaxVision.Auth.Domain.Tenants;
 
@@ -81,9 +82,7 @@ public sealed class TenantStatusChangedConsumerTests
         TenantStatusChangedConsumer.Handle(
             evt,
             _registry,
-            _sessions,
-            new RecordingAccessTokenDenylist(),
-            new QuietRevocations(),
+            new SessionAccessCutoff(_sessions, new RecordingAccessTokenDenylist(), new QuietRevocations()),
             new NoSaves(),
             new FakeCorrelationContext(),
             CancellationToken.None

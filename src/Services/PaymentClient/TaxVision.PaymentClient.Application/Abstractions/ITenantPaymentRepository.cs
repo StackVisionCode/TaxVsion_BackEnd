@@ -17,6 +17,13 @@ public interface ITenantPaymentRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Cobro Connect por su referencia en la cuenta conectada. El tenant sale de esa cuenta.</summary>
+    Task<TenantPayment?> GetByConnectChargeReferenceAsync(
+        Guid tenantId,
+        string providerChargeReferenceOnConnect,
+        CancellationToken ct = default
+    );
+
     /// <summary>Pagos que siguen esperando al proveedor (<c>Processing</c>/<c>RequiresAction</c>) sin cambios
     /// desde <paramref name="stuckBeforeUtc"/> y creados después de <paramref name="createdAfterUtc"/>, de todos
     /// los tenants. Primero los nunca consultados y luego los consultados hace más tiempo (no se acaparan).</summary>

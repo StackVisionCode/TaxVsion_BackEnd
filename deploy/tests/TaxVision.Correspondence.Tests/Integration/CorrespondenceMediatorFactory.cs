@@ -24,6 +24,7 @@ public sealed class CorrespondenceMediatorFactory : WebApplicationFactory<Progra
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        builder.UseSetting("ConnectionStrings:Default", CorrespondenceSqlServer.ConnectionString);
         builder.ConfigureAppConfiguration(
             (_, config) =>
                 config.AddInMemoryCollection(

@@ -22,8 +22,8 @@ public static class GetSeatCheckoutStatusHandler
                     intent.Status.ToString(),
                     intent.SeatType.ToString(),
                     intent.Quantity,
-                    intent.ProratedTotalCents,
-                    intent.Currency,
+                    intent.ProratedTotal.Cents,
+                    intent.ProratedTotal.Currency,
                     intent.CheckoutUrl
                 )
             );

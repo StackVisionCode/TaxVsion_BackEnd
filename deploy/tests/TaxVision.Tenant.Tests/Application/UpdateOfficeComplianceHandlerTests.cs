@@ -127,6 +127,7 @@ public sealed class UpdateOfficeComplianceHandlerTests
             unitOfWork,
             bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -190,6 +191,7 @@ public sealed class UpdateOfficeComplianceHandlerTests
             _unitOfWork,
             _bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 }

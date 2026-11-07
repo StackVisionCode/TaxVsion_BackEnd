@@ -1,6 +1,5 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
 using TaxVision.CloudStorage.Infrastructure.Persistence.Repositories;
@@ -17,14 +16,7 @@ public sealed class StuckScanQueryIntegrationTests : IAsyncLifetime
     private Guid _oldButRequeued;
 
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("CLOUDSTORAGE_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("taxvision-cloudstorage-development")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set CLOUDSTORAGE_DB_CONNECTION or the CloudStorage user-secrets to run this test."
-        );
+        CloudStorageIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

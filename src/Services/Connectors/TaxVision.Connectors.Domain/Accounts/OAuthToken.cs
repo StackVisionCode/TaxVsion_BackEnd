@@ -20,6 +20,9 @@ public sealed class OAuthToken : BaseEntity
     public DateTime AccessTokenExpiresAtUtc { get; private set; }
     public DateTime RefreshedAtUtc { get; private set; }
 
+    /// <summary>Connectors H: dos refrescos que leyeron el mismo token no se pisan.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public static Result<OAuthToken> Create(
         Guid connectionId,
         EncryptedSecret accessTokenCipher,

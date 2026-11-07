@@ -6,6 +6,7 @@ using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
 
@@ -20,6 +21,7 @@ public static class CustomerCreatedConsumer
         CustomerCreatedIntegrationEvent evt,
         ICustomerEmailAddressRepository repository,
         ITenantCustomerBackfillService backfill,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerEmailAddress> logger,
@@ -30,7 +32,7 @@ public static class CustomerCreatedConsumer
         {
             // Único punto donde Correspondence "descubre" un tenant (no hay enumeración de
             // tenants M2M en el resto del monorepo) — no-op si ya corrió para este tenant.
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            await backfill.EnsureBackfilledAsync(evt.TenantId, bus, ct);
 
             var emailResult = EmailAddress.Create(evt.PrimaryEmail);
             if (emailResult.IsFailure)

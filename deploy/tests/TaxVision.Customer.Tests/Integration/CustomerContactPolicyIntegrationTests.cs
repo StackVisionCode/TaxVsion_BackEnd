@@ -1,6 +1,5 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Infrastructure.Persistence;
@@ -17,12 +16,7 @@ public sealed class CustomerContactPolicyIntegrationTests : IAsyncLifetime
 {
     private readonly Guid _tenant = Guid.NewGuid();
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("CUSTOMER_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("8c4e7963-1ddb-441e-af2d-755d58fb86a3")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set CUSTOMER_DB_CONNECTION or the Customer user-secrets.");
+        CustomerIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

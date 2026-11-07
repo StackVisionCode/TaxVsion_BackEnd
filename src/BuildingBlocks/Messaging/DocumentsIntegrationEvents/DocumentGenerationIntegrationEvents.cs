@@ -51,6 +51,9 @@ public sealed record DocumentGenerationCompletedIntegrationEvent : DocumentsInte
     public required long SizeBytes { get; init; }
     public string? ContentHash { get; init; }
 
+    /// <summary>BIL-7: la clave con que se pidió, para saber qué versión llegó. Aditivo; nulo si el emisor no la copia.</summary>
+    public string? IdempotencyKey { get; init; }
+
     /// <summary>P-18: copias generadas (además de la principal). Aditivo; vacío si no hubo copia de firma.</summary>
     public IReadOnlyList<DocumentGenerationCopy> Copies { get; init; } = [];
 

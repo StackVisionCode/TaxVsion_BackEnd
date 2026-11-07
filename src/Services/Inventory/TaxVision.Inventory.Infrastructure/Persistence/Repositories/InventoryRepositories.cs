@@ -84,7 +84,8 @@ public sealed class StockRepository(InventoryDbContext db) : IStockRepository
         await db
             .StockMovements.IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(m => m.TenantId == tenantId && m.Reference == reference)
+            // Solo los del canal M2M: uno manual con el id de la factura en la referencia no es parte de la venta.
+            .Where(m => m.TenantId == tenantId && m.Reference == reference && m.MovedByUserId == Guid.Empty)
             .ToListAsync(ct);
 
     public async Task AddStockLevelAsync(StockLevel level, CancellationToken ct = default) =>

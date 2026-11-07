@@ -98,18 +98,32 @@ public sealed class OAuthCallbackController(
             platform.Current.BaseDomain
         );
 
-        var result = await bus.InvokeAsync<Result<CompleteOAuthConnectResult>>(
-            new CompleteOAuthConnectCommand(
-                connectState.TenantId,
+        Result<CompleteOAuthConnectResult> result;
+        try
+        {
+            result = await bus.InvokeAsync<Result<CompleteOAuthConnectResult>>(
+                new CompleteOAuthConnectCommand(
+                    connectState.TenantId,
+                    providerCode,
+                    connectState.InitiatedByUserId,
+                    code,
+                    connectState.InitiatorEmail,
+                    connectState.AsOffice,
+                    connectState.InitiatorIsPlatformAdmin
+                ),
+                ct
+            );
+        }
+        catch (ConflictException ex)
+        {
+            // CON-18: el navegador vuelve al CRM con un error, nunca con un 409 en JSON.
+            logger.LogWarning(
+                "OAuth connect exchange ({Provider}) hit a concurrency conflict: {Code}",
                 providerCode,
-                connectState.InitiatedByUserId,
-                code,
-                connectState.InitiatorEmail,
-                connectState.AsOffice,
-                connectState.InitiatorIsPlatformAdmin
-            ),
-            ct
-        );
+                ex.Code
+            );
+            return Redirect(BuildRedirect("connectors_error", "conflict", redirectBase));
+        }
 
         if (result.IsFailure)
         {

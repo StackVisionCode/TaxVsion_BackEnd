@@ -46,11 +46,11 @@ public static class ReconcilePendingSaaSPaymentHandler
         if (payment.UpdatedAtUtc > nowUtc - options.Value.PendingChargeThreshold)
             return Result.Success();
 
-        var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, nowUtc);
+        var retry = DunningPolicy.Decide(payment, nowUtc);
 
         if (payment.ChargeAttemptedAtUtc is not { } attemptedAt)
         {
-            SaaSPaymentChargeOutcome.FailPayment(payment, NotCharged, Guid.Empty, nextRetryAtUtc, metrics);
+            SaaSPaymentChargeOutcome.FailPayment(payment, NotCharged, Guid.Empty, retry, metrics);
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Success();
         }
@@ -81,16 +81,10 @@ public static class ReconcilePendingSaaSPaymentHandler
         switch (lookup.Outcome)
         {
             case ChargeLookupOutcome.Found:
-                SaaSPaymentChargeOutcome.ApplyChargeOutcome(
-                    payment,
-                    lookup.Charge!,
-                    Guid.Empty,
-                    nextRetryAtUtc,
-                    metrics
-                );
+                SaaSPaymentChargeOutcome.ApplyChargeOutcome(payment, lookup.Charge!, Guid.Empty, retry, metrics);
                 break;
             case ChargeLookupOutcome.NotFound:
-                SaaSPaymentChargeOutcome.FailPayment(payment, NotCharged, Guid.Empty, nextRetryAtUtc, metrics);
+                SaaSPaymentChargeOutcome.FailPayment(payment, NotCharged, Guid.Empty, retry, metrics);
                 break;
             default:
                 LateProviderSuccessPolicy.Flag(

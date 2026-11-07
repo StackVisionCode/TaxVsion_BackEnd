@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
@@ -135,6 +136,47 @@ public sealed class SentMessageDomainEventIntegrationTests : IAsyncLifetime
         Assert.Equal(1, await WaitForOutgoingAsync(SuppressedWire));
     }
 
+    // PMS-11: lo publicado dentro del handler se revierte con él; el aviso tiene que salir en el camino real.
+    [Fact(Timeout = 120_000)]
+    public async Task MalformedEvent_GoesToErrorQueueInOneAttemptAndNotifiesTheFailure()
+    {
+        var evt = CreateEvent() with { ReplyTo = "not-an-address" };
+
+        var tracked = await _host
+            .TrackActivity()
+            .Timeout(TimeSpan.FromSeconds(60))
+            .DoNotAssertOnExceptionsDetected()
+            .PublishMessageAndWaitAsync(evt);
+
+        var moved = Assert.Single(tracked.MovedToErrorQueue.Envelopes());
+        Assert.Equal(1, moved.Attempts);
+        Assert.Equal(1, await WaitForOutgoingAsync(FailedWire));
+        var notice = await OutgoingBodyAsync(FailedWire);
+        Assert.Contains("event.malformed", notice);
+        Assert.Contains(evt.NotificationLogId.ToString(), notice);
+        Assert.Contains(evt.DispatchAttemptId.ToString(), notice);
+        Assert.Equal(0, _sender.SendCount);
+        await using var db = NewContext();
+        Assert.Empty(await db.SentMessages.IgnoreQueryFilters().ToListAsync());
+        Assert.Empty(await db.EmailIdempotencies.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact(Timeout = 120_000)]
+    public async Task MalformedEvent_WithoutNotificationLog_OnlyGoesToErrorQueue()
+    {
+        var evt = CreateEvent() with { ReplyTo = "not-an-address", NotificationLogId = Guid.Empty };
+
+        var tracked = await _host
+            .TrackActivity()
+            .Timeout(TimeSpan.FromSeconds(60))
+            .DoNotAssertOnExceptionsDetected()
+            .PublishMessageAndWaitAsync(evt);
+
+        Assert.Single(tracked.MovedToErrorQueue.Envelopes());
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        Assert.Equal(0, await OutgoingAsync(FailedWire));
+    }
+
     // PMS-01 sigue en pie: si falla el registro después de que el proveedor aceptó, no se reenvía y sale un solo aviso.
     [Fact(Timeout = 120_000)]
     public async Task RecordFailsOnceAfterProviderAccepted_DoesNotResendAndEmitsOneNotice()
@@ -202,6 +244,16 @@ public sealed class SentMessageDomainEventIntegrationTests : IAsyncLifetime
         command.CommandText =
             $"IF OBJECT_ID('[wolverine].[wolverine_outgoing_envelopes]') IS NULL SELECT 0 ELSE SELECT COUNT(*) FROM [wolverine].[wolverine_outgoing_envelopes] WHERE message_type LIKE '%{messageType}%'";
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private async Task<string> OutgoingBodyAsync(string messageType)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            $"SELECT TOP 1 body FROM [wolverine].[wolverine_outgoing_envelopes] WHERE message_type LIKE '%{messageType}%'";
+        return Encoding.UTF8.GetString((byte[])(await command.ExecuteScalarAsync())!);
     }
 
     private async Task<int> WaitForOutgoingAsync(string messageType)

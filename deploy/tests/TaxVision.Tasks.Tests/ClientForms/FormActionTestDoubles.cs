@@ -136,7 +136,7 @@ internal static class FormActionTestDoubles
     internal static Guid AddAttachment(FormRequest request)
     {
         var fileId = Guid.NewGuid();
-        request.RegisterAttachment(
+        request.Files.Register(
             new FormAnswerAddress("fd_first0001", null),
             fileId,
             "id.pdf",

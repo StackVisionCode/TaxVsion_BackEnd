@@ -108,7 +108,7 @@ public sealed class PublicShareController(
         CancellationToken ct
     )
     {
-        var result = await bus.InvokeAsync<PublicFolderContentsResult>(
+        var result = await InvokeWithConflictRetryAsync<PublicFolderContentsResult>(
             new ResolvePublicFolderContentsQuery(token, password, email, folderId),
             ct
         );

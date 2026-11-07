@@ -123,7 +123,7 @@ public sealed class UploadMyAvatarHandlerTests
             bus,
             CancellationToken.None
         );
-        user.Deactivate(DateTime.UtcNow);
+        user.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
         var inactive = await HandleAsync(
             user,
             new FakeAvatarNormalizer(),

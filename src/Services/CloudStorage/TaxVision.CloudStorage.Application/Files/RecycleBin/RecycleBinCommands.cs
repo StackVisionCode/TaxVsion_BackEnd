@@ -79,6 +79,7 @@ public static class RestoreFileHandler
                 clock.UtcNow
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new FileRestoredIntegrationEvent
             {
@@ -88,7 +89,6 @@ public static class RestoreFileHandler
                 CorrelationId = command.Audit.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
     }
 }
 
@@ -135,19 +135,9 @@ public static class RestoreFolderHandler
         foreach (var folder in await folders.ListBatchAsync(command.TenantId, batchId, ct))
             folder.Restore();
 
-        foreach (var file in await files.ListByDeletedBatchAsync(command.TenantId, batchId, ct))
-        {
+        var restored = await files.ListByDeletedBatchAsync(command.TenantId, batchId, ct);
+        foreach (var file in restored)
             file.Restore();
-            await bus.PublishAsync(
-                new FileRestoredIntegrationEvent
-                {
-                    TenantId = command.TenantId,
-                    FileId = file.Id,
-                    CreatedBy = file.CreatedBy,
-                    CorrelationId = command.Audit.CorrelationId,
-                }
-            );
-        }
 
         audit.Add(
             StorageAccessLog.Create(
@@ -164,6 +154,17 @@ public static class RestoreFolderHandler
             )
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        foreach (var file in restored)
+            await bus.PublishAsync(
+                new FileRestoredIntegrationEvent
+                {
+                    TenantId = command.TenantId,
+                    FileId = file.Id,
+                    CreatedBy = file.CreatedBy,
+                    CorrelationId = command.Audit.CorrelationId,
+                }
+            );
         return Result.Success();
     }
 }

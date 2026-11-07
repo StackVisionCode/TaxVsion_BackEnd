@@ -8,8 +8,10 @@ using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Categories;
 using TaxVision.Signature.Application.Requests.Commands.FromForm;
+using TaxVision.Signature.Application.Requests.Commands.Send;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 using TaxVision.Signature.Domain.Settings;
 using Wolverine;
 
@@ -282,6 +284,307 @@ public sealed class SignatureRequestFromFormConsumerTests
         Assert.Equal(SignatureRequestFromFormOutcomes.SignerEmailUnavailable, failed.ErrorCode);
     }
 
+    // SIG-13: lo que arma hoy la solicitud, antes de separarlo del consumer.
+    [Fact]
+    public async Task The_request_takes_defaults_signer_and_field_from_the_command()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var command = BuildCommand(tenantId, fileId, customerId: null, autoSend: false);
+
+        await Handle(
+            command,
+            repo,
+            new CapturingBus(),
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures")
+        );
+
+        var request = repo.Added!;
+        Assert.Equal(tenantId, request.TenantId);
+        Assert.Equal(command.CreatedByUserId, request.CreatedByUserId);
+        Assert.Equal("2026 Intake summary", request.Title);
+        Assert.Equal("Client form", request.Category);
+        Assert.False(request.RequiresSequentialSigning);
+        Assert.True(request.RequiresConsent);
+        Assert.True(request.GenerateCertificate);
+        Assert.False(request.SendSealedDocumentToSigners);
+        Assert.False(request.SendCertificateToSigners);
+        Assert.True(request.AutoRemindersEnabled);
+        Assert.Equal(TenantSignatureSettings.DefaultReminderIntervalHours, request.ReminderIntervalHours);
+        Assert.Equal(TenantSignatureSettings.DefaultTokenExpirationHours, request.TokenExpirationHours);
+
+        var document = Assert.Single(request.Documents);
+        Assert.Equal(fileId, document.OriginalFileId);
+        Assert.Equal("2026 Intake summary", document.Title);
+
+        var signer = Assert.Single(request.Signers);
+        Assert.Equal("prospect@example.com", signer.Email.Value);
+        Assert.Equal("Pat Prospect", signer.FullName.Value);
+        Assert.Equal("En", signer.Language);
+        Assert.Equal(SignerVerificationMethod.EmailOtp, signer.RequiredVerificationMethod);
+
+        var field = Assert.Single(signer.Fields);
+        Assert.Equal(document.Id, field.DocumentId);
+        Assert.Equal(SignatureFieldKind.Signature, field.Kind);
+        Assert.Equal("Signature", field.Label);
+        Assert.True(field.IsRequired);
+        Assert.Equal(0.25, field.Position.Y);
+        Assert.Equal(0.38, field.Position.Width);
+    }
+
+    [Fact]
+    public async Task A_known_category_is_the_canonical_one()
+    {
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var command = BuildCommand(Guid.NewGuid(), fileId, null, false) with { Category = "fiscal" };
+
+        await Handle(
+            command,
+            repo,
+            new CapturingBus(),
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures"),
+            categories: new CanonicalCategory("Fiscal")
+        );
+
+        Assert.Equal("Fiscal", repo.Added!.Category);
+    }
+
+    [Fact]
+    public async Task An_unknown_category_keeps_the_raw_text()
+    {
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var command = BuildCommand(Guid.NewGuid(), fileId, null, false) with { Category = "Something else" };
+
+        await Handle(
+            command,
+            repo,
+            new CapturingBus(),
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures"),
+            categories: new CanonicalCategory(null)
+        );
+
+        Assert.Equal("Something else", repo.Added!.Category);
+    }
+
+    [Fact]
+    public async Task A_placement_out_of_range_goes_to_the_first_document()
+    {
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var command = BuildCommand(Guid.NewGuid(), fileId, null, false);
+        command = command with { Placement = command.Placement with { DocumentIndex = 7 } };
+
+        await Handle(
+            command,
+            repo,
+            new CapturingBus(),
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures")
+        );
+
+        Assert.Equal(repo.Added!.Documents[0].Id, Assert.Single(repo.Added.Signers[0].Fields).DocumentId);
+    }
+
+    [Theory]
+    [InlineData("SmsOtp", "+15551234567", SignerVerificationMethod.SmsOtp)]
+    [InlineData("emailotp", null, SignerVerificationMethod.EmailOtp)]
+    [InlineData("none", null, null)]
+    public async Task The_verification_method_is_parsed_loosely(
+        string method,
+        string? phone,
+        SignerVerificationMethod? expected
+    )
+    {
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var command = WithSigner(
+            BuildCommand(Guid.NewGuid(), fileId, null, false),
+            s => s with { VerificationMethod = method, Phone = phone }
+        );
+
+        await Handle(
+            command,
+            repo,
+            new CapturingBus(),
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures")
+        );
+
+        Assert.Equal(expected, repo.Added!.Signers[0].RequiredVerificationMethod);
+        Assert.Equal(phone, repo.Added.Signers[0].PhoneNumber?.Value);
+    }
+
+    [Theory]
+    [InlineData("not-an-email", "Pat Prospect", null)]
+    [InlineData("prospect@example.com", "", null)]
+    [InlineData("prospect@example.com", "Pat Prospect", "abc")]
+    public async Task An_invalid_signer_publishes_failed(string email, string name, string? phone)
+    {
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var bus = new CapturingBus();
+        var command = WithSigner(
+            BuildCommand(Guid.NewGuid(), fileId, null, false),
+            s => s with { Email = email, FullName = name, Phone = phone }
+        );
+
+        await Handle(command, repo, bus, StorageWith(fileId, "Available", Hash, "Signature", "Signatures"));
+
+        Assert.Null(repo.Added);
+        var failed = Assert.IsType<SignatureRequestFromFormFailedIntegrationEvent>(Assert.Single(bus.Messages));
+        Assert.Equal(SignatureRequestFromFormOutcomes.InvalidRequest, failed.ErrorCode);
+    }
+
+    [Fact]
+    public async Task A_client_signer_takes_email_and_missing_name_from_the_projection()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var command = WithSigner(
+            BuildCommand(tenantId, fileId, customerId, false, email: null),
+            s => s with { FullName = "" }
+        );
+
+        await Handle(
+            command,
+            repo,
+            new CapturingBus(),
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures"),
+            customerEmails: new SeededCustomerEmails(
+                CustomerEmailProjection.ForNewCustomer(tenantId, customerId, "client@example.test", "Client Name")
+            )
+        );
+
+        var signer = Assert.Single(repo.Added!.Signers);
+        Assert.Equal("client@example.test", signer.Email.Value);
+        Assert.Equal("Client Name", signer.FullName.Value);
+        Assert.Equal(customerId, signer.MappedCustomerId);
+    }
+
+    [Fact]
+    public async Task A_rejected_document_publishes_failed_and_saves_nothing()
+    {
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var bus = new CapturingBus();
+        var verifier = new FixedVerifier(
+            DocumentVerificationResult.Rejected(DocumentRejection.Create("Signature.Document.Rejected", "bad").Value)
+        );
+
+        await Handle(
+            BuildCommand(Guid.NewGuid(), fileId, null, false),
+            repo,
+            bus,
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures"),
+            verifier: verifier
+        );
+
+        Assert.Null(repo.Added);
+        var failed = Assert.IsType<SignatureRequestFromFormFailedIntegrationEvent>(Assert.Single(bus.Messages));
+        Assert.Equal(SignatureRequestFromFormOutcomes.DocumentRejected, failed.ErrorCode);
+    }
+
+    [Fact]
+    public async Task A_document_that_cannot_be_checked_yet_is_retried()
+    {
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var bus = new CapturingBus();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Handle(
+                BuildCommand(Guid.NewGuid(), fileId, null, false),
+                repo,
+                bus,
+                StorageWith(fileId, "Available", Hash, "Signature", "Signatures"),
+                verifier: new FixedVerifier(DocumentVerificationResult.Deferred)
+            )
+        );
+
+        Assert.Null(repo.Added);
+        Assert.Empty(bus.Messages);
+    }
+
+    [Fact]
+    public async Task A_lost_race_republishes_the_winner_and_does_not_auto_send()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var winner = SignatureRequest
+            .CreateDraft(
+                TestSignatureLimits.Default,
+                tenantId,
+                Guid.NewGuid(),
+                "Winner",
+                null,
+                "Client form",
+                72,
+                false,
+                true,
+                true
+            )
+            .Value;
+        var repo = new CapturingRepository { WinnerAfterConflict = winner };
+        var bus = new CapturingBus();
+
+        await Handle(
+            BuildCommand(tenantId, fileId, null, autoSend: true),
+            repo,
+            bus,
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures"),
+            unitOfWork: new ConflictingUnitOfWork(repo)
+        );
+
+        var created = Assert.IsType<SignatureRequestFromFormCreatedIntegrationEvent>(Assert.Single(bus.Messages));
+        Assert.Equal(winner.Id, created.SignatureRequestId);
+    }
+
+    [Fact]
+    public async Task A_conflict_without_a_winner_is_rethrown()
+    {
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            Handle(
+                BuildCommand(Guid.NewGuid(), fileId, null, autoSend: true),
+                repo,
+                new CapturingBus(),
+                StorageWith(fileId, "Available", Hash, "Signature", "Signatures"),
+                unitOfWork: new ConflictingUnitOfWork(repo)
+            )
+        );
+    }
+
+    [Fact]
+    public async Task Auto_send_goes_out_after_created()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var bus = new CapturingBus();
+
+        await Handle(
+            BuildCommand(tenantId, fileId, null, autoSend: true),
+            repo,
+            bus,
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures")
+        );
+
+        Assert.IsType<SignatureRequestFromFormCreatedIntegrationEvent>(bus.Messages[0]);
+        var send = Assert.IsType<SendSignatureRequestCommand>(bus.Messages[1]);
+        Assert.Equal(tenantId, send.TenantId);
+        Assert.Equal(repo.Added!.Id, send.SignatureRequestId);
+    }
+
+    private static SignatureRequestFromFormRequestedIntegrationEvent WithSigner(
+        SignatureRequestFromFormRequestedIntegrationEvent command,
+        Func<SignatureRequestFromFormSigner, SignatureRequestFromFormSigner> change
+    ) => command with { Signers = [change(command.Signers[0])] };
+
     [Fact]
     public void Command_contract_carries_no_pdf_bytes()
     {
@@ -302,19 +605,25 @@ public sealed class SignatureRequestFromFormConsumerTests
         CapturingBus bus,
         ISignatureCloudStorageClient storage,
         IFileMetadataRefRepository? files = null,
-        int attempt = 1
+        int attempt = 1,
+        ISignatureCategoryResolver? categories = null,
+        IRequestDocumentVerifier? verifier = null,
+        ICustomerEmailProjectionRepository? customerEmails = null,
+        IUnitOfWork? unitOfWork = null
     ) =>
         SignatureRequestFromFormRequestedConsumer.Handle(
             command,
             repo,
-            new EmptySettings(),
-            new FixedSignatureLimitsResolver(),
-            new FixedSignaturePlatformSettings(),
-            new PassingCategoryResolver(),
+            new SignatureRequestFromFormBuilder(
+                new EmptySettings(),
+                categories ?? new PassingCategoryResolver(),
+                new FixedSignatureLimitsResolver(),
+                new FixedSignaturePlatformSettings(),
+                customerEmails ?? new NoCustomerEmails()
+            ),
             storage,
-            AcceptingDocumentVerifier.Instance,
-            new NoCustomerEmails(),
-            new CountingUnitOfWork(),
+            verifier ?? AcceptingDocumentVerifier.Instance,
+            unitOfWork ?? new CountingUnitOfWork(),
             bus,
             new FixedCorrelationContext("corr"),
             new NoOpCache(),
@@ -334,11 +643,10 @@ public sealed class SignatureRequestFromFormConsumerTests
 
     private sealed class FailingLookup(string errorCode) : ISignatureCloudStorageClient
     {
-        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
-            Guid tenantId,
-            SignatureFileUpload upload,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
+        public Task<
+            Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>
+        > StageAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default) =>
+            throw new NotSupportedException();
 
         public Task<Result<SignatureFileMetadata>> GetFileAsync(
             Guid tenantId,
@@ -348,12 +656,6 @@ public sealed class SignatureRequestFromFormConsumerTests
 
         public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
             throw new NotSupportedException();
-
-        public Task<Result<Guid>> UploadAsync(
-            Guid tenantId,
-            SignatureFileUpload upload,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
 
         public Task<Result<Guid>> CopyToCustomerAsync(
             Guid tenantId,
@@ -424,20 +726,13 @@ public sealed class SignatureRequestFromFormConsumerTests
 
     private sealed class ConfiguredStorage(Guid fileId, SignatureFileMetadata metadata) : ISignatureCloudStorageClient
     {
-        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
-            Guid tenantId,
-            SignatureFileUpload upload,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
+        public Task<
+            Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>
+        > StageAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default) =>
+            throw new NotSupportedException();
 
         public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
             throw new NotImplementedException();
-
-        public Task<Result<Guid>> UploadAsync(
-            Guid tenantId,
-            SignatureFileUpload upload,
-            CancellationToken ct = default
-        ) => throw new NotImplementedException();
 
         public Task<Result<Guid>> CopyToCustomerAsync(
             Guid tenantId,
@@ -460,10 +755,65 @@ public sealed class SignatureRequestFromFormConsumerTests
                 : Task.FromResult(Result.Failure<SignatureFileMetadata>(new Error("x", "not found")));
     }
 
+    private sealed class CanonicalCategory(string? canonical) : ISignatureCategoryResolver
+    {
+        public Task<Result<string>> ResolveAsync(Guid tenantId, string category, CancellationToken ct = default) =>
+            Task.FromResult(
+                canonical is null
+                    ? Result.Failure<string>(new Error("Signature.Category.Unknown", "Unknown."))
+                    : Result.Success(canonical)
+            );
+    }
+
+    private sealed class FixedVerifier(DocumentVerificationResult result) : IRequestDocumentVerifier
+    {
+        public Task<DocumentVerificationResult> VerifyAsync(
+            SignatureRequest request,
+            Guid documentId,
+            CancellationToken ct
+        ) => throw new NotSupportedException();
+
+        public Task<DocumentVerificationResult> VerifyAsync(
+            SignatureRequest request,
+            Guid documentId,
+            VerifiableFile file,
+            CancellationToken ct
+        ) => Task.FromResult(result);
+    }
+
+    private sealed class SeededCustomerEmails(CustomerEmailProjection projection) : ICustomerEmailProjectionRepository
+    {
+        public Task<CustomerEmailProjection?> GetByCustomerIdAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => Task.FromResult<CustomerEmailProjection?>(projection);
+
+        public Task<CustomerEmailProjection?> FindActiveByEmailAsync(
+            Guid tenantId,
+            string normalizedEmail,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task AddAsync(CustomerEmailProjection value, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+    }
+
+    // Dos entregas a la vez: el guardado pierde y el ganador ya es visible.
+    private sealed class ConflictingUnitOfWork(CapturingRepository repo) : IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            repo.Existing = repo.WinnerAfterConflict;
+            throw new ConflictException("Persistence.ConcurrencyConflict", "Conflict.");
+        }
+    }
+
     private sealed class CapturingRepository : ISignatureRequestRepository
     {
         public SignatureRequest? Added { get; private set; }
         public SignatureRequest? Existing { get; set; }
+        public SignatureRequest? WinnerAfterConflict { get; init; }
 
         public Task AddAsync(SignatureRequest request, CancellationToken ct = default)
         {

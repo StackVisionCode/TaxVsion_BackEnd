@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
@@ -58,7 +59,7 @@ public static class SignerInvitedConsumer
                     var title = $"Nueva solicitud de firma";
                     await dispatcher.RecordInAppAsync(
                         evt.TenantId,
-                        $"user:{userId:N}",
+                        NotificationRecipient.ForUser(userId),
                         title,
                         NotificationCategory.DocumentsAndSignatures,
                         "signature.signer.invited",

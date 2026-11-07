@@ -24,6 +24,7 @@ function fakeDirectory(entries: CustomerDirectoryEntrySnapshot[]): CustomerDirec
       return null;
     },
     async markInactive(): Promise<void> {},
+    async markActive(): Promise<void> {},
     async clearAvatar(): Promise<void> {},
     async searchByDisplayNameOrEmail(): Promise<CustomerDirectoryEntrySnapshot[]> {
       return entries;

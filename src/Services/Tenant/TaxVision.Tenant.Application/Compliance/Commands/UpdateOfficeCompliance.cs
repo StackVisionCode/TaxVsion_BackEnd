@@ -36,6 +36,7 @@ public static class UpdateOfficeComplianceHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -51,7 +52,7 @@ public static class UpdateOfficeComplianceHandler
         if (coordinator.IsFailure)
             return Result.Failure<OfficeComplianceResponse>(coordinator.Error);
 
-        var update = compliance.Update(command.Draft, efin.Value, command.ActorId, DateTime.UtcNow);
+        var update = compliance.Update(command.Draft, efin.Value, command.ActorId, clock.GetUtcNow().UtcDateTime);
         if (update.IsFailure)
             return Result.Failure<OfficeComplianceResponse>(update.Error);
 

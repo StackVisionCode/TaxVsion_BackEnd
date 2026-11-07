@@ -39,7 +39,7 @@ public sealed class RetrySaaSPaymentHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Failed, payment.Status);
-        Assert.Equal(SaaSPaymentChargeOutcome.MissingPaymentMethodCode, payment.FailureCode);
+        Assert.Equal(DunningPolicy.MissingPaymentMethodCode, payment.FailureCode);
         Assert.Null(payment.NextRetryAtUtc);
         // PAY-BB1: un solo aviso de fallo por reintento, devuelto por el handler del evento de dominio.
         var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
@@ -59,7 +59,7 @@ public sealed class RetrySaaSPaymentHandlerTests
             payment,
             new Error(failureCode, "Cannot charge automatically."),
             Guid.Empty,
-            DateTime.UtcNow.AddHours(6),
+            DunningDecision.RetryAt(DateTime.UtcNow.AddHours(6)),
             new FakePaymentAppMetrics()
         );
 
@@ -75,7 +75,7 @@ public sealed class RetrySaaSPaymentHandlerTests
             payment,
             new Error("card_declined", "Declined."),
             Guid.Empty,
-            DateTime.UtcNow.AddHours(6),
+            DunningDecision.RetryAt(DateTime.UtcNow.AddHours(6)),
             new FakePaymentAppMetrics()
         );
 
@@ -104,11 +104,7 @@ public sealed class RetrySaaSPaymentHandlerTests
                 DateTime.UtcNow
             )
             .Value;
-        payment.MarkFailed(
-            "card_declined",
-            "Declined.",
-            true,
-            DateTime.UtcNow.AddMinutes(-1),
+        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow.AddMinutes(-1)),
             Guid.Empty,
             DateTime.UtcNow
         );

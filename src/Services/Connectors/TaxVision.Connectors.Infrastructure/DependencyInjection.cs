@@ -141,6 +141,7 @@ public static class DependencyInjection
         services.AddScoped<IOAuthTokenManager, OAuthTokenManager>();
         services.AddScoped<IOAuthTokenStore, OAuthTokenStore>();
         services.AddScoped<IOutboxUnit, OutboxUnit>();
+        services.AddAccountConnectionFlow();
         services.AddHostedService<ProactiveTokenRefreshJob>();
 
         services.AddHttpClient<GmailApiClient>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(30));

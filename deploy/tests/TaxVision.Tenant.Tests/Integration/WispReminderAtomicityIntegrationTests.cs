@@ -92,7 +92,7 @@ public sealed class WispReminderAtomicityIntegrationTests : IAsyncLifetime
 
     private async Task<Guid> SeedOverdueOfficeAsync()
     {
-        var tenant = DomainTenant.Create("Wisp Tax", $"wr-{Guid.NewGuid():N}"[..20], "Etc/UTC").Value;
+        var tenant = DomainTenant.Create("Wisp Tax", $"wr-{Guid.NewGuid():N}"[..20], "Etc/UTC", DateTime.UtcNow).Value;
         var compliance = OfficeCompliance.CreateEmpty(tenant.Id);
         compliance.Update(
             new OfficeComplianceDraft(null, "2025-12-01", null, null, null, 7),

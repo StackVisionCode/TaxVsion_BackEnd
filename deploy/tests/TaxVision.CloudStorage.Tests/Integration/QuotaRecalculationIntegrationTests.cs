@@ -1,6 +1,5 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Quotas;
@@ -20,14 +19,7 @@ public sealed class QuotaRecalculationIntegrationTests : IAsyncLifetime
     private readonly Guid _tenantId = Guid.NewGuid();
 
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("CLOUDSTORAGE_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("taxvision-cloudstorage-development")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set CLOUDSTORAGE_DB_CONNECTION or the CloudStorage user-secrets to run this test."
-        );
+        CloudStorageIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

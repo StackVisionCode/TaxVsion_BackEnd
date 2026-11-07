@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Commands;
 
@@ -68,6 +69,8 @@ public sealed class RelocateScannedBlobHandlerTests
                 Guid.NewGuid(),
                 "corr-relocate"
             ),
+            new FakeFileObjectRepository(),
+            Options.Create(_options),
             _storage,
             _audit,
             new FakeSystemClock(DateTime.UtcNow),

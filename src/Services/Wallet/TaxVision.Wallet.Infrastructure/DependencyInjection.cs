@@ -59,6 +59,14 @@ public static class DependencyInjection
         services.AddSingleton<Scheduling.IDistributedLockFactory, Scheduling.RedisDistributedLockFactory>();
         services.AddHostedService<Scheduling.ExpireStaleReservationsJob>();
 
+        // WAL-8 — conciliación periódica saldo vs ledger (solo lectura).
+        services
+            .AddOptions<Scheduling.WalletLedgerReconciliationOptions>()
+            .Bind(configuration.GetSection(Scheduling.WalletLedgerReconciliationOptions.SectionName))
+            .Validate(o => o.IsValid(), "Wallet:LedgerReconciliation interval and lock TTL must be positive.")
+            .ValidateOnStart();
+        services.AddHostedService<Scheduling.WalletLedgerReconciliationJob>();
+
         // WAL-6 — intentos de una reserva o liquidación que choca con otra del mismo monedero.
         services
             .AddOptions<TaxVision.Wallet.Application.Reservations.ReservationConflictRetryOptions>()

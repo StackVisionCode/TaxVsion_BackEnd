@@ -214,6 +214,12 @@ internal abstract class QueueOnlyTenantPaymentRepository : ITenantPaymentReposit
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
+    public Task<TenantPayment?> GetByConnectChargeReferenceAsync(
+        Guid tenantId,
+        string providerChargeReferenceOnConnect,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
+
     public Task<IReadOnlyList<TenantPayment>> GetDueForRetryAsync(
         DateTime nowUtc,
         int batchSize,

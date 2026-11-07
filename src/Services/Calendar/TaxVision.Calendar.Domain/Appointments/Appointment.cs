@@ -519,8 +519,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     }
 
     /// <summary>
-    /// Edita la serie entera. Las excepciones existentes <b>se conservan</b>: siguen apuntando a las
-    /// mismas ocurrencias por su <c>OriginalStartUtc</c>, que no cambia.
+    /// Edita la serie entera. Las excepciones existentes <b>se conservan</b>: cada una sigue a su
+    /// ocurrencia aunque cambie de instante. Las que la regla nueva ya no alcanza se van.
     /// </summary>
     public Result EditEntireSeries(
         EventTiming timing,
@@ -539,8 +539,11 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
         // Una serie no tiene StartUtc: lo que se anuncia es su primera ocurrencia.
         var previousFirstUtc = OccurrenceExpander.FirstStart(this);
+        // Antes de cambiar la regla: después ya no se sabe a qué ocurrencia apuntaba cada excepción.
+        var positions = OccurrenceExpander.ExceptionPositions(this);
         Timing = timing;
         Recurrence = recurrence;
+        ReanchorExceptions(positions);
 
         foreach (var attendee in _attendees)
             attendee.ResetResponse();
@@ -668,6 +671,45 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return OccurrenceExpander.IsOccurrence(this, originalStartUtc)
             ? Result.Success()
             : Result.Failure(RecurrenceErrors.NotAnOccurrence);
+    }
+
+    /// <summary>
+    /// La ocurrencia N de la regla vieja es la N de la nueva. Sin esto, mover la serie deja la excepción en un
+    /// instante que ya no existe: la ocurrencia cancelada revive y la que ahora cae ahí queda cancelada.
+    /// </summary>
+    private void ReanchorExceptions(Dictionary<DateTime, int> positions)
+    {
+        if (positions.Count == 0)
+            return;
+
+        var lastPosition = 0;
+        foreach (var position in positions.Values)
+            lastPosition = Math.Max(lastPosition, position);
+
+        var starts = OccurrenceExpander.StartsThrough(this, lastPosition);
+        var targets = new HashSet<DateTime>();
+        foreach (var position in positions.Values)
+        {
+            if (position < starts.Count)
+                targets.Add(starts[position]);
+        }
+
+        var changed =
+            _exceptions.RemoveAll(e =>
+                positions.TryGetValue(e.OriginalStartUtc, out var position)
+                    ? position >= starts.Count
+                    // Huérfana de una edición anterior: no puede ocupar el lugar de una viva, el índice único lo rechaza.
+                    : targets.Contains(e.OriginalStartUtc)
+            ) > 0;
+
+        foreach (var exception in _exceptions)
+        {
+            if (positions.TryGetValue(exception.OriginalStartUtc, out var position))
+                changed |= exception.FollowOccurrenceTo(starts[position]);
+        }
+
+        if (changed)
+            ChildrenRevision++;
     }
 
     private void DiscardExceptionsFrom(DateTime cutUtc)

@@ -1,0 +1,68 @@
+using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
+using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Domain.EmailVerification;
+using Wolverine;
+
+namespace TaxVision.Auth.Onboarding.Application.EmailVerification.Commands;
+
+public sealed record CreateEmailChallengeCommand(string Email, string IpAddress, string? FirstNameHint = null);
+
+public static class CreateEmailChallengeHandler
+{
+    private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(10);
+
+    public static async Task<Result<Guid>> Handle(
+        CreateEmailChallengeCommand command,
+        IEmailVerificationChallengeRepository challenges,
+        ILoginThrottler throttler,
+        IOtpCodeGenerator otpGenerator,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        IMessageBus bus,
+        CancellationToken ct
+    )
+    {
+        var throttleResult = await throttler.AuthorizeOnboardingChallengeCreationAsync(
+            command.Email,
+            command.IpAddress,
+            ct
+        );
+        if (throttleResult.IsFailure)
+            return Result.Failure<Guid>(throttleResult.Error);
+
+        var now = DateTime.UtcNow;
+        var otpCode = otpGenerator.Generate();
+        var challengeResult = EmailVerificationChallenge.Create(command.Email, otpCode, now, Ttl);
+        if (challengeResult.IsFailure)
+            return Result.Failure<Guid>(challengeResult.Error);
+
+        var challenge = challengeResult.Value;
+
+        // El reenvío crea challenge nuevo; invalidamos los anteriores para que el OTP viejo deje de valer.
+        var previous = await challenges.ListActiveByEmailAsync(challenge.Email, now, ct);
+        foreach (var prev in previous)
+            prev.Supersede(now);
+
+        await challenges.AddAsync(challenge, ct);
+
+        await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new OnboardingOtpRequestedIntegrationEvent
+            {
+                TenantId = PlatformTenant.Id,
+                ChallengeId = challenge.Id,
+                Email = challenge.Email,
+                OtpCode = otpCode,
+                ExpiresAtUtc = challenge.ExpiresAtUtc,
+                FirstNameHint = command.FirstNameHint,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+        return Result.Success(challenge.Id);
+    }
+}

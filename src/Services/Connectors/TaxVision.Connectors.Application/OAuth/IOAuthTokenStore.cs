@@ -8,5 +8,14 @@ namespace TaxVision.Connectors.Application.OAuth;
 /// </summary>
 public interface IOAuthTokenStore
 {
-    Task SaveAsync(Guid accountId, Action<OAuthToken> update, CancellationToken ct = default);
+    /// <summary>
+    /// Guarda solo si el token sigue en la versión leída antes de llamar al proveedor. False: otro refresco (u otra
+    /// reconexión) guardó primero y se conserva ese.
+    /// </summary>
+    Task<bool> SaveAsync(
+        Guid accountId,
+        byte[] expectedRowVersion,
+        Action<OAuthToken> update,
+        CancellationToken ct = default
+    );
 }

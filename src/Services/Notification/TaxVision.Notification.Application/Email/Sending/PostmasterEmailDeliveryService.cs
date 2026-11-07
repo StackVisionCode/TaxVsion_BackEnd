@@ -136,8 +136,8 @@ public sealed class PostmasterEmailDeliveryService(
             CampaignId = message.CampaignId,
         };
 
-        await publisher.PublishAsync(evt, ct);
         await unitOfWork.SaveChangesAsync(ct);
+        await publisher.PublishAsync(evt, ct);
         return Result.Success();
     }
 

@@ -76,7 +76,7 @@ public sealed class TenantEmailAccount : AggregateRoot
         if (tenantId == Guid.Empty)
             return Result.Failure<TenantEmailAccount>(new Error("TenantEmailAccount.Tenant", "Tenant is required."));
 
-        var emailValidation = ValidateEmailAddress(emailAddress);
+        var emailValidation = MailboxAddress.Create(emailAddress);
         if (emailValidation.IsFailure)
             return Result.Failure<TenantEmailAccount>(emailValidation.Error);
 
@@ -88,7 +88,7 @@ public sealed class TenantEmailAccount : AggregateRoot
         var account = new TenantEmailAccount
         {
             Id = Guid.NewGuid(),
-            EmailAddress = emailValidation.Value,
+            EmailAddress = emailValidation.Value.Value,
             ProviderCode = providerCode,
             DisplayName = displayName is { Length: > 200 } ? displayName[..200] : displayName,
             Status = TenantEmailAccountStatus.Draft,
@@ -157,10 +157,7 @@ public sealed class TenantEmailAccount : AggregateRoot
     {
         if (!IsOffice || Status == TenantEmailAccountStatus.Disconnected)
             return null;
-        if (
-            !string.IsNullOrWhiteSpace(email)
-            && string.Equals(EmailAddress, email.Trim(), StringComparison.OrdinalIgnoreCase)
-        )
+        if (MailboxAddress.Create(email) is { IsSuccess: true } address && address.Value.Matches(EmailAddress))
             return OfficeMailboxReviewReasons.AddressOfOffboardedUser;
         return userId != Guid.Empty && CreatedByUserId == userId
             ? OfficeMailboxReviewReasons.ConnectedByOffboardedUser
@@ -286,20 +283,6 @@ public sealed class TenantEmailAccount : AggregateRoot
         ProviderCode = newProvider;
         LastActivityAtUtc = now;
         return Result.Success();
-    }
-
-    private static Result<string> ValidateEmailAddress(string address)
-    {
-        if (string.IsNullOrWhiteSpace(address))
-            return Result.Failure<string>(new Error("TenantEmailAccount.EmailAddress", "Email address is required."));
-
-        var trimmed = address.Trim();
-        if (trimmed.Length > 320 || !trimmed.Contains('@') || trimmed.StartsWith('@') || trimmed.EndsWith('@'))
-            return Result.Failure<string>(
-                new Error("TenantEmailAccount.EmailAddress", $"'{address}' is not a valid email address.")
-            );
-
-        return Result.Success(trimmed.ToLowerInvariant());
     }
 
     private Error InvalidTransition(TenantEmailAccountStatus target) =>

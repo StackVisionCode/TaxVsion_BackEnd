@@ -12,7 +12,7 @@ namespace TaxVision.Notes.Application.Notes.Consumers;
 // ---------------------------------------------------------------------------
 // 03_Plan_De_Fases.md §Fase 7 (02_Contratos §4) — Caso B: CloudStorage ya validó/movió el
 // archivo antes de publicar; Notes solo reacciona, CERO MinIO/M2M propio. Cada handler:
-// correlation.Push + INoteRepository.GetByAttachmentFileIdAsync (sin tenant ambiental, guardrail 8
+// correlation.Push + INoteRepository.ListByAttachmentFileIdAsync (sin tenant ambiental, guardrail 8
 // — el consumer de Wolverine no corre dentro de un scope HTTP con tenant seteado) + guard de
 // tenant explícito post-fetch (nunca confiar en evt.TenantId sin comparar contra el dueño real del
 // adjunto) + idempotencia (los métodos de NoteAttachment ya son no-op en su estado final, Fase 1).
@@ -26,6 +26,7 @@ public static class NotesFileScanResultConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<Note> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -35,23 +36,26 @@ public static class NotesFileScanResultConsumer
             )
         )
         {
-            var note = await LoadOwningNoteOrNullAsync(evt.TenantId, evt.FileId, notes, logger, ct);
-            if (note is null)
-                return;
-
-            var result = note.MarkAttachmentAvailable(evt.FileId);
-            if (result.IsFailure)
+            var changed = false;
+            foreach (var note in await LoadOwningNotesAsync(evt.TenantId, evt.FileId, notes, logger, ct))
             {
-                logger.LogWarning(
-                    "MarkAttachmentAvailable failed for file {FileId} on note {NoteId}: {ErrorCode}",
-                    evt.FileId,
-                    note.Id,
-                    result.Error.Code
-                );
-                return;
+                var result = note.MarkAttachmentAvailable(evt.FileId, clock.GetUtcNow().UtcDateTime);
+                if (result.IsFailure)
+                {
+                    logger.LogWarning(
+                        "MarkAttachmentAvailable failed for file {FileId} on note {NoteId}: {ErrorCode}",
+                        evt.FileId,
+                        note.Id,
+                        result.Error.Code
+                    );
+                    continue;
+                }
+
+                changed = true;
             }
 
-            await unitOfWork.SaveChangesAsync(ct);
+            if (changed)
+                await unitOfWork.SaveChangesAsync(ct);
         }
     }
 
@@ -62,6 +66,7 @@ public static class NotesFileScanResultConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<Note> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -71,11 +76,12 @@ public static class NotesFileScanResultConsumer
             )
         )
         {
-            var note = await LoadOwningNoteOrNullAsync(evt.TenantId, evt.FileId, notes, logger, ct);
-            if (note is null || note.MarkAttachmentUnderReview(evt.FileId).IsFailure)
-                return;
+            var changed = false;
+            foreach (var note in await LoadOwningNotesAsync(evt.TenantId, evt.FileId, notes, logger, ct))
+                changed |= note.MarkAttachmentUnderReview(evt.FileId, clock.GetUtcNow().UtcDateTime).IsSuccess;
 
-            await unitOfWork.SaveChangesAsync(ct);
+            if (changed)
+                await unitOfWork.SaveChangesAsync(ct);
         }
     }
 
@@ -85,6 +91,7 @@ public static class NotesFileScanResultConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<Note> logger,
+        TimeProvider clock,
         CancellationToken ct
     ) =>
         await RejectAttachmentAsync(
@@ -97,6 +104,7 @@ public static class NotesFileScanResultConsumer
             evt.CorrelationId,
             evt.EventId,
             logger,
+            clock,
             ct
         );
 
@@ -106,6 +114,7 @@ public static class NotesFileScanResultConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<Note> logger,
+        TimeProvider clock,
         CancellationToken ct
     ) =>
         await RejectAttachmentAsync(
@@ -118,6 +127,7 @@ public static class NotesFileScanResultConsumer
             evt.CorrelationId,
             evt.EventId,
             logger,
+            clock,
             ct
         );
 
@@ -128,6 +138,7 @@ public static class NotesFileScanResultConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<Note> logger,
+        TimeProvider clock,
         CancellationToken ct
     ) =>
         await RejectAttachmentAsync(
@@ -140,6 +151,7 @@ public static class NotesFileScanResultConsumer
             evt.CorrelationId,
             evt.EventId,
             logger,
+            clock,
             ct
         );
 
@@ -162,6 +174,7 @@ public static class NotesFileScanResultConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<Note> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -171,32 +184,38 @@ public static class NotesFileScanResultConsumer
             )
         )
         {
-            var note = await LoadOwningNoteOrNullAsync(evt.TenantId, evt.FileId, notes, logger, ct);
-            if (note is null)
-                return;
-
-            var result = note.DetachFile(evt.FileId);
-            if (result.IsFailure)
+            var detached = new List<Note>();
+            foreach (var note in await LoadOwningNotesAsync(evt.TenantId, evt.FileId, notes, logger, ct))
             {
-                logger.LogWarning(
-                    "DetachFile (reactive, FileDeleted) failed for file {FileId} on note {NoteId}: {ErrorCode}",
-                    evt.FileId,
-                    note.Id,
-                    result.Error.Code
-                );
-                return;
+                var result = note.DetachFile(evt.FileId, clock.GetUtcNow().UtcDateTime);
+                if (result.IsFailure)
+                {
+                    logger.LogWarning(
+                        "DetachFile (reactive, FileDeleted) failed for file {FileId} on note {NoteId}: {ErrorCode}",
+                        evt.FileId,
+                        note.Id,
+                        result.Error.Code
+                    );
+                    continue;
+                }
+
+                detached.Add(note);
             }
 
+            if (detached.Count == 0)
+                return;
+
             await unitOfWork.SaveChangesAsync(ct);
-            await bus.PublishAsync(
-                new NoteAttachmentDetachedIntegrationEvent
-                {
-                    TenantId = note.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    NoteId = note.Id,
-                    CloudStorageFileId = evt.FileId,
-                }
-            );
+            foreach (var note in detached)
+                await bus.PublishAsync(
+                    new NoteAttachmentDetachedIntegrationEvent
+                    {
+                        TenantId = note.TenantId,
+                        CorrelationId = correlation.CorrelationId,
+                        NoteId = note.Id,
+                        CloudStorageFileId = evt.FileId,
+                    }
+                );
         }
     }
 
@@ -210,6 +229,7 @@ public static class NotesFileScanResultConsumer
         string eventCorrelationId,
         Guid eventId,
         ILogger<Note> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -217,32 +237,36 @@ public static class NotesFileScanResultConsumer
             correlation.Push(string.IsNullOrWhiteSpace(eventCorrelationId) ? eventId.ToString("N") : eventCorrelationId)
         )
         {
-            var note = await LoadOwningNoteOrNullAsync(tenantId, fileId, notes, logger, ct);
-            if (note is null)
-                return;
-
-            var result = note.MarkAttachmentRejected(fileId, reason);
-            if (result.IsFailure)
+            var changed = false;
+            foreach (var note in await LoadOwningNotesAsync(tenantId, fileId, notes, logger, ct))
             {
-                logger.LogWarning(
-                    "MarkAttachmentRejected failed for file {FileId} on note {NoteId}: {ErrorCode}",
-                    fileId,
-                    note.Id,
-                    result.Error.Code
-                );
-                return;
+                var result = note.MarkAttachmentRejected(fileId, reason, clock.GetUtcNow().UtcDateTime);
+                if (result.IsFailure)
+                {
+                    logger.LogWarning(
+                        "MarkAttachmentRejected failed for file {FileId} on note {NoteId}: {ErrorCode}",
+                        fileId,
+                        note.Id,
+                        result.Error.Code
+                    );
+                    continue;
+                }
+
+                changed = true;
             }
 
-            await unitOfWork.SaveChangesAsync(ct);
+            if (changed)
+                await unitOfWork.SaveChangesAsync(ct);
         }
     }
 
     /// <summary>
-    /// Guardrail 8 — <see cref="INoteRepository.GetByAttachmentFileIdAsync"/> no filtra por tenant
+    /// Guardrail 8 — <see cref="INoteRepository.ListByAttachmentFileIdAsync"/> no filtra por tenant
     /// (el consumer no tiene tenant ambiental). Compara <paramref name="tenantId"/> del evento
-    /// contra el dueño real de la nota antes de mutar nada; nunca confiar ciegamente en el evento.
+    /// contra el dueño real de cada nota antes de mutar nada; nunca confiar ciegamente en el evento.
+    /// Sin notas = adjunto de otro servicio (Signature/Correspondence/etc.).
     /// </summary>
-    private static async Task<Note?> LoadOwningNoteOrNullAsync(
+    private static async Task<IReadOnlyList<Note>> LoadOwningNotesAsync(
         Guid tenantId,
         Guid fileId,
         INoteRepository notes,
@@ -250,21 +274,24 @@ public static class NotesFileScanResultConsumer
         CancellationToken ct
     )
     {
-        var note = await notes.GetByAttachmentFileIdAsync(fileId, ct);
-        if (note is null)
-            return null; // adjunto de otro servicio (Signature/Correspondence/etc.), no de Notes.
-
-        if (note.TenantId != tenantId)
+        var owning = new List<Note>();
+        foreach (var note in await notes.ListByAttachmentFileIdAsync(fileId, ct))
         {
+            if (note.TenantId == tenantId)
+            {
+                owning.Add(note);
+                continue;
+            }
+
             logger.LogWarning(
-                "CloudStorage file scan event for file {FileId} carries tenant {EventTenantId} but the owning note belongs to tenant {NoteTenantId} — ignoring.",
+                "CloudStorage file scan event for file {FileId} carries tenant {EventTenantId} but note {NoteId} belongs to tenant {NoteTenantId} — ignoring.",
                 fileId,
                 tenantId,
+                note.Id,
                 note.TenantId
             );
-            return null;
         }
 
-        return note;
+        return owning;
     }
 }

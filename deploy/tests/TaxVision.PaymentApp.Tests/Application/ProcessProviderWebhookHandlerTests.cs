@@ -17,7 +17,7 @@ using Wolverine.Transports.Sending;
 
 namespace TaxVision.PaymentApp.Tests.Application;
 
-public sealed class ProcessProviderWebhookHandlerTests
+public sealed partial class ProcessProviderWebhookHandlerTests
 {
     [Fact]
     public async Task PayPal_capture_completed_applies_payment_reconciles_capture_and_publishes_onboarding_success()
@@ -406,11 +406,7 @@ public sealed class ProcessProviderWebhookHandlerTests
     public async Task Failure_event_for_an_already_failed_payment_is_stale_and_not_republished()
     {
         var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.AddOnRenewal);
-        payment.MarkFailed(
-            "card_declined",
-            "Declined.",
-            willRetry: true,
-            DateTime.UtcNow.AddHours(1),
+        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
             Guid.Empty,
             DateTime.UtcNow
         );
@@ -473,7 +469,7 @@ public sealed class ProcessProviderWebhookHandlerTests
     public async Task Late_success_on_a_locally_failed_offsession_payment_is_flagged_for_review()
     {
         var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SubscriptionRenewal);
-        payment.MarkFailed("Provider.Timeout", "Timed out.", willRetry: false, null, Guid.Empty, DateTime.UtcNow);
+        payment.MarkFailed("Provider.Timeout", "Timed out.", DunningDecision.NoRetry, Guid.Empty, DateTime.UtcNow);
         var webhooks = new FakeWebhookEventRepository();
         var metrics = new FakePaymentAppMetrics();
 
@@ -547,7 +543,8 @@ public sealed class ProcessProviderWebhookHandlerTests
         SaaSPayment payment,
         WebhookEventPayload payload,
         FakeWebhookEventRepository? webhooks = null,
-        FakePaymentAppMetrics? metrics = null
+        FakePaymentAppMetrics? metrics = null,
+        FakePaymentAuditLogWriter? audit = null
     ) =>
         ProcessProviderWebhookHandler.Handle(
             new ProcessProviderWebhookCommand(
@@ -565,7 +562,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakeProviderWebhookSecrets(),
             webhooks ?? new FakeWebhookEventRepository(),
             new FakeSaaSPaymentRepository(payment),
-            new FakePaymentAuditLogWriter(),
+            audit ?? new FakePaymentAuditLogWriter(),
             new FakeUnitOfWork(),
             metrics ?? new FakePaymentAppMetrics(),
             new FakePaymentAttemptThrottle(),
@@ -661,7 +658,9 @@ public sealed class ProcessProviderWebhookHandlerTests
     private sealed class FakePaymentProvider(
         PaymentProviderCode code,
         WebhookVerificationResult verification,
-        WebhookEventPayload payload
+        WebhookEventPayload payload,
+        Error? verificationError = null,
+        Error? parseError = null
     ) : IPaymentProvider
     {
         public bool ParseWasCalled { get; private set; }
@@ -696,7 +695,12 @@ public sealed class ProcessProviderWebhookHandlerTests
         public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
             ProviderWebhookVerificationRequest request,
             CancellationToken ct
-        ) => Task.FromResult(Result.Success(verification));
+        ) =>
+            Task.FromResult(
+                verificationError is null
+                    ? Result.Success(verification)
+                    : Result.Failure<WebhookVerificationResult>(verificationError)
+            );
 
         public Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(
             string rawPayload,
@@ -705,7 +709,9 @@ public sealed class ProcessProviderWebhookHandlerTests
         )
         {
             ParseWasCalled = true;
-            return Task.FromResult(Result.Success(payload));
+            return Task.FromResult(
+                parseError is null ? Result.Success(payload) : Result.Failure<WebhookEventPayload>(parseError)
+            );
         }
 
         public Task<Result<ProviderCustomerToken>> GetOrCreateCustomerAsync(
@@ -957,7 +963,13 @@ public sealed class ProcessProviderWebhookHandlerTests
 
     private sealed class FakePaymentAuditLogWriter : IPaymentAuditLogWriter
     {
-        public Task AppendAsync(PaymentAuditEntry entry, CancellationToken ct = default) => Task.CompletedTask;
+        public List<PaymentAuditEntry> Entries { get; } = [];
+
+        public Task AppendAsync(PaymentAuditEntry entry, CancellationToken ct = default)
+        {
+            Entries.Add(entry);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeUnitOfWork(Exception? firstSaveException = null) : IUnitOfWork
@@ -985,15 +997,21 @@ public sealed class ProcessProviderWebhookHandlerTests
 
         public void RecordFailed(string provider, string type, string failureCode) { }
 
-        public void RecordRefunded(string provider) { }
+        public int Refunded { get; private set; }
+        public int ChargedBack { get; private set; }
+        public int Received { get; private set; }
+        public int Duplicates { get; private set; }
+        public int SignatureFailures { get; private set; }
 
-        public void RecordChargedBack(string provider) { }
+        public void RecordRefunded(string provider) => Refunded++;
 
-        public void RecordWebhookReceived(string provider) { }
+        public void RecordChargedBack(string provider) => ChargedBack++;
 
-        public void RecordWebhookDuplicate(string provider) { }
+        public void RecordWebhookReceived(string provider) => Received++;
 
-        public void RecordWebhookSignatureFailed(string provider) { }
+        public void RecordWebhookDuplicate(string provider) => Duplicates++;
+
+        public void RecordWebhookSignatureFailed(string provider) => SignatureFailures++;
 
         public void RecordProviderLatency(double milliseconds, string provider, string method) { }
 

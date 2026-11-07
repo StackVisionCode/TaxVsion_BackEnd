@@ -44,6 +44,7 @@ public static class DependencyInjection
 
         services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
         services.AddScoped<IEmailLayoutRepository, EmailLayoutRepository>();
+        services.AddScoped<IPublishedTemplateReader, PublishedTemplateReader>();
         services.AddScoped<IEmailRenderer, FluidTemplateRenderer>();
 
         services.AddScoped<ITenantLogoRefRepository, TenantLogoRefRepository>();

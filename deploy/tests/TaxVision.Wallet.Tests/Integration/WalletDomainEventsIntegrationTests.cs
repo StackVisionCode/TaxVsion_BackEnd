@@ -48,8 +48,8 @@ public sealed class WalletDomainEventsIntegrationTests : IAsyncLifetime
         await using (var db = WalletTestDatabase.NewContext(_tenantId))
         {
             var wallet = WalletAggregate.Create(_tenantId).Value;
-            db.LedgerEntries.Add(wallet.Credit(10_000_000, $"topup:{Guid.NewGuid():N}").Value);
-            db.LedgerEntries.Add(wallet.Reserve(500_000, $"wallet-reserve:{ReferenceType}:{_referenceId:N}").Value);
+            db.LedgerEntries.Add(wallet.Credit(Usd(10_000_000), $"topup:{Guid.NewGuid():N}").Value);
+            db.LedgerEntries.Add(wallet.Reserve(Usd(500_000), $"wallet-reserve:{ReferenceType}:{_referenceId:N}").Value);
             db.Wallets.Add(wallet);
             db.Reservations.Add(ReservationBuilder.Open(_tenantId, ReferenceType, _referenceId, 500_000, 5));
             await db.SaveChangesAsync();

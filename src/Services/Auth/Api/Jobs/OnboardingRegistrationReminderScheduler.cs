@@ -1,8 +1,8 @@
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 using TaxVision.Auth.Infrastructure.Persistence;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
 
 namespace TaxVision.Auth.Api.Jobs;
 

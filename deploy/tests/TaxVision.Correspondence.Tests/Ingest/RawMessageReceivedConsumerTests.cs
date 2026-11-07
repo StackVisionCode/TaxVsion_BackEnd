@@ -90,16 +90,25 @@ public sealed class RawMessageReceivedConsumerTests
         );
         var threadResolver = new ThreadResolver(threads, incomingEmails, drafts ?? new FakeDraftRepository(), options);
 
-        await RawMessageReceivedConsumer.Handle(
-            evt,
-            incomingEmails,
-            threads,
-            threadResolver,
-            customerEmails,
+        var rejections = new IngestRejectionRecorder(
             unmatched,
-            options,
             unitOfWork,
             metrics ?? new FakeIngestMetrics(),
+            NullLogger<IngestRejectionRecorder>.Instance
+        );
+
+        await RawMessageReceivedConsumer.Handle(
+            evt,
+            new IncomingMailIngestor(
+                incomingEmails,
+                threads,
+                threadResolver,
+                rejections,
+                unitOfWork,
+                NullLogger<IncomingMailIngestor>.Instance
+            ),
+            new IncomingSenderResolver(customerEmails, options),
+            rejections,
             new FakeCorrelationContext(),
             NullLogger<IncomingEmail>.Instance,
             CancellationToken.None
@@ -728,6 +737,7 @@ public sealed class RawMessageReceivedConsumerTests
     {
         var unmatched = new FakeUnmatchedIncomingEmailRepository();
         var incomingEmails = new FakeIncomingEmailRepository();
+        var metrics = new FakeIngestMetrics();
 
         await HandleAsync(
             NewEvent(Guid.NewGuid(), "no-es-un-email"),
@@ -736,12 +746,15 @@ public sealed class RawMessageReceivedConsumerTests
             new FakeCustomerEmailAddressRepository(),
             unmatched,
             new FakeUnitOfWork(),
-            new FakeMessageBus()
+            new FakeMessageBus(),
+            metrics: metrics
         );
 
         Assert.Empty(incomingEmails.All);
         var row = Assert.Single(unmatched.All);
         Assert.Equal(UnmatchedReason.InvalidSender, row.Reason);
+        // La métrica lleva su propio motivo, aparte de los códigos del dominio.
+        Assert.Equal(["InvalidSender"], metrics.RejectedCodes);
     }
 
     [Fact]
@@ -778,6 +791,60 @@ public sealed class RawMessageReceivedConsumerTests
         Assert.Equal("<rej@x>", row.InternetMessageId);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
         Assert.Equal(["IncomingEmail.AccountIdRequired"], metrics.RejectedCodes);
+    }
+
+    // COR-13: el hilo se toca recién con el correo válido.
+    [Fact]
+    public async Task Handle_RejectedEmailOnAMatchedThread_LeavesTheThreadUntouched()
+    {
+        var tenantId = Guid.NewGuid();
+        var threads = new FakeEmailThreadRepository();
+        var customerEmails = new FakeCustomerEmailAddressRepository();
+        var unmatched = new FakeUnmatchedIncomingEmailRepository();
+        var bus = new FakeMessageBus();
+        var customerId = await SeedCustomerAsync(customerEmails, tenantId, "customer@example.com");
+        var thread = await SeedArchivedThreadAsync(threads, tenantId, customerId, "T1");
+        var messageCount = thread.MessageCount;
+
+        await HandleAsync(
+            NewEvent(tenantId, "customer@example.com", providerThreadId: "T1", accountId: Guid.Empty),
+            new FakeIncomingEmailRepository(),
+            threads,
+            customerEmails,
+            unmatched,
+            new FakeUnitOfWork(),
+            bus
+        );
+
+        Assert.Equal(EmailThreadStatus.Archived, thread.Status);
+        Assert.Equal(messageCount, thread.MessageCount);
+        Assert.Equal(UnmatchedReason.IngestRejected, Assert.Single(unmatched.All).Reason);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Handle_RejectedReplyToASentEmail_DoesNotLinkTheDraft()
+    {
+        var tenantId = Guid.NewGuid();
+        var threads = new FakeEmailThreadRepository();
+        var customerEmails = new FakeCustomerEmailAddressRepository();
+        var drafts = new FakeDraftRepository();
+        var customerId = await SeedCustomerAsync(customerEmails, tenantId, "customer@example.com");
+        var draft = await ThreadResolverTests.SeedSentDraftAsync(drafts, tenantId, customerId, "pm.rej@tenant.test");
+
+        await HandleAsync(
+            NewEvent(tenantId, "customer@example.com", inReplyTo: "<pm.rej@tenant.test>", accountId: Guid.Empty),
+            new FakeIncomingEmailRepository(),
+            threads,
+            customerEmails,
+            new FakeUnmatchedIncomingEmailRepository(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            drafts: drafts
+        );
+
+        Assert.Null(draft.EmailThreadId);
+        Assert.Empty(threads.All);
     }
 
     [Fact]

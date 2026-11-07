@@ -90,7 +90,7 @@ public sealed class ProspectResponseMapper(IFormTemplateVersionRepository versio
             return false;
         if (!canViewAll && request.ResponsibleUserId != actorUserId && request.RequestedByUserId != actorUserId)
             return false;
-        var latest = request.LatestAction(FormActionNames.CreateCustomer);
+        var latest = request.Actions.Latest(FormActionNames.CreateCustomer);
         return latest is null || latest.IsRetryable;
     }
 

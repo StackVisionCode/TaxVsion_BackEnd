@@ -14,7 +14,7 @@ public sealed class WalletConcurrencyIntegrationTests : IAsyncLifetime
     {
         await using var db = WalletTestDatabase.NewContext(_tenantId);
         var wallet = WalletAggregate.Create(_tenantId).Value;
-        db.LedgerEntries.Add(wallet.Credit(10_000_000, $"topup:{Guid.NewGuid():N}").Value);
+        db.LedgerEntries.Add(wallet.Credit(Usd(10_000_000), $"topup:{Guid.NewGuid():N}").Value);
         db.Wallets.Add(wallet);
         await db.SaveChangesAsync();
     }
@@ -34,8 +34,8 @@ public sealed class WalletConcurrencyIntegrationTests : IAsyncLifetime
         var firstWallet = await first.Wallets.SingleAsync(w => w.TenantId == _tenantId);
         var secondWallet = await second.Wallets.SingleAsync(w => w.TenantId == _tenantId);
 
-        first.LedgerEntries.Add(firstWallet.Reserve(1_000_000, $"a:{Guid.NewGuid():N}", Guid.NewGuid()).Value);
-        second.LedgerEntries.Add(secondWallet.Reserve(1_000_000, $"b:{Guid.NewGuid():N}", Guid.NewGuid()).Value);
+        first.LedgerEntries.Add(firstWallet.Reserve(Usd(1_000_000), $"a:{Guid.NewGuid():N}", Guid.NewGuid()).Value);
+        second.LedgerEntries.Add(secondWallet.Reserve(Usd(1_000_000), $"b:{Guid.NewGuid():N}", Guid.NewGuid()).Value);
 
         await first.SaveChangesAsync();
         var conflict = await Assert.ThrowsAsync<ConflictException>(() => second.SaveChangesAsync());

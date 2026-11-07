@@ -140,7 +140,7 @@ public sealed class StartSeatCheckoutHandlerTests
         Assert.NotNull(intent.SaaSPaymentId);
         Assert.Equal("https://pay.example/xyz", intent.CheckoutUrl);
         Assert.NotNull(client.LastRequest);
-        Assert.Equal(intent.ProratedTotalCents, client.LastRequest!.AmountCents);
+        Assert.Equal(intent.ProratedTotal.Cents, client.LastRequest!.AmountCents);
         Assert.Equal("USD", client.LastRequest.Currency);
         Assert.StartsWith("seat-checkout-", client.LastRequest.IdempotencyKey);
         Assert.Equal(2, unitOfWork.SaveChangesCallCount); // guarda la intención, y de nuevo tras adjuntar el checkout

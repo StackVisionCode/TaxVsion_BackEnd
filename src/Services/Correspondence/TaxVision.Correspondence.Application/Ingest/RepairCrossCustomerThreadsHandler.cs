@@ -1,101 +1,67 @@
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Correspondence.Application.Abstractions;
-using TaxVision.Correspondence.Domain.Inbox;
+using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Correspondence.Application.Ingest;
 
 /// <summary>
-/// Ver <see cref="RepairCrossCustomerThreadsCommand"/>. Para cada correo ajeno busca (o crea) el hilo
-/// <c>(TenantId, CustomerId del correo, ProviderThreadId del hilo original)</c>, lo mueve y recalcula contador y
-/// fechas de los hilos tocados. Requiere el índice nuevo de COR-02 aplicado.
+/// Ver <see cref="RepairCrossCustomerThreadsCommand"/>. Sin transacción propia: cada hilo es una unidad aparte
+/// (<see cref="RepairCrossCustomerThreadCommand"/>), así un hilo que falla no revierte los ya reparados.
 /// </summary>
 public static class RepairCrossCustomerThreadsHandler
 {
-    public static async Task<RepairCrossCustomerThreadsResult> Handle(
+    [NonTransactional]
+    public static async Task<RepairCrossCustomerThreadsReport> Handle(
         RepairCrossCustomerThreadsCommand command,
         IIncomingEmailRepository incomingEmails,
-        IEmailThreadRepository threads,
-        IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ILogger<RepairCrossCustomerThreadsCommand> logger,
         CancellationToken ct
     )
     {
-        var tenantId = command.TenantId;
-        var foreign = await incomingEmails.ListInForeignThreadsAsync(tenantId, ct);
-        if (foreign.Count == 0)
-            return new RepairCrossCustomerThreadsResult(0, 0);
+        var foreign = await incomingEmails.ListInForeignThreadsAsync(command.TenantId, ct);
+        var threadIds = foreign
+            .GroupBy(e => e.EmailThreadId)
+            .OrderBy(g => g.Min(e => e.ReceivedAtUtc))
+            .Select(g => g.Key)
+            .ToList();
+        if (command.DryRun || threadIds.Count == 0)
+            return new RepairCrossCustomerThreadsReport(command.DryRun, threadIds.Count, foreign.Count, 0, 0, 0, []);
 
-        var touched = new Dictionary<Guid, EmailThread>();
-        var targets = new Dictionary<(Guid SourceId, Guid CustomerId), EmailThread>();
+        var repaired = 0;
         var moved = 0;
         var created = 0;
-
-        foreach (var email in foreign.OrderBy(e => e.ReceivedAtUtc))
+        var failed = new List<Guid>();
+        foreach (var threadId in threadIds)
         {
-            if (email.CustomerId is not { } customerId)
-                continue;
-
-            if (!touched.TryGetValue(email.EmailThreadId, out var source))
+            try
             {
-                source = await threads.GetByIdAsync(tenantId, email.EmailThreadId, ct);
-                if (source is null)
-                    continue;
-                touched[source.Id] = source;
+                var unit = await bus.InvokeAsync<RepairCrossCustomerThreadResult>(
+                    new RepairCrossCustomerThreadCommand(command.TenantId, threadId),
+                    ct
+                );
+                if (unit.MovedEmails > 0)
+                    repaired++;
+                moved += unit.MovedEmails;
+                created += unit.CreatedThreads;
             }
-
-            var key = (source.Id, customerId);
-            if (!targets.TryGetValue(key, out var target))
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
-                target = source.ProviderThreadId is null
-                    ? null
-                    : await threads.FindByProviderThreadIdAsync(tenantId, customerId, source.ProviderThreadId, ct);
-                if (target is null)
-                {
-                    var newThread = EmailThread.NewFromMessage(
-                        tenantId,
-                        customerId,
-                        source.Subject,
-                        source.ProviderThreadId,
-                        email.ReceivedAtUtc
-                    );
-                    if (newThread.IsFailure)
-                    {
-                        logger.LogWarning("Repair skipped email {EmailId}: {Error}", email.Id, newThread.Error.Code);
-                        continue;
-                    }
-                    target = newThread.Value;
-                    await threads.AddAsync(target, ct);
-                    created++;
-                }
-                targets[key] = target;
-                touched[target.Id] = target;
+                logger.LogError(ex, "Cross-customer repair failed for thread {ThreadId}; it can be retried.", threadId);
+                failed.Add(threadId);
             }
-
-            if (email.MoveToThread(target.Id).IsSuccess)
-                moved++;
         }
-
-        // Se guarda antes de recalcular: los conteos se leen de la base con los correos ya movidos.
-        await unitOfWork.SaveChangesAsync(ct);
-        foreach (var thread in touched.Values)
-        {
-            var alive = (await incomingEmails.ListAllByThreadAsync(tenantId, thread.Id, ct))
-                .Where(e => !e.IsDeleted)
-                .ToList();
-            if (alive.Count == 0)
-                thread.ResetMessageStats(0, thread.FirstMessageAtUtc, thread.LastMessageAtUtc);
-            else
-                thread.ResetMessageStats(alive.Count, alive.Min(e => e.ReceivedAtUtc), alive.Max(e => e.ReceivedAtUtc));
-        }
-        await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "Cross-customer thread repair for tenant {TenantId}: {Moved} emails moved, {Created} threads created.",
-            tenantId,
+            "Cross-customer thread repair for tenant {TenantId}: {Repaired} of {Found} threads, {Moved} emails moved, {Created} threads created, {Failed} failed.",
+            command.TenantId,
+            repaired,
+            threadIds.Count,
             moved,
-            created
+            created,
+            failed.Count
         );
-        return new RepairCrossCustomerThreadsResult(moved, created);
+        return new RepairCrossCustomerThreadsReport(false, threadIds.Count, foreign.Count, repaired, moved, created, failed);
     }
 }

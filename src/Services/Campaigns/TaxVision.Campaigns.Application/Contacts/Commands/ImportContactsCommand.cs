@@ -52,7 +52,7 @@ public static class ImportContactsHandler
         foreach (var (name, email, phone) in ParseRows(command.CsvContent))
         {
             // Import tolerante: un teléfono no-E.164 se descarta (se conserva el email) en vez de tumbar la fila.
-            var e164 = PhoneNumbers.ToE164(phone);
+            var e164 = PhoneE164.Normalize(phone);
             var draft = Contact.Create(command.TenantId, name, email, e164, ContactSource.Import);
             if (draft.IsFailure)
             {

@@ -1,7 +1,6 @@
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Signature.Domain.Platform;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -11,7 +10,7 @@ using TaxVision.Signature.Infrastructure.Persistence.Repositories;
 namespace TaxVision.Signature.Tests.Integration;
 
 /// <summary>
-/// SIG-1 contra el SQL Server real (SIGNATURE_DB_CONNECTION o user-secrets del Api de Signature): dos
+/// SIG-1 contra el SQL Server real, en la base temporal de las T-INT (BB-10): dos
 /// escrituras sobre la misma <see cref="SignatureRequest"/> desde lecturas viejas no se pisan; la segunda
 /// choca con <c>Persistence.ConcurrencyConflict</c>. Tenant propio y limpieza por TenantId.
 /// </summary>
@@ -247,16 +246,8 @@ public sealed class SignatureRequestConcurrencyIntegrationTests : IAsyncLifetime
     }
 }
 
-/// <summary>Cadena de la base local para las T-INT: variable de entorno o user-secrets del Api de Signature.</summary>
+/// <summary>Cadena de la base temporal de las T-INT (BB-10).</summary>
 internal static class SignatureTestDatabase
 {
-    public static string ConnectionString =>
-        Environment.GetEnvironmentVariable("SIGNATURE_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("4a1e9c8d-2f7b-4e15-9c3d-signature10001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set SIGNATURE_DB_CONNECTION or the Signature Api user-secrets to run this test."
-        );
+    public static string ConnectionString => SignatureIntegrationDatabase.ConnectionString;
 }

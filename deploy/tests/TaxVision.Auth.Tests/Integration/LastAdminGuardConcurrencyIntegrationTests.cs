@@ -2,9 +2,10 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Offboarding;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Users;
@@ -24,12 +25,7 @@ public sealed class LastAdminGuardConcurrencyIntegrationTests : IAsyncLifetime
     private static readonly TimeSpan BarrierTimeout = TimeSpan.FromSeconds(3);
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("AUTH_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("c9f518b8-3374-4abd-a7b6-f0b20cb0877f")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set AUTH_DB_CONNECTION or the Auth user-secrets to run this test.");
+        AuthIntegrationDatabase.ConnectionString;
 
     private User _adminA = null!;
     private User _adminB = null!;
@@ -88,9 +84,7 @@ public sealed class LastAdminGuardConcurrencyIntegrationTests : IAsyncLifetime
             new DeactivateUserCommand(_tenantId, target, requester, UserActorType.TenantAdmin),
             new BarrierUserRepository(new UserRepository(db), barrier),
             new SqlTenantAdminLock(db, Options.Create(new TenantAdminLockOptions())),
-            new EmptyUserSessionRepository(),
-            new RecordingAccessTokenDenylist(),
-            new QuietRevocations(),
+            new SessionAccessCutoff(new EmptyUserSessionRepository(), new RecordingAccessTokenDenylist(), new QuietRevocations()),
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),
@@ -110,15 +104,10 @@ public sealed class LastAdminGuardConcurrencyIntegrationTests : IAsyncLifetime
             new OffboardUserCommand(_tenantId, target, requester, SuccessorUserId: null),
             new BarrierUserRepository(new UserRepository(db), barrier),
             new SqlTenantAdminLock(db, Options.Create(new TenantAdminLockOptions())),
-            new InMemoryMfaRepository(),
-            new InMemoryInvitationRepository(),
+            new OffboardingHygiene(new InMemoryMfaRepository(), new InMemoryInvitationRepository(), new AuthAuditTrail(new FakeAuthAuditWriter(), new FakeRequestContext(), new FakeCorrelationContext())),
             new InMemoryOffboardingRunRepository(),
-            new EmptyUserSessionRepository(),
-            new RecordingAccessTokenDenylist(),
-            new QuietRevocations(),
-            new FakeAuthAuditWriter(),
-            new FakeRequestContext(),
-            new FakeCorrelationContext(),
+            new SessionAccessCutoff(new EmptyUserSessionRepository(), new RecordingAccessTokenDenylist(), new QuietRevocations()),
+            new AuthAuditTrail(new FakeAuthAuditWriter(), new FakeRequestContext(), new FakeCorrelationContext()),
             db,
             new FakeMessageBus(),
             CancellationToken.None

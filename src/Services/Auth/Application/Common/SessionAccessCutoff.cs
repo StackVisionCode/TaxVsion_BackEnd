@@ -28,7 +28,11 @@ namespace TaxVision.Auth.Application.Common;
 /// excepciones): un Redis caído no debe impedir revocar.
 /// </para>
 /// </summary>
-public static class SessionAccessCutoff
+public sealed class SessionAccessCutoff(
+    ISessionRepository sessions,
+    IAccessTokenDenylist denylist,
+    ISessionRevocationPublisher revocations
+)
 {
     /// <summary>
     /// TTL de la entrada en la denylist. Tiene que cubrir la vida restante máxima de un access token
@@ -37,43 +41,23 @@ public static class SessionAccessCutoff
     public static readonly TimeSpan DenylistTtl = TimeSpan.FromMinutes(20);
 
     /// <summary>Corta el acceso de un usuario. Devuelve cuántas sesiones se revocaron.</summary>
-    public static async Task<int> ForUserAsync(
-        User target,
-        string reason,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocations,
-        CancellationToken ct
-    )
+    public async Task<int> ForUserAsync(User target, string reason, CancellationToken ct)
     {
         var active = await sessions.GetActiveSessionsByUserAsync(target.Id, ct);
-        await CutAsync(active, reason, denylist, revocations, ct);
+        await CutAsync(active, reason, ct);
         return await sessions.RevokeAllForUserAsync(target.Id, reason, null, ct);
     }
 
     /// <summary>Corta el acceso de un tenant completo (staff y clientes por igual: un tenant suspendido
     /// no atiende a nadie). Devuelve cuántas sesiones se revocaron.</summary>
-    public static async Task<int> ForTenantAsync(
-        Guid tenantId,
-        string reason,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocations,
-        CancellationToken ct
-    )
+    public async Task<int> ForTenantAsync(Guid tenantId, string reason, CancellationToken ct)
     {
         var active = await sessions.GetActiveSessionsByTenantAsync(tenantId, ct);
-        await CutAsync(active, reason, denylist, revocations, ct);
+        await CutAsync(active, reason, ct);
         return await sessions.RevokeAllForTenantAsync(tenantId, reason, ct);
     }
 
-    private static async Task CutAsync(
-        IReadOnlyList<UserSession> active,
-        string reason,
-        IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocations,
-        CancellationToken ct
-    )
+    private async Task CutAsync(IReadOnlyList<UserSession> active, string reason, CancellationToken ct)
     {
         foreach (var session in active)
             await denylist.DenySessionAsync(session.Id, DenylistTtl, ct);

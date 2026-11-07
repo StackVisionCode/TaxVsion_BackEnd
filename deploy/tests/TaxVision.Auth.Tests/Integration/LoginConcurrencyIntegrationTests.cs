@@ -86,25 +86,27 @@ public sealed class LoginConcurrencyIntegrationTests : IAsyncLifetime
     {
         await using var db = _database.NewContext(_world.Tenant.Id);
         await using var transaction = await db.Database.BeginTransactionAsync();
+        var steps = LoginStepsFixture.Build(
+            _world,
+            new SqlUserLoginLock(db),
+            new NoMfaRepository(),
+            new NoopSessionTakeoverTicketStore(),
+            new PermissiveLoginThrottler(),
+            new MfaOptions { Enforced = false },
+            users: new UserRepository(db),
+            hasher: new BarrierHasher(barrier),
+            audit: new FakeAuthAuditWriter(),
+            request: new FakeRequestContext(),
+            correlation: new FakeCorrelationContext()
+        );
         var result = await LoginHandler.Handle(
             new LoginCommand(_world.Tenant.Id, Email, password, AccountKind: UserAccountKind.Staff),
-            new UserRepository(db),
-            new SqlUserLoginLock(db),
-            _world.Tenants,
-            new BarrierHasher(barrier),
-            _world.Roles,
-            new NoMfaRepository(),
-            _world.Issuer,
-            _world.Sessions,
-            new NoopSessionTakeoverTicketStore(),
-            _world.TokenService,
-            new PermissiveLoginThrottler(),
-            new FakeAuthAuditWriter(),
-            new FakeRequestContext(),
-            new FakeCorrelationContext(),
+            steps.Discovery,
+            steps.Password,
+            steps.Mfa,
+            steps.Session,
             db,
             bus,
-            Options.Create(new MfaOptions { Enforced = false }),
             CancellationToken.None
         );
         await transaction.CommitAsync();

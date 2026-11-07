@@ -16,7 +16,7 @@ namespace TaxVision.Billing.Tests.Integration;
 /// secreto HS256 generado en memoria SOLO para este proceso de test, nunca leído de ningún
 /// user-secret real ni escrito a disco.
 /// </summary>
-public sealed class BillingApiFactory : WebApplicationFactory<Program>
+public sealed class BillingApiFactory(BillingTestDatabase database) : WebApplicationFactory<Program>
 {
     public string JwtSecret { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
     public string JwtIssuer => "TaxVision.Auth";
@@ -25,6 +25,8 @@ public sealed class BillingApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        // BIL-14: con la base local, este host compartiría los sobres de "integration" con el Billing en marcha.
+        builder.UseSetting("ConnectionStrings:Default", database.ConnectionString);
         builder.ConfigureAppConfiguration(
             (_, config) =>
                 config.AddInMemoryCollection(

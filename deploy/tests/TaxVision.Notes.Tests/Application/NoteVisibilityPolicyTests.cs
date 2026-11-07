@@ -11,11 +11,11 @@ public sealed class NoteVisibilityPolicyTests
     {
         var content = NoteContent.Create("hello").Value;
         var reference = NoteReference.Create(NoteTargetType.None, null).Value;
-        var note = Note.Create(Guid.NewGuid(), authorId, content, reference, visibility, null).Value;
+        var note = Note.Create(Guid.NewGuid(), authorId, content, reference, visibility, null, DateTime.UtcNow).Value;
         if (status == NoteStatus.Archived)
-            note.Archive(authorId);
+            note.Archive(authorId, DateTime.UtcNow);
         else if (status == NoteStatus.Deleted)
-            note.SoftDelete(authorId);
+            note.SoftDelete(authorId, DateTime.UtcNow);
         return note;
     }
 

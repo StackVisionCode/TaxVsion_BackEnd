@@ -882,6 +882,38 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerEmailAddresses", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Correspondence.Domain.Projections.MailboxOwnership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastChangeAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AccountId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_MailboxOwnerships_TenantId_AccountId");
+
+                    b.HasIndex("TenantId", "OwnerUserId")
+                        .HasDatabaseName("IX_MailboxOwnerships_TenantId_OwnerUserId");
+
+                    b.ToTable("MailboxOwnerships", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Correspondence.Domain.RateLimiting.TenantPlanCodeProjection", b =>
                 {
                     b.Property<Guid>("Id")

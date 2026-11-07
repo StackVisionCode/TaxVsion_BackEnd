@@ -275,7 +275,7 @@ describe('customer.* — foto del cliente', () => {
 
     await run('customer.archived.v1', { customerId: CUSTOMER });
 
-    expect(customerDirectory.markInactive).toHaveBeenCalledWith(CUSTOMER);
+    expect(customerDirectory.markInactive).toHaveBeenCalledWith(CUSTOMER, expect.any(Date));
     expect(customerDirectory.clearAvatar).toHaveBeenCalledWith(CUSTOMER);
     expect(profileChangedCalls(emitter, 'emitToTenantStaff')[0]!.envelope.payload).toEqual({
       userId: PORTAL_USER,

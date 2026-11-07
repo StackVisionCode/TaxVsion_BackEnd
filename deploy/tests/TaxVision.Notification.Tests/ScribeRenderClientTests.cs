@@ -49,6 +49,54 @@ public sealed class ScribeRenderClientTests
         Assert.Equal(TimeSpan.FromSeconds(10), client.Timeout);
     }
 
+    // SCR-10: mismos nombres que serializa RenderedContent de Scribe.
+    [Fact]
+    public async Task Versions_are_read_from_scribe_response()
+    {
+        const string json = """
+            {
+              "subject": "Welcome",
+              "html": "<p>Hi</p>",
+              "text": "Hi",
+              "inlineAssets": [],
+              "dispatchScope": "System",
+              "templateKey": "auth.welcome",
+              "versionNumber": 7,
+              "layoutVersionNumber": 3
+            }
+            """;
+        var client = new ScribeRenderClient(
+            new HttpClient(new StubHandler(HttpStatusCode.OK, json)) { BaseAddress = new Uri("http://localhost:5205/") },
+            new FakeTokenAcquirer(),
+            NullLogger<ScribeRenderClient>.Instance
+        );
+
+        var result = await client.RenderAsync("auth.welcome", Guid.NewGuid(), new Dictionary<string, object?>());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("auth.welcome", result.Value.TemplateKey);
+        Assert.Equal(7, result.Value.TemplateVersion);
+        Assert.Equal(3, result.Value.LayoutVersion);
+    }
+
+    // Un Scribe sin desplegar no manda los campos: el correo sale igual, sin versión.
+    [Fact]
+    public async Task Versions_stay_null_when_scribe_does_not_send_them()
+    {
+        const string json = """{ "subject": "Welcome", "html": "<p>Hi</p>", "text": "Hi" }""";
+        var client = new ScribeRenderClient(
+            new HttpClient(new StubHandler(HttpStatusCode.OK, json)) { BaseAddress = new Uri("http://localhost:5205/") },
+            new FakeTokenAcquirer(),
+            NullLogger<ScribeRenderClient>.Instance
+        );
+
+        var result = await client.RenderAsync("auth.welcome", Guid.NewGuid(), new Dictionary<string, object?>());
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value.TemplateVersion);
+        Assert.Null(result.Value.LayoutVersion);
+    }
+
     [Fact]
     public async Task RenderAsync_deserializes_InlineAssets_from_Scribe_response()
     {

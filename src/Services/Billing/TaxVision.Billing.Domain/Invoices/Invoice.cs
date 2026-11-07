@@ -262,6 +262,9 @@ public sealed class Invoice : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>Ya emitida: descontó stock y tiene ancla de cobro y PDF, así que un cambio hay que reconciliarlo.</summary>
+    public bool HasBeenIssued => Status is not InvoiceStatus.Draft;
+
     /// <summary>Edita cualquier factura salvo una anulada o borrada, incluso con pagos (orden del senior).
     /// Reemplaza cliente/moneda/líneas/notas y recalcula totales; conserva número y pagos aplicados. Con
     /// pagos no se puede cambiar la moneda. Si estaba cobrada (Paid/PartiallyPaid), el estado se recalcula
@@ -339,7 +342,11 @@ public sealed class Invoice : AggregateRoot
         {
             // El recibo lleva la fecha y el medio del último pago, como al cobrar.
             var last = _payments.OrderBy(p => p.PaidAtUtc).LastOrDefault();
-            IssueReceipt(paidCents, last?.Method ?? PaymentMethod ?? ValueObjects.PaymentMethod.Other, last?.PaidAtUtc ?? nowUtc);
+            IssueReceipt(
+                paidCents,
+                last?.Method ?? PaymentMethod ?? ValueObjects.PaymentMethod.Other,
+                last?.PaidAtUtc ?? nowUtc
+            );
             RaisePaid(null);
         }
         else
@@ -401,6 +408,67 @@ public sealed class Invoice : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>Reglas de <see cref="CreateForOnboarding"/> sin número y sin mutar. Se preguntan antes de reservar el número
+    /// ONB-: uno gastado deja un hueco (BIL-17).</summary>
+    public static Result EnsureCreatableForOnboarding(
+        Guid tenantId,
+        Guid onboardingId,
+        Guid? paymentId,
+        CustomerSnapshot customer,
+        IssuerSnapshot issuer,
+        string planDescription,
+        long grossAmountCents,
+        long discountAmountCents,
+        long netAmountCents,
+        string currency,
+        IReadOnlyList<OnboardingInvoiceAdjustment> adjustments
+    )
+    {
+        if (tenantId == Guid.Empty)
+            return Result.Failure(new Error("Billing.Invoice.InvalidOwner", "Owner tenant is required."));
+        if (onboardingId == Guid.Empty)
+            return Result.Failure(new Error("Billing.Invoice.InvalidOnboarding", "OnboardingId is required."));
+        if (customer is null)
+            return Result.Failure(new Error("Billing.Invoice.CustomerRequired", "Customer is required."));
+        if (issuer is null)
+            return Result.Failure(new Error("Billing.Invoice.IssuerRequired", "Issuer is required."));
+        if (string.IsNullOrWhiteSpace(planDescription))
+            return Result.Failure(new Error("Billing.Invoice.LineDescription", "Line description is required."));
+
+        var currencyCheck = Money.Create(0, currency);
+        if (currencyCheck.IsFailure)
+            return Result.Failure(currencyCheck.Error);
+
+        if (grossAmountCents < 0 || discountAmountCents < 0 || netAmountCents < 0)
+            return Result.Failure(new Error("Billing.Invoice.NegativeAmount", "Amounts cannot be negative."));
+        if (discountAmountCents > grossAmountCents)
+            return Result.Failure(
+                new Error("Billing.Invoice.DiscountExceedsGross", "Discount cannot exceed gross amount.")
+            );
+        if (grossAmountCents - discountAmountCents != netAmountCents)
+            return Result.Failure(
+                new Error("Billing.Invoice.InvalidNet", "Net amount must equal gross minus discount.")
+            );
+
+        // Solo una operación con neto > 0 genera un Payment real; net = 0 ⇒ cubierta por código, sin pago.
+        if (netAmountCents > 0 && paymentId is null)
+            return Result.Failure(
+                new Error("Billing.Invoice.PaymentRequired", "A positive net amount requires a PaymentId.")
+            );
+        if (netAmountCents == 0 && paymentId is not null)
+            return Result.Failure(
+                new Error("Billing.Invoice.UnexpectedPayment", "A fully-covered invoice must not carry a PaymentId.")
+            );
+
+        var adjustmentTotal = adjustments?.Sum(a => a.AmountCents) ?? 0;
+        if (adjustmentTotal != discountAmountCents)
+            return Result.Failure(
+                new Error("Billing.Invoice.AdjustmentMismatch", "The sum of adjustments must equal the discount total.")
+            );
+
+        return Result.Success();
+    }
+
     /// <summary>
     /// Fábrica de la factura de ONBOARDING pago-primero. Billing es la fuente de verdad financiera:
     /// se crea una factura para TODA operación comercial, incluso cuando el total es $0 y no hubo pago.
@@ -415,7 +483,7 @@ public sealed class Invoice : AggregateRoot
         Guid onboardingId,
         Guid planId,
         Guid? paymentId,
-        string invoiceNumber,
+        InvoiceNumber invoiceNumber,
         CustomerSnapshot customer,
         IssuerSnapshot issuer,
         string planDescription,
@@ -429,52 +497,25 @@ public sealed class Invoice : AggregateRoot
         DateTime dueDateUtc
     )
     {
-        if (tenantId == Guid.Empty)
-            return Result.Failure<Invoice>(new Error("Billing.Invoice.InvalidOwner", "Owner tenant is required."));
-        if (onboardingId == Guid.Empty)
-            return Result.Failure<Invoice>(new Error("Billing.Invoice.InvalidOnboarding", "OnboardingId is required."));
-        if (customer is null)
-            return Result.Failure<Invoice>(new Error("Billing.Invoice.CustomerRequired", "Customer is required."));
-        if (issuer is null)
-            return Result.Failure<Invoice>(new Error("Billing.Invoice.IssuerRequired", "Issuer is required."));
-        if (string.IsNullOrWhiteSpace(invoiceNumber))
+        if (invoiceNumber is null)
             return Result.Failure<Invoice>(new Error("Billing.Invoice.NumberRequired", "Invoice number is required."));
-        if (string.IsNullOrWhiteSpace(planDescription))
-            return Result.Failure<Invoice>(
-                new Error("Billing.Invoice.LineDescription", "Line description is required.")
-            );
 
-        var currencyCheck = Money.Create(0, currency);
-        if (currencyCheck.IsFailure)
-            return Result.Failure<Invoice>(currencyCheck.Error);
-        var cur = currencyCheck.Value.Currency;
-
-        if (grossAmountCents < 0 || discountAmountCents < 0 || netAmountCents < 0)
-            return Result.Failure<Invoice>(new Error("Billing.Invoice.NegativeAmount", "Amounts cannot be negative."));
-        if (discountAmountCents > grossAmountCents)
-            return Result.Failure<Invoice>(
-                new Error("Billing.Invoice.DiscountExceedsGross", "Discount cannot exceed gross amount.")
-            );
-        if (grossAmountCents - discountAmountCents != netAmountCents)
-            return Result.Failure<Invoice>(
-                new Error("Billing.Invoice.InvalidNet", "Net amount must equal gross minus discount.")
-            );
-
-        // Solo una operación con neto > 0 genera un Payment real; net = 0 ⇒ cubierta por código, sin pago.
-        if (netAmountCents > 0 && paymentId is null)
-            return Result.Failure<Invoice>(
-                new Error("Billing.Invoice.PaymentRequired", "A positive net amount requires a PaymentId.")
-            );
-        if (netAmountCents == 0 && paymentId is not null)
-            return Result.Failure<Invoice>(
-                new Error("Billing.Invoice.UnexpectedPayment", "A fully-covered invoice must not carry a PaymentId.")
-            );
-
-        var adjustmentTotal = adjustments?.Sum(a => a.AmountCents) ?? 0;
-        if (adjustmentTotal != discountAmountCents)
-            return Result.Failure<Invoice>(
-                new Error("Billing.Invoice.AdjustmentMismatch", "The sum of adjustments must equal the discount total.")
-            );
+        var creatable = EnsureCreatableForOnboarding(
+            tenantId,
+            onboardingId,
+            paymentId,
+            customer,
+            issuer,
+            planDescription,
+            grossAmountCents,
+            discountAmountCents,
+            netAmountCents,
+            currency,
+            adjustments
+        );
+        if (creatable.IsFailure)
+            return Result.Failure<Invoice>(creatable.Error);
+        var cur = Money.Create(0, currency).Value.Currency;
 
         var invoice = new Invoice
         {
@@ -486,7 +527,7 @@ public sealed class Invoice : AggregateRoot
             PlanId = planId,
             PaymentId = paymentId,
             SettlementType = settlementType,
-            InvoiceNumber = invoiceNumber,
+            InvoiceNumber = invoiceNumber.Value,
             IssueDateUtc = nowUtc,
             DueDateUtc = dueDateUtc,
             PaidAtUtc = nowUtc,
@@ -582,18 +623,25 @@ public sealed class Invoice : AggregateRoot
     /// <summary>Plazo fijo que usaba la emisión antes de los ajustes de facturación.</summary>
     public const int LegacyNetDays = 30;
 
-    /// <summary>Emite el borrador: le asigna el número server-side y las fechas, y lo mueve a Issued.
-    /// A partir de acá la factura es inmutable en montos.</summary>
-    public Result Issue(string invoiceNumber, DateTime nowUtc, DateTime dueDateUtc, Guid actorUserId)
-    {
-        if (Status != InvoiceStatus.Draft)
-            return Result.Failure(
+    /// <summary>Solo un borrador se emite. Se pregunta antes de reservar el número: uno gastado deja un hueco (BIL-16).</summary>
+    public Result EnsureIssuable() =>
+        Status == InvoiceStatus.Draft
+            ? Result.Success()
+            : Result.Failure(
                 new Error("Billing.Invoice.NotDraft", $"Only a Draft invoice can be issued (current: {Status}).")
             );
-        if (string.IsNullOrWhiteSpace(invoiceNumber))
+
+    /// <summary>Emite el borrador: le asigna el número server-side y las fechas, y lo mueve a Issued.
+    /// A partir de acá la factura es inmutable en montos.</summary>
+    public Result Issue(InvoiceNumber invoiceNumber, DateTime nowUtc, DateTime dueDateUtc, Guid actorUserId)
+    {
+        var issuable = EnsureIssuable();
+        if (issuable.IsFailure)
+            return issuable;
+        if (invoiceNumber is null)
             return Result.Failure(new Error("Billing.Invoice.NumberRequired", "Invoice number is required."));
 
-        InvoiceNumber = invoiceNumber;
+        InvoiceNumber = invoiceNumber.Value;
         IssueDateUtc = nowUtc;
         DueDateUtc = dueDateUtc;
         Status = InvoiceStatus.Issued;
@@ -610,10 +658,37 @@ public sealed class Invoice : AggregateRoot
         return Result.Success();
     }
 
-    /// <summary>Correlaciona el PDF generado por Documents (FileId de CloudStorage) con la factura.
-    /// Idempotente: reasignar el mismo FileId es no-op efectivo.</summary>
-    public void AttachPdf(Guid fileId, DateTime nowUtc)
+    /// <summary>Clave del PDF para el estado actual. Cada versión distinta tiene la suya: la pagada, la anulada y cada
+    /// saldo (BIL-PDF1). Con la misma clave, Documents devuelve el PDF que ya generó.</summary>
+    public string PdfGenerationKey()
     {
+        var payablePart = ActivePaymentLink is { } link ? link.ExternalPayableId.ToString("N") : "nolink";
+        var statusPart = Status switch
+        {
+            InvoiceStatus.Paid => "paid",
+            InvoiceStatus.Voided => "voided",
+            _ => "v1",
+        };
+        // La pagada siempre debe 0.
+        var balancePart = Status == InvoiceStatus.Paid ? string.Empty : $":due{AmountDue.AmountCents}";
+        return $"invoice-pdf:{Id:N}:{statusPart}:{payablePart}{balancePart}";
+    }
+
+    /// <summary>Correlaciona el PDF generado por Documents (FileId de CloudStorage) con la factura. El orden de llegada
+    /// no está garantizado: un PDF de un estado anterior no pisa al vigente (BIL-7), salvo que la factura no tenga
+    /// ninguno. Sin clave (Documents aún sin copiarla) solo se protege la versión pagada.</summary>
+    public void AttachPdf(Guid fileId, string? generationKey, DateTime nowUtc)
+    {
+        var isCurrent = generationKey == PdfGenerationKey();
+        var isStale = generationKey is null
+            ? Status == InvoiceStatus.Paid && PaidPdfFileId is not null
+            : !isCurrent && PdfFileId is not null;
+        if (isStale)
+            return;
+
+        if (isCurrent && Status == InvoiceStatus.Paid)
+            PaidPdfFileId = fileId;
+
         PdfFileId = fileId;
         UpdatedAtUtc = nowUtc;
     }
@@ -767,12 +842,53 @@ public sealed class Invoice : AggregateRoot
         return Result.Success();
     }
 
-    /// <summary>
-    /// Reemisión (item 6.3), lado ORIGINAL: valida que la factura pueda reemplazarse y la marca como
-    /// reemplazada por <paramref name="replacementId"/>. El caller la anula por separado (repone stock +
-    /// revoca link). No permite reemplazar un borrador (se edita/borra), una anulada o una ya reemplazada.
-    /// </summary>
-    public Result MarkReplacedBy(Guid replacementId, DateTime nowUtc)
+    /// <summary>Motivo de la anulación cuando la reemisión no trae uno.</summary>
+    public const string DefaultReissueReason = "Replaced by a corrected invoice.";
+
+    /// <summary>Reemisión (item 6.3): borrador con copia fiel de cliente, moneda, líneas (con su CatalogItemId,
+    /// para rehacer el stock al emitir), notas, emisor y condiciones de cobro.</summary>
+    public Result<Invoice> CreateReplacementDraft(Guid actorUserId, DateTime nowUtc) =>
+        CreateDraft(
+            TenantId,
+            actorUserId,
+            Customer,
+            Currency,
+            [
+                .. _lines.Select(l => new DraftInvoiceLine(
+                    l.Description,
+                    l.Quantity,
+                    l.UnitAmount.AmountCents,
+                    l.TaxBasisPoints,
+                    l.CatalogItemId
+                )),
+            ],
+            Notes,
+            nowUtc,
+            Issuer,
+            GetTermsSnapshot()
+        );
+
+    /// <summary>Reemisión (item 6.3): enlaza esta factura con <paramref name="replacement"/>, le arrastra lo
+    /// cobrado como crédito y anula esta. Devuelve el motivo de la anulación. <see cref="AmountPaid"/> es la
+    /// suma de <see cref="Payments"/>, y también cubre las facturas previas a esa tabla.</summary>
+    public Result<string> ReissueAs(Invoice replacement, string? reason, DateTime nowUtc, Guid actorUserId)
+    {
+        var linked = replacement.LinkAsReplacementFor(Id, AmountPaid.AmountCents, nowUtc);
+        if (linked.IsFailure)
+            return Result.Failure<string>(linked.Error);
+
+        var marked = MarkReplacedBy(replacement.Id, nowUtc);
+        if (marked.IsFailure)
+            return Result.Failure<string>(marked.Error);
+
+        var voidReason = string.IsNullOrWhiteSpace(reason) ? DefaultReissueReason : reason.Trim();
+        var voided = Void(voidReason, nowUtc, actorUserId);
+        return voided.IsFailure ? Result.Failure<string>(voided.Error) : Result.Success(voidReason);
+    }
+
+    /// <summary>Marca esta factura como reemplazada. No permite reemplazar un borrador (se edita o se borra) ni una
+    /// ya reemplazada.</summary>
+    private Result MarkReplacedBy(Guid replacementId, DateTime nowUtc)
     {
         if (DeletedAtUtc is not null)
             return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot be reissued."));

@@ -1,6 +1,6 @@
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Application.Onboarding.EmailVerification.Commands;
-using TaxVision.Auth.Domain.Onboarding.EmailVerification;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.EmailVerification.Commands;
+using TaxVision.Auth.Onboarding.Domain.EmailVerification;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;

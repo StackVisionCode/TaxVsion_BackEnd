@@ -51,7 +51,12 @@ public static class GenerateOnboardingReceiptDocumentHandler
                 return Result.Failure<GenerateOnboardingReceiptDocumentResult>(validation.Error);
 
             var nowUtc = clock.GetUtcNow().UtcDateTime;
-            var existing = await repository.GetByIdempotencyKeyAsync(PlatformTenant.Id, command.IdempotencyKey, ct);
+            var existing = await repository.GetByIdempotencyKeyAsync(
+                PlatformTenant.Id,
+                command.SourceService,
+                command.IdempotencyKey,
+                ct
+            );
             if (
                 existing is not null
                 && !GenerationRetryPolicy.IsRetryable(existing, nowUtc, retryOptions.Value.StalledAfter)
@@ -95,7 +100,12 @@ public static class GenerateOnboardingReceiptDocumentHandler
             }
             catch (ConflictException)
             {
-                var winner = await repository.GetByIdempotencyKeyAsync(PlatformTenant.Id, command.IdempotencyKey, ct);
+                var winner = await repository.GetByIdempotencyKeyAsync(
+                    PlatformTenant.Id,
+                    command.SourceService,
+                    command.IdempotencyKey,
+                    ct
+                );
                 if (winner is not null)
                     return Result.Success(
                         new GenerateOnboardingReceiptDocumentResult(winner.Id, winner.Status.ToString())

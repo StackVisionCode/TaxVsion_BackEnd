@@ -288,9 +288,6 @@ public sealed class CountingStorage : ISignatureCloudStorageClient
         );
     }
 
-    public Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default) =>
-        throw new NotSupportedException();
-
     public Task<Result<Uri>> GetDownloadUrlAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
         throw new NotSupportedException();
 

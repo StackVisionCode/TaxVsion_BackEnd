@@ -193,6 +193,7 @@ public static class ReauthenticateHandler
             ct
         );
 
+        await unitOfWork.SaveChangesAsync(ct);
         if (!alreadyLocked && user.IsLockedOut(now))
         {
             await bus.PublishAsync(
@@ -207,8 +208,6 @@ public static class ReauthenticateHandler
                 }
             );
         }
-
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Failure<ReauthenticateResponse>(Failed);
     }
 }

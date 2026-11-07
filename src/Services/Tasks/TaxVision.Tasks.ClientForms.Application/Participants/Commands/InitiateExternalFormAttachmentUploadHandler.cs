@@ -163,7 +163,7 @@ public static class InitiateExternalFormAttachmentUploadHandler
         var address = FormAnswerAddress.Create(command.ComponentId, command.RowId);
         if (address.IsFailure)
             return Result.Failure<FormAttachment>(address.Error);
-        return request.RegisterAttachment(
+        return request.Files.Register(
             address.Value,
             initiated.FileId,
             command.OriginalName,

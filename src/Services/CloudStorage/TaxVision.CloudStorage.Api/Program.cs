@@ -239,10 +239,6 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(InitiateUploadHandler).Assembly);
-    // The mirror consumer lives in the API assembly, outside the Application assembly above.
-    // Without explicit discovery, FileAvailableIntegrationEvent is received by this service's
-    // cloudstorage-events queue but no handler applies the selected cloud provider copy policy.
-    options.Discovery.IncludeType(typeof(TaxVision.CloudStorage.Api.Consumers.CloudStorageFileMirrorConsumer));
     // Consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ListenForPlatformSettings();
@@ -258,6 +254,9 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CloudStorageDbContext>();
     options.Policies.AutoApplyTransactions();
     options.UseTaxVisionDurableLocalQueues();
+    options.UseTaxVisionDomainEvents();
+    // Los avisos de un archivo salen en el orden del commit.
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
 
     // Cola local del escaneo (durable y con paralelismo acotado): ver ScanQueueConfiguration.
     var storageOptions =

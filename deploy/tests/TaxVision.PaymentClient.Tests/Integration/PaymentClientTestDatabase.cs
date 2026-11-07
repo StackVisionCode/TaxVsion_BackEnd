@@ -1,23 +1,15 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.PaymentClient.Infrastructure.Persistence;
 
 namespace TaxVision.PaymentClient.Tests.Integration;
 
-/// <summary>Base local de PaymentClient para las T-INT: PAYMENTCLIENT_DB_CONNECTION o los user-secrets de la Api.</summary>
+/// <summary>Contextos y utilidades sobre la base temporal de las T-INT de PaymentClient (BB-10).</summary>
 internal static class PaymentClientTestDatabase
 {
     public static string ConnectionString { get; } =
-        Environment.GetEnvironmentVariable("PAYMENTCLIENT_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("7c2a4f19-3e6b-4d02-8a91-paymentclient1")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set PAYMENTCLIENT_DB_CONNECTION or the PaymentClient user-secrets to run this test."
-        );
+        PaymentClientIntegrationDatabase.ConnectionString;
 
     public static PaymentClientDbContext NewContext(Guid tenantId) =>
         new(

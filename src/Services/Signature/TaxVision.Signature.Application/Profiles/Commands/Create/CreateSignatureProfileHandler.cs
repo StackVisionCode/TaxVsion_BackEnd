@@ -6,6 +6,7 @@ using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Application.Profiles.Authorization;
 using TaxVision.Signature.Application.Requests.Public;
 using TaxVision.Signature.Domain.Profiles;
+using Wolverine;
 
 namespace TaxVision.Signature.Application.Profiles.Commands.Create;
 
@@ -18,6 +19,7 @@ public static class CreateSignatureProfileHandler
         ISignatureCloudStorageClient storage,
         ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -67,16 +69,16 @@ public static class CreateSignatureProfileHandler
             TaxYear: DateTime.UtcNow.Year,
             ActorId: cmd.ActorUserId
         );
-        var uploaded = await storage.UploadAsync(cmd.TenantId, upload, ct);
-        if (uploaded.IsFailure)
-            return Result.Failure<SignatureProfileResponse>(uploaded.Error);
+        var staged = await storage.StageAsync(cmd.TenantId, upload, ct);
+        if (staged.IsFailure)
+            return Result.Failure<SignatureProfileResponse>(staged.Error);
 
         var created = SignatureProfile.Create(
             cmd.TenantId,
             cmd.ActorUserId,
             cmd.OwnerUserId,
             cmd.Label,
-            uploaded.Value,
+            staged.Value.FileId,
             width,
             height
         );
@@ -91,6 +93,7 @@ public static class CreateSignatureProfileHandler
 
         await repository.AddAsync(profile, ct);
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(staged.Value);
 
         return Result.Success(SignatureProfileResponse.From(profile));
     }

@@ -114,6 +114,7 @@ public static class InitiateMultipartUploadHandler
                 clock.UtcNow
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new FileAccessAuditedIntegrationEvent
             {
@@ -126,7 +127,6 @@ public static class InitiateMultipartUploadHandler
                 CorrelationId = command.Audit.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(
             new InitiatedMultipartUploadResponse(

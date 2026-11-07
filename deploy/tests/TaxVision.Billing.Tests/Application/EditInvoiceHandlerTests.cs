@@ -69,6 +69,79 @@ public sealed class EditInvoiceHandlerTests
     }
 
     [Fact]
+    public async Task EditDraft_ChecksNoStock_AndPublishesNothing()
+    {
+        var invoice = Invoice
+            .CreateDraft(
+                TenantId,
+                ActorUserId,
+                new CustomerSnapshot(Guid.NewGuid(), "Client", "client@example.com", null, null, null),
+                "USD",
+                [new DraftInvoiceLine("Ink cartridge", 2, 2_000, 0, CatalogItemId)],
+                null,
+                Now
+            )
+            .Value;
+
+        var result = await EditAsync(invoice, quantity: 5);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Draft", result.Value.Status);
+        Assert.Empty(_inventory.Checks);
+        Assert.Equal(1, _unitOfWork.Saves);
+        Assert.Empty(_bus.Published);
+    }
+
+    [Fact]
+    public async Task EditIssued_ChecksStockOnlyForCatalogLines()
+    {
+        var invoice = IssuedInvoice();
+
+        var result = await EditInvoiceHandler.Handle(
+            new EditInvoiceCommand(
+                TenantId,
+                invoice.Id,
+                ActorUserId,
+                new InvoiceCustomerInput(invoice.Customer.CustomerId, "Client", "client@example.com", null, null, null),
+                "USD",
+                [
+                    new InvoiceLineInput("Ink cartridge", 3, 2_000, 0, CatalogItemId),
+                    new InvoiceLineInput("Service", 1, 500, 0, null),
+                    new InvoiceLineInput("Empty catalog", 1, 500, 0, Guid.Empty),
+                ],
+                null,
+                CanViewAll: true
+            ),
+            new InMemoryInvoiceRepository(invoice),
+            Options.Create(new BillingVisibilityOptions()),
+            _inventory,
+            _unitOfWork,
+            _bus,
+            new FixedClock(Now),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var line = Assert.Single(Assert.Single(_inventory.Checks).Lines);
+        Assert.Equal(CatalogItemId, line.CatalogItemId);
+        Assert.Equal(3, line.Quantity);
+    }
+
+    [Fact]
+    public async Task EditVoided_IsRejected_WithoutSavingOrPublishing()
+    {
+        var invoice = IssuedInvoice();
+        Assert.True(invoice.Void("wrong", Now, ActorUserId).IsSuccess);
+
+        var result = await EditAsync(invoice, quantity: 5);
+
+        Assert.Equal("Billing.Invoice.NotEditable", result.Error.Code);
+        Assert.Empty(_inventory.Checks);
+        Assert.Equal(0, _unitOfWork.Saves);
+        Assert.Empty(_bus.Published);
+    }
+
+    [Fact]
     public async Task EditPaidInvoiceUp_EnsuresLinkForDue()
     {
         var invoice = IssuedInvoice();
@@ -169,7 +242,7 @@ public sealed class EditInvoiceHandlerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue("INV-2026-00001", Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
         return invoice;
     }
 }

@@ -225,6 +225,10 @@ public sealed class OfficeNameInjectionTests
             new EventTemplateResolver(new SingleMappingRepository(TemplateKeyValue)),
             new FakeEmailTemplateRepository(template),
             new FakeEmailLayoutRepository(layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(template),
+                new FakeEmailLayoutRepository(layout)
+            ),
             cloudStorage,
             new FakeLogoResolver(Logo),
             profiles,

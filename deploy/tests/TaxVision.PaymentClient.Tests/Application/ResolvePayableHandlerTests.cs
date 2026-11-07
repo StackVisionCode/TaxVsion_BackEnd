@@ -347,6 +347,12 @@ public sealed class ResolvePayableHandlerTests
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
+        public Task<TaxVision.PaymentClient.Domain.TenantPayments.TenantPayment?> GetByConnectChargeReferenceAsync(
+            Guid tenantId,
+            string providerChargeReferenceOnConnect,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
+
         public Task<IReadOnlyList<AwaitingProviderPayment>> GetAwaitingProviderConfirmationAsync(
             DateTime stuckBeforeUtc,
             DateTime createdAfterUtc,

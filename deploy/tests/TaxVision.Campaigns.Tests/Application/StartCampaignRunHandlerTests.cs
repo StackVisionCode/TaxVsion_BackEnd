@@ -48,10 +48,12 @@ public sealed class StartCampaignRunHandlerTests
                 [new StartRunRecipient("c1", "ana@x.com", null), new StartRunRecipient("c2", "beto@x.com", null)]
             ),
             _campaigns,
-            _wallet,
+            new CampaignRunStarter(
+                _wallet,
+                new FakeCorrelationContext(),
+                NullLogger<CampaignRunStarter>.Instance
+            ),
             _bus,
-            new FakeCorrelationContext(),
-            NullLogger<CampaignRun>.Instance,
             CancellationToken.None
         );
 

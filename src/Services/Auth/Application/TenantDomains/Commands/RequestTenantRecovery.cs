@@ -59,6 +59,7 @@ public static class RequestTenantRecoveryHandler
         if (matches.Count == 0)
             return Result.Success();
 
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new TenantRecoveryRequestedIntegrationEvent
             {
@@ -70,8 +71,6 @@ public static class RequestTenantRecoveryHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }

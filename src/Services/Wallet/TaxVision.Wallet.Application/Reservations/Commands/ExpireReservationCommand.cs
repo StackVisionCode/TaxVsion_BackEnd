@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Wallet.Application.Reservations.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Domain.Reservations;
+using TaxVision.Wallet.Domain.ValueObjects;
 using TaxVision.Wallet.Domain.Wallet;
 
 namespace TaxVision.Wallet.Application.Reservations.Commands;
@@ -46,7 +47,11 @@ public static class ExpireReservationHandler
 
         // Validar antes de mutar: después de tocar un agregado rastreado no se devuelve Failure.
         var reserved = reservation.ReservedMicros;
-        if (wallet.HeldMicros < reserved)
+        var amount = WalletMoney.Create(reserved, reservation.Currency);
+        if (amount.IsFailure)
+            return Result.Failure<ReservationExpiry>(amount.Error);
+        var covered = wallet.EnsureHoldCovers(amount.Value);
+        if (covered.IsFailure)
         {
             logger.LogError(
                 "Cannot expire {RefType}:{RefId} (tenant {TenantId}): held {HeldMicros} < reserved {ReservedMicros}.",
@@ -56,7 +61,7 @@ public static class ExpireReservationHandler
                 wallet.HeldMicros,
                 reserved
             );
-            return Result.Failure<ReservationExpiry>(WalletErrors.InsufficientHold);
+            return Result.Failure<ReservationExpiry>(covered.Error);
         }
 
         var expired = reservation.Expire(DateTime.UtcNow);
@@ -64,7 +69,7 @@ public static class ExpireReservationHandler
             return Result.Failure<ReservationExpiry>(expired.Error);
 
         var release = wallet.Release(
-            reserved,
+            amount.Value,
             opKey: $"wallet-release:{command.ReferenceType}:{command.ReferenceId:N}",
             referenceId: command.ReferenceId
         );

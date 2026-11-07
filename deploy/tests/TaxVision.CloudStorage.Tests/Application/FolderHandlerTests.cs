@@ -420,6 +420,43 @@ public sealed class FolderHandlerTests
     }
 
     [Fact]
+    public async Task MoveFileToFolder_refuses_a_file_in_the_recycle_bin()
+    {
+        var tenantId = Guid.NewGuid();
+        var folder = RootFolder(tenantId);
+        var file = RegisteredFile(tenantId);
+        file.SoftDelete(DateTime.UtcNow, TimeSpan.FromDays(30));
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var folders = new FakeFolderRepository();
+        folders.Seed(folder);
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await MoveFileToFolderHandler.Handle(
+            new MoveFileToFolderCommand(
+                tenantId,
+                Guid.NewGuid(),
+                TenantScope,
+                file.Id,
+                folder.Id,
+                new RequestAuditContext(null, null, "corr-1")
+            ),
+            files,
+            folders,
+            new FakeShareLinkRepository(),
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
+            unitOfWork,
+            CancellationToken.None
+        );
+
+        Assert.Equal(FileErrors.InvalidTransition, result.Error);
+        Assert.Null(file.FolderId);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
     public async Task MoveFileToFolder_rejects_a_folder_owned_by_someone_else()
     {
         var tenantId = Guid.NewGuid();

@@ -75,22 +75,57 @@ public static class OnboardingInvoiceRequestedConsumer
 
         var nowUtc = clock.GetUtcNow().UtcDateTime;
         var periodKey = nowUtc.Year.ToString(CultureInfo.InvariantCulture);
+        var customer = new CustomerSnapshot(evt.OnboardingId, evt.PayerName, evt.PayerEmail, null, null, null);
+        var issuer = platformIssuer.Value.ToSnapshot(platform.Current);
+
+        // BIL-17: se valida antes de reservar el número; uno gastado deja un hueco en la serie ONB-.
+        var creatable = Invoice.EnsureCreatableForOnboarding(
+            PlatformTenant.Id,
+            evt.OnboardingId,
+            evt.PaymentId,
+            customer,
+            issuer,
+            evt.PlanDescription,
+            evt.GrossAmountCents,
+            evt.DiscountAmountCents,
+            evt.NetAmountCents,
+            evt.Currency,
+            adjustments
+        );
+        if (creatable.IsFailure)
+        {
+            logger.LogWarning(
+                "Could not create onboarding invoice for {OnboardingId}: {Code} - {Message}",
+                evt.OnboardingId,
+                creatable.Error.Code,
+                creatable.Error.Message
+            );
+            return;
+        }
 
         // Secuencia de onboarding propia, bajo PlatformTenant.Id (distinta del INV por tenant).
         var sequence = await sequences.GetOrCreateAsync(PlatformTenant.Id, $"ONB-{periodKey}", ct);
         var number = sequence.Allocate();
-        var invoiceNumber = $"ONB-{periodKey}-{number:D5}";
-
-        var customer = new CustomerSnapshot(evt.OnboardingId, evt.PayerName, evt.PayerEmail, null, null, null);
+        var invoiceNumber = InvoiceNumber.Create($"ONB-{periodKey}-{number:D5}");
+        if (invoiceNumber.IsFailure)
+        {
+            logger.LogWarning(
+                "Could not number onboarding invoice for {OnboardingId}: {Code} - {Message}",
+                evt.OnboardingId,
+                invoiceNumber.Error.Code,
+                invoiceNumber.Error.Message
+            );
+            return;
+        }
 
         var result = Invoice.CreateForOnboarding(
             PlatformTenant.Id,
             evt.OnboardingId,
             evt.PlanId,
             evt.PaymentId,
-            invoiceNumber,
+            invoiceNumber.Value,
             customer,
-            platformIssuer.Value.ToSnapshot(platform.Current),
+            issuer,
             evt.PlanDescription,
             evt.GrossAmountCents,
             evt.DiscountAmountCents,

@@ -27,12 +27,6 @@ public interface IFileObjectRepository
     Task<FileObject?> GetForUpdateAsync(Guid tenantId, Guid fileId, CancellationToken ct);
 
     /// <summary>
-    /// Pide el turno exclusivo para escanear el archivo hasta el fin de la transacción en curso, sin
-    /// tocar su fila: un borrado no espera al antivirus. False si otro escaneo lo tiene.
-    /// </summary>
-    Task<bool> TryClaimScanAsync(Guid fileId, CancellationToken ct);
-
-    /// <summary>
     /// Listado plano del tenant (sin la papelera). <paramref name="restrictedCustomerId"/> es el
     /// limite de seguridad del portal de cliente (siempre aplicado si viene, nunca opcional);
     /// ownerType/ownerId son un filtro adicional solo para staff interno — cuando el caller es
@@ -176,6 +170,15 @@ public interface IFileObjectRepository
         IReadOnlyCollection<Guid> ids,
         CancellationToken ct
     );
+}
+
+/// <summary>
+/// Turno exclusivo para escanear un archivo, sin transacción ni candado sobre su fila: un duplicado sale sin
+/// descargar y un borrado no espera al antivirus. Null si otro escaneo lo tiene; se suelta al liberar el turno.
+/// </summary>
+public interface IScanClaims
+{
+    Task<IAsyncDisposable?> TryClaimAsync(Guid fileId, CancellationToken ct);
 }
 
 /// <summary>Fase C2 — carpetas navegables (arbol logico, ver Domain/Folders/Folder.cs).</summary>

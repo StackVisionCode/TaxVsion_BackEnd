@@ -1,5 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
+using System.Globalization;
 using Microsoft.Extensions.Options;
 using TaxVision.ContentScanner;
 using TaxVision.ContentScanner.Scanning;
@@ -16,6 +15,7 @@ builder
 builder.Services.AddSingleton<INsfwClassifier, OnnxNsfwClassifier>();
 builder.Services.AddSingleton<IFrameExtractor, FfmpegFrameExtractor>();
 builder.Services.AddSingleton<ScanService>();
+builder.Services.AddSingleton<ScannerApiKey>();
 builder.Services.AddSingleton<ITempDiskSpace, DriveTempDiskSpace>();
 
 var maxUploadBytes = builder.Configuration.GetValue<long>($"{ContentScannerOptions.SectionName}:MaxUploadBytes");
@@ -40,26 +40,21 @@ app.Run();
 internal static class ScanEndpoint
 {
     public const string ApiKeyHeader = "X-Scanner-Key";
+    public const string ModelUnavailableReason = "model_unavailable";
 
     public static async ValueTask<object?> RequireApiKey(
         EndpointFilterInvocationContext context,
         EndpointFilterDelegate next
     )
     {
-        var expected = context
-            .HttpContext.RequestServices.GetRequiredService<IOptions<ContentScannerOptions>>()
-            .Value.ApiKey;
+        var key = context.HttpContext.RequestServices.GetRequiredService<ScannerApiKey>();
         var provided = context.HttpContext.Request.Headers[ApiKeyHeader].ToString();
-        // Comparación en tiempo constante: el tiempo de respuesta no revela cuánto de la clave coincide.
-        var ok = CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(provided),
-            Encoding.UTF8.GetBytes(expected)
-        );
-        return ok ? await next(context) : Results.Unauthorized();
+        return key.Matches(provided) ? await next(context) : Results.Unauthorized();
     }
 
     public static async Task<IResult> HandleAsync(
         HttpRequest request,
+        INsfwClassifier classifier,
         ScanService scanner,
         ITempDiskSpace disk,
         IOptions<ContentScannerOptions> options,
@@ -68,6 +63,10 @@ internal static class ScanEndpoint
         CancellationToken ct
     )
     {
+        // Sin modelo no hay escaneo posible: se avisa antes de tocar el cuerpo.
+        if (!classifier.IsReady)
+            return ModelUnavailable(request.HttpContext.Response, options.Value.ModelUnavailableRetryAfterSeconds);
+
         var mediaType = request.ContentType?.Split(';')[0].Trim().ToLowerInvariant() ?? string.Empty;
         MediaKind? kind =
             mediaType.StartsWith("image/", StringComparison.Ordinal) ? MediaKind.Image
@@ -118,6 +117,15 @@ internal static class ScanEndpoint
             if (path is not null)
                 File.Delete(path);
         }
+    }
+
+    private static IResult ModelUnavailable(HttpResponse response, int retryAfterSeconds)
+    {
+        response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+        return Results.Json(
+            new { reason = ModelUnavailableReason },
+            statusCode: StatusCodes.Status503ServiceUnavailable
+        );
     }
 
     private static IResult Busy() =>

@@ -21,6 +21,9 @@ public interface IWalletRepository
     /// <summary>Asientos del ledger del tenant, más recientes primero (paginado).</summary>
     Task<PagedResult<LedgerEntry>> ListLedgerAsync(Guid tenantId, int page, int size, CancellationToken ct = default);
 
+    /// <summary>Tenants cuyo saldo no cuadra con el ledger, o con más de un monedero. Cruza todos los tenants.</summary>
+    Task<IReadOnlyList<WalletBalanceMismatch>> ListBalanceMismatchesAsync(CancellationToken ct = default);
+
     // ---------- F2: recargas (top-up) ----------
 
     Task AddTopUpAsync(WalletTopUp topUp, CancellationToken ct = default);

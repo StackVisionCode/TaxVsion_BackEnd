@@ -110,7 +110,7 @@ public sealed class SendInvoiceToCustomerHandlerTests
     private static Invoice Issued(string? email)
     {
         var invoice = Draft(email);
-        Assert.True(invoice.Issue("INV-2026-00005", Now, Now.AddDays(30), Actor).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00005").Value, Now, Now.AddDays(30), Actor).IsSuccess);
         return invoice;
     }
 

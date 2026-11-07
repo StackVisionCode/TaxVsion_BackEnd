@@ -120,7 +120,7 @@ public sealed class AdministrativeHttpOutsideTransactionIntegrationTests : IAsyn
         await using var db = _database.NewContext();
         for (var i = 0; i < count; i++)
         {
-            var tenant = DomainTenant.Create($"Office {i}", $"office-{i}", "Etc/UTC").Value;
+            var tenant = DomainTenant.Create($"Office {i}", $"office-{i}", "Etc/UTC", DateTime.UtcNow).Value;
             db.Tenants.Add(tenant);
             _billing.Items.Add(
                 new BillingIssuerProfile(
@@ -183,6 +183,7 @@ public sealed class AdministrativeHttpOutsideTransactionIntegrationTests : IAsyn
             Guid tenantId,
             TenantLogoUpload upload,
             TenantBrandStoredFile stored,
+            Wolverine.IMessageBus bus,
             CancellationToken ct = default
         ) => Task.CompletedTask;
 

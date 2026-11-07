@@ -27,7 +27,7 @@ public static class SignatureRequestFromFormCreatedConsumer
                 return;
             if (
                 FormSignatureResultSupport.Failed(
-                    request.LinkSignatureRequest(revision, evt.SignatureRequestId),
+                    request.Summary.LinkSignatureRequest(revision, evt.SignatureRequestId),
                     "Linked",
                     requestId,
                     revision,

@@ -119,7 +119,7 @@ public sealed class SeatsCheckoutPaidConsumerTests
                 autoRenew: true,
                 Money.Create(15m, "USD").Value,
                 BillingCycle.Monthly,
-                proratedTotalCents: 3000,
+                proratedTotal: Money.FromCents(3000, "USD"),
                 Guid.NewGuid(),
                 DateTime.UtcNow
             )

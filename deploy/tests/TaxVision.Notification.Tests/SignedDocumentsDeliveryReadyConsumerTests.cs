@@ -8,6 +8,8 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers.Signature;
+using TaxVision.Notification.Application.Directory.Abstractions;
+using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Domain.Notifications;
 
 namespace TaxVision.Notification.Tests;
@@ -115,6 +117,86 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         Assert.Empty(gateway.Queued);
     }
 
+    [Fact]
+    public async Task A_customer_with_the_email_off_gets_nothing()
+    {
+        var customerId = Guid.NewGuid();
+        var (gateway, sms) = (new Gateway(), new Sms());
+
+        await Handle(
+            Event(purpose: "Completed", items: 1, customerId: customerId),
+            gateway,
+            new Scribe(),
+            sms,
+            policies: new Policies(customerId, emailEnabled: false, smsEnabled: true)
+        );
+
+        Assert.Empty(gateway.Queued);
+        Assert.Empty(sms.Sent);
+    }
+
+    [Fact]
+    public async Task A_customer_with_the_sms_off_gets_nothing()
+    {
+        var customerId = Guid.NewGuid();
+        var (gateway, sms) = (new Gateway(), new Sms());
+
+        await Handle(
+            Event(purpose: "Completed", items: 1, preferSms: true, customerId: customerId),
+            gateway,
+            new Scribe(),
+            sms,
+            policies: new Policies(customerId, emailEnabled: true, smsEnabled: false)
+        );
+
+        Assert.Empty(gateway.Queued);
+        Assert.Empty(sms.Sent);
+    }
+
+    [Fact]
+    public async Task A_customer_with_an_active_portal_gets_the_portal_link()
+    {
+        var customerId = Guid.NewGuid();
+        var scribe = new Scribe();
+
+        await Handle(
+            Event(purpose: "Completed", items: 1, customerId: customerId) with
+            {
+                AvailableInClientPortal = true,
+            },
+            new Gateway(),
+            scribe,
+            new Sms(),
+            resolver: new PortalResolver()
+        );
+
+        Assert.StartsWith("https://office.taxproffice.com/", (string)scribe.Variables["portal_url"]!);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Without_files_in_the_portal_or_a_portal_account_there_is_no_portal_link(
+        bool availableInPortal,
+        bool hasPortalAccount
+    )
+    {
+        var scribe = new Scribe();
+
+        await Handle(
+            Event(purpose: "Completed", items: 1, customerId: Guid.NewGuid()) with
+            {
+                AvailableInClientPortal = availableInPortal,
+            },
+            new Gateway(),
+            scribe,
+            new Sms(),
+            resolver: hasPortalAccount ? new PortalResolver() : NoPortalRecipientResolver.Instance
+        );
+
+        Assert.Null(scribe.Variables["portal_url"]);
+    }
+
     // ------------------------------------------------------------------
 
     private static readonly Guid TenantId = Guid.NewGuid();
@@ -124,7 +206,8 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         string purpose,
         int items,
         IReadOnlyList<Guid>? attachments = null,
-        bool preferSms = false
+        bool preferSms = false,
+        Guid? customerId = null
     ) =>
         new()
         {
@@ -139,7 +222,7 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
                 "Ana Perez",
                 "En",
                 1,
-                null,
+                customerId,
                 preferSms ? "+15550001111" : null,
                 preferSms ? "Sms" : "Email"
             ),
@@ -163,21 +246,25 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         Gateway gateway,
         Scribe scribe,
         Sms sms,
-        Codec? codec = null
+        Codec? codec = null,
+        ICustomerContactPolicyRepository? policies = null,
+        IRecipientResolver? resolver = null
     ) =>
         SignedDocumentsDeliveryReadyConsumer.Handle(
             evt,
-            codec ?? new Codec(),
+            new SignedDeliveryLinkResolver(
+                codec ?? new Codec(),
+                policies ?? new AllowAllContactPolicyRepository(),
+                resolver ?? NoPortalRecipientResolver.Instance,
+                Options.Create(new PortalOptions()),
+                new Host(),
+                NullLogger<SignedDeliveryLinkResolver>.Instance
+            ),
             gateway,
             scribe,
             sms,
-            new AllowAllContactPolicyRepository(),
-            NoPortalRecipientResolver.Instance,
-            Options.Create(new PortalOptions()),
             TestPlatform.Settings,
-            new Host(),
             new Correlation(),
-            NullLogger<SignedDocumentsDeliveryReadyIntegrationEvent>.Instance,
             CancellationToken.None
         );
 
@@ -275,6 +362,41 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
             Sent.Add(text);
             return Task.FromResult(Result.Success());
         }
+    }
+
+    private sealed class Policies(Guid customerId, bool emailEnabled, bool smsEnabled) : ICustomerContactPolicyRepository
+    {
+        public Task<CustomerContactPolicyProjection?> GetByCustomerIdAsync(
+            Guid tenantId,
+            Guid id,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<CustomerContactPolicyProjection?>(
+                id == customerId
+                    ? CustomerContactPolicyProjection.Create(tenantId, id, emailEnabled, smsEnabled)
+                    : null
+            );
+
+        public Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> customerIds,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyCollection<Guid>>([]);
+
+        public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class PortalResolver : IRecipientResolver
+    {
+        public Task<IReadOnlyList<Guid>> ResolveAsync(ByPermission audience, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
+
+        public Task<Result<IReadOnlyList<Guid>>> ResolveAsync(
+            NotificationAudience audience,
+            RecipientValidation validation,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Success<IReadOnlyList<Guid>>([Guid.NewGuid()]));
     }
 
     private sealed class Host : ITenantHostResolver

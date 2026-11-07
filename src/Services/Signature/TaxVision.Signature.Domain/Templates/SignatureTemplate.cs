@@ -213,7 +213,9 @@ public sealed class SignatureTemplate : TenantEntity
 
     public Result UpdateMetadata(string title, string? description, string category)
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
 
         if (string.IsNullOrWhiteSpace(title))
             return Result.Failure(new Error("Signature.Template.Title", "Title is required."));
@@ -256,7 +258,9 @@ public sealed class SignatureTemplate : TenantEntity
         bool expirationEnabled
     )
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
 
         if (
             defaultTokenExpirationHours < SignatureLimits.MinTokenHours
@@ -327,7 +331,9 @@ public sealed class SignatureTemplate : TenantEntity
     /// </summary>
     public Result SetPractitionerPin(string pinHash)
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
         if (string.IsNullOrWhiteSpace(pinHash))
             return Result.Failure(new Error("Signature.Template.PinHash", "PIN hash is required."));
 
@@ -339,7 +345,9 @@ public sealed class SignatureTemplate : TenantEntity
     /// <summary>Quita el Practitioner PIN por defecto de la plantilla. Solo en <c>Draft</c>.</summary>
     public Result ClearPractitionerPin()
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
         PractitionerPinHash = null;
         Touch();
         return Result.Success();
@@ -351,7 +359,9 @@ public sealed class SignatureTemplate : TenantEntity
     /// </summary>
     public Result SetBaseDocument(Guid? baseDocumentFileId)
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
         BaseDocumentFileId = baseDocumentFileId == Guid.Empty ? null : baseDocumentFileId;
         _fields.Clear();
         _preparerFields.Clear();
@@ -369,7 +379,9 @@ public sealed class SignatureTemplate : TenantEntity
 
     public Result<TemplateDocument> AddDocument(SignatureLimits limits, Guid fileId, string title)
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return Result.Failure<TemplateDocument>(draft.Error);
         if (_documents.Count >= limits.MaxDocumentsPerRequest)
             return Result.Failure<TemplateDocument>(
                 new Error(
@@ -392,7 +404,9 @@ public sealed class SignatureTemplate : TenantEntity
 
     public Result RemoveDocument(Guid documentId)
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
         var document = _documents.Find(candidate => candidate.Id == documentId);
         if (document is null)
             return Result.Failure(new Error("Signature.Template.DocumentMissing", "Template document was not found."));
@@ -409,7 +423,9 @@ public sealed class SignatureTemplate : TenantEntity
 
     public Result ReorderDocuments(IReadOnlyList<Guid> orderedDocumentIds)
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
         if (orderedDocumentIds.Count != _documents.Count || orderedDocumentIds.Distinct().Count() != _documents.Count)
             return Result.Failure(
                 new Error("Signature.Template.DocumentOrder", "Document order must contain every document once.")
@@ -444,7 +460,9 @@ public sealed class SignatureTemplate : TenantEntity
         SignerVerificationMethod? requiredVerificationMethod = null
     )
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return Result.Failure<TemplateSignerSlot>(draft.Error);
 
         var maxSlots = Math.Min(maxRolesPerTemplate, limits.MaxSignersPerRequest);
         if (_slots.Count >= maxSlots)
@@ -468,7 +486,9 @@ public sealed class SignatureTemplate : TenantEntity
 
     public Result RemoveSlot(int slotOrder)
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
 
         var slot = FindSlotByOrderOrNull(slotOrder);
         if (slot is null)
@@ -492,7 +512,9 @@ public sealed class SignatureTemplate : TenantEntity
         SignerVerificationMethod? requiredVerificationMethod
     )
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
 
         var slot = FindSlotByOrderOrNull(slotOrder);
         if (slot is null)
@@ -509,7 +531,9 @@ public sealed class SignatureTemplate : TenantEntity
     public Result ReorderSlots(IReadOnlyList<int> orderedSlotOrders)
     {
         ArgumentNullException.ThrowIfNull(orderedSlotOrders);
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
 
         if (orderedSlotOrders.Count != _slots.Count)
             return Result.Failure(
@@ -557,7 +581,9 @@ public sealed class SignatureTemplate : TenantEntity
         int? fontSizePt = null
     )
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return Result.Failure<TemplateField>(draft.Error);
 
         if (_documents.All(document => document.Id != templateDocumentId))
             return Result.Failure<TemplateField>(
@@ -606,7 +632,9 @@ public sealed class SignatureTemplate : TenantEntity
 
     public Result RemoveField(Guid fieldId)
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
 
         var field = _fields.Find(f => f.Id == fieldId);
         if (field is null)
@@ -625,7 +653,9 @@ public sealed class SignatureTemplate : TenantEntity
         string? label
     )
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return Result.Failure<TemplatePreparerField>(draft.Error);
 
         if (_documents.All(document => document.Id != templateDocumentId))
             return Result.Failure<TemplatePreparerField>(
@@ -658,7 +688,9 @@ public sealed class SignatureTemplate : TenantEntity
 
     public Result RemovePreparerField(Guid fieldId)
     {
-        EnsureDraft();
+        var draft = EnsureDraft();
+        if (draft.IsFailure)
+            return draft;
 
         var field = _preparerFields.Find(f => f.Id == fieldId);
         if (field is null)
@@ -789,11 +821,12 @@ public sealed class SignatureTemplate : TenantEntity
         return Result.Success();
     }
 
-    private void EnsureDraft()
-    {
-        if (Status != SignatureTemplateStatus.Draft)
-            throw new InvalidOperationException($"SignatureTemplate {Id} cannot be edited in status {Status}.");
-    }
+    private Result EnsureDraft() =>
+        Status == SignatureTemplateStatus.Draft
+            ? Result.Success()
+            : Result.Failure(
+                new Error("Signature.Template.NotDraft", "The template is published and can no longer be edited.")
+            );
 
     private int NextSlotOrder() => _slots.Count == 0 ? 1 : _slots.Max(s => s.Order) + 1;
 

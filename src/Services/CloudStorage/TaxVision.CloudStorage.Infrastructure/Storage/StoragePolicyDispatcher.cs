@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
 
@@ -9,7 +10,7 @@ namespace TaxVision.CloudStorage.Infrastructure.Storage;
 public sealed class StoragePolicyDispatcher(
     CloudStorageDbContext db,
     IEnumerable<IStoragePolicyProviderAdapter> adapters
-)
+) : IStoragePolicyDispatcher
 {
     public async Task CopyAvailableFileAsync(FileAvailableIntegrationEvent message, CancellationToken ct)
     {

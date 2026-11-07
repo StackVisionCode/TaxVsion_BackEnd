@@ -20,11 +20,13 @@ public sealed class NotificationDispatcherHarness
         INotificationLogRepository? logs = null,
         IUserNotificationPreferenceRepository? preferences = null,
         INotificationDispatchMetrics? metrics = null,
-        IUserEmailDirectoryRepository? userDirectory = null
+        IUserEmailDirectoryRepository? userDirectory = null,
+        ISmsSender? smsSender = null,
+        IUnitOfWork? unitOfWork = null
     )
     {
-        Dispatcher = new NotificationDispatcher(
-            new NoOpSmsSender(),
+        Dispatcher = TestDispatchers.Create(
+            smsSender ?? new NoOpSmsSender(),
             pushSender ?? new NoOpPushSender(),
             pushDeviceTokens ?? new NoOpPushDeviceTokenRepository(),
             logs ?? new NoOpNotificationLogRepository(),
@@ -33,10 +35,9 @@ public sealed class NotificationDispatcherHarness
                 userDirectory ?? new InMemoryUserEmailDirectoryRepository()
             ),
             Publisher,
-            new NoOpUnitOfWork(),
+            unitOfWork ?? new NoOpUnitOfWork(),
             metrics ?? new NoOpNotificationDispatchMetrics(),
-            new InlinePushAttemptRecorder(logs),
-            NullLogger<NotificationDispatcher>.Instance
+            new InlinePushAttemptRecorder(logs)
         );
     }
 

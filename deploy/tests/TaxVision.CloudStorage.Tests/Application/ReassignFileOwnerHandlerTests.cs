@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -83,6 +84,7 @@ public sealed class ReassignFileOwnerHandlerTests
             Evt(tenantId, file.Id, customerId),
             files,
             new SystemFolderProvisioner(folders),
+            new FakeStorageAuditRepository(),
             Options.Create(new CloudStorageOptions()),
             new FakeSystemClock(DateTime.UtcNow),
             new FakeUnitOfWork(),
@@ -106,22 +108,60 @@ public sealed class ReassignFileOwnerHandlerTests
     }
 
     [Fact]
-    public async Task Unknown_file_is_a_no_op()
+    public async Task Handle_FileNotFound_AuditsSkip()
     {
+        var now = DateTime.UtcNow;
         var tenantId = Guid.NewGuid();
-        var files = new FakeFileObjectRepository();
+        var fileId = Guid.NewGuid();
+        var options = new CloudStorageOptions();
+        var audit = new FakeStorageAuditRepository();
+        var unitOfWork = new FakeUnitOfWork();
 
-        // No debe lanzar.
         await ReassignFileOwnerHandler.Handle(
-            Evt(tenantId, Guid.NewGuid(), Guid.NewGuid()),
-            files,
+            Evt(tenantId, fileId, Guid.NewGuid()) with
+            {
+                OccurredOn = now.AddMinutes(-options.ReassignOwnerFileWaitMinutes - 1),
+            },
+            new FakeFileObjectRepository(),
             new SystemFolderProvisioner(new FakeFolderRepository()),
-            Options.Create(new CloudStorageOptions()),
-            new FakeSystemClock(DateTime.UtcNow),
-            new FakeUnitOfWork(),
+            audit,
+            Options.Create(options),
+            new FakeSystemClock(now),
+            unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<ReassignFileOwnerRequestedIntegrationEvent>.Instance,
             CancellationToken.None
+        );
+
+        var log = Assert.Single(audit.Logs);
+        Assert.Equal("owner.reassign-skipped", log.Action);
+        Assert.Equal(fileId, log.FileId);
+        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    /// <summary>Signature conoce el FileId desde el sellado: SaveFileRequested puede seguir en vuelo.</summary>
+    [Fact]
+    public async Task Handle_FileNotYetCataloged_ThrowsDependencyNotReady()
+    {
+        var now = DateTime.UtcNow;
+        var tenantId = Guid.NewGuid();
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            ReassignFileOwnerHandler.Handle(
+                Evt(tenantId, Guid.NewGuid(), Guid.NewGuid()) with
+                {
+                    OccurredOn = now.AddSeconds(-5),
+                },
+                new FakeFileObjectRepository(),
+                new SystemFolderProvisioner(new FakeFolderRepository()),
+                new FakeStorageAuditRepository(),
+                Options.Create(new CloudStorageOptions()),
+                new FakeSystemClock(now),
+                new FakeUnitOfWork(),
+                new FakeCorrelationContext(),
+                NullLogger<ReassignFileOwnerRequestedIntegrationEvent>.Instance,
+                CancellationToken.None
+            )
         );
     }
 
@@ -157,6 +197,7 @@ public sealed class ReassignFileOwnerHandlerTests
             Evt(tenantId, file.Id, Guid.NewGuid()),
             files,
             new SystemFolderProvisioner(new FakeFolderRepository()),
+            new FakeStorageAuditRepository(),
             Options.Create(new CloudStorageOptions()),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
@@ -187,6 +228,7 @@ public sealed class ReassignFileOwnerHandlerTests
             },
             files,
             new SystemFolderProvisioner(new FakeFolderRepository()),
+            new FakeStorageAuditRepository(),
             Options.Create(new CloudStorageOptions()),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,

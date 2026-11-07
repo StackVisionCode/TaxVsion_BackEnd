@@ -98,6 +98,10 @@ public sealed class FluidTemplateRendererPreviewTests
             new EventTemplateResolver(new NoOpEventTemplateMappingRepository()),
             new FakeEmailTemplateRepository(template),
             new FakeEmailLayoutRepository(layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(template),
+                new FakeEmailLayoutRepository(layout)
+            ),
             cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
@@ -144,6 +148,10 @@ public sealed class FluidTemplateRendererPreviewTests
             new EventTemplateResolver(new NoOpEventTemplateMappingRepository()),
             new FakeEmailTemplateRepository(template),
             new FakeEmailLayoutRepository(layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(template),
+                new FakeEmailLayoutRepository(layout)
+            ),
             new FakeCloudStorageClient(),
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),

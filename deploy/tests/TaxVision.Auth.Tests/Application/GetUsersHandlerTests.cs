@@ -59,7 +59,7 @@ public sealed class GetUsersHandlerTests
             "hash",
             UserActorType.TenantEmployee
         ).Value;
-        user.Offboard(DateTime.UtcNow);
+        user.Offboard(Guid.NewGuid(), DateTime.UtcNow);
 
         var users = new FakeUserRepository { Page = [user] };
         var roles = new FakeRoleRepository();

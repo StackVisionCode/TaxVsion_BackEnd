@@ -1,15 +1,10 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Abstractions;
-using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.OAuth;
-using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
-using TaxVision.Connectors.Domain.Audit;
-using TaxVision.Connectors.Domain.Shared;
 using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Accounts;
@@ -35,20 +30,13 @@ public static class CompleteOAuthConnectHandler
     [NonTransactional]
     public static async Task<Result<CompleteOAuthConnectResult>> Handle(
         CompleteOAuthConnectCommand cmd,
-        ITenantEmailAccountRepository accountRepository,
-        IOAuthConnectionRepository connectionRepository,
         IOAuthProviderClientFactory clientFactory,
-        IEncryptedSecretProtector protector,
-        IProviderConnectionAuditLogRepository auditLogRepository,
-        IProviderWatchSubscriptionRepository watchSubscriptionRepository,
-        IWatchProviderClientFactory watchClientFactory,
-        ISmtpCredentialsRepository smtpCredentialsRepository,
-        IImapCredentialsRepository imapCredentialsRepository,
-        IProviderSyncCursorRepository providerSyncCursorRepository,
+        OAuthGrantStore grants,
+        AccountProviderSwitcher providerSwitcher,
+        AccountConnectionFinisher finisher,
         IUserPermissionsProjectionReader initiatorProjections,
         IUnitOfWork unitOfWork,
         IOutboxUnit unit,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -102,124 +90,28 @@ public static class CompleteOAuthConnectHandler
         }
 
         var now = DateTime.UtcNow;
-        // Scoped al tenant (uniqueness (TenantId, EmailAddress), igual que Auth): el mismo buzón en
-        // otro tenant NO bloquea — se crea una cuenta propia de ESTE tenant.
-        var existingAccountResult = await accountRepository.GetByTenantAndEmailAsync(cmd.TenantId, emailAddress, ct);
-        var isNewAccount = existingAccountResult.IsFailure;
-
-        TenantEmailAccount account;
-        OAuthConnection? existingConnection = null;
-        // Reautorizar una conexión activa solo para ampliar permisos: el watch ya corre, no se rearma.
-        var widensActiveGrant = false;
-        if (isNewAccount)
-        {
-            var createResult = TenantEmailAccount.Create(
-                cmd.TenantId,
-                emailAddress,
-                cmd.ProviderCode,
-                cmd.InitiatedByUserId,
-                now,
-                // Oficina = sin dueño (compartido); personal = del usuario que conecta.
-                ownerUserId: cmd.AsOffice ? null : cmd.InitiatedByUserId
-            );
-            if (createResult.IsFailure)
-                return Result.Failure<CompleteOAuthConnectResult>(createResult.Error);
-
-            account = createResult.Value;
-        }
-        else
-        {
-            // El lookup es tenant-scoped, así que la cuenta ya es de ESTE tenant (no hace falta
-            // re-chequear TenantId — antes había un guard global que bloqueaba el mismo buzón en
-            // otro tenant; se quitó a propósito para alinear con el modelo (TenantId, Email)).
-            account = existingAccountResult.Value;
-
-            var existingConnectionResult = await connectionRepository.GetByAccountIdAsync(account.Id, ct);
-            if (existingConnectionResult.IsSuccess)
-            {
-                existingConnection = existingConnectionResult.Value;
-                if (!existingConnection.CanReconnect(client.ConfiguredScope))
-                    return Result.Failure<CompleteOAuthConnectResult>(
-                        new Error(
-                            "CompleteOAuthConnectHandler.AlreadyConnected",
-                            "This account already has an active OAuth connection. Disconnect it first before reconnecting."
-                        )
-                    );
-                widensActiveGrant = existingConnection.Status == OAuthConnectionStatus.Active;
-            }
-        }
+        var targetResult = await grants.ResolveTargetAsync(cmd, emailAddress, client, now, ct);
+        if (targetResult.IsFailure)
+            return Result.Failure<CompleteOAuthConnectResult>(targetResult.Error);
+        var target = targetResult.Value;
+        var account = target.Account;
 
         // Fila desconectada que era personal de otra persona (p. ej. un retirado re-invitado): pasa a quien conecta.
-        if (!isNewAccount)
+        if (!target.IsNewAccount)
             account.ReassignOwnerOnReconnect(cmd.AsOffice ? null : cmd.InitiatedByUserId);
 
-        if (existingConnection is not null)
+        var stored = await grants.StoreAsync(target, cmd.ProviderCode, client, grant, now, ct);
+        if (stored.IsFailure)
+            return Result.Failure<CompleteOAuthConnectResult>(stored.Error);
+
+        // Reconectar sobre un account existente con OTRO proveedor (p.ej. IMAP → Gmail OAuth): antes se dejaba el
+        // ProviderCode viejo + SMTP/IMAP sin borrar, dejando a la UI mostrando el proveedor incorrecto y las
+        // credenciales viejas como "zombies" en la DB. Ver ProviderSwitchPolicy.
+        if (!target.IsNewAccount)
         {
-            var reconnectResult = existingConnection.Reconnect(client.ClientId, client.ConfiguredScope, now);
-            if (reconnectResult.IsFailure)
-                return Result.Failure<CompleteOAuthConnectResult>(reconnectResult.Error);
-
-            existingConnection.Token!.UpdateAccessToken(
-                protector.Protect(grant.AccessToken),
-                now.AddSeconds(grant.ExpiresInSeconds),
-                now
-            );
-            existingConnection.Token.UpdateRefreshToken(protector.Protect(grant.RefreshToken));
-        }
-        else
-        {
-            var connectionResult = OAuthConnection.Create(
-                account.Id,
-                cmd.ProviderCode,
-                client.ClientId,
-                client.ConfiguredScope,
-                now
-            );
-            if (connectionResult.IsFailure)
-                return Result.Failure<CompleteOAuthConnectResult>(connectionResult.Error);
-            var connection = connectionResult.Value;
-
-            var tokenResult = OAuthToken.Create(
-                connection.Id,
-                protector.Protect(grant.AccessToken),
-                protector.Protect(grant.RefreshToken),
-                now.AddSeconds(grant.ExpiresInSeconds),
-                now
-            );
-            if (tokenResult.IsFailure)
-                return Result.Failure<CompleteOAuthConnectResult>(tokenResult.Error);
-
-            var attachResult = connection.AttachToken(tokenResult.Value);
-            if (attachResult.IsFailure)
-                return Result.Failure<CompleteOAuthConnectResult>(attachResult.Error);
-
-            if (isNewAccount)
-                await accountRepository.AddAsync(account, ct);
-            await connectionRepository.AddAsync(connection, ct);
-        }
-
-        // Reconectar sobre un account existente con OTRO proveedor (p.ej. IMAP → Gmail OAuth):
-        // sincroniza el proveedor del aggregate con el de la nueva connection y purga credenciales
-        // obsoletas. Antes se dejaba el ProviderCode viejo + SMTP/IMAP sin borrar, dejando a la UI
-        // mostrando el proveedor incorrecto y las credenciales viejas como "zombies" en la DB.
-        if (!isNewAccount && account.ProviderCode != cmd.ProviderCode)
-        {
-            var changeResult = account.ChangeProvider(cmd.ProviderCode, now);
-            if (changeResult.IsFailure)
-                return Result.Failure<CompleteOAuthConnectResult>(changeResult.Error);
-
-            var staleSmtp = await smtpCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
-            if (staleSmtp.IsSuccess)
-                smtpCredentialsRepository.Remove(staleSmtp.Value);
-            var staleImap = await imapCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
-            if (staleImap.IsSuccess)
-                imapCredentialsRepository.Remove(staleImap.Value);
-            // El cursor stale (formato IMAP UIDVALIDITY:UID) reventaba el history.list de Gmail con
-            // HTTP 400 "invalid history id" y dejaba el ReconciliationJob bloqueado. Purgamos para
-            // que el seeder lo re-cree con el startHistoryId correcto del nuevo watch Gmail.
-            var staleCursor = await providerSyncCursorRepository.GetByAccountIdAsync(account.Id, ct);
-            if (staleCursor.IsSuccess)
-                providerSyncCursorRepository.Remove(staleCursor.Value);
+            var switched = await providerSwitcher.SwitchAsync(account, cmd.ProviderCode, now, ct);
+            if (switched.IsFailure)
+                return Result.Failure<CompleteOAuthConnectResult>(switched.Error);
         }
 
         // Un grant nuevo prueba que alguien vigente tiene acceso: se cierra una revisión pendiente.
@@ -227,66 +119,28 @@ public static class CompleteOAuthConnectHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        if (widensActiveGrant && account.Status == TenantEmailAccountStatus.Active)
+        if (target.WidensActiveGrant && account.Status == TenantEmailAccountStatus.Active)
         {
-            await AuditAsync(
+            await finisher.AuditConnectedAsync(
                 account,
                 $"Updated permissions for {account.EmailAddress} via {cmd.ProviderCode}.",
                 now,
-                auditLogRepository,
-                unitOfWork,
                 ct
             );
             return Result.Success(new CompleteOAuthConnectResult(account.Id, account.EmailAddress));
         }
 
-        // WatchActivationService publica ConnectorsTenantEmailAccountConnected al activar (punto único
-        // compartido con el reauth), así que acá ya no se publica — se evita el doble evento.
-        var watchResult = await WatchActivationService.ActivateAsync(
-            cmd.TenantId,
-            account.Id,
-            accountRepository,
-            watchSubscriptionRepository,
-            watchClientFactory,
-            unit,
-            correlation,
-            ct
-        );
+        var watchResult = await finisher.ActivateAsync(cmd.TenantId, account.Id, unit, ct);
         if (watchResult.IsFailure)
             return Result.Failure<CompleteOAuthConnectResult>(watchResult.Error);
 
-        await AuditAsync(
+        await finisher.AuditConnectedAsync(
             account,
             $"Connected {account.EmailAddress} via {cmd.ProviderCode}.",
             now,
-            auditLogRepository,
-            unitOfWork,
             ct
         );
 
         return Result.Success(new CompleteOAuthConnectResult(account.Id, account.EmailAddress));
-    }
-
-    private static async Task AuditAsync(
-        TenantEmailAccount account,
-        string detail,
-        DateTime now,
-        IProviderConnectionAuditLogRepository auditLogRepository,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        var auditResult = ProviderConnectionAuditLog.Create(
-            account.Id,
-            ProviderConnectionAuditAction.Connect,
-            detail,
-            "Success",
-            now
-        );
-        if (auditResult.IsFailure)
-            return;
-
-        await auditLogRepository.AddAsync(auditResult.Value, ct);
-        await unitOfWork.SaveChangesAsync(ct);
     }
 }

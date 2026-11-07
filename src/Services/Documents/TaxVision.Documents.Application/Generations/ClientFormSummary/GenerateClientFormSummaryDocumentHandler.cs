@@ -47,7 +47,12 @@ public static class GenerateClientFormSummaryDocumentHandler
                 );
 
             var nowUtc = clock.GetUtcNow().UtcDateTime;
-            var existing = await repository.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
+            var existing = await repository.GetByIdempotencyKeyAsync(
+                command.TenantId,
+                ClientFormSubmissionSummaryRequestedConsumer.SourceService,
+                command.IdempotencyKey,
+                ct
+            );
             if (
                 existing is not null
                 && !GenerationRetryPolicy.IsRetryable(existing, nowUtc, retryOptions.Value.StalledAfter)
@@ -82,7 +87,12 @@ public static class GenerateClientFormSummaryDocumentHandler
             catch (ConflictException)
             {
                 // Dos entregas del mismo evento a la vez: gana una y la otra devuelve esa.
-                var winner = await repository.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
+                var winner = await repository.GetByIdempotencyKeyAsync(
+                    command.TenantId,
+                    ClientFormSubmissionSummaryRequestedConsumer.SourceService,
+                    command.IdempotencyKey,
+                    ct
+                );
                 if (winner is not null)
                     return Result.Success(
                         new GenerateClientFormSummaryDocumentResult(winner.Id, winner.Status.ToString())

@@ -1,3 +1,4 @@
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Common;
@@ -25,7 +26,7 @@ internal static class BillingNotificationPublisher
         {
             await dispatcher.RecordInAppAsync(
                 tenantId,
-                $"user:{userId:N}",
+                NotificationRecipient.ForUser(userId),
                 title,
                 NotificationCategory.Billing,
                 kind,

@@ -309,6 +309,7 @@ public sealed class ProcessInvoiceGenerationHandlerTests
 
         public Task<DocumentGeneration?> GetByIdempotencyKeyAsync(
             Guid tenantId,
+            string sourceService,
             string idempotencyKey,
             CancellationToken ct = default
         ) => throw new NotSupportedException();

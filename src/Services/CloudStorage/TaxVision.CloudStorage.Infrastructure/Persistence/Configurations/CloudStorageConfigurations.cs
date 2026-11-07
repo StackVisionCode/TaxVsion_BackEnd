@@ -14,6 +14,7 @@ public sealed class FileObjectConfiguration : IEntityTypeConfiguration<FileObjec
 {
     public void Configure(EntityTypeBuilder<FileObject> builder)
     {
+        builder.Ignore(file => file.DomainEvents);
         builder.ToTable("Files");
         builder.HasKey(file => file.Id);
         builder.Property(file => file.TenantId).IsRequired();

@@ -212,4 +212,27 @@ public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    /// <summary>
+    /// Reposición SIG-17 (D-SIG-17): agrega al final de la cadena la línea <c>RequestCompleted</c> que le falta a las
+    /// solicitudes completadas, con <c>Backfilled = true</c>, sin publicar avisos. Sin <c>tenantId</c>, todas las
+    /// oficinas. <c>dryRun=true</c> (default) solo informa. Idempotente.
+    /// </summary>
+    [HttpPost("/signature/admin/backfill-completed-audit-lines")]
+    [HasPermission(SignaturePermissions.PlanConstraintsManage)]
+    [RateLimit("signature.g.admin_constraints_manage")]
+    [ProducesResponseType<CompletedAuditBackfillReport>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> BackfillCompletedAuditLines(
+        [FromQuery] Guid? tenantId,
+        [FromQuery] bool dryRun = true,
+        CancellationToken ct = default
+    )
+    {
+        var result = await bus.InvokeAsync<Result<CompletedAuditBackfillReport>>(
+            new BackfillCompletedAuditLinesCommand(tenantId, dryRun),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 }

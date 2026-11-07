@@ -177,12 +177,12 @@ public sealed class FormActionSignatureWaitTests
     {
         var (request, _) = Waiting();
 
-        Assert.True(request.MarkSignatureFailed(1).IsSuccess);
-        var repeated = request.MarkSignatureFailed(1);
+        Assert.True(request.Summary.MarkSignatureFailed(1).IsSuccess);
+        var repeated = request.Summary.MarkSignatureFailed(1);
 
         Assert.True(repeated.IsFailure);
         Assert.Equal(FormRequestErrors.SignatureNotPending, repeated.Error);
-        Assert.Equal(FormRevisionSignatureStatus.Failed, request.RevisionSignatureStatus(1));
+        Assert.Equal(FormRevisionSignatureStatus.Failed, request.Summary.RevisionSignatureStatus(1));
     }
 
     // Enviada y planificada (esperando); la firma de la revisión 1 está en curso.
@@ -193,8 +193,8 @@ public sealed class FormActionSignatureWaitTests
             .PlanAsync(request, FormActionTrigger.OnSubmit, LatestAnswers(), new DeferredMessages(), Now, default)
             .GetAwaiter()
             .GetResult();
-        Assert.True(request.MarkSignatureRequesting(1, Guid.NewGuid(), new string('b', 64)).IsSuccess);
-        Assert.True(request.LinkSignatureRequest(1, Guid.NewGuid()).IsSuccess);
+        Assert.True(request.Summary.MarkSignatureRequesting(1, Guid.NewGuid(), new string('b', 64)).IsSuccess);
+        Assert.True(request.Summary.LinkSignatureRequest(1, Guid.NewGuid()).IsSuccess);
         Assert.Empty(request.ActionRuns);
         return (request, planner);
     }

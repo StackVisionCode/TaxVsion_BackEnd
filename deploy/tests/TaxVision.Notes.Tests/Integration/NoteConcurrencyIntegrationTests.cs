@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using TaxVision.Notes.Domain.Notes;
 using TaxVision.Notes.Domain.ValueObjects;
 using TaxVision.Notes.Infrastructure.Persistence;
+using TaxVision.Notes.Infrastructure.Persistence.Repositories;
 using Xunit;
 
 namespace TaxVision.Notes.Tests.Integration;
@@ -70,8 +71,8 @@ public sealed class NoteConcurrencyIntegrationTests : IAsyncLifetime
 
         await AssertSecondConflictsAsync(
             noteId,
-            n => n.UpdateContent(NoteContent.Create("<p>First</p>").Value, _author),
-            n => n.UpdateContent(NoteContent.Create("<p>Second</p>").Value, _author)
+            n => n.UpdateContent(NoteContent.Create("<p>First</p>").Value, _author, DateTime.UtcNow),
+            n => n.UpdateContent(NoteContent.Create("<p>Second</p>").Value, _author, DateTime.UtcNow)
         );
 
         await using var read = NewContext();
@@ -88,9 +89,25 @@ public sealed class NoteConcurrencyIntegrationTests : IAsyncLifetime
 
         await AssertSecondConflictsAsync(
             noteId,
-            n => n.UpdateContent(NoteContent.Create("<p>Edited</p>").Value, _author),
-            n => n.MarkAttachmentAvailable(fileId)
+            n => n.UpdateContent(NoteContent.Create("<p>Edited</p>").Value, _author, DateTime.UtcNow),
+            n => n.MarkAttachmentAvailable(fileId, DateTime.UtcNow)
         );
+    }
+
+    /// <summary>NTS-6 en SQL real: el mismo archivo en dos notas llega con las dos, con sus adjuntos.</summary>
+    [Fact]
+    public async Task ListByAttachmentFileId_BringsEveryNoteWithTheFile()
+    {
+        var fileId = Guid.NewGuid();
+        var first = await SeedNoteAsync(attachments: 0, fileId);
+        var second = await SeedNoteAsync(attachments: 0, fileId);
+        await SeedNoteAsync(attachments: 1);
+
+        await using var db = NewContext();
+        var notes = await new NoteRepository(db).ListByAttachmentFileIdAsync(fileId);
+
+        Assert.Equal(new[] { first, second }.Order(), notes.Select(n => n.Id).Order());
+        Assert.All(notes, n => Assert.Single(n.Attachments));
     }
 
     private async Task AssertSecondConflictsAsync(Guid noteId, Func<Note, Result> first, Func<Note, Result> second)
@@ -113,7 +130,7 @@ public sealed class NoteConcurrencyIntegrationTests : IAsyncLifetime
 
     private static Result Attach(Note note) => Attach(note, Guid.NewGuid());
 
-    private static Result Attach(Note note, Guid fileId) => note.AttachFile(fileId, "file.pdf", "application/pdf", 100);
+    private static Result Attach(Note note, Guid fileId) => note.AttachFile(fileId, "file.pdf", "application/pdf", 100, DateTime.UtcNow);
 
     private async Task<Guid> SeedNoteAsync(int attachments, Guid? pendingFileId = null)
     {
@@ -123,7 +140,8 @@ public sealed class NoteConcurrencyIntegrationTests : IAsyncLifetime
             NoteContent.Create("<p>Hello</p>").Value,
             NoteReference.Create(NoteTargetType.Customer, Guid.NewGuid()).Value,
             NoteVisibility.Team,
-            null
+            null,
+            DateTime.UtcNow
         ).Value;
         for (var i = 0; i < attachments; i++)
             Attach(note);

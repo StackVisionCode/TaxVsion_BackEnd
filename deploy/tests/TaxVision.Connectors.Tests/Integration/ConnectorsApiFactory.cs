@@ -1,3 +1,4 @@
+using JasperFx;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -43,6 +44,12 @@ public sealed class ConnectorsApiFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.DisableAllExternalWolverineTransports();
+            // Sin los sobres de la flota: MediatorOnly conserva el almacén sin migrarlo ni leerlo (BB-10).
+            services.ConfigureWolverine(options =>
+            {
+                options.Durability.Mode = DurabilityMode.MediatorOnly;
+                options.AutoBuildMessageStorageOnStartup = AutoCreate.None;
+            });
             foreach (
                 var hosted in services
                     .Where(d =>

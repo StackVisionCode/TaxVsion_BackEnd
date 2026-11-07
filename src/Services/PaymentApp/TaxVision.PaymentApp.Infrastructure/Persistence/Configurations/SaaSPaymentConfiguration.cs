@@ -153,5 +153,12 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
             .HasForeignKey(refund => refund.SaaSPaymentId)
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(payment => payment.Refunds).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(payment => payment.RefundRequests)
+            .WithOne()
+            .HasForeignKey(request => request.SaaSPaymentId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(payment => payment.RefundRequests).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

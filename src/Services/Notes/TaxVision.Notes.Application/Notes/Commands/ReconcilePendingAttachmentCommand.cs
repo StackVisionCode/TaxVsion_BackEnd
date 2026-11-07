@@ -23,6 +23,7 @@ public static class ReconcilePendingAttachmentHandler
         INoteFileScanStatusClient files,
         IUnitOfWork unitOfWork,
         ILogger<ReconcilePendingAttachmentCommand> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -36,7 +37,7 @@ public static class ReconcilePendingAttachmentHandler
             return;
 
         var status = await files.GetStatusAsync(command.TenantId, command.FileId, ct);
-        var result = Apply(note, attachment, status);
+        var result = Apply(note, attachment, status, clock.GetUtcNow().UtcDateTime);
         if (result is null)
             return;
 
@@ -61,25 +62,28 @@ public static class ReconcilePendingAttachmentHandler
     }
 
     // null = sin veredicto todavía (o en papelera): la próxima pasada lo vuelve a ver.
-    private static Result? Apply(Note note, NoteAttachment attachment, RemoteFileStatus status) =>
+    private static Result? Apply(Note note, NoteAttachment attachment, RemoteFileStatus status, DateTime nowUtc) =>
         status switch
         {
-            RemoteFileStatus.Available => note.MarkAttachmentAvailable(attachment.CloudStorageFileId),
-            RemoteFileStatus.Infected => note.MarkAttachmentRejected(attachment.CloudStorageFileId, "infected"),
+            RemoteFileStatus.Available => note.MarkAttachmentAvailable(attachment.CloudStorageFileId, nowUtc),
+            RemoteFileStatus.Infected => note.MarkAttachmentRejected(attachment.CloudStorageFileId, "infected", nowUtc),
             RemoteFileStatus.BlockedByPolicy => note.MarkAttachmentRejected(
                 attachment.CloudStorageFileId,
-                "blocked-by-policy"
+                "blocked-by-policy",
+                nowUtc
             ),
             RemoteFileStatus.ScanFailed => note.MarkAttachmentRejected(
                 attachment.CloudStorageFileId,
-                NotesFileScanResultConsumer.ReasonScanFailed
+                NotesFileScanResultConsumer.ReasonScanFailed,
+                nowUtc
             ),
             RemoteFileStatus.NotFound => note.MarkAttachmentRejected(
                 attachment.CloudStorageFileId,
-                NotesFileScanResultConsumer.ReasonFileMissing
+                NotesFileScanResultConsumer.ReasonFileMissing,
+                nowUtc
             ),
             RemoteFileStatus.PendingReview when attachment.Status is NoteAttachmentStatus.Pending =>
-                note.MarkAttachmentUnderReview(attachment.CloudStorageFileId),
+                note.MarkAttachmentUnderReview(attachment.CloudStorageFileId, nowUtc),
             _ => null,
         };
 }

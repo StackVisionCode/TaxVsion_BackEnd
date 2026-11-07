@@ -1,3 +1,5 @@
+using Wolverine;
+
 namespace TaxVision.Correspondence.Application.Abstractions;
 
 /// <summary>
@@ -6,5 +8,6 @@ namespace TaxVision.Correspondence.Application.Abstractions;
 /// </summary>
 public interface ITenantCustomerBackfillService
 {
-    Task EnsureBackfilledAsync(Guid tenantId, CancellationToken ct = default);
+    /// <param name="bus">El del handler: el comando sale junto con su transacción.</param>
+    Task EnsureBackfilledAsync(Guid tenantId, IMessageBus bus, CancellationToken ct = default);
 }

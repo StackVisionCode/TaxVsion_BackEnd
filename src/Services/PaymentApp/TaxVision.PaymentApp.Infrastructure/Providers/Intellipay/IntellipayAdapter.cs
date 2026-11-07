@@ -128,8 +128,14 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
                 providerChargeReference,
                 response.Message
             );
+            // Sin clave de idempotencia: un resultado desconocido no se reintenta, se concilia.
             return Result.Failure<RefundResult>(
-                new Error("Intellipay.Refund.Failed", response.Message ?? "Unknown Intellipay error.")
+                new Error(
+                    response.Response == IntellipayResponse.OutcomeUnknown
+                        ? "Intellipay.Refund.Unavailable"
+                        : "Intellipay.Refund.Failed",
+                    response.Message ?? "Unknown Intellipay error."
+                )
             );
         }
 

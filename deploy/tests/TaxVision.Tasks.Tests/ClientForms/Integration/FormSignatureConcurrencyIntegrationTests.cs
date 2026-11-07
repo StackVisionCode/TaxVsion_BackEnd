@@ -36,10 +36,8 @@ public sealed class FormSignatureConcurrencyIntegrationTests : IAsyncLifetime
         var sealedRequest = await LoadAsync(sealing, requestId);
         var completedRequest = await LoadAsync(completing, requestId);
 
-        Assert.True(
-            sealedRequest.MarkSignatureSealed(Revision, sealedFileId, new string('c', 64), null).IsSuccess
-        );
-        Assert.True(completedRequest.MarkSignatureCompleted(Revision).IsSuccess);
+        Assert.True(sealedRequest.Summary.MarkSignatureSealed(Revision, sealedFileId, new string('c', 64), null).IsSuccess);
+        Assert.True(completedRequest.Summary.MarkSignatureCompleted(Revision).IsSuccess);
         await sealing.SaveChangesAsync();
 
         var conflict = await Assert.ThrowsAsync<ConflictException>(() => completing.SaveChangesAsync());
@@ -47,11 +45,49 @@ public sealed class FormSignatureConcurrencyIntegrationTests : IAsyncLifetime
         Assert.Equal("Persistence.ConcurrencyConflict", conflict.Code);
         await using var read = _database.NewContext(_tenantId);
         var stored = await LoadAsync(read, requestId);
-        Assert.Equal(FormRevisionSignatureStatus.Sealed, stored.RevisionSignatureStatus(Revision));
+        Assert.Equal(FormRevisionSignatureStatus.Sealed, stored.Summary.RevisionSignatureStatus(Revision));
         Assert.Equal(sealedFileId, stored.LatestRevision?.SealedFileId);
     }
 
-    private async Task<Guid> SeedSignedAsync()
+    public enum PdfStep
+    {
+        Requested,
+        Linked,
+        Failed,
+    }
+
+    // TSK-11: cada método aparece primero y segundo. Si uno no toca la raíz, su par guarda sin chocar.
+    [Theory]
+    [InlineData(PdfStep.Linked, PdfStep.Failed)]
+    [InlineData(PdfStep.Failed, PdfStep.Requested)]
+    [InlineData(PdfStep.Requested, PdfStep.Linked)]
+    public async Task TwoPdfResultsInParallel_SecondSaveConflicts(PdfStep first, PdfStep second)
+    {
+        var generationId = Guid.NewGuid();
+        var requestId = await SeedSignedAsync(generationId);
+        await using var winner = _database.NewContext(_tenantId);
+        await using var loser = _database.NewContext(_tenantId);
+        var mine = await LoadAsync(winner, requestId);
+        var theirs = await LoadAsync(loser, requestId);
+
+        Assert.True(Apply(mine, first, generationId).IsSuccess);
+        Assert.True(Apply(theirs, second, generationId).IsSuccess);
+        await winner.SaveChangesAsync();
+
+        var conflict = await Assert.ThrowsAsync<ConflictException>(() => loser.SaveChangesAsync());
+
+        Assert.Equal("Persistence.ConcurrencyConflict", conflict.Code);
+    }
+
+    private static Result Apply(FormRequest request, PdfStep step, Guid generationId) =>
+        step switch
+        {
+            PdfStep.Requested => request.Summary.MarkPdfRequested(Revision, Guid.NewGuid()),
+            PdfStep.Linked => request.Summary.LinkPdf(generationId, Guid.NewGuid()),
+            _ => request.Summary.MarkPdfFailed(generationId),
+        };
+
+    private async Task<Guid> SeedSignedAsync(Guid? pdfGenerationId = null)
     {
         var template = FormTemplate
             .Create(
@@ -91,9 +127,11 @@ public sealed class FormSignatureConcurrencyIntegrationTests : IAsyncLifetime
             .Value;
         var answers = new PlainFormAnswersProtector().Protect(FormActionTestDoubles.Answers);
         request.Submit(answers, [], [], FormActor.ExternalSession(participant.Id, Guid.NewGuid()), Now);
-        Assert.True(request.MarkSignatureRequesting(Revision, Guid.NewGuid(), new string('b', 64)).IsSuccess);
-        Assert.True(request.LinkSignatureRequest(Revision, Guid.NewGuid()).IsSuccess);
-        Assert.True(request.MarkSignatureSigned(Revision).IsSuccess);
+        Assert.True(request.Summary.MarkSignatureRequesting(Revision, Guid.NewGuid(), new string('b', 64)).IsSuccess);
+        Assert.True(request.Summary.LinkSignatureRequest(Revision, Guid.NewGuid()).IsSuccess);
+        Assert.True(request.Summary.MarkSignatureSigned(Revision).IsSuccess);
+        if (pdfGenerationId is { } generationId)
+            Assert.True(request.Summary.MarkPdfRequested(Revision, generationId).IsSuccess);
 
         await using var db = _database.NewContext(_tenantId);
         db.AddRange(template, version, participant, request);
@@ -127,6 +165,6 @@ public sealed class FormSignatureConcurrencyIntegrationTests : IAsyncLifetime
         db
             .FormRequests.IgnoreQueryFilters()
             .Include(request => request.Submission!)
-            .ThenInclude(submission => submission.Revisions)
+                .ThenInclude(submission => submission.Revisions)
             .SingleAsync(request => request.Id == requestId);
 }

@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddDbContext<CloudStorageDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<CloudStorageDbContext>());
         services.AddScoped<IFileObjectRepository, FileObjectRepository>();
+        services.AddScoped<IScanClaims, SqlScanClaims>();
         services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
         services.AddScoped<IStoragePolicyRepository, StoragePolicyRepository>();
         services.AddScoped<ITenantCloudConnectionRepository, TenantCloudConnectionRepository>();
@@ -114,6 +115,7 @@ public static class DependencyInjection
         services.AddScoped<IStoragePolicyProviderAdapter>(sp => sp.GetRequiredService<OneDriveFileMirror>());
         services.AddScoped<IStoragePolicyProviderAdapter>(sp => sp.GetRequiredService<DropboxFileMirror>());
         services.AddScoped<StoragePolicyDispatcher>();
+        services.AddScoped<IStoragePolicyDispatcher, StoragePolicyDispatcher>();
         services.AddHostedService<CloudStorageBackupWorker>();
 
         // Sin key = cliente INTERNO (red de Docker / loopback) — todas las operaciones reales:

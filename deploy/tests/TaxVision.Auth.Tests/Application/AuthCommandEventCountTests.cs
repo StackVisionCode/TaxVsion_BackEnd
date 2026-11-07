@@ -5,6 +5,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.SlotGating.Commands;
 using TaxVision.Auth.Application.TenantDomains.Commands;
 using TaxVision.Auth.Application.Users.Commands;
@@ -50,7 +51,7 @@ public sealed class AuthCommandEventCountTests
     public async Task Reactivate_EmitsExactlyOneOfEachNotice()
     {
         var employee = Employee();
-        employee.Deactivate(DateTime.UtcNow);
+        employee.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
         var fixture = await Fixture.CreateAsync(employee);
 
         await fixture.RunAsync(typeof(ReactivateUserHandler), new ReactivateUserCommand(TenantId, employee.Id, Admin));
@@ -157,6 +158,39 @@ public sealed class AuthCommandEventCountTests
         fixture.AssertNoDomainEventThroughTheBus();
     }
 
+    // BB-16: lo publicado antes de un guardado que falla sale igual tras el reintento en línea.
+    [Fact]
+    public async Task Deactivate_WhenSaveFails_PublishesNothing()
+    {
+        var employee = Employee();
+        var fixture = await Fixture.CreateAsync(employee);
+        fixture.FailSaves();
+
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            fixture.RunAsync(
+                typeof(DeactivateUserHandler),
+                new DeactivateUserCommand(TenantId, employee.Id, Admin, UserActorType.TenantAdmin)
+            )
+        );
+
+        Assert.Empty(fixture.Bus.Published);
+    }
+
+    [Fact]
+    public async Task Reactivate_WhenSaveFails_PublishesNothing()
+    {
+        var employee = Employee();
+        employee.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
+        var fixture = await Fixture.CreateAsync(employee);
+        fixture.FailSaves();
+
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            fixture.RunAsync(typeof(ReactivateUserHandler), new ReactivateUserCommand(TenantId, employee.Id, Admin))
+        );
+
+        Assert.Empty(fixture.Bus.Published);
+    }
+
     private static User Employee() =>
         User.Register(
             TenantId,
@@ -194,10 +228,14 @@ public sealed class AuthCommandEventCountTests
                 new EmptyUserSessionRepository(),
                 new RecordingAccessTokenDenylist(),
                 new QuietRevocations(),
+                new SessionAccessCutoff(new EmptyUserSessionRepository(), new RecordingAccessTokenDenylist(), new QuietRevocations()),
                 new InMemoryInvitationRepository(),
                 new NoPlanLimits(),
             ];
         }
+
+        /// <summary>El guardado del comando falla como un timeout de SQL.</summary>
+        public void FailSaves() => _services.Insert(0, new FailingUnitOfWork());
 
         public AuthDbContext Db { get; }
         public FakeMessageBus Bus { get; }
@@ -266,6 +304,12 @@ public sealed class AuthCommandEventCountTests
                 "Eventos de dominio publicados por el IMessageBus (en memoria, fuera de la transacción): "
                     + string.Join(", ", Bus.Published.OfType<IDomainEvent>().Select(e => e.GetType().Name))
             );
+    }
+
+    private sealed class FailingUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken ct = default) =>
+            throw new TimeoutException("Simulated SQL timeout.");
     }
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext

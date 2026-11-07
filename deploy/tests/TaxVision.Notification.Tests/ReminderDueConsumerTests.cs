@@ -227,7 +227,7 @@ public sealed class ReminderDueConsumerTests
             if (withActiveDevice)
                 devices.AddActiveDevice(TenantId, UserId, "token-1");
 
-            Dispatcher = new NotificationDispatcher(
+            Dispatcher = TestDispatchers.Create(
                 new NoOpSmsSender(),
                 PushSender,
                 devices,
@@ -236,8 +236,7 @@ public sealed class ReminderDueConsumerTests
                 new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
-                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(Logs),
-                NullLogger<NotificationDispatcher>.Instance
+                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(Logs)
             );
         }
 

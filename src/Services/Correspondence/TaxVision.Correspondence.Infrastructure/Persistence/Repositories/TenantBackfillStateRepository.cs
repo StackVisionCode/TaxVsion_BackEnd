@@ -14,7 +14,7 @@ public sealed class TenantBackfillStateRepository(CorrespondenceDbContext db) : 
         await db.TenantBackfillStates.AddAsync(entity, ct);
     }
 
-    // IgnoreQueryFilters: job cross-tenant (RBAC Fase 5) — CustomerEmailReconciliationJob necesita
+    // IgnoreQueryFilters: job cross-tenant (RBAC Fase 5) — MailboxOwnershipReconciliationJob necesita
     // la lista de TODOS los tenants backfilleados para iterarlos, nunca sirve una request autenticada.
     public async Task<IReadOnlyList<Guid>> ListAllTenantIdsAsync(CancellationToken ct = default) =>
         await db

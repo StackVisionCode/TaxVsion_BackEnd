@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TaxVision.Catalog.Application.Abstractions;
+using TaxVision.Catalog.Application.Categories;
 using TaxVision.Catalog.Application.Permissions.Abstractions;
 using TaxVision.Catalog.Application.RateLimiting.Abstractions;
 using TaxVision.Catalog.Infrastructure.Permissions;
@@ -31,6 +32,7 @@ public static class DependencyInjection
 
         services.AddScoped<ICatalogItemRepository, CatalogItemRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.Configure<CategoryTreeOptions>(configuration.GetSection(CategoryTreeOptions.SectionName));
 
         // RBAC Fase 7 — proyección local de permisos consultada por ProjectionPermissionsSource. La
         // misma instancia scoped satisface el puerto local rico y el puerto compartido de BuildingBlocks.

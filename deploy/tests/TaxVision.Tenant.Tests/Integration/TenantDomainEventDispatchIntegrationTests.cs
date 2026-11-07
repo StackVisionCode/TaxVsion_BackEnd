@@ -156,7 +156,7 @@ public sealed class TenantDomainEventDispatchIntegrationTests : IAsyncLifetime
 
     private async Task<DomainTenant> SeedAsync(Guid? onboardingId = null)
     {
-        var tenant = DomainTenant.Create("Dispatch Tax", $"dt-{Guid.NewGuid():N}"[..20], "Etc/UTC", onboardingId).Value;
+        var tenant = DomainTenant.Create("Dispatch Tax", $"dt-{Guid.NewGuid():N}"[..20], "Etc/UTC", DateTime.UtcNow, onboardingId).Value;
         await using var db = _database.NewContext();
         db.Tenants.Add(tenant);
         await db.SaveChangesAsync();

@@ -1,4 +1,5 @@
 ﻿using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
 using TaxVision.Postmaster.Application.Providers;
@@ -64,7 +65,8 @@ public sealed class SendCorrespondenceMessageHandlerTests
     private static Task<Result<SendCorrespondenceMessageResult>> HandleAsync(
         Fixture fixture,
         SendCorrespondenceMessageCommand command,
-        Action<object>? beforeInvoke = null
+        Action<object>? beforeInvoke = null,
+        ILogger? logger = null
     )
     {
         var bus = new FakeMessageBus { BeforeInvoke = beforeInvoke };
@@ -74,7 +76,8 @@ public sealed class SendCorrespondenceMessageHandlerTests
             fixture.SentMessages,
             fixture.UnitOfWork,
             fixture.ProviderResolver,
-            fixture.SuppressionList
+            fixture.SuppressionList,
+            logger
         );
         return SendCorrespondenceMessageHandler.Handle(
             command,
@@ -325,5 +328,116 @@ public sealed class SendCorrespondenceMessageHandlerTests
         Assert.Empty(fixture.IdempotencyGuard.Completed);
         Assert.Single(fixture.SentMessages.Removed);
         Assert.Empty(fixture.SentMessages.Added);
+    }
+
+    // COR-19: sin esto, el mensaje se guarda sin destinatarios y llega al envío.
+    [Theory]
+    [InlineData("no-es-un-correo")]
+    [InlineData("customer@example.com", "no-es-un-correo")]
+    public async Task Invalid_to_fails_and_leaves_nothing_saved(params string[] to)
+    {
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with { To = to };
+
+        var result = await HandleAsync(fixture, command);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SendCorrespondenceMessageHandler.InvalidRecipient", result.Error.Code);
+        Assert.Contains("no-es-un-correo", result.Error.Message);
+        Assert.Empty(fixture.SentMessages.Added);
+        Assert.Equal(0, fixture.IdempotencyGuard.ReserveCount);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
+        Assert.Equal(0, fixture.EmailSender.SendCount);
+    }
+
+    [Fact]
+    public async Task No_to_fails_and_leaves_nothing_saved()
+    {
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with { To = [] };
+
+        var result = await HandleAsync(fixture, command);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SendCorrespondenceMessageHandler.InvalidRecipient", result.Error.Code);
+        Assert.Empty(fixture.SentMessages.Added);
+        Assert.Equal(0, fixture.EmailSender.SendCount);
+    }
+
+    // Igual que Postmaster en PMS-10: el correo sale al To y queda el aviso en el log.
+    [Fact]
+    public async Task Invalid_cc_and_bcc_are_dropped_with_a_warning_and_the_mail_goes_out()
+    {
+        var fixture = CreateFixture();
+        var logger = new RecordingLogger();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with
+        {
+            Cc = ["no-es-un-correo", "copy@example.com"],
+            Bcc = ["tampoco"],
+        };
+
+        var result = await HandleAsync(fixture, command, logger: logger);
+
+        Assert.True(result.IsSuccess);
+        var message = Assert.Single(fixture.SentMessages.Added);
+        Assert.Equal(
+            ["customer@example.com", "copy@example.com"],
+            message.Recipients.Select(recipient => recipient.Address)
+        );
+        Assert.Equal(1, fixture.EmailSender.SendCount);
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains("2", warning);
+        Assert.DoesNotContain("no-es-un-correo", warning);
+    }
+
+    [Fact]
+    public async Task A_repeated_to_still_sends_once_to_that_address()
+    {
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with
+        {
+            To = ["customer@example.com", "Customer@Example.com"],
+        };
+
+        var result = await HandleAsync(fixture, command);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(Assert.Single(fixture.SentMessages.Added).Recipients);
+    }
+
+    private sealed class RecordingLogger : ILogger
+    {
+        public List<string> Warnings { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        )
+        {
+            if (logLevel == LogLevel.Warning)
+                Warnings.Add(formatter(state, exception));
+        }
+    }
+
+    [Fact]
+    public async Task Handle_MalformedCommand_ThrowsArgumentExceptionWithoutPersisting()
+    {
+        // Con la regla general, InvokeAsync lo reintentaría en línea 21 s dentro del pedido HTTP.
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with { Subject = " " };
+
+        var thrown = await Record.ExceptionAsync(() => HandleAsync(fixture, command));
+
+        Assert.IsAssignableFrom<ArgumentException>(thrown);
+        Assert.Empty(fixture.SentMessages.Added);
+        Assert.Null(fixture.EmailSender.LastMessage);
     }
 }

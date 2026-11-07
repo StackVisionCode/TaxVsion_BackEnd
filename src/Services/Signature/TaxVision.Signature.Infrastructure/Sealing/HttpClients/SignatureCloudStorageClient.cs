@@ -11,7 +11,6 @@ using Microsoft.Extensions.Options;
 using Minio;
 using Minio.DataModel.Args;
 using TaxVision.Signature.Application.Abstractions.Sealing;
-using Wolverine;
 
 namespace TaxVision.Signature.Infrastructure.Sealing.HttpClients;
 
@@ -21,11 +20,11 @@ namespace TaxVision.Signature.Infrastructure.Sealing.HttpClients;
 /// <para>
 /// DownloadAsync sigue el flujo HTTP+M2M presignado (initiate → GET, ver
 /// <see cref="ISignatureServiceTokenAcquirer"/>) — fuera del scope de la Fase D1, ver
-/// project_cloudstorage_hardening_plan.md. UploadAsync ya NO llama a CloudStorage por
+/// project_cloudstorage_hardening_plan.md. StageAsync ya NO llama a CloudStorage por
 /// HTTP (Fase D1): sube el objeto directo a MinIO con credenciales propias (IAM
-/// scoped a taxvision-temp/signature/*) y publica SaveFileRequestedIntegrationEvent
-/// para que CloudStorage lo registre y escanee de forma asincrona — el mismo patron
-/// que ya usa el flujo normal de subida (initiate → complete → scan async).
+/// scoped a taxvision-temp/signature/*) y devuelve SaveFileRequestedIntegrationEvent;
+/// quien llama lo publica para que CloudStorage lo registre y escanee de forma asincrona
+/// — el mismo patron que ya usa el flujo normal de subida (initiate → complete → scan async).
 /// </para>
 ///
 /// <para>Estructurado con métodos privados por fase para mantener SRP.</para>
@@ -35,7 +34,6 @@ internal sealed class SignatureCloudStorageClient(
     ISignatureServiceTokenAcquirer tokenAcquirer,
     IMinioClient minioClient,
     IOptions<SignatureMinioOptions> minioOptions,
-    IMessageBus bus,
     ICorrelationContext correlation,
     ILogger<SignatureCloudStorageClient> logger
 ) : ISignatureCloudStorageClient
@@ -58,20 +56,6 @@ internal sealed class SignatureCloudStorageClient(
             return Result.Failure<byte[]>(urlResult.Error);
 
         return await FetchBytesAsync(urlResult.Value, ct);
-    }
-
-    public async Task<Result<Guid>> UploadAsync(
-        Guid tenantId,
-        SignatureFileUpload upload,
-        CancellationToken ct = default
-    )
-    {
-        var staged = await StageAsync(tenantId, upload, ct);
-        if (staged.IsFailure)
-            return Result.Failure<Guid>(staged.Error);
-
-        await bus.PublishAsync(staged.Value);
-        return Result.Success(staged.Value.FileId);
     }
 
     public async Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(

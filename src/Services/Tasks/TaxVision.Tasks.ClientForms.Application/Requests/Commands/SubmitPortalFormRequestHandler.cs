@@ -275,12 +275,12 @@ public static class SubmitPortalFormRequestHandler
     )
     {
         var priorRevision = newRevisionNumber - 1;
-        if (priorRevision < 1 || !request.RevisionHasPendingSignature(priorRevision))
+        if (priorRevision < 1 || !request.Summary.RevisionHasPendingSignature(priorRevision))
             return;
-        if (request.SignatureRequestIdFor(priorRevision) is not { } signatureRequestId)
+        if (request.Summary.SignatureRequestIdFor(priorRevision) is not { } signatureRequestId)
             return;
 
-        request.MarkSignatureCanceled(priorRevision);
+        request.Summary.MarkSignatureCanceled(priorRevision);
         var sourceId = ClientFormSignatureReference.BuildSourceId(request.Id, priorRevision);
         outgoing.Add(
             new SignatureRequestCancellationRequestedIntegrationEvent

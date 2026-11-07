@@ -58,20 +58,7 @@ public sealed class CustomerProjectionReconciliationIntegrationTests : IAsyncLif
             [Active(page2Customer, $"p2-{Guid.NewGuid():N}@cor06.test")],
             [Active(page3Customer, $"p3-{Guid.NewGuid():N}@cor06.test")]
         );
-        var services = new ServiceCollection();
-        services.AddScoped(_ => CorrespondenceSqlServer.NewContext(_tenantId));
-        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CorrespondenceDbContext>());
-        services.AddScoped<ICustomerEmailAddressRepository, CustomerEmailAddressRepository>();
-        services.AddSingleton<ICustomerReconciliationClient>(client);
-        services.AddSingleton<ICorrelationContext, FakeCorrelationContext>();
-        services.AddSingleton<Wolverine.IMessageBus, TaxVision.Correspondence.Tests.Ingest.FakeMessageBus>();
-        await using var provider = services.BuildServiceProvider();
-        var job = new CustomerProjectionReconciliationJob(
-            provider,
-            NullLogger<CustomerProjectionReconciliationJob>.Instance
-        );
-
-        await job.RunOnceSafeAsync(pageSize: 2, CancellationToken.None);
+        await RunAsync(client);
 
         await using var read = CorrespondenceSqlServer.NewContext(_tenantId);
         var rows = await read.CustomerEmailAddresses.IgnoreQueryFilters().AsNoTracking()
@@ -81,5 +68,97 @@ public sealed class CustomerProjectionReconciliationIntegrationTests : IAsyncLif
         Assert.Contains(rows, x => x.CustomerId == page3Customer && x.IsActive);
         Assert.False(rows.Single(x => x.CustomerId == conflicting).IsActive);
         Assert.True(rows.Single(x => x.CustomerId == owner).IsActive);
+    }
+
+    // COR-12: lo que hacía el job por tenant, ahora en el único que queda.
+    [Fact]
+    public async Task ReactivatesWithTheEmailCustomerHasNow()
+    {
+        var customer = Guid.NewGuid();
+        var newEmail = $"new-{Guid.NewGuid():N}@cor12.test";
+        await using (var seed = CorrespondenceSqlServer.NewContext(_tenantId))
+        {
+            var row = CustomerEmailAddress.Create(
+                _tenantId,
+                customer,
+                EmailAddress.Create($"old-{Guid.NewGuid():N}@cor12.test").Value
+            );
+            row.SoftDelete(DateTime.UtcNow.AddDays(-1));
+            seed.CustomerEmailAddresses.Add(row);
+            await seed.SaveChangesAsync();
+        }
+
+        await RunAsync(new PagedClient([new RemoteCustomerRecord(_tenantId, customer, "Customer", newEmail, true)]));
+
+        var projected = await RowAsync(customer);
+        Assert.True(projected.IsActive);
+        Assert.Equal(newEmail, projected.EmailAddress);
+    }
+
+    [Fact]
+    public async Task UpdatesAStaleEmail()
+    {
+        var customer = Guid.NewGuid();
+        var newEmail = $"new-{Guid.NewGuid():N}@cor12.test";
+        await using (var seed = CorrespondenceSqlServer.NewContext(_tenantId))
+        {
+            seed.CustomerEmailAddresses.Add(
+                CustomerEmailAddress.Create(
+                    _tenantId,
+                    customer,
+                    EmailAddress.Create($"old-{Guid.NewGuid():N}@cor12.test").Value
+                )
+            );
+            await seed.SaveChangesAsync();
+        }
+
+        await RunAsync(new PagedClient([new RemoteCustomerRecord(_tenantId, customer, "Customer", newEmail, true)]));
+
+        Assert.Equal(newEmail, (await RowAsync(customer)).EmailAddress);
+    }
+
+    [Fact]
+    public async Task ReflectsADeactivationThatNeverArrived()
+    {
+        var customer = Guid.NewGuid();
+        var email = $"gone-{Guid.NewGuid():N}@cor12.test";
+        await using (var seed = CorrespondenceSqlServer.NewContext(_tenantId))
+        {
+            seed.CustomerEmailAddresses.Add(
+                CustomerEmailAddress.Create(_tenantId, customer, EmailAddress.Create(email).Value)
+            );
+            await seed.SaveChangesAsync();
+        }
+
+        await RunAsync(new PagedClient([new RemoteCustomerRecord(_tenantId, customer, "Customer", email, false)]));
+
+        Assert.False((await RowAsync(customer)).IsActive);
+    }
+
+    private async Task<CustomerEmailAddress> RowAsync(Guid customerId)
+    {
+        await using var read = CorrespondenceSqlServer.NewContext(_tenantId);
+        return await read
+            .CustomerEmailAddresses.IgnoreQueryFilters()
+            .AsNoTracking()
+            .SingleAsync(x => x.TenantId == _tenantId && x.CustomerId == customerId);
+    }
+
+    private async Task RunAsync(ICustomerReconciliationClient client)
+    {
+        var services = new ServiceCollection();
+        services.AddScoped(_ => CorrespondenceSqlServer.NewContext(_tenantId));
+        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CorrespondenceDbContext>());
+        services.AddScoped<ICustomerEmailAddressRepository, CustomerEmailAddressRepository>();
+        services.AddSingleton(client);
+        services.AddSingleton<ICorrelationContext, FakeCorrelationContext>();
+        services.AddSingleton<Wolverine.IMessageBus, TaxVision.Correspondence.Tests.Ingest.FakeMessageBus>();
+        await using var provider = services.BuildServiceProvider();
+        var job = new CustomerProjectionReconciliationJob(
+            provider,
+            NullLogger<CustomerProjectionReconciliationJob>.Instance
+        );
+
+        await job.RunOnceSafeAsync(pageSize: 2, CancellationToken.None);
     }
 }

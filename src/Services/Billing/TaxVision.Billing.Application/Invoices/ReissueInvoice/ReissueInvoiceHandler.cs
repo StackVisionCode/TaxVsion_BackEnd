@@ -52,57 +52,21 @@ public static class ReissueInvoiceHandler
 
         var nowUtc = clock.GetUtcNow().UtcDateTime;
 
-        // 1) Crear el reemplazo como BORRADOR: copia fiel de cliente, moneda, líneas (con su CatalogItemId
-        //    para que el descuento de stock se rehaga al emitir) y notas. El emisor y las condiciones de
-        //    cobro se conservan tal cual (es la misma factura corregida).
-        var draftLines = original
-            .Lines.Select(l => new DraftInvoiceLine(
-                l.Description,
-                l.Quantity,
-                l.UnitAmount.AmountCents,
-                l.TaxBasisPoints,
-                l.CatalogItemId
-            ))
-            .ToList();
+        var drafted = original.CreateReplacementDraft(command.ActorUserId, nowUtc);
+        if (drafted.IsFailure)
+            return Result.Failure<ReissueInvoiceResult>(drafted.Error);
+        var replacement = drafted.Value;
 
-        var replacementResult = Invoice.CreateDraft(
-            command.TenantId,
-            command.ActorUserId,
-            original.Customer,
-            original.Currency,
-            draftLines,
-            original.Notes,
-            nowUtc,
-            original.Issuer,
-            original.GetTermsSnapshot()
-        );
-        if (replacementResult.IsFailure)
-            return Result.Failure<ReissueInvoiceResult>(replacementResult.Error);
-        var replacement = replacementResult.Value;
-
-        // 2) Enlazar ambas caras + arrastrar el crédito (el pago ya cobrado en la original).
-        var linked = replacement.LinkAsReplacementFor(original.Id, original.AmountPaid.AmountCents, nowUtc);
-        if (linked.IsFailure)
-            return Result.Failure<ReissueInvoiceResult>(linked.Error);
-
-        var marked = original.MarkReplacedBy(replacement.Id, nowUtc);
-        if (marked.IsFailure)
-            return Result.Failure<ReissueInvoiceResult>(marked.Error);
-
-        // 3) Anular la original. Su stock se repone después del commit con SyncInvoiceStockCommand.
-        var reason = string.IsNullOrWhiteSpace(command.Reason)
-            ? "Replaced by a corrected invoice."
-            : command.Reason.Trim();
-        var voided = original.Void(reason, nowUtc, command.ActorUserId);
-        if (voided.IsFailure)
-            return Result.Failure<ReissueInvoiceResult>(voided.Error);
+        // El stock de la original se repone después del commit con SyncInvoiceStockCommand.
+        var reissued = original.ReissueAs(replacement, command.Reason, nowUtc, command.ActorUserId);
+        if (reissued.IsFailure)
+            return Result.Failure<ReissueInvoiceResult>(reissued.Error);
 
         await invoices.AddAsync(replacement, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        // 4) Post-commit (outbox y colas locales durables): la original anulada revoca su payable/link, regenera su PDF con
-        //    la marca "Void" y repone su stock — igual que una anulación normal. El reemplazo (borrador) no genera artefactos
-        //    hasta que se emita.
+        // Post-commit (outbox y colas locales durables): la original revoca su enlace, regenera su PDF "Void" y repone
+        // su stock, igual que una anulación normal. El reemplazo (borrador) no genera nada hasta que se emita.
         bus.TenantId = command.TenantId.ToString();
         await bus.PublishAsync(
             new InvoiceVoidedIntegrationEvent
@@ -111,7 +75,7 @@ public static class ReissueInvoiceHandler
                 CorrelationId = correlation.CorrelationId,
                 InvoiceId = original.Id,
                 InvoiceNumber = original.InvoiceNumber ?? string.Empty,
-                Reason = reason,
+                Reason = reissued.Value,
             }
         );
         await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, original.Id));

@@ -1,10 +1,10 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using TaxVision.Auth.Application.Onboarding.Admin.Commands;
-using TaxVision.Auth.Application.Onboarding.Sagas.Commands;
+using TaxVision.Auth.Onboarding.Application.Admin.Commands;
+using TaxVision.Auth.Onboarding.Application.Sagas.Commands;
 using TaxVision.Auth.Domain.Audit;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Tests.Application;
 using TaxVision.Auth.Tests.Onboarding;
 
@@ -23,7 +23,7 @@ public sealed class OnboardingAdminCommandsTests
         onboarding.MarkPaymentProcessing(Guid.NewGuid(), "cs_test");
         onboarding.MarkPaymentCompleted("cs_test", Now);
         onboarding.SetRegistrationToken(
-            TaxVision.Auth.Domain.Onboarding.ValueObjects.RegistrationTokenHash.Create(new string('a', 64)).Value,
+            TaxVision.Auth.Onboarding.Domain.ValueObjects.RegistrationTokenHash.Create(new string('a', 64)).Value,
             Now.AddHours(72)
         );
         onboarding.StartProvisioning(

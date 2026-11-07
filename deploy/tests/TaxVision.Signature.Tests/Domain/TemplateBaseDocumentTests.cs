@@ -55,11 +55,13 @@ public sealed class TemplateBaseDocumentTests
     }
 
     [Fact]
-    public void SetBaseDocument_throws_after_publish()
+    public void SetBaseDocument_fails_after_publish()
     {
         var template = NewPublished();
 
-        Assert.Throws<InvalidOperationException>(() => template.SetBaseDocument(Guid.NewGuid()));
+        var result = template.SetBaseDocument(Guid.NewGuid());
+
+        Assert.Equal("Signature.Template.NotDraft", result.Error.Code);
     }
 
     private static SignatureTemplate NewDraft() =>

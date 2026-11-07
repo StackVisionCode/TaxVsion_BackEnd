@@ -30,6 +30,10 @@ public sealed class TenantLogoRef
             UpdatedAtUtc = nowUtc,
         };
 
+    /// <summary>Lápida: el retiro llegó antes que la fila. Sin logo y con su fecha, para ignorar un Updated más viejo.</summary>
+    public static TenantLogoRef Tombstone(Guid tenantId, TenantLogoSurface surface, DateTime removedAtUtc) =>
+        Create(tenantId, surface, removedAtUtc);
+
     /// <summary>Fija el logo. Devuelve false si el evento es más viejo que lo proyectado.</summary>
     public bool SetLogo(Guid fileId, string contentType, DateTime nowUtc)
     {

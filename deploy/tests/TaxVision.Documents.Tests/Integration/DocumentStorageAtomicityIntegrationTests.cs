@@ -33,6 +33,38 @@ public sealed class DocumentStorageAtomicityIntegrationTests(DocumentsOutboxFixt
         Assert.Equal(DocumentGenerationStatus.Uploading, (await fixture.ReadGenerationAsync(tenantId))!.Status);
     }
 
+    /// <summary>DOC-4 en SQL real: la búsqueda usa las tres columnas del índice único.</summary>
+    [Fact]
+    public async Task IdempotencyLookup_DoesNotCrossSourceServices()
+    {
+        var tenantId = Guid.NewGuid();
+        var key = $"shared-key:{Guid.NewGuid():N}";
+        using var scope = fixture.Services.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IDocumentGenerationRepository>();
+        var generation = DocumentGeneration
+            .Request(
+                tenantId: tenantId,
+                documentType: DocumentType.Create("Invoice").Value,
+                templateKey: TemplateKey.Create("billing.invoice.v1").Value,
+                templateVersion: 1,
+                outputFormat: DocumentOutputFormat.Pdf,
+                owner: new GenerationOwner("Invoice", Guid.NewGuid()),
+                sourceService: "tasks",
+                documentVersion: 1,
+                priority: DocumentPriority.Normal,
+                idempotencyKey: key,
+                correlationId: "it-doc4",
+                causationId: null,
+                nowUtc: DateTime.UtcNow
+            )
+            .Value;
+        await repository.AddAsync(generation);
+        await scope.ServiceProvider.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>().SaveChangesAsync();
+
+        Assert.Equal(generation.Id, (await repository.GetByIdempotencyKeyAsync(tenantId, "tasks", key))?.Id);
+        Assert.Null(await repository.GetByIdempotencyKeyAsync(tenantId, "billing", key));
+    }
+
     [Fact]
     public async Task FailureAfterUpload_LeavesNoSaveFileRequestedEnvelope()
     {

@@ -49,7 +49,7 @@ public sealed class NotificationLogRetentionPurgerTests
         var result = NotificationLog.Create(
             tenantId,
             NotificationChannel.Email,
-            recipient,
+            NotificationRecipient.ForEmail(recipient).Value,
             "Subject",
             "template",
             null,

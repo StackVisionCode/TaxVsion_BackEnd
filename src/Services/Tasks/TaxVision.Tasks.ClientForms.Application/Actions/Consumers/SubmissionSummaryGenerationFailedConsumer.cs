@@ -40,7 +40,7 @@ public static class SubmissionSummaryGenerationFailedConsumer
             );
             if (request is null)
                 return;
-            var failed = request.MarkPdfFailed(generationId);
+            var failed = request.Summary.MarkPdfFailed(generationId);
             if (failed.IsFailure)
                 return;
             await unitOfWork.SaveChangesAsync(ct);

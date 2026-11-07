@@ -54,6 +54,7 @@ public static class CreateInvitationHandler
         ITenantRegistry tenants,
         IInvitationRepository invitations,
         IInvitationTokenService tokens,
+        IAccountTokenProtector tokenProtector,
         IRoleRepository roles,
         ITenantPlanLimitsStore planLimits,
         IAuthAuditWriter audit,
@@ -200,22 +201,6 @@ public static class CreateInvitationHandler
         result.Value.MarkSent();
         await invitations.AddAsync(result.Value, ct);
 
-        await bus.PublishAsync(
-            new InvitationCreatedIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                InvitationId = result.Value.Id,
-                Email = normalizedEmail,
-                ActorType = command.ActorType.ToString(),
-                RawToken = token.RawToken,
-                ExpiresAtUtc = expiresAtUtc,
-                TenantName = tenant.Name,
-                TenantSubdomain = tenant.SubDomain,
-                InviterName = $"{inviter.Name} {inviter.LastName}",
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 command.TenantId,
@@ -231,6 +216,27 @@ public static class CreateInvitationHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        var tokenFields = tokenProtector.Seal(
+            AuthTokenPayloadSchemas.Invitation,
+            AuthTokenPayloadSchemas.InvitationBinding(command.TenantId, result.Value.Id),
+            token.RawToken
+        );
+        await bus.PublishAsync(
+            new InvitationCreatedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                InvitationId = result.Value.Id,
+                Email = normalizedEmail,
+                ActorType = command.ActorType.ToString(),
+                RawToken = tokenFields.RawToken,
+                ProtectedToken = tokenFields.ProtectedToken,
+                ExpiresAtUtc = expiresAtUtc,
+                TenantName = tenant.Name,
+                TenantSubdomain = tenant.SubDomain,
+                InviterName = $"{inviter.Name} {inviter.LastName}",
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         return Result.Success(
             new CreateInvitationResponse(

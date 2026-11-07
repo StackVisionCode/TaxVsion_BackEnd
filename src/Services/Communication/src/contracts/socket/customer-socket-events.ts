@@ -9,7 +9,7 @@
 
 export interface CustomerChangedDto {
   customerId: string;
-  changeType: 'created' | 'updated' | 'deactivated' | 'archived';
+  changeType: 'created' | 'updated' | 'deactivated' | 'archived' | 'reactivated' | 'activated';
 }
 
 export const CustomerSocketEvents = {

@@ -8,7 +8,7 @@ using TaxVision.Tenant.Domain.Enums;
 namespace TaxVision.Tenant.Tests.Integration;
 
 /// <summary>
-/// Color esperado de la marca del sistema leído de la base real (solo lectura): el guardado para el
+/// Color esperado de la marca del sistema leído de la base del host (solo lectura): el guardado para el
 /// tenant de plataforma o, si no hay, la constante compilada. Así los tests no dependen de cómo esté
 /// la marca local (p. ej. tras un rebrand).
 /// </summary>

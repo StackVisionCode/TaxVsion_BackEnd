@@ -44,7 +44,7 @@ public static class SubmissionSummaryGenerationCompletedConsumer
             );
             if (request is null)
                 return;
-            var linked = request.LinkPdf(generationId, evt.FileId);
+            var linked = request.Summary.LinkPdf(generationId, evt.FileId);
             if (linked.IsFailure)
                 return;
 

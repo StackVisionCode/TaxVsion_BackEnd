@@ -24,7 +24,8 @@ public sealed class GetNoteHandlerTests
             NoteContent.Create("<p>x</p>").Value,
             NoteReference.Create(targetType, targetId).Value,
             visibility,
-            null
+            null,
+            DateTime.UtcNow
         ).Value;
 
     [Fact]

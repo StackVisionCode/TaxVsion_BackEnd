@@ -296,25 +296,25 @@ public sealed class FormInsightsReadRepositoryTests(ITestOutputHelper output)
         c1.MarkOpened(Now.AddDays(-5).AddMinutes(10));
         Submit(c1, FormActor.PortalUser(Admin), Now.AddDays(-5).AddMinutes(60));
         var pdf = Guid.NewGuid();
-        c1.MarkPdfRequested(1, pdf);
-        c1.LinkPdf(pdf, Guid.NewGuid());
-        c1.MarkSignatureRequesting(1, Guid.NewGuid(), new string('a', 64));
-        c1.LinkSignatureRequest(1, Guid.NewGuid());
-        c1.MarkSignatureSealed(1, Guid.NewGuid(), new string('b', 64), null);
+        c1.Summary.MarkPdfRequested(1, pdf);
+        c1.Summary.LinkPdf(pdf, Guid.NewGuid());
+        c1.Summary.MarkSignatureRequesting(1, Guid.NewGuid(), new string('a', 64));
+        c1.Summary.LinkSignatureRequest(1, Guid.NewGuid());
+        c1.Summary.MarkSignatureSealed(1, Guid.NewGuid(), new string('b', 64), null);
         c1.Complete(null, Admin, Now.AddDays(-4));
 
         // c2: devuelto una vez y completado; el PDF de la revisión 1 falló y el de la 2 sigue pedido.
         var c2 = Customer(db, annualVersion, Guid.NewGuid(), Now.AddDays(-4));
         Submit(c2, FormActor.PortalUser(Admin), Now.AddDays(-4).AddMinutes(180));
         var failedPdf = Guid.NewGuid();
-        c2.MarkPdfRequested(1, failedPdf);
-        c2.MarkPdfFailed(failedPdf);
+        c2.Summary.MarkPdfRequested(1, failedPdf);
+        c2.Summary.MarkPdfFailed(failedPdf);
         c2.ReturnForChanges("Please attach the W-2.", [], Admin, Now.AddDays(-4).AddMinutes(200));
         Submit(c2, FormActor.PortalUser(Admin), Now.AddDays(-4).AddMinutes(260));
-        c2.MarkPdfRequested(2, Guid.NewGuid());
+        c2.Summary.MarkPdfRequested(2, Guid.NewGuid());
         var update = Guid.NewGuid();
-        c2.RequestAction("profile", FormActionNames.UpdateCustomerProfile, update, Now.AddDays(-4).AddMinutes(270));
-        c2.CompleteAction(update, "Customer", Guid.NewGuid(), null, Now.AddDays(-4).AddMinutes(271));
+        c2.Actions.Request("profile", FormActionNames.UpdateCustomerProfile, update, Now.AddDays(-4).AddMinutes(270));
+        c2.Actions.Complete(update, "Customer", Guid.NewGuid(), null, Now.AddDays(-4).AddMinutes(271));
         c2.Complete(null, Admin, Now.AddDays(-3));
 
         // c3: externa del empleado, solo borrador y vencida.
@@ -329,23 +329,23 @@ public sealed class FormInsightsReadRepositoryTests(ITestOutputHelper output)
         var c5 = External(db, engagementVersion, Admin, Now.AddDays(-1), dueAtUtc: null, out var p5);
         Submit(c5, Actor(p5), Now.AddDays(-1).AddMinutes(600));
         var create = Guid.NewGuid();
-        c5.RequestAction("create_client", FormActionNames.CreateCustomer, create, Now.AddDays(-1).AddMinutes(601));
-        c5.RejectAction(
+        c5.Actions.Request("create_client", FormActionNames.CreateCustomer, create, Now.AddDays(-1).AddMinutes(601));
+        c5.Actions.Reject(
             create,
             FormActionRunErrors.DuplicateFoundCode,
             Guid.NewGuid(),
             "Email",
             Now.AddDays(-1).AddMinutes(602)
         );
-        c5.CloseActionWithoutCommand(
+        c5.Actions.CloseWithoutCommand(
             "create_other",
             FormActionNames.CreateCustomer,
             FormActionRunStatus.Failed,
             "payload_invalid",
             Now.AddDays(-1).AddMinutes(603)
         );
-        c5.MarkSignatureRequesting(1, Guid.NewGuid(), new string('c', 64));
-        c5.MarkSignatureFailed(1);
+        c5.Summary.MarkSignatureRequesting(1, Guid.NewGuid(), new string('c', 64));
+        c5.Summary.MarkSignatureFailed(1);
 
         // Período anterior: una enviada a los 30 min y completada, otra sin actividad.
         var p1 = Customer(db, annualVersion, Guid.NewGuid(), Now.AddDays(-40));

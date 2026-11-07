@@ -173,6 +173,7 @@ internal sealed class FakeIdempotencyGuard : IIdempotencyGuard
     public IdempotencyReservationResult ReserveReturnValue { get; set; } = IdempotencyReservationResult.Reserved();
     public List<(Guid TenantId, string Key, Guid SentMessageId)> Completed { get; } = [];
     public List<(Guid TenantId, string Key)> Released { get; } = [];
+    public int ReserveCount { get; private set; }
 
     /// <summary>
     /// Con estado: recuerda las reservas como la tabla real (nueva → Reserved, abierta → InProgress,
@@ -188,6 +189,7 @@ internal sealed class FakeIdempotencyGuard : IIdempotencyGuard
         CancellationToken ct
     )
     {
+        ReserveCount++;
         if (!Stateful)
             return Task.FromResult(ReserveReturnValue);
 

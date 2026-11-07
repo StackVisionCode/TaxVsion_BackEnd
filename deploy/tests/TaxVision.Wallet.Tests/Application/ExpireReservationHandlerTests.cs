@@ -20,8 +20,8 @@ public sealed class ExpireReservationHandlerTests
         var reservations = new FakeReservationRepository();
         var unitOfWork = new FakeUnitOfWork();
         var wallet = WalletAggregate.Create(tenantId).Value;
-        wallet.Credit(10_000_000, "topup:seed");
-        wallet.Reserve(500_000, "reserve:seed");
+        wallet.Credit(Usd(10_000_000), "topup:seed");
+        wallet.Reserve(Usd(500_000), "reserve:seed");
         wallets.Wallets.Add(wallet);
         wallet.ClearDomainEvents();
         var reservation = ReservationBuilder.Open(tenantId, "campaign-run", referenceId, 500_000, 5);

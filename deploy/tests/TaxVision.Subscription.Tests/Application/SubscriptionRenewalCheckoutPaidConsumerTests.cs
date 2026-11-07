@@ -138,7 +138,7 @@ public sealed class SubscriptionRenewalCheckoutPaidConsumerTests
     private static SubscriptionRenewalIntent PendingIntent(Guid tenantId)
     {
         var intent = SubscriptionRenewalIntent
-            .Create(tenantId, 4900, "USD", BillingCycle.Monthly, Guid.NewGuid(), DateTime.UtcNow)
+            .Create(tenantId, Money.FromCents(4900, "USD"), BillingCycle.Monthly, Guid.NewGuid(), DateTime.UtcNow)
             .Value;
         intent.AttachCheckout(Guid.NewGuid(), "https://pay/x", DateTime.UtcNow.AddHours(24), DateTime.UtcNow);
         return intent;

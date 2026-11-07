@@ -32,6 +32,7 @@ public sealed class TaskSeriesRepository(TasksDbContext context) : ITaskSeriesRe
         return await query.OrderByDescending(s => s.CreatedAtUtc).ToListAsync(ct);
     }
 
+    // Cross-tenant: el job materializa las series de todas las oficinas.
     public async Task<IReadOnlyList<TaskSeries>> ListPendingMaterializationAsync(
         int take,
         CancellationToken ct = default

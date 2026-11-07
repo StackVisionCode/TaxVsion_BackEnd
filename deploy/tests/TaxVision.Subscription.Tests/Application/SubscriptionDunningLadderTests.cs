@@ -236,6 +236,11 @@ public sealed class SubscriptionDunningLadderTests
             return true;
         }
 
+        public Task<TenantSubscription?> GetWithFullHistoryAsync(Guid tenantId, CancellationToken ct = default) =>
+
+            GetByTenantIdAsync(tenantId, ct);
+
+
         public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<TenantSubscription?>(subscription.TenantId == tenantId ? subscription : null);
 

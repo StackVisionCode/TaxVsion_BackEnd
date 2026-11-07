@@ -24,8 +24,8 @@ public sealed class SignedDocumentDeliveryIssuer(
     IFileMetadataRefRepository files,
     IAuditChainAppender audit,
     IProtectedPayloadCodec codec,
-    IMessageBus bus,
-    ICorrelationContext correlation
+    ICorrelationContext correlation,
+    IDeliveryIssuanceLock issuanceLock
 ) : ISignedDocumentDeliveryIssuer
 {
     private const string CertificateTitle = "Certificate of completion";
@@ -35,6 +35,9 @@ public sealed class SignedDocumentDeliveryIssuer(
         CancellationToken ct
     )
     {
+        // SIG-16: antes de revisar qué falta. Dos archivos disponibles a la vez pasaban los dos la revisión.
+        await issuanceLock.AcquireAsync(request.Id, ct);
+
         var policy = await PolicyForAsync(request.TenantId, ct);
         var now = DateTime.UtcNow;
         var issued = new List<IssuedDelivery>(request.Signers.Count);
@@ -98,7 +101,12 @@ public sealed class SignedDocumentDeliveryIssuer(
         return Result.Success(new IssuedDelivery(delivery, token, IsReissue: true));
     }
 
-    public async Task PublishAsync(IssuedDelivery issued, SignatureRequest request, CancellationToken ct)
+    public async Task PublishAsync(
+        IssuedDelivery issued,
+        SignatureRequest request,
+        IMessageBus bus,
+        CancellationToken ct
+    )
     {
         var delivery = issued.Delivery;
         var signer = request.Signers.Single(candidate => candidate.Id == delivery.SignerId);

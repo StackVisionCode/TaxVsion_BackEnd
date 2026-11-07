@@ -71,7 +71,7 @@ public sealed class VoidInvoiceHandlerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue("INV-2026-00001", Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
         return invoice;
     }
 

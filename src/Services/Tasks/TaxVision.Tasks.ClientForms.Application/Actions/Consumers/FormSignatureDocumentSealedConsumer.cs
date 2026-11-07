@@ -31,7 +31,7 @@ public static class FormSignatureDocumentSealedConsumer
                 return;
             if (
                 FormSignatureResultSupport.Failed(
-                    request.MarkSignatureSealed(revision, evt.SealedFileId, evt.DocumentHashPost, evt.CertificateFileId),
+                    request.Summary.MarkSignatureSealed(revision, evt.SealedFileId, evt.DocumentHashPost, evt.CertificateFileId),
                     "Sealed",
                     requestId,
                     revision,

@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using TaxVision.Connectors.Domain.Accounts;
 
 namespace TaxVision.Connectors.Application.Accounts;
 
@@ -15,14 +16,14 @@ namespace TaxVision.Connectors.Application.Accounts;
 /// correo en cada tenant al que pertenece, pero nunca el de un colega ni uno ajeno.
 /// </para>
 ///
-/// <para>Normaliza igual que <c>TenantEmailAccount.Create</c> y <c>User</c> (<c>Trim + lower</c>).</para>
+/// <para>Normaliza con <see cref="MailboxAddress"/>, igual que <c>TenantEmailAccount.Create</c> y <c>User</c>.</para>
 /// </summary>
 public static class ConnectedEmailIdentityGuard
 {
     public static Result Ensure(string mailboxEmail, string? initiatorEmail)
     {
-        var initiator = Normalize(initiatorEmail);
-        if (string.IsNullOrEmpty(initiator))
+        var initiator = MailboxAddress.Create(initiatorEmail);
+        if (initiator.IsFailure)
             return Result.Failure(
                 new Error(
                     "Connectors.EmailIdentity.MissingInitiator",
@@ -30,7 +31,7 @@ public static class ConnectedEmailIdentityGuard
                 )
             );
 
-        if (Normalize(mailboxEmail) != initiator)
+        if (!initiator.Value.Matches(mailboxEmail))
             return Result.Failure(
                 new Error(
                     "Connectors.EmailIdentity.Mismatch",
@@ -40,6 +41,4 @@ public static class ConnectedEmailIdentityGuard
 
         return Result.Success();
     }
-
-    private static string Normalize(string? email) => (email ?? string.Empty).Trim().ToLowerInvariant();
 }

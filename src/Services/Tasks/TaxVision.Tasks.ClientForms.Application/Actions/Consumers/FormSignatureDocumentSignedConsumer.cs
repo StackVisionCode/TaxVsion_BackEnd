@@ -30,8 +30,8 @@ public static class FormSignatureDocumentSignedConsumer
             if (request is null)
                 return;
             var transition = evt.IsRequestCompleted
-                ? request.MarkSignatureCompleted(revision)
-                : request.MarkSignatureSigned(revision);
+                ? request.Summary.MarkSignatureCompleted(revision)
+                : request.Summary.MarkSignatureSigned(revision);
             if (FormSignatureResultSupport.Failed(transition, "Signed", requestId, revision, logger))
                 return;
             var outgoing = new DeferredMessages();

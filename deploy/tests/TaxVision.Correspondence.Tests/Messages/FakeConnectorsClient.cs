@@ -57,12 +57,18 @@ internal sealed class FakeConnectorsClient : IConnectorsClient
     /// <summary>Si se fija, responde según <c>includeOffice</c> (gana sobre <see cref="VisibleAccountIdsResponse"/>).</summary>
     public Func<bool, Result<IReadOnlyCollection<Guid>>>? VisibleAccountIdsByIncludeOffice { get; set; }
 
+    public int VisibleCalls { get; private set; }
+
     public Task<Result<IReadOnlyCollection<Guid>>> GetVisibleAccountIdsAsync(
         Guid tenantId,
         Guid userId,
         bool includeOffice,
         CancellationToken ct = default
-    ) => Task.FromResult(VisibleAccountIdsByIncludeOffice?.Invoke(includeOffice) ?? VisibleAccountIdsResponse);
+    )
+    {
+        VisibleCalls++;
+        return Task.FromResult(VisibleAccountIdsByIncludeOffice?.Invoke(includeOffice) ?? VisibleAccountIdsResponse);
+    }
 
     public Result<IReadOnlyList<MailboxAddress>> MailboxAddressesResponse { get; set; } =
         Result.Success<IReadOnlyList<MailboxAddress>>([]);

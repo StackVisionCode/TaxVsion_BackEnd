@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -36,17 +37,28 @@ public static class InvitationCreatedConsumer
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
+        AuthAccountTokenReader tokens,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            var token = tokens.Read(
+                evt.ProtectedToken,
+                evt.RawToken,
+                AuthTokenPayloadSchemas.Invitation,
+                AuthTokenPayloadSchemas.InvitationBinding(evt.TenantId, evt.InvitationId),
+                evt.EventId
+            );
+            if (token is null)
+                return;
+
             var office = string.IsNullOrWhiteSpace(evt.TenantName) ? platform.Current.BrandName : evt.TenantName!;
             var tenantPortalUrl = string.IsNullOrWhiteSpace(evt.TenantSubdomain)
                 ? portal.Value.BaseUrl.TrimEnd('/')
                 : $"https://{platform.Current.TenantHost(evt.TenantSubdomain.Trim().ToLowerInvariant())}";
-            var inviteLink = $"{tenantPortalUrl}/accept-invitation?token={Uri.EscapeDataString(evt.RawToken)}";
+            var inviteLink = $"{tenantPortalUrl}/accept-invitation?token={Uri.EscapeDataString(token)}";
 
             var render = (
                 await scribeClient.RenderAsync(
@@ -92,6 +104,7 @@ public static class PasswordResetRequestedConsumer
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
         ITenantHostResolver hostResolver,
+        AuthAccountTokenReader tokens,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -102,7 +115,17 @@ public static class PasswordResetRequestedConsumer
             // El destino depende del actor de ESTA oficina: cliente → portal, staff → CRM. Un email
             // multi-oficina recibe un correo por oficina, cada uno con su link al destino correcto.
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
-            var resetToken = Uri.EscapeDataString(evt.RawToken);
+            var token = tokens.Read(
+                evt.ProtectedToken,
+                evt.RawToken,
+                AuthTokenPayloadSchemas.PasswordReset,
+                AuthTokenPayloadSchemas.PasswordResetBinding(evt.TenantId, evt.UserId),
+                evt.EventId
+            );
+            if (token is null)
+                return;
+
+            var resetToken = Uri.EscapeDataString(token);
             var resetLink = AuthAccountCopy.IsPortal(evt.ActorType)
                 ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/reset-password/new?token={resetToken}"
                 : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/reset-password?token={resetToken}";
@@ -266,6 +289,7 @@ public static class EmailChangeRequestedConsumer
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
         ITenantHostResolver hostResolver,
+        AuthAccountTokenReader tokens,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -274,7 +298,17 @@ public static class EmailChangeRequestedConsumer
         {
             // Link al subdominio de la oficina: el cliente confirma en su portal y el staff en el CRM.
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
-            var confirmToken = Uri.EscapeDataString(evt.RawToken);
+            var token = tokens.Read(
+                evt.ProtectedToken,
+                evt.RawToken,
+                AuthTokenPayloadSchemas.EmailChange,
+                AuthTokenPayloadSchemas.EmailChangeBinding(evt.TenantId, evt.UserId),
+                evt.EventId
+            );
+            if (token is null)
+                return;
+
+            var confirmToken = Uri.EscapeDataString(token);
             var confirmLink = AuthAccountCopy.IsPortal(evt.ActorType)
                 ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/confirm-email?token={confirmToken}"
                 : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/confirm-email?token={confirmToken}";
@@ -375,7 +409,7 @@ public static class SecurityAlertConsumer
             {
                 await dispatcher.RecordInAppAsync(
                     evt.TenantId,
-                    $"user:{userId:N}",
+                    NotificationRecipient.ForUser(userId),
                     subject,
                     NotificationCategory.AccountSecurity,
                     "auth.security_alert",

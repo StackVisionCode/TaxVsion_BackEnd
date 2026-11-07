@@ -1,11 +1,13 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
 using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.Suppression;
 using TaxVision.Postmaster.Domain.Providers;
 using TaxVision.Postmaster.Domain.Sending;
+using TaxVision.Postmaster.Domain.ValueObjects;
 
 namespace TaxVision.Postmaster.Application.Sending.Commands.SendCorrespondenceMessage;
 
@@ -22,6 +24,8 @@ public static class PrepareCorrespondenceMessageHandler
         "This message is already being sent by a concurrent request. Check back shortly."
     );
 
+    private const string InvalidRecipientCode = "SendCorrespondenceMessageHandler.InvalidRecipient";
+
     public static async Task<Result<PreparedCorrespondenceMessage>> Handle(
         PrepareCorrespondenceMessageCommand prepare,
         IConnectedMailboxResolver mailboxResolver,
@@ -29,10 +33,17 @@ public static class PrepareCorrespondenceMessageHandler
         ISentMessageRepository sentMessages,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
+        ILogger logger,
         CancellationToken ct
     )
     {
         var command = prepare.Request;
+
+        // Antes de reservar: Wolverine guarda lo rastreado aunque se devuelva Failure (COR-19).
+        var validTo = ValidateTo(command);
+        if (validTo.IsFailure)
+            return Result.Failure<PreparedCorrespondenceMessage>(validTo.Error);
+
         var idempotencyKey = BuildIdempotencyKey(command.CorrespondenceDraftId);
 
         var replay = await ReserveIdempotencyAsync(command, idempotencyKey, idempotencyGuard, sentMessages, ct);
@@ -50,6 +61,7 @@ public static class PrepareCorrespondenceMessageHandler
             idempotencyKey,
             sentMessages,
             unitOfWork,
+            logger,
             ct
         );
         if (persistResult.IsFailure)
@@ -75,6 +87,18 @@ public static class PrepareCorrespondenceMessageHandler
     private static string BuildIdempotencyKey(Guid correspondenceDraftId) =>
         $"correspondence-draft:{correspondenceDraftId}";
 
+    /// <summary>Sin To válidos no hay correo; reintentar no lo arregla. Los Cc y Bcc no lo frenan.</summary>
+    private static Result ValidateTo(SendCorrespondenceMessageCommand command)
+    {
+        if (command.To.Count == 0)
+            return Result.Failure(new Error(InvalidRecipientCode, "At least one To recipient is required."));
+
+        var invalid = command.To.Select(EmailAddress.Create).FirstOrDefault(parsed => parsed.IsFailure);
+        return invalid is null
+            ? Result.Success()
+            : Result.Failure(new Error(InvalidRecipientCode, invalid.Error.Message));
+    }
+
     /// <summary>
     /// Reserva previa a crear cualquier <see cref="SentMessage"/> — un reintento del mismo draft devuelve
     /// el resultado ya materializado sin reenviar. <c>InProgress</c> con un SentMessage ya creado es un
@@ -93,7 +117,7 @@ public static class PrepareCorrespondenceMessageHandler
         switch (reservation.Outcome)
         {
             case IdempotencyReservationOutcome.AlreadyCompleted:
-                // PMS-10: con el Message-ID, el borrador que cierra el job enlaza la respuesta del cliente (COR-16).
+                // PMS-13: con el Message-ID, el borrador que cierra el job enlaza la respuesta del cliente (COR-16).
                 var sent = await sentMessages.FindByIdempotencyKeyAsync(command.TenantId, idempotencyKey, ct);
                 return Completed(
                     new SendCorrespondenceMessageResult(
@@ -148,6 +172,7 @@ public static class PrepareCorrespondenceMessageHandler
         string idempotencyKey,
         ISentMessageRepository sentMessages,
         IUnitOfWork unitOfWork,
+        ILogger logger,
         CancellationToken ct
     )
     {
@@ -171,17 +196,10 @@ public static class PrepareCorrespondenceMessageHandler
             deliveryLane: DeliveryLane.TenantMailbox
         );
         if (queueResult.IsFailure)
-            throw new InvalidOperationException(
-                $"Malformed {nameof(SendCorrespondenceMessageCommand)}: {queueResult.Error.Message}"
-            );
+            throw new MalformedEmailEventException(nameof(SendCorrespondenceMessageCommand), queueResult.Error);
 
         var message = queueResult.Value;
-        foreach (var to in command.To)
-            message.AddRecipient(to, RecipientType.To, null);
-        foreach (var cc in command.Cc)
-            message.AddRecipient(cc, RecipientType.Cc, null);
-        foreach (var bcc in command.Bcc)
-            message.AddRecipient(bcc, RecipientType.Bcc, null);
+        AddRecipients(message, command, logger);
         message.RecordAttachments(command.Attachments);
 
         await sentMessages.AddAsync(message, ct);
@@ -194,6 +212,22 @@ public static class PrepareCorrespondenceMessageHandler
             return Result.Failure<SentMessage>(InProgressError);
         }
         return Result.Success(message);
+    }
+
+    /// <summary>Un Cc o Bcc inválido o repetido se descarta, como en PMS-10. Del To ya validado solo puede sobrar un repetido.</summary>
+    private static void AddRecipients(SentMessage message, SendCorrespondenceMessageCommand command, ILogger logger)
+    {
+        var dropped = command
+            .To.Select(to => message.AddRecipient(to, RecipientType.To, null))
+            .Concat(command.Cc.Select(cc => message.AddRecipient(cc, RecipientType.Cc, null)))
+            .Concat(command.Bcc.Select(bcc => message.AddRecipient(bcc, RecipientType.Bcc, null)))
+            .Count(added => added.IsFailure);
+        if (dropped > 0)
+            logger.LogWarning(
+                "Dropped {Count} invalid or repeated recipient(s) of correspondence draft {DraftId}.",
+                dropped,
+                command.CorrespondenceDraftId
+            );
     }
 
     /// <summary>Si TODOS los recipients quedan suprimidos, el mensaje entero pasa a Suppressed y se devuelve error sin intentar el envío — mismo criterio que el canal automático.</summary>
@@ -211,17 +245,12 @@ public static class PrepareCorrespondenceMessageHandler
         if (suppressed.Count == 0)
             return null;
 
-        var now = DateTime.UtcNow;
-        foreach (var recipient in message.Recipients.Where(r => suppressed.Contains(r.Address)))
-            message.MarkRecipientSuppressed(recipient.Id, "Address in suppression list.", now);
-
-        if (!message.Recipients.All(r => r.Status == RecipientStatus.Suppressed))
+        if (!message.ApplySuppression(suppressed, DateTime.UtcNow).Value)
         {
             await unitOfWork.SaveChangesAsync(ct);
             return null;
         }
 
-        message.MarkAsSuppressed("All recipients are in the suppression list.", now);
         await idempotencyGuard.CompleteAsync(message.TenantId, idempotencyKey, message.Id, ct);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Failure<PreparedCorrespondenceMessage>(

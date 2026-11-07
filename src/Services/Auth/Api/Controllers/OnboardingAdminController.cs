@@ -6,10 +6,10 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Auth.Application.Onboarding.Admin.Commands;
-using TaxVision.Auth.Application.Onboarding.Admin.Queries;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 using TaxVision.Auth.Domain.Roles;
+using TaxVision.Auth.Onboarding.Application.Admin.Commands;
+using TaxVision.Auth.Onboarding.Application.Admin.Queries;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;

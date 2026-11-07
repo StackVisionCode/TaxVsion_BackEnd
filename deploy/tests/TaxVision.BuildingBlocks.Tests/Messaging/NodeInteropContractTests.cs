@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using BuildingBlocks.Messaging;
 using Wolverine.Attributes;
@@ -20,9 +21,9 @@ namespace TaxVision.BuildingBlocks.Tests.Messaging;
 /// </para>
 ///
 /// <para>
-/// <b>Sentido .NET → Node (H-14).</b> Node no puede leer tipos CLR, así que traduce la cabecera
-/// <c>dotnet-type-name</c> con el diccionario manual <c>CLR_TYPE_TO_EVENT_TYPE</c>
-/// (<c>consumer-runtime.ts</c>). Sus claves son <b>namespaces CLR completos</b>: un refactor
+/// <b>Sentido .NET → Node (H-14).</b> Node no puede leer tipos CLR, así que traduce la propiedad AMQP
+/// <c>type</c> (<c>properties.type</c>: el alias de <see cref="MessageIdentityAttribute"/> o el nombre
+/// CLR) con el diccionario manual <c>CLR_TYPE_TO_EVENT_TYPE</c> (<c>consumer-runtime.ts</c>). Sus claves son <b>namespaces CLR completos</b>: un refactor
 /// inofensivo en .NET —mover un evento de carpeta, renombrar un namespace— rompe Node sin que la
 /// solución .NET se entere. Compila, los tests pasan, y Communication deja de recibir eventos.
 /// Esto es lo que conecta con BB-12: al unificar namespaces en BuildingBlocks nada obligaba a
@@ -40,6 +41,9 @@ public sealed class NodeInteropContractTests(ITestOutputHelper output)
 {
     /// <summary>Prefijos que identifican un evento del puente con Node.</summary>
     private static readonly string[] NodeOwnedPrefixes = ["communication.", "transcript."];
+
+    /// <summary>Identidades fuera de esos prefijos que también publica Node (acuse del retiro).</summary>
+    private static readonly string[] NodeOwnedAliases = ["auth.user.offboarding_step_completed.v1"];
 
     private static DirectoryInfo RepositoryRoot()
     {
@@ -77,7 +81,10 @@ public sealed class NodeInteropContractTests(ITestOutputHelper output)
             .Select(t => t.GetCustomAttribute<MessageIdentityAttribute>()?.Alias)
             .Where(alias => alias is not null)
             .Select(alias => alias!)
-            .Where(alias => NodeOwnedPrefixes.Any(p => alias.StartsWith(p, StringComparison.Ordinal)))
+            .Where(alias =>
+                NodeOwnedPrefixes.Any(p => alias.StartsWith(p, StringComparison.Ordinal))
+                || NodeOwnedAliases.Contains(alias, StringComparer.Ordinal)
+            )
             .Distinct(StringComparer.Ordinal)
             .OrderBy(a => a, StringComparer.Ordinal)
             .ToArray();
@@ -162,5 +169,160 @@ public sealed class NodeInteropContractTests(ITestOutputHelper output)
                 + "\nEsos eventos llegan a Communication y no matchean: se descartan en silencio. "
                 + "Suele pasar tras mover un evento de carpeta o renombrar un namespace."
         );
+    }
+
+    /// <summary>
+    /// Cada evento que .NET publica al fanout <c>taxvision-events</c> llega a la cola de Communication.
+    /// Si Node no tiene handler ni lo lista como ignorado a propósito, cae en «event type has no
+    /// registered handler»: ruido en el log o, peor, un handler que falta (la cancelación de citas y el
+    /// cliente restaurado se perdían así). La prueba obliga a decidir cada evento nuevo.
+    /// </summary>
+    [Fact]
+    public void CadaEventoDelFanoutTieneHandlerEnNodeOEstaIgnorado()
+    {
+        var root = RepositoryRoot().FullName;
+        var communication = Path.Combine(root, "src", "Services", "Communication", "src");
+        var rabbit = Path.Combine(communication, "infrastructure", "rabbit");
+        var clrMap = ReadClrMap(Path.Combine(rabbit, "consumer-runtime.ts"));
+        var ignored = ReadIgnored(Path.Combine(rabbit, "ignored-event-types.ts"));
+        var registered = ReadRegistered(communication);
+        var published = FanoutEventTypes(root);
+
+        Assert.NotEmpty(published);
+        Assert.NotEmpty(registered);
+
+        var uncovered = new List<string>();
+        foreach (var type in published)
+        {
+            var amqpType = type.GetCustomAttribute<MessageIdentityAttribute>()?.Alias ?? type.FullName!;
+            // Mismo orden que normalizeEnvelope: eventType del cuerpo, mapa CLR y el header tal cual.
+            var nodeType = BodyEventType(type) ?? clrMap.GetValueOrDefault(amqpType) ?? amqpType;
+            if (registered.Contains(nodeType) || ignored.Contains(nodeType) || ignored.Contains(amqpType))
+                continue;
+
+            uncovered.Add(nodeType == amqpType ? nodeType : $"{nodeType} (type: {amqpType})");
+        }
+
+        output.WriteLine($"Eventos .NET del fanout verificados contra Node: {published.Count}");
+
+        Assert.True(
+            uncovered.Count == 0,
+            "Estos eventos que .NET publica a taxvision-events no tienen handler en Communication ni están "
+                + "en ignored-event-types.ts:\n  "
+                + string.Join("\n  ", uncovered.Distinct().Order(StringComparer.Ordinal))
+                + "\nAgregar el handler (y su entrada en CLR_TYPE_TO_EVENT_TYPE si viaja con nombre CLR) o "
+                + "listarlo como ignorado a propósito."
+        );
+    }
+
+    /// <summary>Tipos de <c>PublishMessage&lt;T&gt;().ToRabbitExchange("taxvision-events")</c> en los servicios .NET.</summary>
+    private static List<Type> FanoutEventTypes(string root)
+    {
+        var messaging = typeof(IntegrationEvent)
+            .Assembly.GetTypes()
+            .Where(t => t is { IsClass: true, IsAbstract: false, FullName: not null })
+            .ToArray();
+        var pattern = new Regex(
+            @"PublishMessage<\s*([A-Za-z0-9_.]+)\s*>\s*\(\s*\)\s*\.ToRabbitExchange\(\s*(?:""taxvision-events""|EventsExchange)\s*\)"
+        );
+        var separator = Path.DirectorySeparatorChar;
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (
+            var file in Directory.EnumerateFiles(Path.Combine(root, "src", "Services"), "*.cs", SearchOption.AllDirectories)
+        )
+        {
+            if (file.Contains($"{separator}obj{separator}") || file.Contains($"{separator}bin{separator}"))
+                continue;
+
+            foreach (Match m in pattern.Matches(File.ReadAllText(file)))
+                names.Add(m.Groups[1].Value);
+        }
+
+        var unresolved = new List<string>();
+        var types = new List<Type>();
+        foreach (var name in names)
+        {
+            var matches = name.Contains('.')
+                ? messaging.Where(t => t.FullName == name || t.FullName!.EndsWith("." + name, StringComparison.Ordinal))
+                : messaging.Where(t => t.Name == name);
+            var found = matches.ToArray();
+            if (found.Length == 0)
+                unresolved.Add(name);
+            types.AddRange(found);
+        }
+
+        Assert.True(
+            unresolved.Count == 0,
+            "Estos eventos se publican al fanout pero no viven en BuildingBlocks.Messaging: "
+                + string.Join(", ", unresolved)
+                + ". Mover el contrato a BuildingBlocks o ajustar esta prueba."
+        );
+        return types.Distinct().ToList();
+    }
+
+    /// <summary>El <c>eventType</c> que Wolverine serializa en el cuerpo (Billing, Growth, Documents…), si lo hay.</summary>
+    private static string? BodyEventType(Type type)
+    {
+        var property = type.GetProperty("EventType", BindingFlags.Public | BindingFlags.Instance);
+        if (property?.PropertyType != typeof(string))
+            return null;
+
+        return property.GetValue(RuntimeHelpers.GetUninitializedObject(type)) as string;
+    }
+
+    private static Dictionary<string, string> ReadClrMap(string path)
+    {
+        var block = Regex.Match(
+            File.ReadAllText(path),
+            @"CLR_TYPE_TO_EVENT_TYPE[^{]*\{(.*?)\n\};",
+            RegexOptions.Singleline
+        );
+        Assert.True(block.Success, "No se pudo aislar el bloque de CLR_TYPE_TO_EVENT_TYPE.");
+        return Regex
+            .Matches(block.Groups[1].Value, @"'([^']+)'\s*:\s*'([^']+)'")
+            .ToDictionary(m => m.Groups[1].Value, m => m.Groups[2].Value, StringComparer.Ordinal);
+    }
+
+    /// <summary>Todos los literales del archivo de ignorados, sin las líneas de comentario.</summary>
+    private static HashSet<string> ReadIgnored(string path)
+    {
+        Assert.True(File.Exists(path), $"No se encontró {path}. Si el archivo se movió, actualizar este test.");
+        var code = string.Join(
+            "\n",
+            File.ReadAllLines(path).Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal))
+        );
+        return Regex.Matches(code, @"'([^']+)'").Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Tipos registrados con <c>register('…')</c> o <c>registerProjection('…')</c> en los event-handlers, como
+    /// literal o como constante <c>Objeto.Clave</c> definida en el código de Communication.
+    /// </summary>
+    private static HashSet<string> ReadRegistered(string communicationSrc)
+    {
+        var allText = string.Concat(
+            Directory.EnumerateFiles(communicationSrc, "*.ts", SearchOption.AllDirectories).Select(File.ReadAllText)
+        );
+        var registered = new HashSet<string>(StringComparer.Ordinal);
+        var handlers = Path.Combine(communicationSrc, "application", "event-handlers");
+        foreach (var file in Directory.EnumerateFiles(handlers, "*.ts"))
+        {
+            var text = File.ReadAllText(file);
+            foreach (Match m in Regex.Matches(text, @"\bregister(?:Projection)?\(\s*'([^']+)'"))
+                registered.Add(m.Groups[1].Value);
+
+            foreach (Match m in Regex.Matches(text, @"\bregister(?:Projection)?\(\s*([A-Z][A-Za-z0-9_]*)\.([A-Za-z0-9_]+)\b"))
+            {
+                var obj = Regex.Match(allText, $@"\b{m.Groups[1].Value}\s*=\s*\{{(.*?)\}}", RegexOptions.Singleline);
+                if (!obj.Success)
+                    continue;
+
+                var value = Regex.Match(obj.Groups[1].Value, $@"\b{m.Groups[2].Value}\s*:\s*'([^']+)'");
+                if (value.Success)
+                    registered.Add(value.Groups[1].Value);
+            }
+        }
+
+        return registered;
     }
 }

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Infrastructure.Onboarding.Concurrency;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Infrastructure.Concurrency;
 using TaxVision.Auth.Infrastructure.Persistence;
 
 namespace TaxVision.Auth.Tests.Infrastructure;
@@ -39,8 +39,8 @@ public sealed class SqlOnboardingReconcileSerializerWiringTests
             "src",
             "Services",
             "Auth",
-            "Infrastructure",
             "Onboarding",
+            "Infrastructure",
             "Concurrency",
             "SqlOnboardingReconcileSerializer.cs"
         );

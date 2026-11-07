@@ -93,7 +93,8 @@ public sealed class OAuthConnection : BaseEntity
     }
 
     /// <summary>Scopes de <paramref name="requiredScope"/> que este grant no tiene; vacío = permisos al día.</summary>
-    public IReadOnlyList<string> MissingScopes(string requiredScope) => OAuthScopes.Missing(Scope, requiredScope);
+    public IReadOnlyList<string> MissingScopes(string requiredScope) =>
+        OAuthScopeSet.Parse(Scope).Missing(OAuthScopeSet.Parse(requiredScope));
 
     /// <summary>Un grant nuevo la reemplaza si ya no sirve o si le faltan permisos; una Active completa o Pending, no.</summary>
     public bool CanReconnect(string requiredScope) =>

@@ -46,7 +46,12 @@ public static class GenerateInvoiceDocumentHandler
 
             // Idempotencia: una solicitud repetida devuelve la existente; si falló o quedó atascada, se reencola.
             var nowUtc = clock.GetUtcNow().UtcDateTime;
-            var existing = await repository.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
+            var existing = await repository.GetByIdempotencyKeyAsync(
+                command.TenantId,
+                command.SourceService,
+                command.IdempotencyKey,
+                ct
+            );
             if (
                 existing is not null
                 && !GenerationRetryPolicy.IsRetryable(existing, nowUtc, retryOptions.Value.StalledAfter)
@@ -88,7 +93,12 @@ public static class GenerateInvoiceDocumentHandler
             catch (ConflictException)
             {
                 // Carrera: otra solicitud idéntica ganó la unique constraint. Reusar la suya.
-                var winner = await repository.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
+                var winner = await repository.GetByIdempotencyKeyAsync(
+                    command.TenantId,
+                    command.SourceService,
+                    command.IdempotencyKey,
+                    ct
+                );
                 if (winner is not null)
                     return Result.Success(new GenerateInvoiceDocumentResult(winner.Id, winner.Status.ToString()));
                 throw;

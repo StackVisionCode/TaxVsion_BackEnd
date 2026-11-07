@@ -1,11 +1,11 @@
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using TaxVision.Auth.Application.Onboarding;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Application;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
@@ -30,7 +30,6 @@ public sealed class StartOnboardingCheckoutHandlerTests
             new SecureTokenService(),
             new FakeTokenReferenceStore(),
             Options.Create(RegistrationOptions),
-            new FakeMessageBus(),
             TaxVision.Auth.Tests.Application.FixedPlatformSettings.For("taxoffix.io"),
             NullLogger<OnboardingSuccessCompleter>.Instance
         );
@@ -63,6 +62,7 @@ public sealed class StartOnboardingCheckoutHandlerTests
             new FakeOnboardingReturnReferenceStore(),
             Options.Create(RegistrationOptions),
             unitOfWork,
+            new FakeMessageBus(),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -112,6 +112,7 @@ public sealed class StartOnboardingCheckoutHandlerTests
             new FakeOnboardingReturnReferenceStore(),
             Options.Create(RegistrationOptions),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -145,6 +146,7 @@ public sealed class StartOnboardingCheckoutHandlerTests
             new FakeOnboardingReturnReferenceStore(),
             Options.Create(RegistrationOptions),
             unitOfWork,
+            new FakeMessageBus(),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -181,6 +183,7 @@ public sealed class StartOnboardingCheckoutHandlerTests
             new FakeOnboardingReturnReferenceStore(),
             Options.Create(RegistrationOptions),
             unitOfWork,
+            new FakeMessageBus(),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -226,6 +229,7 @@ public sealed class StartOnboardingCheckoutHandlerTests
             new FakeOnboardingReturnReferenceStore(),
             Options.Create(RegistrationOptions),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             new FakeCorrelationContext(),
             CancellationToken.None
         );
@@ -260,6 +264,7 @@ public sealed class StartOnboardingCheckoutHandlerTests
             new FakeOnboardingReturnReferenceStore(),
             Options.Create(RegistrationOptions),
             unitOfWork,
+            new FakeMessageBus(),
             new FakeCorrelationContext(),
             CancellationToken.None
         );

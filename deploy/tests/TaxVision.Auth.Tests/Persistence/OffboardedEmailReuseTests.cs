@@ -35,7 +35,7 @@ public sealed class OffboardedEmailReuseTests
     {
         var db = Guid.NewGuid().ToString();
         var suspended = Employee();
-        suspended.Deactivate(DateTime.UtcNow);
+        suspended.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
         await SeedAsync(db, suspended);
 
         await using var read = CreateContext(db);
@@ -98,7 +98,7 @@ public sealed class OffboardedEmailReuseTests
 
     private static User Offboarded(User user)
     {
-        user.Offboard(DateTime.UtcNow);
+        user.Offboard(Guid.NewGuid(), DateTime.UtcNow);
         return user;
     }
 

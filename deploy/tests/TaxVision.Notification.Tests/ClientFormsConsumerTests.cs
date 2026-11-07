@@ -220,18 +220,11 @@ public sealed class ClientFormsConsumerTests
     {
         var harness = new NotificationDispatcherHarness();
         var render = new RenderClient();
-        var gateway = new EmailGateway();
-        var sender = Sender(
-            harness,
-            render,
-            gateway,
-            userEmails: new UserEmailResolver("staff@example.com"),
-            preferences: new Preferences(false)
-        );
+        var gateway = new EmailGateway(new Preferences(false));
+        var sender = Sender(harness, render, gateway, userEmails: new UserEmailResolver("staff@example.com"));
 
         await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormRequestSubmitted), CancellationToken.None);
 
-        Assert.Equal(0, render.Calls);
         Assert.Empty(gateway.Queued);
         Assert.Single(harness.Publisher.Published);
     }
@@ -297,13 +290,12 @@ public sealed class ClientFormsConsumerTests
             new MemoryNotificationLogs(),
             preferences
         );
-        var gateway = new EmailGateway();
+        var gateway = new EmailGateway(preferences);
         var sender = Sender(
             harness,
             new RenderClient(),
             gateway,
             userEmails: new UserEmailResolver("user@example.com"),
-            preferences: preferences,
             settings: new ClientFormSettings(true)
         );
 
@@ -737,7 +729,7 @@ public sealed class ClientFormsConsumerTests
     {
         var tenantId = Guid.NewGuid();
         var customerId = Guid.NewGuid();
-        var gateway = new EmailGateway();
+        var gateway = new EmailGateway(new Preferences(false));
         var render = new RenderClient();
         var metrics = new RecordingMetrics();
         var sender = Sender(
@@ -748,7 +740,6 @@ public sealed class ClientFormsConsumerTests
                 CustomerEmailDirectoryEntry.Create(tenantId, customerId, "client@example.com", "Client")
             ),
             new ContactPolicies(CustomerContactPolicyProjection.Create(tenantId, customerId, true, true, "Es")),
-            preferences: new Preferences(false),
             metrics: metrics
         );
 
@@ -963,9 +954,8 @@ public sealed class ClientFormsConsumerTests
             customers ?? new CustomerDirectory(null),
             policies ?? new ContactPolicies(),
             userEmails ?? new NoUserEmailResolver(),
-            preferences ?? new Preferences(true),
             settings ?? new ClientFormSettings(false),
-            gateway ?? new EmailGateway(),
+            gateway ?? new EmailGateway(preferences),
             render ?? new RenderClient(),
             harness.Dispatcher,
             hosts ?? new HostResolver(),
@@ -1461,23 +1451,15 @@ public sealed class ClientFormsConsumerTests
         ) => Task.FromResult<NotificationLog?>(null);
     }
 
-    private sealed class EmailGateway : IEmailDispatchGateway
+    // El gateway real con su gate (preferencia, inactivo, catálogo); Queued es lo que salió.
+    private sealed class EmailGateway(IUserNotificationPreferenceRepository? preferences = null) : IEmailDispatchGateway
     {
-        public List<EmailDispatchRequest> Queued { get; } = [];
+        private readonly GatedEmailGateway _inner = new(preferences ?? new Preferences(true));
 
-        public Task<EmailDispatchResult> QueueEmailAsync(EmailDispatchRequest request, CancellationToken ct = default)
-        {
-            Queued.Add(request);
-            return Task.FromResult(
-                new EmailDispatchResult(
-                    Guid.NewGuid(),
-                    Guid.NewGuid(),
-                    NotificationDispatchAttemptStatus.Queued,
-                    null,
-                    null
-                )
-            );
-        }
+        public List<EmailDispatchRequest> Queued => _inner.Queued;
+
+        public Task<EmailDispatchResult> QueueEmailAsync(EmailDispatchRequest request, CancellationToken ct = default) =>
+            _inner.QueueEmailAsync(request, ct);
     }
 
     private sealed class HostResolver : ITenantHostResolver

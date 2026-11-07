@@ -97,7 +97,7 @@ public sealed class SupportOpenedConsumerTests
             if (withActiveDevice)
                 devices.AddActiveDevice(PlatformTenantId, AgentId, "token-1");
 
-            Dispatcher = new NotificationDispatcher(
+            Dispatcher = TestDispatchers.Create(
                 new NoOpSmsSender(),
                 PushSender,
                 devices,
@@ -106,8 +106,7 @@ public sealed class SupportOpenedConsumerTests
                 new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
-                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(Logs),
-                NullLogger<NotificationDispatcher>.Instance
+                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(Logs)
             );
         }
     }

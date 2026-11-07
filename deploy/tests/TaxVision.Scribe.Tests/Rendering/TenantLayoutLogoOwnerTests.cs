@@ -208,6 +208,10 @@ public sealed class TenantLayoutLogoOwnerTests
             new EventTemplateResolver(new SingleMappingRepository(TemplateKeyValue)),
             new FakeEmailTemplateRepository(template),
             new FakeEmailLayoutRepository(layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(template),
+                new FakeEmailLayoutRepository(layout)
+            ),
             cloudStorage,
             logoResolver,
             Profiles,

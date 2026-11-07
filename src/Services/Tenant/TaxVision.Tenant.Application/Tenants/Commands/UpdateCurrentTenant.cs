@@ -23,6 +23,7 @@ public static class UpdateCurrentTenantHandler
         IUnitOfWork unitOfWork,
         ICacheService cache,
         ILogger<UpdateCurrentTenantCommand> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -30,7 +31,11 @@ public static class UpdateCurrentTenantHandler
         if (tenant is null)
             return Result.Failure<TenantResponse>(new Error("Tenant.NotFound", "Tenant does not exist."));
 
-        var update = tenant.UpdateNameAndTimeZone(command.Name, command.DefaultTimeZoneId, DateTime.UtcNow);
+        var update = tenant.UpdateNameAndTimeZone(
+            command.Name,
+            command.DefaultTimeZoneId,
+            clock.GetUtcNow().UtcDateTime
+        );
         if (update.IsFailure)
             return Result.Failure<TenantResponse>(update.Error);
 

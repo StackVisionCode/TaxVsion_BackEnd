@@ -4,7 +4,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using TaxVision.Auth.Application.Onboarding.SubdomainReservations.Commands;
+using TaxVision.Auth.Onboarding.Application.SubdomainReservations.Commands;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;

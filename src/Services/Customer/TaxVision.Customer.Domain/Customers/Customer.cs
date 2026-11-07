@@ -184,7 +184,9 @@ public sealed class Customer : AggregateRoot
 
     public Result ChangePrimaryEmail(EmailAddress newEmail, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         PrimaryEmail = newEmail;
         Touch(byUserId);
         RaiseUpdated(byUserId);
@@ -193,7 +195,9 @@ public sealed class Customer : AggregateRoot
 
     public Result ChangePrimaryPhone(PhoneNumber? newPhone, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         PrimaryPhone = newPhone;
         Touch(byUserId);
         RaiseUpdated(byUserId);
@@ -202,7 +206,9 @@ public sealed class Customer : AggregateRoot
 
     public Result ChangeLanguage(Language language, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         Language = language;
         Touch(byUserId);
         RaiseUpdated(byUserId);
@@ -215,7 +221,9 @@ public sealed class Customer : AggregateRoot
     /// </summary>
     public Result ChangeContactPolicy(bool emailEnabled, bool smsEnabled, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         ContactPolicy = new ContactPolicy(emailEnabled, smsEnabled);
         Touch(byUserId);
         RaiseUpdated(byUserId);
@@ -340,7 +348,9 @@ public sealed class Customer : AggregateRoot
 
     public Result ChangePersonalName(PersonalName newName, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (Kind != CustomerKind.Individual)
             return Result.Failure(
                 new Error(
@@ -357,7 +367,9 @@ public sealed class Customer : AggregateRoot
 
     public Result ChangeBusinessIdentity(BusinessIdentity newIdentity, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (Kind != CustomerKind.Business)
             return Result.Failure(
                 new Error(
@@ -374,7 +386,9 @@ public sealed class Customer : AggregateRoot
 
     public Result ChangeDateOfBirth(DateOnly? dateOfBirth, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         DateOfBirth = dateOfBirth;
         Touch(byUserId);
         RaiseUpdated(byUserId);
@@ -385,7 +399,9 @@ public sealed class Customer : AggregateRoot
 
     public Result<CustomerAddress> AddAddress(AddressKind kind, AddressValue address, bool isPrimary, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return Result.Failure<CustomerAddress>(active.Error);
 
         if (isPrimary && _addresses.Any(a => a.Kind == kind && a.IsPrimary))
             return Result.Failure<CustomerAddress>(
@@ -403,7 +419,9 @@ public sealed class Customer : AggregateRoot
 
     public Result UpdateAddress(Guid addressId, AddressKind kind, AddressValue address, bool isPrimary, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _addresses.FirstOrDefault(a => a.Id == addressId);
         if (existing is null)
             return Result.Failure(new Error("Customer.AddressNotFound", "Address not found."));
@@ -418,7 +436,9 @@ public sealed class Customer : AggregateRoot
 
     public Result RemoveAddress(Guid addressId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _addresses.FirstOrDefault(a => a.Id == addressId);
         if (existing is null)
             return Result.Failure(new Error("Customer.AddressNotFound", "Address not found."));
@@ -439,7 +459,9 @@ public sealed class Customer : AggregateRoot
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return Result.Failure<CustomerContactPoint>(active.Error);
 
         if (isPrimary && _contactPoints.Any(c => c.Type == type && c.IsPrimary))
             return Result.Failure<CustomerContactPoint>(
@@ -470,7 +492,9 @@ public sealed class Customer : AggregateRoot
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _contactPoints.FirstOrDefault(c => c.Id == contactPointId);
         if (existing is null)
             return Result.Failure(new Error("Customer.ContactPointNotFound", "Contact point not found."));
@@ -490,7 +514,9 @@ public sealed class Customer : AggregateRoot
 
     public Result RemoveContactPoint(Guid contactPointId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _contactPoints.FirstOrDefault(c => c.Id == contactPointId);
         if (existing is null)
             return Result.Failure(new Error("Customer.ContactPointNotFound", "Contact point not found."));
@@ -513,7 +539,9 @@ public sealed class Customer : AggregateRoot
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return Result.Failure<CustomerRelation>(active.Error);
         var created = CustomerRelation.Create(TenantId, Id, kind, purposes, name, email, phone, dateOfBirth, address);
         if (created.IsFailure)
             return created;
@@ -535,7 +563,9 @@ public sealed class Customer : AggregateRoot
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _relations.FirstOrDefault(r => r.Id == relationId);
         if (existing is null)
             return Result.Failure(new Error("Customer.RelationNotFound", "Relation not found."));
@@ -547,7 +577,9 @@ public sealed class Customer : AggregateRoot
 
     public Result RemoveRelation(Guid relationId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _relations.FirstOrDefault(r => r.Id == relationId);
         if (existing is null)
             return Result.Failure(new Error("Customer.RelationNotFound", "Relation not found."));
@@ -607,7 +639,9 @@ public sealed class Customer : AggregateRoot
         short taxIdentifierKeyVersion = 1
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
 
         if (FiscalProfile is null)
         {
@@ -666,7 +700,9 @@ public sealed class Customer : AggregateRoot
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
 
         if (FiscalProfile is null)
             return Result.Failure(new Error("FiscalProfile.NotFound", "There is no fiscal profile to update."));
@@ -683,7 +719,9 @@ public sealed class Customer : AggregateRoot
 
     public Result ChangeOccupation(Guid? occupationId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         OccupationId = occupationId;
         Touch(byUserId);
         RaiseUpdated(byUserId);
@@ -696,7 +734,9 @@ public sealed class Customer : AggregateRoot
     /// otro primary y denormaliza en <c>AssignedPreparerUserId</c> (para 8879/offboard/chat).</summary>
     public Result AssignPreparer(Guid preparerUserId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (preparerUserId == Guid.Empty)
             return Result.Failure(new Error("Customer.InvalidPreparer", "PreparerUserId is required."));
 
@@ -717,14 +757,26 @@ public sealed class Customer : AggregateRoot
 
     /// <summary>Traspasa el preparador PRIMARY de un empleado que se retira a otro: QUITA la fila del
     /// saliente (no la deja degradada, no debe conservar acceso) y deja al nuevo como primary. Para el
-    /// offboard con sucesor.</summary>
+    /// offboard con sucesor. Si el saliente ya no es el primary, solo pierde su fila.</summary>
     public Result HandOverPreparer(Guid fromUserId, Guid toUserId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (toUserId == Guid.Empty)
             return Result.Failure(new Error("Customer.InvalidPreparer", "PreparerUserId is required."));
 
-        _assignments.RemoveAll(a => a.UserId == fromUserId);
+        // Re-entrega sobre un cliente que otro admin ya reasignó: su preparador actual no se pisa.
+        var removed = _assignments.RemoveAll(a => a.UserId == fromUserId);
+        if (AssignedPreparerUserId != fromUserId)
+        {
+            if (removed > 0)
+            {
+                Touch(byUserId);
+                RaiseAssignmentsChanged();
+            }
+            return Result.Success();
+        }
 
         foreach (var other in _assignments.Where(a => a.IsPrimary && a.UserId != toUserId))
             other.SetPrimary(false);
@@ -745,7 +797,9 @@ public sealed class Customer : AggregateRoot
     /// adicionales (no-primary) quedan intactos.</summary>
     public Result UnassignPreparer(Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (AssignedPreparerUserId is null)
             return Result.Failure(new Error("Customer.NoPreparerAssigned", "Customer has no preparer assigned."));
 
@@ -759,7 +813,9 @@ public sealed class Customer : AggregateRoot
     /// <summary>Da acceso a un miembro del staff SIN hacerlo primary (asignación adicional). Idempotente.</summary>
     public Result GrantAccess(Guid userId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (userId == Guid.Empty)
             return Result.Failure(new Error("Customer.InvalidAssignee", "UserId is required."));
 
@@ -774,7 +830,9 @@ public sealed class Customer : AggregateRoot
     /// <summary>Revoca el acceso de un miembro del staff. Si era el primary, limpia la denormalización.</summary>
     public Result RevokeAccess(Guid userId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _assignments.FirstOrDefault(a => a.UserId == userId);
         if (existing is null)
             return Result.Failure(new Error("Customer.NotAssigned", "User is not assigned to this customer."));
@@ -866,9 +924,8 @@ public sealed class Customer : AggregateRoot
         return Result.Success();
     }
 
-    private void EnsureActive()
-    {
-        if (Status == CustomerStatus.Archived)
-            throw new InvalidOperationException("Customer is archived and cannot be modified.");
-    }
+    private Result EnsureActive() =>
+        Status == CustomerStatus.Archived
+            ? Result.Failure(new Error("Customer.Archived", "Customer is archived and cannot be modified."))
+            : Result.Success();
 }

@@ -108,7 +108,7 @@ public sealed class InvoiceEditTests
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 null,
-                "ONB-2026-00001",
+                InvoiceNumber.Create("ONB-2026-00001").Value,
                 Customer("Client"),
                 new IssuerSnapshot("TaxVision", new Address("1 Main", null, "City", "ST", "00000", "US"), null, null, null, null),
                 "Enterprise (Monthly)",
@@ -206,7 +206,7 @@ public sealed class InvoiceEditTests
                 Issued
             )
             .Value;
-        Assert.True(invoice.Issue("INV-2026-00002", Issued, Issued.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00002").Value, Issued, Issued.AddDays(30), ActorUserId).IsSuccess);
         return invoice;
     }
 }

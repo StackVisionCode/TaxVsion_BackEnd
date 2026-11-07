@@ -3,6 +3,7 @@ using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users;
+using TaxVision.Auth.Domain.Common;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Infrastructure.Persistence.Repositories;
@@ -42,7 +43,7 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         db
             .Users.IgnoreQueryFilters()
             .Where(OfKind(kind))
-            .Where(user => user.TenantId == tenantId && user.Email == email)
+            .Where(user => user.TenantId == tenantId && user.Email == EmailAddress.FromTrusted(email))
             .OrderBy(user => user.Status == UserStatus.Offboarded ? 1 : 0)
             .ThenByDescending(user => user.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
@@ -58,7 +59,10 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
             .Users.IgnoreQueryFilters()
             .Where(OfKind(kind))
             .AnyAsync(
-                user => user.TenantId == tenantId && user.Email == email && user.Status != UserStatus.Offboarded,
+                user =>
+                    user.TenantId == tenantId
+                    && user.Email == EmailAddress.FromTrusted(email)
+                    && user.Status != UserStatus.Offboarded,
                 ct
             );
 
@@ -87,7 +91,7 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         await db
             .Users.IgnoreQueryFilters()
             .Where(OfKind(kind))
-            .Where(user => user.Email == email && user.IsActive)
+            .Where(user => user.Email == EmailAddress.FromTrusted(email) && user.IsActive)
             .Select(user => user.TenantId)
             .Distinct()
             .ToListAsync(ct);
@@ -184,7 +188,7 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         {
             var term = search.Trim();
             query = query.Where(user =>
-                user.Name.Contains(term) || user.LastName.Contains(term) || user.Email.Contains(term)
+                user.Name.Contains(term) || user.LastName.Contains(term) || ((string)(object)user.Email).Contains(term)
             );
         }
 

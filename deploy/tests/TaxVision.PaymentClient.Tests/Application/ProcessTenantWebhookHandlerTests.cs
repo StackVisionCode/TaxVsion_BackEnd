@@ -582,6 +582,17 @@ file sealed class FakeTenantPaymentRepository(TenantPayment payment) : ITenantPa
                 : null
         );
 
+    public Task<TenantPayment?> GetByConnectChargeReferenceAsync(
+        Guid tenantId,
+        string providerChargeReferenceOnConnect,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<TenantPayment?>(
+            payment.TenantId == tenantId && payment.ProviderChargeReferenceOnConnect == providerChargeReferenceOnConnect
+                ? payment
+                : null
+        );
+
     public Task<IReadOnlyList<AwaitingProviderPayment>> GetAwaitingProviderConfirmationAsync(
         DateTime stuckBeforeUtc,
         DateTime createdAfterUtc,

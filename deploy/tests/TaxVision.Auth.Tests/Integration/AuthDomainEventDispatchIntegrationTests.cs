@@ -8,7 +8,6 @@ using BuildingBlocks.Web.Hosting;
 using JasperFx;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Auth.Application.SlotGating.Commands;
@@ -32,12 +31,7 @@ namespace TaxVision.Auth.Tests.Integration;
 public sealed class AuthDomainEventDispatchIntegrationTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("AUTH_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("c9f518b8-3374-4abd-a7b6-f0b20cb0877f")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set AUTH_DB_CONNECTION or the Auth user-secrets to run this test.");
+        AuthIntegrationDatabase.ConnectionString;
 
     private readonly string _schema = $"authbb1_{Guid.NewGuid():N}"[..16];
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -258,7 +252,7 @@ public static class SlotProbeHandler
     public static async Task Handle(ReleaseUserSlotProbe command, AuthDbContext db, CancellationToken ct)
     {
         var user = await db.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == command.UserId, ct);
-        user.Deactivate(DateTime.UtcNow);
+        user.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
         await db.SaveChangesAsync(ct);
         if (command.FailAfterSave)
             throw new InvalidOperationException("Fallo forzado después de guardar.");

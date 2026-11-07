@@ -49,9 +49,7 @@ public sealed class BillingAccessTests
         await TenantSubscriptionAccessConsumer.Handle(
             StatusEvent(tenantId, "Expired"),
             tenants,
-            sessions,
-            new QuietDenylist(),
-            new QuietSessionRevocationPublisher(),
+            new SessionAccessCutoff(sessions, new QuietDenylist(), new QuietSessionRevocationPublisher()),
             audit,
             metrics,
             new FakeUnitOfWork(),
@@ -77,9 +75,7 @@ public sealed class BillingAccessTests
         await TenantSubscriptionAccessConsumer.Handle(
             StatusEvent(tenantId, "Active"),
             tenants,
-            sessions,
-            new QuietDenylist(),
-            new QuietSessionRevocationPublisher(),
+            new SessionAccessCutoff(sessions, new QuietDenylist(), new QuietSessionRevocationPublisher()),
             new FakeAuthAuditWriter(),
             new FakeSubscriptionAccessMetrics(),
             new FakeUnitOfWork(),
@@ -173,9 +169,7 @@ public sealed class BillingAccessTests
         await TenantSubscriptionAccessConsumer.Handle(
             StatusEvent(Guid.NewGuid(), "PastDue"),
             tenants,
-            sessions,
-            new QuietDenylist(),
-            new QuietSessionRevocationPublisher(),
+            new SessionAccessCutoff(sessions, new QuietDenylist(), new QuietSessionRevocationPublisher()),
             new FakeAuthAuditWriter(),
             new FakeSubscriptionAccessMetrics(),
             new FakeUnitOfWork(),
@@ -198,9 +192,7 @@ public sealed class BillingAccessTests
         TenantSubscriptionAccessConsumer.Handle(
             evt,
             tenants,
-            sessions,
-            new QuietDenylist(),
-            new QuietSessionRevocationPublisher(),
+            new SessionAccessCutoff(sessions, new QuietDenylist(), new QuietSessionRevocationPublisher()),
             audit,
             metrics,
             new FakeUnitOfWork(),

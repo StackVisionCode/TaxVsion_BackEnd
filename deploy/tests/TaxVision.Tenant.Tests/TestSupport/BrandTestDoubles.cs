@@ -26,6 +26,7 @@ internal sealed class FakeBrandingCloudStorageClient : ITenantBrandingCloudStora
         Guid tenantId,
         TenantLogoUpload upload,
         TenantBrandStoredFile stored,
+        Wolverine.IMessageBus bus,
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
@@ -193,7 +194,7 @@ internal sealed class InMemoryBrandRepository : ITenantBrandRepository
 
     public TenantBrand Seed(Guid tenantId, BrandSurface surface, Action<TenantBrand> configure)
     {
-        var brand = TenantBrand.Create(tenantId, surface);
+        var brand = TenantBrand.Create(tenantId, surface, DateTime.UtcNow);
         configure(brand);
         All.Add(brand);
         return brand;

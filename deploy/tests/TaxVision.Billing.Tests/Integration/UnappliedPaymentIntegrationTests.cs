@@ -1,7 +1,6 @@
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Billing.Domain.Payments;
 using TaxVision.Billing.Infrastructure.Persistence;
 using TaxVision.Billing.Infrastructure.Persistence.Repositories;
@@ -10,21 +9,16 @@ using Xunit;
 namespace TaxVision.Billing.Tests.Integration;
 
 /// <summary>
-/// Contra el SQL Server real (BILLING_DB_CONNECTION o user-secrets de Billing): el índice único
+/// Contra el SQL Server real (base temporal, BIL-14): el índice único
 /// (TenantId, TenantPaymentId) impide registrar dos veces el mismo cobro no aplicado.
 /// </summary>
-public sealed class UnappliedPaymentIntegrationTests : IAsyncLifetime
+[Collection(BillingTestDatabase.Collection)]
+public sealed class UnappliedPaymentIntegrationTests(BillingTestDatabase database) : IAsyncLifetime
 {
     private static readonly DateTime Now = new(2026, 11, 4, 12, 0, 0, DateTimeKind.Utc);
     private readonly Guid _tenantId = Guid.NewGuid();
 
-    private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("BILLING_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-billing000001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set BILLING_DB_CONNECTION or the Billing user-secrets to run this test.");
+    private readonly string _connectionString = database.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

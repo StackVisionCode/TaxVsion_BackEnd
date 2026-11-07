@@ -2,7 +2,6 @@
 // (ver anotación [Obsolete] en el enum). Silenciamos CS0618 en el archivo entero porque esa
 // tolerancia es intencional en cada mutación y en los predicados "pre-envío".
 #pragma warning disable CS0618
-using System.ComponentModel.DataAnnotations.Schema;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Domain.Platform;
@@ -198,6 +197,11 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public Guid? LegalHoldLiftedByUserId { get; private set; }
     public DateTime? LegalHoldLiftedAtUtc { get; private set; }
 
+    private static readonly Error TypedNameMismatch = new(
+        "Signature.Public.TypedNameMismatch",
+        "Typed name must match the signer full name."
+    );
+
     public IReadOnlyList<Signer> Signers => _signers.AsReadOnly();
     public IReadOnlyList<RequestDocument> Documents => _documents.AsReadOnly();
 
@@ -206,19 +210,15 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
 
     // Puente de compilación durante la migración F8. No forma parte del modelo EF y se elimina
     // cuando todos los callers de T3-T6 consuman Documents de manera explícita.
-    [NotMapped]
     [Obsolete("Use Documents and select an explicit document.")]
     public Guid OriginalFileId => _documents.Count == 1 ? _documents[0].OriginalFileId : Guid.Empty;
 
-    [NotMapped]
     [Obsolete("Use Documents and select an explicit document.")]
     public DocumentHash? DocumentHashPre => _documents.Count == 1 ? _documents[0].DocumentHashPre : null;
 
-    [NotMapped]
     [Obsolete("Use Documents and select an explicit document.")]
     public Guid? SealedFileId => _documents.Count == 1 ? _documents[0].SealedFileId : null;
 
-    [NotMapped]
     [Obsolete("Use Documents and select an explicit document.")]
     public DocumentHash? DocumentHashPost => _documents.Count == 1 ? _documents[0].DocumentHashPost : null;
 
@@ -1913,6 +1913,50 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         return completed.IsSuccess ? Result.Success() : Result.Failure(completed.Error);
     }
 
+    /// <summary>Valida la evidencia sin mutar: va antes de anclar los valores de los campos.</summary>
+    public Result ValidateSignatureEvidence(
+        Guid signerId,
+        SignatureCaptureMethod captureMethod,
+        string? typedName,
+        Guid? signatureImageFileId
+    )
+    {
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        return captureMethod switch
+        {
+            SignatureCaptureMethod.Typed => ValidateTypedName(signer, typedName),
+            SignatureCaptureMethod.Drawn or SignatureCaptureMethod.Uploaded => ValidateImageFileId(
+                signatureImageFileId
+            ),
+            _ => Result.Failure(new Error("Signature.Public.UnknownMethod", "Unknown signature capture method.")),
+        };
+    }
+
+    private static Result ValidateTypedName(Signer signer, string? typedName)
+    {
+        if (string.IsNullOrWhiteSpace(typedName))
+            return Result.Failure(
+                new Error("Signature.Public.TypedNameEmpty", "Typed name is required for Typed method.")
+            );
+
+        return signer.FullName.Matches(typedName) ? Result.Success() : Result.Failure(TypedNameMismatch);
+    }
+
+    private static Result ValidateImageFileId(Guid? fileId)
+    {
+        if (fileId is null || fileId == Guid.Empty)
+            return Result.Failure(
+                new Error(
+                    "Signature.Public.ImageRequired",
+                    "SignatureImageFileId is required for Drawn/Uploaded methods."
+                )
+            );
+        return Result.Success();
+    }
+
     /// <summary>Completes only selected documents and keeps the signer active until all are complete.</summary>
     public Result<IReadOnlyList<Guid>> MarkSignerDocumentsCompleted(
         Guid signerId,
@@ -1966,6 +2010,14 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                     "This request is sequential and it is not this signer's turn yet."
                 )
             );
+
+        // Sin nombre (firma sin evidencia tipeada) no hay nada que comparar; lo exige ValidateSignatureEvidence.
+        if (
+            captureMethod == SignatureCaptureMethod.Typed
+            && typedName is not null
+            && !signer.FullName.Matches(typedName)
+        )
+            return Result.Failure<IReadOnlyList<Guid>>(TypedNameMismatch);
 
         var participatingDocumentIds = signer.Fields.Select(field => field.DocumentId).Distinct().ToList();
         var recordResult = signer.CompleteDocuments(

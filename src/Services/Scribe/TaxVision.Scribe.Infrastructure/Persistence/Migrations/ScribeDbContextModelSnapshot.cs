@@ -535,6 +535,10 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("PublishedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("SeedContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<int?>("SeedContentVersion")
                         .HasColumnType("int");
 

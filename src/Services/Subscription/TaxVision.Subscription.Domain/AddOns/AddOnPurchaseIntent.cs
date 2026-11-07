@@ -41,8 +41,11 @@ public sealed class AddOnPurchaseIntent : TenantEntity
     public bool AutoRenew { get; private set; }
     public Money UnitPrice { get; private set; } = null!;
     public BillingCycle BillingCycle { get; private set; }
-    public long ProratedTotalCents { get; private set; }
-    public string Currency { get; private set; } = default!;
+    private long ProratedTotalCents { get; set; }
+    private string Currency { get; set; } = default!;
+
+    /// <summary>Total prorrateado a cobrar. Vive en las columnas ProratedTotalCents y Currency.</summary>
+    public Money ProratedTotal => Money.FromCents(ProratedTotalCents, Currency);
     public AddOnPurchaseIntentStatus Status { get; private set; }
     public Guid? SaaSPaymentId { get; private set; }
     public string? CheckoutUrl { get; private set; }
@@ -82,7 +85,7 @@ public sealed class AddOnPurchaseIntent : TenantEntity
         bool autoRenew,
         Money unitPrice,
         BillingCycle billingCycle,
-        long proratedTotalCents,
+        Money proratedTotal,
         Guid requestedByUserId,
         DateTime nowUtc
     )
@@ -98,7 +101,7 @@ public sealed class AddOnPurchaseIntent : TenantEntity
             );
 
         // El hosted-checkout es para cobrar: un total 0 no debe llegar acá — va por compra directa.
-        if (proratedTotalCents <= 0)
+        if (proratedTotal.Cents <= 0)
             return Result.Failure<AddOnPurchaseIntent>(
                 new Error("AddOnPurchaseIntent.NothingToCharge", "Checkout requires a positive prorated total.")
             );
@@ -111,8 +114,8 @@ public sealed class AddOnPurchaseIntent : TenantEntity
             AutoRenew = autoRenew,
             UnitPrice = unitPrice,
             BillingCycle = billingCycle,
-            ProratedTotalCents = proratedTotalCents,
-            Currency = unitPrice.Currency,
+            ProratedTotalCents = proratedTotal.Cents,
+            Currency = proratedTotal.Currency,
             Status = AddOnPurchaseIntentStatus.Pending,
             RequestedByUserId = requestedByUserId,
             CreatedAtUtc = nowUtc,

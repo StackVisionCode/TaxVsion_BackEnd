@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -32,7 +33,7 @@ public static class FilePendingReviewConsumer
                 "One of your files is being reviewed against our content policy. It will be available once approved.";
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{userId:N}",
+                NotificationRecipient.ForUser(userId),
                 title,
                 NotificationCategory.StorageAndQuota,
                 NotificationKinds.CloudStorageFilePendingReview,

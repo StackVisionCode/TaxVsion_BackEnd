@@ -52,7 +52,12 @@ public static class ReminderTargetMovedConsumer
             foreach (var reminder in affected)
             {
                 var previousFireAtUtc = reminder.Schedule.FireAtUtc;
-                var result = reminder.RescheduleToNewAnchor(evt.NewAnchorAtUtc, nowUtc, evt.LeadMinutes);
+                var result = reminder.RescheduleToNewAnchor(
+                    evt.NewAnchorAtUtc,
+                    nowUtc,
+                    evt.LeadMinutes,
+                    evt.OccurredOn
+                );
 
                 if (result.IsFailure)
                 {

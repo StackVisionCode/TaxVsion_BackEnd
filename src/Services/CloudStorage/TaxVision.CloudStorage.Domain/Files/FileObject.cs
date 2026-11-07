@@ -1,9 +1,10 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.CloudStorage.Domain.Files.Events;
 
 namespace TaxVision.CloudStorage.Domain.Files;
 
-public sealed class FileObject : TenantEntity
+public sealed class FileObject : AggregateRoot
 {
     private FileObject() { }
 
@@ -185,13 +186,14 @@ public sealed class FileObject : TenantEntity
     }
 
     /// <summary>El rescate da por perdido un escaneo (sin blob o sin intentos); queda ScanFailed.</summary>
-    public Result MarkScanAbandoned(string report, DateTime nowUtc)
+    public Result MarkScanAbandoned(string report, DateTime nowUtc, string reason, string? correlationId = null)
     {
         if (Status is not (FileStatus.PendingScan or FileStatus.Scanning))
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.ScanFailed;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseScanFailed(reason, correlationId);
         return Result.Success();
     }
 
@@ -226,7 +228,14 @@ public sealed class FileObject : TenantEntity
         return Result.Success();
     }
 
-    public Result MarkAvailable(ChecksumSha256 checksum, string detectedContentType, DateTime nowUtc)
+    /// <param name="portalCustomerId">Cliente que lo subió desde el portal, si lo hubo.</param>
+    public Result MarkAvailable(
+        ChecksumSha256 checksum,
+        string detectedContentType,
+        DateTime nowUtc,
+        string? correlationId = null,
+        Guid? portalCustomerId = null
+    )
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
@@ -235,10 +244,16 @@ public sealed class FileObject : TenantEntity
         DetectedContentType = detectedContentType;
         ScanReport = "Clean";
         ScannedAtUtc = nowUtc;
+        // Ni Client Forms ni una foto de perfil son "el cliente subió un documento".
+        RaiseBecameAvailable(
+            detectedContentType,
+            correlationId,
+            FolderType is FolderType.ClientForms or FolderType.Avatars ? null : portalCustomerId
+        );
         return Result.Success();
     }
 
-    public Result MarkInfected(string report, string detectedContentType, DateTime nowUtc)
+    public Result MarkInfected(string report, string detectedContentType, DateTime nowUtc, string? correlationId = null)
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
@@ -246,20 +261,27 @@ public sealed class FileObject : TenantEntity
         DetectedContentType = detectedContentType;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseQuarantined(FileQuarantineKind.Infected, report, correlationId);
         return Result.Success();
     }
 
-    public Result MarkScanFailed(string report, DateTime nowUtc)
+    public Result MarkScanFailed(string report, DateTime nowUtc, string reason, string? correlationId = null)
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.ScanFailed;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseScanFailed(reason, correlationId);
         return Result.Success();
     }
 
-    public Result MarkBlockedByPolicy(string report, string detectedContentType, DateTime nowUtc)
+    public Result MarkBlockedByPolicy(
+        string report,
+        string detectedContentType,
+        DateTime nowUtc,
+        string? correlationId = null
+    )
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
@@ -267,11 +289,18 @@ public sealed class FileObject : TenantEntity
         DetectedContentType = detectedContentType;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseQuarantined(FileQuarantineKind.BlockedByPolicy, report, correlationId);
         return Result.Success();
     }
 
     /// <summary>Guarda el checksum ya calculado: si el revisor aprueba, el archivo pasa a Available sin volver a leerlo.</summary>
-    public Result MarkPendingReview(string report, string detectedContentType, ChecksumSha256 checksum, DateTime nowUtc)
+    public Result MarkPendingReview(
+        string report,
+        string detectedContentType,
+        ChecksumSha256 checksum,
+        DateTime nowUtc,
+        string? correlationId = null
+    )
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
@@ -280,28 +309,31 @@ public sealed class FileObject : TenantEntity
         ChecksumSha256 = checksum.Value;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseQuarantined(FileQuarantineKind.PendingReview, report, correlationId);
         return Result.Success();
     }
 
     /// <summary>Revisión humana: el revisor de plataforma confirma que el contenido es apto.</summary>
-    public Result ApproveReview(DateTime nowUtc)
+    public Result ApproveReview(DateTime nowUtc, string? correlationId = null)
     {
         if (Status != FileStatus.PendingReview || ChecksumSha256 is null)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.Available;
         ScanReport = "Approved after content review.";
         ScannedAtUtc = nowUtc;
+        RaiseBecameAvailable(DetectedContentType ?? DeclaredContentType, correlationId, portalCustomerId: null);
         return Result.Success();
     }
 
     /// <summary>Revisión humana: el revisor confirma que viola la política; queda bloqueado en cuarentena.</summary>
-    public Result RejectReview(string report, DateTime nowUtc)
+    public Result RejectReview(string report, DateTime nowUtc, string? correlationId = null)
     {
         if (Status != FileStatus.PendingReview)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.BlockedByPolicy;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseQuarantined(FileQuarantineKind.BlockedByPolicy, report, correlationId);
         return Result.Success();
     }
 
@@ -368,10 +400,13 @@ public sealed class FileObject : TenantEntity
     }
 
     /// <summary>Fase C2 — mueve el archivo a otra carpeta navegable (o a la raiz con null). La existencia/propiedad de la carpeta ya la valido el handler.</summary>
-    public void MoveToFolder(Guid? folderId, DateTime nowUtc)
+    public Result MoveToFolder(Guid? folderId, DateTime nowUtc)
     {
+        if (Status == FileStatus.SoftDeleted)
+            return Result.Failure(FileErrors.InvalidTransition);
         FolderId = folderId;
         FolderAssignedAtUtc = folderId is null ? null : nowUtc;
+        return Result.Success();
     }
 
     /// <summary>
@@ -410,4 +445,56 @@ public sealed class FileObject : TenantEntity
         DeletedBatchId = null;
         return Result.Success();
     }
+
+    private void RaiseBecameAvailable(string contentType, string? correlationId, Guid? portalCustomerId) =>
+        AddDomainEvent(
+            new FileBecameAvailableDomainEvent(
+                TenantId,
+                Id,
+                ObjectKey,
+                contentType,
+                SizeBytes,
+                ChecksumSha256!,
+                CreatedBy,
+                OwnerType.ToString(),
+                OwnerId,
+                FolderId,
+                FolderType.ToString(),
+                OriginalName,
+                TaxYear,
+                correlationId,
+                portalCustomerId
+            )
+        );
+
+    private void RaiseQuarantined(FileQuarantineKind kind, string reason, string? correlationId) =>
+        AddDomainEvent(
+            new FileQuarantinedDomainEvent(
+                TenantId,
+                Id,
+                kind,
+                ObjectKey,
+                reason,
+                CreatedBy,
+                OwnerType.ToString(),
+                OwnerId,
+                FolderType.ToString(),
+                correlationId
+            )
+        );
+
+    private void RaiseScanFailed(string reason, string? correlationId) =>
+        AddDomainEvent(
+            new FileScanFailedDomainEvent(
+                TenantId,
+                Id,
+                ObjectKey,
+                reason,
+                CreatedBy,
+                OwnerType.ToString(),
+                OwnerId,
+                FolderType.ToString(),
+                correlationId
+            )
+        );
 }

@@ -229,12 +229,7 @@ public sealed class CodeReservationEventCountTests
     // Solo el commit tardío verifica el pago.
     private sealed class NotExpectedVerifier : IPaymentOutcomeVerifier
     {
-        public Task<Result> VerifySucceededAsync(
-            Guid tenantId,
-            PaymentReference payment,
-            Guid sourceEventId,
-            SnapshotHash snapshotHash,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException("Estas pruebas no pasan por un commit tardío.");
+        public Task<Result> VerifySucceededAsync(PaymentOutcomeQuery query, CancellationToken ct = default) =>
+            throw new NotSupportedException("Estas pruebas no pasan por un commit tardío.");
     }
 }

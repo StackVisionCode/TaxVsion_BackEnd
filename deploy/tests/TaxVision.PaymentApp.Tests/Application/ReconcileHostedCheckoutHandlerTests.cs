@@ -87,12 +87,13 @@ public sealed class ReconcileHostedCheckoutHandlerTests
         var payment = CreateProcessingPayment(SaaSPaymentType.SeatsPurchaseCharge);
         payment.MarkSucceeded(DateTime.UtcNow, Guid.Empty);
 
+        var provider = new ThrowingProvider();
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await ReconcileHostedCheckoutHandler.Handle(
             new ReconcileHostedCheckoutCommand(payment.Id, TenantId),
             new FakeSaaSPaymentRepository(payment),
-            new FakePaymentAdapterFactory(new ThrowingProvider()),
+            new FakePaymentAdapterFactory(provider),
             unitOfWork,
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
@@ -101,6 +102,7 @@ public sealed class ReconcileHostedCheckoutHandlerTests
         var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(PaymentStatus.Succeeded), result.Value.Status);
+        Assert.Equal(0, provider.Calls);
         Assert.Equal(0, unitOfWork.SaveChangesCount);
         Assert.Empty(emitted);
     }
@@ -108,6 +110,7 @@ public sealed class ReconcileHostedCheckoutHandlerTests
     [Fact]
     public async Task Type_no_reconciliable_devuelve_error_sin_llamar_provider()
     {
+        var provider = new ThrowingProvider();
         // Un OnboardingInitial tiene su propio endpoint (ReconcileOnboardingCheckout), este rechaza.
         var payment = SaaSPayment
             .CreateForOnboarding(
@@ -130,7 +133,7 @@ public sealed class ReconcileHostedCheckoutHandlerTests
         var result = await ReconcileHostedCheckoutHandler.Handle(
             new ReconcileHostedCheckoutCommand(payment.Id, Guid.Empty),
             new FakeSaaSPaymentRepository(payment, acceptEmptyTenant: true),
-            new FakePaymentAdapterFactory(new ThrowingProvider()),
+            new FakePaymentAdapterFactory(provider),
             new FakeUnitOfWork(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
@@ -138,6 +141,7 @@ public sealed class ReconcileHostedCheckoutHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("SaaSPayment.NotReconcilable", result.Error.Code);
+        Assert.Equal(0, provider.Calls);
     }
 
     [Fact]
@@ -145,12 +149,13 @@ public sealed class ReconcileHostedCheckoutHandlerTests
     {
         var payment = CreateProcessingPayment(SaaSPaymentType.AddOnPurchaseCharge);
         var otroTenant = Guid.Parse("99999999-9999-9999-9999-999999999999");
+        var provider = new ThrowingProvider();
 
         var result = await ReconcileHostedCheckoutHandler.Handle(
             new ReconcileHostedCheckoutCommand(payment.Id, otroTenant),
             // Repo que filtra por tenant: no devuelve el pago de otro.
             new FakeSaaSPaymentRepository(payment),
-            new FakePaymentAdapterFactory(new ThrowingProvider()),
+            new FakePaymentAdapterFactory(provider),
             new FakeUnitOfWork(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
@@ -158,6 +163,7 @@ public sealed class ReconcileHostedCheckoutHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("SaaSPayment.NotFound", result.Error.Code);
+        Assert.Equal(0, provider.Calls);
     }
 
     [Fact]
@@ -493,15 +499,29 @@ public sealed class ReconcileHostedCheckoutHandlerTests
         ) => throw new NotSupportedException();
     }
 
-    private sealed class ThrowingProvider() : FakePaymentProvider(PaymentProviderCode.PayPal, Default)
+    // Reimplementa IPaymentProvider: sin eso el handler, que llama por la interfaz, llegaría al método base.
+    private sealed class ThrowingProvider() : FakePaymentProvider(PaymentProviderCode.PayPal, Default), IPaymentProvider
     {
         private static readonly ChargeAuthorizationResult Default = new("unused", PaymentStatus.Processing);
+
+        public int Calls { get; private set; }
 
         public new Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
             string providerChargeReference,
             Money amount,
             CancellationToken ct
-        ) => throw new InvalidOperationException("Provider should not be called.");
+        ) => Fail();
+
+        public new Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
+            string providerChargeReference,
+            CancellationToken ct
+        ) => Fail();
+
+        private Task<Result<ChargeAuthorizationResult>> Fail()
+        {
+            Calls++;
+            throw new InvalidOperationException("Provider should not be called.");
+        }
     }
 
     // Responde el estado del cobro; Finalize (que en PayPal captura) no debe llamarse.

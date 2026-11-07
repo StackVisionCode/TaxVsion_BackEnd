@@ -187,7 +187,7 @@ public sealed class T44ConsumersTests
     }
 
     private static NotificationDispatcher BuildDispatcher(IIntegrationEventPublisher publisher) =>
-        new(
+        TestDispatchers.Create(
             new NoOpSmsSender(),
             new NoOpPushSender(),
             new NoOpPushDeviceTokenRepository(),
@@ -199,8 +199,7 @@ public sealed class T44ConsumersTests
             publisher,
             new NoOpUnitOfWork(),
             new NoOpNotificationDispatchMetrics(),
-            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
     private sealed class FakeResolver(Result<IReadOnlyList<Guid>> result) : IRecipientResolver

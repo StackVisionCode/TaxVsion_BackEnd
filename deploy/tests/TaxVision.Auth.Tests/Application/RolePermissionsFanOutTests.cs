@@ -97,6 +97,29 @@ public sealed class RolePermissionsFanOutTests
     }
 
     [Fact]
+    public async Task Prepare_bumps_the_version_and_leaves_the_publishing_to_the_handler()
+    {
+        var tenantId = Guid.NewGuid();
+        var holder = Employee(tenantId);
+        var role = RoleWith(tenantId, "Editor", View.Id);
+        var versionBefore = holder.PermissionsVersion;
+
+        var notices = await RolePermissionsFanOut.PrepareForRoleHoldersAsync(
+            tenantId,
+            role.Id,
+            Catalog,
+            new FanOutUserRepository([holder]),
+            new FanOutRoleRepository(new() { [holder.Id] = [role] }, new()),
+            "corr",
+            CancellationToken.None
+        );
+
+        var notice = Assert.Single(notices);
+        Assert.Equal(versionBefore + 1, holder.PermissionsVersion);
+        Assert.Equal(holder.PermissionsVersion, notice.PermissionsVersion);
+    }
+
+    [Fact]
     public async Task A_deactivated_role_stops_granting_its_permissions()
     {
         var tenantId = Guid.NewGuid();

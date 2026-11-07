@@ -271,6 +271,29 @@ public sealed class TenantBrandingProjectionConsumerTests
         Assert.Equal("Acme Refunds", branding.IssuerDisplayName);
     }
 
+    [Fact]
+    public async Task RemovedBeforeOlderUpdated_LogoStaysRemoved()
+    {
+        var repo = new BrandingRepo();
+
+        await HandleAsync(repo, LogoRemoved(Now, TenantBrandSurfaces.Crm));
+        await HandleAsync(repo, LogoUpdated(Guid.NewGuid(), Now.AddMinutes(-5), TenantBrandSurfaces.Crm));
+
+        Assert.False((await repo.GetLogoAsync(TenantId, TenantLogoSurface.Crm))!.HasLogo);
+    }
+
+    [Fact]
+    public async Task RemovedThenNewerUpdated_LogoIsApplied()
+    {
+        var repo = new BrandingRepo();
+        var current = Guid.NewGuid();
+
+        await HandleAsync(repo, LogoRemoved(Now, TenantBrandSurfaces.Crm));
+        await HandleAsync(repo, LogoUpdated(current, Now.AddMinutes(5), TenantBrandSurfaces.Crm));
+
+        Assert.Equal(current, (await repo.GetLogoAsync(TenantId, TenantLogoSurface.Crm))!.LogoFileId);
+    }
+
     private sealed class BrandingRepo : ITenantBrandingRefRepository
     {
         private readonly Dictionary<Guid, TenantBrandingRef> _brandings = new();

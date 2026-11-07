@@ -1,30 +1,36 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
-using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
-using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
-using TaxVision.PaymentApp.Application.Common;
-using TaxVision.PaymentApp.Domain.Audit;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.RefundSaaSPayment;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
+using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.PaymentApp.Application.Onboarding.IntegrationEvents;
 
-/// <summary>PayFlow (Fase 17) — consume <see cref="OnboardingRefundRequestedIntegrationEvent"/>
-/// (publicado por Auth's <c>CancelAndRefundOnboardingAdminHandler</c> tras una acción admin
-/// explícita con confirmación textual). Carga el <see cref="SaaSPayment"/> directo por
-/// <c>PaymentId</c> (ver doc-comment del evento) y aplica el mismo patrón de
-/// <c>RefundSaaSPaymentHandler</c>: valida, llama al proveedor con clave de idempotencia y después
-/// aplica el dominio, para no dejar el aggregate en <c>Refunded</c> si Stripe rechaza el refund.</summary>
+/// <summary>PayFlow (Fase 17) — consume <see cref="OnboardingRefundRequestedIntegrationEvent"/> (lo publica Auth tras
+/// la acción admin confirmada) y reembolsa el pago completo con el patrón BB-8: intención guardada, proveedor fuera de
+/// la transacción con la clave <c>refund:onboarding:{id}</c> y registro aparte. Nada se pierde:
+/// <list type="bullet">
+/// <item>fallo pasajero del proveedor: excepción no permanente, la política estándar reintenta y deja el mensaje en la
+/// cola de errores;</item>
+/// <item>rechazo definitivo: auditado y el pago en la bandeja de revisión (<c>RefundRejected</c>);</item>
+/// <item>reembolsado sin registro: auditado, en revisión (<c>RefundNeedsReconciliation</c>) y nunca se reenvía.</item>
+/// </list>
+/// Si el pago no puede entrar a la bandeja (ya tenía una revisión resuelta), el mensaje va a la cola de errores.</summary>
 public static class OnboardingRefundConsumer
 {
+    /// <summary>La única petición de reembolso de onboarding por pago.</summary>
+    public const string RequestKey = "onboarding";
+
+    [NonTransactional]
     public static async Task Handle(
         OnboardingRefundRequestedIntegrationEvent evt,
-        ISaaSPaymentRepository payments,
+        IMessageBus bus,
         IPaymentAdapterFactory providerFactory,
-        IPaymentAuditLogWriter audit,
-        IUnitOfWork unitOfWork,
-        IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -34,88 +40,97 @@ public static class OnboardingRefundConsumer
             string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
         );
 
-        var payment = await payments.GetByIdAsync(evt.PaymentId, ct);
-        if (payment is null)
-        {
-            logger.LogWarning(
-                "OnboardingRefundConsumer: SaaSPayment {PaymentId} for onboarding {OnboardingId} not found — nothing to refund.",
+        var prepared = await bus.InvokeAsync<Result<SaaSPaymentRefundPlan>>(
+            new PrepareSaaSPaymentRefundCommand(
                 evt.PaymentId,
-                evt.OnboardingId
-            );
-            return;
-        }
-
-        if (payment.ExternalChargeReference is null)
-        {
-            logger.LogWarning(
-                "OnboardingRefundConsumer: SaaSPayment {PaymentId} has no charge reference — nothing was ever charged.",
-                payment.Id
-            );
-            return;
-        }
-
-        // Si no procede, va a DLQ (ArgumentException no se reintenta) en vez de perderse en silencio.
-        var refundable = payment.CanRefundFull(evt.Reason);
-        if (refundable.IsFailure)
-            throw new ArgumentException(
-                $"Onboarding refund for SaaSPayment {payment.Id} rejected: {refundable.Error.Code}."
-            );
-
-        var adapter = providerFactory.Resolve(payment.ProviderCode);
-        var refundResult = await adapter.RefundAsync(
-            payment.ExternalChargeReference.Value,
-            refundable.Value,
-            evt.Reason,
-            $"refund:onboarding:{payment.Id:N}",
+                AmountCents: null,
+                evt.Reason,
+                Guid.Empty,
+                RequestKey,
+                $"refund:onboarding:{evt.PaymentId:N}",
+                ReplayWindow: null,
+                EnforceAdminThrottle: false
+            ),
             ct
         );
-        if (refundResult.IsFailure)
+        if (prepared.IsFailure)
+        {
+            HandlePrepareFailure(evt, prepared.Error, logger);
+            return;
+        }
+
+        var plan = prepared.Value;
+        if (plan.Kind != SaaSPaymentRefundPlanKind.Execute)
         {
             logger.LogWarning(
-                "OnboardingRefundConsumer: provider refund failed for SaaSPayment {PaymentId} (onboarding {OnboardingId}): {Error}",
-                payment.Id,
+                "OnboardingRefundConsumer: refund of SaaSPayment {PaymentId} (onboarding {OnboardingId}) is {Kind}; the provider is not called again.",
+                evt.PaymentId,
                 evt.OnboardingId,
-                refundResult.Error.Message
+                plan.Kind
             );
             return;
         }
 
-        var nowUtc = DateTime.UtcNow;
-        var applyResult = payment.RefundFull(evt.Reason, Guid.Empty, nowUtc);
-        if (applyResult.IsFailure)
-        {
-            logger.LogWarning(
-                "OnboardingRefundConsumer: provider refund succeeded but domain apply failed for SaaSPayment {PaymentId}: {Error}",
-                payment.Id,
-                applyResult.Error.Message
+        var adapter = providerFactory.Resolve(plan.Provider);
+        var refund = await adapter.RefundAsync(plan.ChargeReference, plan.Amount, plan.Reason, plan.ProviderKey, ct);
+
+        RecordSaaSPaymentRefundCommand record;
+        if (refund.IsSuccess)
+            record = new(evt.PaymentId, plan.RequestId, refund.Value.ProviderRefundReference);
+        else if (!ProviderRefundFailures.IsTransient(refund.Error))
+            record = new(evt.PaymentId, plan.RequestId, null, refund.Error.Code, FlagRejectionForReview: true);
+        else if (adapter.Capabilities.SupportsIdempotencyKeys)
+            // La intención sigue abierta: el reintento repite la misma clave.
+            throw new SaaSPaymentRefundRetryableException(
+                $"Onboarding refund for SaaSPayment {evt.PaymentId} is temporarily unavailable: {refund.Error.Code}."
             );
-            return;
-        }
+        else
+            record = new(evt.PaymentId, plan.RequestId, null, Unrecorded: true);
 
-        metrics.RecordRefunded(payment.ProviderCode.ToString());
+        var recorded = await bus.InvokeAsync<Result<SaaSPaymentRefundRecord>>(record, ct);
+        if (recorded.IsFailure)
+            throw new SaaSPaymentRefundRetryableException(
+                $"Onboarding refund for SaaSPayment {evt.PaymentId} could not be recorded: {recorded.Error.Code}."
+            );
 
-        await AuditEntryFactory.AppendAsync(
-            audit,
-            payment.TenantId,
-            nameof(SaaSPayment),
-            payment.Id,
-            PaymentAuditAction.SaaSPaymentRefundedFull,
-            Guid.Empty,
-            correlation.CorrelationId,
-            before: (object?)null,
-            after: new { payment.Status, RefundedCents = payment.Amount.AmountCents },
-            reason: evt.Reason,
-            nowUtc,
-            ct
-        );
-
-        await unitOfWork.SaveChangesAsync(ct);
+        if (recorded.Value.Kind != SaaSPaymentRefundRecordKind.Recorded && !recorded.Value.VisibleForReview)
+            // Ya auditado; sin bandeja que lo muestre, la cola de errores lo hace visible.
+            throw new ArgumentException(
+                $"Onboarding refund for SaaSPayment {evt.PaymentId} is {recorded.Value.Kind} and the payment cannot be flagged for review."
+            );
 
         logger.LogInformation(
-            "OnboardingRefundConsumer: SaaSPayment {PaymentId} for onboarding {OnboardingId} refunded in full; status now {Status}.",
-            payment.Id,
+            "OnboardingRefundConsumer: SaaSPayment {PaymentId} for onboarding {OnboardingId}: {Kind}.",
+            evt.PaymentId,
             evt.OnboardingId,
-            payment.Status
+            recorded.Value.Kind
         );
+    }
+
+    private static void HandlePrepareFailure(OnboardingRefundRequestedIntegrationEvent evt, Error error, ILogger logger)
+    {
+        switch (error.Code)
+        {
+            // Sin pago o sin cobro: no hay nada que devolver.
+            case "SaaSPayment.NotFound":
+            case "SaaSPayment.NoChargeReference":
+                logger.LogWarning(
+                    "OnboardingRefundConsumer: SaaSPayment {PaymentId} for onboarding {OnboardingId}: {Code} — nothing to refund.",
+                    evt.PaymentId,
+                    evt.OnboardingId,
+                    error.Code
+                );
+                return;
+            // Otro reembolso del mismo pago sigue sin resultado: se reintenta más tarde.
+            case "SaaSPayment.RefundInProgress":
+                throw new SaaSPaymentRefundRetryableException(
+                    $"Onboarding refund for SaaSPayment {evt.PaymentId} waits for another refund in progress."
+                );
+            // No procede (retención legal, estado, monto): a la cola de errores, no se pierde en silencio.
+            default:
+                throw new ArgumentException(
+                    $"Onboarding refund for SaaSPayment {evt.PaymentId} rejected: {error.Code}."
+                );
+        }
     }
 }

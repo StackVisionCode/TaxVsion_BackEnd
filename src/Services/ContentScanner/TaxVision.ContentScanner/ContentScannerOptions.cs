@@ -49,6 +49,10 @@ public sealed class ContentScannerOptions
     [Range(1, 300)]
     public int QueueTimeoutSeconds { get; set; }
 
+    /// <summary>`Retry-After` del 503 cuando el modelo no está cargado.</summary>
+    [Range(1, 3600)]
+    public int ModelUnavailableRetryAfterSeconds { get; set; } = 300;
+
     [Range(1, 16)]
     public int InferenceThreads { get; set; }
 

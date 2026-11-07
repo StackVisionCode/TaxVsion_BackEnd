@@ -116,6 +116,10 @@ public sealed class PushFanOutIntegrationTests : IAsyncLifetime
                 services.AddSingleton<IIntegrationEventPublisher, CapturingIntegrationEventPublisher>();
                 services.AddSingleton<INotificationDispatchMetrics, NoOpNotificationDispatchMetrics>();
                 services.AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(NullLogger<>));
+                services.AddScoped<DispatchChannelGate>();
+                services.AddScoped<SmsDispatch>();
+                services.AddScoped<PushDispatch>();
+                services.AddScoped<InAppDispatch>();
                 services.AddScoped<NotificationDispatcher>();
                 services.AddScoped<IPushAttemptRecorder, PushAttemptRecorder>();
             })
@@ -167,7 +171,8 @@ public sealed class PushFanOutIntegrationTests : IAsyncLifetime
                     .Create(
                         _tenant,
                         NotificationChannel.Push,
-                        _first.ToString(),
+                        NotificationRecipient.ForPushTarget(_first),
+
                         "Title",
                         "not07.tpl",
                         eventId,

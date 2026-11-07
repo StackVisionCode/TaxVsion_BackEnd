@@ -74,7 +74,7 @@ public sealed class SubmissionSummaryRequester(
         );
 
         var generationId = Guid.NewGuid();
-        var marked = request.MarkPdfRequested(revisionNumber, generationId);
+        var marked = request.Summary.MarkPdfRequested(revisionNumber, generationId);
         if (marked.IsFailure)
             return marked;
 
@@ -104,7 +104,7 @@ public sealed class SubmissionSummaryRequester(
         FormDefinition definition
     )
     {
-        if (!DefinitionHasSignatureStep(definition) || !request.RevisionAwaitsSignature(revisionNumber))
+        if (!DefinitionHasSignatureStep(definition) || !request.Summary.RevisionAwaitsSignature(revisionNumber))
             return null;
         return new SignatureCopyRequest
         {

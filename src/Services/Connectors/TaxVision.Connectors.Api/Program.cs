@@ -22,6 +22,7 @@ using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Serilog;
 using TaxVision.Connectors.Api.Options;
 using TaxVision.Connectors.Application;
@@ -81,9 +82,12 @@ builder
     .Services.AddAuthorizationBuilder()
     .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
-builder.Services.Configure<GmailPushWebhookOptions>(
-    builder.Configuration.GetSection(GmailPushWebhookOptions.SectionName)
-);
+builder
+    .Services.AddOptions<GmailPushWebhookOptions>()
+    .Bind(builder.Configuration.GetSection(GmailPushWebhookOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<GmailPushWebhookOptions>, GmailPushWebhookOptionsValidator>();
+builder.Services.AddSingleton<IGmailPushTokenVerifier, GoogleGmailPushTokenVerifier>();
 builder.Services.Configure<ConnectorsPortalOptions>(
     builder.Configuration.GetSection(ConnectorsPortalOptions.SectionName)
 );

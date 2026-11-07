@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Users;
@@ -20,9 +21,7 @@ public sealed class DeactivateUserHandlerTests
             new DeactivateUserCommand(tenantId, target.Id, Guid.NewGuid(), UserActorType.TenantAdmin),
             new OrderRecordingUserRepository(target, calls, activeAdmins: 1),
             new RecordingTenantAdminLock(calls),
-            new EmptyUserSessionRepository(),
-            new RecordingAccessTokenDenylist(),
-            new QuietRevocations(),
+            new SessionAccessCutoff(new EmptyUserSessionRepository(), new RecordingAccessTokenDenylist(), new QuietRevocations()),
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),
@@ -33,6 +32,32 @@ public sealed class DeactivateUserHandlerTests
 
         Assert.Equal("User.LastAdmin", result.Error.Code);
         Assert.Equal([$"lock:{tenantId}", "count"], calls);
+    }
+
+    // La regla sale del agregado pero el error que ve el usuario no cambia: va antes que la del último admin.
+    [Fact]
+    public async Task LastAdminDeactivatingSelf_StillGetsSelfAction_WithoutTakingTheLock()
+    {
+        var tenantId = Guid.NewGuid();
+        var self = User.Register(tenantId, "Tania", "Ruiz", "tania@example.com", "hash", UserActorType.TenantAdmin).Value;
+        var calls = new List<string>();
+
+        var result = await DeactivateUserHandler.Handle(
+            new DeactivateUserCommand(tenantId, self.Id, self.Id, UserActorType.TenantAdmin),
+            new OrderRecordingUserRepository(self, calls, activeAdmins: 1),
+            new RecordingTenantAdminLock(calls),
+            new SessionAccessCutoff(new EmptyUserSessionRepository(), new RecordingAccessTokenDenylist(), new QuietRevocations()),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.Equal("User.SelfAction", result.Error.Code);
+        Assert.Empty(calls);
+        Assert.True(self.IsActive);
     }
 
     private sealed class RecordingTenantAdminLock(List<string> calls) : ITenantAdminLock

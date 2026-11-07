@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -169,7 +170,7 @@ public static class OfficeWispReviewDueConsumer
     ) =>
         dispatcher.RecordInAppAsync(
             evt.OfficeTenantId,
-            $"user:{userId:N}",
+            NotificationRecipient.ForUser(userId),
             notice.Title,
             Category,
             NotificationKinds.TenantWispReviewDue,

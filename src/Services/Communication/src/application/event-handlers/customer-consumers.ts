@@ -184,12 +184,26 @@ export function bindCustomerConsumers(
     }
   });
 
+  // Estado en el directorio: cada aviso lleva su fecha (occurredOn) y los mas viejos se descartan.
   register('customer.deactivated.v1', async (env) => {
     const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
     if (!customerId) return;
-    await deps.customerDirectory.markInactive(customerId);
+    await deps.customerDirectory.markInactive(customerId, envOccurredAt(env));
     emitCustomerChanged(env, deps.emitter, customerId, 'deactivated');
   });
+
+  // Restaurado (Archived→Active) o activado (Inactive→Active): sin esto seguia inactivo hasta la reconciliacion.
+  async function markCustomerActive(
+    env: IncomingEnvelope,
+    changeType: 'reactivated' | 'activated',
+  ): Promise<void> {
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    if (!customerId) return;
+    await deps.customerDirectory.markActive(customerId, envOccurredAt(env));
+    emitCustomerChanged(env, deps.emitter, customerId, changeType);
+  }
+  register('customer.reactivated.v1', (env) => markCustomerActive(env, 'reactivated'));
+  register('customer.activated.v1', (env) => markCustomerActive(env, 'activated'));
 
   // 2026-08-06 (auditoria de proyecciones de customer): antes solo se escuchaba
   // customer.deactivated.v1, asi que un cliente ARCHIVADO seguia con isActive=true
@@ -201,7 +215,7 @@ export function bindCustomerConsumers(
     if (!customerId) return;
     // F5: archivar borra la foto en Customer y el evento no la trae; la proyeccion la limpia igual.
     const existing = await deps.customerDirectory.findByCustomerId(env.tenantId, customerId);
-    await deps.customerDirectory.markInactive(customerId);
+    await deps.customerDirectory.markInactive(customerId, envOccurredAt(env));
     await deps.customerDirectory.clearAvatar(customerId);
     emitCustomerChanged(env, deps.emitter, customerId, 'archived');
     if (existing?.avatarFileId) {
@@ -273,7 +287,8 @@ function getNumber(source: Record<string, unknown>, key: string): number | undef
  * import), distinta de `CreatedAtUtc` del repo que es la hora de recepción.
  */
 function envOccurredAt(env: IncomingEnvelope): Date {
-  const raw = getString(env.payload, 'occurredOn') ?? getString(env.payload, 'OccurredOn');
+  const raw =
+    getString(env.payload, 'occurredOn') ?? getString(env.payload, 'OccurredOn') ?? env.occurredOnUtc;
   if (!raw) return new Date();
   const parsed = new Date(raw);
   return Number.isFinite(parsed.getTime()) ? parsed : new Date();

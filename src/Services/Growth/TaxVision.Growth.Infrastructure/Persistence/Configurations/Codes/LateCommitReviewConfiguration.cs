@@ -21,6 +21,7 @@ public sealed class LateCommitReviewConfiguration : IEntityTypeConfiguration<Lat
         builder.Property(review => review.CreatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(review => review.ResolvedAtUtc).HasColumnType("datetime2(7)");
         builder.Property(review => review.Resolution).HasMaxLength(500);
+        builder.Property(review => review.ResolutionNote).HasMaxLength(LateCommitReview.MaxNoteLength);
 
         builder
             .HasIndex(review => new { review.CodeReservationId, review.SourceEventId })

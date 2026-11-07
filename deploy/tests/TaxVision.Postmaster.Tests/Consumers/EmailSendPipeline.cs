@@ -137,7 +137,8 @@ internal static class EmailSendPipeline
         ISentMessageRepository sentMessages,
         IUnitOfWork unitOfWork,
         IConnectedMailboxResolver mailboxResolver,
-        ISuppressionListRepository suppressionList
+        ISuppressionListRepository suppressionList,
+        ILogger? logger = null
     ) =>
         bus.OnInvoke = message =>
             InTransactionAsync(
@@ -177,6 +178,7 @@ internal static class EmailSendPipeline
                             sentMessages,
                             idempotencyGuard,
                             unitOfWork,
+                            logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
                             CancellationToken.None
                         ),
                         _ => throw new NotSupportedException(message.GetType().Name),

@@ -2,8 +2,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using TaxVision.Auth.Api.Middleware;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Domain.Onboarding.TermsVersions;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Domain.Terms;
 using TaxVision.Auth.Domain.Terms;
 
 namespace TaxVision.Auth.Tests.Api;

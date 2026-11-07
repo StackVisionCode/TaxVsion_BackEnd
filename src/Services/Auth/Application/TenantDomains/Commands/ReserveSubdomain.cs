@@ -5,7 +5,6 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
 using Wolverine;
 
@@ -41,7 +40,7 @@ public static class ReserveSubdomainHandler
         ReserveSubdomainCommand command,
         ITenantDomainRepository domains,
         ITenantSubdomainReservationRepository reservations,
-        IOnboardingSubdomainReservationRepository onboardingReservations,
+        ISubdomainHoldReader onboardingHolds,
         IOptions<TenantDomainOptions> options,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -70,7 +69,7 @@ public static class ReserveSubdomainHandler
         // Auditoría F11 — cruza también contra la reserva de PayFlow (Path C, Fase 14): sin este
         // chequeo, un comprador en pleno onboarding pago-primero podía perder su slug frente a
         // alguien completando el alta directa (Path A) al mismo tiempo, y viceversa.
-        if (await onboardingReservations.GetActiveBySlugAsync(slug.Value, nowUtc, ct) is not null)
+        if (await onboardingHolds.IsHeldAsync(slug.Value, nowUtc, ct))
             return Result.Failure<SubdomainReservationResponse>(
                 new Error("TenantDomain.SlugReservedTemporarily", "This subdomain is temporarily reserved.")
             );
@@ -87,6 +86,7 @@ public static class ReserveSubdomainHandler
         var reservation = reservationResult.Value;
         await reservations.AddAsync(reservation, ct);
 
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new TenantDomainReservedIntegrationEvent
             {
@@ -97,8 +97,6 @@ public static class ReserveSubdomainHandler
                 ExpiresAtUtc = reservation.ExpiresAtUtc,
             }
         );
-
-        await unitOfWork.SaveChangesAsync(ct);
 
         var ticket = jwt.GenerateTenantRegistrationTicket(
             reservation.SubdomainSlug,

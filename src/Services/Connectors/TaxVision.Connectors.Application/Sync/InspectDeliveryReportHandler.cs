@@ -5,12 +5,14 @@ using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Providers;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Sync;
 
 /// <summary>
 /// Baja el correo completo, lee el informe de entrega y avisa a Postmaster un evento por destinatario.
-/// Un correo que solo parecía aviso (no trae informe) se descarta sin ruido.
+/// Un correo que solo parecía aviso (no trae informe) se descarta sin ruido. Sin transacción: no escribe en la base,
+/// y los avisos salen por el outbox durable al terminar.
 /// </summary>
 public static class InspectDeliveryReportHandler
 {
@@ -18,6 +20,7 @@ public static class InspectDeliveryReportHandler
     private const int MaxSummaryLength = 500;
     private const int MaxSubjectLength = 500;
 
+    [NonTransactional]
     public static async Task Handle(
         InspectDeliveryReport cmd,
         ITenantEmailAccountRepository accountRepository,

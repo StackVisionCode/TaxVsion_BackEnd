@@ -118,6 +118,12 @@ namespace TaxVision.Connectors.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("RefreshedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ConnectionId")

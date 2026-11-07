@@ -1,0 +1,70 @@
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
+
+namespace TaxVision.Auth.Onboarding.Application.Abstractions;
+
+public interface ITenantOnboardingRepository
+{
+    Task<TenantOnboarding?> GetByIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>PayFlow (Fase 13) — resuelve el token de registro público (preview/complete/status)
+    /// por su hash SHA-256 normalizado en minúsculas, contra el índice único filtrado de
+    /// RegistrationTokenHash (TenantOnboardingConfiguration).</summary>
+    Task<TenantOnboarding?> GetByRegistrationTokenHashAsync(
+        string registrationTokenHash,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Resuelve el onboarding dueño de un recibo por su FileId. Respalda el endpoint público
+    /// de descarga: solo un FileId que sea realmente un recibo emitido puede resolverse, así el
+    /// endpoint anónimo deja de ser un resolver genérico de archivos por GUID.</summary>
+    Task<TenantOnboarding?> GetByReceiptFileIdAsync(Guid receiptFileId, CancellationToken ct = default);
+
+    Task AddAsync(TenantOnboarding onboarding, CancellationToken ct = default);
+
+    /// <summary>PayFlow (Fase 17) — onboardings ProvisioningFailed con reintento automático
+    /// programado y vencido. <c>OnboardingRetryScheduler</c> los recorre en cada tick.</summary>
+    Task<IReadOnlyList<TenantOnboarding>> GetDueForRetryAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Onboardings pagados que siguen en RegistrationPending, sin email de registro enviado,
+    /// cuyo pago se liquidó antes del corte (ventana del recordatorio ya vencida). Los recorre el
+    /// OnboardingRegistrationReminderScheduler para publicar el email diferido.</summary>
+    Task<IReadOnlyList<TenantOnboarding>> GetRegistrationRemindersDueAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Onboardings sin cerrar (PendingPayment/PaymentProcessing/RegistrationPending) cuya
+    /// edad superó el TTL del sweeper. OnboardingExpirationJob los marca Expired para desatascar
+    /// pestañas que volvieron sin callback (buyer apretó "atrás" en el navegador).</summary>
+    Task<IReadOnlyList<TenantOnboarding>> GetExpiredPendingAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
+    /// <summary>OBF-2.7 — onboardings huérfanos: cliente pagó pero sigue sin completar el office-setup
+    /// después de la ventana (default 24h). Se consideran huérfanos los que están pagados sin registro
+    /// completado y sin tenant creado, independientemente del Status (RegistrationPending normal, pero
+    /// también Expired si el sweeper viejo los tocó antes del fix OBF-2.1). El detector publica un evento
+    /// por cada uno para que alerta/metricas lo recojan.</summary>
+    Task<IReadOnlyList<TenantOnboarding>> GetOrphansAsync(
+        DateTime paidBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
+    /// <summary>PayFlow (Fase 17) — listado paginado para <c>OnboardingAdminController</c>, filtrable
+    /// por Status (típicamente ManualReview/ProvisioningFailed). Cross-tenant a propósito: es un
+    /// endpoint PlatformAdmin-only, igual que el resto de los admin controllers del monorepo.</summary>
+    Task<(IReadOnlyList<TenantOnboarding> Items, int TotalCount)> GetPagedAdminAsync(
+        TenantOnboardingStatus? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    );
+}

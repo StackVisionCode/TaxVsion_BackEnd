@@ -455,6 +455,53 @@ public sealed class SignatureRequestTests
 
     // ================== helpers ==================
 
+    // -------------------- Firma: nombre tipeado --------------------
+
+    [Fact]
+    public void Sign_TypedNameMismatch_ReturnsFailure()
+    {
+        var request = NewReadyDraftWithSignatureField("signer@example.test");
+        Assert.True(request.Send(DateTime.UtcNow).IsSuccess);
+        var signer = request.Signers.Single();
+
+        var result = request.MarkSignerDocumentsCompleted(
+            signer.Id,
+            signer.Fields.Select(field => field.DocumentId).Distinct().ToList(),
+            DateTime.UtcNow,
+            SignatureCaptureMethod.Typed,
+            "Someone Else",
+            null,
+            null,
+            null
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Public.TypedNameMismatch", result.Error.Code);
+        Assert.NotEqual(SignerStatus.Signed, signer.Status);
+        Assert.Equal(SignatureRequestStatus.InProgress, request.Status);
+    }
+
+    [Fact]
+    public void Sign_DrawnMethod_DoesNotCompareTheTypedName()
+    {
+        var request = NewReadyDraftWithSignatureField("signer@example.test");
+        Assert.True(request.Send(DateTime.UtcNow).IsSuccess);
+        var signer = request.Signers.Single();
+
+        var result = request.MarkSignerDocumentsCompleted(
+            signer.Id,
+            signer.Fields.Select(field => field.DocumentId).Distinct().ToList(),
+            DateTime.UtcNow,
+            SignatureCaptureMethod.Drawn,
+            "Someone Else",
+            Guid.NewGuid(),
+            null,
+            null
+        );
+
+        Assert.True(result.IsSuccess);
+    }
+
     private static BuildingBlocks.Results.Result<SignatureRequest> NewDraft() =>
         SignatureRequest.CreateDraft(
             TestSignatureLimits.Default,

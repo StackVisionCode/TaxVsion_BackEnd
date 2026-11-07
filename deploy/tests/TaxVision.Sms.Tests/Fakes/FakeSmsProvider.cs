@@ -17,6 +17,9 @@ internal sealed class FakeSmsProvider : ISmsProvider
     public Func<SmsSendRequest, SmsSendResult> SendImpl { get; set; } =
         _ => new SmsSendResult(true, "prov-" + Guid.NewGuid().ToString("N"), null, null);
 
+    /// <summary>Con valor, el adapter devuelve un Result fallido en lugar de <see cref="SendImpl"/>.</summary>
+    public Error? SendFailure { get; set; }
+
     public bool SignatureValid { get; set; } = true;
     public SmsDeliveryUpdate? DeliveryUpdate { get; set; }
     public SmsInboundMessage? InboundMessage { get; set; }
@@ -24,7 +27,9 @@ internal sealed class FakeSmsProvider : ISmsProvider
     public Task<Result<SmsSendResult>> SendAsync(SmsSendRequest request, CancellationToken ct = default)
     {
         SendAsyncCallCount++;
-        return Task.FromResult(Result.Success(SendImpl(request)));
+        return Task.FromResult(
+            SendFailure is null ? Result.Success(SendImpl(request)) : Result.Failure<SmsSendResult>(SendFailure)
+        );
     }
 
     public Task<Result<IReadOnlyList<SmsSendResult>>> SendBatchAsync(

@@ -28,14 +28,7 @@ public sealed class SessionAccessCutoffTests
         var denylist = new RecordingDenylist();
         var revocations = new RecordingRevocations();
 
-        var revoked = await SessionAccessCutoff.ForTenantAsync(
-            TenantId,
-            "tenant_suspended",
-            sessions,
-            denylist,
-            revocations,
-            CancellationToken.None
-        );
+        var revoked = await new SessionAccessCutoff(sessions, denylist, revocations).ForTenantAsync(TenantId, "tenant_suspended", CancellationToken.None);
 
         Assert.Equal(2, revoked);
         Assert.Equal([first.Id, second.Id], denylist.Denied);
@@ -56,14 +49,7 @@ public sealed class SessionAccessCutoffTests
         var denylist = new OrderTrackingDenylist(order);
         var revocations = new OrderTrackingRevocations(order);
 
-        await SessionAccessCutoff.ForTenantAsync(
-            TenantId,
-            "subscription_lapsed",
-            new RecordingSessions([session]),
-            denylist,
-            revocations,
-            CancellationToken.None
-        );
+        await new SessionAccessCutoff(new RecordingSessions([session]), denylist, revocations).ForTenantAsync(TenantId, "subscription_lapsed", CancellationToken.None);
 
         Assert.Equal(["deny", "announce"], order);
     }
@@ -73,14 +59,7 @@ public sealed class SessionAccessCutoffTests
     {
         var denylist = new RecordingDenylist();
 
-        await SessionAccessCutoff.ForTenantAsync(
-            TenantId,
-            "tenant_suspended",
-            new RecordingSessions([Session(Guid.NewGuid())]),
-            denylist,
-            new RecordingRevocations(),
-            CancellationToken.None
-        );
+        await new SessionAccessCutoff(new RecordingSessions([Session(Guid.NewGuid())]), denylist, new RecordingRevocations()).ForTenantAsync(TenantId, "tenant_suspended", CancellationToken.None);
 
         // El access token vive 15 minutos; el TTL tiene que cubrirlos con margen o la entrada se vence
         // antes que el token que viene a invalidar.
@@ -93,14 +72,7 @@ public sealed class SessionAccessCutoffTests
     {
         var revocations = new RecordingRevocations();
 
-        await SessionAccessCutoff.ForTenantAsync(
-            TenantId,
-            "tenant_suspended",
-            new RecordingSessions([]),
-            new RecordingDenylist(),
-            revocations,
-            CancellationToken.None
-        );
+        await new SessionAccessCutoff(new RecordingSessions([]), new RecordingDenylist(), revocations).ForTenantAsync(TenantId, "tenant_suspended", CancellationToken.None);
 
         Assert.Empty(revocations.Published);
     }
@@ -120,14 +92,7 @@ public sealed class SessionAccessCutoffTests
         var denylist = new RecordingDenylist();
         var revocations = new RecordingRevocations();
 
-        await SessionAccessCutoff.ForUserAsync(
-            user,
-            "admin_revoke",
-            new RecordingSessions([session]),
-            denylist,
-            revocations,
-            CancellationToken.None
-        );
+        await new SessionAccessCutoff(new RecordingSessions([session]), denylist, revocations).ForUserAsync(user, "admin_revoke", CancellationToken.None);
 
         Assert.Equal([session.Id], denylist.Denied);
         Assert.Single(revocations.Published);

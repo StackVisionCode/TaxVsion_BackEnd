@@ -36,10 +36,10 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
             msg,
             repo,
             unitOfWork,
-            new NoopCache(),
             bus,
             new NoopCorrelationContext(),
             NullLogger<TenantBrand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
         return (bus, unitOfWork);
@@ -53,7 +53,7 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var (bus, unitOfWork) = await HandleAsync(repo, Rejected(fileId));
@@ -74,7 +74,7 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Portal,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var (bus, _) = await HandleAsync(repo, Rejected(fileId));
@@ -95,9 +95,9 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
             BrandSurface.Crm,
             b =>
             {
-                b.SetAssetPending(BrandAssetKey.Logo, rejectedFileId, "image/png", 100, null, null);
+                b.SetAssetPending(BrandAssetKey.Logo, rejectedFileId, "image/png", 100, null, null, DateTime.UtcNow);
                 // El tenant ya subió otro logo antes de que llegara el rechazo.
-                b.SetAssetPending(BrandAssetKey.Logo, newerFileId, "image/png", 100, null, null);
+                b.SetAssetPending(BrandAssetKey.Logo, newerFileId, "image/png", 100, null, null, DateTime.UtcNow);
             }
         );
 
@@ -118,7 +118,7 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var (bus, unitOfWork) = await HandleAsync(repo, Rejected(fileId, requestingService: "signature"));
@@ -135,7 +135,7 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var (bus, unitOfWork) = await HandleAsync(repo, Rejected(Guid.NewGuid()));
@@ -153,7 +153,7 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         await HandleAsync(repo, Rejected(fileId));
@@ -171,7 +171,7 @@ public sealed class TenantBrandAssetSaveRejectedConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var (bus, _) = await HandleAsync(repo, Rejected(fileId) with { TenantId = Guid.NewGuid() });

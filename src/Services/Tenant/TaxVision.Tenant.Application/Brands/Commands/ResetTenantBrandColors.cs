@@ -1,8 +1,8 @@
-using BuildingBlocks.Caching;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tenant.Application.Brands.Abstractions;
 using TaxVision.Tenant.Domain.Enums;
+using Wolverine;
 
 namespace TaxVision.Tenant.Application.Brands.Commands;
 
@@ -15,7 +15,8 @@ public static class ResetTenantBrandColorsHandler
         ResetTenantBrandColorsCommand cmd,
         ITenantBrandRepository repo,
         IUnitOfWork unitOfWork,
-        ICacheService cache,
+        IMessageBus bus,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -23,10 +24,10 @@ public static class ResetTenantBrandColorsHandler
         if (brand is null)
             return Result.Success(); // nada que resetear = ya está en default
 
-        brand.ResetColors();
+        brand.ResetColors(clock.GetUtcNow().UtcDateTime);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await BrandCommandSupport.InvalidateAsync(cache, cmd.TenantId, cmd.Surface, ct);
+        await BrandCommandSupport.RequestInvalidationAsync(bus, cmd.TenantId, cmd.Surface);
         return Result.Success();
     }
 }

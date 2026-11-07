@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -35,7 +36,7 @@ public static class TaskAttachmentRejectedConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.AttachedByUserId:N}",
+                NotificationRecipient.ForUser(evt.AttachedByUserId),
                 title,
                 NotificationCategory.DocumentsAndSignatures,
                 "task.attachment_rejected",

@@ -39,10 +39,14 @@ public static class TenantLogoRemovedConsumer
             }
 
             var existing = await repository.GetAsync(evt.TenantId, surface, ct);
-            if (existing is null || !existing.MarkRemoved(evt.RemovedAtUtc))
+            if (existing is null)
+            {
+                await repository.AddAsync(TenantLogoRef.Tombstone(evt.TenantId, surface, evt.RemovedAtUtc), ct);
+            }
+            else if (!existing.MarkRemoved(evt.RemovedAtUtc))
             {
                 logger.LogInformation(
-                    "TenantLogoRemoved skipped for tenant {TenantId} {Surface}: no logo or a newer one is projected.",
+                    "TenantLogoRemoved skipped for tenant {TenantId} {Surface}: a newer logo is projected.",
                     evt.TenantId,
                     surface
                 );

@@ -21,16 +21,15 @@ namespace TaxVision.Correspondence.Infrastructure.Scheduling;
 /// Auto-reparación de la proyección <see cref="CustomerEmailAddress"/>: re-pagina la fuente
 /// autoritativa completa (todos los tenants) vía <c>GET internal/customers/reconciliation</c> y hace
 /// upsert de cada customer. Cierra la deuda de raíz — antes la proyección solo se poblaba con eventos
-/// en vivo (más el backfill/reconciliación por-tenant, que solo ve customers activos), así que cuando
+/// en vivo (más el backfill por-tenant, que solo ve customers activos), así que cuando
 /// se perdía un evento o llegaba en ráfaga (o el servicio nació después de que ya existían customers)
 /// la proyección quedaba corta y sin forma de recuperarse. Idempotente: reusa los mismos mutadores de
 /// dominio que los consumers (Created/Deactivated/Archived), así que correrlo N veces converge sin
 /// duplicar.
 ///
-/// <para>Mismo esqueleto que <see cref="Jobs.CustomerEmailReconciliationJob"/>: espera arranque del
-/// host, scope propio por corrida, un fallo de una corrida no tumba el servicio. A diferencia de aquel,
-/// este usa el endpoint global (un solo token de PlatformTenant, todos los tenants, incluye inactivos),
-/// así que además refleja las desactivaciones/archivados perdidos como soft-delete local.</para>
+/// <para>Es el único job de esta proyección (COR-12): espera arranque del host, scope propio por corrida, y un fallo
+/// de una corrida no tumba el servicio. Usa el endpoint global (un solo token de PlatformTenant, todos los tenants,
+/// incluye inactivos), así que además refleja las desactivaciones/archivados perdidos como soft-delete local.</para>
 /// </summary>
 public sealed class CustomerProjectionReconciliationJob(
     IServiceProvider serviceProvider,

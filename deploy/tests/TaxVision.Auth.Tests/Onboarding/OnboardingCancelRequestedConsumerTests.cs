@@ -3,7 +3,7 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Consumers;
+using TaxVision.Auth.Onboarding.Application.Consumers;
 using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Users;
 using TaxVision.Auth.Tests.Application;
@@ -90,7 +90,7 @@ public sealed class OnboardingCancelRequestedConsumerTests
     {
         var onboardingId = Guid.NewGuid();
         var user = NewUser(onboardingId);
-        user.Deactivate(Now);
+        user.DeactivateForCancelledOnboarding(Now);
         var users = new FakeOnboardingUserRepository { Existing = user };
         var unitOfWork = new FakeUnitOfWork();
 

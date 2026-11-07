@@ -175,8 +175,7 @@ public static class ReconcileHostedCheckoutHandler
                     .MarkFailed(
                         outcome.FailureCode ?? "Provider.Unknown",
                         outcome.FailureMessage ?? "The provider reported the charge as failed.",
-                        willRetry: false,
-                        nextRetryAtUtc: null,
+                        DunningDecision.NoRetry,
                         Guid.Empty,
                         nowUtc
                     )

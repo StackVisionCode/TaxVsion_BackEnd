@@ -43,6 +43,32 @@ public sealed class AppointmentCommandEventCountTests
         Assert.Equal(StartUtc, Assert.Single(emitted.OfType<ReminderRequestedIntegrationEvent>()).AnchorAtUtc);
     }
 
+    // Revisión de cierre: una serie no guarda UTC; el aviso lleva su primera ocurrencia, no la hora actual.
+    [Fact]
+    public async Task ScheduleSeries_AnnouncesTheFirstOccurrence()
+    {
+        var monday = Next(DayOfWeek.Monday);
+        var fixture = new Fixture();
+
+        await fixture.RunAsync(
+            typeof(ScheduleAppointmentHandler),
+            ScheduleCommand(leadMinutes: null) with
+            {
+                StartUtc = null,
+                EndUtc = null,
+                SeriesStartDate = monday,
+                LocalStartTime = TenAm,
+                Duration = TimeSpan.FromHours(1),
+                RecurrenceRule = RuleFor(monday).ToString(),
+            }
+        );
+
+        var scheduled = Assert.Single((await fixture.EmittedAsync()).OfType<AppointmentScheduledIntegrationEvent>());
+        Assert.True(scheduled.IsRecurring);
+        Assert.Equal(UtcOf(monday), scheduled.StartUtc);
+        Assert.Equal(UtcOf(monday).AddHours(1), scheduled.EndUtc);
+    }
+
     [Fact]
     public async Task Reschedule_EmitsExactlyOneRescheduledWithBothInstants()
     {
@@ -179,6 +205,24 @@ public sealed class AppointmentCommandEventCountTests
         Assert.Equal("no-show", closed.Reason);
     }
 
+    /// <summary>La cita virtual lleva su sala en el aviso: Communication la cancela sin buscarla por la cita.</summary>
+    [Fact]
+    public async Task CancelVirtual_CarriesTheMeetingId()
+    {
+        var appointment = OneOff(leadMinutes: null);
+        var meetingId = Guid.NewGuid();
+        appointment.LinkMeeting(meetingId, "ABC-DEF-GHJ");
+        var fixture = new Fixture(appointment);
+
+        await fixture.RunAsync(
+            typeof(CancelAppointmentHandler),
+            new CancelAppointmentCommand(Tenant, appointment.Id, Organizer, null, null, null, false)
+        );
+
+        var cancelled = Assert.Single((await fixture.EmittedAsync()).OfType<AppointmentCancelledIntegrationEvent>());
+        Assert.Equal(meetingId, cancelled.MeetingId);
+    }
+
     /// <summary>El alcance del pedido viaja tal cual, aunque la cita entera sea lo que se cancela.</summary>
     [Fact]
     public async Task CancelSeriesWithFollowingScope_KeepsTheScopeAndOriginal()
@@ -271,6 +315,35 @@ public sealed class AppointmentCommandEventCountTests
         Assert.Equal("Client review", added.Title);
         Assert.Equal(StartUtc, added.StartUtc);
         Assert.Equal(NewYork, added.TimeZoneId);
+    }
+
+    // CAL-10: el asistente que se suma a una serie recibe la hora de la primera ocurrencia, no un aviso sin hora.
+    [Fact]
+    public async Task AddAttendeeToSeries_AnnouncesTheFirstOccurrence()
+    {
+        var monday = Next(DayOfWeek.Monday);
+        var series = Weekly(Tenant, Organizer, monday, leadMinutes: null);
+        var fixture = new Fixture(series);
+
+        await fixture.RunAsync(
+            typeof(AddAttendeeHandler),
+            new AddAttendeeCommand(
+                Tenant,
+                series.Id,
+                Organizer,
+                AttendeeKind.Customer,
+                null,
+                Guid.NewGuid(),
+                "Client",
+                "client@example.com",
+                true,
+                false
+            )
+        );
+
+        var added = Assert.Single((await fixture.EmittedAsync()).OfType<AppointmentAttendeeAddedIntegrationEvent>());
+        Assert.True(added.IsRecurring);
+        Assert.Equal(UtcOf(monday), added.StartUtc);
     }
 
     [Fact]

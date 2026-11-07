@@ -10,21 +10,13 @@ public sealed class NotificationDomainTests
         var missingTenant = NotificationLog.Create(
             Guid.Empty,
             NotificationChannel.Email,
-            "user@example.com",
+            NotificationRecipient.ForEmail("user@example.com").Value,
             "Subject",
             "template",
             null,
             null
         );
-        var missingRecipient = NotificationLog.Create(
-            Guid.NewGuid(),
-            NotificationChannel.Email,
-            " ",
-            "Subject",
-            "template",
-            null,
-            null
-        );
+        var missingRecipient = NotificationRecipient.ForEmail(" ");
 
         Assert.Equal("Notification.Tenant", missingTenant.Error.Code);
         Assert.Equal("Notification.Recipient", missingRecipient.Error.Code);
@@ -59,7 +51,7 @@ public sealed class NotificationDomainTests
             .Create(
                 Guid.NewGuid(),
                 NotificationChannel.Email,
-                "user@example.com",
+                NotificationRecipient.ForEmail("user@example.com").Value,
                 "Subject",
                 "template",
                 Guid.NewGuid(),

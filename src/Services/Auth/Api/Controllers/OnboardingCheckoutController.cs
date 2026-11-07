@@ -5,10 +5,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Auth.Api.Common;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Application.Onboarding.PaymentOptions;
-using TaxVision.Auth.Application.Onboarding.Sessions;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.PaymentOptions;
+using TaxVision.Auth.Onboarding.Application.Sessions;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;

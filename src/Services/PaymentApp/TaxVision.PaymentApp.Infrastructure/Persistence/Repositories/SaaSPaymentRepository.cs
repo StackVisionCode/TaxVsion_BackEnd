@@ -314,5 +314,8 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
         await db.SaaSPayments.AddAsync(payment, ct);
 
     private static IQueryable<SaaSPayment> WithChildren(IQueryable<SaaSPayment> query) =>
-        query.Include(payment => payment.Attempts).Include(payment => payment.Refunds);
+        query
+            .Include(payment => payment.Attempts)
+            .Include(payment => payment.Refunds)
+            .Include(payment => payment.RefundRequests);
 }

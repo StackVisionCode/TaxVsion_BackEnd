@@ -19,7 +19,7 @@ public sealed class OnboardingCancelRequestedConsumerTests
     public async Task Closes_the_tenant_when_it_exists_for_the_onboarding()
     {
         var onboardingId = Guid.NewGuid();
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", onboardingId).Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow, onboardingId).Value;
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new FakeUnitOfWork();
 
@@ -76,7 +76,7 @@ public sealed class OnboardingCancelRequestedConsumerTests
     public async Task Is_idempotent_when_the_tenant_is_already_closed()
     {
         var onboardingId = Guid.NewGuid();
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", onboardingId).Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow, onboardingId).Value;
         tenant.ChangeStatus(EnumTenantStatus.TenantStatus.Closed);
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new FakeUnitOfWork();
@@ -107,7 +107,7 @@ public sealed class OnboardingCancelRequestedConsumerTests
     public async Task Handle_TenantClosed_PublishesTenantStatusChangedClosed()
     {
         var onboardingId = Guid.NewGuid();
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", onboardingId).Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow, onboardingId).Value;
 
         await OnboardingCancelRequestedConsumer.Handle(
             CancelEvent(onboardingId, tenant.Id),

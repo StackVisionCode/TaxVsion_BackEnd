@@ -31,9 +31,7 @@ public static class TenantSubscriptionAccessConsumer
     public static async Task Handle(
         TenantSubscriptionStatusChangedIntegrationEvent evt,
         ITenantRegistry tenants,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocations,
+        SessionAccessCutoff accessCutoff,
         IAuthAuditWriter audit,
         ISubscriptionAccessMetrics metrics,
         IUnitOfWork unitOfWork,
@@ -63,14 +61,7 @@ public static class TenantSubscriptionAccessConsumer
 
                 // A5 (G10) — igual que la suspensión administrativa: denylist + anuncio + revocación.
                 // Cortar solo en la base dejaba el access token vivo hasta 15 minutos.
-                var revoked = await SessionAccessCutoff.ForTenantAsync(
-                    evt.TenantId,
-                    "subscription_lapsed",
-                    sessions,
-                    denylist,
-                    revocations,
-                    ct
-                );
+                var revoked = await accessCutoff.ForTenantAsync(evt.TenantId, "subscription_lapsed", ct);
                 // Auditoría (sistema, sin userId/IP): quién no, pero sí qué/por qué/cuánto — TargetType corto.
                 await audit.AddAsync(
                     AuthAuditLog.Record(

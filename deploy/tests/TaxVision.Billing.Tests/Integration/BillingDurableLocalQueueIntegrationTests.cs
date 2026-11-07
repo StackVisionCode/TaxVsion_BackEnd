@@ -11,7 +11,6 @@ using JasperFx;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -34,20 +33,15 @@ namespace TaxVision.Billing.Tests.Integration;
 /// <summary>
 /// BIL-BB1 y BIL-BB2 contra el SQL Server local, con el BillingDbContext y los handlers reales: el pago que deja
 /// la factura pagada guarda en la misma transacción el InvoicePaidDomainEvent; su handler devuelve el aviso
-/// (outbox) y el GenerateInvoicePdfCommand, que queda en una cola local durable. Sobres en un esquema propio que
-/// se borra al terminar; avisos a un puerto TCP cerrado.
+/// (outbox) y el GenerateInvoicePdfCommand, que queda en una cola local durable. Base temporal (BIL-14) y sobres en un
+/// esquema propio que se borra al terminar; avisos a un puerto TCP cerrado.
 /// </summary>
-public sealed class BillingDurableLocalQueueIntegrationTests : IAsyncLifetime
+[Collection(BillingTestDatabase.Collection)]
+public sealed class BillingDurableLocalQueueIntegrationTests(BillingTestDatabase database) : IAsyncLifetime
 {
     private static readonly DateTime Now = new(2026, 11, 5, 12, 0, 0, DateTimeKind.Utc);
 
-    private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("BILLING_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-billing000001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Set BILLING_DB_CONNECTION or the Billing user-secrets to run this test.");
+    private readonly string _connectionString = database.ConnectionString;
 
     private readonly string _schema = $"bilbb2_{Guid.NewGuid():N}"[..15];
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -55,6 +49,8 @@ public sealed class BillingDurableLocalQueueIntegrationTests : IAsyncLifetime
     private readonly RecordingDocumentClient _documents = new();
     private Guid _invoiceId;
     private IHost _host = null!;
+
+    internal Guid TenantId => _tenantId;
 
     public async Task InitializeAsync()
     {
@@ -70,7 +66,7 @@ public sealed class BillingDurableLocalQueueIntegrationTests : IAsyncLifetime
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue("INV-2026-90001", Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-90001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
         _invoiceId = invoice.Id;
         await using (var db = NewContext())
         {
@@ -169,14 +165,14 @@ public sealed class BillingDurableLocalQueueIntegrationTests : IAsyncLifetime
                     .IncludeType(typeof(RecordManualPaymentHandler))
                     .IncludeType(typeof(InvoicePaidDomainEventHandler))
                     .IncludeType(typeof(GenerateInvoicePdfHandler));
-                options.PersistMessagesWithSqlServer(ConnectionString, _schema);
+                options.PersistMessagesWithSqlServer(_connectionString, _schema);
                 options.AutoBuildMessageStorageOnStartup = AutoCreate.CreateOrUpdate;
                 options.Durability.Mode = DurabilityMode.Solo;
                 options.Durability.KeepAfterMessageHandling = TimeSpan.FromMinutes(5);
 
                 // Como en Program.cs: AddDbContext normal, sin AddDbContextWithWolverineIntegration.
                 options.Services.AddDbContext<BillingDbContext>(db =>
-                    db.UseSqlServer(ConnectionString).AddInterceptors(_interceptor)
+                    db.UseSqlServer(_connectionString).AddInterceptors(_interceptor)
                 );
                 options.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<BillingDbContext>());
                 options.Services.AddSingleton<ITenantContext>(new FixedTenant(_tenantId));
@@ -199,7 +195,7 @@ public sealed class BillingDurableLocalQueueIntegrationTests : IAsyncLifetime
     }
 
     private BillingDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<BillingDbContext>().UseSqlServer(ConnectionString).Options, new FixedTenant(_tenantId));
+        new(new DbContextOptionsBuilder<BillingDbContext>().UseSqlServer(_connectionString).Options, new FixedTenant(_tenantId));
 
     private Task<int> CountRowsAsync(string table, string messageType, string? status = null) =>
         CountAsync(
@@ -207,18 +203,18 @@ public sealed class BillingDurableLocalQueueIntegrationTests : IAsyncLifetime
                 + (status is null ? string.Empty : $" AND status = '{status}'")
         );
 
-    private static async Task<int> CountAsync(string sql)
+    private async Task<int> CountAsync(string sql)
     {
-        await using var connection = new SqlConnection(ConnectionString);
+        await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
-    private static async Task ExecuteAsync(string sql)
+    private async Task ExecuteAsync(string sql)
     {
-        await using var connection = new SqlConnection(ConnectionString);
+        await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = sql;

@@ -5,7 +5,7 @@ public sealed class NotAClientMailRetentionOptions
 {
     public const string SectionName = "Correspondence:NotAClientRetention";
 
-    /// <summary>Apagado por defecto: borra correo de verdad, así que lo enciende el dueño.</summary>
+    /// <summary>Apagado en código; encendido en appsettings.json desde 2026-11-07 (D-COR-5).</summary>
     public bool Enabled { get; set; }
 
     public int RetentionDays { get; set; } = 90;

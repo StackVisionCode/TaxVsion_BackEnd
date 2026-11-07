@@ -1,7 +1,10 @@
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Domain.Audit;
+using TaxVision.CloudStorage.Domain.Files;
 
 namespace TaxVision.CloudStorage.Application.Files.Commands;
 
@@ -23,6 +26,8 @@ public static class RelocateScannedBlobHandler
 {
     public static async Task Handle(
         RelocateScannedBlobCommand command,
+        IFileObjectRepository files,
+        IOptions<CloudStorageOptions> options,
         IObjectStorage storage,
         IStorageAuditRepository audit,
         ISystemClock clock,
@@ -31,24 +36,26 @@ public static class RelocateScannedBlobHandler
         CancellationToken ct
     )
     {
+        var targetBucket = await CurrentTargetAsync(command, files, options.Value, ct);
+
         // Idempotente: copia (si hay destino) y después borra el origen.
         if (await storage.ExistsAsync(command.SourceBucket, command.ObjectKey, ct))
         {
-            if (command.TargetBucket is not null)
-                await storage.CopyAsync(command.SourceBucket, command.ObjectKey, command.TargetBucket, ct);
+            if (targetBucket is not null)
+                await storage.CopyAsync(command.SourceBucket, command.ObjectKey, targetBucket, ct);
             await storage.DeleteAsync(command.SourceBucket, command.ObjectKey, ct);
             return;
         }
 
         // Sin origen: un borrado ya está hecho y un movimiento ya llegó si el destino lo tiene.
-        if (command.TargetBucket is null || await storage.ExistsAsync(command.TargetBucket, command.ObjectKey, ct))
+        if (targetBucket is null || await storage.ExistsAsync(targetBucket, command.ObjectKey, ct))
             return;
 
         logger.LogError(
             "Scanned blob of file {FileId} is missing from {SourceBucket} and {TargetBucket}.",
             command.FileId,
             command.SourceBucket,
-            command.TargetBucket
+            targetBucket
         );
         audit.Add(
             StorageAccessLog.Create(
@@ -60,10 +67,24 @@ public static class RelocateScannedBlobHandler
                 null,
                 null,
                 command.CorrelationId,
-                $"source={command.SourceBucket};target={command.TargetBucket}",
+                $"source={command.SourceBucket};target={targetBucket}",
                 clock.UtcNow
             )
         );
         await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    // Si un revisor aprobó antes de que llegara el comando, el destino es main, no cuarentena.
+    private static async Task<string?> CurrentTargetAsync(
+        RelocateScannedBlobCommand command,
+        IFileObjectRepository files,
+        CloudStorageOptions options,
+        CancellationToken ct
+    )
+    {
+        if (command.TargetBucket != options.QuarantineBucket)
+            return command.TargetBucket;
+        var file = await files.GetAsync(command.TenantId, command.FileId, ct);
+        return file?.Status == FileStatus.Available ? options.MainBucket : command.TargetBucket;
     }
 }

@@ -8,7 +8,6 @@ using BuildingBlocks.Web.Hosting;
 using JasperFx;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.PaymentApp.Application.Abstractions;
@@ -37,14 +36,7 @@ public sealed class ReconcileStuckSaaSPaymentIntegrationTests : IAsyncLifetime
     private const string Schema = "pay2_reconcile_test";
 
     private readonly string _connectionString =
-        Environment.GetEnvironmentVariable("PAYMENTAPP_DB_CONNECTION")
-        ?? new ConfigurationBuilder()
-            .AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-paymentapp001")
-            .Build()
-            .GetConnectionString("Default")
-        ?? throw new InvalidOperationException(
-            "Set PAYMENTAPP_DB_CONNECTION or the PaymentApp user-secrets to run this test."
-        );
+        PaymentAppWolverineHost.Connection;
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly string _providerReference = $"pi_pay2_{Guid.NewGuid():N}";

@@ -63,7 +63,12 @@ public static class ReserveSeatCheckoutHandler
 
     private static Result<SeatCheckoutReservation> Reserved(SeatPurchaseIntent intent) =>
         Result.Success(
-            new SeatCheckoutReservation(intent.Id, intent.ProratedTotalCents, intent.Currency, intent.Quantity)
+            new SeatCheckoutReservation(
+                intent.Id,
+                intent.ProratedTotal.Cents,
+                intent.ProratedTotal.Currency,
+                intent.Quantity
+            )
         );
 
     private static bool IsSameRequest(StartSeatCheckoutCommand command, SeatPurchaseIntent intent) =>
@@ -97,8 +102,8 @@ public static class ReserveSeatCheckoutHandler
         return Result.Success(
             new SeatCheckoutReservation(
                 open.Id,
-                open.ProratedTotalCents,
-                open.Currency,
+                open.ProratedTotal.Cents,
+                open.ProratedTotal.Currency,
                 open.Quantity,
                 new StartSeatCheckoutResponse(
                     open.Id,
@@ -175,7 +180,7 @@ public static class ReserveSeatCheckoutHandler
             command.AutoRenew,
             unitPrice.Value,
             subscription.BillingCycle,
-            totalCents,
+            Money.FromCents(totalCents, unitPrice.Value.Currency),
             command.RequestedByUserId,
             DateTime.UtcNow
         );

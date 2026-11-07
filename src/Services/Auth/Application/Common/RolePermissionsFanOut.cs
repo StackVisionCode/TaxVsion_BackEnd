@@ -58,13 +58,44 @@ public static class RolePermissionsFanOut
         CancellationToken ct
     )
     {
+        foreach (var notice in await PrepareForUsersAsync(holders, catalog, roles, correlationId, ct))
+            await bus.PublishAsync(notice);
+    }
+
+    /// <summary>
+    /// Sube la versión de cada titular y devuelve sus avisos sin publicarlos: el handler los publica
+    /// después de guardar (BB-16). Se llama antes del guardado, para leer los roles como hasta ahora.
+    /// </summary>
+    public static async Task<IReadOnlyList<UserRolesChangedIntegrationEvent>> PrepareForRoleHoldersAsync(
+        Guid tenantId,
+        Guid roleId,
+        IReadOnlyList<Permission> catalog,
+        IUserRepository users,
+        IRoleRepository roles,
+        string correlationId,
+        CancellationToken ct
+    )
+    {
+        var holders = await users.GetActiveByRoleAsync(tenantId, roleId, ct);
+        return await PrepareForUsersAsync(holders, catalog, roles, correlationId, ct);
+    }
+
+    private static async Task<IReadOnlyList<UserRolesChangedIntegrationEvent>> PrepareForUsersAsync(
+        IReadOnlyList<User> holders,
+        IReadOnlyList<Permission> catalog,
+        IRoleRepository roles,
+        string correlationId,
+        CancellationToken ct
+    )
+    {
         if (holders.Count == 0)
-            return;
+            return [];
 
         var holderIds = holders.Select(holder => holder.Id).ToList();
         var rolesByUser = await roles.GetRolesByUsersAsync(holderIds, ct);
         var deniesByUser = await roles.GetDeniedPermissionIdsByUsersAsync(holderIds, ct);
 
+        var notices = new List<UserRolesChangedIntegrationEvent>(holders.Count);
         foreach (var holder in holders)
         {
             var activeRoles = rolesByUser.TryGetValue(holder.Id, out var assigned)
@@ -73,7 +104,7 @@ public static class RolePermissionsFanOut
             var denied = deniesByUser.TryGetValue(holder.Id, out var denies) ? denies : [];
 
             holder.BumpPermissionsVersion();
-            await bus.PublishAsync(
+            notices.Add(
                 new UserRolesChangedIntegrationEvent
                 {
                     TenantId = holder.TenantId,
@@ -87,5 +118,6 @@ public static class RolePermissionsFanOut
                 }
             );
         }
+        return notices;
     }
 }

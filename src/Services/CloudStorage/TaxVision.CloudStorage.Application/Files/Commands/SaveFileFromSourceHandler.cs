@@ -42,6 +42,9 @@ public static class SaveFileFromSourceHandler
         CancellationToken ct
     )
     {
+        Task Reject(string reason) =>
+            RejectAsync(evt, reason, audit, storage, unitOfWork, bus, correlation, clock, logger, ct);
+
         using (correlation.Push(evt.CorrelationId))
         {
             // Redelivery del mismo evento (at-least-once) tras un crash post-persist:
@@ -67,7 +70,7 @@ public static class SaveFileFromSourceHandler
                     evt.OwnerType,
                     evt.FolderType
                 );
-                await RejectAsync(evt, "InvalidOwnerOrFolder", audit, unitOfWork, bus, correlation, clock, ct);
+                await Reject("InvalidOwnerOrFolder");
                 return;
             }
 
@@ -88,15 +91,38 @@ public static class SaveFileFromSourceHandler
                 );
             }
 
+            var key = keyBuilder.Build(
+                evt.FileId,
+                evt.TenantId,
+                ownerType,
+                evt.OwnerId,
+                folderType,
+                evt.TaxYear,
+                evt.OriginalName
+            );
+            if (key.IsFailure)
+            {
+                logger.LogError(
+                    "SaveFileRequested {FileId} from {Service} failed to build an object key: {Error}.",
+                    evt.FileId,
+                    evt.RequestingService,
+                    key.Error.Code
+                );
+                await Reject(key.Error.Code);
+                return;
+            }
+
+            var sizeBytes = await MeasureAsync(evt, key.Value.Value, storage, options.Value.TempBucket, logger, ct);
+
             // 0 bytes no es un archivo: antes caia en Reserve() como "FileTooLarge" y confundia al diagnosticar.
-            if (evt.SizeBytes <= 0)
+            if (sizeBytes <= 0)
             {
                 logger.LogWarning(
                     "SaveFileRequested {FileId} from {Service} rejected: empty file.",
                     evt.FileId,
                     evt.RequestingService
                 );
-                await RejectAsync(evt, "EmptyFile", audit, unitOfWork, bus, correlation, clock, ct);
+                await Reject("EmptyFile");
                 return;
             }
 
@@ -111,7 +137,7 @@ public static class SaveFileFromSourceHandler
             if (
                 !policy.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)
                 || !policy.AllowedContentTypes.Contains(evt.ContentType, StringComparer.OrdinalIgnoreCase)
-                || evt.SizeBytes > policy.MaxFileSizeBytes
+                || sizeBytes > policy.MaxFileSizeBytes
             )
             {
                 logger.LogWarning(
@@ -119,11 +145,11 @@ public static class SaveFileFromSourceHandler
                     evt.FileId,
                     evt.RequestingService
                 );
-                await RejectAsync(evt, "UploadPolicy", audit, unitOfWork, bus, correlation, clock, ct);
+                await Reject("UploadPolicy");
                 return;
             }
 
-            var reserve = limit.Reserve(evt.SizeBytes);
+            var reserve = limit.Reserve(sizeBytes);
             if (reserve.IsFailure)
             {
                 logger.LogWarning(
@@ -132,29 +158,7 @@ public static class SaveFileFromSourceHandler
                     evt.RequestingService,
                     reserve.Error.Code
                 );
-                await RejectAsync(evt, reserve.Error.Code, audit, unitOfWork, bus, correlation, clock, ct);
-                return;
-            }
-
-            var key = keyBuilder.Build(
-                evt.FileId,
-                evt.TenantId,
-                ownerType,
-                evt.OwnerId,
-                folderType,
-                evt.TaxYear,
-                evt.OriginalName
-            );
-            if (key.IsFailure)
-            {
-                limit.Release(evt.SizeBytes);
-                logger.LogError(
-                    "SaveFileRequested {FileId} from {Service} failed to build an object key: {Error}.",
-                    evt.FileId,
-                    evt.RequestingService,
-                    key.Error.Code
-                );
-                await RejectAsync(evt, key.Error.Code, audit, unitOfWork, bus, correlation, clock, ct);
+                await Reject(reserve.Error.Code);
                 return;
             }
 
@@ -168,21 +172,21 @@ public static class SaveFileFromSourceHandler
                 key.Value,
                 evt.OriginalName,
                 evt.ContentType,
-                evt.SizeBytes,
+                sizeBytes,
                 evt.ActorId,
                 clock.UtcNow,
                 clock.UtcNow // ya esta subido — nunca queda observable en PendingUpload, ver MarkPendingScan abajo
             );
             if (registered.IsFailure)
             {
-                limit.Release(evt.SizeBytes);
+                limit.Release(sizeBytes);
                 logger.LogError(
                     "SaveFileRequested {FileId} from {Service} failed to register: {Error}.",
                     evt.FileId,
                     evt.RequestingService,
                     registered.Error.Code
                 );
-                await RejectAsync(evt, registered.Error.Code, audit, unitOfWork, bus, correlation, clock, ct);
+                await Reject(registered.Error.Code);
                 return;
             }
 
@@ -209,7 +213,7 @@ public static class SaveFileFromSourceHandler
 
             files.Add(file);
 
-            // La reserva se decide antes de mover el objeto: si otra se llevó el cupo, el origen queda intacto.
+            // La reserva se decide antes de mover el objeto: si otra se llevó el cupo, no se copia nada.
             try
             {
                 await unitOfWork.SaveChangesAsync(ct);
@@ -217,13 +221,13 @@ public static class SaveFileFromSourceHandler
             catch (ConflictException conflict) when (conflict.Code == QuotaErrors.ConcurrentExceededCode)
             {
                 files.Remove(file);
-                limit.Release(evt.SizeBytes);
+                limit.Release(sizeBytes);
                 logger.LogWarning(
                     "SaveFileRequested {FileId} from {Service} rejected: a concurrent reservation took the quota.",
                     evt.FileId,
                     evt.RequestingService
                 );
-                await RejectAsync(evt, "QuotaExceeded", audit, unitOfWork, bus, correlation, clock, ct);
+                await Reject("QuotaExceeded");
                 return;
             }
 
@@ -263,6 +267,31 @@ public static class SaveFileFromSourceHandler
         }
     }
 
+    /// <summary>Tamaño real del objeto. En un reintento el origen ya pudo pasar a la key canónica.</summary>
+    private static async Task<long> MeasureAsync(
+        SaveFileRequestedIntegrationEvent evt,
+        string canonicalKey,
+        IObjectStorage storage,
+        string tempBucket,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        var actualSize = await storage.ExistsAsync(tempBucket, canonicalKey, ct)
+            ? await storage.GetSizeAsync(tempBucket, canonicalKey, ct)
+            : await storage.GetSizeAsync(evt.SourceBucket, evt.SourceObjectKey, ct);
+
+        if (actualSize != evt.SizeBytes)
+            logger.LogWarning(
+                "SaveFileRequested {FileId} from {Service} declared {DeclaredBytes} bytes but the object has {ActualBytes}.",
+                evt.FileId,
+                evt.RequestingService,
+                evt.SizeBytes,
+                actualSize
+            );
+        return actualSize;
+    }
+
     /// <summary>
     /// Rechazo definitivo: queda auditado y el servicio que lo pidió se entera
     /// (<see cref="FileSaveRejectedIntegrationEvent"/>), porque ya pudo apuntar ese FileId en su aggregate.
@@ -271,10 +300,12 @@ public static class SaveFileFromSourceHandler
         SaveFileRequestedIntegrationEvent evt,
         string reason,
         IStorageAuditRepository audit,
+        IObjectStorage storage,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
         ISystemClock clock,
+        ILogger logger,
         CancellationToken ct
     )
     {
@@ -306,5 +337,15 @@ public static class SaveFileFromSourceHandler
             }
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        // Va al final: si no se pudo guardar, el reintento necesita el origen. Lo que quede lo borra la regla de 24 h.
+        try
+        {
+            await storage.DeleteAsync(evt.SourceBucket, evt.SourceObjectKey, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "SaveFileRequested {FileId}: rejected source could not be deleted.", evt.FileId);
+        }
     }
 }

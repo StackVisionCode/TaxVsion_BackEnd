@@ -42,6 +42,10 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<PaymentAppDbContext>());
         services.AddScoped<ISaaSPaymentRepository, SaaSPaymentRepository>();
         services.AddScoped<ISaaSPaymentReviewReader, SaaSPaymentReviewReader>();
+        services.AddScoped<
+            TaxVision.PaymentApp.Application.SaaSPayments.Queries.ICodeReservationPaymentReader,
+            CodeReservationPaymentReader
+        >();
         services.AddScoped<ITenantRegistry, TenantRegistry>();
         services.AddScoped<IPaymentAuditLogWriter, PaymentAuditLogWriter>();
         // RBAC Fase 6 — ISessionDenylistReader se registra en Program.cs (AddSessionDenylist vive en
@@ -59,6 +63,15 @@ public static class DependencyInjection
                 )
             )
             .Validate(o => o.IsValid(), "PaymentApp:ChargeExecution windows must be positive.")
+            .ValidateOnStart();
+        services
+            .AddOptions<TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentRefundOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentRefundOptions.SectionName
+                )
+            )
+            .Validate(o => o.IsValid(), "PaymentApp:Refunds:DuplicateRequestWindow must be positive.")
             .ValidateOnStart();
 
         services.Configure<StripeOptions>(configuration.GetSection(StripeOptions.SectionName));

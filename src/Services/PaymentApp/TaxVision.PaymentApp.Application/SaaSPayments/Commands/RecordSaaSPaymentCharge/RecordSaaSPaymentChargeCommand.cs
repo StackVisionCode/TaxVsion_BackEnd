@@ -114,10 +114,10 @@ public static class RecordSaaSPaymentChargeHandler
         ILogger logger
     )
     {
-        var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, DateTime.UtcNow);
+        var retry = DunningPolicy.Decide(payment, DateTime.UtcNow);
 
         if (command.Failure is { } failure)
-            SaaSPaymentChargeOutcome.FailPayment(payment, failure, command.ActorUserId, nextRetryAtUtc, metrics);
+            SaaSPaymentChargeOutcome.FailPayment(payment, failure, command.ActorUserId, retry, metrics);
         else if (command.OffSession is { } offSession)
             SaaSPaymentOffSessionOutcome.Apply(payment, offSession, payment.ProviderCode, metrics, logger);
         else
@@ -125,7 +125,7 @@ public static class RecordSaaSPaymentChargeHandler
                 payment,
                 command.Authorization!,
                 command.ActorUserId,
-                nextRetryAtUtc,
+                retry,
                 metrics
             );
     }
