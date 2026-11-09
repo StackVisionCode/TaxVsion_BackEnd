@@ -1,6 +1,7 @@
 using TaxVision.Campaigns.Application.Runs.Audience;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Contacts;
+using TaxVision.Campaigns.Domain.Runs;
 using TaxVision.Campaigns.Tests.Fakes;
 
 namespace TaxVision.Campaigns.Tests.Application;
@@ -38,7 +39,7 @@ public sealed class AudienceResolverTests
         h.AddContact("ana@x.com", null); // Email only
         h.AddContact("beto@x.com", "+18290000001"); // Email + Sms
 
-        var units = await AudienceResolver.ResolveAsync(Tenant, EmailSms, [h.List.Id], [], h.Contacts, h.Lists);
+        var units = (await AudienceResolver.ResolveAsync(Tenant, EmailSms, [h.List.Id], [], h.Contacts, h.Lists)).Value;
 
         Assert.Equal(3, units.Count);
         Assert.Equal(2, units.Count(u => u.Channel == CampaignChannel.Email));
@@ -53,7 +54,7 @@ public sealed class AudienceResolverTests
         var beto = h.AddContact("beto@x.com", "+18290000001");
         beto.OptOut(CampaignChannel.Email);
 
-        var units = await AudienceResolver.ResolveAsync(Tenant, EmailSms, [h.List.Id], [], h.Contacts, h.Lists);
+        var units = (await AudienceResolver.ResolveAsync(Tenant, EmailSms, [h.List.Id], [], h.Contacts, h.Lists)).Value;
 
         // Ana Email + Beto Sms (Beto Email excluido por opt-out)
         Assert.Equal(2, units.Count);
@@ -67,14 +68,14 @@ public sealed class AudienceResolverTests
         h.AddContact("dup@x.com", null);
         h.AddContact("dup@x.com", null); // mismo destino → una sola unidad Email
 
-        var units = await AudienceResolver.ResolveAsync(
+        var units = (await AudienceResolver.ResolveAsync(
             Tenant,
             CampaignChannel.Email,
             [h.List.Id],
             [],
             h.Contacts,
             h.Lists
-        );
+        )).Value;
 
         Assert.Single(units);
     }
@@ -85,14 +86,14 @@ public sealed class AudienceResolverTests
         var h = new Harness();
         h.AddContact("ana@x.com", null);
 
-        var units = await AudienceResolver.ResolveAsync(
+        var units = (await AudienceResolver.ResolveAsync(
             Tenant,
             CampaignChannel.Email,
             [h.List.Id],
             [new ManualAudienceEntry("manual@x.com", null)],
             h.Contacts,
             h.Lists
-        );
+        )).Value;
 
         Assert.Equal(2, units.Count);
         Assert.Contains(units, u => u.Email == "manual@x.com");
@@ -102,7 +103,7 @@ public sealed class AudienceResolverTests
     public async Task Empty_audience_resolves_to_no_units()
     {
         var h = new Harness();
-        var units = await AudienceResolver.ResolveAsync(Tenant, EmailSms, [], [], h.Contacts, h.Lists);
+        var units = (await AudienceResolver.ResolveAsync(Tenant, EmailSms, [], [], h.Contacts, h.Lists)).Value;
         Assert.Empty(units);
     }
 
@@ -115,7 +116,7 @@ public sealed class AudienceResolverTests
         customers.Seed("ana@x.com", null); // mismo destino que Ana → dedupe
         customers.Seed("cliente@x.com", "+18290000009"); // cliente nuevo (email + phone)
 
-        var units = await AudienceResolver.ResolveAsync(
+        var units = (await AudienceResolver.ResolveAsync(
             Tenant,
             EmailSms,
             [h.List.Id],
@@ -124,7 +125,7 @@ public sealed class AudienceResolverTests
             h.Lists,
             includeCustomers: true,
             customerClient: customers
-        );
+        )).Value;
 
         // Ana Email (lista) + cliente Email + cliente Sms = 3 (ana@ del cliente deduplicada)
         Assert.Equal(3, units.Count);
@@ -137,7 +138,7 @@ public sealed class AudienceResolverTests
     {
         var h = new Harness();
         h.AddContact("ana@x.com", null);
-        var units = await AudienceResolver.ResolveAsync(
+        var units = (await AudienceResolver.ResolveAsync(
             Tenant,
             EmailSms,
             [h.List.Id],
@@ -146,7 +147,7 @@ public sealed class AudienceResolverTests
             h.Lists,
             includeCustomers: false,
             customerClient: new FakeCustomerAudienceClient()
-        );
+        )).Value;
         Assert.Single(units); // solo Ana Email
     }
 
@@ -159,7 +160,7 @@ public sealed class AudienceResolverTests
         customers.Seed("other@x.com", null); // NO asignado
         var assignedCustomerId = customers.Members[0].CustomerId;
 
-        var units = await AudienceResolver.ResolveAsync(
+        var units = (await AudienceResolver.ResolveAsync(
             Tenant,
             CampaignChannel.Email,
             [],
@@ -169,7 +170,7 @@ public sealed class AudienceResolverTests
             includeCustomers: true,
             customerClient: customers,
             restrictCustomerIds: new HashSet<Guid> { assignedCustomerId }
-        );
+        )).Value;
 
         // Solo el cliente asignado entra en la audiencia; el otro se excluye.
         Assert.Single(units);
@@ -184,7 +185,7 @@ public sealed class AudienceResolverTests
         customers.Seed("a@x.com", null);
         customers.Seed("b@x.com", null);
 
-        var units = await AudienceResolver.ResolveAsync(
+        var units = (await AudienceResolver.ResolveAsync(
             Tenant,
             CampaignChannel.Email,
             [],
@@ -194,7 +195,7 @@ public sealed class AudienceResolverTests
             includeCustomers: true,
             customerClient: customers,
             restrictCustomerIds: new HashSet<Guid>()
-        );
+        )).Value;
 
         // Actor sin clientes asignados → ningún cliente en la audiencia.
         Assert.Empty(units);
@@ -208,7 +209,7 @@ public sealed class AudienceResolverTests
         customers.Seed("a@x.com", null);
         customers.Seed("b@x.com", null);
 
-        var units = await AudienceResolver.ResolveAsync(
+        var units = (await AudienceResolver.ResolveAsync(
             Tenant,
             CampaignChannel.Email,
             [],
@@ -218,9 +219,32 @@ public sealed class AudienceResolverTests
             includeCustomers: true,
             customerClient: customers,
             restrictCustomerIds: null
-        );
+        )).Value;
 
         // Sin restricción (flag off / view_all / agendado) → todos los clientes activos.
         Assert.Equal(2, units.Count);
+    }
+
+    [Fact]
+    public async Task Resolve_CustomerDirectoryIncomplete_ReturnsAudienceIncomplete()
+    {
+        var h = new Harness();
+        var customers = new FakeCustomerAudienceClient { IsComplete = false };
+        customers.Seed("a@x.com", null);
+        customers.Seed("b@x.com", null);
+
+        var result = await AudienceResolver.ResolveAsync(
+            Tenant,
+            CampaignChannel.Email,
+            [],
+            [],
+            h.Contacts,
+            h.Lists,
+            includeCustomers: true,
+            customerClient: customers
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(CampaignRunErrors.AudienceIncomplete, result.Error);
     }
 }

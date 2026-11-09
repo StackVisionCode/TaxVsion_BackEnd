@@ -1,0 +1,127 @@
+using Microsoft.EntityFrameworkCore;
+using TaxVision.Auth.Infrastructure.Persistence;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
+
+namespace TaxVision.Auth.Onboarding.Infrastructure.Persistence.Repositories;
+
+public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboardingRepository
+{
+    // Include(CodeReservations): ahora es entidad normal (no owned) → EF no la auto-incluye. Sin esto,
+    // el checkout no detectaría reservas ya aplicadas y el FINALIZE vería "0 code(s)" (no commitea ni
+    // arma las líneas de ajuste de la factura).
+    public Task<TenantOnboarding?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        db
+            .TenantOnboardings.Include(onboarding => onboarding.CodeReservations)
+            .FirstOrDefaultAsync(onboarding => onboarding.Id == id, ct);
+
+    public Task<TenantOnboarding?> GetByRegistrationTokenHashAsync(
+        string registrationTokenHash,
+        CancellationToken ct = default
+    ) =>
+        db.TenantOnboardings.FirstOrDefaultAsync(
+            onboarding => onboarding.RegistrationTokenHash == registrationTokenHash,
+            ct
+        );
+
+    public Task<TenantOnboarding?> GetByReceiptFileIdAsync(Guid receiptFileId, CancellationToken ct = default) =>
+        db.TenantOnboardings.FirstOrDefaultAsync(onboarding => onboarding.ReceiptFileId == receiptFileId, ct);
+
+    public async Task AddAsync(TenantOnboarding onboarding, CancellationToken ct = default) =>
+        await db.TenantOnboardings.AddAsync(onboarding, ct);
+
+    public async Task<IReadOnlyList<TenantOnboarding>> GetDueForRetryAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        // NextRetryAtUtc == null cubre un fallo Transient recién registrado, todavía sin su próximo
+        // reintento programado — OnboardingRetryScheduler lo agenda en ese mismo tick.
+        await db
+            .TenantOnboardings.Where(onboarding =>
+                onboarding.Status == TenantOnboardingStatus.ProvisioningFailed
+                && (onboarding.NextRetryAtUtc == null || onboarding.NextRetryAtUtc <= nowUtc)
+            )
+            .OrderBy(onboarding => onboarding.NextRetryAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<TenantOnboarding>> GetRegistrationRemindersDueAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .TenantOnboardings.Where(onboarding =>
+                onboarding.Status == TenantOnboardingStatus.RegistrationPending
+                && onboarding.RegistrationEmailSentAtUtc == null
+                && onboarding.PaymentCompletedAtUtc != null
+                && onboarding.PaymentCompletedAtUtc <= cutoffUtc
+            )
+            .OrderBy(onboarding => onboarding.PaymentCompletedAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
+    // OBF-2.7 — huérfanos: pagados que nunca completaron el office-setup, para alerta/metrica.
+    // IgnoreQueryFilters por si el aggregate se vuelve tenant-filtered (mismo motivo que GetExpiredPending).
+    public async Task<IReadOnlyList<TenantOnboarding>> GetOrphansAsync(
+        DateTime paidBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .TenantOnboardings.IgnoreQueryFilters()
+            .Where(onboarding =>
+                onboarding.PaymentCompletedAtUtc != null
+                && onboarding.PaymentCompletedAtUtc < paidBeforeUtc
+                && onboarding.RegistrationCompletedAtUtc == null
+                && onboarding.TenantId == null
+            )
+            .OrderBy(onboarding => onboarding.PaymentCompletedAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<TenantOnboarding>> GetExpiredPendingAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        // Sweeper fuera de scope HTTP: IgnoreQueryFilters por si el aggregate se vuelve tenant-filtered.
+        // Un onboarding con PaymentCompletedAtUtc != null NUNCA se expira — hay dinero cobrado, el usuario
+        // tiene derecho a completar el office setup; su recuperación va por el admin recovery flow.
+        await db
+            .TenantOnboardings.IgnoreQueryFilters()
+            .Where(onboarding =>
+                (
+                    onboarding.Status == TenantOnboardingStatus.PendingPayment
+                    || onboarding.Status == TenantOnboardingStatus.PaymentProcessing
+                    || onboarding.Status == TenantOnboardingStatus.RegistrationPending
+                )
+                && onboarding.PaymentCompletedAtUtc == null
+                && onboarding.CreatedAtUtc < createdBeforeUtc
+            )
+            .OrderBy(onboarding => onboarding.CreatedAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
+    public async Task<(IReadOnlyList<TenantOnboarding> Items, int TotalCount)> GetPagedAdminAsync(
+        TenantOnboardingStatus? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    )
+    {
+        var query = db.TenantOnboardings.AsQueryable();
+        if (status is not null)
+            query = query.Where(onboarding => onboarding.Status == status);
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(onboarding => onboarding.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, totalCount);
+    }
+}

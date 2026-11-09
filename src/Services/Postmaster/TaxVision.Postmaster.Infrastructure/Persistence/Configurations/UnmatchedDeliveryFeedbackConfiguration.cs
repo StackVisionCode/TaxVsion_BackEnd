@@ -21,5 +21,11 @@ public sealed class UnmatchedDeliveryFeedbackConfiguration : IEntityTypeConfigur
 
         // La limpieza de 30 días borra por fecha.
         builder.HasIndex(f => f.ReceivedAtUtc).HasDatabaseName("IX_UnmatchedDeliveryFeedback_ReceivedAtUtc");
+
+        // El mismo aviso repetido no se guarda dos veces.
+        builder
+            .HasIndex(f => new { f.Source, f.SourceEventId })
+            .IsUnique()
+            .HasDatabaseName("UX_UnmatchedDeliveryFeedback_Source_SourceEventId");
     }
 }

@@ -4,53 +4,32 @@ using NetArchTest.Rules;
 namespace TaxVision.Auth.Tests.Architecture;
 
 /// <summary>
-/// PayFlow Fase 3 — fitness functions que protegen las fronteras del módulo Onboarding
-/// (bounded context modular dentro de Auth, ver PayFlow_Implementation_Plan.md §3.1). El módulo
-/// puede depender de <c>TenantDomains.SubdomainSlug</c> (VO compartido) pero de ningún otro tipo
-/// de los módulos hermanos de Auth. Nota: a diferencia de lo asumido en §3.1 del plan, Auth NO
-/// tiene un VO <c>Email</c> dedicado — <c>User.Email</c> es un <c>string</c> plano — así que esa
-/// excepción no aplica hoy; solo <c>SubdomainSlug</c> es un VO real y compartible.
-///
-/// PayFlow Fase 6 (retrofit) — segunda excepción documentada: <c>Terms</c> (self-service ToS/AUP,
-/// preexistente) ahora resuelve su "version vigente" contra Onboarding.TermsVersions.TermsVersion
-/// (Opcion C del plan) en vez de TermsOptions.CurrentVersion — ver AcceptTermsHandler. Es una
-/// integración deliberada, unidireccional (Terms → Onboarding, nunca al revés).
-///
-/// Auditoría F11 — tercera excepción documentada, esta bidireccional: <c>ReserveSubdomainForOnboardingHandler</c>
-/// (Onboarding) inyecta <c>ITenantSubdomainReservationRepository</c> (TenantDomains) y
-/// <c>ReserveSubdomainHandler</c> (TenantDomains) inyecta <c>IOnboardingSubdomainReservationRepository</c>
-/// (Onboarding) — cada Path necesita ver la reserva activa del otro para no dejar que dos
-/// compradores concurrentes se lleven el mismo slug por caminos distintos (Path A alta directa vs.
-/// Path C pago-primero). Es la única excepción bidireccional del módulo: ambos lados solo consultan
-/// un repositorio de disponibilidad, nunca mutan el aggregate del otro módulo.
-///
-/// Auditoría (gap TenantTermsAcceptances) — cuarta excepción documentada, hace bidireccional la de
-/// Fase 6: <c>CreateTenantOwnerFromOnboardingHandler</c> (Onboarding) ahora invoca
-/// <c>AcceptTermsFromOnboardingHandler</c> (Terms) para completar el ledger de auditoría dedicado
-/// (<c>TenantTermsAcceptances</c>: IP/UserAgent/contexto) en el único punto donde Tenant y User ya
-/// existen simultáneamente — <c>CompleteOnboardingRegistrationHandler</c> (Fase 13) no puede
-/// hacerlo porque en ese momento el Tenant/User todavía no existen (la Saga los crea recién dos
-/// pasos después). Antes de este fix, <c>AcceptTermsFromOnboardingCommand</c> no tenía ningún
-/// caller real en el codebase — la aceptación de términos del onboarding quedaba solo en los
-/// campos planos de <c>TenantOnboarding</c>, nunca en el ledger dedicado.
+/// AUTH-5: Onboarding vive en sus propios ensamblados, en la misma solución, base y host. La dependencia
+/// va en un solo sentido: Onboarding usa el núcleo de Auth y el núcleo no conoce Onboarding.
+/// Dos puntos de unión, a propósito:
+/// <list type="bullet">
+/// <item>El núcleo pregunta por una reserva de onboarding con <c>ISubdomainHoldReader</c>, que implementa Onboarding.</item>
+/// <item><c>AuthDbContext</c> y sus migraciones cubren las tablas de Onboarding: es una sola base.</item>
+/// </list>
+/// Los términos (<c>TermsVersion</c>) son del núcleo: Onboarding los lee, nunca al revés.
 /// </summary>
 public sealed class OnboardingModuleArchitectureTests
 {
-    private static readonly Assembly DomainAssembly = typeof(TaxVision.Auth.Domain.Users.User).Assembly;
-    private static readonly Assembly ApplicationAssembly =
+    private const string OnboardingRoot = "TaxVision.Auth.Onboarding";
+
+    private static readonly Assembly CoreDomain = typeof(TaxVision.Auth.Domain.Users.User).Assembly;
+    private static readonly Assembly CoreApplication =
         typeof(TaxVision.Auth.Application.Invitations.Commands.CreateInvitationHandler).Assembly;
+    private static readonly Assembly CoreInfrastructure =
+        typeof(TaxVision.Auth.Infrastructure.Persistence.AuthDbContext).Assembly;
 
-    private const string OnboardingDomainNamespace = "TaxVision.Auth.Domain.Onboarding";
-    private const string OnboardingApplicationNamespace = "TaxVision.Auth.Application.Onboarding";
+    private static Assembly OnboardingDomain => Assembly.Load($"{OnboardingRoot}.Domain");
 
-    // PayFlow Fase 6 — excepción documentada (ver doc-comment de la clase): Terms es el único
-    // módulo hermano autorizado a depender de Onboarding, y solo en un sentido.
-    private const string TermsApplicationNamespace = "TaxVision.Auth.Application.Terms";
+    private static Assembly OnboardingApplication => Assembly.Load($"{OnboardingRoot}.Application");
 
-    // Auditoría F11 — excepción bidireccional documentada (ver doc-comment de la clase): TenantDomains
-    // y Onboarding se consultan mutuamente para la reserva de subdominio cross-path.
-    private const string TenantDomainsApplicationNamespace = "TaxVision.Auth.Application.TenantDomains";
+    private static Assembly OnboardingInfrastructure => Assembly.Load($"{OnboardingRoot}.Infrastructure");
 
+    // Módulos hermanos que el dominio de Onboarding no toca. De TenantDomains solo usa el VO SubdomainSlug.
     private static readonly string[] SiblingDomainModules =
     [
         "TaxVision.Auth.Domain.Users",
@@ -62,14 +41,12 @@ public sealed class OnboardingModuleArchitectureTests
         "TaxVision.Auth.Domain.Tenants",
         "TaxVision.Auth.Domain.Audit",
         "TaxVision.Auth.Domain.RefreshTokens",
-        "TaxVision.Auth.Domain.Terms",
-        // TenantDomains sí puede tener afinidad (SubdomainSlug es VO compartido), pero los tipos
-        // de negocio del módulo (el aggregate y sus eventos) siguen prohibidos:
         "TaxVision.Auth.Domain.TenantDomains.TenantDomain",
         "TaxVision.Auth.Domain.TenantDomains.TenantSubdomainReservation",
         "TaxVision.Auth.Domain.TenantDomains.Events",
     ];
 
+    // Onboarding solo entra al núcleo por Abstractions, Common, Terms y TenantDomains.
     private static readonly string[] SiblingApplicationModules =
     [
         "TaxVision.Auth.Application.Users",
@@ -81,24 +58,48 @@ public sealed class OnboardingModuleArchitectureTests
         "TaxVision.Auth.Application.Tenants",
         "TaxVision.Auth.Application.Audit",
         "TaxVision.Auth.Application.RefreshTokens",
-        // TenantDomains NO está acá (auditoría F11): a diferencia de los demás módulos hermanos,
-        // Onboarding SÍ tiene una dependencia legítima y documentada sobre TenantDomains
-        // (ITenantSubdomainReservationRepository, cross-check de reserva de subdominio) — ver
-        // doc-comment de la clase.
-        //
-        // Terms tampoco está acá (gap TenantTermsAcceptances, ver doc-comment de la clase):
-        // CreateTenantOwnerFromOnboardingHandler invoca AcceptTermsFromOnboardingHandler para
-        // completar el ledger de auditoría dedicado — la excepción de Fase 6 (Terms → Onboarding)
-        // ahora es bidireccional, igual que TenantDomains.
     ];
+
+    [Fact]
+    public void AuthCore_DoesNotReferenceOnboardingAssemblies()
+    {
+        Assert.NotNull(OnboardingDomain);
+        Assert.NotNull(OnboardingApplication);
+        Assert.NotNull(OnboardingInfrastructure);
+
+        foreach (var core in new[] { CoreDomain, CoreApplication })
+        {
+            var references = core.GetReferencedAssemblies().Select(reference => reference.Name ?? string.Empty);
+            Assert.DoesNotContain(references, name => name.StartsWith(OnboardingRoot, StringComparison.Ordinal));
+
+            var result = Types.InAssembly(core).ShouldNot().HaveDependencyOn(OnboardingRoot).GetResult();
+            Assert.True(result.IsSuccessful, Fail(result));
+        }
+    }
+
+    [Fact]
+    public void CoreInfrastructure_ReachesOnboardingOnlyFromPersistence()
+    {
+        var result = Types
+            .InAssembly(CoreInfrastructure)
+            .That()
+            .DoNotResideInNamespace("TaxVision.Auth.Infrastructure.Persistence")
+            .ShouldNot()
+            .HaveDependencyOn(OnboardingRoot)
+            .GetResult();
+
+        Assert.True(result.IsSuccessful, Fail(result));
+        Assert.DoesNotContain(
+            CoreInfrastructure.GetReferencedAssemblies(),
+            reference => reference.Name == $"{OnboardingRoot}.Infrastructure"
+        );
+    }
 
     [Fact]
     public void Onboarding_Domain_DoesNotDependOnOtherAuthModules()
     {
         var result = Types
-            .InAssembly(DomainAssembly)
-            .That()
-            .ResideInNamespace(OnboardingDomainNamespace)
+            .InAssembly(OnboardingDomain)
             .Should()
             .NotHaveDependencyOnAny(SiblingDomainModules)
             .GetResult();
@@ -110,41 +111,12 @@ public sealed class OnboardingModuleArchitectureTests
     public void Onboarding_Application_DoesNotReferenceOtherAuthApplicationModules()
     {
         var result = Types
-            .InAssembly(ApplicationAssembly)
-            .That()
-            .ResideInNamespace(OnboardingApplicationNamespace)
+            .InAssembly(OnboardingApplication)
             .Should()
             .NotHaveDependencyOnAny(SiblingApplicationModules)
             .GetResult();
 
         Assert.True(result.IsSuccessful, Fail(result));
-    }
-
-    [Fact]
-    public void NonOnboarding_Files_DoNotReferenceOnboardingInternals()
-    {
-        var domainResult = Types
-            .InAssembly(DomainAssembly)
-            .That()
-            .DoNotResideInNamespace(OnboardingDomainNamespace)
-            .Should()
-            .NotHaveDependencyOnAny(OnboardingDomainNamespace)
-            .GetResult();
-
-        var applicationResult = Types
-            .InAssembly(ApplicationAssembly)
-            .That()
-            .DoNotResideInNamespace(OnboardingApplicationNamespace)
-            .And()
-            .DoNotResideInNamespace(TermsApplicationNamespace)
-            .And()
-            .DoNotResideInNamespace(TenantDomainsApplicationNamespace)
-            .Should()
-            .NotHaveDependencyOnAny(OnboardingApplicationNamespace, OnboardingDomainNamespace)
-            .GetResult();
-
-        Assert.True(domainResult.IsSuccessful, Fail(domainResult));
-        Assert.True(applicationResult.IsSuccessful, Fail(applicationResult));
     }
 
     private static string Fail(TestResult result) =>

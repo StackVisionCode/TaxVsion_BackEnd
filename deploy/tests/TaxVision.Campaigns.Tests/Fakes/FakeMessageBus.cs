@@ -50,8 +50,12 @@ internal sealed class FakeMessageBus : IMessageBus
 
     public string? TenantId { get; set; }
 
-    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public async Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        if (OnInvoke is null)
+            throw new NotImplementedException();
+        await OnInvoke(message);
+    }
 
     public Task InvokeAsync(
         object message,
@@ -60,8 +64,15 @@ internal sealed class FakeMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotImplementedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    /// <summary>Rutea InvokeAsync a los handlers reales con los fakes de la prueba (en producción lo hace Wolverine).</summary>
+    public Func<object, Task<object?>>? OnInvoke { get; set; }
+
+    public async Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        if (OnInvoke is null)
+            throw new NotImplementedException();
+        return (T)(await OnInvoke(message))!;
+    }
 
     public Task<T> InvokeAsync<T>(
         object message,

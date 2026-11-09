@@ -1,4 +1,5 @@
 using TaxVision.PaymentApp.Domain.SaaSPayments;
+using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
 namespace TaxVision.PaymentApp.Tests.Domain;
@@ -87,6 +88,63 @@ public sealed class SaaSPaymentTests
         Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
     }
 
+    [Fact]
+    public void FlagForReview_KeepsStatus_AndIsIdempotent()
+    {
+        var payment = FailedOnboardingPayment();
+        payment.MarkCancelled("BuyerCancelled", DateTime.UtcNow);
+        var firstFlag = new DateTime(2026, 11, 5, 10, 0, 0, DateTimeKind.Utc);
+
+        var first = payment.FlagForReview("LateProviderSuccess", "pi_123", 4900, "usd", firstFlag);
+        var second = payment.FlagForReview("AmountMismatch", "pi_456", 100, "USD", firstFlag.AddMinutes(5));
+
+        Assert.True(first.IsSuccess);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+        Assert.Equal(firstFlag, payment.ReviewRequiredAtUtc);
+        Assert.Equal("LateProviderSuccess", payment.ReviewReasonCode);
+        Assert.Equal("pi_123", payment.ReviewProviderReference);
+        Assert.Equal(4900, payment.ReviewPaidAmountCents);
+        Assert.Equal("USD", payment.ReviewPaidCurrency);
+
+        var admin = Guid.NewGuid();
+        var resolved = payment.ResolveReview("Refunded", admin, firstFlag.AddHours(1));
+        Assert.True(resolved.IsSuccess);
+        Assert.Equal(firstFlag.AddHours(1), payment.ReviewResolvedAtUtc);
+        Assert.Equal(admin, payment.ReviewResolvedByUserId);
+        Assert.Equal("Refunded", payment.ReviewResolution);
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+
+        var again = payment.ResolveReview("NoActionNeeded", admin, firstFlag.AddHours(2));
+        Assert.True(again.IsFailure);
+        Assert.Equal("SaaSPayment.ReviewAlreadyResolved", again.Error.Code);
+    }
+
+    [Fact]
+    public void FlagForReview_rejects_an_unknown_reason()
+    {
+        var payment = FailedOnboardingPayment();
+
+        var result = payment.FlagForReview("Whatever", null, null, null, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Null(payment.ReviewRequiredAtUtc);
+    }
+
+    [Fact]
+    public void ResolveReview_requires_a_pending_review_and_a_known_resolution()
+    {
+        var payment = FailedOnboardingPayment();
+
+        var notFlagged = payment.ResolveReview("Refunded", Guid.NewGuid(), DateTime.UtcNow);
+        payment.FlagForReview("LateProviderSuccess", "pi_1", 4900, "USD", DateTime.UtcNow);
+        var unknown = payment.ResolveReview("Ignored", Guid.NewGuid(), DateTime.UtcNow);
+
+        Assert.Equal("SaaSPayment.ReviewNotRequired", notFlagged.Error.Code);
+        Assert.Equal("SaaSPayment.InvalidReviewResolution", unknown.Error.Code);
+        Assert.Null(payment.ReviewResolvedAtUtc);
+    }
+
     private static SaaSPayment PendingOnboardingPayment() =>
         SaaSPayment
             .CreateForOnboarding(
@@ -110,7 +168,7 @@ public sealed class SaaSPaymentTests
             "https://checkout.example.com/1",
             now
         );
-        payment.MarkFailed("card_declined", "declined", willRetry: false, nextRetryAtUtc: null, Guid.Empty, now);
+        payment.MarkFailed("card_declined", "declined", DunningDecision.NoRetry, Guid.Empty, now);
         return payment;
     }
 
@@ -124,8 +182,7 @@ public sealed class SaaSPaymentTests
         var result = payment.MarkFailed(
             "card_declined",
             "The card was declined.",
-            willRetry: true,
-            nextRetry,
+            DunningDecision.RetryAt(nextRetry),
             Guid.Empty,
             nowUtc
         );
@@ -145,8 +202,7 @@ public sealed class SaaSPaymentTests
         var result = payment.MarkFailed(
             "card_declined",
             "The card was declined.",
-            willRetry: false,
-            nextRetryAtUtc: null,
+            DunningDecision.NoRetry,
             Guid.Empty,
             DateTime.UtcNow
         );
@@ -161,7 +217,13 @@ public sealed class SaaSPaymentTests
     {
         var payment = CreateSucceededPayment();
 
-        var result = payment.MarkFailed("card_declined", "reason", willRetry: false, null, Guid.Empty, DateTime.UtcNow);
+        var result = payment.MarkFailed(
+            "card_declined",
+            "reason",
+            DunningDecision.NoRetry,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
@@ -216,7 +278,7 @@ public sealed class SaaSPaymentTests
     public void RefundPartial_on_a_legally_held_payment_is_rejected()
     {
         var payment = CreateSucceededPayment();
-        payment.SetLegalHold(true, Guid.Empty, DateTime.UtcNow);
+        payment.SetLegalHold(true, Guid.NewGuid(), DateTime.UtcNow);
 
         var result = payment.RefundPartial(Money.Create(100, "USD").Value, "reason", Guid.Empty, DateTime.UtcNow);
 
@@ -226,10 +288,69 @@ public sealed class SaaSPaymentTests
     }
 
     [Fact]
+    public void CanRefund_rejects_legal_hold_without_mutating()
+    {
+        var payment = CreateSucceededPayment();
+        payment.SetLegalHold(true, Guid.NewGuid(), DateTime.UtcNow);
+
+        var result = payment.CanRefund(Money.Create(1000, "USD").Value, "customer request");
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Payment.LegalHeld", result.Error.Code);
+        Assert.Empty(payment.Refunds);
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+    }
+
+    [Fact]
+    public void Refund_request_already_recorded_by_the_provider_sync_adds_no_second_line()
+    {
+        var payment = CreateSucceededPayment();
+        var nowUtc = DateTime.UtcNow;
+        var request = payment
+            .OpenRefundRequest(
+                Money.Create(1000, "USD").Value,
+                "customer request",
+                Guid.NewGuid(),
+                "auto:1",
+                null,
+                nowUtc
+            )
+            .Value;
+        // El webhook charge.refunded llegó antes de registrar el resultado.
+        payment.ApplyProviderRefundTotal(1000, nowUtc);
+
+        var completed = payment.CompleteRefundRequest(request.Id, "re_1", nowUtc);
+
+        Assert.False(completed.Value);
+        Assert.Single(payment.Refunds);
+        Assert.Equal(RefundRequestStatus.Completed, request.Status);
+    }
+
+    [Fact]
+    public void Second_refund_request_while_one_is_pending_is_rejected()
+    {
+        var payment = CreateSucceededPayment();
+        var nowUtc = DateTime.UtcNow;
+        payment.OpenRefundRequest(Money.Create(1000, "USD").Value, "first", Guid.NewGuid(), "auto:1", null, nowUtc);
+
+        var second = payment.OpenRefundRequest(
+            Money.Create(500, "USD").Value,
+            "second",
+            Guid.NewGuid(),
+            "auto:2",
+            null,
+            nowUtc
+        );
+
+        Assert.Equal("SaaSPayment.RefundInProgress", second.Error.Code);
+        Assert.Single(payment.RefundRequests);
+    }
+
+    [Fact]
     public void CancelByAdmin_on_a_legally_held_payment_is_rejected()
     {
         var payment = CreatePendingPayment();
-        payment.SetLegalHold(true, Guid.Empty, DateTime.UtcNow);
+        payment.SetLegalHold(true, Guid.NewGuid(), DateTime.UtcNow);
 
         var result = payment.CancelByAdmin("duplicate charge", Guid.Empty, DateTime.UtcNow);
 
@@ -266,7 +387,13 @@ public sealed class SaaSPaymentTests
     {
         var payment = CreatePendingPayment();
         var nowUtc = DateTime.UtcNow;
-        payment.MarkFailed("card_declined", "declined", willRetry: true, nowUtc.AddHours(1), Guid.Empty, nowUtc);
+        payment.MarkFailed(
+            "card_declined",
+            "declined",
+            DunningDecision.RetryAt(nowUtc.AddHours(1)),
+            Guid.Empty,
+            nowUtc
+        );
 
         var result = payment.PrepareForRetry(Guid.Empty, nowUtc.AddHours(2));
 
@@ -281,7 +408,13 @@ public sealed class SaaSPaymentTests
     {
         var payment = CreatePendingPayment();
         var nowUtc = DateTime.UtcNow;
-        payment.MarkFailed("card_declined", "declined", willRetry: true, nowUtc.AddHours(1), Guid.Empty, nowUtc);
+        payment.MarkFailed(
+            "card_declined",
+            "declined",
+            DunningDecision.RetryAt(nowUtc.AddHours(1)),
+            Guid.Empty,
+            nowUtc
+        );
 
         var result = payment.PrepareForRetry(Guid.Empty, nowUtc);
 
@@ -294,14 +427,7 @@ public sealed class SaaSPaymentTests
     public void PrepareForRetry_with_no_retry_scheduled_is_rejected()
     {
         var payment = CreatePendingPayment();
-        payment.MarkFailed(
-            "card_declined",
-            "declined",
-            willRetry: false,
-            nextRetryAtUtc: null,
-            Guid.Empty,
-            DateTime.UtcNow
-        );
+        payment.MarkFailed("card_declined", "declined", DunningDecision.NoRetry, Guid.Empty, DateTime.UtcNow);
 
         var result = payment.PrepareForRetry(Guid.Empty, DateTime.UtcNow);
 
@@ -441,6 +567,95 @@ public sealed class SaaSPaymentTests
         Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
     }
 
+    // PAY-BB1: cada transición de resultado registra su evento de dominio una sola vez.
+    [Fact]
+    public void MarkSucceeded_raises_SaaSPaymentSucceeded_once()
+    {
+        var payment = CreatePendingPayment();
+        var nowUtc = DateTime.UtcNow;
+        payment.MarkProcessing(
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_123").Value,
+            "200",
+            null,
+            Guid.Empty,
+            nowUtc
+        );
+        Assert.Empty(payment.DomainEvents);
+
+        Assert.True(payment.MarkSucceeded(nowUtc, Guid.Empty).IsSuccess);
+        Assert.True(payment.MarkSucceeded(nowUtc, Guid.Empty).IsFailure);
+
+        var raised = Assert.IsType<SaaSPaymentSucceeded>(Assert.Single(payment.DomainEvents));
+        Assert.Equal(payment.Id, raised.Payment.SaaSPaymentId);
+        Assert.Equal(PaymentStatus.Succeeded, raised.Payment.Status);
+        Assert.Equal("pi_123", raised.Payment.ExternalChargeReference);
+        Assert.Equal(nowUtc, raised.Payment.PaidAtUtc);
+    }
+
+    [Fact]
+    public void MarkFailed_raises_SaaSPaymentFailed_with_its_retry_and_attempt()
+    {
+        var payment = CreatePendingPayment();
+        var retryAtUtc = DateTime.UtcNow.AddHours(1);
+
+        Assert.True(
+            payment
+                .MarkFailed(
+                    "card_declined",
+                    "Declined.",
+                    DunningDecision.RetryAt(retryAtUtc),
+                    Guid.Empty,
+                    DateTime.UtcNow
+                )
+                .IsSuccess
+        );
+
+        var raised = Assert.IsType<SaaSPaymentFailed>(Assert.Single(payment.DomainEvents));
+        Assert.Equal("card_declined", raised.Payment.FailureCode);
+        Assert.Equal(retryAtUtc, raised.Payment.NextRetryAtUtc);
+        Assert.Equal(1, raised.Payment.AttemptCount);
+    }
+
+    [Fact]
+    public void CancelByAdmin_raises_an_announced_cancellation()
+    {
+        var payment = CreatePendingPayment();
+
+        Assert.True(payment.CancelByAdmin("ProviderCancelled", Guid.Empty, DateTime.UtcNow).IsSuccess);
+
+        var raised = Assert.IsType<SaaSPaymentCancelled>(Assert.Single(payment.DomainEvents));
+        Assert.False(raised.PropagatedFromOwner);
+        Assert.Equal(PaymentStatus.Cancelled, raised.Payment.Status);
+    }
+
+    // La cancelación que pide el dueño del cobro no se le vuelve a anunciar; una redelivery no agrega eventos.
+    [Fact]
+    public void MarkCancelled_raises_a_propagated_cancellation_once()
+    {
+        var payment = CreatePendingPayment();
+
+        Assert.True(payment.MarkCancelled("Superseded.", DateTime.UtcNow).IsSuccess);
+        Assert.True(payment.MarkCancelled("Superseded.", DateTime.UtcNow).IsSuccess);
+
+        var raised = Assert.IsType<SaaSPaymentCancelled>(Assert.Single(payment.DomainEvents));
+        Assert.True(raised.PropagatedFromOwner);
+    }
+
+    [Fact]
+    public void FlagForReview_raises_SaaSPaymentReviewRequired_once()
+    {
+        var payment = CreatePendingPayment();
+        payment.MarkFailed("card_declined", "Declined.", DunningDecision.NoRetry, Guid.Empty, DateTime.UtcNow);
+        payment.ClearDomainEvents();
+
+        payment.FlagForReview(SaaSPayment.ReviewReasonLateProviderSuccess, "pi_late", 1999, "usd", DateTime.UtcNow);
+        payment.FlagForReview(SaaSPayment.ReviewReasonLateProviderSuccess, "pi_late", 1999, "usd", DateTime.UtcNow);
+
+        var raised = Assert.IsType<SaaSPaymentReviewRequired>(Assert.Single(payment.DomainEvents));
+        Assert.Equal(SaaSPayment.ReviewReasonLateProviderSuccess, raised.ReasonCode);
+        Assert.Equal("pi_late", raised.ProviderReference);
+    }
+
     private static SaaSPayment CreateOnboardingPayment(Guid onboardingId, string idempotencyKey = "onboarding-1") =>
         SaaSPayment
             .CreateForOnboarding(
@@ -453,6 +668,47 @@ public sealed class SaaSPaymentTests
                 DateTime.UtcNow
             )
             .Value;
+
+    [Fact]
+    public void AttachConcept_after_charge_is_rejected()
+    {
+        var payment = CreateSucceededPayment();
+
+        var result = payment.AttachConcept(ChargeConcept.Create("add-on-purchase", "Add-on").Value);
+
+        Assert.Equal("SaaSPayment.ConceptAlreadySet", result.Error.Code);
+        Assert.Null(payment.Concept);
+    }
+
+    [Fact]
+    public void AttachConcept_twice_keeps_the_first_concept()
+    {
+        var payment = CreatePendingPayment();
+        var first = ChargeConcept.Create("subscription-renewal", "Subscription renewal").Value;
+        payment.AttachConcept(first);
+
+        var result = payment.AttachConcept(ChargeConcept.Create("add-on-purchase", "Add-on").Value);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(first, payment.Concept);
+    }
+
+    [Fact]
+    public void SetLegalHold_same_value_is_noop_and_requires_actor()
+    {
+        var payment = CreatePendingPayment();
+        var updatedAt = payment.UpdatedAtUtc;
+        var later = updatedAt.AddHours(1);
+
+        var same = payment.SetLegalHold(false, Guid.NewGuid(), later);
+        var noActor = payment.SetLegalHold(true, Guid.Empty, later);
+
+        Assert.True(same.IsSuccess);
+        Assert.Equal(updatedAt, payment.UpdatedAtUtc);
+        Assert.Equal(Guid.Empty, payment.UpdatedBy);
+        Assert.Equal("SaaSPayment.ActorRequired", noActor.Error.Code);
+        Assert.False(payment.IsLegalHeld);
+    }
 
     private static SaaSPayment CreatePendingPayment(string idempotencyKey = "key-1")
     {

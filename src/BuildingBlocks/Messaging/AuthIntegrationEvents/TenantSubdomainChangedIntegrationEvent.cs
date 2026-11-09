@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// slug de la oficina (Tenant y sus réplicas) lo actualizan cuando <see cref="IsPrimary"/> es true: el
 /// slug de una oficina es el de su subdominio primario. Los que cachean el host la descartan.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantSubdomainChangedIntegrationEvent")]
 public sealed record TenantSubdomainChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid DomainId { get; init; }

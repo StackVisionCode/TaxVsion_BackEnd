@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -15,6 +17,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// <see cref="IntegrationEvent.TenantId"/> queda en <c>Guid.Empty</c> (el tenant no existe
 /// todavía) — <see cref="OnboardingId"/> es la clave de correlación real.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.OnboardingReceiptReadyIntegrationEvent")]
 public sealed record OnboardingReceiptReadyIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }

@@ -52,6 +52,20 @@ public sealed class AddOnCheckoutPaidConsumerTests
         Assert.Empty(bus.Published.OfType<AddOnRenewalDueIntegrationEvent>());
     }
 
+    // BB-16: el aviso de activación sale después del guardado.
+    [Fact]
+    public async Task Saves_before_announcing_the_add_on()
+    {
+        var fixture = Fixture();
+        var bus = new CapturingMessageBus();
+        var unitOfWork = new PurchaseAddOnHandlerTests.PublishedAtSaveUnitOfWork(bus);
+
+        await HandleAsync(fixture, bus, unitOfWork: unitOfWork);
+
+        Assert.Equal(0, unitOfWork.PublishedAtFirstSave);
+        Assert.Single(bus.Published.OfType<AddOnActivatedIntegrationEvent>());
+    }
+
     [Fact]
     public async Task Is_idempotent_on_redelivery()
     {
@@ -98,7 +112,7 @@ public sealed class AddOnCheckoutPaidConsumerTests
                 autoRenew: true,
                 Money.Create(29m, "USD").Value,
                 BillingCycle.Monthly,
-                proratedTotalCents: 2900,
+                proratedTotal: Money.FromCents(2900, "USD"),
                 Guid.NewGuid(),
                 DateTime.UtcNow
             )
@@ -114,7 +128,12 @@ public sealed class AddOnCheckoutPaidConsumerTests
         );
     }
 
-    private static Task HandleAsync(Scenario scenario, CapturingMessageBus bus, Guid? tenantId = null) =>
+    private static Task HandleAsync(
+        Scenario scenario,
+        CapturingMessageBus bus,
+        Guid? tenantId = null,
+        BuildingBlocks.Persistence.IUnitOfWork? unitOfWork = null
+    ) =>
         AddOnCheckoutPaidConsumer.Handle(
             new AddOnCheckoutPaidIntegrationEvent
             {
@@ -130,7 +149,7 @@ public sealed class AddOnCheckoutPaidConsumerTests
             new FakeSubscriptionRepo(scenario.Subscription),
             new FakeAddOnDefinitionRepository(scenario.Definition),
             scenario.TenantAddOns,
-            new FakeUnitOfWork(),
+            unitOfWork ?? new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
             new FakeSubscriptionAuditLogWriter(),

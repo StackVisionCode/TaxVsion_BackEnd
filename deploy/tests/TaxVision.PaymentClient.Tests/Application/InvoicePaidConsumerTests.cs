@@ -7,6 +7,7 @@ using TaxVision.PaymentClient.Application.Payables.IntegrationEvents;
 using TaxVision.PaymentClient.Domain.Payables;
 using TaxVision.PaymentClient.Domain.PaymentLinks;
 using TaxVision.PaymentClient.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.PaymentClient.Tests.Application;
 
@@ -43,6 +44,7 @@ public sealed class InvoicePaidConsumerTests
 
         await InvoicePaidConsumer.Handle(
             Event(tenantId, invoiceId),
+            new Envelope(),
             new PayableRepository(payable),
             new LinkRepository(link),
             unitOfWork,
@@ -63,6 +65,7 @@ public sealed class InvoicePaidConsumerTests
 
         await InvoicePaidConsumer.Handle(
             Event(Guid.NewGuid(), Guid.NewGuid()),
+            new Envelope(),
             new PayableRepository(null),
             new LinkRepository(null),
             unitOfWork,
@@ -72,6 +75,98 @@ public sealed class InvoicePaidConsumerTests
         );
 
         Assert.Equal(0, unitOfWork.SaveCalls);
+    }
+
+    [Fact]
+    public async Task StaleInvoicePaid_DoesNotResettleReopenedPayable()
+    {
+        // El InvoicePaid de antes de la edición llega tarde: no puede volver a cerrar el saldo reabierto.
+        var (tenantId, invoiceId, payable, link) = ReopenedPayable(reopenedAt: DateTime.UtcNow.AddMinutes(-5));
+        var unitOfWork = new CountingUnitOfWork();
+
+        await HandleAsync(tenantId, invoiceId, payable, link, unitOfWork, sentAt: DateTime.UtcNow.AddMinutes(-10));
+
+        Assert.False(payable.IsSettled);
+        Assert.Equal(PaymentLinkStatus.Active, link.Status);
+        Assert.Equal(0, unitOfWork.SaveCalls);
+    }
+
+    [Fact]
+    public async Task InvoicePaidSentAfterReopen_Settles()
+    {
+        var (tenantId, invoiceId, payable, link) = ReopenedPayable(reopenedAt: DateTime.UtcNow.AddMinutes(-5));
+        var unitOfWork = new CountingUnitOfWork();
+
+        await HandleAsync(tenantId, invoiceId, payable, link, unitOfWork, sentAt: DateTime.UtcNow);
+
+        Assert.True(payable.IsSettled);
+        Assert.Equal(PaymentLinkStatus.Revoked, link.Status);
+    }
+
+    [Fact]
+    public async Task InvoicePaidWithoutSentAt_Settles()
+    {
+        // Sin fecha de envío no se puede saber si es viejo: liquidar es lo seguro contra el doble cobro.
+        var (tenantId, invoiceId, payable, link) = ReopenedPayable(reopenedAt: DateTime.UtcNow.AddMinutes(-5));
+
+        await HandleAsync(tenantId, invoiceId, payable, link, new CountingUnitOfWork(), sentAt: null);
+
+        Assert.True(payable.IsSettled);
+    }
+
+    private static (Guid TenantId, Guid InvoiceId, PayableReference Payable, PaymentLink Link) ReopenedPayable(
+        DateTime reopenedAt
+    )
+    {
+        var tenantId = Guid.NewGuid();
+        var invoiceId = Guid.NewGuid();
+        var payable = PayableReference
+            .Create(
+                tenantId,
+                PaymentPurposeKind.InvoicePayment,
+                invoiceId.ToString(),
+                Money.Create(300000, "USD").Value,
+                reopenedAt.AddDays(-1)
+            )
+            .Value;
+        payable.Settle(reopenedAt.AddHours(-1));
+        payable.Reopen(Money.Create(150000, "USD").Value, reopenedAt);
+        var link = PaymentLink
+            .Create(
+                tenantId,
+                null,
+                Money.Create(150000, "USD").Value,
+                PaymentPurpose.Create(PaymentPurposeKind.InvoicePayment, invoiceId.ToString()).Value,
+                PaymentLinkToken.Generate(),
+                TimeSpan.FromDays(1),
+                Guid.NewGuid(),
+                reopenedAt
+            )
+            .Value;
+        return (tenantId, invoiceId, payable, link);
+    }
+
+    private static Task HandleAsync(
+        Guid tenantId,
+        Guid invoiceId,
+        PayableReference payable,
+        PaymentLink link,
+        CountingUnitOfWork unitOfWork,
+        DateTime? sentAt
+    )
+    {
+        var envelope = new Envelope();
+        envelope.SentAt = sentAt is { } at ? new DateTimeOffset(at, TimeSpan.Zero) : default;
+        return InvoicePaidConsumer.Handle(
+            Event(tenantId, invoiceId),
+            envelope,
+            new PayableRepository(payable),
+            new LinkRepository(link),
+            unitOfWork,
+            new NoOpCorrelationContext(),
+            NullLoggerFactory.Instance,
+            CancellationToken.None
+        );
     }
 
     private static InvoicePaidIntegrationEvent Event(Guid tenantId, Guid invoiceId) =>
@@ -124,6 +219,7 @@ public sealed class InvoicePaidConsumerTests
         public Task<bool> AnyUsedForExternalReferenceAsync(
             Guid tenantId,
             string externalReferenceId,
+            DateTime? usedSinceUtc = null,
             CancellationToken ct = default
         ) => Task.FromResult(false);
 

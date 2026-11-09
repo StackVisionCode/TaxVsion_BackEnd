@@ -31,7 +31,7 @@ public sealed class RecycleBinHandlerTests
                 nowUtc.AddHours(24)
             )
             .Value;
-        file.MarkPendingScan();
+        file.MarkPendingScan(DateTime.UtcNow);
         file.MarkScanning();
         file.MarkAvailable(ChecksumSha256.Create(new string('a', 64)).Value, "application/pdf", nowUtc);
         file.SoftDelete(nowUtc, TimeSpan.FromDays(30));
@@ -147,6 +147,7 @@ public sealed class RecycleBinHandlerTests
             limits,
             audit,
             storage,
+            new FakeMultipartUploadStorage(),
             options,
             new FakeSystemClock(now),
             unitOfWork,
@@ -191,6 +192,7 @@ public sealed class RecycleBinHandlerTests
             limits,
             audit,
             storage,
+            new FakeMultipartUploadStorage(),
             options,
             new FakeSystemClock(now),
             unitOfWork,
@@ -233,6 +235,7 @@ public sealed class RecycleBinHandlerTests
             limits,
             audit,
             storage,
+            new FakeMultipartUploadStorage(),
             options,
             new FakeSystemClock(now),
             unitOfWork,
@@ -320,6 +323,7 @@ public sealed class RecycleBinHandlerTests
             limits,
             new FakeStorageAuditRepository(),
             storage,
+            new FakeMultipartUploadStorage(),
             Options.Create(new CloudStorageOptions()),
             new FakeSystemClock(now),
             new FakeUnitOfWork(),

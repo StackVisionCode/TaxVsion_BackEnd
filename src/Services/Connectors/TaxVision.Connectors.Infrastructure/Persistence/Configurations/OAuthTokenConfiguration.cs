@@ -14,6 +14,7 @@ public sealed class OAuthTokenConfiguration : IEntityTypeConfiguration<OAuthToke
         builder.Property(t => t.ConnectionId).IsRequired();
         builder.Property(t => t.AccessTokenExpiresAtUtc).IsRequired();
         builder.Property(t => t.RefreshedAtUtc).IsRequired();
+        builder.Property(t => t.RowVersion).IsRowVersion();
 
         builder.OwnsOne(
             t => t.AccessTokenCipher,

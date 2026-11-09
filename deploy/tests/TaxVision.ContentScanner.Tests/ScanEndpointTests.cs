@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TaxVision.ContentScanner.Scanning;
@@ -84,11 +86,164 @@ public sealed class ScanEndpointTests : IClassFixture<ScanEndpointTests.Factory>
         }
     }
 
-    private HttpClient Client()
+    [Fact]
+    public async Task Scan_AllSlotsBusy_Returns503WithoutWritingTempFile()
+    {
+        var tempDirectory = NewTempDirectory();
+        var extractor = new GatedExtractor();
+        using var tight = Tight(tempDirectory, extractor);
+        var client = KeyedClient(tight);
+
+        var holding = client.PostAsync("/v1/scan", Body("image/png"));
+        await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        var waiting = client.PostAsync("/v1/scan", Body("image/png"));
+        var mostFiles = 0;
+        while (!waiting.IsCompleted)
+        {
+            mostFiles = Math.Max(mostFiles, Directory.GetFiles(tempDirectory).Length);
+            await Task.Delay(10);
+        }
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await waiting).StatusCode);
+        Assert.Equal(1, mostFiles);
+
+        extractor.Open();
+        (await holding).EnsureSuccessStatusCode();
+        Assert.Empty(Directory.GetFiles(tempDirectory));
+    }
+
+    [Fact]
+    public async Task Scan_FreesItsSlotForTheNextRequest()
+    {
+        var extractor = new GatedExtractor();
+        extractor.Open();
+        using var tight = Tight(NewTempDirectory(), extractor);
+        var client = KeyedClient(tight);
+
+        (await client.PostAsync("/v1/scan", Body("image/png"))).EnsureSuccessStatusCode();
+        (await client.PostAsync("/v1/scan", Body("image/png"))).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task Scan_ContentLengthExceedsFreeSpace_Returns503()
+    {
+        var tempDirectory = NewTempDirectory();
+        using var tight = Tight(tempDirectory, new GatedExtractor(), freeBytes: 2);
+
+        var response = await KeyedClient(tight).PostAsync("/v1/scan", Body("image/png"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Empty(Directory.GetFiles(tempDirectory));
+    }
+
+    [Fact]
+    public async Task Scan_ContentLengthOverTheUploadLimit_Returns413()
+    {
+        var extractor = new GatedExtractor();
+        extractor.Open();
+        using var tight = Tight(NewTempDirectory(), extractor)
+            .WithWebHostBuilder(host => host.UseSetting("ContentScanner:MaxUploadBytes", "1024"));
+        var content = new ByteArrayContent(new byte[2048]);
+        content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+
+        var response = await KeyedClient(tight).PostAsync("/v1/scan", content);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Scan_ModelNotLoaded_Returns503WithoutReadingBody()
+    {
+        var tempDirectory = NewTempDirectory();
+        var body = new BodyProbe();
+        using var noModel = _factory.WithWebHostBuilder(host =>
+        {
+            host.UseSetting("ContentScanner:TempDirectory", tempDirectory);
+            host.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<INsfwClassifier>();
+                services.AddSingleton<INsfwClassifier>(new UnloadedClassifier());
+                services.AddSingleton<IStartupFilter>(body);
+            });
+        });
+
+        var response = await KeyedClient(noModel).PostAsync("/v1/scan", Body("image/png"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Contains("model_unavailable", await response.Content.ReadAsStringAsync());
+        Assert.NotNull(response.Headers.RetryAfter);
+        Assert.False(body.WasRead);
+        Assert.Empty(Directory.GetFiles(tempDirectory));
+    }
+
+    [Fact]
+    public async Task Scan_KeyOfDifferentLength_Returns401()
     {
         var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Scanner-Key", Key + "-longer");
+
+        var response = await client.PostAsync("/v1/scan", Body("image/png"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Scan_KeyOfSameLengthButWrong_Returns401()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Scanner-Key", new string('x', Key.Length));
+
+        var response = await client.PostAsync("/v1/scan", Body("image/png"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Scan_CorrectKey_Passes()
+    {
+        var response = await Client().PostAsync("/v1/scan", Body("image/png"));
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    private HttpClient Client() => KeyedClient(_factory);
+
+    private static HttpClient KeyedClient(WebApplicationFactory<Program> factory)
+    {
+        var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Scanner-Key", Key);
         return client;
+    }
+
+    // Un solo turno, espera corta y su propio directorio para contar lo que se escribe.
+    private WebApplicationFactory<Program> Tight(
+        string tempDirectory,
+        IFrameExtractor extractor,
+        long? freeBytes = null
+    ) =>
+        _factory.WithWebHostBuilder(host =>
+        {
+            host.UseSetting("ContentScanner:TempDirectory", tempDirectory);
+            host.UseSetting("ContentScanner:MaxConcurrentScans", "1");
+            host.UseSetting("ContentScanner:QueueTimeoutSeconds", "1");
+            host.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IFrameExtractor>();
+                services.AddSingleton(extractor);
+                if (freeBytes is { } bytes)
+                {
+                    services.RemoveAll<ITempDiskSpace>();
+                    services.AddSingleton<ITempDiskSpace>(new FixedDiskSpace(bytes));
+                }
+            });
+        });
+
+    private static string NewTempDirectory()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "content-scanner-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        return directory;
     }
 
     private static ByteArrayContent Body(string contentType)
@@ -118,6 +273,93 @@ public sealed class ScanEndpointTests : IClassFixture<ScanEndpointTests.Factory>
                 services.AddSingleton<INsfwClassifier>(Classifier);
             });
         }
+    }
+
+    private sealed class UnloadedClassifier : INsfwClassifier
+    {
+        public bool IsReady => false;
+
+        public float Score(ReadOnlySpan<byte> rgb) =>
+            throw new InvalidOperationException("Content scanner model is not loaded.");
+    }
+
+    /// <summary>Envuelve el cuerpo de la petición para saber si alguien lo leyó.</summary>
+    private sealed class BodyProbe : IStartupFilter
+    {
+        public bool WasRead { get; private set; }
+
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
+            app =>
+            {
+                app.Use(
+                    (context, nextMiddleware) =>
+                    {
+                        context.Request.Body = new ProbeStream(context.Request.Body, () => WasRead = true);
+                        return nextMiddleware();
+                    }
+                );
+                next(app);
+            };
+
+        private sealed class ProbeStream(Stream inner, Action onRead) : Stream
+        {
+            public override bool CanRead => true;
+            public override bool CanSeek => false;
+            public override bool CanWrite => false;
+            public override long Length => throw new NotSupportedException();
+            public override long Position
+            {
+                get => throw new NotSupportedException();
+                set => throw new NotSupportedException();
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                onRead();
+                return inner.Read(buffer, offset, count);
+            }
+
+            public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+            {
+                onRead();
+                return inner.ReadAsync(buffer, ct);
+            }
+
+            public override void Flush() { }
+
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+            public override void SetLength(long value) => throw new NotSupportedException();
+
+            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        }
+    }
+
+    private sealed class FixedDiskSpace(long bytes) : ITempDiskSpace
+    {
+        public long AvailableBytes(string directory) => bytes;
+    }
+
+    private sealed class GatedExtractor : IFrameExtractor
+    {
+        private readonly TaskCompletionSource _open = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Open() => _open.TrySetResult();
+
+        public async Task<IReadOnlyList<byte[]>> ExtractAsync(
+            string path,
+            MediaKind kind,
+            FrameSampling sampling,
+            CancellationToken ct
+        )
+        {
+            Entered.TrySetResult();
+            await _open.Task.WaitAsync(ct);
+            return [new byte[3]];
+        }
+
+        public Task<bool> HasVideoStreamAsync(string path, CancellationToken ct) => Task.FromResult(true);
     }
 
     public sealed class FakeExtractor : IFrameExtractor

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// servir los bytes del PDF por el endpoint público. El audit lo appende con
 /// <c>SignatureAuditEventKind.DocumentViewed</c>; las actas lo pintan como línea aparte.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerDocumentViewedIntegrationEvent")]
 public sealed record SignerDocumentViewedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

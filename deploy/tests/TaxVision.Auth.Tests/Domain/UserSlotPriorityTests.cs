@@ -42,7 +42,7 @@ public sealed class UserSlotPriorityTests
     {
         var user = Staff();
 
-        user.Deactivate(DateTime.UtcNow);
+        user.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
 
         Assert.Null(user.SlotPriorityAt);
         Assert.Contains(user.DomainEvents, evt => evt is UserSlotPriorityReleased);
@@ -52,7 +52,7 @@ public sealed class UserSlotPriorityTests
     public void Reactivation_assigns_new_priority_and_emits_event()
     {
         var user = Staff();
-        user.Deactivate(DateTime.UtcNow);
+        user.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
         user.ClearDomainEvents();
         var now = DateTime.UtcNow.AddMinutes(1);
 

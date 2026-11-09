@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// firmante externo — es el usuario staff autenticado del tenant. Se emite para audit
 /// y para actualizar el estado en el dashboard.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.PreparerSignedIntegrationEvent")]
 public sealed record PreparerSignedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

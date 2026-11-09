@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
 using Microsoft.Extensions.Logging;
@@ -11,6 +12,8 @@ using TaxVision.PaymentClient.Domain.Connect;
 using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
 using TaxVision.PaymentClient.Domain.TenantPayments;
 using TaxVision.PaymentClient.Domain.ValueObjects;
+using TaxVision.PaymentClient.Infrastructure.Persistence;
+using TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
 
 namespace TaxVision.PaymentClient.Tests.Application;
 
@@ -67,7 +70,7 @@ public sealed class ChargeTenantPaymentHandlerTests
             PlatformFeeReference: null
         );
 
-        var result = await ChargeTenantPaymentHandler.Handle(
+        var result = await TestChargeFlow.ChargeAsync(
             command,
             payments,
             configs,
@@ -128,6 +131,7 @@ public sealed class ChargeTenantPaymentHandlerTests
         var secretProtector = new ThrowingSecretProtector();
         var audit = new FakePaymentAuditLogWriter();
         var metrics = new FakePaymentClientMetrics();
+        var published = new List<object>();
 
         var command = new ChargeTenantPaymentCommand(
             tenantId,
@@ -143,7 +147,7 @@ public sealed class ChargeTenantPaymentHandlerTests
             ActorUserId: Guid.Empty
         );
 
-        var result = await ChargeTenantPaymentHandler.Handle(
+        var result = await TestChargeFlow.ChargeAsync(
             command,
             payments,
             configs,
@@ -164,6 +168,124 @@ public sealed class ChargeTenantPaymentHandlerTests
         Assert.True(result.IsSuccess);
         var payment = Assert.Single(payments.Added);
         Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        // Monto cero también es "pagado": la factura no puede quedar abierta (sale del evento de dominio).
+        var emitted = await DomainEventReplay.EmittedAsync(published, payments, payments.Added);
+        var paid = Assert.Single(emitted.OfType<TenantPaymentSucceededIntegrationEvent>());
+        Assert.Equal(payment.Id, paid.TenantPaymentId);
+    }
+
+    [Fact]
+    public async Task DirectInvoiceCharge_Succeeded_PublishesTenantPaymentSucceeded()
+    {
+        // Cobro directo de una factura (sin link): antes no avisaba a Billing.
+        var office = await DirectOffice.SeedAsync();
+        var published = new List<object>();
+
+        var result = await office.ChargeAsync("direct-invoice-1", published);
+
+        Assert.True(result.IsSuccess);
+        var paid = Assert.Single(
+            (await office.EmittedAsync(published)).OfType<TenantPaymentSucceededIntegrationEvent>()
+        );
+        Assert.Equal(result.Value, paid.TenantPaymentId);
+        Assert.Equal(nameof(PaymentPurposeKind.InvoicePayment), paid.PurposeKind);
+        Assert.Equal("inv-direct", paid.ExternalReferenceId);
+        Assert.Equal(2500, paid.AmountCents);
+    }
+
+    [Fact]
+    public async Task DirectCharge_ReplayOfSameIdempotencyKey_DoesNotRepublish()
+    {
+        // Un reintento con la misma clave devuelve el pago existente sin volver a avisar.
+        var office = await DirectOffice.SeedAsync();
+        var published = new List<object>();
+
+        await office.ChargeAsync("direct-invoice-2", published);
+        await office.ChargeAsync("direct-invoice-2", published);
+
+        Assert.Single((await office.EmittedAsync(published)).OfType<TenantPaymentSucceededIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task DirectCharge_Declined_PublishesNothing()
+    {
+        var office = await DirectOffice.SeedAsync();
+        office.Stripe.Status = PaymentStatus.Failed;
+        var published = new List<object>();
+
+        await office.ChargeAsync("direct-invoice-3", published);
+
+        Assert.Empty(await office.EmittedAsync(published));
+    }
+
+    /// <summary>Oficina Stripe directa en una base en memoria, con proveedor falso.</summary>
+    private sealed class DirectOffice
+    {
+        private readonly PaymentClientDbContext _db = InMemoryPaymentClient.CreateDb();
+        private readonly Guid _tenantId = Guid.NewGuid();
+
+        public RecordingPaymentProvider Stripe { get; } =
+            new(new(PaymentProviderCode.Stripe, "Stripe", "Publishable key", "Secret key", true, false));
+
+        public static async Task<DirectOffice> SeedAsync()
+        {
+            var office = new DirectOffice();
+            var config = TenantPaymentConfig
+                .Create(
+                    office._tenantId,
+                    PaymentProviderCode.Stripe,
+                    TenantPaymentMode.DirectApiKeys,
+                    "pk_test_office",
+                    StatementDescriptor.Create("ACME TAX SVC").Value,
+                    DateTime.UtcNow
+                )
+                .Value;
+            config.UpdateSecrets(
+                EncryptedSecret.Create(new PrefixSecretProtector().Protect("sk_test_office")).Value,
+                null,
+                Guid.Empty,
+                DateTime.UtcNow
+            );
+            config.MarkActive(Guid.Empty, DateTime.UtcNow);
+            office._db.TenantPaymentConfigs.Add(config);
+            await office._db.SaveChangesAsync();
+            return office;
+        }
+
+        /// <summary>Lo publicado más lo que devuelven los handlers de dominio (la señal "pagado").</summary>
+        public Task<IReadOnlyList<object>> EmittedAsync(List<object> published) =>
+            DomainEventReplay.EmittedAsync(published, _db);
+
+        public Task<BuildingBlocks.Results.Result<Guid>> ChargeAsync(string idempotencyKey, List<object> published) =>
+            TestChargeFlow.ChargeAsync(
+                new ChargeTenantPaymentCommand(
+                    _tenantId,
+                    PaymentProviderCode.Stripe,
+                    2500,
+                    "USD",
+                    TaxpayerId: null,
+                    PaymentPurposeKind.InvoicePayment,
+                    PurposeExternalReferenceId: "inv-direct",
+                    PaymentMethodReference: "pm_card_visa",
+                    ReceiptEmail: null,
+                    IdempotencyKey: idempotencyKey,
+                    ActorUserId: Guid.NewGuid()
+                ),
+                new TenantPaymentRepository(_db),
+                new TenantPaymentConfigRepository(_db),
+                new TenantConnectAccountRepository(_db),
+                InMemoryPaymentClient.FakeAdapters(Stripe),
+                new PrefixSecretProtector(),
+                Options.Create(
+                    new PlatformStripeCredentials { PlatformSecretKey = "unused", ConnectWebhookSecret = "unused" }
+                ),
+                new PaymentAuditLogWriter(_db),
+                _db,
+                new NoOpPaymentClientMetrics(),
+                new FixedCorrelationContext(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<TenantPayment>.Instance,
+                CancellationToken.None
+            );
     }
 }
 
@@ -172,7 +294,7 @@ file sealed class FakeTenantPaymentRepository : ITenantPaymentRepository
     public List<TenantPayment> Added { get; } = [];
 
     public Task<TenantPayment?> GetByIdAsync(Guid tenantPaymentId, Guid tenantId, CancellationToken ct = default) =>
-        throw new NotImplementedException();
+        Task.FromResult(Added.SingleOrDefault(p => p.Id == tenantPaymentId && p.TenantId == tenantId));
 
     public Task<TenantPayment?> GetByIdempotencyKeyAsync(
         Guid tenantId,
@@ -184,6 +306,12 @@ file sealed class FakeTenantPaymentRepository : ITenantPaymentRepository
         Guid tenantId,
         PaymentProviderCode code,
         string providerChargeReference,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
+    public Task<TenantPayment?> GetByConnectChargeReferenceAsync(
+        Guid tenantId,
+        string providerChargeReferenceOnConnect,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
@@ -215,6 +343,24 @@ file sealed class FakeTenantPaymentRepository : ITenantPaymentRepository
 
     public Task<IReadOnlySet<PaymentProviderCode>> GetConfiguredProvidersWithPaymentsAsync(
         Guid tenantId,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
+    public Task<bool> AnyInProgressForReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
+    public Task<bool> AnySucceededForReferenceSinceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        DateTime sinceUtc,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
+    public Task<IReadOnlyList<TenantPayment>> GetByIdsAcrossTenantsAsync(
+        IReadOnlyCollection<Guid> tenantPaymentIds,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
@@ -352,6 +498,8 @@ file sealed class FakePaymentClientMetrics : IPaymentClientMetrics
     public void RecordWebhookDuplicate(string provider) { }
 
     public void RecordWebhookSignatureFailed(string provider) { }
+
+    public void RecordWebhookNeedsReview(string provider, string reason) { }
 }
 
 file sealed class NoOpLogger<T> : ILogger<T>

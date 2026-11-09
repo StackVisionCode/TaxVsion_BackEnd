@@ -38,9 +38,7 @@ public static class RestoreTenantAdminHandler
         IUserRepository users,
         IRoleRepository roles,
         ITenantContext tenantContext,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocations,
+        SessionAccessCutoff accessCutoff,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -80,29 +78,9 @@ public static class RestoreTenantAdminHandler
             deniedPermissionIds
         );
 
-        await bus.PublishAsync(
-            new UserRolesChangedIntegrationEvent
-            {
-                TenantId = user.TenantId,
-                UserId = user.Id,
-                PermissionsVersion = user.PermissionsVersion,
-                RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
-                RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
-                PermissionCodes = permissionCodes,
-                ActorType = user.ActorType.ToString(),
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
         user.MarkPermissionsBackfilled(DateTime.UtcNow);
 
-        var revokedSessions = await SessionAccessCutoff.ForUserAsync(
-            user,
-            "actor_type_restored",
-            sessions,
-            denylist,
-            revocations,
-            ct
-        );
+        var revokedSessions = await accessCutoff.ForUserAsync(user, "actor_type_restored", ct);
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -119,6 +97,19 @@ public static class RestoreTenantAdminHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new UserRolesChangedIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                PermissionsVersion = user.PermissionsVersion,
+                RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
+                RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
+                PermissionCodes = permissionCodes,
+                ActorType = user.ActorType.ToString(),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         logger.LogInformation(
             "RestoreTenantAdmin: user {UserId} (tenant {TenantId}) restored as TenantAdmin at version {Version}, owner={IsOwner}.",

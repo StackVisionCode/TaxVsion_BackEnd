@@ -15,7 +15,6 @@ public static class CancelSeatCheckoutHandler
     public static async Task<Result<CancelCheckoutResponse>> Handle(
         CancelSeatCheckoutCommand command,
         ISeatPurchaseIntentRepository intents,
-        IHostedCheckoutCancellationClient cancellation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -45,8 +44,10 @@ public static class CancelSeatCheckoutHandler
         if (cancelled.IsFailure)
             return Result.Failure<CancelCheckoutResponse>(cancelled.Error);
 
-        await CancelOnProviderAsync(intent, cancellation, logger, ct);
         await unitOfWork.SaveChangesAsync(ct);
+
+        if (intent.SaaSPaymentId is { } paymentId)
+            await bus.PublishAsync(new CancelHostedCheckoutCommand(intent.TenantId, paymentId));
 
         await bus.PublishAsync(
             new SeatCheckoutCancelledIntegrationEvent
@@ -82,24 +83,5 @@ public static class CancelSeatCheckoutHandler
             command.TenantId
         );
         return Result.Success(new CancelCheckoutResponse(AlreadyCancelled: false, intent.Id));
-    }
-
-    private static async Task CancelOnProviderAsync(
-        SeatPurchaseIntent intent,
-        IHostedCheckoutCancellationClient cancellation,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        if (intent.SaaSPaymentId is not { } paymentId)
-            return;
-
-        var result = await cancellation.CancelAsync(intent.TenantId, paymentId, ct);
-        if (result.IsFailure)
-            logger.LogWarning(
-                "Provider cancel for seat intent {IntentId} returned failure: {Error}; proceeding — local state is Cancelled.",
-                intent.Id,
-                result.Error.Code
-            );
     }
 }

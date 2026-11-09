@@ -22,8 +22,8 @@ public sealed record FireReminderCommand(Guid TenantId, Guid ReminderId, TimeSpa
 /// <para>
 /// <b>Premisa caída del plan.</b> El plan decía publicar <c>reminder.due.v1</c> «desde el handler de
 /// <c>ReminderFiredDomainEvent</c>», dando por hecho un despachador de domain events que Reminder
-/// nunca tuvo (Auth y Growth sí lo tienen, en su <c>DbContext.SaveChangesAsync</c>). Medido, no
-/// asumido: ningún servicio del monorepo llama <c>UseDurableLocalQueues()</c>, así que esa ruta
+/// nunca tuvo (Auth y Growth sí lo tienen, en su <c>DbContext.SaveChangesAsync</c>). Reminder no adopta
+/// <c>UseTaxVisionDurableLocalQueues()</c> (BB-2, ya en la mayoría de servicios), así que esa ruta
 /// entrega el domain event por una cola <b>en memoria</b> — un reinicio entre el <c>SaveChanges</c>
 /// y el handler dejaría el recordatorio en <c>Fired</c> sin que el aviso saliera nunca, y nada lo
 /// repararía. Publicar el integration event acá lo mete en la <b>misma transacción</b> que el cambio

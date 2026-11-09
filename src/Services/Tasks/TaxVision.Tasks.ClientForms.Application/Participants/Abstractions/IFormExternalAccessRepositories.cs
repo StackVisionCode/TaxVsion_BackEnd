@@ -8,8 +8,7 @@ public interface IFormParticipantRepository
     Task<FormParticipant?> GetUnlinkedByEmailAsync(Guid tenantId, string email, CancellationToken ct = default);
 
     // Todos los participantes del email (vinculados o no): la misma persona puede tener varios.
-    async Task<IReadOnlyList<Guid>> ListIdsByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-        await GetUnlinkedByEmailAsync(tenantId, email, ct) is { } participant ? [participant.Id] : [];
+    Task<IReadOnlyList<Guid>> ListIdsByEmailAsync(Guid tenantId, string email, CancellationToken ct = default);
     void Add(FormParticipant participant);
 
     // Suelta un alta que perdió la carrera contra el índice único, para volver a leer la ganadora.
@@ -19,6 +18,18 @@ public interface IFormParticipantRepository
 public interface IFormIntakeLinkRepository
 {
     Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default);
+
+    /// <summary>
+    /// TSK-6: toma un cupo del día de forma atómica; false si ya no quedan. Corre en la transacción de quien llama:
+    /// si esa transacción se revierte, el cupo vuelve.
+    /// </summary>
+    Task<bool> TryConsumeDailyIntakeAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        int maxPerDay,
+        CancellationToken ct = default
+    );
+
     Task<FormIntakeLink?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default);
     Task<IReadOnlyList<FormIntakeLink>> ListAsync(Guid tenantId, CancellationToken ct = default);
 
@@ -27,13 +38,13 @@ public interface IFormIntakeLinkRepository
         Guid tenantId,
         Guid responsibleUserId,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<FormIntakeLink>>([]);
+    );
 
     Task<int> CountNotRevokedByResponsibleAsync(
         Guid tenantId,
         Guid responsibleUserId,
         CancellationToken ct = default
-    ) => Task.FromResult(0);
+    );
     void Add(FormIntakeLink link);
 }
 

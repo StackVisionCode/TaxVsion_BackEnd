@@ -74,12 +74,12 @@ public sealed class GenericHttpSmsProvider(
 
         try
         {
-            var breaker = resilience.GetOrCreate(nameof(GenericHttpSmsProvider));
+            var breaker = resilience.GetOrCreateWithoutRetry(nameof(GenericHttpSmsProvider));
             using var response = await breaker.ExecuteAsync(
                 async token =>
                 {
                     using var httpRequest = BuildHttpRequest();
-                    return await http.SendAsync(httpRequest, token);
+                    return await SmsSendHttp.SendAsync(http, httpRequest, token);
                 },
                 ct
             );
@@ -98,6 +98,23 @@ public sealed class GenericHttpSmsProvider(
             var providerMessageId =
                 ExtractString(payload, config.ResponseMap.ProviderMessageIdPath) ?? Guid.NewGuid().ToString("N");
             return Result.Success(new SmsSendResult(true, providerMessageId, null, null));
+        }
+        catch (Exception ex) when (SmsSendHttp.IsOutcomeUnknown(ex))
+        {
+            // La petición pudo llegar al proveedor: resultado desconocido, sin failover.
+            logger.LogWarning(
+                ex,
+                "Generic SMS provider timed out or lost the connection for {To}; outcome unknown.",
+                request.To
+            );
+            return Result.Success(
+                new SmsSendResult(
+                    false,
+                    null,
+                    SmsSendFailure.OutcomeUnknown,
+                    "Provider timeout or connection lost; outcome unknown."
+                )
+            );
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
         {
@@ -160,6 +177,12 @@ public sealed class GenericHttpSmsProvider(
         return Result.Success(new SmsDeliveryUpdate(providerMessageId!, eventType, status, errorCode, null));
     }
 
+    // No soporta pull: los estados llegan solo por webhook.
+    public Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) => Task.FromResult(Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]));
+
     public Result<SmsInboundMessage> ParseInbound(string rawPayload)
     {
         var w = Config.Webhook;
@@ -168,13 +191,7 @@ public sealed class GenericHttpSmsProvider(
         if (string.IsNullOrWhiteSpace(from))
             return Result.Failure<SmsInboundMessage>(new Error("sms.webhook.malformed", "Malformed inbound payload."));
 
-        var keyword = text.Trim().ToUpperInvariant() switch
-        {
-            "STOP" => SmsInboundKeyword.Stop,
-            "START" => SmsInboundKeyword.Start,
-            "HELP" => SmsInboundKeyword.Help,
-            _ => SmsInboundKeyword.Unknown,
-        };
+        var keyword = SmsInboundKeywords.Parse(text);
         var providerMessageId = ExtractString(rawPayload, w.ProviderMessageIdPath) ?? Guid.NewGuid().ToString("N");
         return Result.Success(
             new SmsInboundMessage(from!, keyword, text.Trim(), "inbound", providerMessageId, null, null)

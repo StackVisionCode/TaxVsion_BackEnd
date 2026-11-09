@@ -81,4 +81,21 @@ public sealed class WebhookEventTests
         Assert.Equal("WebhookEvent.InvalidTransition", result.Error.Code);
         Assert.Equal(WebhookEventStatus.Applied, evt.Status);
     }
+
+    [Fact]
+    public void MarkNeedsReview_FromProcessing_IsTerminal()
+    {
+        var paymentId = Guid.NewGuid();
+        var evt = Received();
+        evt.MarkProcessing(DateTime.UtcNow);
+
+        var result = evt.MarkNeedsReview(paymentId, "TenantPayment.InvalidTransition", DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(WebhookEventStatus.NeedsReview, evt.Status);
+        Assert.True(evt.IsTerminal);
+        Assert.Equal("TenantPayment.InvalidTransition", evt.ProcessingError);
+        Assert.Equal(paymentId, evt.RelatedTenantPaymentId);
+        Assert.True(evt.MarkReprocessing(DateTime.UtcNow).IsFailure);
+    }
 }

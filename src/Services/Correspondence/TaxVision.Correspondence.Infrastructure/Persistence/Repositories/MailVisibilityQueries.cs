@@ -36,6 +36,13 @@ internal static class MailVisibilityQueries
         return query;
     }
 
+    /// <summary>
+    /// Fuera del Inbox y del contador: el correo de quien no es cliente (boletines, spam) solo se ve en "Not a client".
+    /// Un hilo sin cliente que no tiene entrantes es un aviso de no entrega y sí exige atención.
+    /// </summary>
+    public static IQueryable<EmailThread> WithoutNotAClientMail(IQueryable<EmailThread> threads) =>
+        threads.Where(x => x.CustomerId != null || x.MessageCount == 0);
+
     public static IQueryable<EmailThread> WithMailboxGate(
         CorrespondenceDbContext db,
         IQueryable<EmailThread> query,
@@ -53,10 +60,13 @@ internal static class MailVisibilityQueries
 
         // Gate de buzón de oficina: el hilo debe tener ≥1 mensaje (entrante vivo o enviado) de un
         // buzón visible. Los hilos solo-oficina desaparecen; un hilo mixto se muestra entero.
+        // AccountId cubre los correos anteriores a COR-03 mientras no corra la reposición de copias.
         var ids = AsArray(visibleAccountIds);
         return query.Where(x =>
             db.IncomingEmails.Any(ie =>
-                ie.EmailThreadId == x.Id && ie.DeletedAtUtc == null && ids.Contains(ie.AccountId)
+                ie.EmailThreadId == x.Id
+                && ie.DeletedAtUtc == null
+                && (ids.Contains(ie.AccountId) || ie.Mailboxes.Any(m => ids.Contains(m.AccountId)))
             )
             || db.Drafts.Any(d =>
                 d.EmailThreadId == x.Id
@@ -115,7 +125,10 @@ internal static class MailVisibilityQueries
         return drafts.Where(d => ids.Contains(d.AccountId));
     }
 
-    /// <summary>Entrantes de clientes visibles (cliente asignado) desde buzones visibles — la papelera los lista así.</summary>
+    /// <summary>
+    /// Entrantes de clientes visibles (cliente asignado) desde buzones visibles — la papelera los lista así. El de
+    /// quien no es cliente lo decide solo el buzón (D-2).
+    /// </summary>
     public static IQueryable<IncomingEmail> IncomingOfVisibleCustomers(
         CorrespondenceDbContext db,
         IQueryable<IncomingEmail> emails,
@@ -126,13 +139,14 @@ internal static class MailVisibilityQueries
     {
         if (restrictToUserId is { } user)
             emails = emails.Where(x =>
-                db.Set<CustomerAssignmentProjection>()
+                x.CustomerId == null
+                || db.Set<CustomerAssignmentProjection>()
                     .Any(a => a.TenantId == tenantId && a.CustomerId == x.CustomerId && a.UserId == user)
             );
         if (visibleAccountIds is not null)
         {
             var ids = AsArray(visibleAccountIds);
-            emails = emails.Where(x => ids.Contains(x.AccountId));
+            emails = emails.Where(x => ids.Contains(x.AccountId) || x.Mailboxes.Any(m => ids.Contains(m.AccountId)));
         }
         return emails;
     }

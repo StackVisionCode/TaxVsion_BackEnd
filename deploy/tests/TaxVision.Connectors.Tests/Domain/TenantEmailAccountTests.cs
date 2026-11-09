@@ -172,16 +172,48 @@ public class TenantEmailAccountTests
         account.MarkConnected(Now);
         account.Activate(Now);
 
-        account.MarkError(Now);
+        account.MarkError(AccountErrors.RefreshRejected, Now);
 
         Assert.Equal(TenantEmailAccountStatus.Error, account.Status);
+    }
+
+    [Fact]
+    public void MarkError_AlreadyErrorOrDisconnected_FailsAndRaisesNothing()
+    {
+        var errored = CreateValidAccount();
+        errored.MarkConnected(Now);
+        errored.MarkError(AccountErrors.RefreshRejected, Now);
+        var disconnected = CreateValidAccount();
+        disconnected.MarkConnected(Now);
+        disconnected.Disconnect(Now);
+
+        Assert.True(errored.MarkError(AccountErrors.RefreshRejected, Now).IsFailure);
+        Assert.True(disconnected.MarkError(AccountErrors.RefreshRejected, Now).IsFailure);
+
+        Assert.Single(errored.DomainEvents);
+        Assert.Empty(disconnected.DomainEvents);
+    }
+
+    [Fact]
+    public void MarkError_RaisesTheSnapshotOfTheTransition()
+    {
+        var account = CreateValidAccount();
+        account.MarkConnected(Now);
+
+        account.MarkError(AccountErrors.RefreshRejected, Now);
+
+        var raised = Assert.IsType<TenantEmailAccountErroredDomainEvent>(Assert.Single(account.DomainEvents));
+        Assert.Equal(account.TenantId, raised.TenantId);
+        Assert.Equal(account.Id, raised.AccountId);
+        Assert.Equal(AccountErrors.RefreshRejected, raised.Cause);
+        Assert.Equal(Now, raised.OccurredAtUtc);
     }
 
     [Fact]
     public void MarkConnected_FromError_Succeeds()
     {
         var account = CreateValidAccount();
-        account.MarkError(Now);
+        account.MarkError(AccountErrors.RefreshRejected, Now);
 
         var result = account.MarkConnected(Now);
 

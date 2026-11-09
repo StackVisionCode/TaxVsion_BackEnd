@@ -11,41 +11,33 @@ namespace TaxVision.Subscription.Application.AddOns;
 /// (<c>POST /addons</c>) y checkout hosteado (<c>POST /addons/checkout</c>) — para que no se pueda esquivar un
 /// guard eligiendo el otro camino.
 /// </summary>
-public static class AddOnPurchaseEligibility
+public sealed class AddOnPurchaseEligibility(
+    ISubscriptionRepository subscriptions,
+    IPlanRepository plans,
+    IModuleRepository modules,
+    IAddOnDefinitionRepository addOnDefinitions,
+    ISubscriptionTenantSettingsRepository settingsRepository,
+    ITenantAddOnRepository tenantAddOns
+)
 {
-    private static readonly SubscriptionStatus[] PurchasableStatuses =
-    [
-        SubscriptionStatus.Trialing,
-        SubscriptionStatus.Active,
-    ];
-
-    public static async Task<
-        Result<(TenantSubscription Subscription, AddOnDefinition Definition)>
-    > EnsurePurchasableAsync(
+    public async Task<Result<(TenantSubscription Subscription, AddOnDefinition Definition)>> EnsurePurchasableAsync(
         Guid tenantId,
         string? addOnCode,
         int quantity,
-        ISubscriptionRepository subscriptions,
-        IPlanRepository plans,
-        IModuleRepository modules,
-        IAddOnDefinitionRepository addOnDefinitions,
-        ISubscriptionTenantSettingsRepository settingsRepository,
-        ITenantAddOnRepository tenantAddOns,
         CancellationToken ct
     )
     {
-        if (quantity < 1)
-            return Fail("AddOn.InvalidQuantity", "Quantity must be at least 1.");
+        var validQuantity = AddOnPurchasePolicy.EnsureValidQuantity(quantity);
+        if (validQuantity.IsFailure)
+            return Fail(validQuantity.Error);
 
         var subscription = await subscriptions.GetByTenantIdAsync(tenantId, ct);
         if (subscription is null)
             return Fail("Subscription.NotFound", "Subscription does not exist.");
 
-        if (Array.IndexOf(PurchasableStatuses, subscription.Status) < 0)
-            return Fail(
-                "Subscription.CannotPurchaseAddOns",
-                $"Cannot purchase add-ons while subscription is {subscription.Status}."
-            );
+        var allowed = AddOnPurchasePolicy.EnsureSubscriptionAllows(subscription);
+        if (allowed.IsFailure)
+            return Fail(allowed.Error);
 
         var settings = await settingsRepository.GetByTenantIdAsync(tenantId, ct);
         if (settings is not null && !settings.AllowAddons)
@@ -110,7 +102,7 @@ public static class AddOnPurchaseEligibility
             }
         }
 
-        var enabledModules = await EnabledModulesAsync(subscription, plans, ct);
+        var enabledModules = await EnabledModulesAsync(subscription, ct);
         if (AddOnEligibilityRules.IsIncludedInPlan(definition, enabledModules))
             return Fail("AddOn.AlreadyIncludedInPlan", "Your plan already includes this add-on.");
 
@@ -126,11 +118,7 @@ public static class AddOnPurchaseEligibility
     /// mirando la versión vieja y no veía el módulo, así que el add-on aparecía comprable. El tenant
     /// habría pagado por algo que ya estaba usando.
     /// </summary>
-    private static async Task<IReadOnlyList<string>> EnabledModulesAsync(
-        TenantSubscription subscription,
-        IPlanRepository plans,
-        CancellationToken ct
-    )
+    private async Task<IReadOnlyList<string>> EnabledModulesAsync(TenantSubscription subscription, CancellationToken ct)
     {
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
         var version =
@@ -140,5 +128,8 @@ public static class AddOnPurchaseEligibility
     }
 
     private static Result<(TenantSubscription, AddOnDefinition)> Fail(string code, string message) =>
-        Result.Failure<(TenantSubscription, AddOnDefinition)>(new Error(code, message));
+        Fail(new Error(code, message));
+
+    private static Result<(TenantSubscription, AddOnDefinition)> Fail(Error error) =>
+        Result.Failure<(TenantSubscription, AddOnDefinition)>(error);
 }

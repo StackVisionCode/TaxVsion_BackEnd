@@ -7,11 +7,14 @@ using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Audit;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Messages;
 
+/// <summary>Sin transacción: el proveedor contesta fuera de ella; la auditoría se guarda sola y el aviso sale después.</summary>
 public static class GetMessageBodyHandler
 {
+    [NonTransactional]
     public static async Task<Result<MessageBodyDto>> Handle(
         GetMessageBodyQuery query,
         ITenantEmailAccountRepository accountRepository,

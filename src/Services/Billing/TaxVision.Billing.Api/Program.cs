@@ -158,6 +158,11 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaidIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
+    // Cobro que no se pudo aplicar (factura anulada, desconocida, otra moneda) → UnappliedPayment.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaymentRejectedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
     // Envío de la factura al cliente → Notification la renderiza con la plantilla de Scribe y la manda.
     options
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent>()
@@ -165,6 +170,18 @@ builder.Host.UseWolverine(options =>
 
     options
         .ListenToRabbitQueue("billing-events", queue => queue.BindExchange("taxvision-events", string.Empty))
+        .UseDurableInbox();
+
+    // Asegurar el enlace de cobro (emisión y pagos parciales): cola local durable, un reinicio no lo pierde.
+    options
+        .PublishMessage<TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink.EnsureInvoicePaymentLinkCommand>()
+        .ToLocalQueue("billing-payment-link")
+        .UseDurableInbox();
+
+    // Reconciliar el stock de la factura en Inventory después del commit (BIL-3): cola local durable.
+    options
+        .PublishMessage<TaxVision.Billing.Application.Invoices.SyncInvoiceStock.SyncInvoiceStockCommand>()
+        .ToLocalQueue("billing-stock-sync")
         .UseDurableInbox();
 
     // Restaura el TenantContext dentro del scope que Wolverine crea para cada handler: desde el
@@ -175,7 +192,33 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(LocalCommandTenantMiddleware));
 
+    // BIL-3b — enlace de cobro y sync de stock: reintentos largos y guardados (5 s … 1 h) antes de la cola
+    // de errores. Es por cadena, así que los demás mensajes siguen con la política estándar.
+    options.Policies.Add(TaxVision.Billing.Infrastructure.Messaging.LongRetryHandlerPolicy.ForSyncCommands());
+
+    // BIL-11 — la secuencia de onboarding es una sola fila: más intentos y espera al azar, solo para ese mensaje.
+    options.Policies.Add(
+        new TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryPolicy(
+            builder
+                .Configuration.GetSection(
+                    TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions.SectionName
+                )
+                .Get<TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions>()
+                ?? new TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions()
+        )
+    );
+
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // BIL-BB1 — InvoicePaid nace del evento de dominio de la factura: se guarda con el commit del handler y su
+    // handler devuelve el aviso y el PDF. En serie: los avisos salen en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // BIL-BB2 — toda cola local durable: GenerateInvoicePdfCommand y los demás comandos posteriores a la
+    // emisión quedan en wolverine_incoming_envelopes con el commit y sobreviven a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 });
 
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);

@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Directory.Abstractions;
 
 namespace TaxVision.Notification.Infrastructure.Directory;
@@ -31,6 +32,7 @@ public sealed class NotificationCustomerClientOptions
 internal sealed class NotificationCustomerClient(
     HttpClient httpClient,
     IServiceTokenAcquirer tokenAcquirer,
+    IOptions<NotificationCustomerClientOptions> options,
     ILogger<NotificationCustomerClient> logger
 ) : INotificationCustomerClient
 {
@@ -100,6 +102,67 @@ internal sealed class NotificationCustomerClient(
             return null;
         }
     }
+
+    public async Task<RemoteCustomerPage?> ListTenantCustomersAsync(
+        Guid tenantId,
+        int page,
+        CancellationToken ct = default
+    )
+    {
+        var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
+        if (string.IsNullOrEmpty(token))
+        {
+            logger.LogWarning("Customer listing for tenant {TenantId} aborted: no service token.", tenantId);
+            return null;
+        }
+
+        try
+        {
+            var size = Math.Max(1, options.Value.ReconciliationPageSize);
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"internal/customers/list?status=All&page={page}&size={size}"
+            );
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var response = await httpClient.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "Customer listing for tenant {TenantId} failed ({Status}) on page {Page}.",
+                    tenantId,
+                    (int)response.StatusCode,
+                    page
+                );
+                return null;
+            }
+
+            var dto = await response.Content.ReadFromJsonAsync<TenantPageDto>(Json, ct);
+            if (dto is null)
+                return null;
+
+            var items = dto
+                .Items.Select(x => new RemoteCustomerContact(
+                    tenantId,
+                    x.Id,
+                    x.DisplayName,
+                    x.PrimaryEmail,
+                    string.Equals(x.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                ))
+                .ToList();
+
+            return new RemoteCustomerPage(items, dto.Page * dto.Size < dto.TotalCount);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Could not reach Customer for tenant {TenantId} on page {Page}.", tenantId, page);
+            return null;
+        }
+    }
+
+    private sealed record TenantPageDto(IReadOnlyList<TenantItemDto> Items, int Page, int Size, int TotalCount);
+
+    private sealed record TenantItemDto(Guid Id, string Status, string DisplayName, string PrimaryEmail);
 
     private sealed record PageDto(IReadOnlyList<ItemDto> Items, int Page, int Size, int TotalCount);
 

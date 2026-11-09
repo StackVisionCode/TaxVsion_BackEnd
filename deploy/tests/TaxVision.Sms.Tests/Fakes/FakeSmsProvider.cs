@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using BuildingBlocks.Results;
 using TaxVision.Sms.Application.Providers;
 
@@ -16,6 +17,9 @@ internal sealed class FakeSmsProvider : ISmsProvider
     public Func<SmsSendRequest, SmsSendResult> SendImpl { get; set; } =
         _ => new SmsSendResult(true, "prov-" + Guid.NewGuid().ToString("N"), null, null);
 
+    /// <summary>Con valor, el adapter devuelve un Result fallido en lugar de <see cref="SendImpl"/>.</summary>
+    public Error? SendFailure { get; set; }
+
     public bool SignatureValid { get; set; } = true;
     public SmsDeliveryUpdate? DeliveryUpdate { get; set; }
     public SmsInboundMessage? InboundMessage { get; set; }
@@ -23,7 +27,9 @@ internal sealed class FakeSmsProvider : ISmsProvider
     public Task<Result<SmsSendResult>> SendAsync(SmsSendRequest request, CancellationToken ct = default)
     {
         SendAsyncCallCount++;
-        return Task.FromResult(Result.Success(SendImpl(request)));
+        return Task.FromResult(
+            SendFailure is null ? Result.Success(SendImpl(request)) : Result.Failure<SmsSendResult>(SendFailure)
+        );
     }
 
     public Task<Result<IReadOnlyList<SmsSendResult>>> SendBatchAsync(
@@ -42,6 +48,19 @@ internal sealed class FakeSmsProvider : ISmsProvider
         DeliveryUpdate is null
             ? Result.Failure<SmsDeliveryUpdate>(new Error("fake.noDlr", "No DLR configured."))
             : Result.Success(DeliveryUpdate);
+
+    /// <summary>Estados que devuelve el pull de estado (conciliación).</summary>
+    public List<SmsDeliveryUpdate> Reports { get; } = [];
+
+    public Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([
+                .. Reports.Where(r => providerMessageIds.Contains(r.ProviderMessageId)),
+            ])
+        );
 
     public Result<SmsInboundMessage> ParseInbound(string rawPayload) =>
         InboundMessage is null
@@ -66,4 +85,10 @@ internal sealed class FakeSmsProvider : ISmsProvider
 internal sealed class FakeSmsAdapterFactory(ISmsProvider provider) : ISmsAdapterFactory
 {
     public ISmsProvider Resolve(string code) => provider;
+
+    public bool TryResolve(string code, [NotNullWhen(true)] out ISmsProvider? resolved)
+    {
+        resolved = provider;
+        return true;
+    }
 }

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// 30 días. Notification (u otro consumer futuro) lo consume para avisar al tenant antes de
 /// que una renovación automática falle por tarjeta vencida.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSPaymentMethodExpiringSoonIntegrationEvent")]
 public sealed record SaaSPaymentMethodExpiringSoonIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantProviderCustomerId { get; init; }

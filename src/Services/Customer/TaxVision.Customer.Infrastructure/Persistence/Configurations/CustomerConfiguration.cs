@@ -15,6 +15,7 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
     {
         b.ToTable("Customers");
         b.HasKey(c => c.Id);
+        b.Ignore(c => c.DomainEvents);
         b.Property(c => c.TenantId).IsRequired();
         b.Property(c => c.Kind).HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(c => c.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
@@ -38,6 +39,7 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.Property(c => c.LastModifiedByUserId);
         b.Property(c => c.ArchivedAtUtc);
         b.Property(c => c.ArchivedByUserId);
+        b.Property(c => c.RowVersion).IsRowVersion();
 
         // Origen técnico del alta: columnas de la raíz para que el índice único lleve TenantId.
         b.Ignore(c => c.Origin);
@@ -105,8 +107,9 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
             c => c.ContactPolicy,
             cp =>
             {
-                cp.Property(x => x.EmailEnabled).HasColumnName("ContactPolicy_EmailEnabled").HasDefaultValue(true);
-                cp.Property(x => x.SmsEnabled).HasColumnName("ContactPolicy_SmsEnabled").HasDefaultValue(true);
+                // Sin HasDefaultValue: EF omitía el valor igual al default y el true no se guardaba.
+                cp.Property(x => x.EmailEnabled).HasColumnName("ContactPolicy_EmailEnabled");
+                cp.Property(x => x.SmsEnabled).HasColumnName("ContactPolicy_SmsEnabled");
             }
         );
         b.Navigation(c => c.ContactPolicy).IsRequired();

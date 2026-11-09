@@ -62,13 +62,14 @@ public static class RecomputeTenantSeatSlotsHandler
         var primaryAdmin = transitions.Length == 0 ? null : await users.GetPrimaryAdminAsync(command.TenantId, ct);
         var tenant = transitions.Length == 0 ? null : await tenants.GetByIdAsync(command.TenantId, ct);
 
+        var notices = new List<object>();
         foreach (var row in transitions)
         {
             previousByUser.TryGetValue(row.UserId, out var previous);
             staffById.TryGetValue(row.UserId, out var user);
             if (row.IsGated && previous?.IsGated != true)
             {
-                await bus.PublishAsync(
+                notices.Add(
                     new UserSlotGatedIntegrationEvent
                     {
                         TenantId = row.TenantId,
@@ -86,7 +87,7 @@ public static class RecomputeTenantSeatSlotsHandler
             }
             else if (!row.IsGated && previous?.IsGated == true)
             {
-                await bus.PublishAsync(
+                notices.Add(
                     new UserSlotUnlockedIntegrationEvent
                     {
                         TenantId = row.TenantId,
@@ -103,6 +104,9 @@ public static class RecomputeTenantSeatSlotsHandler
         }
 
         await unitOfWork.SaveChangesAsync(ct);
+        foreach (var notice in notices)
+            await bus.PublishAsync(notice);
+
         SeatSlotProjectionMetrics.Record(
             command.TenantId,
             calculated.Count,

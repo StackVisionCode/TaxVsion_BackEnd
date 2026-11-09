@@ -1,10 +1,7 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 using TaxVision.Tenant.Domain.Enums;
-using Wolverine;
 
 namespace TaxVision.Tenant.Application.Tenants.Commands;
 
@@ -16,8 +13,6 @@ public static class ChangeTenantStatusHandler
         ChangeTenantStatusCommand command,
         ITenantRepository tenants,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -30,16 +25,6 @@ public static class ChangeTenantStatusHandler
             return change;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(
-            new TenantStatusChangedIntegrationEvent
-            {
-                ChangedTenantId = tenant.Id,
-                TenantId = tenant.Id,
-                Status = tenant.Status.ToString(),
-                IsActive = tenant.Status == EnumTenantStatus.TenantStatus.Active,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
 
         return Result.Success();
     }

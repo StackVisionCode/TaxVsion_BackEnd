@@ -184,7 +184,10 @@ public static class TenantBrandingProjectionConsumer
                 return;
 
             var existing = await repository.GetLogoAsync(evt.TenantId, surface, ct);
-            if (existing is null || !existing.RemoveLogo(evt.RemovedAtUtc))
+            if (existing is null)
+                // Lápida: una fila sin logo con la fecha del retiro frena al Updated más viejo.
+                await repository.AddLogoAsync(TenantLogoRef.Create(evt.TenantId, surface, evt.RemovedAtUtc), ct);
+            else if (!existing.RemoveLogo(evt.RemovedAtUtc))
                 return;
 
             await unitOfWork.SaveChangesAsync(ct);

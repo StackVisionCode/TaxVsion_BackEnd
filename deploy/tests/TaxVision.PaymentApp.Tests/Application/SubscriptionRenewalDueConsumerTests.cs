@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Billing.Abstractions;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ExecuteSaaSPaymentCharge;
 using TaxVision.PaymentApp.Application.SaaSPayments.IntegrationEvents;
 using TaxVision.PaymentApp.Domain.Billing;
 using TaxVision.PaymentApp.Domain.ProviderCustomers;
@@ -15,7 +16,7 @@ namespace TaxVision.PaymentApp.Tests.Application;
 
 /// <summary>Rama off-session vs flow manual segun la proyeccion local de
 /// TenantBillingPreference y los metodos guardados en TenantProviderCustomer.</summary>
-public sealed class SubscriptionRenewalDueConsumerTests
+public sealed partial class SubscriptionRenewalDueConsumerTests
 {
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _subscriptionId = Guid.NewGuid();
@@ -46,10 +47,50 @@ public sealed class SubscriptionRenewalDueConsumerTests
             CancellationToken.None
         );
 
+        await TestChargeExecution.DrainAsync(bus, payments, new FakeFactory(charger));
+
         Assert.True(charger.Called);
         Assert.NotNull(payments.Added);
         Assert.Equal(PaymentStatus.Succeeded, payments.Added!.Status);
-        Assert.Contains(bus.Published, m => m is SubscriptionRenewalPaymentSucceededIntegrationEvent);
+        // PAY-BB1: un solo aviso de resultado; por el bus solo sale el correo del cobro recurrente.
+        Assert.DoesNotContain(bus.Published, m => m is BuildingBlocks.Domain.IDomainEvent);
+        Assert.DoesNotContain(bus.Published, m => m is SubscriptionRenewalPaymentSucceededIntegrationEvent);
+        var emitted = await SaaSPaymentEventReplay.EmittedAsync(bus.Published, payments.Added, customers: customers);
+        Assert.Single(emitted.OfType<SubscriptionRenewalPaymentSucceededIntegrationEvent>());
+        Assert.Single(emitted.OfType<SaaSPaymentSucceededIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task OffSession_persists_pending_payment_and_cascades_charge_without_calling_provider()
+    {
+        var charger = new FakeOffSessionCharger(
+            new OffSessionChargeOutcome(OffSessionChargeStatus.Succeeded, "pi_test_1", null, null)
+        );
+        var payments = new FakeSaaSPaymentRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new CapturingMessageBus();
+
+        await SubscriptionRenewalDueConsumer.Handle(
+            BuildEvent(),
+            bus,
+            new FakeBillingPreferences(AutomaticWithMandate()),
+            new FakeProviderCustomers(WithDefaultMethod()),
+            new FakeFactory(charger),
+            payments,
+            TestPlatform.Settings,
+            new FakePaymentAppMetrics(),
+            unitOfWork,
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.False(charger.Called);
+        Assert.Equal(PaymentStatus.Pending, payments.Added!.Status);
+        var command = Assert.Single(bus.Published.OfType<ExecuteSaaSPaymentChargeCommand>());
+        Assert.Equal(payments.Added.Id, command.SaaSPaymentId);
+        Assert.Equal(SaaSPaymentChargeStrategy.OffSession, command.Strategy);
+        Assert.Equal(1, unitOfWork.SaveCalls);
     }
 
     [Fact]
@@ -194,10 +235,13 @@ public sealed class SubscriptionRenewalDueConsumerTests
             CancellationToken.None
         );
 
+        await TestChargeExecution.DrainAsync(bus, payments, new FakeFactory(charger));
+
         Assert.True(charger.Called);
         Assert.NotNull(payments.Added);
         Assert.Equal(PaymentStatus.Failed, payments.Added!.Status);
-        Assert.Contains(bus.Published, m => m is SubscriptionRenewalPaymentFailedIntegrationEvent);
+        var emitted = await SaaSPaymentEventReplay.EmittedAsync(bus.Published, payments.Added, customers: customers);
+        Assert.Single(emitted.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
     }
 
     [Fact]
@@ -231,10 +275,13 @@ public sealed class SubscriptionRenewalDueConsumerTests
             CancellationToken.None
         );
 
+        await TestChargeExecution.DrainAsync(bus, payments, new FakeFactory(charger));
+
         Assert.True(charger.Called);
         Assert.NotNull(payments.Added);
         Assert.Equal(PaymentStatus.Failed, payments.Added!.Status);
-        var failed = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
+        var emitted = await SaaSPaymentEventReplay.EmittedAsync(bus.Published, payments.Added, customers: customers);
+        var failed = Assert.Single(emitted.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
         Assert.True(failed.WillRetry);
         Assert.NotNull(failed.NextRetryAtUtc);
     }
@@ -392,8 +439,15 @@ public sealed class SubscriptionRenewalDueConsumerTests
     {
         public bool ChargeInvoked { get; private set; }
 
-        public ValueTask PublishAsync<T>(T message, Wolverine.DeliveryOptions? options = null) =>
-            ValueTask.CompletedTask;
+        public object? Invoked { get; private set; }
+
+        public List<object> Published { get; } = [];
+
+        public ValueTask PublishAsync<T>(T message, Wolverine.DeliveryOptions? options = null)
+        {
+            Published.Add(message!);
+            return ValueTask.CompletedTask;
+        }
 
         public Task<T> InvokeAsync<T>(
             object message,
@@ -402,6 +456,7 @@ public sealed class SubscriptionRenewalDueConsumerTests
         )
         {
             ChargeInvoked = true;
+            Invoked = message;
             // El consumer legacy espera Result<Guid> — simular éxito.
             if (typeof(T) == typeof(BuildingBlocks.Results.Result<Guid>))
                 return Task.FromResult((T)(object)BuildingBlocks.Results.Result.Success(Guid.NewGuid()));

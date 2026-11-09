@@ -36,7 +36,7 @@ public sealed class NotificationDispatcherInAppTests
 
         await dispatcher.RecordInAppAsync(
             TenantId,
-            $"user:{RecipientUserId:N}",
+            NotificationRecipient.ForUser(RecipientUserId),
             "Overdue: File extension",
             NotificationCategory.Collaboration,
             "task.overdue",
@@ -87,7 +87,7 @@ public sealed class NotificationDispatcherInAppTests
 
         await dispatcher.RecordInAppAsync(
             TenantId,
-            $"user:{RecipientUserId:N}",
+            NotificationRecipient.ForUser(RecipientUserId),
             "Algo",
             NotificationCategory.Collaboration,
             "task.overdue",
@@ -110,7 +110,7 @@ public sealed class NotificationDispatcherInAppTests
 
         await dispatcher.RecordInAppAsync(
             TenantId,
-            $"user:{RecipientUserId:N}",
+            NotificationRecipient.ForUser(RecipientUserId),
             "File quarantined",
             NotificationCategory.StorageAndQuota,
             "cloudstorage.file.infected",
@@ -142,7 +142,7 @@ public sealed class NotificationDispatcherInAppTests
 
         await dispatcher.RecordInAppAsync(
             TenantId,
-            $"user:{RecipientUserId:N}",
+            NotificationRecipient.ForUser(RecipientUserId),
             "Algo",
             NotificationCategory.Collaboration,
             "task.overdue",
@@ -163,27 +163,136 @@ public sealed class NotificationDispatcherInAppTests
         Assert.Empty(logs.Logs);
     }
 
+    [Fact]
+    public async Task RecordInAppAsync_kind_fuera_del_catalogo_guarda_el_log_y_no_publica()
+    {
+        var logs = new RecordingNotificationLogRepository();
+        var publisher = new CapturingIntegrationEventPublisher();
+        var dispatcher = BuildDispatcher(logs, publisher, new NoOpUnitOfWork());
+
+        await dispatcher.RecordInAppAsync(
+            TenantId,
+            NotificationRecipient.ForUser(RecipientUserId),
+            "Algo",
+            NotificationCategory.Collaboration,
+            "task.overdue",
+            Guid.NewGuid(),
+            "corr-123",
+            recipientUserId: RecipientUserId,
+            inApp: new InAppNotificationRequest(
+                "kind.no.existe",
+                RecipientUserId,
+                Guid.NewGuid(),
+                "x.v1",
+                DateTime.UtcNow,
+                "Algo"
+            )
+        );
+
+        Assert.Empty(publisher.Published);
+        Assert.Single(logs.Logs);
+    }
+
+    [Fact]
+    public async Task RecordInAppAsync_recorta_a_los_limites_del_consumer_node()
+    {
+        var publisher = new CapturingIntegrationEventPublisher();
+        var dispatcher = BuildDispatcher(new RecordingNotificationLogRepository(), publisher, new NoOpUnitOfWork());
+
+        await dispatcher.RecordInAppAsync(
+            TenantId,
+            NotificationRecipient.ForUser(RecipientUserId),
+            "Algo",
+            NotificationCategory.Collaboration,
+            "task.overdue",
+            Guid.NewGuid(),
+            new string('c', 60),
+            recipientUserId: RecipientUserId,
+            inApp: new InAppNotificationRequest(
+                NotificationKinds.TasksTaskOverdue,
+                RecipientUserId,
+                Guid.NewGuid(),
+                new string('s', 200),
+                DateTime.UtcNow,
+                new string('t', 300),
+                FallbackBody: $"  {new string('b', 1200)}  ",
+                ResourceId: new string('r', 200),
+                GroupKey: new string('g', 300)
+            )
+        );
+
+        var evt = Assert.IsType<InAppNotificationRequestedIntegrationEvent>(Assert.Single(publisher.Published));
+        Assert.Equal(60, evt.CorrelationId.Length);
+        Assert.Equal(128, evt.SourceEventType.Length);
+        Assert.Equal(200, evt.FallbackTitle.Length);
+        Assert.Equal(new string('b', 1000), evt.FallbackBody);
+        Assert.Equal(128, evt.ResourceId!.Length);
+        Assert.Equal(256, evt.GroupKey!.Length);
+    }
+
+    [Fact]
+    public async Task RecordInAppAsync_cuerpo_en_blanco_viaja_nulo()
+    {
+        var publisher = new CapturingIntegrationEventPublisher();
+        var dispatcher = BuildDispatcher(new RecordingNotificationLogRepository(), publisher, new NoOpUnitOfWork());
+
+        await dispatcher.RecordInAppAsync(
+            TenantId,
+            NotificationRecipient.ForUser(RecipientUserId),
+            "Algo",
+            NotificationCategory.Collaboration,
+            "task.overdue",
+            Guid.NewGuid(),
+            null,
+            recipientUserId: RecipientUserId,
+            inApp: new InAppNotificationRequest(
+                NotificationKinds.TasksTaskOverdue,
+                RecipientUserId,
+                Guid.NewGuid(),
+                "tasks.task_overdue.v1",
+                DateTime.UtcNow,
+                "Algo",
+                FallbackBody: "   "
+            )
+        );
+
+        var evt = Assert.IsType<InAppNotificationRequestedIntegrationEvent>(Assert.Single(publisher.Published));
+        Assert.Null(evt.FallbackBody);
+        Assert.Equal(string.Empty, evt.CorrelationId);
+    }
+
     private static NotificationDispatcher BuildDispatcher(
         INotificationLogRepository logs,
         IIntegrationEventPublisher publisher,
         IUnitOfWork uow,
         IUserNotificationPreferenceRepository? preferences = null
     ) =>
-        new(
+        TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logs,
-            preferences ?? AlwaysEnabledPreferences.Instance,
-            new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                preferences ?? AlwaysEnabledPreferences.Instance,
+                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
+            ),
             publisher,
             uow,
             new NoOpNotificationDispatchMetrics(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
     private sealed class RecordingNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public List<NotificationLog> Logs { get; } = [];
 
         public Task AddAsync(NotificationLog log, CancellationToken ct = default)
@@ -237,6 +346,9 @@ public sealed class NotificationDispatcherInAppTests
 
     private sealed class EmptyPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public static readonly EmptyPushDeviceTokenRepository Instance = new();
 
         public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;

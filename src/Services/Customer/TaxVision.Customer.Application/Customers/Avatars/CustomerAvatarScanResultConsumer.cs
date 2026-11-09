@@ -40,8 +40,8 @@ public static class CustomerAvatarScanResultConsumer
 
         using var _ = correlation.Push(CorrelationOf(msg.CorrelationId, msg.EventId));
 
-        var customer = await repository.GetByIdAsync(customerId, ct);
-        if (customer is null || customer.TenantId != msg.TenantId)
+        var customer = await repository.GetByIdAsync(msg.TenantId, customerId, ct);
+        if (customer is null)
         {
             logger.LogWarning(
                 "Avatar {FileId} became available for unknown customer {CustomerId}; ignoring.",
@@ -54,7 +54,7 @@ public static class CustomerAvatarScanResultConsumer
         if (customer.ProfilePictureFileId == msg.FileId)
             return;
 
-        var confirmed = customer.ConfirmProfilePicture(msg.FileId);
+        var confirmed = customer.ConfirmProfilePicture(msg.FileId, msg.CreatedBy);
         if (confirmed.IsFailure)
         {
             logger.LogInformation(
@@ -87,7 +87,7 @@ public static class CustomerAvatarScanResultConsumer
                 )
             );
 
-        await bus.PublishAsync(CustomerUpdatedEvents.From(customer, msg.CreatedBy, correlation.CorrelationId));
+        // CustomerUpdated sale del evento de dominio.
         logger.LogInformation("Avatar {FileId} confirmed for customer {CustomerId}.", msg.FileId, customerId);
     }
 
@@ -223,8 +223,8 @@ public static class CustomerAvatarScanResultConsumer
 
         using var _ = correlation.Push(CorrelationOf(msg.CorrelationId, msg.EventId));
 
-        var customer = await repository.GetByIdAsync(customerId, ct);
-        if (customer is null || customer.TenantId != msg.TenantId)
+        var customer = await repository.GetByIdAsync(msg.TenantId, customerId, ct);
+        if (customer is null)
         {
             logger.LogWarning(
                 "Avatar {FileId} was rejected by storage ({Reason}) for unknown customer {CustomerId}; ignoring.",
@@ -307,8 +307,8 @@ public static class CustomerAvatarScanResultConsumer
 
         using var _ = correlation.Push(CorrelationOf(correlationId, eventId));
 
-        var customer = await repository.GetByIdAsync(customerId, ct);
-        if (customer is null || customer.TenantId != failure.TenantId)
+        var customer = await repository.GetByIdAsync(failure.TenantId, customerId, ct);
+        if (customer is null)
             return;
 
         if (!apply(customer, failure.FileId))

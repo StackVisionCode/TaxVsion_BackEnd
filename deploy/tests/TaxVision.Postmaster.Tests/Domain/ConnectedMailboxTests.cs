@@ -41,6 +41,47 @@ public sealed class ConnectedMailboxTests
     }
 
     [Fact]
+    public void Older_disconnect_after_newer_reconnect_is_ignored()
+    {
+        var connectedAt = new DateTime(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc);
+        var account = ConnectedMailbox.ForNewConnection(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "gmail",
+            "sales@tenant.example",
+            connectedAt
+        );
+        account.ReconnectAt("gmail", "sales@tenant.example", connectedAt.AddMinutes(2));
+
+        var applied = account.MarkDisconnected(connectedAt.AddMinutes(1));
+
+        Assert.False(applied);
+        Assert.True(account.IsActive);
+        Assert.Null(account.DisconnectedAtUtc);
+    }
+
+    [Fact]
+    public void Older_reconnect_after_newer_disconnect_is_ignored()
+    {
+        var connectedAt = new DateTime(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc);
+        var account = ConnectedMailbox.ForNewConnection(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "gmail",
+            "sales@tenant.example",
+            connectedAt
+        );
+        account.MarkDisconnected(connectedAt.AddMinutes(2));
+
+        var applied = account.ReconnectAt("graph", "other@tenant.example", connectedAt.AddMinutes(1));
+
+        Assert.False(applied);
+        Assert.False(account.IsActive);
+        Assert.Equal("gmail", account.ProviderCode);
+        Assert.Equal(connectedAt.AddMinutes(2), account.DisconnectedAtUtc);
+    }
+
+    [Fact]
     public void MarkDisconnected_deactivates_and_stamps_disconnected_date()
     {
         var account = ConnectedMailbox.ForNewConnection(

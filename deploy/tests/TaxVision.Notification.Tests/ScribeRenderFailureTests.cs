@@ -1,14 +1,21 @@
+using System.Net;
+using System.Text;
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Application.Consumers.Signature;
+using TaxVision.Notification.Infrastructure.Scribe;
 using TaxVision.Notification.Tests.TestDoubles;
+using Wolverine;
+using Wolverine.Tracking;
 
 namespace TaxVision.Notification.Tests;
 
@@ -48,6 +55,131 @@ public sealed class ScribeRenderFailureTests
         Assert.Equal(error, thrown.ScribeError);
         Assert.Contains("auth.welcome.v1", thrown.Message);
         Assert.Contains(error.Message, thrown.Message);
+    }
+
+    // ------------------------------------------------------------------
+    // SCR-11: qué se reintenta y qué va directo a la cola de errores.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task No_mapping_goes_straight_to_error_queue()
+    {
+        var thrown = await RenderEmailAgainst(
+            HttpStatusCode.NotFound,
+            """{"code":"EmailRenderer.NoMapping","message":"No template is mapped."}"""
+        );
+
+        Assert.IsAssignableFrom<ArgumentException>(thrown);
+        Assert.Contains("EmailRenderer.NoMapping", thrown.Message);
+    }
+
+    [Fact]
+    public async Task No_mapping_of_a_push_text_goes_straight_to_error_queue()
+    {
+        var client = ClientReturning(
+            HttpStatusCode.NotFound,
+            """{"code":"EmailRenderer.NoPublishedVersion","message":"No version."}"""
+        );
+
+        var result = await client.RenderTextAsync("some.event.v1", Guid.NewGuid(), new Dictionary<string, object?>());
+        var thrown = Record.Exception(() => result.EnsureRendered("some.event.v1"));
+
+        Assert.IsAssignableFrom<ArgumentException>(thrown);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.UnprocessableEntity)]
+    public async Task Other_typed_rejections_go_straight_to_error_queue(HttpStatusCode status)
+    {
+        var thrown = await RenderEmailAgainst(status, """{"code":"EmailRenderer.Parse","message":"Bad template."}""");
+
+        Assert.IsAssignableFrom<ArgumentException>(thrown);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable, """{"code":"EmailRenderer.Timeout","message":"Too slow."}""")]
+    [InlineData(HttpStatusCode.InternalServerError, "")]
+    [InlineData(HttpStatusCode.Unauthorized, "")]
+    [InlineData(HttpStatusCode.Forbidden, """{"code":"Auth.Forbidden","message":"Stale permissions."}""")]
+    [InlineData(HttpStatusCode.RequestTimeout, "")]
+    [InlineData(HttpStatusCode.Conflict, """{"code":"Persistence.ConcurrencyConflict","message":"Conflict."}""")]
+    [InlineData(HttpStatusCode.TooManyRequests, """{"code":"RateLimit.Exceeded","message":"Slow down."}""")]
+    [InlineData(HttpStatusCode.NotFound, "<html>gateway</html>")]
+    [InlineData(HttpStatusCode.NotFound, "")]
+    [InlineData(HttpStatusCode.BadRequest, """{"title":"One or more validation errors occurred."}""")]
+    public async Task Server_error_is_retried(HttpStatusCode status, string body)
+    {
+        var thrown = await RenderEmailAgainst(status, body);
+
+        Assert.IsType<ScribeRenderFailedException>(thrown);
+    }
+
+    [Fact]
+    public async Task Rejected_render_is_not_retried_by_the_standard_policy()
+    {
+        // Host real con la política del servicio: un intento y a la cola de errores.
+        RejectedRenderHandler.Attempts = 0;
+        using var host = await Host.CreateDefaultBuilder()
+            .UseWolverine(options =>
+            {
+                options.Discovery.DisableConventionalDiscovery().IncludeType(typeof(RejectedRenderHandler));
+                options.UseTaxVisionConflictPolicy();
+                options.ApplyStandardFailurePolicies();
+            })
+            .StartAsync();
+
+        var tracked = await host.TrackActivity()
+            .DoNotAssertOnExceptionsDetected()
+            .Timeout(TimeSpan.FromSeconds(30))
+            .PublishMessageAndWaitAsync(new RejectedRender());
+
+        Assert.Equal(1, RejectedRenderHandler.Attempts);
+        Assert.Single(tracked.MovedToErrorQueue.MessagesOf<RejectedRender>());
+    }
+
+    public sealed record RejectedRender;
+
+    public static class RejectedRenderHandler
+    {
+        public static int Attempts;
+
+        public static void Handle(RejectedRender _)
+        {
+            Interlocked.Increment(ref Attempts);
+            Result
+                .Failure<ScribeRenderedEmail>(new Error(ScribeRenderRejectedException.ErrorCode, "Rejected."))
+                .EnsureRendered("some.event.v1");
+        }
+    }
+
+    private static async Task<Exception?> RenderEmailAgainst(HttpStatusCode status, string body)
+    {
+        var result = await ClientReturning(status, body)
+            .RenderAsync("some.event.v1", Guid.NewGuid(), new Dictionary<string, object?>());
+
+        return Record.Exception(() => result.EnsureRendered("some.event.v1"));
+    }
+
+    private static ScribeRenderClient ClientReturning(HttpStatusCode status, string body) =>
+        new(
+            new HttpClient(new StubHttpHandler(status, body)) { BaseAddress = new Uri("http://localhost:5205/") },
+            new StubTokenAcquirer(),
+            NullLogger<ScribeRenderClient>.Instance
+        );
+
+    private sealed class StubHttpHandler(HttpStatusCode status, string body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(
+                new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") }
+            );
+    }
+
+    private sealed class StubTokenAcquirer : IServiceTokenAcquirer
+    {
+        public Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<string?>("fake-m2m-token");
     }
 
     // ------------------------------------------------------------------
@@ -179,6 +311,21 @@ public sealed class ScribeRenderFailureTests
 
     private sealed class FailingScribeRenderClient : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ct);
+
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
             string eventKey,
             Guid tenantId,

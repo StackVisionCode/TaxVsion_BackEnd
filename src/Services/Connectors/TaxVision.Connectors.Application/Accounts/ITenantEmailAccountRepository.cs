@@ -22,6 +22,12 @@ public interface ITenantEmailAccountRepository
     Task<Result<TenantEmailAccount>> GetByEmailAddressAsync(string emailAddress, CancellationToken ct = default);
 
     /// <summary>
+    /// Cuentas Gmail Active o Connected con ese email, en cualquier tenant: el push de Gmail solo trae la
+    /// dirección y el mismo buzón puede estar conectado en varias oficinas.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListSyncableGmailByEmailAddressAsync(string emailAddress, CancellationToken ct = default);
+
+    /// <summary>
     /// Cuenta de ESE tenant con ese email. Se usa para el chequeo "¿ya conectada?" scoped al tenant
     /// (uniqueness por <c>(TenantId, EmailAddress)</c>, igual que Auth): el mismo buzón puede estar
     /// conectado en tenants distintos por la misma persona, así que NO se puede usar la versión
@@ -60,16 +66,15 @@ public interface ITenantEmailAccountRepository
     /// <summary>
     /// Buzones PERSONALES de <paramref name="ownerUserId"/> en el tenant (OwnerUserId == user) — para
     /// desconectarlos y purgar sus secretos al retirar (offboard) a ese empleado. Los de oficina
-    /// (OwnerUserId null) no entran. Tracked (se mutan). Default vacío: los fakes no necesitan implementarlo.
+    /// (OwnerUserId null) no entran. Tracked (se mutan).
     /// </summary>
     Task<IReadOnlyList<TenantEmailAccount>> ListByOwnerUserAsync(
         Guid tenantId,
         Guid ownerUserId,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<TenantEmailAccount>>([]);
+    );
 
     /// <summary>Cuántos buzones PERSONALES tiene el empleado (mismo filtro que ListByOwnerUserAsync, sin
-    /// materializar) — pre-flight de impacto al retirarlo. Default 0; el repo real lo implementa con COUNT.</summary>
-    Task<int> CountByOwnerUserAsync(Guid tenantId, Guid ownerUserId, CancellationToken ct = default) =>
-        Task.FromResult(0);
+    /// materializar) — pre-flight de impacto al retirarlo.</summary>
+    Task<int> CountByOwnerUserAsync(Guid tenantId, Guid ownerUserId, CancellationToken ct = default);
 }

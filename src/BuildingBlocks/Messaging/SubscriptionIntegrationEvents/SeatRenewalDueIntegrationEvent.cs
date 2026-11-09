@@ -1,8 +1,11 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>Intent publicado por Subscription cuando un seat necesita cobrarse para
 /// renovarse. Independiente de SubscriptionRenewalDue — un seat puede vencer sin que la
 /// suscripción base venza, y viceversa.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SeatRenewalDueIntegrationEvent")]
 public sealed record SeatRenewalDueIntegrationEvent : IntegrationEvent
 {
     public required Guid SeatId { get; init; }

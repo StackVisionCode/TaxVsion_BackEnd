@@ -38,6 +38,7 @@ public static class CreateTenantHandler
         ICorrelationContext correlation,
         ICacheService cache,
         ILogger<CreateTenantCommand> logger,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -57,7 +58,8 @@ public static class CreateTenantHandler
             );
         }
 
-        var result = Domain.Tenant.Create(cmd.Name, cmd.Subdomain, cmd.DefaultTimeZoneId);
+        var nowUtc = clock.GetUtcNow().UtcDateTime;
+        var result = Domain.Tenant.Create(cmd.Name, cmd.Subdomain, cmd.DefaultTimeZoneId, nowUtc);
         if (result.IsFailure)
         {
             return Result.Failure<CreateTenantResponse>(result.Error);
@@ -66,11 +68,13 @@ public static class CreateTenantHandler
         var tenant = result.Value;
         var activationToken = ToBase64Url(RandomNumberGenerator.GetBytes(32));
         var activationTokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(activationToken)));
-        var invitationExpiresAtUtc = DateTime.UtcNow.AddDays(7);
+        var invitationExpiresAtUtc = nowUtc.AddDays(7);
 
         // Fase 18 — depositar el raw token en Auth ANTES de persistir/publicar: si Auth no está
         // disponible, se aborta sin efectos secundarios (nada de tenant a medio crear), mismo
         // criterio de "detener antes de comprometer estado" que el resto del plan de PayFlow.
+        // TEN-7: si después falla el guardado, la referencia queda sin dueño en Auth, pero es de un solo uso
+        // y vence en 30 s: no hace falta moverla a un evento.
         var tokenReferenceResult = await tokenReferenceClient.StoreAsync(activationToken, ct);
         if (tokenReferenceResult.IsFailure)
             return Result.Failure<CreateTenantResponse>(tokenReferenceResult.Error);

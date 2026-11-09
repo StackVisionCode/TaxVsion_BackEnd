@@ -27,6 +27,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.CloudStorage.Api.Messaging;
+using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Domain.Sharing;
 using TaxVision.CloudStorage.Infrastructure;
@@ -237,10 +239,6 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(InitiateUploadHandler).Assembly);
-    // The mirror consumer lives in the API assembly, outside the Application assembly above.
-    // Without explicit discovery, FileAvailableIntegrationEvent is received by this service's
-    // cloudstorage-events queue but no handler applies the selected cloud provider copy policy.
-    options.Discovery.IncludeType(typeof(TaxVision.CloudStorage.Api.Consumers.CloudStorageFileMirrorConsumer));
     // Consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ListenForPlatformSettings();
@@ -255,10 +253,16 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CloudStorageDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionDurableLocalQueues();
+    options.UseTaxVisionDomainEvents();
+    // Los avisos de un archivo salen en el orden del commit.
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
 
-    // Cada escaneo actualiza la proyección de cuota del tenant. Se procesan en serie para
-    // evitar que dos archivos compitan por el mismo RowVersion después de mover el objeto.
-    options.LocalQueueFor<ScanFileCommand>().Sequential();
+    // Cola local del escaneo (durable y con paralelismo acotado): ver ScanQueueConfiguration.
+    var storageOptions =
+        builder.Configuration.GetSection(CloudStorageOptions.SectionName).Get<CloudStorageOptions>()
+        ?? new CloudStorageOptions();
+    options.ConfigureScanQueue(storageOptions.ScanParallelism);
 
     options.PublishMessage<FileAvailableIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerDocumentUploadedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -320,6 +324,7 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 });
 

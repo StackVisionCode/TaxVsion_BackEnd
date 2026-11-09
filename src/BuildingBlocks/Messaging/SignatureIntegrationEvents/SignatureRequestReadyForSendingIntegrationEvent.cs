@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// disponible en CloudStorage (scan Clean) y se computó el hash pre-firma. A partir
 /// de este punto el staff puede enviarla a los firmantes.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestReadyForSendingIntegrationEvent")]
 public sealed record SignatureRequestReadyForSendingIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

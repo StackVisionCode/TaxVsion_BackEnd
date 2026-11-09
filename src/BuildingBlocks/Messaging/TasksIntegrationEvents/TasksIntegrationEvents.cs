@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.TasksIntegrationEvents;
 
 /// <summary><c>task.created.v1</c></summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskCreatedIntegrationEvent")]
 public sealed record TaskCreatedIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -16,6 +19,7 @@ public sealed record TaskCreatedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>task.assigned.v1</c></summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskAssignedIntegrationEvent")]
 public sealed record TaskAssignedIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -31,6 +35,7 @@ public sealed record TaskAssignedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>task.completed.v1</c></summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskCompletedIntegrationEvent")]
 public sealed record TaskCompletedIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -42,6 +47,7 @@ public sealed record TaskCompletedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>task.reopened.v1</c></summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskReopenedIntegrationEvent")]
 public sealed record TaskReopenedIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -50,6 +56,7 @@ public sealed record TaskReopenedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>task.cancelled.v1</c></summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskCancelledIntegrationEvent")]
 public sealed record TaskCancelledIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -58,6 +65,7 @@ public sealed record TaskCancelledIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>task.due_changed.v1</c></summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskDueChangedIntegrationEvent")]
 public sealed record TaskDueChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -70,6 +78,7 @@ public sealed record TaskDueChangedIntegrationEvent : IntegrationEvent
 /// <c>task.waiting_on_client.v1</c> — se le pidió algo al cliente. <c>ExpectedItems</c> viaja hasta
 /// el correo: sin él el aviso diría «tu contador necesita algo» y el cliente no podría actuar.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskWaitingOnClientIntegrationEvent")]
 public sealed record TaskWaitingOnClientIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -86,6 +95,7 @@ public sealed record TaskWaitingOnClientIntegrationEvent : IntegrationEvent
 /// <c>task.unblocked.v1</c> — la última predecesora abierta se cerró y la tarea ya puede empezar.
 /// Sin este evento el desbloqueo es invisible hasta que alguien refresca la lista.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskUnblockedIntegrationEvent")]
 public sealed record TaskUnblockedIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -94,6 +104,7 @@ public sealed record TaskUnblockedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>task.attachment_added.v1</c></summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskAttachmentAddedIntegrationEvent")]
 public sealed record TaskAttachmentAddedIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -108,6 +119,7 @@ public sealed record TaskAttachmentAddedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>task.attachment_detached.v1</c> — el archivo sigue en CloudStorage.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskAttachmentDetachedIntegrationEvent")]
 public sealed record TaskAttachmentDetachedIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -122,6 +134,7 @@ public sealed record TaskAttachmentDetachedIntegrationEvent : IntegrationEvent
 /// <c>task.attachment_rejected.v1</c> — el escaneo lo rechazó, posiblemente después de que la tarea
 /// se cerró. Lleva a quien lo adjuntó porque para entonces nadie mira ya esa tarea.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskAttachmentRejectedIntegrationEvent")]
 public sealed record TaskAttachmentRejectedIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }
@@ -134,6 +147,7 @@ public sealed record TaskAttachmentRejectedIntegrationEvent : IntegrationEvent
 }
 
 /// <summary><c>task.client_request_created.v1</c> — la firma le pidió algo al cliente.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.ClientRequestCreatedIntegrationEvent")]
 public sealed record ClientRequestCreatedIntegrationEvent : IntegrationEvent
 {
     public required Guid ClientRequestId { get; init; }
@@ -149,6 +163,7 @@ public sealed record ClientRequestCreatedIntegrationEvent : IntegrationEvent
 /// <c>task.client_request_fulfilled.v1</c> — el cliente subió algo. Avisa al preparador; la tarea en
 /// <c>WaitingOnClient</c> no se mueve sola: «apareció un archivo» no es «mandó lo que le pedí».
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.ClientRequestFulfilledIntegrationEvent")]
 public sealed record ClientRequestFulfilledIntegrationEvent : IntegrationEvent
 {
     public required Guid ClientRequestId { get; init; }
@@ -174,6 +189,7 @@ public sealed record ClientRequestFulfilledIntegrationEvent : IntegrationEvent
 /// información de la infraestructura; «no pudimos procesarlo, vuelve a subirlo» sí es accionable.
 /// </para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.ClientRequestDocumentRejectedIntegrationEvent")]
 public sealed record ClientRequestDocumentRejectedIntegrationEvent : IntegrationEvent
 {
     public required Guid ClientRequestId { get; init; }
@@ -200,6 +216,7 @@ public sealed record ClientRequestDocumentRejectedIntegrationEvent : Integration
 /// cada hora. Si alguien mueve la fecha, la marca se limpia y vuelve a avisarse.
 /// </para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TasksIntegrationEvents.TaskOverdueIntegrationEvent")]
 public sealed record TaskOverdueIntegrationEvent : IntegrationEvent
 {
     public required Guid TaskId { get; init; }

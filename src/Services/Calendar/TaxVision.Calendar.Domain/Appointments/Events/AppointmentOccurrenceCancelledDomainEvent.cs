@@ -8,5 +8,6 @@ public sealed record AppointmentOccurrenceCancelledDomainEvent(
     Guid TenantId,
     DateTime OriginalStartUtc,
     Guid CancelledByUserId,
-    DateTime CancelledAtUtc
+    DateTime CancelledAtUtc,
+    string? Reason
 ) : IDomainEvent;

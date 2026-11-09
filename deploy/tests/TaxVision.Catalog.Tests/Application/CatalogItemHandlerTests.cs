@@ -201,32 +201,115 @@ public sealed class CatalogItemHandlerTests
     }
 
     [Fact]
-    public async Task SetActive_false_publishes_deactivated_true_does_not()
+    public async Task SetActive_false_publishes_deactivated()
     {
         var h = new Harness();
         var item = h.SeedItem();
 
-        await SetCatalogItemActiveHandler.Handle(
-            new SetCatalogItemActiveCommand(Tenant, item.Id, false),
+        await SetActiveAsync(h, item, false, h.Bus);
+
+        Assert.True(Assert.Single(h.Bus.Published.OfType<CatalogItemDeactivatedIntegrationEvent>()).TrackInventory);
+    }
+
+    [Fact]
+    public async Task SetActive_true_after_inactive_publishes_tracking_changed()
+    {
+        var h = new Harness();
+        var item = h.SeedItem();
+        await SetActiveAsync(h, item, false, new FakeMessageBus());
+
+        await SetActiveAsync(h, item, true, h.Bus);
+
+        var tracking = Assert.Single(h.Bus.Published.OfType<CatalogItemTrackingChangedIntegrationEvent>());
+        Assert.Equal(item.Id, tracking.ItemId);
+        Assert.True(tracking.TrackInventory);
+        Assert.True(tracking.IsActive);
+        Assert.Null(h.Bus.LastOfType<CatalogItemDeactivatedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task SetActive_false_twice_publishes_deactivated_once()
+    {
+        var h = new Harness();
+        var item = h.SeedItem();
+        await SetActiveAsync(h, item, false, new FakeMessageBus());
+
+        await SetActiveAsync(h, item, false, h.Bus);
+
+        Assert.Empty(h.Bus.Published);
+    }
+
+    [Fact]
+    public async Task SetActive_true_on_active_item_publishes_nothing()
+    {
+        var h = new Harness();
+        var item = h.SeedItem();
+
+        await SetActiveAsync(h, item, true, h.Bus);
+
+        Assert.Empty(h.Bus.Published);
+    }
+
+    [Fact]
+    public async Task Update_changing_track_inventory_publishes_tracking_changed()
+    {
+        var h = new Harness();
+        var item = h.SeedItem();
+
+        await UpdateAsync(h, item, "Widget", trackInventory: false);
+
+        var updated = Assert.Single(h.Bus.Published.OfType<CatalogItemUpdatedIntegrationEvent>());
+        Assert.False(updated.TrackInventory);
+        Assert.True(updated.IsActive);
+        var tracking = Assert.Single(h.Bus.Published.OfType<CatalogItemTrackingChangedIntegrationEvent>());
+        Assert.False(tracking.TrackInventory);
+        Assert.True(tracking.IsActive);
+    }
+
+    [Fact]
+    public async Task Update_without_track_change_does_not_publish_tracking_changed()
+    {
+        var h = new Harness();
+        var item = h.SeedItem();
+
+        await UpdateAsync(h, item, "Renamed", trackInventory: true);
+
+        Assert.Single(h.Bus.Published);
+        Assert.NotNull(h.Bus.LastOfType<CatalogItemUpdatedIntegrationEvent>());
+    }
+
+    private static Task SetActiveAsync(Harness h, CatalogItem item, bool active, FakeMessageBus bus) =>
+        SetCatalogItemActiveHandler.Handle(
+            new SetCatalogItemActiveCommand(Tenant, item.Id, active),
             h.Items,
+            h.Uow,
+            bus,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+    private static Task UpdateAsync(Harness h, CatalogItem item, string name, bool trackInventory) =>
+        UpdateCatalogItemHandler.Handle(
+            new UpdateCatalogItemCommand(
+                Tenant,
+                item.Id,
+                name,
+                null,
+                null,
+                h.CategoryId,
+                null,
+                0,
+                trackInventory,
+                null,
+                null
+            ),
+            h.Items,
+            h.Categories,
             h.Uow,
             h.Bus,
             new FakeCorrelationContext(),
             CancellationToken.None
         );
-        Assert.NotNull(h.Bus.LastOfType<CatalogItemDeactivatedIntegrationEvent>());
-
-        var bus2 = new FakeMessageBus();
-        await SetCatalogItemActiveHandler.Handle(
-            new SetCatalogItemActiveCommand(Tenant, item.Id, true),
-            h.Items,
-            h.Uow,
-            bus2,
-            new FakeCorrelationContext(),
-            CancellationToken.None
-        );
-        Assert.Null(bus2.LastOfType<CatalogItemDeactivatedIntegrationEvent>());
-    }
 
     [Fact]
     public async Task Delete_soft_deletes_and_publishes_deactivated()

@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using BuildingBlocks.Security;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
@@ -9,7 +10,7 @@ namespace TaxVision.Notification.Application.Common;
 
 /// <summary>
 /// Implementación event-based del <see cref="IEmailDispatchGateway"/> — persiste el
-/// <see cref="NotificationLog"/> con su <see cref="NotificationDispatchAttempt"/> y publica
+/// <see cref="NotificationLog"/> con su <see cref="NotificationDispatchAttempt"/> y después publica
 /// <see cref="NotificationsEmailSendRequestedIntegrationEvent"/> hacia Postmaster en la misma
 /// transacción (outbox transaccional garantiza al-menos-una-vez). Postmaster despacha material y
 /// devuelve el resultado por 5 callbacks (<c>succeeded / failed / bounced / suppressed /
@@ -25,6 +26,7 @@ public sealed class EventBasedEmailDispatchGateway(
     IIntegrationEventPublisher publisher,
     INotificationLogRepository logRepository,
     IUnitOfWork unitOfWork,
+    NotificationDeliveryGate deliveryGate,
     ILogger<EventBasedEmailDispatchGateway> logger
 ) : IEmailDispatchGateway
 {
@@ -56,6 +58,26 @@ public sealed class EventBasedEmailDispatchGateway(
                 Error: $"Inline attachments exceed {MaxInlineAttachmentBytes / 1024} KB."
             );
         }
+
+        // Gate de entrega del staff (inactivo + preferencia de correo); los externos no traen usuario.
+        if (
+            request is { RecipientUserId: { } recipientUserId, Category: { } category }
+            && !await deliveryGate.IsAllowedAsync(
+                request.TenantId,
+                recipientUserId,
+                category,
+                NotificationChannel.Email,
+                request.NotificationKind ?? request.TemplateKey,
+                ct
+            )
+        )
+            return new EmailDispatchResult(
+                Guid.Empty,
+                Guid.Empty,
+                NotificationDispatchAttemptStatus.Suppressed,
+                ProviderMessageId: null,
+                Error: null
+            );
 
         // Idempotencia real (bug encontrado en la verificación E2E de PayFlow): si Wolverine
         // reintenta el consumer que invoca este gateway, sin este chequeo se creaba un
@@ -94,15 +116,20 @@ public sealed class EventBasedEmailDispatchGateway(
             }
         }
 
-        var logCreation = NotificationLog.Create(
-            request.TenantId,
-            NotificationChannel.Email,
-            request.To,
-            SensitiveNotificationContent.ForStorage(request.TemplateKey, request.Subject),
-            request.TemplateKey,
-            request.RelatedEventId,
-            request.CorrelationId
-        );
+        var recipient = NotificationRecipient.ForEmail(request.To);
+        var logCreation = recipient.IsFailure
+            ? Result.Failure<NotificationLog>(recipient.Error)
+            : NotificationLog.Create(
+                request.TenantId,
+                NotificationChannel.Email,
+                recipient.Value,
+                SensitiveNotificationContent.ForStorage(request.TemplateKey, request.Subject),
+                request.TemplateKey,
+                request.RelatedEventId,
+                request.CorrelationId,
+                renderedTemplateVersion: request.RenderedTemplateVersion,
+                renderedLayoutVersion: request.RenderedLayoutVersion
+            );
         if (logCreation.IsFailure)
         {
             logger.LogError(
@@ -170,12 +197,12 @@ public sealed class EventBasedEmailDispatchGateway(
             InlineAttachments = request.InlineAttachments is { Count: > 0 } ? request.InlineAttachments : null,
         };
 
-        // PublishAsync + SaveChanges en el mismo scope → outbox transaccional (durable).
+        // Guardar antes de publicar: con la transacción del handler el envío sigue entrando al outbox.
+        await unitOfWork.SaveChangesAsync(ct);
         if (request.Confidential)
             await publisher.SendToQueueAsync(PostmasterQueue, evt, ct);
         else
             await publisher.PublishAsync(evt, ct);
-        await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
             "Email {TemplateKey} queued to Postmaster for tenant {TenantId} (log {LogId}, attempt {AttemptId}).",

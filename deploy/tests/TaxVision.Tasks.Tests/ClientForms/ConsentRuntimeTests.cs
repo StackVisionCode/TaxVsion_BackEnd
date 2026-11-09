@@ -292,7 +292,7 @@ public sealed class ConsentRuntimeTests
         );
         fixture.Records.Add(Accepted(fixture));
         var fileId = Guid.NewGuid();
-        fixture.Request.RegisterAttachment(
+        fixture.Request.Files.Register(
             new FormAnswerAddress("fd_upload001", null),
             fileId,
             "id.png",
@@ -303,7 +303,7 @@ public sealed class ConsentRuntimeTests
             null,
             Now
         );
-        fixture.Request.ApplyFileVerdict(
+        fixture.Request.Files.ApplyVerdict(
             fileId,
             new FormFileVerdict(FormFileVerdictStatus.PendingReview, null, null, null, Now),
             Now
@@ -581,6 +581,13 @@ public sealed class ConsentRuntimeTests
 
     private sealed class NoIntakeLinks : IFormIntakeLinkRepository
     {
+        public Task<bool> TryConsumeDailyIntakeAsync(
+            Guid tenantId,
+            DateTime nowUtc,
+            int maxPerDay,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
+
         public Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default) =>
             Task.FromResult<FormIntakeLink?>(null);
 
@@ -591,6 +598,18 @@ public sealed class ConsentRuntimeTests
             Task.FromResult<IReadOnlyList<FormIntakeLink>>([]);
 
         public void Add(FormIntakeLink link) { }
+
+        public Task<int> CountNotRevokedByResponsibleAsync(
+            Guid tenantId,
+            Guid responsibleUserId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<IReadOnlyList<FormIntakeLink>> ListNotRevokedByResponsibleAsync(
+            Guid tenantId,
+            Guid responsibleUserId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<FormIntakeLink>>([]);
     }
 
     private sealed class FixedCorrelation : ICorrelationContext
@@ -653,6 +672,60 @@ public sealed class ConsentRuntimeTests
 
         public Task<IReadOnlyList<FormRequest>> ListByAttachmentFileIdAsync(
             Guid fileId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+
+        public Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
+            Task.FromResult(0);
+
+        public Task<int> CountOpenByEffectiveResponsibleAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            Task.FromResult(0);
+
+        public Task<Guid?> FindOpenRequestIdAsync(
+            Guid tenantId,
+            Guid customerId,
+            Guid templateId,
+            Guid exceptRequestId,
+            CancellationToken ct = default
+        ) => Task.FromResult<Guid?>(null);
+
+        public Task<FormRequest?> GetByPdfGenerationIdAsync(Guid generationId, CancellationToken ct = default) =>
+            Task.FromResult<FormRequest?>(null);
+
+        public Task<FormRequest?> GetForReminderAsync(Guid requestId, CancellationToken ct = default) =>
+            Task.FromResult<FormRequest?>(null);
+
+        public Task<FormRequest?> GetLatestIntakeRequestAsync(
+            Guid tenantId,
+            Guid intakeLinkId,
+            IReadOnlyCollection<Guid> participantIds,
+            CancellationToken ct = default
+        ) => Task.FromResult<FormRequest?>(null);
+
+        public Task<FormRequest?> GetOpenExternalRequestAsync(
+            Guid tenantId,
+            Guid participantId,
+            Guid templateId,
+            CancellationToken ct = default
+        ) => Task.FromResult<FormRequest?>(null);
+
+        public Task<IReadOnlyList<FormRequest>> ListOpenByEffectiveResponsibleAsync(
+            Guid tenantId,
+            Guid userId,
+            int take,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+
+        public Task<IReadOnlyList<FormRequest>> ListOpenByParticipantAsync(
+            Guid tenantId,
+            Guid participantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+
+        public Task<IReadOnlyList<FormRequest>> ListReminderCandidatesAsync(
+            DateTime dueThresholdUtc,
+            int maxReminders,
+            int take,
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
     }

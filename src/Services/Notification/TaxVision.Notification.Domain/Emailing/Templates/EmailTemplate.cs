@@ -99,13 +99,17 @@ public sealed class EmailTemplate : BaseEntity
         return Result.Success();
     }
 
-    /// <summary>Marca una versión como la publicada/activa. La orquestación (superseder la anterior) la hace el handler.</summary>
-    public Result MarkPublished(Guid versionId)
+    /// <summary>Publica la versión y supersede la anterior. Si la plantilla está archivada, no toca ninguna.</summary>
+    public Result Publish(EmailTemplateVersion target, EmailTemplateVersion? current)
     {
         if (Status == EmailTemplateStatus.Archived)
             return Result.Failure(new Error("EmailTemplate.Archived", "An archived template cannot be published."));
 
-        CurrentVersionId = versionId;
+        if (current is not null && current.Id != target.Id)
+            current.MarkSuperseded();
+
+        target.MarkPublished();
+        CurrentVersionId = target.Id;
         Status = EmailTemplateStatus.Active;
         PublishedAtUtc = DateTime.UtcNow;
         UpdatedAtUtc = DateTime.UtcNow;

@@ -1,4 +1,3 @@
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Caching.Memory;
@@ -6,6 +5,8 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Scribe.Application.Abstractions;
 using TaxVision.Scribe.Application.Templates.Storage;
 using TaxVision.Scribe.Domain.Projections;
+using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Scribe.Application.SystemAssets.Commands;
 
@@ -20,7 +21,8 @@ public sealed record UpdateSystemHeaderLogoResult(Guid FileId, long SizeBytes);
 /// descargable, y recién ahí apunta el <see cref="SystemAssetRef"/> al nuevo FileId — así nunca deja
 /// el ref apuntando a un archivo aún no catalogado (los correos seguirían con el logo viejo hasta que
 /// esto confirme). Invalida el L1 de LogoResolver en esta instancia; otras réplicas se auto-sanan por
-/// el TTL de 5 min (mismo criterio que el consumer de TenantLogoUpdated).
+/// el TTL de 5 min (mismo criterio que el consumer de TenantLogoUpdated). SCR-08: la subida y la espera van
+/// sin transacción; la fila la guarda <see cref="SaveSystemHeaderLogoHandler"/>.
 ///
 /// <para><b>PNG obligatorio a propósito:</b> el logo se inyecta inline por Content-ID en el correo y
 /// los clientes de email NO renderizan SVG — además el storage fuerza el content-type a image/png
@@ -36,12 +38,12 @@ public static class UpdateSystemHeaderLogoHandler
     // Clave del L1 que arma LogoResolver para el scope System ($"logo:{tenantId? ?? "system"}").
     private const string SystemLogoCacheKey = "logo:system";
 
+    [NonTransactional]
     public static async Task<Result<UpdateSystemHeaderLogoResult>> Handle(
         UpdateSystemHeaderLogoCommand command,
-        ISystemAssetRefRepository systemAssetRefRepository,
         ITemplateStorageService storageService,
+        IMessageBus bus,
         IMemoryCache l1Cache,
-        IUnitOfWork unitOfWork,
         ILogger<UpdateSystemHeaderLogoCommand> logger,
         CancellationToken ct
     )
@@ -71,23 +73,8 @@ public static class UpdateSystemHeaderLogoHandler
                 )
             );
 
-        var existing = await systemAssetRefRepository.GetByKeyAsync(SystemAssetKeys.HeaderLogo, ct);
         var sizeBytes = command.Content.LongLength;
-        if (existing is not null)
-            existing.Update(uploadResult.Value.FileId, "image/png", sizeBytes, DateTime.UtcNow);
-        else
-            await systemAssetRefRepository.AddAsync(
-                SystemAssetRef.Create(
-                    SystemAssetKeys.HeaderLogo,
-                    uploadResult.Value.FileId,
-                    "image/png",
-                    sizeBytes,
-                    DateTime.UtcNow
-                ),
-                ct
-            );
-
-        await unitOfWork.SaveChangesAsync(ct);
+        await bus.InvokeAsync<Result>(new SaveSystemHeaderLogoCommand(uploadResult.Value.FileId, sizeBytes), ct);
         l1Cache.Remove(SystemLogoCacheKey);
 
         logger.LogInformation(

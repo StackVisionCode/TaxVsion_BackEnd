@@ -124,6 +124,15 @@ public static class TenantPaymentChargeOutcome
         }
     }
 
+    /// <summary>Aplica el resultado de un cobro planeado: Connect si la fila lleva reparto, directo si no.</summary>
+    public static void ApplyPlannedCharge(TenantPayment payment, ChargeAuthorizationResult outcome, Guid actorUserId)
+    {
+        if (payment.SplitPayment is { } split)
+            ApplyChargeOutcomeViaConnect(payment, outcome, split, actorUserId);
+        else
+            ApplyChargeOutcome(payment, outcome, actorUserId);
+    }
+
     // También en un rechazo: la marca/últimos 4 de la tarjeta declinada le sirven al dueño.
     private static void RecordPayer(TenantPayment payment, ProviderPayerDetails? payer)
     {

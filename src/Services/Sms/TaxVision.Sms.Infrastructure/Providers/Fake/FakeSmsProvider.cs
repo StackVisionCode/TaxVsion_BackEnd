@@ -12,7 +12,8 @@ namespace TaxVision.Sms.Infrastructure.Providers.Fake;
 /// Escenarios de error por convención en el body: `[REJECT]` → rechazado. Capabilities configurables por
 /// `Sms:Providers:fake:Capabilities` (para probar media-no-soportada, etc.); si no hay config, defaults amplios.
 /// </summary>
-[SmsProvider("fake")]
+// No valida firma: solo se registra con Sms:Providers:fake:Enabled (SMS-17).
+[SmsProvider("fake", RequiresOptIn = true)]
 public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogger<FakeSmsProvider> logger)
     : ISmsProvider
 {
@@ -55,6 +56,25 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
 
     public Task<Result<SmsSendResult>> SendAsync(SmsSendRequest request, CancellationToken ct = default)
     {
+        // `[OPTOUT]` simula el rechazo del carrier por destinatario dado de baja.
+        if (request.Body.Contains("[OPTOUT]", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(
+                Result.Success(
+                    new SmsSendResult(
+                        false,
+                        null,
+                        SmsSendFailure.RecipientOptedOut,
+                        "Simulated unsubscribed recipient."
+                    )
+                )
+            );
+        // `[TIMEOUT]` simula que el proveedor no responde a tiempo: resultado desconocido.
+        if (request.Body.Contains("[TIMEOUT]", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(
+                Result.Success(
+                    new SmsSendResult(false, null, SmsSendFailure.OutcomeUnknown, "Simulated provider timeout.")
+                )
+            );
         if (request.Body.Contains("[REJECT]", StringComparison.OrdinalIgnoreCase))
             return Task.FromResult(
                 Result.Success(new SmsSendResult(false, null, "providerRejected", "Simulated rejection."))
@@ -119,6 +139,12 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
         }
     }
 
+    // No soporta pull: los estados llegan solo por webhook.
+    public Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) => Task.FromResult(Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]));
+
     public Result<SmsInboundMessage> ParseInbound(string rawPayload)
     {
         try
@@ -130,13 +156,7 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
                 );
 
             var raw = (dto.Keyword ?? dto.Text ?? string.Empty).Trim();
-            var keyword = raw.ToUpperInvariant() switch
-            {
-                "STOP" => SmsInboundKeyword.Stop,
-                "START" => SmsInboundKeyword.Start,
-                "HELP" => SmsInboundKeyword.Help,
-                _ => SmsInboundKeyword.Unknown,
-            };
+            var keyword = SmsInboundKeywords.Parse(raw);
             return Result.Success(
                 new SmsInboundMessage(
                     dto.From,

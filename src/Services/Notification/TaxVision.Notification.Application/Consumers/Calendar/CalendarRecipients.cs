@@ -1,5 +1,4 @@
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
-using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
@@ -9,58 +8,11 @@ using TaxVision.Notification.Domain.Preferences;
 namespace TaxVision.Notification.Application.Consumers.Calendar;
 
 /// <summary>
-/// Deja pasar sólo a quien quiere recibir el correo.
-///
-/// <para>
-/// Un asistente sin <c>UserId</c> —un cliente invitado— no tiene preferencia que consultar y recibe
-/// igual: es el mismo criterio que ya usa el dispatcher para el in-app de un invitado sin cuenta.
-/// </para>
+/// Correo e in-app de los asistentes de una cita. El gate de entrega del gateway (inactivo, preferencia,
+/// catálogo) decide por cada asistente con <c>UserId</c>; un cliente invitado sin cuenta recibe igual.
 /// </summary>
 internal static class CalendarRecipients
 {
-    public static async Task<IReadOnlyList<AppointmentRecipient>> AllowedAsync(
-        IReadOnlyList<AppointmentRecipient> recipients,
-        Guid tenantId,
-        IUserNotificationPreferenceRepository preferences,
-        ILogger logger,
-        string templateKey,
-        CancellationToken ct
-    )
-    {
-        var allowed = new List<AppointmentRecipient>(recipients.Count);
-        foreach (var recipient in recipients)
-        {
-            if (recipient.UserId is not { } userId)
-            {
-                allowed.Add(recipient);
-                continue;
-            }
-
-            var enabled = await preferences.IsEnabledAsync(
-                tenantId,
-                userId,
-                NotificationCategory.Calendar,
-                NotificationChannel.Email,
-                ct
-            );
-
-            if (enabled)
-            {
-                allowed.Add(recipient);
-                continue;
-            }
-
-            logger.LogInformation(
-                "Calendar email suppressed by user preference: tenant {TenantId}, user {UserId}, template {TemplateKey}.",
-                tenantId,
-                userId,
-                templateKey
-            );
-        }
-
-        return allowed;
-    }
-
     /// <summary>Un compañero (con <c>UserId</c>) lee como Staff; un cliente o invitado sin cuenta, como Client.</summary>
     public static ScribeRenderAudience AudienceOf(AppointmentRecipient recipient) =>
         recipient.UserId is null ? ScribeRenderAudience.Client : ScribeRenderAudience.Staff;
@@ -73,6 +25,7 @@ internal static class CalendarRecipients
         IReadOnlyList<AppointmentRecipient> recipients,
         Guid tenantId,
         string templateKey,
+        string kind,
         IReadOnlyDictionary<string, object?> variables,
         IScribeRenderClient scribeClient,
         IEmailDispatchGateway gateway,
@@ -101,7 +54,12 @@ internal static class CalendarRecipients
                         templateKey: templateKey,
                         relatedEventId: relatedEventId,
                         correlationId: correlationId
-                    ),
+                    ) with
+                    {
+                        RecipientUserId = recipient.UserId,
+                        Category = NotificationCategory.Calendar,
+                        NotificationKind = kind,
+                    },
                 ct
             );
         }
@@ -137,7 +95,7 @@ internal static class CalendarRecipients
 
             await dispatcher.RecordInAppAsync(
                 tenantId,
-                $"user:{userId:N}",
+                NotificationRecipient.ForUser(userId),
                 title,
                 NotificationCategory.Calendar,
                 kind,

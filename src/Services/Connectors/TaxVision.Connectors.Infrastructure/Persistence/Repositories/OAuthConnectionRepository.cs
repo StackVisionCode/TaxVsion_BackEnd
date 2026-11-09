@@ -23,6 +23,23 @@ public sealed class OAuthConnectionRepository(ConnectorsDbContext dbContext) : I
             : Result.Success(connection);
     }
 
+    public async Task<Result<OAuthConnection>> GetByAccountIdReadOnlyAsync(
+        Guid accountId,
+        CancellationToken ct = default
+    )
+    {
+        var connection = await dbContext
+            .OAuthConnections.AsNoTracking()
+            .Include(c => c.Token)
+            .FirstOrDefaultAsync(c => c.AccountId == accountId, ct);
+
+        return connection is null
+            ? Result.Failure<OAuthConnection>(
+                new Error("OAuthConnection.NotFound", $"OAuthConnection for account {accountId} not found.")
+            )
+            : Result.Success(connection);
+    }
+
     public async Task<IReadOnlyList<Guid>> ListAccountIdsWithTokenExpiringBeforeAsync(
         DateTime thresholdUtc,
         CancellationToken ct = default

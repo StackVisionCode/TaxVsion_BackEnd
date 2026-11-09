@@ -56,9 +56,9 @@ public static class MoveTaskToWaitingOnClientHandler
         if (moved.IsFailure)
             return Result.Failure<TaskResponse>(moved.Error);
 
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(BuildEvent(task, customerId, correlation.CorrelationId));
         await RequestPreparerReminderAsync(task, command.ClientDueAtUtc, bus, correlation);
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(TaskResponse.From(task));
     }

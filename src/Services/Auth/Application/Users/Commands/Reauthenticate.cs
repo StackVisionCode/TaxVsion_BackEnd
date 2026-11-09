@@ -44,6 +44,7 @@ public static class ReauthenticateHandler
     public static async Task<Result<ReauthenticateResponse>> Handle(
         ReauthenticateCommand command,
         IUserRepository users,
+        IUserLoginLock loginLock,
         ITenantRegistry tenants,
         ISessionRepository sessions,
         IRoleRepository roles,
@@ -87,7 +88,18 @@ public static class ReauthenticateHandler
         }
 
         if (!hasher.Verify(command.Password, user.PasswordHash))
-            return await FailAsync(user, "bad_password", audit, request, correlation, unitOfWork, bus, now, ct);
+            return await FailAsync(
+                user,
+                "bad_password",
+                loginLock,
+                audit,
+                request,
+                correlation,
+                unitOfWork,
+                bus,
+                now,
+                ct
+            );
 
         // El step-up sigue la MISMA regla que el login (`MfaRequirement`), incluido el interruptor
         // `Mfa:Enforced`. Antes miraba solo si el usuario tenía un TOTP confirmado, ignorando el
@@ -107,11 +119,24 @@ public static class ReauthenticateHandler
 
             var check = await MfaCodeVerifier.VerifyAsync(user.Id, command.MfaCode, mfa, totp, protector, tokens, ct);
             if (check == MfaCodeCheck.Invalid)
-                return await FailAsync(user, "bad_mfa_code", audit, request, correlation, unitOfWork, bus, now, ct);
+                return await FailAsync(
+                    user,
+                    "bad_mfa_code",
+                    loginLock,
+                    audit,
+                    request,
+                    correlation,
+                    unitOfWork,
+                    bus,
+                    now,
+                    ct
+                );
 
             authMethods = ["pwd", check == MfaCodeCheck.Totp ? "totp" : "recovery"];
         }
 
+        if (user.HasLoginFailures)
+            await loginLock.AcquireAsync(user, ct);
         user.RegisterSuccessfulLogin();
 
         var (roleNames, _) = await UserAccessResolver.ResolveAsync(user, roles, ct);
@@ -140,6 +165,7 @@ public static class ReauthenticateHandler
     private static async Task<Result<ReauthenticateResponse>> FailAsync(
         User user,
         string reason,
+        IUserLoginLock loginLock,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -149,7 +175,10 @@ public static class ReauthenticateHandler
         CancellationToken ct
     )
     {
-        user.RegisterFailedLogin(now, LockoutPolicy.MaxFailedAttempts, LockoutPolicy.LockoutDuration);
+        await loginLock.AcquireAsync(user, ct);
+        var alreadyLocked = user.IsLockedOut(now);
+        if (!alreadyLocked)
+            user.RegisterFailedLogin(now, LockoutPolicy.MaxFailedAttempts, LockoutPolicy.LockoutDuration);
         await audit.AddAsync(
             AuthAuditLog.Record(
                 user.TenantId,
@@ -164,7 +193,8 @@ public static class ReauthenticateHandler
             ct
         );
 
-        if (user.IsLockedOut(now))
+        await unitOfWork.SaveChangesAsync(ct);
+        if (!alreadyLocked && user.IsLockedOut(now))
         {
             await bus.PublishAsync(
                 new SecurityAlertIntegrationEvent
@@ -178,8 +208,6 @@ public static class ReauthenticateHandler
                 }
             );
         }
-
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Failure<ReauthenticateResponse>(Failed);
     }
 }

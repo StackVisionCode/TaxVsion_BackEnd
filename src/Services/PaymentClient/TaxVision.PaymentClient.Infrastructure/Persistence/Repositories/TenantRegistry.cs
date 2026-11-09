@@ -25,8 +25,9 @@ public sealed class TenantRegistry(PaymentClientDbContext db) : ITenantRegistry
             return;
 
         var result = Tenant.Register(tenantId, name, subDomain, kind, defaultTimeZoneId, nowUtc);
+        // Dato inválido del evento: es permanente, va a la cola de errores sin reintentos.
         if (result.IsFailure)
-            throw new InvalidOperationException(result.Error.Message);
+            throw new ArgumentException($"{result.Error.Code}: {result.Error.Message}");
 
         await db.Tenants.AddAsync(result.Value, ct);
     }
@@ -36,10 +37,11 @@ public sealed class TenantRegistry(PaymentClientDbContext db) : ITenantRegistry
         string status,
         bool isActive,
         DateTime nowUtc,
+        long? tenantVersion,
         CancellationToken ct = default
     )
     {
         var tenant = await db.Tenants.FirstOrDefaultAsync(value => value.Id == tenantId, ct);
-        tenant?.ApplyStatusChange(status, isActive, nowUtc);
+        tenant?.ApplyStatusChange(status, isActive, nowUtc, tenantVersion);
     }
 }

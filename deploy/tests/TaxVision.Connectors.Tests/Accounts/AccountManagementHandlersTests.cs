@@ -1,4 +1,6 @@
+using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
@@ -266,6 +268,38 @@ public class AccountManagementHandlersTests
         Assert.True(allowed.Value.IsOffice);
     }
 
+    // COR-10: Correspondence llena su proyección de dueños con esto.
+    [Fact]
+    public async Task ListMailboxAddresses_CarriesOwnerAndState()
+    {
+        var repository = new FakeTenantEmailAccountRepository();
+        var tenantId = Guid.NewGuid();
+        var me = Guid.NewGuid();
+        var office = TenantEmailAccount.Create(tenantId, "office@taxpro.com", ProviderCode.Gmail, me, Now).Value;
+        office.MarkConnected(Now);
+        office.Activate(Now);
+        var personal = TenantEmailAccount
+            .Create(tenantId, "me@taxpro.com", ProviderCode.Gmail, me, Now, ownerUserId: me)
+            .Value;
+        personal.MarkConnected(Now);
+        personal.Activate(Now);
+        personal.Disconnect(Now);
+        repository.Accounts.AddRange([office, personal]);
+
+        var mailboxes = await ListMailboxAddressesHandler.Handle(
+            new ListMailboxAddressesQuery(tenantId),
+            repository,
+            CancellationToken.None
+        );
+
+        var officeRow = mailboxes.Single(x => x.AccountId == office.Id);
+        Assert.Null(officeRow.OwnerUserId);
+        Assert.True(officeRow.IsActive);
+        var personalRow = mailboxes.Single(x => x.AccountId == personal.Id);
+        Assert.Equal(me, personalRow.OwnerUserId);
+        Assert.False(personalRow.IsActive);
+    }
+
     [Fact]
     public async Task DisconnectAccount_RevokesConnectionAndPublishesEvent()
     {
@@ -306,8 +340,7 @@ public class AccountManagementHandlersTests
             new FakeOAuthProviderClientFactory(providerClient),
             protector,
             auditLogRepository,
-            unitOfWork,
-            bus,
+            new HandlerTransactionUnit(unitOfWork, bus),
             new FakeCorrelationContext(),
             NullLogger<DisconnectAccountCommand>.Instance,
             CancellationToken.None
@@ -318,7 +351,11 @@ public class AccountManagementHandlersTests
         Assert.Equal(OAuthConnectionStatus.Revoked, connection.Status);
         Assert.Contains("refresh-token", providerClient.RevokedRefreshTokens);
         Assert.Single(auditLogRepository.Entries);
-        Assert.Single(bus.Published);
+        var published = Assert.IsType<ConnectorsTenantEmailAccountDisconnectedIntegrationEvent>(
+            Assert.Single(bus.Published)
+        );
+        Assert.Null(published.OwnerUserId);
+        Assert.True(published.IsOffice);
     }
 
     [Fact]
@@ -366,8 +403,7 @@ public class AccountManagementHandlersTests
             new FakeOAuthProviderClientFactory(providerClient),
             protector,
             new FakeProviderConnectionAuditLogRepository(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger<DisconnectAccountCommand>.Instance,
             CancellationToken.None

@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Folders;
@@ -98,6 +99,39 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Files.IgnoreQueryFilters()
             .Where(file => file.Status == FileStatus.PendingUpload && file.UploadExpiresAtUtc <= nowUtc)
             .OrderBy(file => file.UploadExpiresAtUtc)
+            .Take(take)
+            .ToListAsync(ct);
+
+    // Solo el tenant pedido (incluye la papelera); ScanReport solo hace falta para distinguir el bloqueo DMCA.
+    public async Task<IReadOnlyList<QuotaFootprintInput>> ListQuotaInputsAsync(Guid tenantId, CancellationToken ct) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file => file.TenantId == tenantId)
+            .Select(file => new QuotaFootprintInput(
+                file.Status,
+                file.StatusBeforeSoftDelete,
+                file.Status == FileStatus.BlockedByPolicy || file.StatusBeforeSoftDelete == FileStatus.BlockedByPolicy
+                    ? file.ScanReport
+                    : null,
+                file.SizeBytes
+            ))
+            .ToListAsync(ct);
+
+    // Cross-tenant (StuckScanRescueService). Las filas viejas sin ScanQueuedAtUtc miden desde CreatedAtUtc.
+    public async Task<IReadOnlyList<FileObject>> ListStuckScansAsync(
+        DateTime olderThanUtc,
+        int take,
+        CancellationToken ct
+    ) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file =>
+                (file.Status == FileStatus.PendingScan || file.Status == FileStatus.Scanning)
+                && (file.ScanQueuedAtUtc ?? file.CreatedAtUtc) <= olderThanUtc
+            )
+            .OrderBy(file => file.ScanQueuedAtUtc ?? file.CreatedAtUtc)
             .Take(take)
             .ToListAsync(ct);
 
@@ -419,6 +453,29 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
             .Folders.IgnoreQueryFilters()
             .SingleOrDefaultAsync(folder => folder.TenantId == tenantId && folder.Id == folderId, ct);
 
+    private const int SqlDeadlockVictim = 1205;
+
+    // UPDLOCK dura hasta el commit solo dentro de una transacción; sin ella no protegería nada.
+    public async Task<Folder?> GetForUpdateAsync(Guid tenantId, Guid folderId, CancellationToken ct)
+    {
+        if (db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Locked folder reads require an open transaction.");
+
+        try
+        {
+            return await db
+                .Folders.FromSql(
+                    $"SELECT * FROM [Folders] WITH (UPDLOCK, ROWLOCK) WHERE [TenantId] = {tenantId} AND [Id] = {folderId}"
+                )
+                .IgnoreQueryFilters()
+                .SingleOrDefaultAsync(ct);
+        }
+        catch (SqlException ex) when (ex.Number == SqlDeadlockVictim)
+        {
+            throw CloudStorageDbContext.ConcurrencyConflict(ex);
+        }
+    }
+
     private IQueryable<Folder> Subfolders(
         Guid tenantId,
         Guid? parentFolderId,
@@ -522,6 +579,27 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
                     && folder.OwnerId == ownerId
                     && folder.SoftDeletedAtUtc == null
                     && folder.Id != (excludeFolderId ?? Guid.Empty),
+                ct
+            );
+
+    public Task<Folder?> GetByNameUnderParentAsync(
+        Guid tenantId,
+        Guid? parentFolderId,
+        string name,
+        OwnerType ownerType,
+        Guid? ownerId,
+        CancellationToken ct
+    ) =>
+        db
+            .Folders.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                folder =>
+                    folder.TenantId == tenantId
+                    && folder.ParentFolderId == parentFolderId
+                    && folder.Name == name
+                    && folder.OwnerType == ownerType
+                    && folder.OwnerId == ownerId
+                    && folder.SoftDeletedAtUtc == null,
                 ct
             );
 
@@ -639,6 +717,19 @@ public sealed class StorageLimitRepository(CloudStorageDbContext db) : IStorageL
 
     public Task<TenantStorageLimit?> GetAsync(Guid tenantId, CancellationToken ct) =>
         db.StorageLimits.IgnoreQueryFilters().SingleOrDefaultAsync(limit => limit.TenantId == tenantId, ct);
+
+    public Task<TenantStorageLimit?> GetForUpdateAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Locked quota reads require an open transaction.");
+
+        return db
+            .StorageLimits.FromSql(
+                $"SELECT * FROM [TenantStorageLimits] WITH (UPDLOCK, HOLDLOCK) WHERE [TenantId] = {tenantId}"
+            )
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(ct);
+    }
 }
 
 public sealed class StoragePolicyRepository(CloudStorageDbContext db) : IStoragePolicyRepository

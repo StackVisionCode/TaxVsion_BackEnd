@@ -1,11 +1,13 @@
 using BuildingBlocks.Infrastructure.Hosting;
-using BuildingBlocks.Persistence;
+using BuildingBlocks.Jobs;
+using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Limits;
+using TaxVision.Signature.Infrastructure.Persistence;
 
 namespace TaxVision.Signature.Infrastructure.Scheduling;
 
@@ -26,8 +28,8 @@ public sealed class PurgeSchedulerOptions
 /// Challenges, ConsentEvents, AuditEvents) — el ORM maneja los FK cascade.
 ///
 /// <para>
-/// Deshabilitado por default para no perder data por accidente en dev. En producción se
-/// activa con <c>Signature:Purge:Enabled = true</c> tras validar con legal.
+/// Apagado en código; encendido en appsettings.json desde 2026-11-07. Solo purga en las oficinas
+/// que activaron la purga y cuyo plan la permite.
 /// </para>
 /// </summary>
 public sealed class PurgeScheduler(
@@ -97,30 +99,67 @@ public sealed class PurgeScheduler(
 
     private async Task PurgeTenantAsync(Guid tenantId, int batchSize, CancellationToken ct)
     {
-        using var scope = serviceProvider.CreateScope();
-        var policy = await scope
-            .ServiceProvider.GetRequiredService<ISignatureLimitsResolver>()
-            .ResolveAsync(tenantId, ct);
-        if (!policy.PurgeEnabled)
+        DateTime cutoff;
+        List<Guid> candidates;
+        using (var scope = serviceProvider.CreateScope())
+        {
+            var policy = await scope
+                .ServiceProvider.GetRequiredService<ISignatureLimitsResolver>()
+                .ResolveAsync(tenantId, ct);
+            if (!policy.PurgeEnabled)
+                return;
+
+            cutoff = DateTime.UtcNow.AddYears(-policy.RetentionYears);
+            var batch = await scope
+                .ServiceProvider.GetRequiredService<ISignatureRequestRepository>()
+                .ListPurgeCandidatesAsync(tenantId, cutoff, batchSize, ct);
+            candidates = batch.Select(request => request.Id).ToList();
+        }
+
+        if (candidates.Count == 0)
             return;
 
-        var repository = scope.ServiceProvider.GetRequiredService<ISignatureRequestRepository>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-
-        var cutoff = DateTime.UtcNow.AddYears(-policy.RetentionYears);
-        var batch = await repository.ListPurgeCandidatesAsync(tenantId, cutoff, batchSize, ct);
-        if (batch.Count == 0)
-            return;
-
-        foreach (var request in batch)
-            repository.Remove(request);
-        await unitOfWork.SaveChangesAsync(ct);
+        var summary = await PurgeAsync(tenantId, candidates, DateTime.UtcNow, ct);
 
         logger.LogInformation(
-            "PurgeScheduler removed {Count} signature requests of tenant {TenantId} older than {Cutoff}.",
-            batch.Count,
+            "PurgeScheduler removed {Count} of {Total} signature requests of tenant {TenantId} older than {Cutoff}.",
+            summary.Committed,
+            summary.Total,
             tenantId,
             cutoff
         );
     }
+
+    // SIG-10: una unidad por solicitud; el borrado y su aviso se confirman juntos o no queda ninguno.
+    internal Task<JobBatchSummary> PurgeAsync(
+        Guid tenantId,
+        IReadOnlyList<Guid> requestIds,
+        DateTime nowUtc,
+        CancellationToken ct
+    ) =>
+        TransactionalJobUnit.RunEachAsync<Guid, SignatureDbContext>(
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            requestIds,
+            async (requestId, unit, token) =>
+            {
+                var repository = unit.Services.GetRequiredService<ISignatureRequestRepository>();
+                var request = await repository.GetByIdAsync(tenantId, requestId, token);
+                if (request is null || request.LegalHold)
+                    return false;
+
+                repository.Remove(request);
+                await unit.PublishAsync(
+                    new SignatureRequestPurgedIntegrationEvent
+                    {
+                        TenantId = tenantId,
+                        CorrelationId = Guid.NewGuid().ToString("N"),
+                        SignatureRequestId = request.Id,
+                        PurgedAtUtc = nowUtc,
+                    }
+                );
+                return true;
+            },
+            logger,
+            ct
+        );
 }

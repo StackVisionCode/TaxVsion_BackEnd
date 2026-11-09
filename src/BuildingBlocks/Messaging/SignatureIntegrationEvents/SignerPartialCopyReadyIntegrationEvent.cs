@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
 /// F7 — la copia parcial ya está rendeada y subida a CloudStorage. Notification lo consume y
 /// manda el correo/SMS/WhatsApp al firmante con el link de descarga del archivo.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerPartialCopyReadyIntegrationEvent")]
 public sealed record SignerPartialCopyReadyIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

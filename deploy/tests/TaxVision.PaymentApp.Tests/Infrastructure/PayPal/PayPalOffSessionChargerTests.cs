@@ -73,6 +73,88 @@ public sealed class PayPalOffSessionChargerTests
         Assert.Equal("PayPal.OffSession.CreateFailed", result.Value.FailureCode);
     }
 
+    // D-PAY-13: la captura pudo salir. No es un fallo: no entra al dunning con clave nueva.
+    [Fact]
+    public async Task Capture_timeout_is_not_a_failure()
+    {
+        var handler = new CapturingHandler();
+        handler.EnqueueJson(HttpStatusCode.OK, """{"access_token":"t","token_type":"Bearer","expires_in":3600}""");
+        handler.EnqueueJson(HttpStatusCode.Created, """{"id":"ORDER-OFF-3","status":"CREATED"}""");
+        handler.EnqueueTimeout();
+
+        var result = await CreateCharger(handler).ChargeAsync(BuildRequest(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OffSessionChargeStatus.OutcomeUnknown, result.Value.Status);
+    }
+
+    [Fact]
+    public async Task Create_timeout_is_not_a_failure()
+    {
+        var handler = new CapturingHandler();
+        handler.EnqueueJson(HttpStatusCode.OK, """{"access_token":"t","token_type":"Bearer","expires_in":3600}""");
+        handler.EnqueueTimeout();
+
+        var result = await CreateCharger(handler).ChargeAsync(BuildRequest(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OffSessionChargeStatus.OutcomeUnknown, result.Value.Status);
+    }
+
+    [Fact]
+    public async Task Capture_server_error_is_not_a_failure()
+    {
+        var handler = new CapturingHandler();
+        handler.EnqueueJson(HttpStatusCode.OK, """{"access_token":"t","token_type":"Bearer","expires_in":3600}""");
+        handler.EnqueueJson(HttpStatusCode.Created, """{"id":"ORDER-OFF-4","status":"CREATED"}""");
+        handler.EnqueueJson(HttpStatusCode.InternalServerError, """{"name":"INTERNAL_SERVER_ERROR"}""");
+
+        var result = await CreateCharger(handler).ChargeAsync(BuildRequest(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OffSessionChargeStatus.OutcomeUnknown, result.Value.Status);
+    }
+
+    [Fact]
+    public async Task Capture_pending_stays_processing_with_the_order_reference()
+    {
+        var handler = new CapturingHandler();
+        handler.EnqueueJson(HttpStatusCode.OK, """{"access_token":"t","token_type":"Bearer","expires_in":3600}""");
+        handler.EnqueueJson(HttpStatusCode.Created, """{"id":"ORDER-OFF-6","status":"CREATED"}""");
+        handler.EnqueueJson(
+            HttpStatusCode.Created,
+            """
+            {
+              "id": "ORDER-OFF-6",
+              "status": "COMPLETED",
+              "purchase_units": [
+                { "payments": { "captures": [ { "id": "CAPTURE-OFF-6", "status": "PENDING" } ] } }
+              ]
+            }
+            """
+        );
+
+        var result = await CreateCharger(handler).ChargeAsync(BuildRequest(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OffSessionChargeStatus.Processing, result.Value.Status);
+        Assert.Equal("ORDER-OFF-6", result.Value.ProviderPaymentReference);
+    }
+
+    [Fact]
+    public async Task Capture_declined_is_a_failure()
+    {
+        var handler = new CapturingHandler();
+        handler.EnqueueJson(HttpStatusCode.OK, """{"access_token":"t","token_type":"Bearer","expires_in":3600}""");
+        handler.EnqueueJson(HttpStatusCode.Created, """{"id":"ORDER-OFF-5","status":"CREATED"}""");
+        handler.EnqueueJson(HttpStatusCode.UnprocessableEntity, """{"name":"UNPROCESSABLE_ENTITY"}""");
+
+        var result = await CreateCharger(handler).ChargeAsync(BuildRequest(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(OffSessionChargeStatus.Failed, result.Value.Status);
+    }
+
     [Fact]
     public async Task Missing_token_fails_before_calling_paypal()
     {
@@ -128,7 +210,7 @@ public sealed class PayPalOffSessionChargerTests
 
     internal sealed class CapturingHandler : HttpMessageHandler
     {
-        private readonly Queue<HttpResponseMessage> _responses = new();
+        private readonly Queue<HttpResponseMessage?> _responses = new();
         public List<CapturedRequest> Requests { get; } = [];
 
         public void EnqueueJson(HttpStatusCode statusCode, string json)
@@ -141,6 +223,8 @@ public sealed class PayPalOffSessionChargerTests
             );
         }
 
+        public void EnqueueTimeout() => _responses.Enqueue(null);
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken
@@ -152,7 +236,7 @@ public sealed class PayPalOffSessionChargerTests
             Requests.Add(new CapturedRequest(request.Method, request.RequestUri?.AbsolutePath ?? string.Empty, body));
             if (_responses.Count == 0)
                 throw new InvalidOperationException("No fake HTTP response was queued.");
-            return _responses.Dequeue();
+            return _responses.Dequeue() ?? throw new TaskCanceledException("Simulated timeout.");
         }
     }
 

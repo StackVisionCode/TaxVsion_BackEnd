@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using TaxVision.Auth.Domain.Common;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Infrastructure.Persistence.Configurations;
@@ -16,13 +17,19 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.TenantId).IsRequired();
         builder.Property(user => user.Name).HasMaxLength(100).IsRequired();
         builder.Property(user => user.LastName).HasMaxLength(100).IsRequired();
-        builder.Property(user => user.Email).HasMaxLength(320).IsRequired();
+        builder
+            .Property(user => user.Email)
+            .HasConversion(email => email.Value, value => EmailAddress.FromTrusted(value))
+            .HasMaxLength(320)
+            .IsRequired();
         builder.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
         builder.Property(user => user.ActorType).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(user => user.IsActive).IsRequired();
         builder.Property(user => user.SlotPriorityAt);
         builder.Property(user => user.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(user => user.RemovedAtUtc);
+        builder.Property(user => user.DeactivationReason).HasConversion<string>().HasMaxLength(32);
+        builder.Property(user => user.CustomerStatusChangedAtUtc);
         builder.Property(user => user.TimeZoneId).HasMaxLength(64);
         builder.Property(user => user.PhoneNumber).HasMaxLength(20);
         builder.Property(user => user.EmailVerified).IsRequired();
@@ -33,6 +40,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.PermissionsBackfilledAt);
         builder.Property(user => user.CreatedAtUtc).IsRequired();
         builder.Property(user => user.OnboardingId);
+        builder.Property(user => user.RowVersion).IsRowVersion();
         builder.Property(user => user.AvatarFileId);
         builder.Property(user => user.PendingAvatarFileId);
         builder.Property(user => user.PendingAvatarRequestedAtUtc);
@@ -60,6 +68,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Ignore(user => user.Roles);
         builder.Ignore(user => user.AccountKind);
         builder.Ignore(user => user.IsOwner);
+        builder.Ignore(user => user.HasLoginFailures);
 
         var converter = new ValueConverter<List<string>, string>(
             roles => JsonSerializer.Serialize(roles, (JsonSerializerOptions?)null),

@@ -156,11 +156,78 @@ public sealed class ReminderCommandHandlerTests
         Assert.Equal([ReminderCancellationReasons.Other], metrics.Cancelled);
     }
 
+    /// <summary>
+    /// Contrato con publicadores (Tasks TSK-2, Calendar CAL-1): una clave existente en estado
+    /// terminal se devuelve tal cual, sin rearmar. Quien quiera un aviso nuevo cambia la clave.
+    /// </summary>
+    [Theory]
+    [InlineData(ReminderStatus.Cancelled)]
+    [InlineData(ReminderStatus.Fired)]
+    [InlineData(ReminderStatus.Dismissed)]
+    [InlineData(ReminderStatus.Missed)]
+    public async Task Create_ExistingKeyInTerminalState_ReturnsExistingWithoutRearming(ReminderStatus status)
+    {
+        var reminders = new FakeReminderRepository();
+        var created = (await Create(reminders, new RecordingScheduler(), requestKey: TaskKey)).Value;
+        MoveTo(reminders.Stored[0], status);
+
+        var scheduler = new RecordingScheduler();
+        var metrics = new RecordingReminderMetrics();
+        var again = await Create(reminders, scheduler, metrics, requestKey: TaskKey);
+
+        Assert.True(again.IsSuccess);
+        Assert.Equal(created.Id, again.Value.Id);
+        Assert.Equal(status, again.Value.Status);
+        Assert.Single(reminders.Stored);
+        Assert.Empty(scheduler.Scheduled);
+        Assert.Empty(metrics.Scheduled);
+        Assert.Equal([ReminderDuplicateResolutions.Lookup], metrics.DuplicatesSuppressed);
+    }
+
+    /// <summary>La clave por ciclo de vida (<c>:r{n}</c>) de TSK-2 crea un aviso nuevo sin tocar Reminder.</summary>
+    [Fact]
+    public async Task Create_NewLifecycleKey_CreatesNewReminder()
+    {
+        var reminders = new FakeReminderRepository();
+        await Create(reminders, new RecordingScheduler(), requestKey: TaskKey);
+        MoveTo(reminders.Stored[0], ReminderStatus.Cancelled);
+
+        var scheduler = new RecordingScheduler();
+        var reopened = await Create(reminders, scheduler, requestKey: TaskKey + ":r1");
+
+        Assert.True(reopened.IsSuccess);
+        Assert.Equal(2, reminders.Stored.Count);
+        Assert.Equal(ReminderStatus.Scheduled, reopened.Value.Status);
+        Assert.Equal([reopened.Value.Id], scheduler.Scheduled);
+    }
+
+    private const string TaskKey = "task-created:7f3a00000000000000000000000000aa:2b91f0c4111142228333444455556666";
+
+    private static void MoveTo(ReminderAggregate reminder, ReminderStatus status)
+    {
+        var now = DateTime.UtcNow;
+        // Solo se descarta lo que ya sonó.
+        if (status == ReminderStatus.Dismissed)
+            Assert.True(reminder.MarkFired(now).IsSuccess);
+
+        var moved = status switch
+        {
+            ReminderStatus.Cancelled => reminder.Cancel("target_closed", now),
+            ReminderStatus.Fired => reminder.MarkFired(now),
+            ReminderStatus.Dismissed => reminder.Dismiss(now),
+            ReminderStatus.Missed => reminder.MarkMissed(now),
+            _ => throw new ArgumentOutOfRangeException(nameof(status)),
+        };
+        Assert.True(moved.IsSuccess);
+        Assert.Equal(status, reminder.Status);
+    }
+
     private static Task<Result<Application.Reminders.ReminderResponse>> Create(
         FakeReminderRepository reminders,
         RecordingScheduler scheduler,
         RecordingReminderMetrics? metrics = null,
-        Guid? userId = null
+        Guid? userId = null,
+        string requestKey = "test:create:1"
     ) =>
         CreateReminderHandler.Handle(
             new CreateReminderCommand(
@@ -174,7 +241,7 @@ public sealed class ReminderCommandHandlerTests
                 AnchorAtUtc: null,
                 LeadMinutes: null,
                 TimeZone: "America/Santo_Domingo",
-                RequestKey: "test:create:1"
+                RequestKey: requestKey
             ),
             reminders,
             scheduler,

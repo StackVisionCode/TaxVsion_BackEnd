@@ -4,7 +4,6 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Shared;
-using Wolverine;
 
 namespace TaxVision.Connectors.Application.Sync;
 
@@ -18,7 +17,6 @@ public static class ConnectorsMailboxAuthFailedConsumer
         ConnectorsMailboxAuthFailedIntegrationEvent evt,
         ITenantEmailAccountRepository accountRepository,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger logger,
         CancellationToken ct
@@ -30,15 +28,15 @@ public static class ConnectorsMailboxAuthFailedConsumer
             if (account.IsFailure || account.Value.ProviderCode != ProviderCode.Imap)
                 return;
 
-            await MailboxCredentialsRejection.HandleAsync(
-                account.Value,
-                "The IMAP server rejected the username or password.",
-                unitOfWork,
-                bus,
-                correlation,
-                logger,
-                ct
-            );
+            if (
+                MailboxCredentialsRejection.TryMark(
+                    account.Value,
+                    "The IMAP server rejected the username or password.",
+                    correlation,
+                    logger
+                )
+            )
+                await unitOfWork.SaveChangesAsync(ct);
         }
     }
 }

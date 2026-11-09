@@ -19,11 +19,15 @@ public sealed class NoteRepository(NotesDbContext db) : INoteRepository
 
     // Sin tenant ambiental: lo invoca el consumer de CloudStorage (Fase 7). El caller valida
     // note.TenantId == evt.TenantId después del fetch.
-    public Task<Note?> GetByAttachmentFileIdAsync(Guid cloudStorageFileId, CancellationToken ct = default) =>
-        db
+    public async Task<IReadOnlyList<Note>> ListByAttachmentFileIdAsync(
+        Guid cloudStorageFileId,
+        CancellationToken ct = default
+    ) =>
+        await db
             .Notes.IgnoreQueryFilters()
             .Include(n => n.Attachments)
-            .FirstOrDefaultAsync(n => n.Attachments.Any(a => a.CloudStorageFileId == cloudStorageFileId), ct);
+            .Where(n => n.Attachments.Any(a => a.CloudStorageFileId == cloudStorageFileId))
+            .ToListAsync(ct);
 
     public async Task<PagedResult<Note>> ListByReferenceAsync(
         Guid tenantId,

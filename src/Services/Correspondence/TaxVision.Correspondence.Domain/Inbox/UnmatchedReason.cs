@@ -15,4 +15,10 @@ public enum UnmatchedReason
     /// (plan §36 Fase 4, punto b.1) — se trata como cuarentena de seguridad, no como ruido de debug.
     /// </summary>
     AuthenticationFailed = 1,
+
+    /// <summary>El <c>From</c> no es una dirección válida; se guarda tal cual llegó para poder revisarlo.</summary>
+    InvalidSender = 2,
+
+    /// <summary>Remitente cliente, pero el dominio rechazó el mensaje aun normalizado (ver <c>RejectionCode</c>).</summary>
+    IngestRejected = 3,
 }

@@ -5,6 +5,7 @@ import type {
   CustomerPortalAccountRepository,
   CustomerPortalAccountSnapshot,
 } from '../../application/ports/customer-portal-account-repository.js';
+import { newerStatus, stamp } from './status-order.js';
 
 export class PrismaCustomerPortalAccountRepository
   implements CustomerPortalAccountRepository, CustomerPortalAccountReconcileWriter
@@ -46,17 +47,17 @@ export class PrismaCustomerPortalAccountRepository
     return result.count > 0 ? 'deactivated' : 'unchanged';
   }
 
-  async markInactiveByUserId(userId: string): Promise<void> {
+  async markInactiveByUserId(userId: string, statusChangedAtUtc?: Date): Promise<void> {
     await this.prisma.customerPortalAccount.updateMany({
-      where: { UserId: userId },
-      data: { IsActive: false },
+      where: { UserId: userId, ...newerStatus(statusChangedAtUtc) },
+      data: { IsActive: false, ...stamp(statusChangedAtUtc) },
     });
   }
 
-  async markActiveByUserId(userId: string): Promise<void> {
+  async markActiveByUserId(userId: string, statusChangedAtUtc?: Date): Promise<void> {
     await this.prisma.customerPortalAccount.updateMany({
-      where: { UserId: userId },
-      data: { IsActive: true },
+      where: { UserId: userId, ...newerStatus(statusChangedAtUtc) },
+      data: { IsActive: true, ...stamp(statusChangedAtUtc) },
     });
   }
 

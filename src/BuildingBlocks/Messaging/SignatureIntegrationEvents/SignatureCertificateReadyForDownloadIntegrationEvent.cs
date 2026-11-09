@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -13,6 +15,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// de entrega independiente.
 /// </para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureCertificateReadyForDownloadIntegrationEvent")]
 public sealed record SignatureCertificateReadyForDownloadIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

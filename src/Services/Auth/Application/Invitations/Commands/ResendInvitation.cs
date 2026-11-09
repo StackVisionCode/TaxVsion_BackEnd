@@ -24,6 +24,7 @@ public static class ResendInvitationHandler
         IUserRepository users,
         ITenantRegistry tenants,
         IInvitationTokenService tokens,
+        IAccountTokenProtector tokenProtector,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -56,23 +57,6 @@ public static class ResendInvitationHandler
 
         var tenant = await tenants.GetByIdAsync(invitation.TenantId, ct);
 
-        await bus.PublishAsync(
-            new InvitationCreatedIntegrationEvent
-            {
-                TenantId = invitation.TenantId,
-                InvitationId = invitation.Id,
-                Email = invitation.Email,
-                ActorType = invitation.ActorType.ToString(),
-                RawToken = token.RawToken,
-                ExpiresAtUtc = invitation.ExpiresAtUtc,
-                TenantName = tenant?.Name,
-                TenantSubdomain = tenant?.SubDomain,
-                InviterName = $"{actor.Name} {actor.LastName}",
-                IsResend = true,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 invitation.TenantId,
@@ -88,6 +72,28 @@ public static class ResendInvitationHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        var tokenFields = tokenProtector.Seal(
+            AuthTokenPayloadSchemas.Invitation,
+            AuthTokenPayloadSchemas.InvitationBinding(invitation.TenantId, invitation.Id),
+            token.RawToken
+        );
+        await bus.PublishAsync(
+            new InvitationCreatedIntegrationEvent
+            {
+                TenantId = invitation.TenantId,
+                InvitationId = invitation.Id,
+                Email = invitation.Email,
+                ActorType = invitation.ActorType.ToString(),
+                RawToken = tokenFields.RawToken,
+                ProtectedToken = tokenFields.ProtectedToken,
+                ExpiresAtUtc = invitation.ExpiresAtUtc,
+                TenantName = tenant?.Name,
+                TenantSubdomain = tenant?.SubDomain,
+                InviterName = $"{actor.Name} {actor.LastName}",
+                IsResend = true,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         return Result.Success();
     }
 }

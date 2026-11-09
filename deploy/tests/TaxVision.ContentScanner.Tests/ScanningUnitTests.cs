@@ -73,13 +73,22 @@ public sealed class ScanningUnitTests
             NullLogger<ScanService>.Instance
         );
 
-        var first = service.ScanAsync("a", MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None);
-        await Assert.ThrowsAsync<ScannerBusyException>(() =>
-            service.ScanAsync("b", MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None)
-        );
+        var slot = await service.AcquireSlotAsync(CancellationToken.None);
+        await Assert.ThrowsAsync<ScannerBusyException>(() => service.AcquireSlotAsync(CancellationToken.None));
 
+        await slot.DisposeAsync();
+        await using var next = await service.AcquireSlotAsync(CancellationToken.None);
         gate.SetResult();
-        Assert.Equal(0f, (await first).Nsfw);
+        var result = await service.ScanAsync("a", MediaKind.Image, new FrameSampling(1, 1), CancellationToken.None);
+        Assert.Equal(0f, result.Nsfw);
+    }
+
+    [Fact]
+    public void Free_space_is_read_from_the_real_disk()
+    {
+        ITempDiskSpace disk = new DriveTempDiskSpace();
+
+        Assert.True(disk.AvailableBytes(Path.GetTempPath()) > 0);
     }
 
     private sealed class BlockingExtractor(Task gate) : IFrameExtractor

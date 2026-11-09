@@ -77,7 +77,7 @@ public sealed class FormActionPlanner(
         if (
             revisionNumber != request.CurrentRevisionNumber
             || !AwaitsCustomer(request)
-            || request.HasActiveAction(FormActionNames.CreateCustomer)
+            || request.Actions.HasActive(FormActionNames.CreateCustomer)
         )
             return tally;
         var context = await LoadAsync(request, ct);
@@ -92,7 +92,7 @@ public sealed class FormActionPlanner(
         {
             // Un rechazo tardío no deshace una firma que ya se completó o selló.
             if (
-                request.RevisionSignatureStatus(revisionNumber)
+                request.Summary.RevisionSignatureStatus(revisionNumber)
                 is FormRevisionSignatureStatus.Completed
                     or FormRevisionSignatureStatus.Sealed
             )
@@ -148,7 +148,7 @@ public sealed class FormActionPlanner(
         CancellationToken ct
     )
     {
-        if (!AwaitsCustomer(request) || request.HasActiveAction(FormActionNames.CreateCustomer))
+        if (!AwaitsCustomer(request) || request.Actions.HasActive(FormActionNames.CreateCustomer))
             return;
         var tenantSettings = await settings.GetAsync(request.TenantId, ct);
         if (!FormModuleCapabilities.Of(tenantSettings).AutoCustomerCreationEnabled)
@@ -185,7 +185,7 @@ public sealed class FormActionPlanner(
         var failure = payload.IsSuccess ? null : FormActionRunErrors.PayloadUnavailableCode;
         var run = previous is null
             ? NewRun(request, action, commandId, failure, nowUtc)
-            : request.RetryAction(previous.Id, commandId, failure, nowUtc);
+            : request.Actions.Retry(previous.Id, commandId, failure, nowUtc);
         if (run.IsFailure)
             return Result.Failure<FormActionEmission>(run.Error);
         object message = payload.IsFailure
@@ -209,8 +209,8 @@ public sealed class FormActionPlanner(
         DateTime nowUtc
     ) =>
         commandId is { } id
-            ? request.RequestAction(action.Key, FormActionNames.CreateCustomer, id, nowUtc)
-            : request.CloseActionWithoutCommand(
+            ? request.Actions.Request(action.Key, FormActionNames.CreateCustomer, id, nowUtc)
+            : request.Actions.CloseWithoutCommand(
                 action.Key,
                 FormActionNames.CreateCustomer,
                 FormActionRunStatus.Failed,
@@ -222,14 +222,14 @@ public sealed class FormActionPlanner(
     {
         if (runId is { } id)
         {
-            var run = request.GetRetryableAction(id);
+            var run = request.Actions.GetRetryable(id);
             if (run.IsFailure)
                 return Result.Failure<FormActionRun?>(run.Error);
             return run.Value.ActionType == FormActionNames.CreateCustomer
                 ? Result.Success<FormActionRun?>(run.Value)
                 : Result.Failure<FormActionRun?>(FormActionRunErrors.NotRetryable);
         }
-        var latest = request.LatestAction(FormActionNames.CreateCustomer);
+        var latest = request.Actions.Latest(FormActionNames.CreateCustomer);
         if (latest is null)
             return Result.Success<FormActionRun?>(null);
         return latest.IsRetryable
@@ -279,12 +279,12 @@ public sealed class FormActionPlanner(
 
     private static void SkipOnce(FormRequest request, FormAction action, string reason, DateTime nowUtc)
     {
-        if (!request.HasClosedAction(action.Key, request.CurrentRevisionNumber, reason))
+        if (!request.Actions.HasClosed(action.Key, request.CurrentRevisionNumber, reason))
             Skip(request, action, reason, nowUtc);
     }
 
     private static void Skip(FormRequest request, FormAction action, string reason, DateTime nowUtc) =>
-        request.CloseActionWithoutCommand(
+        request.Actions.CloseWithoutCommand(
             action.Key,
             action.Type.ToString(),
             FormActionRunStatus.Skipped,

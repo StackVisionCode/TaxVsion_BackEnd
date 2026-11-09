@@ -1,9 +1,10 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.CloudStorage.Domain.Files.Events;
 
 namespace TaxVision.CloudStorage.Domain.Files;
 
-public sealed class FileObject : TenantEntity
+public sealed class FileObject : AggregateRoot
 {
     private FileObject() { }
 
@@ -68,6 +69,38 @@ public sealed class FileObject : TenantEntity
     /// </summary>
     public string? MultipartUploadId { get; private set; }
 
+    /// <summary>Cuándo se encoló el último escaneo; el rescate de atascados mide desde aquí.</summary>
+    public DateTime? ScanQueuedAtUtc { get; private set; }
+
+    /// <summary>Reencolados hechos por el rescate de escaneos atascados.</summary>
+    public int ScanAttemptCount { get; private set; }
+
+    public byte[] RowVersion { get; private set; } = [];
+
+    public const string TakedownReport = "Blocked by DMCA takedown notice.";
+
+    /// <summary>Estado real del objeto: el previo al borrado si está en la papelera (igual que Restore).</summary>
+    public FileStatus EffectiveStatus => EffectiveStatusOf(Status, StatusBeforeSoftDelete);
+
+    public static FileStatus EffectiveStatusOf(FileStatus status, FileStatus? statusBeforeSoftDelete) =>
+        status == FileStatus.SoftDeleted ? statusBeforeSoftDelete ?? FileStatus.Available : status;
+
+    /// <summary>Lo que cuenta contra la cuota según el estado efectivo.</summary>
+    public QuotaFootprint QuotaFootprint => FootprintOf(EffectiveStatus, ScanReport);
+
+    /// <summary>
+    /// Regla única de cuota (CST-5): Available y el bloqueo DMCA (venía de Available) usan; lo pendiente
+    /// reserva; infectado, revisión, ScanFailed y bloqueo de moderación no cuentan.
+    /// </summary>
+    public static QuotaFootprint FootprintOf(FileStatus effectiveStatus, string? scanReport) =>
+        effectiveStatus switch
+        {
+            FileStatus.Available => QuotaFootprint.Used,
+            FileStatus.BlockedByPolicy when scanReport == TakedownReport => QuotaFootprint.Used,
+            FileStatus.PendingUpload or FileStatus.PendingScan or FileStatus.Scanning => QuotaFootprint.Reserved,
+            _ => QuotaFootprint.None,
+        };
+
     public static Result<FileObject> Register(
         Guid id,
         Guid tenantId,
@@ -120,11 +153,47 @@ public sealed class FileObject : TenantEntity
         return Result.Success();
     }
 
-    public Result MarkPendingScan()
+    public Result MarkPendingScan(DateTime nowUtc)
     {
         if (Status != FileStatus.PendingUpload)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.PendingScan;
+        ScanQueuedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>El rescate vuelve a encolar un escaneo atascado, con tope de intentos.</summary>
+    public Result RequeueScan(DateTime nowUtc, int maxAttempts)
+    {
+        if (Status is not (FileStatus.PendingScan or FileStatus.Scanning))
+            return Result.Failure(FileErrors.InvalidTransition);
+        if (ScanAttemptCount >= maxAttempts)
+            return Result.Failure(FileErrors.ScanAttemptsExhausted);
+        ScanAttemptCount++;
+        ScanQueuedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>PlatformAdmin vuelve a pedir el escaneo de un ScanFailed (el handler ya reservó la cuota).</summary>
+    public Result RequestRescan(DateTime nowUtc)
+    {
+        if (Status != FileStatus.ScanFailed)
+            return Result.Failure(FileErrors.InvalidTransition);
+        Status = FileStatus.PendingScan;
+        ScanQueuedAtUtc = nowUtc;
+        ScanAttemptCount = 0;
+        return Result.Success();
+    }
+
+    /// <summary>El rescate da por perdido un escaneo (sin blob o sin intentos); queda ScanFailed.</summary>
+    public Result MarkScanAbandoned(string report, DateTime nowUtc, string reason, string? correlationId = null)
+    {
+        if (Status is not (FileStatus.PendingScan or FileStatus.Scanning))
+            return Result.Failure(FileErrors.InvalidTransition);
+        Status = FileStatus.ScanFailed;
+        ScanReport = report;
+        ScannedAtUtc = nowUtc;
+        RaiseScanFailed(reason, correlationId);
         return Result.Success();
     }
 
@@ -159,7 +228,14 @@ public sealed class FileObject : TenantEntity
         return Result.Success();
     }
 
-    public Result MarkAvailable(ChecksumSha256 checksum, string detectedContentType, DateTime nowUtc)
+    /// <param name="portalCustomerId">Cliente que lo subió desde el portal, si lo hubo.</param>
+    public Result MarkAvailable(
+        ChecksumSha256 checksum,
+        string detectedContentType,
+        DateTime nowUtc,
+        string? correlationId = null,
+        Guid? portalCustomerId = null
+    )
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
@@ -168,10 +244,16 @@ public sealed class FileObject : TenantEntity
         DetectedContentType = detectedContentType;
         ScanReport = "Clean";
         ScannedAtUtc = nowUtc;
+        // Ni Client Forms ni una foto de perfil son "el cliente subió un documento".
+        RaiseBecameAvailable(
+            detectedContentType,
+            correlationId,
+            FolderType is FolderType.ClientForms or FolderType.Avatars ? null : portalCustomerId
+        );
         return Result.Success();
     }
 
-    public Result MarkInfected(string report, string detectedContentType, DateTime nowUtc)
+    public Result MarkInfected(string report, string detectedContentType, DateTime nowUtc, string? correlationId = null)
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
@@ -179,20 +261,27 @@ public sealed class FileObject : TenantEntity
         DetectedContentType = detectedContentType;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseQuarantined(FileQuarantineKind.Infected, report, correlationId);
         return Result.Success();
     }
 
-    public Result MarkScanFailed(string report, DateTime nowUtc)
+    public Result MarkScanFailed(string report, DateTime nowUtc, string reason, string? correlationId = null)
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.ScanFailed;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseScanFailed(reason, correlationId);
         return Result.Success();
     }
 
-    public Result MarkBlockedByPolicy(string report, string detectedContentType, DateTime nowUtc)
+    public Result MarkBlockedByPolicy(
+        string report,
+        string detectedContentType,
+        DateTime nowUtc,
+        string? correlationId = null
+    )
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
@@ -200,11 +289,18 @@ public sealed class FileObject : TenantEntity
         DetectedContentType = detectedContentType;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseQuarantined(FileQuarantineKind.BlockedByPolicy, report, correlationId);
         return Result.Success();
     }
 
     /// <summary>Guarda el checksum ya calculado: si el revisor aprueba, el archivo pasa a Available sin volver a leerlo.</summary>
-    public Result MarkPendingReview(string report, string detectedContentType, ChecksumSha256 checksum, DateTime nowUtc)
+    public Result MarkPendingReview(
+        string report,
+        string detectedContentType,
+        ChecksumSha256 checksum,
+        DateTime nowUtc,
+        string? correlationId = null
+    )
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
@@ -213,28 +309,31 @@ public sealed class FileObject : TenantEntity
         ChecksumSha256 = checksum.Value;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseQuarantined(FileQuarantineKind.PendingReview, report, correlationId);
         return Result.Success();
     }
 
     /// <summary>Revisión humana: el revisor de plataforma confirma que el contenido es apto.</summary>
-    public Result ApproveReview(DateTime nowUtc)
+    public Result ApproveReview(DateTime nowUtc, string? correlationId = null)
     {
         if (Status != FileStatus.PendingReview || ChecksumSha256 is null)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.Available;
         ScanReport = "Approved after content review.";
         ScannedAtUtc = nowUtc;
+        RaiseBecameAvailable(DetectedContentType ?? DeclaredContentType, correlationId, portalCustomerId: null);
         return Result.Success();
     }
 
     /// <summary>Revisión humana: el revisor confirma que viola la política; queda bloqueado en cuarentena.</summary>
-    public Result RejectReview(string report, DateTime nowUtc)
+    public Result RejectReview(string report, DateTime nowUtc, string? correlationId = null)
     {
         if (Status != FileStatus.PendingReview)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.BlockedByPolicy;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
+        RaiseQuarantined(FileQuarantineKind.BlockedByPolicy, report, correlationId);
         return Result.Success();
     }
 
@@ -284,7 +383,7 @@ public sealed class FileObject : TenantEntity
         if (Status != FileStatus.Available)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.BlockedByPolicy;
-        ScanReport = "Blocked by DMCA takedown notice.";
+        ScanReport = TakedownReport;
         ScannedAtUtc = nowUtc;
         return Result.Success();
     }
@@ -301,10 +400,13 @@ public sealed class FileObject : TenantEntity
     }
 
     /// <summary>Fase C2 — mueve el archivo a otra carpeta navegable (o a la raiz con null). La existencia/propiedad de la carpeta ya la valido el handler.</summary>
-    public void MoveToFolder(Guid? folderId, DateTime nowUtc)
+    public Result MoveToFolder(Guid? folderId, DateTime nowUtc)
     {
+        if (Status == FileStatus.SoftDeleted)
+            return Result.Failure(FileErrors.InvalidTransition);
         FolderId = folderId;
         FolderAssignedAtUtc = folderId is null ? null : nowUtc;
+        return Result.Success();
     }
 
     /// <summary>
@@ -343,4 +445,56 @@ public sealed class FileObject : TenantEntity
         DeletedBatchId = null;
         return Result.Success();
     }
+
+    private void RaiseBecameAvailable(string contentType, string? correlationId, Guid? portalCustomerId) =>
+        AddDomainEvent(
+            new FileBecameAvailableDomainEvent(
+                TenantId,
+                Id,
+                ObjectKey,
+                contentType,
+                SizeBytes,
+                ChecksumSha256!,
+                CreatedBy,
+                OwnerType.ToString(),
+                OwnerId,
+                FolderId,
+                FolderType.ToString(),
+                OriginalName,
+                TaxYear,
+                correlationId,
+                portalCustomerId
+            )
+        );
+
+    private void RaiseQuarantined(FileQuarantineKind kind, string reason, string? correlationId) =>
+        AddDomainEvent(
+            new FileQuarantinedDomainEvent(
+                TenantId,
+                Id,
+                kind,
+                ObjectKey,
+                reason,
+                CreatedBy,
+                OwnerType.ToString(),
+                OwnerId,
+                FolderType.ToString(),
+                correlationId
+            )
+        );
+
+    private void RaiseScanFailed(string reason, string? correlationId) =>
+        AddDomainEvent(
+            new FileScanFailedDomainEvent(
+                TenantId,
+                Id,
+                ObjectKey,
+                reason,
+                CreatedBy,
+                OwnerType.ToString(),
+                OwnerId,
+                FolderType.ToString(),
+                correlationId
+            )
+        );
 }

@@ -1,0 +1,58 @@
+namespace TaxVision.Auth.Onboarding.Application;
+
+/// <summary>PayFlow (Fase 9) — <see cref="RegistrationUrlBase"/> es el origen público que el
+/// frontend sirve para completar el registro (<c>{RegistrationUrlBase}/register?token=...</c>).
+/// Config real por ambiente; el valor de <c>appsettings.json</c> es solo un placeholder de
+/// desarrollo.</summary>
+public sealed class OnboardingOptions
+{
+    public const string SectionName = "Onboarding";
+
+    public string RegistrationUrlBase { get; set; } = "http://localhost:4201";
+
+    /// <summary>Sin uso desde AUTH-8: la Saga crea al dueño en proceso. Se retira junto con
+    /// <c>Onboarding__AuthPublicBaseUrl</c> del compose. Para el link del recibo, ver
+    /// <see cref="ReceiptDownloadBaseUrl"/>.</summary>
+    public string AuthPublicBaseUrl { get; set; } = "http://localhost:5124";
+
+    /// <summary>Origen PÚBLICO de Auth (vía Gateway, <c>api.taxoffix.io</c>) para el link
+    /// mediador de descarga del recibo embebido en el email
+    /// (<c>{ReceiptDownloadBaseUrl}/onboarding/receipts/{ReceiptFileId}/download</c>). Distinto de
+    /// <see cref="AuthPublicBaseUrl"/> (loopback interno). Config real por ambiente.</summary>
+    public string ReceiptDownloadBaseUrl { get; set; } = "http://localhost:5124";
+
+    /// <summary>PayFlow (Fase 14) — TTL de la reserva temporal de subdominio durante el registro
+    /// post-pago (60min por objetivo del plan, distinto del TTL de 15min que usa
+    /// <c>TenantDomainOptions.SubdomainReservationTtlMinutes</c> para el flujo de PlatformAdmin —
+    /// son módulos y flujos separados a propósito).</summary>
+    public int SubdomainReservationTtlMinutes { get; set; } = 60;
+
+    /// <summary>TTL de la sesión corta emitida al verificar el OTP. Autoriza únicamente el carril
+    /// de onboarding pre-tenant y no reemplaza el JWT normal de usuarios autenticados.</summary>
+    public int OnboardingSessionTtlMinutes { get; set; } = 30;
+
+    /// <summary>Minutos tras el pago liquidado antes de enviar el email "completa tu oficina", y
+    /// SOLO si el onboarding sigue en RegistrationPending (quien termina in-session no lo recibe).
+    /// El recibo y el carril $0 no se difieren. Lo evalúa el OnboardingRegistrationReminderScheduler.</summary>
+    public int RegistrationReminderDelayMinutes { get; set; } = 45;
+
+    /// <summary>TTL de la referencia Redis del raw token de registro cuando el email se difiere:
+    /// debe cubrir la ventana del recordatorio más el intervalo del sweeper. El mismo token ya vive
+    /// 72h en el buzón del comprador, así que una referencia acotada es MENOS exposición, no más. El
+    /// carril inmediato ($0) sigue usando el TTL corto por defecto del store.</summary>
+    public int RegistrationTokenReferenceTtlMinutes { get; set; } = 75;
+
+    /// <summary>Máximo de reintentos de pago sobre el MISMO onboarding tras un fallo, antes de exigir
+    /// empezar de cero. Lo aplica TenantOnboarding.ReopenForPaymentRetry.</summary>
+    public int PaymentRetryMaxAttempts { get; set; } = 3;
+
+    /// <summary>Ventana (desde la creación del onboarding) dentro de la cual se puede reintentar el
+    /// pago. Fuera de ella, el comprador debe iniciar un onboarding nuevo. Alineada al token de 72h.</summary>
+    public int PaymentRetryWindowHours { get; set; } = 72;
+
+    /// <summary>TTL de la referencia de retorno opaca que viaja en el successUrl del checkout, para que
+    /// el reconcile funcione al volver de Stripe aunque falte la cookie (otro navegador/incógnito).
+    /// Cubre la ventana pago→retorno; corto a propósito (NO es credencial de registro, solo resuelve el
+    /// onboardingId para consultar estado).</summary>
+    public int OnboardingReturnReferenceTtlMinutes { get; set; } = 30;
+}

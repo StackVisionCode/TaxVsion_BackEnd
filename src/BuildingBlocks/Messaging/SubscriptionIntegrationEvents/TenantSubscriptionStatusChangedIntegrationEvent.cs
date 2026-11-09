@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>
@@ -73,6 +75,7 @@ public enum SubscriptionChangeReason
 /// comportamiento actual. <see cref="IntegrationEvent.TenantId"/> y <see cref="IntegrationEvent.CorrelationId"/>
 /// vienen de la base.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantSubscriptionStatusChangedIntegrationEvent")]
 public sealed record TenantSubscriptionStatusChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantSubscriptionId { get; init; }

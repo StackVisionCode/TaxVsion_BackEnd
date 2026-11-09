@@ -41,4 +41,14 @@ public static class CorrespondenceMetrics
     public static readonly Counter<long> DraftAbandonedTotal = Meter.CreateCounter<long>(
         "correspondence_draft_abandoned_total"
     );
+
+    /// <summary>Correo de cliente que la ingesta rechazó aun normalizado (alerta si &gt; 0 en 1 h). Tag "code".</summary>
+    public static readonly Counter<long> IngestRejectedTotal = Meter.CreateCounter<long>(
+        "correspondence_ingest_rejected_total"
+    );
+
+    /// <summary>Reconciliación de la proyección que omite un cliente porque su email ya es de otro. Tag "source".</summary>
+    public static readonly Counter<long> ProjectionReconcileConflictsTotal = Meter.CreateCounter<long>(
+        "correspondence_projection_reconcile_conflicts_total"
+    );
 }

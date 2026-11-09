@@ -18,6 +18,8 @@ namespace TaxVision.Reminder.Tests.Reminders;
 /// </summary>
 internal sealed class FakeReminderRepository : IReminderRepository
 {
+    public void Detach(ReminderAggregate reminder) { }
+
     private static readonly ReminderStatus[] PendingStatuses =
     [
         ReminderStatus.Scheduled,
@@ -155,10 +157,14 @@ internal sealed class FakeReminderRepository : IReminderRepository
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task<IReadOnlyList<ReminderAggregate>> ListScheduledWithinHorizonAsync(
+    // No replica el filtro de estado: eso lo prueba la T-INT de la reconciliación.
+    public Task<IReadOnlyList<ReminderAggregate>> ListPendingWithinHorizonAsync(
         DateTime horizonUtc,
         CancellationToken ct = default
-    ) => throw new NotSupportedException("Lo usa el job de reconciliación, no los handlers.");
+    ) =>
+        Task.FromResult<IReadOnlyList<ReminderAggregate>>(
+            Stored.Where(r => r.Schedule.FireAtUtc <= horizonUtc).ToList()
+        );
 
     public IUnitOfWork AsUnitOfWork() => new CommitUnitOfWork(this);
 
@@ -278,8 +284,17 @@ internal sealed class RecordingMessageBus : IMessageBus
         set { }
     }
 
-    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    /// <summary>Si se asigna, atiende <c>InvokeAsync</c>; si no, lanza como el resto.</summary>
+    public Action? OnInvoke { get; set; }
+
+    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        if (OnInvoke is null)
+            throw new NotImplementedException();
+
+        OnInvoke();
+        return Task.CompletedTask;
+    }
 
     public Task InvokeAsync(
         object message,

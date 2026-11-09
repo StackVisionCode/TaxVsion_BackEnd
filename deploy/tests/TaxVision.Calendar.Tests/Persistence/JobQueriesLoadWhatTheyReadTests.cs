@@ -49,7 +49,10 @@ public sealed class JobQueriesLoadWhatTheyReadTests : IAsyncLifetime
     {
         await using var fresh = SqlServerFixture.CreateContext(_tenant);
 
-        var loaded = await StartingSoonJob.Candidates(fresh).Where(a => a.TenantId == _tenant).ToListAsync();
+        var loaded = await StartingSoonJob
+            .Candidates(fresh, Now, Now.AddYears(5))
+            .Where(a => a.TenantId == _tenant)
+            .ToListAsync();
 
         Assert.NotEmpty(loaded);
         Assert.Contains(loaded, a => a.Attendees.Count > 0);
@@ -61,7 +64,10 @@ public sealed class JobQueriesLoadWhatTheyReadTests : IAsyncLifetime
     {
         await using var fresh = SqlServerFixture.CreateContext(_tenant);
 
-        var loaded = await ReminderScheduleJob.Candidates(fresh).Where(a => a.TenantId == _tenant).ToListAsync();
+        var loaded = await ReminderScheduleJob
+            .Candidates(fresh, Now, Now.AddYears(5))
+            .Where(a => a.TenantId == _tenant)
+            .ToListAsync();
 
         Assert.NotEmpty(loaded);
         Assert.Contains(loaded, a => a.Exceptions.Count > 0);

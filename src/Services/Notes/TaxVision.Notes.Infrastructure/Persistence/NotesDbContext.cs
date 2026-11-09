@@ -88,6 +88,14 @@ public sealed class NotesDbContext(DbContextOptions<NotesDbContext> options, ITe
         {
             return await base.SaveChangesAsync(cancellationToken);
         }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The note was modified by someone else. Reload and try again.",
+                ex
+            );
+        }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {
             throw new ConflictException(

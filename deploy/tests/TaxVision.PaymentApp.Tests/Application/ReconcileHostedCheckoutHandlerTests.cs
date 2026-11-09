@@ -8,6 +8,7 @@ using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ReconcileHostedCheckout;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
+using TaxVision.PaymentApp.Tests.TestDoubles;
 using Wolverine;
 using Wolverine.Runtime;
 using Wolverine.Transports.Sending;
@@ -34,19 +35,17 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             new ChargeAuthorizationResult("CAPTURE-999", PaymentStatus.Succeeded)
         );
         var unitOfWork = new FakeUnitOfWork();
-        var bus = new FakeMessageBus();
 
         var result = await ReconcileHostedCheckoutHandler.Handle(
             new ReconcileHostedCheckoutCommand(payment.Id, TenantId),
             new FakeSaaSPaymentRepository(payment),
             new FakePaymentAdapterFactory(provider),
             unitOfWork,
-            new FakeCorrelationContext(),
-            bus,
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(PaymentStatus.Succeeded), result.Value.Status);
         Assert.Equal(PaymentStatus.Succeeded, payment.Status);
@@ -54,9 +53,9 @@ public sealed class ReconcileHostedCheckoutHandlerTests
         Assert.Equal(1, unitOfWork.SaveChangesCount);
 
         // El publisher central mapea por type → debe emitir el evento específico de renewal checkout.
-        Assert.Contains(bus.Published, m => m is SubscriptionRenewalCheckoutPaidIntegrationEvent);
+        Assert.Contains(emitted, m => m is SubscriptionRenewalCheckoutPaidIntegrationEvent);
         // Y también el "pídase recibo" común a todos los cobros confirmados de un tenant real.
-        Assert.Contains(bus.Published, m => m is SaaSPaymentSucceededIntegrationEvent);
+        Assert.Contains(emitted, m => m is SaaSPaymentSucceededIntegrationEvent);
     }
 
     [Fact]
@@ -67,21 +66,19 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             PaymentProviderCode.PayPal,
             new ChargeAuthorizationResult("CAPTURE-ADDON", PaymentStatus.Succeeded)
         );
-        var bus = new FakeMessageBus();
 
         var result = await ReconcileHostedCheckoutHandler.Handle(
             new ReconcileHostedCheckoutCommand(payment.Id, TenantId),
             new FakeSaaSPaymentRepository(payment),
             new FakePaymentAdapterFactory(provider),
             new FakeUnitOfWork(),
-            new FakeCorrelationContext(),
-            bus,
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
-        Assert.Contains(bus.Published, m => m is AddOnCheckoutPaidIntegrationEvent);
+        Assert.Contains(emitted, m => m is AddOnCheckoutPaidIntegrationEvent);
     }
 
     [Fact]
@@ -90,29 +87,30 @@ public sealed class ReconcileHostedCheckoutHandlerTests
         var payment = CreateProcessingPayment(SaaSPaymentType.SeatsPurchaseCharge);
         payment.MarkSucceeded(DateTime.UtcNow, Guid.Empty);
 
+        var provider = new ThrowingProvider();
         var unitOfWork = new FakeUnitOfWork();
-        var bus = new FakeMessageBus();
 
         var result = await ReconcileHostedCheckoutHandler.Handle(
             new ReconcileHostedCheckoutCommand(payment.Id, TenantId),
             new FakeSaaSPaymentRepository(payment),
-            new FakePaymentAdapterFactory(new ThrowingProvider()),
+            new FakePaymentAdapterFactory(provider),
             unitOfWork,
-            new FakeCorrelationContext(),
-            bus,
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(nameof(PaymentStatus.Succeeded), result.Value.Status);
+        Assert.Equal(0, provider.Calls);
         Assert.Equal(0, unitOfWork.SaveChangesCount);
-        Assert.Empty(bus.Published);
+        Assert.Empty(emitted);
     }
 
     [Fact]
     public async Task Type_no_reconciliable_devuelve_error_sin_llamar_provider()
     {
+        var provider = new ThrowingProvider();
         // Un OnboardingInitial tiene su propio endpoint (ReconcileOnboardingCheckout), este rechaza.
         var payment = SaaSPayment
             .CreateForOnboarding(
@@ -135,16 +133,15 @@ public sealed class ReconcileHostedCheckoutHandlerTests
         var result = await ReconcileHostedCheckoutHandler.Handle(
             new ReconcileHostedCheckoutCommand(payment.Id, Guid.Empty),
             new FakeSaaSPaymentRepository(payment, acceptEmptyTenant: true),
-            new FakePaymentAdapterFactory(new ThrowingProvider()),
+            new FakePaymentAdapterFactory(provider),
             new FakeUnitOfWork(),
-            new FakeCorrelationContext(),
-            new FakeMessageBus(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
 
         Assert.True(result.IsFailure);
         Assert.Equal("SaaSPayment.NotReconcilable", result.Error.Code);
+        Assert.Equal(0, provider.Calls);
     }
 
     [Fact]
@@ -152,21 +149,21 @@ public sealed class ReconcileHostedCheckoutHandlerTests
     {
         var payment = CreateProcessingPayment(SaaSPaymentType.AddOnPurchaseCharge);
         var otroTenant = Guid.Parse("99999999-9999-9999-9999-999999999999");
+        var provider = new ThrowingProvider();
 
         var result = await ReconcileHostedCheckoutHandler.Handle(
             new ReconcileHostedCheckoutCommand(payment.Id, otroTenant),
             // Repo que filtra por tenant: no devuelve el pago de otro.
             new FakeSaaSPaymentRepository(payment),
-            new FakePaymentAdapterFactory(new ThrowingProvider()),
+            new FakePaymentAdapterFactory(provider),
             new FakeUnitOfWork(),
-            new FakeCorrelationContext(),
-            new FakeMessageBus(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
 
         Assert.True(result.IsFailure);
         Assert.Equal("SaaSPayment.NotFound", result.Error.Code);
+        Assert.Equal(0, provider.Calls);
     }
 
     [Fact]
@@ -178,23 +175,75 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             new ChargeAuthorizationResult("ORDER-123", PaymentStatus.Processing)
         );
         var unitOfWork = new FakeUnitOfWork();
-        var bus = new FakeMessageBus();
 
         var result = await ReconcileHostedCheckoutHandler.Handle(
             new ReconcileHostedCheckoutCommand(payment.Id, TenantId),
             new FakeSaaSPaymentRepository(payment),
             new FakePaymentAdapterFactory(provider),
             unitOfWork,
-            new FakeCorrelationContext(),
-            bus,
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Processing, payment.Status);
+        Assert.Equal(0, unitOfWork.SaveChangesCount);
+        Assert.Empty(emitted);
+    }
+
+    [Fact]
+    public async Task Provider_succeeded_on_cancelled_payment_flags_for_review()
+    {
+        var payment = CreateProcessingPayment(SaaSPaymentType.SeatsPurchaseCharge);
+        payment.MarkCancelled("BuyerCancelled", DateTime.UtcNow);
+        // Solo consulta de estado: sobre un pago cerrado nunca se captura (PayPal capturaría en Finalize).
+        var provider = new StatusOnlyProvider(new ChargeAuthorizationResult("CAPTURE-LATE", PaymentStatus.Succeeded));
+        var unitOfWork = new FakeUnitOfWork();
+        var metrics = new TestDoubles.FakePaymentAppMetrics();
+
+        var result = await ReconcileHostedCheckoutHandler.Handle(
+            new ReconcileHostedCheckoutCommand(payment.Id, TenantId),
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAdapterFactory(provider),
+            unitOfWork,
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None,
+            metrics: metrics
+        );
+
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nameof(PaymentStatus.Cancelled), result.Value.Status);
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+        Assert.NotNull(payment.ReviewRequiredAtUtc);
+        Assert.Equal("LateProviderSuccess", payment.ReviewReasonCode);
+        Assert.Equal("CAPTURE-LATE", payment.ReviewProviderReference);
+        Assert.Equal(1, unitOfWork.SaveChangesCount);
+        Assert.Empty(emitted);
+        Assert.Single(metrics.ReviewRequired);
+    }
+
+    [Fact]
+    public async Task Cancelled_payment_without_provider_success_is_left_alone()
+    {
+        var payment = CreateProcessingPayment(SaaSPaymentType.SeatsPurchaseCharge);
+        payment.MarkCancelled("BuyerCancelled", DateTime.UtcNow);
+        var provider = new StatusOnlyProvider(new ChargeAuthorizationResult("ORDER-123", PaymentStatus.Failed));
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await ReconcileHostedCheckoutHandler.Handle(
+            new ReconcileHostedCheckoutCommand(payment.Id, TenantId),
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAdapterFactory(provider),
+            unitOfWork,
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(PaymentStatus.Processing, payment.Status);
+        Assert.Null(payment.ReviewRequiredAtUtc);
         Assert.Equal(0, unitOfWork.SaveChangesCount);
-        Assert.Empty(bus.Published);
     }
 
     // ---------- Fakes ----------
@@ -227,6 +276,15 @@ public sealed class ReconcileHostedCheckoutHandlerTests
     private sealed class FakeSaaSPaymentRepository(SaaSPayment payment, bool acceptEmptyTenant = false)
         : ISaaSPaymentRepository
     {
+        private readonly bool _seeded = Seed(payment);
+
+        // Lo sembrado se considera ya guardado: sus eventos no cuentan para el comando.
+        private static bool Seed(SaaSPayment seeded)
+        {
+            seeded.ClearDomainEvents();
+            return true;
+        }
+
         // El overload con tenantId es el que usa el handler — filtra por tenant.
         public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, Guid tenantId, CancellationToken ct = default)
         {
@@ -249,7 +307,13 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<(Guid Id, Guid TenantId)>>([]);
+
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
             DateTime cutoffUtc,
             int batchSize,
             CancellationToken ct = default
@@ -367,6 +431,12 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             CancellationToken ct
         ) => Task.FromResult(Result.Success(chargeStatus));
 
+        public Task<Result<ChargeLookup>> FindChargeAsync(
+            Guid saaSPaymentId,
+            DateTime createdAfterUtc,
+            CancellationToken ct
+        ) => throw new NotSupportedException();
+
         public Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
             string providerChargeReference,
             CancellationToken ct
@@ -394,6 +464,7 @@ public sealed class ReconcileHostedCheckoutHandlerTests
             string providerChargeReference,
             Money amount,
             string reason,
+            string idempotencyKey,
             CancellationToken ct
         ) => throw new NotSupportedException();
 
@@ -428,15 +499,41 @@ public sealed class ReconcileHostedCheckoutHandlerTests
         ) => throw new NotSupportedException();
     }
 
-    private sealed class ThrowingProvider() : FakePaymentProvider(PaymentProviderCode.PayPal, Default)
+    // Reimplementa IPaymentProvider: sin eso el handler, que llama por la interfaz, llegaría al método base.
+    private sealed class ThrowingProvider() : FakePaymentProvider(PaymentProviderCode.PayPal, Default), IPaymentProvider
     {
         private static readonly ChargeAuthorizationResult Default = new("unused", PaymentStatus.Processing);
+
+        public int Calls { get; private set; }
 
         public new Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
             string providerChargeReference,
             Money amount,
             CancellationToken ct
-        ) => throw new InvalidOperationException("Provider should not be called.");
+        ) => Fail();
+
+        public new Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
+            string providerChargeReference,
+            CancellationToken ct
+        ) => Fail();
+
+        private Task<Result<ChargeAuthorizationResult>> Fail()
+        {
+            Calls++;
+            throw new InvalidOperationException("Provider should not be called.");
+        }
+    }
+
+    // Responde el estado del cobro; Finalize (que en PayPal captura) no debe llamarse.
+    private sealed class StatusOnlyProvider(ChargeAuthorizationResult chargeStatus)
+        : FakePaymentProvider(PaymentProviderCode.PayPal, chargeStatus),
+            IPaymentProvider
+    {
+        public new Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
+            string providerChargeReference,
+            Money amount,
+            CancellationToken ct
+        ) => throw new InvalidOperationException("A closed payment must not be finalized (captured).");
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

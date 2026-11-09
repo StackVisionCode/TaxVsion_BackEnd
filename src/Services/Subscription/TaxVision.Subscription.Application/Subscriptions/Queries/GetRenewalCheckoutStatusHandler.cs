@@ -32,8 +32,8 @@ public static class GetRenewalCheckoutStatusHandler
                 new RenewalCheckoutStatusResponse(
                     intent.Id,
                     intent.Status.ToString(),
-                    intent.AmountCents,
-                    intent.Currency,
+                    intent.Amount.Cents,
+                    intent.Amount.Currency,
                     intent.CheckoutUrl
                 )
             );

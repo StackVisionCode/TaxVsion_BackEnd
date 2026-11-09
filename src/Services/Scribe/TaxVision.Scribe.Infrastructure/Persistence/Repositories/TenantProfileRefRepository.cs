@@ -14,7 +14,7 @@ public sealed class TenantProfileRefRepository(ScribeDbContext dbContext) : ITen
     public Task<TenantProfileRef?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         dbContext.TenantProfileRefs.IgnoreQueryFilters().FirstOrDefaultAsync(r => r.TenantId == tenantId, ct);
 
-    public async Task UpsertAsync(
+    public async Task AddIfMissingAsync(
         Guid tenantId,
         string name,
         string subDomain,
@@ -22,11 +22,8 @@ public sealed class TenantProfileRefRepository(ScribeDbContext dbContext) : ITen
         CancellationToken ct = default
     )
     {
-        var existing = await GetByTenantIdAsync(tenantId, ct);
-        if (existing is null)
+        if (await GetByTenantIdAsync(tenantId, ct) is null)
             await dbContext.TenantProfileRefs.AddAsync(TenantProfileRef.Create(tenantId, name, subDomain, nowUtc), ct);
-        else
-            existing.Update(name, subDomain, nowUtc);
     }
 
     public async Task<IReadOnlyCollection<Guid>> GetKnownTenantIdsAsync(CancellationToken ct = default) =>

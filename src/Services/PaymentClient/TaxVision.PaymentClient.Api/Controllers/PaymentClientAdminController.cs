@@ -8,6 +8,8 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.PaymentClient.Api.Common;
+using TaxVision.PaymentClient.Application.Admin.Commands.RepublishTenantPaymentSucceeded;
 using TaxVision.PaymentClient.Application.Admin.Queries;
 using TaxVision.PaymentClient.Domain.TenantPayments;
 using Wolverine;
@@ -115,6 +117,45 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
         );
 
         return File(csv, "text/csv", $"tenant-payments-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
+    }
+
+    /// <summary>Éxitos del proveedor que no se aplicaron (pago cerrado o monto distinto). Solo lectura:
+    /// el dueño decide cada caso (reembolso o pago manual en Billing).</summary>
+    [HttpGet("webhooks/needs-review")]
+    [RateLimit("payment_client.f.admin_read")]
+    [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
+    [ProducesResponseType<IReadOnlyList<WebhookNeedingReviewResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListWebhooksNeedingReview(CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<WebhookNeedingReviewResponse>>>(
+            new ListWebhooksNeedingReviewQuery(),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record RepublishTenantPaymentSucceededRequest(IReadOnlyList<Guid> TenantPaymentIds, bool DryRun = true);
+
+    /// <summary>Reposición de la señal "pagado" (PCL-2). Simula por defecto; con <c>dryRun=false</c>
+    /// publica y deja auditado quién la ejecutó. Solo con aprobación del dueño.</summary>
+    [HttpPost("payments/republish-succeeded-signal")]
+    [RateLimit("payment_client.h.admin_export")]
+    [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
+    [ProducesResponseType<RepublishTenantPaymentSucceededResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RepublishSucceededSignal(
+        RepublishTenantPaymentSucceededRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<RepublishTenantPaymentSucceededResponse>>(
+            new RepublishTenantPaymentSucceededCommand(request.TenantPaymentIds ?? [], userId, request.DryRun),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     private async Task<IActionResult> Search(

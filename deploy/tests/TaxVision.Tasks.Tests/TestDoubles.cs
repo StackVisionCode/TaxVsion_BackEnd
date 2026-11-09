@@ -132,8 +132,11 @@ internal sealed class InMemoryTenantBackfillStateRepository(params Guid[] seed) 
 internal sealed class RecordingBackfillService : ITenantCustomerBackfillService
 {
     public List<Guid> Calls { get; } = [];
+    public bool Needed { get; init; }
 
-    public Task EnsureBackfilledAsync(Guid tenantId, CancellationToken ct = default)
+    public Task<bool> NeedsBackfillAsync(Guid tenantId, CancellationToken ct = default) => Task.FromResult(Needed);
+
+    public Task BackfillAsync(Guid tenantId, CancellationToken ct = default)
     {
         Calls.Add(tenantId);
         return Task.CompletedTask;
@@ -142,7 +145,16 @@ internal sealed class RecordingBackfillService : ITenantCustomerBackfillService
 
 internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepository
 {
-    private readonly List<TaskItem> _tasks = [.. seed];
+    // Lo sembrado ya está guardado: sus eventos de dominio ya se despacharon.
+    private readonly List<TaskItem> _tasks = [.. seed.Select(Persisted)];
+
+    private static TaskItem Persisted(TaskItem task)
+    {
+        task.ClearDomainEvents();
+        return task;
+    }
+
+    public IReadOnlyList<TaskItem> Stored => _tasks;
 
     public void Add(TaskItem task) => _tasks.Add(task);
 
@@ -331,6 +343,30 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
 
     public Task<IReadOnlyList<TaskItem>> ListOverdueAsync(DateTime nowUtc, int take, CancellationToken ct = default) =>
         throw new NotImplementedException();
+
+    // Misma regla de visibilidad que el repositorio real (P2).
+    public HashSet<(Guid CustomerId, Guid UserId)> CustomerAssignments { get; } = [];
+
+    public Task<Result<TaskItem>> GetByIdForReadAsync(
+        Guid tenantId,
+        Guid taskId,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        var task = _tasks.FirstOrDefault(t =>
+            t.TenantId == tenantId
+            && t.Id == taskId
+            && (
+                assignedToUserId is not { } user
+                || t.Reference.CustomerId is null
+                || t.AssigneeUserId == user
+                || t.CreatedByUserId == user
+                || CustomerAssignments.Contains((t.Reference.CustomerId.Value, user))
+            )
+        );
+        return Task.FromResult(task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task));
+    }
 }
 
 /// <summary>Sólo modela las aristas; el grafo recursivo y el cerrojo no aplican en memoria.</summary>
@@ -425,6 +461,9 @@ public sealed class RecordingSeriesMaterializer : ITaskSeriesMaterializer
         CancellationToken ct = default
     ) => Task.FromResult(Result.Failure<TaskItem>(TaskErrors.Series.NoFurtherOccurrence));
 
+    public Task<Result<TaskItem>> MaterializeFirstAsync(TaskSeries series, CancellationToken ct = default) =>
+        MaterializeNextAsync(series, null, null, ct);
+
     public Task<TaskItem?> ApplyInstanceClosedAsync(
         TaskItem task,
         DateTime? completedAtUtc,
@@ -459,4 +498,34 @@ internal sealed class RecordingTaskMetrics : ITaskMetrics
     public void RecordTimeToCompleteSeconds(double seconds) { }
 
     public void RecordOverdue(int count) => Overdue += count;
+}
+
+/// <summary>Series en memoria: el pendiente es la activa sin instancia abierta, como en SQL.</summary>
+internal sealed class InMemoryTaskSeriesRepository(params TaskSeries[] seed) : ITaskSeriesRepository
+{
+    public List<TaskSeries> Stored { get; } = [.. seed];
+
+    public void Add(TaskSeries series) => Stored.Add(series);
+
+    public Task<Result<TaskSeries>> GetByIdAsync(Guid tenantId, Guid seriesId, CancellationToken ct = default)
+    {
+        var found = Stored.FirstOrDefault(s => s.TenantId == tenantId && s.Id == seriesId);
+        return Task.FromResult(
+            found is null ? Result.Failure<TaskSeries>(TaskErrors.Series.NotFound) : Result.Success(found)
+        );
+    }
+
+    public Task<IReadOnlyList<TaskSeries>> ListAsync(
+        Guid tenantId,
+        SeriesStatus? status,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<TaskSeries>>(
+            Stored.Where(s => s.TenantId == tenantId && (status is null || s.Status == status)).ToList()
+        );
+
+    public Task<IReadOnlyList<TaskSeries>> ListPendingMaterializationAsync(int take, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<TaskSeries>>(
+            Stored.Where(s => s.Status == SeriesStatus.Active && s.OpenInstanceId == null).Take(take).ToList()
+        );
 }

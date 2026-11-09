@@ -25,14 +25,14 @@ public interface ITaskRepository
     /// Como <see cref="GetByIdAsync"/> pero con visibilidad por asignación (P2) para el read del detalle:
     /// si <paramref name="assignedToUserId"/> no es null, devuelve NotFound cuando la tarea es de un cliente
     /// NO asignado al actor (las sin cliente, las que él tiene asignadas y las que creó siguen visibles). El
-    /// path de MUTACIÓN sigue usando <see cref="GetByIdAsync"/> sin filtrar. Default = sin filtro (fakes).
+    /// path de MUTACIÓN sigue usando <see cref="GetByIdAsync"/> sin filtrar.
     /// </summary>
     Task<Result<TaskItem>> GetByIdForReadAsync(
         Guid tenantId,
         Guid taskId,
         Guid? assignedToUserId,
         CancellationToken ct = default
-    ) => GetByIdAsync(tenantId, taskId, ct);
+    );
 
     /// <summary>La tarea con sus timers cargados. Aparte porque el resto de los caminos no los usa.</summary>
     Task<Result<TaskItem>> GetByIdWithTimersAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
@@ -111,14 +111,13 @@ public interface ITaskRepository
     );
 
     /// <summary>Cuántas tareas ABIERTAS tiene asignadas el empleado — para el pre-flight de impacto al
-    /// retirarlo (mismo filtro que ListForAssigneeAsync con status null, sin paginar). Default 0 para no
-    /// romper los fakes; el repo real lo implementa con COUNT.</summary>
+    /// retirarlo (mismo filtro que ListForAssigneeAsync con status null, sin paginar).</summary>
     Task<int> CountForAssigneeAsync(
         Guid tenantId,
         Guid assigneeUserId,
         TaskItemStatus? status,
         CancellationToken ct = default
-    ) => Task.FromResult(0);
+    );
 
     /// <summary>Tareas (rastreadas, con sus timers) donde el usuario tiene un timer en marcha — para cerrarlos
     /// por sistema al retirarlo. Abiertas o cerradas: un tramo puede seguir corriendo sobre una cerrada.</summary>
@@ -126,11 +125,10 @@ public interface ITaskRepository
         Guid tenantId,
         Guid userId,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<TaskItem>>([]);
+    );
 
     /// <summary>Cuántos timers tiene en marcha el usuario en el tenant (pre-flight del retiro).</summary>
-    Task<int> CountRunningTimersOfAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
-        Task.FromResult(0);
+    Task<int> CountRunningTimersOfAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
 
     /// <summary>Tareas de un cliente, opcionalmente acotadas a un año fiscal.</summary>
     Task<PagedResult<TaskItem>> ListByCustomerAsync(

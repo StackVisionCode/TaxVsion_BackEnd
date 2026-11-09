@@ -1,8 +1,9 @@
 using BuildingBlocks.Infrastructure.Hosting;
-using BuildingBlocks.Persistence;
+using BuildingBlocks.Jobs;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
-using Wolverine;
+using TaxVision.Auth.Domain.Roles;
+using TaxVision.Auth.Infrastructure.Persistence;
 
 namespace TaxVision.Auth.Api.Jobs;
 
@@ -33,7 +34,7 @@ public sealed class ExpiredPermissionDeniesService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Igual que AuthMaintenanceService: el primer tick espera a que la app arranque, porque
-        // SaveChangesAsync auto-publica por Wolverine y revienta si Wolverine todavía no está.
+        // el outbox de Wolverine revienta si Wolverine todavía no está.
         await lifetime.WaitForApplicationStartedAsync(stoppingToken);
 
         using var timer = new PeriodicTimer(Interval);
@@ -56,44 +57,55 @@ public sealed class ExpiredPermissionDeniesService(
 
     private async Task RunOnceAsync(CancellationToken ct)
     {
-        using var scope = scopeFactory.CreateScope();
-        var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
-        var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-
         var now = DateTime.UtcNow;
-        var affected = await roles.GetUsersWithExpiredDeniesAsync(now, BatchSize, ct);
-        if (affected.Count == 0)
-            return;
-
-        var removed = 0;
-        var holders = new List<Domain.Users.User>(affected.Count);
-        foreach (var (userId, _) in affected)
+        IReadOnlyList<(Guid UserId, Guid TenantId)> affected;
+        IReadOnlyList<Permission> catalog;
+        await using (var scope = scopeFactory.CreateAsyncScope())
         {
-            removed += await roles.RemoveExpiredDeniesAsync(userId, now, ct);
-            if (await users.GetByIdAsync(userId, ct) is { } user)
-                holders.Add(user);
+            var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
+            affected = await roles.GetUsersWithExpiredDeniesAsync(now, BatchSize, ct);
+            if (affected.Count == 0)
+                return;
+            catalog = await roles.GetPermissionsCatalogAsync(ct);
         }
 
-        // El borrado tiene que estar aplicado antes de recalcular: el fan-out lee los denies
-        // vigentes de la base, y una fila vencida todavía sin borrar no cambia el resultado
-        // (la consulta ya la filtra por fecha), pero así el evento y la tabla cuentan lo mismo.
-        var catalog = await roles.GetPermissionsCatalogAsync(ct);
-        await RolePermissionsFanOut.PublishForUsersAsync(
-            holders,
-            catalog,
-            roles,
-            bus,
-            Guid.NewGuid().ToString("N"),
+        var correlationId = Guid.NewGuid().ToString("N");
+        var removed = 0;
+
+        // Una unidad por titular: el borrado del deny y su aviso se confirman juntos.
+        var summary = await TransactionalJobUnit.RunEachAsync<Guid, AuthDbContext>(
+            scopeFactory,
+            affected.Select(entry => entry.UserId).Distinct(),
+            async (userId, unit, token) =>
+            {
+                var roles = unit.Services.GetRequiredService<IRoleRepository>();
+                var users = unit.Services.GetRequiredService<IUserRepository>();
+                var removedForUser = await roles.RemoveExpiredDeniesAsync(userId, now, token);
+                removed += removedForUser;
+                var user = await users.GetByIdAsync(userId, token);
+                if (user is null)
+                    return removedForUser > 0;
+
+                // El fan-out lee los denies vigentes de la base, y la consulta ya ignora los vencidos:
+                // el evento y la tabla cuentan lo mismo al confirmar.
+                await RolePermissionsFanOut.PublishForUsersAsync(
+                    [user],
+                    catalog,
+                    roles,
+                    unit.Outbox,
+                    correlationId,
+                    token
+                );
+                return true;
+            },
+            logger,
             ct
         );
-        await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
             "Expired permission denies: removed {Removed} deny row(s) and re-published access for {Users} user(s).",
             removed,
-            holders.Count
+            summary.Committed
         );
     }
 }

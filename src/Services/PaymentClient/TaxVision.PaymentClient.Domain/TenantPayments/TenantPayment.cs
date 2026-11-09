@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.PaymentClient.Domain.TenantPayments.Events;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 
 namespace TaxVision.PaymentClient.Domain.TenantPayments;
@@ -14,7 +15,7 @@ namespace TaxVision.PaymentClient.Domain.TenantPayments;
 /// importa un SDK de provider — solo conoce <see cref="PaymentProviderCode"/> y VOs de
 /// intercambio.
 /// </summary>
-public sealed class TenantPayment : TenantEntity
+public sealed class TenantPayment : AggregateRoot
 {
     private readonly List<TenantPaymentAttempt> _attempts = [];
     private readonly List<RefundLine> _refunds = [];
@@ -58,6 +59,10 @@ public sealed class TenantPayment : TenantEntity
     [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
+
+    /// <summary>Método con el que se pidió el cobro: la intención guardada antes de llamar al proveedor. Un reintento
+    /// manda lo mismo y la reconciliación lo usa para buscar el cargo (PCL-8).</summary>
+    public string? ChargeMethodReference { get; private set; }
 
     public IReadOnlyCollection<TenantPaymentAttempt> Attempts => _attempts;
     public IReadOnlyCollection<RefundLine> Refunds => _refunds;
@@ -152,7 +157,31 @@ public sealed class TenantPayment : TenantEntity
             Payer = PayerDetails.FromReceiptEmail(receiptEmail),
         };
         payment.SetTenant(tenantId);
+        payment.AddDomainEvent(new TenantPaymentSucceededDomainEvent(tenantId, payment.Id, nowUtc));
         return Result.Success(payment);
+    }
+
+    /// <summary>Deja en la fila lo que se va a cobrar, antes de llamar al proveedor. <paramref name="split"/> solo en
+    /// un cobro Connect.</summary>
+    public Result PlanCharge(string paymentMethodReference, SplitPaymentBreakdown? split, DateTime nowUtc)
+    {
+        if (Status != PaymentStatus.Pending)
+            return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot plan a charge from {Status}."));
+
+        if (string.IsNullOrWhiteSpace(paymentMethodReference))
+            return Result.Failure(
+                new Error("TenantPayment.InvalidPaymentMethod", "PaymentMethodReference is required.")
+            );
+
+        if (split is not null && split.TenantAmountCents + split.PlatformFeeAmountCents != Amount.AmountCents)
+            return Result.Failure(
+                new Error("TenantPayment.SplitMismatch", "Split total must equal the payment amount.")
+            );
+
+        ChargeMethodReference = paymentMethodReference;
+        SplitPayment = split;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
     }
 
     public Result MarkProcessing(
@@ -259,6 +288,7 @@ public sealed class TenantPayment : TenantEntity
         NextActionType = null;
         NextActionUrl = null;
         Touch(actorUserId, paidAtUtc);
+        AddDomainEvent(new TenantPaymentSucceededDomainEvent(TenantId, Id, paidAtUtc));
         return Result.Success();
     }
 
@@ -283,6 +313,10 @@ public sealed class TenantPayment : TenantEntity
 
         if (string.IsNullOrWhiteSpace(failureCode))
             return Result.Failure(new Error("TenantPayment.InvalidFailureCode", "FailureCode is required."));
+
+        // El reparto planeado no llegó a cobrarse.
+        if (Status == PaymentStatus.Pending)
+            SplitPayment = null;
 
         Status = PaymentStatus.Failed;
         FailureCode = failureCode;
@@ -313,6 +347,29 @@ public sealed class TenantPayment : TenantEntity
         NextRetryAtUtc = null;
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    public const string AbandonedAttemptReason = "abandoned-3ds-ttl";
+
+    /// <summary>Verificación (3DS) sin cambios hace al menos <paramref name="ttl"/>.</summary>
+    public bool IsAbandoned(TimeSpan ttl, DateTime nowUtc) =>
+        Status == PaymentStatus.RequiresAction && UpdatedAtUtc <= nowUtc - ttl;
+
+    /// <summary>Cierra un 3DS abandonado (D-PCL-1) tras <paramref name="ttl"/> sin cambios. El cobro ya se
+    /// canceló en el proveedor; lo cierra el sistema, no un admin.</summary>
+    public Result CancelAbandoned(TimeSpan ttl, DateTime nowUtc)
+    {
+        if (Status != PaymentStatus.RequiresAction)
+            return Result.Failure(
+                new Error("TenantPayment.InvalidTransition", $"Cannot close an abandoned attempt from {Status}.")
+            );
+
+        if (!IsAbandoned(ttl, nowUtc))
+            return Result.Failure(
+                new Error("TenantPayment.AttemptNotAbandoned", "The verification has not been abandoned long enough.")
+            );
+
+        return CancelByAdmin(AbandonedAttemptReason, Guid.Empty, nowUtc);
     }
 
     public Result CancelByAdmin(string reason, Guid actorUserId, DateTime nowUtc)
@@ -402,8 +459,8 @@ public sealed class TenantPayment : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>Registra lo que el proveedor devolvió del pagador tras el cobro. Nunca falla: un
-    /// dato inválido se descarta y se conserva el anterior.</summary>
+    /// <summary>Registra lo que el proveedor devolvió del pagador tras el cobro. Nunca falla, a propósito: son datos
+    /// cosméticos y no deben tumbar un cobro ya hecho. Un dato inválido se descarta y se conserva el anterior.</summary>
     public void RecordProviderPayerDetails(
         string? payerName,
         string? payerEmail,
@@ -411,15 +468,24 @@ public sealed class TenantPayment : TenantEntity
         string? cardLast4
     ) => Payer = Payer.WithProviderData(payerName, payerEmail, cardBrand, cardLast4);
 
-    /// <summary>Anota que se consultó al proveedor (resuelva o no). No toca <see cref="UpdatedAtUtc"/>:
-    /// el pago sigue igual de atascado; solo rota la cola de la revisión.</summary>
+    /// <summary>Anota que se consultó al proveedor (resuelva o no). Nunca falla, a propósito, y no toca
+    /// <see cref="UpdatedAtUtc"/>: el pago sigue igual de atascado; solo rota la cola de la revisión.</summary>
     public void RecordProviderCheck(DateTime checkedAtUtc) => LastProviderCheckAtUtc = checkedAtUtc;
 
     /// <summary>Aún esperando que el proveedor confirme (lo que revisa el job de atascados).</summary>
     public bool IsAwaitingProviderConfirmation => Status is PaymentStatus.Processing or PaymentStatus.RequiresAction;
 
+    /// <summary>Coloca o levanta el legal hold. Es una acción humana: exige actor y, si el valor no cambia, no hace nada.</summary>
     public Result SetLegalHold(bool isLegalHeld, Guid actorUserId, DateTime nowUtc)
     {
+        if (actorUserId == Guid.Empty)
+            return Result.Failure(
+                new Error("TenantPayment.ActorRequired", "An actor is required to change a legal hold.")
+            );
+
+        if (IsLegalHeld == isLegalHeld)
+            return Result.Success();
+
         IsLegalHeld = isLegalHeld;
         Touch(actorUserId, nowUtc);
         return Result.Success();

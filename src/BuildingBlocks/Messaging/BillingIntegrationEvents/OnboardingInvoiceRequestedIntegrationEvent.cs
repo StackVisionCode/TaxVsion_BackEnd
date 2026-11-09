@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
 
 /// <summary>
@@ -10,6 +12,7 @@ namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
 /// existe); la factura nace bajo ese dueño y se re-hospeda al tenant real cuando la saga lo activa.
 /// Regla: solo <c>NetAmountCents &gt; 0</c> lleva <see cref="PaymentId"/> (net = 0 ⇒ sin pago).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.OnboardingInvoiceRequestedIntegrationEvent")]
 public sealed record OnboardingInvoiceRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }
@@ -37,10 +40,12 @@ public sealed record OnboardingInvoiceRequestedIntegrationEvent : IntegrationEve
 }
 
 /// <summary>Línea de ajuste (descuento) para la factura de onboarding. <see cref="AmountCents"/> es la
-/// magnitud positiva del descuento. <see cref="Type"/> = "Referral" | "Promo" | "Gift".</summary>
+/// magnitud positiva del descuento. <see cref="Type"/> = "Referral" | "Promo" | "Gift".
+/// <see cref="PendingReview"/> = Growth dejó el canje en revisión manual (commit tardío sobre una reserva vencida).</summary>
 public sealed record OnboardingInvoiceAdjustmentDto(
     string Type,
     string? Code,
     Guid? GrowthReservationId,
-    long AmountCents
+    long AmountCents,
+    bool PendingReview = false
 );

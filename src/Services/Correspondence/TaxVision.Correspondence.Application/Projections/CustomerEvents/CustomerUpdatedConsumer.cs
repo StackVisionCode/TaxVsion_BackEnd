@@ -3,8 +3,10 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
 
@@ -15,10 +17,11 @@ namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
 /// </summary>
 public static class CustomerUpdatedConsumer
 {
-    public static async Task Handle(
+    public static async Task<LinkUnlinkedMailCommand?> Handle(
         CustomerUpdatedIntegrationEvent evt,
         ICustomerEmailAddressRepository repository,
         ITenantCustomerBackfillService backfill,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerEmailAddress> logger,
@@ -27,7 +30,7 @@ public static class CustomerUpdatedConsumer
     {
         using (correlation.Push(evt.CorrelationId))
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            await backfill.EnsureBackfilledAsync(evt.TenantId, bus, ct);
 
             var emailResult = EmailAddress.Create(evt.PrimaryEmail);
             if (emailResult.IsFailure)
@@ -38,15 +41,20 @@ public static class CustomerUpdatedConsumer
                     evt.CustomerId,
                     emailResult.Error.Code
                 );
-                return;
+                return null;
             }
 
-            await UpsertProjection(evt, emailResult.Value, repository, logger, ct);
+            var emailEntered = await UpsertProjection(evt, emailResult.Value, repository, logger, ct);
             await unitOfWork.SaveChangesAsync(ct);
+
+            return emailEntered
+                ? new LinkUnlinkedMailCommand(evt.TenantId, evt.CustomerId, emailResult.Value.NormalizedValue)
+                : null;
         }
     }
 
-    private static async Task UpsertProjection(
+    // Devuelve true si la dirección entró a la proyección (COR-05).
+    private static async Task<bool> UpsertProjection(
         CustomerUpdatedIntegrationEvent evt,
         EmailAddress email,
         ICustomerEmailAddressRepository repository,
@@ -63,41 +71,49 @@ public static class CustomerUpdatedConsumer
             if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
             {
                 logger.LogWarning(
-                    "CustomerUpdated event {EventId}: email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping back-create.",
+                    "CustomerUpdated event {EventId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping back-create.",
                     evt.EventId,
-                    email.NormalizedValue,
                     evt.CustomerId,
                     emailOwner.CustomerId
                 );
-                return;
+                return false;
             }
 
-            var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email);
+            var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email, evt.OccurredOn);
             await repository.AddAsync(projection, ct);
             logger.LogInformation(
                 "CustomerEmailAddress back-created for {CustomerId} from Updated event.",
                 evt.CustomerId
             );
-            return;
+            return true;
         }
 
-        if (existing.EmailAddress != email.NormalizedValue)
+        var addressChanges = existing.EmailAddress != email.NormalizedValue;
+        if (addressChanges)
         {
             var emailOwner = await repository.FindActiveByAddressAsync(evt.TenantId, email.NormalizedValue, ct);
             if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
             {
                 logger.LogWarning(
-                    "CustomerUpdated event {EventId}: new email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping email sync.",
+                    "CustomerUpdated event {EventId}: new email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping email sync.",
                     evt.EventId,
-                    email.NormalizedValue,
                     evt.CustomerId,
                     emailOwner.CustomerId
                 );
-                return;
+                return false;
             }
         }
 
-        existing.UpdateEmail(email);
+        if (!existing.UpdateEmail(email, evt.OccurredOn))
+        {
+            logger.LogDebug(
+                "CustomerUpdated event {EventId} for customer {CustomerId} is older than the projection; ignored.",
+                evt.EventId,
+                evt.CustomerId
+            );
+            return false;
+        }
         logger.LogInformation("CustomerEmailAddress synced for {CustomerId} from Updated event.", evt.CustomerId);
+        return addressChanges;
     }
 }

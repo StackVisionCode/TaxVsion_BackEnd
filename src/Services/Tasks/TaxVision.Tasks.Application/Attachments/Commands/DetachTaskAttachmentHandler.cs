@@ -46,10 +46,10 @@ public static class DetachTaskAttachmentHandler
         if (detached.IsFailure)
             return detached;
 
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             AttachmentEvents.Detached(found.Value, attachment!, correlation.CorrelationId, deletedAtSource: false)
         );
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
     }

@@ -8,6 +8,8 @@ public sealed record AppointmentRescheduledDomainEvent(
     Guid TenantId,
     DateTime? PreviousStartUtc,
     DateTime? NewStartUtc,
+    DateTime? NewEndUtc,
+    string TimeZoneId,
     Guid MovedByUserId,
     DateTime MovedAtUtc
 ) : IDomainEvent;

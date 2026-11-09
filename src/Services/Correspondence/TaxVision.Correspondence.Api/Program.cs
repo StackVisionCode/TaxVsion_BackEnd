@@ -139,11 +139,24 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CorrespondenceDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // COR-11: los avisos de ingesta y de estado de hilo salen por la cola domain-events, en orden de commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+    options.UseTaxVisionDurableLocalQueues();
+
+    // COR-08: una página a la vez, fuera de los consumers de Customer.
+    options
+        .PublishMessage<TaxVision.Correspondence.Application.Backfill.BackfillTenantCustomersCommand>()
+        .ToLocalQueue("correspondence-backfill");
+    options.LocalQueue("correspondence-backfill").Sequential().UseDurableInbox();
 
     // Sin esta regla, Wolverine no enruta el evento a RabbitMQ y bus.PublishAsync lo descarta en
     // silencio — ningun otro servicio llega a recibirlo.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
     options.PublishMessage<CorrespondenceCustomerEmailReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CorrespondenceThreadStateChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CorrespondenceDeliveryNoticeReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");

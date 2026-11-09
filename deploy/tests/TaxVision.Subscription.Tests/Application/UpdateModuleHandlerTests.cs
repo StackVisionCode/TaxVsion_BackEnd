@@ -2,7 +2,6 @@ using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using TaxVision.Subscription.Application.Catalog.Commands.UpdateModule;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForAllPlans;
 using TaxVision.Subscription.Domain.Catalog;
-using TaxVision.Subscription.Infrastructure.Catalog.Concurrency;
 using TaxVision.Subscription.Tests.TestDoubles;
 using Xunit;
 
@@ -20,7 +19,7 @@ public sealed class UpdateModuleHandlerTests
         var result = await UpdateModuleHandler.Handle(
             new UpdateModuleCommand("WALLET", "Commercial", 15m, 150m, Guid.NewGuid()),
             new FakeModuleRepo(module),
-            new InMemoryModuleEditSerializer(),
+            new NoOpModuleEditSerializer(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
@@ -49,7 +48,7 @@ public sealed class UpdateModuleHandlerTests
         var result = await UpdateModuleHandler.Handle(
             new UpdateModuleCommand("wallet", "Core", null, null, Guid.NewGuid()),
             new FakeModuleRepo(module),
-            new InMemoryModuleEditSerializer(),
+            new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -72,7 +71,7 @@ public sealed class UpdateModuleHandlerTests
         var result = await UpdateModuleHandler.Handle(
             new UpdateModuleCommand("wallet", "Commercial", 15m, null, Guid.NewGuid()),
             new FakeModuleRepo(Module.Create("wallet", "Wallet", "Wallet module").Value),
-            new InMemoryModuleEditSerializer(),
+            new NoOpModuleEditSerializer(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
@@ -94,7 +93,7 @@ public sealed class UpdateModuleHandlerTests
         var result = await UpdateModuleHandler.Handle(
             new UpdateModuleCommand("wallet", "Commercial", 20m, 200m, Guid.NewGuid()),
             new FakeModuleRepo(module),
-            new InMemoryModuleEditSerializer(),
+            new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -115,7 +114,7 @@ public sealed class UpdateModuleHandlerTests
         var result = await UpdateModuleHandler.Handle(
             new UpdateModuleCommand("wallet", "Core", null, null, Guid.NewGuid()),
             new FakeModuleRepo(Module.Create("wallet", "Wallet", "Wallet module").Value),
-            new InMemoryModuleEditSerializer(),
+            new NoOpModuleEditSerializer(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),

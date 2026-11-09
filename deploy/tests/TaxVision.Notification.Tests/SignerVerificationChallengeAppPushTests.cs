@@ -150,6 +150,9 @@ public sealed class SignerVerificationChallengeAppPushTests
 
     private sealed class FakePushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         private readonly Dictionary<Guid, PushDeviceToken> _devices = [];
         public List<Guid> RevokedIds { get; } = [];
 
@@ -194,6 +197,15 @@ public sealed class SignerVerificationChallengeAppPushTests
 
     private sealed class RecordingNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public List<NotificationLog> Logs { get; } = [];
 
         public Task AddAsync(NotificationLog log, CancellationToken ct = default)
@@ -265,6 +277,21 @@ public sealed class SignerVerificationChallengeAppPushTests
 
     private sealed class NoOpScribeRenderClient : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ct);
+
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
         public static readonly NoOpScribeRenderClient Instance = new();
 
         // Nunca se invoca en esta suite (solo cubre la rama AppPush) — solo tiene que compilar.

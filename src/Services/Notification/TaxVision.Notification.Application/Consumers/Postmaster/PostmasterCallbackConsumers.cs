@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -17,9 +18,30 @@ internal static class PostmasterCallbackHandling
 {
     public const string OrderingPendingCode = "NotificationDispatchAttempt.OrderingPending";
     public const string AlreadyInStatusCode = "NotificationDispatchAttempt.AlreadyInStatus";
+    public const string SentDependency = "NotificationDispatchAttempt.Sent";
 
     public static string ResolveCorrelation(string correlationId, Guid eventId) =>
         string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
+
+    // Busca el log del tenant del callback; si existe con otro tenant, avisa y se descarta.
+    public static async Task<NotificationLog?> FindLogAsync(
+        INotificationLogQueryRepository logQuery,
+        IntegrationEvent evt,
+        Guid notificationLogId,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        var log = await logQuery.FindWithAttemptsAsync(evt.TenantId, notificationLogId, ct);
+        if (log is null && await logQuery.ExistsAsync(notificationLogId, ct))
+            logger.LogWarning(
+                "Postmaster callback {EventType} for NotificationLog {LogId} has tenant mismatch (event tenant {TenantId}); dropping.",
+                evt.GetType().Name,
+                notificationLogId,
+                evt.TenantId
+            );
+        return log;
+    }
 }
 
 public static class PostmasterEmailDeliverySucceededConsumer
@@ -35,7 +57,7 @@ public static class PostmasterEmailDeliverySucceededConsumer
     {
         using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
-            var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
+            var log = await PostmasterCallbackHandling.FindLogAsync(logQuery, evt, evt.NotificationLogId, logger, ct);
             if (log is null)
             {
                 logger.LogWarning(
@@ -82,7 +104,7 @@ public static class PostmasterEmailDeliveryFailedConsumer
     {
         using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
-            var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
+            var log = await PostmasterCallbackHandling.FindLogAsync(logQuery, evt, evt.NotificationLogId, logger, ct);
             if (log is null)
             {
                 logger.LogWarning(
@@ -127,7 +149,7 @@ public static class PostmasterEmailDeliveryBouncedConsumer
     {
         using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
-            var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
+            var log = await PostmasterCallbackHandling.FindLogAsync(logQuery, evt, evt.NotificationLogId, logger, ct);
             if (log is null)
             {
                 logger.LogWarning("Bounced callback for unknown log {LogId}; dropping.", evt.NotificationLogId);
@@ -144,9 +166,9 @@ public static class PostmasterEmailDeliveryBouncedConsumer
             {
                 if (result.Error.Code == PostmasterCallbackHandling.OrderingPendingCode)
                 {
-                    // Bounced llegó antes que Sent; dejar que Wolverine reintente con backoff
-                    // en vez de perder el bounce silenciosamente.
-                    throw new InvalidOperationException(
+                    // Bounced llegó antes que Sent: se reintenta con espera larga en vez de perderlo.
+                    throw new DependencyNotReadyException(
+                        PostmasterCallbackHandling.SentDependency,
                         $"Bounced callback for log {evt.NotificationLogId} attempt {evt.DispatchAttemptId} arrived before Sent; retrying."
                     );
                 }
@@ -178,7 +200,7 @@ public static class PostmasterEmailDeliveredConsumer
     {
         using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
-            var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
+            var log = await PostmasterCallbackHandling.FindLogAsync(logQuery, evt, evt.NotificationLogId, logger, ct);
             if (log is null)
                 return; // es un OutboundEmailMessage: lo atiende PostmasterOutboundEmailDeliveredConsumer.
 
@@ -189,9 +211,10 @@ public static class PostmasterEmailDeliveredConsumer
             );
             if (result.IsFailure)
             {
-                // Delivered llegó antes que Sent: se reintenta en vez de perderlo.
+                // Delivered llegó antes que Sent: se reintenta con espera larga en vez de perderlo.
                 if (result.Error.Code == PostmasterCallbackHandling.OrderingPendingCode)
-                    throw new InvalidOperationException(
+                    throw new DependencyNotReadyException(
+                        PostmasterCallbackHandling.SentDependency,
                         $"Delivered callback for log {evt.NotificationLogId} attempt {evt.DispatchAttemptId} arrived before Sent; retrying."
                     );
                 logger.LogDebug(
@@ -221,7 +244,7 @@ public static class PostmasterEmailDeliverySuppressedConsumer
     {
         using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
-            var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
+            var log = await PostmasterCallbackHandling.FindLogAsync(logQuery, evt, evt.NotificationLogId, logger, ct);
             if (log is null)
             {
                 logger.LogWarning("Suppressed callback for unknown log {LogId}; dropping.", evt.NotificationLogId);
@@ -265,7 +288,7 @@ public static class PostmasterEmailDeliveryProviderNotConfiguredConsumer
     {
         using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
-            var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
+            var log = await PostmasterCallbackHandling.FindLogAsync(logQuery, evt, evt.NotificationLogId, logger, ct);
             if (log is null)
             {
                 logger.LogWarning(

@@ -23,6 +23,12 @@ internal static class DeliveryFeedbackApplier
 
     private sealed record FeedbackMatch(SentMessage Message, SentMessageRecipient Recipient);
 
+    /// <summary>Lo que hay que avisar del lote. Sale al final: con <c>RowVersion</c>, un aviso del medio puede chocar.</summary>
+    private sealed class PendingNotices
+    {
+        public List<object> Events { get; } = [];
+    }
+
     public static async Task<DeliveryFeedbackTally> ApplyAllAsync(
         IReadOnlyList<TranslatedFeedback> items,
         DateTime receivedAtUtc,
@@ -36,9 +42,20 @@ internal static class DeliveryFeedbackApplier
             duplicates = 0,
             unmatched = 0,
             invalid = 0;
+        var notices = new PendingNotices();
         foreach (var item in items)
         {
-            switch (await ApplyAndPersistIdempotentlyAsync(item, receivedAtUtc, expectedTenantId, stores, logger, ct))
+            switch (
+                await ApplyAndPersistIdempotentlyAsync(
+                    item,
+                    receivedAtUtc,
+                    expectedTenantId,
+                    stores,
+                    notices,
+                    logger,
+                    ct
+                )
+            )
             {
                 case ItemOutcome.Applied:
                     applied++;
@@ -55,6 +72,10 @@ internal static class DeliveryFeedbackApplier
             }
         }
 
+        // Después de guardar todo: si se avisara antes y algo fallara, se vería algo que no pasó.
+        foreach (var notice in notices.Events)
+            await stores.Bus.PublishAsync(notice);
+
         return new DeliveryFeedbackTally(applied, duplicates, unmatched, invalid);
     }
 
@@ -63,6 +84,7 @@ internal static class DeliveryFeedbackApplier
         DateTime receivedAtUtc,
         Guid? expectedTenantId,
         DeliveryFeedbackStores stores,
+        PendingNotices notices,
         ILogger logger,
         CancellationToken ct
     )
@@ -109,25 +131,24 @@ internal static class DeliveryFeedbackApplier
         if (!await stores.Receipts.TryCommitAsync(receipt, ct))
             return ItemOutcome.Duplicate;
 
-        // Después de guardar: si se avisara antes y el guardado fallara, se vería algo que no pasó.
         // Solo si cambió el resultado: un aviso repetido (otro id, mismo estado) no se vuelve a contar.
         if (applied.Value)
-            await NotifyAsync(match, item, suppressed, stores);
+            CollectNotices(match, item, suppressed, notices);
         return ItemOutcome.Applied;
     }
 
     /// <summary>Notification para sus correos; Correspondence para los enviados desde el CRM.</summary>
-    private static async Task NotifyAsync(
+    private static void CollectNotices(
         FeedbackMatch match,
         TranslatedFeedback item,
         bool suppressed,
-        DeliveryFeedbackStores stores
+        PendingNotices notices
     )
     {
         var correlationId = Guid.NewGuid().ToString("N");
         var forNotification = DeliveryFeedbackNotifier.EventFor(match.Message, item.Feedback, correlationId);
         if (forNotification is not null)
-            await stores.Bus.PublishAsync(forNotification);
+            notices.Events.Add(forNotification);
 
         var forCorrespondence = CorrespondenceDeliveryFeedbackNotifier.EventFor(
             match.Message,
@@ -138,7 +159,7 @@ internal static class DeliveryFeedbackApplier
             correlationId
         );
         if (forCorrespondence is not null)
-            await stores.Bus.PublishAsync(forCorrespondence);
+            notices.Events.Add(forCorrespondence);
     }
 
     /// <summary>
@@ -222,6 +243,10 @@ internal static class DeliveryFeedbackApplier
         CancellationToken ct
     )
     {
+        // Una copia repetida del aviso no se guarda dos veces: el índice único la rechazaría.
+        if (await stores.Unmatched.ExistsAsync(item.Feedback.Source.Value, item.Feedback.SourceEventId, ct))
+            return;
+
         var maskedRecipient = EmailAddressMask.Mask(item.RecipientAddress);
         logger.LogInformation(
             "Delivery feedback from {Source} for {Recipient} did not match any sent message.",

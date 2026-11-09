@@ -55,8 +55,8 @@ public static class LinkTaskAttachmentHandler
         if (linked.IsFailure)
             return Result.Failure<TaskAttachmentResponse>(linked.Error);
 
-        await bus.PublishAsync(AttachmentEvents.Added(found.Value, linked.Value, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(AttachmentEvents.Added(found.Value, linked.Value, correlation.CorrelationId));
 
         return Result.Success(TaskAttachmentResponse.From(linked.Value));
     }

@@ -51,6 +51,7 @@ internal sealed class OffboardingNoticeHarness
             _gatewayPublisher,
             logs,
             new NoOpUnitOfWork(),
+            TestDeliveryGates.For(preferences, directory),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         Correlation = new TestCorrelationContext();
@@ -58,7 +59,6 @@ internal sealed class OffboardingNoticeHarness
             _dispatcher.Dispatcher,
             Resolver,
             new FakeEmails(inactiveInDirectory ?? []),
-            preferences,
             new RecordingGateway(gateway, Queued),
             Scribe,
             new FakeTenantHostResolver(host),
@@ -118,6 +118,21 @@ internal sealed class OffboardingNoticeHarness
 
     internal sealed class RecordingScribe(bool fails) : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ct);
+
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
         public List<(string EventKey, IReadOnlyDictionary<string, object?> Variables)> Calls { get; } = [];
 
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
@@ -151,8 +166,11 @@ internal sealed class OffboardingNoticeHarness
             CancellationToken ct = default
         )
         {
-            queued.Add(request);
-            return await inner.QueueEmailAsync(request, ct);
+            // Solo lo que salió: lo que el gate calla no cuenta como encolado.
+            var result = await inner.QueueEmailAsync(request, ct);
+            if (result.Status != NotificationDispatchAttemptStatus.Suppressed)
+                queued.Add(request);
+            return result;
         }
     }
 
@@ -252,6 +270,9 @@ internal sealed class OffboardingNoticeHarness
     // Todo usuario tiene un dispositivo: el push depende solo de los gates del dispatcher.
     private sealed class FakeDevices : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task<PushDeviceToken?> FindByTokenAsync(Guid tenantId, string token, CancellationToken ct = default) =>

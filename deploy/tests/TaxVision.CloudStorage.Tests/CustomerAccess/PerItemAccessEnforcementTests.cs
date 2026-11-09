@@ -384,7 +384,7 @@ public sealed class PerItemAccessEnforcementTests
     private static FileObject AvailableCustomerFile()
     {
         var file = CustomerFile();
-        file.MarkPendingScan();
+        file.MarkPendingScan(DateTime.UtcNow);
         file.MarkScanning();
         file.MarkAvailable(ChecksumSha256.Create(new string('a', 64)).Value, "application/pdf", DateTime.UtcNow);
         return file;

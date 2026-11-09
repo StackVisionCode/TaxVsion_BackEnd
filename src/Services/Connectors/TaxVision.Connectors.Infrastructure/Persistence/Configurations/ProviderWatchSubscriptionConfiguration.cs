@@ -18,6 +18,7 @@ public sealed class ProviderWatchSubscriptionConfiguration : IEntityTypeConfigur
         builder.Property(s => s.LastRenewedAtUtc).IsRequired();
         builder.Property(s => s.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(s => s.FailureCount).IsRequired();
+        builder.Property(s => s.RowVersion).IsRowVersion();
 
         builder.HasIndex(s => s.AccountId).IsUnique();
         builder.HasIndex(s => s.ExpiresAtUtc);

@@ -1,7 +1,11 @@
+using JasperFx;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Tests.Integration;
 
@@ -34,5 +38,27 @@ public sealed class CorrespondenceApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Sin transportes externos: el host de prueba no le roba mensajes a la cola correspondence-events de la
+        // flota local (buzones reales). Los jobs llaman a Customer: fuera. La persistencia queda (outbox de EF).
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            // Sin los sobres de la flota: MediatorOnly conserva el almacén sin migrarlo ni leerlo (BB-10).
+            services.ConfigureWolverine(options =>
+            {
+                options.Durability.Mode = DurabilityMode.MediatorOnly;
+                options.AutoBuildMessageStorageOnStartup = AutoCreate.None;
+            });
+            foreach (
+                var job in services
+                    .Where(d =>
+                        d.ServiceType == typeof(IHostedService)
+                        && d.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal) == true
+                    )
+                    .ToList()
+            )
+                services.Remove(job);
+        });
     }
 }

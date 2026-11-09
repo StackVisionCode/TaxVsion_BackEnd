@@ -12,8 +12,9 @@ public sealed class SubscriptionRenewalIntentConfiguration : IEntityTypeConfigur
         builder.HasKey(intent => intent.Id);
 
         builder.Property(intent => intent.TenantId).IsRequired();
-        builder.Property(intent => intent.AmountCents).IsRequired();
-        builder.Property(intent => intent.Currency).HasMaxLength(3).IsRequired();
+        // Money sale de estas dos columnas: el dominio las expone juntas, el esquema no cambia.
+        builder.Property<long>("AmountCents").IsRequired();
+        builder.Property<string>("Currency").HasMaxLength(3).IsRequired();
         builder.Property(intent => intent.BillingCycle).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(intent => intent.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(intent => intent.SaaSPaymentId);
@@ -28,6 +29,7 @@ public sealed class SubscriptionRenewalIntentConfiguration : IEntityTypeConfigur
         builder.Property(intent => intent.CancelledByUserId);
         builder.Property(intent => intent.CancelReason).HasMaxLength(500);
         builder.Property(intent => intent.FailureReason).HasMaxLength(1000);
+        builder.Property(intent => intent.RowVersion).IsRowVersion();
 
         builder.HasIndex(intent => intent.TenantId);
         builder.HasIndex(intent => intent.SaaSPaymentId);

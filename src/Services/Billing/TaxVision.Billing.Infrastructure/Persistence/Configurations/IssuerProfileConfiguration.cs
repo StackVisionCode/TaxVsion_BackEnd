@@ -13,6 +13,7 @@ public sealed class IssuerProfileConfiguration : IEntityTypeConfiguration<Issuer
         b.HasKey(p => p.Id);
 
         b.Property(p => p.TenantId).IsRequired();
+        b.Property(p => p.RowVersion).IsRowVersion();
         b.HasIndex(p => p.TenantId).IsUnique();
 
         b.Property(p => p.Name).HasMaxLength(IssuerProfile.NameMaxLength).IsRequired();

@@ -1,6 +1,7 @@
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Abstractions;
 
@@ -43,6 +44,13 @@ public interface IEmailDispatchGateway
 /// evento hacia Postmaster con tope total de 256 KB; <c>InProcessEmailDispatchGateway</c> los ignora,
 /// como a los logos inline.
 /// </param>
+/// <param name="RecipientUserId">
+/// Usuario del staff destinatario. Con <c>Category</c>, el gateway aplica el gate de entrega
+/// (inactivo y preferencia de correo). Los destinatarios externos (clientes, firmantes) no lo llevan.
+/// </param>
+/// <param name="NotificationKind">
+/// Kind del catálogo para la regla de obligatorio; sin él el gate busca por <c>TemplateKey</c>.
+/// </param>
 public sealed record EmailDispatchRequest(
     Guid TenantId,
     string To,
@@ -63,7 +71,12 @@ public sealed record EmailDispatchRequest(
     IReadOnlyList<Guid>? AttachmentFileIds = null,
     IReadOnlyList<EmailInlineAssetReference>? InlineAssets = null,
     bool Confidential = false,
-    IReadOnlyList<EmailInlineAttachment>? InlineAttachments = null
+    IReadOnlyList<EmailInlineAttachment>? InlineAttachments = null,
+    Guid? RecipientUserId = null,
+    NotificationCategory? Category = null,
+    int? RenderedTemplateVersion = null,
+    int? RenderedLayoutVersion = null,
+    string? NotificationKind = null
 );
 
 public sealed record EmailDispatchResult(

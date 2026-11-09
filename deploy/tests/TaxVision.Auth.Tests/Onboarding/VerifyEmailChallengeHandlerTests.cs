@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Options;
-using TaxVision.Auth.Application.Onboarding;
-using TaxVision.Auth.Application.Onboarding.EmailVerification.Commands;
-using TaxVision.Auth.Application.Onboarding.Sessions;
-using TaxVision.Auth.Domain.Onboarding.EmailVerification;
+using TaxVision.Auth.Onboarding.Application;
+using TaxVision.Auth.Onboarding.Application.EmailVerification.Commands;
+using TaxVision.Auth.Onboarding.Application.Sessions;
+using TaxVision.Auth.Onboarding.Domain.EmailVerification;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 

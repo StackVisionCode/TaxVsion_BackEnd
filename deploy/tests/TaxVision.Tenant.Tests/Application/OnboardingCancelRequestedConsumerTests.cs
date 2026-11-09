@@ -1,10 +1,12 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Consumers;
 using TaxVision.Tenant.Domain.Enums;
+using TaxVision.Tenant.Tests.TestSupport;
 using TenantEntity = TaxVision.Tenant.Domain.Tenant;
 
 namespace TaxVision.Tenant.Tests.Application;
@@ -17,7 +19,7 @@ public sealed class OnboardingCancelRequestedConsumerTests
     public async Task Closes_the_tenant_when_it_exists_for_the_onboarding()
     {
         var onboardingId = Guid.NewGuid();
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", onboardingId).Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow, onboardingId).Value;
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new FakeUnitOfWork();
 
@@ -74,7 +76,7 @@ public sealed class OnboardingCancelRequestedConsumerTests
     public async Task Is_idempotent_when_the_tenant_is_already_closed()
     {
         var onboardingId = Guid.NewGuid();
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", onboardingId).Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow, onboardingId).Value;
         tenant.ChangeStatus(EnumTenantStatus.TenantStatus.Closed);
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new FakeUnitOfWork();
@@ -100,6 +102,40 @@ public sealed class OnboardingCancelRequestedConsumerTests
         Assert.Equal(EnumTenantStatus.TenantStatus.Closed, tenant.Status);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
     }
+
+    [Fact]
+    public async Task Handle_TenantClosed_PublishesTenantStatusChangedClosed()
+    {
+        var onboardingId = Guid.NewGuid();
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow, onboardingId).Value;
+
+        await OnboardingCancelRequestedConsumer.Handle(
+            CancelEvent(onboardingId, tenant.Id),
+            new FakeTenantRepository { Existing = tenant },
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            NullLogger<TenantEntity>.Instance,
+            CancellationToken.None
+        );
+
+        var published = Assert.Single(
+            TenantDomainEventReplay.Dispatch(tenant.DomainEvents).OfType<TenantStatusChangedIntegrationEvent>()
+        );
+        Assert.Equal(tenant.Id, published.ChangedTenantId);
+        Assert.Equal(tenant.Id, published.TenantId);
+        Assert.Equal("Closed", published.Status);
+        Assert.False(published.IsActive);
+    }
+
+    private static OnboardingCancelRequestedIntegrationEvent CancelEvent(Guid onboardingId, Guid? tenantId) =>
+        new()
+        {
+            OnboardingId = onboardingId,
+            Reason = "Cancelled by platform admin",
+            OnboardingTenantId = tenantId,
+            OnboardingUserId = null,
+            OnboardingSubscriptionId = null,
+        };
 
     private sealed class FakeTenantRepository : ITenantRepository
     {

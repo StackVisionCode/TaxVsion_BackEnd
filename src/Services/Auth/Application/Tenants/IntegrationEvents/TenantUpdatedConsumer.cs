@@ -9,7 +9,7 @@ namespace TaxVision.Auth.Application.Tenants.IntegrationEvents;
 /// <summary>
 /// La oficina cambió de nombre o de zona horaria: la proyección local los copia (alimenta
 /// <c>/auth/me</c> y la zona por defecto de los usuarios sin zona propia). Idempotente y ordenado por
-/// <c>UpdatedAtUtc</c>: un evento más viejo que lo aplicado se ignora. Sin fila no hay nada que
+/// <c>TenantVersion</c> (o <c>UpdatedAtUtc</c> en mensajes viejos): un evento más viejo que lo aplicado se ignora. Sin fila no hay nada que
 /// actualizar (la crea <c>TenantCreated</c>, que no pisa un renombre ya aplicado).
 /// </summary>
 public static class TenantUpdatedConsumer
@@ -39,7 +39,7 @@ public static class TenantUpdatedConsumer
                 return;
             }
 
-            if (!tenant.ApplyTenantUpdate(evt.Name, evt.DefaultTimeZoneId, evt.UpdatedAtUtc))
+            if (!tenant.ApplyTenantUpdate(evt.Name, evt.DefaultTimeZoneId, evt.UpdatedAtUtc, evt.TenantVersion))
             {
                 logger.LogInformation(
                     "Tenant {TenantId} update from {UpdatedAtUtc:o} ignored (stale or invalid).",

@@ -15,12 +15,16 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
 
     public Task<EmailThread?> FindByProviderThreadIdAsync(
         Guid tenantId,
+        Guid? customerId,
         string providerThreadId,
         CancellationToken ct = default
     ) =>
         db
             .EmailThreads.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ProviderThreadId == providerThreadId, ct);
+            .FirstOrDefaultAsync(
+                x => x.TenantId == tenantId && x.CustomerId == customerId && x.ProviderThreadId == providerThreadId,
+                ct
+            );
 
     public Task<EmailThread?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         db.EmailThreads.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
@@ -94,6 +98,8 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
             query = query.Where(x => x.CustomerId == customerId);
         if (filter.Unlinked)
             query = query.Where(x => x.CustomerId == null);
+        else if (filter.CustomerId is null)
+            query = MailVisibilityQueries.WithoutNotAClientMail(query);
         if (filter.UnreadOnly)
             query = MailVisibilityQueries.ThreadsWithUnread(db, query, filter.TenantId);
         if (filter.HasAttachmentsOnly)
@@ -128,7 +134,8 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
         CancellationToken ct = default
     )
     {
-        var threads = Visible(tenantId, visibleAccountIds, restrictToUserId)
+        var threads = MailVisibilityQueries
+            .WithoutNotAClientMail(Visible(tenantId, visibleAccountIds, restrictToUserId))
             .Where(x => x.Status == EmailThreadStatus.Active);
         var unread = await db
             .IncomingEmails.AsNoTracking()
@@ -199,7 +206,7 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
                     ie.TenantId == tenantId
                     && ie.EmailThreadId == threadId
                     && ie.DeletedAtUtc == null
-                    && ids.Contains(ie.AccountId),
+                    && (ids.Contains(ie.AccountId) || ie.Mailboxes.Any(m => ids.Contains(m.AccountId))),
                 ct
             );
         if (inboundVisible)

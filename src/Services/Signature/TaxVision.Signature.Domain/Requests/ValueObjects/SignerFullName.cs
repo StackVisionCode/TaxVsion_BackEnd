@@ -35,5 +35,9 @@ public sealed record SignerFullName
         return Result.Success(new SignerFullName(trimmed));
     }
 
+    /// <summary>Compara el nombre tipeado al firmar, sin distinguir mayúsculas ni espacios en los extremos.</summary>
+    public bool Matches(string? typed) =>
+        typed is not null && string.Equals(typed.Trim(), Value.Trim(), StringComparison.OrdinalIgnoreCase);
+
     public override string ToString() => Value;
 }

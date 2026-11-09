@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using TaxVision.Calendar.Domain.Appointments;
+using TaxVision.Calendar.Domain.Scheduling;
 
 namespace TaxVision.Calendar.Application.Appointments;
 
@@ -31,6 +32,7 @@ internal static class AppointmentEvents
                 userIds.Add(userId);
         }
 
+        var (start, end) = FirstWindowOf(appointment);
         return new AppointmentScheduledIntegrationEvent
         {
             TenantId = appointment.TenantId,
@@ -38,8 +40,8 @@ internal static class AppointmentEvents
             AppointmentId = appointment.Id,
             Title = appointment.Title.Value,
             OrganizerUserId = appointment.OrganizerUserId,
-            StartUtc = appointment.Timing.StartUtc ?? DateTime.UtcNow,
-            EndUtc = appointment.Timing.EndUtc ?? DateTime.UtcNow,
+            StartUtc = start,
+            EndUtc = end,
             TimeZoneId = appointment.Timing.TimeZone.Id,
             IsRecurring = appointment.IsRecurring,
             IsVirtual = appointment.IsVirtual,
@@ -49,4 +51,78 @@ internal static class AppointmentEvents
             Recipients = RecipientsOf(appointment),
         };
     }
+
+    /// <summary>Inicio de la cita o de la primera ocurrencia de la serie; null si la regla no da ninguna.</summary>
+    public static DateTime? FirstStartOf(Appointment appointment) =>
+        appointment.Timing.StartUtc
+        ?? (appointment.Recurrence is null ? null : OccurrenceExpander.FirstStart(appointment));
+
+    /// <summary>
+    /// Inicio y fin de la primera ocurrencia: una serie guarda hora de pared, no UTC. Sin ocurrencia
+    /// calculable queda la hora actual, como antes.
+    /// </summary>
+    private static (DateTime StartUtc, DateTime EndUtc) FirstWindowOf(Appointment appointment)
+    {
+        var timing = appointment.Timing;
+        if (timing.StartUtc is { } startUtc && timing.EndUtc is { } endUtc)
+            return (startUtc, endUtc);
+
+        if (
+            appointment.Recurrence is not null
+            && timing.Duration is { } duration
+            && OccurrenceExpander.FirstStart(appointment) is { } firstUtc
+        )
+            return (firstUtc, firstUtc + duration);
+
+        var nowUtc = DateTime.UtcNow;
+        return (nowUtc, nowUtc);
+    }
+
+    /// <summary>
+    /// Mover la cita sin avisar a los asistentes los deja presentándose a la hora vieja. Reminder se
+    /// entera aparte, por objetivo cerrado y pedido nuevo.
+    /// </summary>
+    public static AppointmentRescheduledIntegrationEvent Rescheduled(
+        Appointment appointment,
+        DateTime? previousStartUtc,
+        DateTime newStartUtc,
+        DateTime newEndUtc,
+        string timeZoneId,
+        string scope,
+        DateTime? originalStartUtc,
+        string correlationId
+    ) =>
+        new()
+        {
+            TenantId = appointment.TenantId,
+            CorrelationId = correlationId,
+            AppointmentId = appointment.Id,
+            Scope = scope,
+            OriginalStartUtc = originalStartUtc,
+            PreviousStartUtc = previousStartUtc,
+            NewStartUtc = newStartUtc,
+            NewEndUtc = newEndUtc,
+            TimeZoneId = timeZoneId,
+            MeetingId = appointment.MeetingId,
+            Recipients = RecipientsOf(appointment),
+        };
+
+    public static AppointmentCancelledIntegrationEvent Cancelled(
+        Appointment appointment,
+        string scope,
+        DateTime? originalStartUtc,
+        string? reason,
+        string correlationId
+    ) =>
+        new()
+        {
+            TenantId = appointment.TenantId,
+            CorrelationId = correlationId,
+            AppointmentId = appointment.Id,
+            Scope = scope,
+            OriginalStartUtc = originalStartUtc,
+            Reason = reason,
+            MeetingId = appointment.MeetingId,
+            Recipients = RecipientsOf(appointment),
+        };
 }

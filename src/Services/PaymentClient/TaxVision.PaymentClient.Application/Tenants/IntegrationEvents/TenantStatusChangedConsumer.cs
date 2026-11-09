@@ -23,7 +23,14 @@ public static class TenantStatusChangedConsumer
 
         using (correlation.Push(correlationId))
         {
-            await tenants.UpdateStatusAsync(evt.ChangedTenantId, evt.Status, evt.IsActive, DateTime.UtcNow, ct);
+            await tenants.UpdateStatusAsync(
+                evt.ChangedTenantId,
+                evt.Status,
+                evt.IsActive,
+                DateTime.UtcNow,
+                evt.TenantVersion,
+                ct
+            );
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

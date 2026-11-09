@@ -13,7 +13,6 @@ public sealed class UserConfigurationTests
     {
         using var db = new AuthDbContext(
             new DbContextOptionsBuilder<AuthDbContext>().UseSqlServer("Server=unused;Database=unused").Options,
-            new FakeMessageBus(),
             new NoTenant()
         );
 

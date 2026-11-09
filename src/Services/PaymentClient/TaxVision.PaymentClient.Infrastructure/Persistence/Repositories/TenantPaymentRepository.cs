@@ -49,6 +49,20 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
                 ct
             );
 
+    public Task<TenantPayment?> GetByConnectChargeReferenceAsync(
+        Guid tenantId,
+        string providerChargeReferenceOnConnect,
+        CancellationToken ct = default
+    ) =>
+        WithChildren(db.TenantPayments)
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                payment =>
+                    payment.TenantId == tenantId
+                    && payment.ProviderChargeReferenceOnConnect == providerChargeReferenceOnConnect,
+                ct
+            );
+
     // IgnoreQueryFilters: jobs cross-tenant (RBAC Fase 5) — barren pagos atascados/vencidos de
     // todos los tenants, nunca sirven una request autenticada.
     public async Task<IReadOnlyList<AwaitingProviderPayment>> GetAwaitingProviderConfirmationAsync(
@@ -61,7 +75,11 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
             .TenantPayments.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(payment =>
-                (payment.Status == PaymentStatus.Processing || payment.Status == PaymentStatus.RequiresAction)
+                (
+                    payment.Status == PaymentStatus.Processing
+                    || payment.Status == PaymentStatus.RequiresAction
+                    || payment.Status == PaymentStatus.Pending
+                )
                 && payment.UpdatedAtUtc < stuckBeforeUtc
                 && payment.CreatedAtUtc > createdAfterUtc
             )
@@ -148,6 +166,53 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
 
         return codes.ToHashSet();
     }
+
+    public Task<bool> AnyInProgressForReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .TenantPayments.IgnoreQueryFilters()
+            .AnyAsync(
+                payment =>
+                    payment.TenantId == tenantId
+                    && payment.Purpose.ExternalReferenceId == externalReferenceId
+                    && (
+                        payment.Status == PaymentStatus.Pending
+                        || payment.Status == PaymentStatus.Processing
+                        || payment.Status == PaymentStatus.RequiresAction
+                    ),
+                ct
+            );
+
+    public Task<bool> AnySucceededForReferenceSinceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        DateTime sinceUtc,
+        CancellationToken ct = default
+    ) =>
+        db
+            .TenantPayments.IgnoreQueryFilters()
+            .AnyAsync(
+                payment =>
+                    payment.TenantId == tenantId
+                    && payment.Purpose.ExternalReferenceId == externalReferenceId
+                    && payment.Status == PaymentStatus.Succeeded
+                    && payment.PaidAtUtc > sinceUtc,
+                ct
+            );
+
+    // IgnoreQueryFilters: reposición de plataforma, cross-tenant por diseño.
+    public async Task<IReadOnlyList<TenantPayment>> GetByIdsAcrossTenantsAsync(
+        IReadOnlyCollection<Guid> tenantPaymentIds,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .TenantPayments.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(payment => tenantPaymentIds.Contains(payment.Id))
+            .ToListAsync(ct);
 
     public async Task AddAsync(TenantPayment payment, CancellationToken ct = default) =>
         await db.TenantPayments.AddAsync(payment, ct);

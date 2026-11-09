@@ -17,7 +17,7 @@ public static class DetachPortalFormAttachmentHandler
         var found = await requests.GetForCommandAsync(command.Context.TenantId, command.RequestId, ct);
         if (found.IsFailure || !FormRequestApplicationSupport.Matches(command.Context, found.Value))
             return Result.Failure<FormRequestRowVersionResponse>(FormRequestErrors.NotFound);
-        var detached = found.Value.DetachAttachment(command.AttachmentId, command.NowUtc);
+        var detached = found.Value.Files.Detach(command.AttachmentId, command.NowUtc);
         if (detached.IsFailure)
             return Result.Failure<FormRequestRowVersionResponse>(detached.Error);
         await unitOfWork.SaveChangesAsync(ct);

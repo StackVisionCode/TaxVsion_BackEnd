@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.WalletIntegrationEvents;
 
 /// <summary>
@@ -7,6 +9,7 @@ namespace BuildingBlocks.Messaging.WalletIntegrationEvents;
 /// el front refresque saldo/historial en tiempo real. El front no confía en el payload para el monto —
 /// re-consulta <c>GET /wallet</c>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.WalletIntegrationEvents.WalletBalanceChangedIntegrationEvent")]
 public sealed record WalletBalanceChangedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Motivo del cambio (topup | reserve | settle), informativo para logs/depuración.</summary>

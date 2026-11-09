@@ -1,17 +1,17 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
-using TaxVision.Billing.Application.Invoices.GenerateInvoicePdf;
-using TaxVision.Billing.Application.Invoices.IntegrationEvents;
+using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
+using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Billing.Application.Invoices.RecordManualPayment;
 
 /// <summary>Registra un pago MANUAL/offline de una factura (efectivo, cheque, transferencia, otro) —
-/// el tenant confirma que cobró por fuera del sistema. Marca la factura Paid (idempotente). No pasa por
+/// el tenant confirma que cobró por fuera del sistema. Se suma a lo ya pagado; sin monto, cobra el saldo.
+/// <see cref="ClientRequestId"/> (Idempotency-Key) evita registrar dos veces el mismo clic. No pasa por
 /// PaymentClient ni Stripe.</summary>
 public sealed record RecordManualPaymentCommand(
     Guid TenantId,
@@ -20,7 +20,8 @@ public sealed record RecordManualPaymentCommand(
     long? AmountCents,
     DateTime? PaidAtUtc,
     Guid ActorUserId,
-    bool CanViewAll
+    bool CanViewAll,
+    string? ClientRequestId = null
 );
 
 public sealed record RecordManualPaymentResult(Guid InvoiceId, string Status);
@@ -33,7 +34,6 @@ public static class RecordManualPaymentHandler
         IOptions<BillingVisibilityOptions> visibility,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        ICorrelationContext correlation,
         TimeProvider clock,
         CancellationToken ct
     )
@@ -51,22 +51,38 @@ public static class RecordManualPaymentHandler
         if (!Enum.TryParse<PaymentMethod>(command.Method, ignoreCase: true, out var method))
             method = PaymentMethod.Other;
 
-        var amountCents = command.AmountCents is > 0 ? command.AmountCents.Value : invoice.Total.AmountCents;
+        var amountCents = command.AmountCents is > 0 ? command.AmountCents.Value : invoice.AmountDue.AmountCents;
+        if (amountCents <= 0)
+            return Result.Failure<RecordManualPaymentResult>(
+                new Error("Billing.Invoice.NoBalanceDue", "This invoice has no balance due.")
+            );
+        var amount = Money.Create(amountCents, invoice.Currency);
+        if (amount.IsFailure)
+            return Result.Failure<RecordManualPaymentResult>(amount.Error);
         var paidAtUtc = command.PaidAtUtc ?? clock.GetUtcNow().UtcDateTime;
+        var sourceReference = string.IsNullOrWhiteSpace(command.ClientRequestId)
+            ? Guid.NewGuid().ToString()
+            : command.ClientRequestId.Trim();
 
-        var wasPaid = invoice.Status == InvoiceStatus.Paid;
-        var result = invoice.MarkPaid(amountCents, invoice.Currency, paidAtUtc, method);
+        var result = invoice.ApplyPayment(
+            InvoicePaymentSource.Manual,
+            sourceReference,
+            amount.Value,
+            method,
+            paidAtUtc,
+            command.ActorUserId
+        );
         if (result.IsFailure)
             return Result.Failure<RecordManualPaymentResult>(result.Error);
 
+        // Si quedó pagada, InvoicePaid y el PDF con la marca "Pagado" salen del evento de dominio (BB-1).
         await unitOfWork.SaveChangesAsync(ct);
 
-        // Si quedó pagada, regenerar el PDF con estado Paid → sale con la marca de agua "Pagado" + recibo.
-        if (invoice.Status == InvoiceStatus.Paid && !wasPaid)
+        // Pago parcial: el enlace del cliente pasa a cobrar el saldo nuevo (idempotente; también en reenvíos).
+        if (invoice.Status == InvoiceStatus.PartiallyPaid)
         {
             bus.TenantId = command.TenantId.ToString();
-            await bus.PublishAsync(InvoicePaidEventFactory.Create(invoice, correlation.CorrelationId));
-            await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, command.InvoiceId));
+            await bus.PublishAsync(new EnsureInvoicePaymentLinkCommand(command.TenantId, command.InvoiceId));
         }
 
         return Result.Success(new RecordManualPaymentResult(invoice.Id, invoice.Status.ToString()));

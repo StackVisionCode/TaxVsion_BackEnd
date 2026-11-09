@@ -14,7 +14,7 @@ public sealed class FormActionRunDomainTests
         var request = Submitted();
         var commandId = Guid.NewGuid();
 
-        var run = request.RequestAction(Key, CreateCustomer, commandId, Now).Value;
+        var run = request.Actions.Request(Key, CreateCustomer, commandId, Now).Value;
 
         Assert.Equal($"{request.Id:N}:r1:{Key}", run.IdempotencyKey);
         Assert.Equal(1, run.Attempt);
@@ -30,7 +30,7 @@ public sealed class FormActionRunDomainTests
 
         Assert.Equal(
             FormActionRunErrors.Invalid,
-            request.RequestAction(Key, CreateCustomer, Guid.NewGuid(), Now).Error
+            request.Actions.Request(Key, CreateCustomer, Guid.NewGuid(), Now).Error
         );
     }
 
@@ -41,11 +41,11 @@ public sealed class FormActionRunDomainTests
     {
         var request = Submitted();
         var commandId = Guid.NewGuid();
-        var run = request.RequestAction(Key, CreateCustomer, commandId, Now).Value;
+        var run = request.Actions.Request(Key, CreateCustomer, commandId, Now).Value;
         if (status == FormActionRunStatus.Completed)
-            request.CompleteAction(commandId, "Customer", Guid.NewGuid(), null, Now);
+            request.Actions.Complete(commandId, "Customer", Guid.NewGuid(), null, Now);
 
-        var retried = request.RetryAction(run.Id, Guid.NewGuid(), null, Now);
+        var retried = request.Actions.Retry(run.Id, Guid.NewGuid(), null, Now);
 
         Assert.Equal(FormActionRunErrors.NotRetryable, retried.Error);
         Assert.Single(request.ActionRuns);
@@ -56,11 +56,11 @@ public sealed class FormActionRunDomainTests
     {
         var request = Submitted();
         var commandId = Guid.NewGuid();
-        var run = request.RequestAction(Key, CreateCustomer, commandId, Now).Value;
-        request.RejectAction(commandId, FormActionRunErrors.DuplicateFoundCode, Guid.NewGuid(), "Email", Now);
+        var run = request.Actions.Request(Key, CreateCustomer, commandId, Now).Value;
+        request.Actions.Reject(commandId, FormActionRunErrors.DuplicateFoundCode, Guid.NewGuid(), "Email", Now);
 
         Assert.False(run.IsRetryable);
-        Assert.Equal(FormActionRunErrors.NotRetryable, request.RetryAction(run.Id, Guid.NewGuid(), null, Now).Error);
+        Assert.Equal(FormActionRunErrors.NotRetryable, request.Actions.Retry(run.Id, Guid.NewGuid(), null, Now).Error);
     }
 
     [Theory]
@@ -71,11 +71,11 @@ public sealed class FormActionRunDomainTests
     {
         var request = Submitted();
         var firstCommand = Guid.NewGuid();
-        var first = request.RequestAction(Key, CreateCustomer, firstCommand, Now).Value;
-        request.RejectAction(firstCommand, code, null, null, Now);
+        var first = request.Actions.Request(Key, CreateCustomer, firstCommand, Now).Value;
+        request.Actions.Reject(firstCommand, code, null, null, Now);
         var secondCommand = Guid.NewGuid();
 
-        var second = request.RetryAction(first.Id, secondCommand, null, Now.AddMinutes(1)).Value;
+        var second = request.Actions.Retry(first.Id, secondCommand, null, Now.AddMinutes(1)).Value;
 
         Assert.Equal(first.IdempotencyKey, second.IdempotencyKey);
         Assert.Equal(2, second.Attempt);
@@ -90,7 +90,7 @@ public sealed class FormActionRunDomainTests
     {
         var request = Submitted();
         var run = request
-            .CloseActionWithoutCommand(
+            .Actions.CloseWithoutCommand(
                 Key,
                 CreateCustomer,
                 FormActionRunStatus.Failed,
@@ -98,9 +98,9 @@ public sealed class FormActionRunDomainTests
                 Now
             )
             .Value;
-        request.RetryAction(run.Id, Guid.NewGuid(), null, Now);
+        request.Actions.Retry(run.Id, Guid.NewGuid(), null, Now);
 
-        Assert.Equal(FormActionRunErrors.NotRetryable, request.RetryAction(run.Id, Guid.NewGuid(), null, Now).Error);
+        Assert.Equal(FormActionRunErrors.NotRetryable, request.Actions.Retry(run.Id, Guid.NewGuid(), null, Now).Error);
         Assert.Equal(2, request.ActionRuns.Count);
     }
 
@@ -110,23 +110,23 @@ public sealed class FormActionRunDomainTests
         var customerId = Guid.NewGuid();
         var rejectedFirst = Submitted();
         var first = Guid.NewGuid();
-        rejectedFirst.RequestAction(Key, CreateCustomer, first, Now);
-        rejectedFirst.RejectAction(first, FormActionRunErrors.DuplicateFoundCode, customerId, "Email", Now);
+        rejectedFirst.Actions.Request(Key, CreateCustomer, first, Now);
+        rejectedFirst.Actions.Reject(first, FormActionRunErrors.DuplicateFoundCode, customerId, "Email", Now);
         var completedFirst = Submitted();
         var second = Guid.NewGuid();
-        completedFirst.RequestAction(Key, CreateCustomer, second, Now);
-        completedFirst.CompleteAction(second, "Customer", customerId, null, Now);
+        completedFirst.Actions.Request(Key, CreateCustomer, second, Now);
+        completedFirst.Actions.Complete(second, "Customer", customerId, null, Now);
 
         Assert.Equal(
             FormActionRunTransition.Applied,
-            rejectedFirst.CompleteAction(first, "Customer", customerId, null, Now).Value
+            rejectedFirst.Actions.Complete(first, "Customer", customerId, null, Now).Value
         );
         Assert.Equal(
             FormActionRunTransition.Ignored,
-            completedFirst.RejectAction(second, FormActionRunErrors.DuplicateFoundCode, customerId, "Email", Now).Value
+            completedFirst.Actions.Reject(second, FormActionRunErrors.DuplicateFoundCode, customerId, "Email", Now).Value
         );
         Assert.All(
-            [rejectedFirst.FindActionByCommand(first)!, completedFirst.FindActionByCommand(second)!],
+            [rejectedFirst.Actions.FindByCommand(first)!, completedFirst.Actions.FindByCommand(second)!],
             run =>
             {
                 Assert.Equal(FormActionRunStatus.Completed, run.Status);
@@ -141,12 +141,12 @@ public sealed class FormActionRunDomainTests
         var request = Submitted();
         var commandId = Guid.NewGuid();
         var customerId = Guid.NewGuid();
-        request.RequestAction(Key, CreateCustomer, commandId, Now);
-        request.CompleteAction(commandId, "Customer", customerId, null, Now);
+        request.Actions.Request(Key, CreateCustomer, commandId, Now);
+        request.Actions.Complete(commandId, "Customer", customerId, null, Now);
 
         Assert.Equal(
             FormActionRunTransition.Ignored,
-            request.CompleteAction(commandId, "Customer", customerId, null, Now).Value
+            request.Actions.Complete(commandId, "Customer", customerId, null, Now).Value
         );
     }
 
@@ -157,7 +157,7 @@ public sealed class FormActionRunDomainTests
 
         Assert.Equal(
             FormActionRunErrors.NotFound,
-            request.CompleteAction(Guid.NewGuid(), "Customer", Guid.NewGuid(), null, Now).Error
+            request.Actions.Complete(Guid.NewGuid(), "Customer", Guid.NewGuid(), null, Now).Error
         );
     }
 
@@ -165,7 +165,7 @@ public sealed class FormActionRunDomainTests
     public void A_skipped_run_does_not_block_a_later_plan_of_the_same_key()
     {
         var request = Submitted();
-        request.CloseActionWithoutCommand(
+        request.Actions.CloseWithoutCommand(
             Key,
             CreateCustomer,
             FormActionRunStatus.Skipped,
@@ -173,11 +173,11 @@ public sealed class FormActionRunDomainTests
             Now
         );
 
-        var requested = request.RequestAction(Key, CreateCustomer, Guid.NewGuid(), Now).Value;
+        var requested = request.Actions.Request(Key, CreateCustomer, Guid.NewGuid(), Now).Value;
 
         Assert.False(request.ActionRuns.First().IsRetryable);
         Assert.Equal(2, requested.Attempt);
-        Assert.True(request.HasActiveAction(CreateCustomer));
+        Assert.True(request.Actions.HasActive(CreateCustomer));
     }
 
     private static FormRequest Submitted()

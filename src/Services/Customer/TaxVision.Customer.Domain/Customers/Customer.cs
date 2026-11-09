@@ -4,13 +4,14 @@ using BuildingBlocks.Tenancy;
 using TaxVision.Customer.Domain.Addresses;
 using TaxVision.Customer.Domain.Assignments;
 using TaxVision.Customer.Domain.ContactPoints;
+using TaxVision.Customer.Domain.Customers.Events;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Domain.FiscalProfiles;
 using TaxVision.Customer.Domain.Relations;
 
 namespace TaxVision.Customer.Domain.Customers;
 
-public sealed class Customer : TenantEntity
+public sealed class Customer : AggregateRoot
 {
     private readonly List<CustomerAddress> _addresses = [];
     private readonly List<CustomerContactPoint> _contactPoints = [];
@@ -66,6 +67,9 @@ public sealed class Customer : TenantEntity
 
     [UserReference(UserReferenceKind.Provenance)]
     public Guid? ArchivedByUserId { get; private set; }
+
+    /// <summary>Concurrencia optimista: todo cambio en hijos pasa por <c>Touch</c> para que salte.</summary>
+    public byte[] RowVersion { get; private set; } = [];
 
     public CustomerOrigin? Origin =>
         _originSourceReferenceId is { } referenceId
@@ -136,6 +140,9 @@ public sealed class Customer : TenantEntity
             CreatedByUserId = createdByUserId,
         };
         customer.SetTenant(tenantId);
+        customer.AddDomainEvent(
+            new CustomerCreatedDomainEvent(customer.Id, tenantId, createdByUserId, customer.CreatedAtUtc)
+        );
         return Result.Success(customer);
     }
 
@@ -159,27 +166,52 @@ public sealed class Customer : TenantEntity
         LastModifiedByUserId = byUserId;
     }
 
+    // Un aviso de edición por transacción; si el alta está pendiente, ella ya anuncia el estado completo.
+    private void RaiseUpdated(Guid byUserId)
+    {
+        if (DomainEvents.Any(e => e is CustomerCreatedDomainEvent or CustomerUpdatedDomainEvent))
+            return;
+        AddDomainEvent(new CustomerUpdatedDomainEvent(Id, TenantId, byUserId, DateTime.UtcNow));
+    }
+
+    // Un snapshot de asignaciones por transacción: se arma con el cliente guardado.
+    private void RaiseAssignmentsChanged()
+    {
+        if (DomainEvents.Any(e => e is CustomerAssignmentsChangedDomainEvent))
+            return;
+        AddDomainEvent(new CustomerAssignmentsChangedDomainEvent(Id, TenantId, DateTime.UtcNow));
+    }
+
     public Result ChangePrimaryEmail(EmailAddress newEmail, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         PrimaryEmail = newEmail;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
     public Result ChangePrimaryPhone(PhoneNumber? newPhone, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         PrimaryPhone = newPhone;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
     public Result ChangeLanguage(Language language, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         Language = language;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -189,9 +221,12 @@ public sealed class Customer : TenantEntity
     /// </summary>
     public Result ChangeContactPolicy(bool emailEnabled, bool smsEnabled, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         ContactPolicy = new ContactPolicy(emailEnabled, smsEnabled);
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -247,7 +282,7 @@ public sealed class Customer : TenantEntity
     /// El escaneo aprobó la foto: pasa a ser la vigente y devuelve la anterior (para borrarla). Si el
     /// fileId no es el pendiente (llegó tarde, se quitó o se archivó el cliente) falla con <c>Stale</c>.
     /// </summary>
-    public Result<Guid?> ConfirmProfilePicture(Guid fileId)
+    public Result<Guid?> ConfirmProfilePicture(Guid fileId, Guid byUserId)
     {
         if (Status == CustomerStatus.Archived || PendingProfilePictureFileId != fileId)
             return Result.Failure<Guid?>(CustomerProfilePictureErrors.Stale);
@@ -257,6 +292,7 @@ public sealed class Customer : TenantEntity
         ClearPendingProfilePicture();
         ClearProfilePictureModeration();
         UpdatedAtUtc = DateTime.UtcNow;
+        RaiseUpdated(byUserId);
         return Result.Success(previous);
     }
 
@@ -290,6 +326,9 @@ public sealed class Customer : TenantEntity
         ClearPendingProfilePicture();
         ClearProfilePictureModeration();
         Touch(byUserId);
+        // Solo cambia lo visible si había foto vigente.
+        if (removed is not null)
+            RaiseUpdated(byUserId);
         return Result.Success(removed);
     }
 
@@ -309,7 +348,9 @@ public sealed class Customer : TenantEntity
 
     public Result ChangePersonalName(PersonalName newName, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (Kind != CustomerKind.Individual)
             return Result.Failure(
                 new Error(
@@ -320,12 +361,15 @@ public sealed class Customer : TenantEntity
         PersonalName = newName;
         DisplayName = newName.DisplayName;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
     public Result ChangeBusinessIdentity(BusinessIdentity newIdentity, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (Kind != CustomerKind.Business)
             return Result.Failure(
                 new Error(
@@ -336,14 +380,18 @@ public sealed class Customer : TenantEntity
         BusinessIdentity = newIdentity;
         DisplayName = newIdentity.LegalName;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
     public Result ChangeDateOfBirth(DateOnly? dateOfBirth, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         DateOfBirth = dateOfBirth;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -351,7 +399,9 @@ public sealed class Customer : TenantEntity
 
     public Result<CustomerAddress> AddAddress(AddressKind kind, AddressValue address, bool isPrimary, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return Result.Failure<CustomerAddress>(active.Error);
 
         if (isPrimary && _addresses.Any(a => a.Kind == kind && a.IsPrimary))
             return Result.Failure<CustomerAddress>(
@@ -369,7 +419,9 @@ public sealed class Customer : TenantEntity
 
     public Result UpdateAddress(Guid addressId, AddressKind kind, AddressValue address, bool isPrimary, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _addresses.FirstOrDefault(a => a.Id == addressId);
         if (existing is null)
             return Result.Failure(new Error("Customer.AddressNotFound", "Address not found."));
@@ -384,7 +436,9 @@ public sealed class Customer : TenantEntity
 
     public Result RemoveAddress(Guid addressId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _addresses.FirstOrDefault(a => a.Id == addressId);
         if (existing is null)
             return Result.Failure(new Error("Customer.AddressNotFound", "Address not found."));
@@ -405,7 +459,9 @@ public sealed class Customer : TenantEntity
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return Result.Failure<CustomerContactPoint>(active.Error);
 
         if (isPrimary && _contactPoints.Any(c => c.Type == type && c.IsPrimary))
             return Result.Failure<CustomerContactPoint>(
@@ -436,7 +492,9 @@ public sealed class Customer : TenantEntity
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _contactPoints.FirstOrDefault(c => c.Id == contactPointId);
         if (existing is null)
             return Result.Failure(new Error("Customer.ContactPointNotFound", "Contact point not found."));
@@ -456,7 +514,9 @@ public sealed class Customer : TenantEntity
 
     public Result RemoveContactPoint(Guid contactPointId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _contactPoints.FirstOrDefault(c => c.Id == contactPointId);
         if (existing is null)
             return Result.Failure(new Error("Customer.ContactPointNotFound", "Contact point not found."));
@@ -479,7 +539,9 @@ public sealed class Customer : TenantEntity
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return Result.Failure<CustomerRelation>(active.Error);
         var created = CustomerRelation.Create(TenantId, Id, kind, purposes, name, email, phone, dateOfBirth, address);
         if (created.IsFailure)
             return created;
@@ -501,7 +563,9 @@ public sealed class Customer : TenantEntity
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _relations.FirstOrDefault(r => r.Id == relationId);
         if (existing is null)
             return Result.Failure(new Error("Customer.RelationNotFound", "Relation not found."));
@@ -513,7 +577,9 @@ public sealed class Customer : TenantEntity
 
     public Result RemoveRelation(Guid relationId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _relations.FirstOrDefault(r => r.Id == relationId);
         if (existing is null)
             return Result.Failure(new Error("Customer.RelationNotFound", "Relation not found."));
@@ -521,6 +587,40 @@ public sealed class Customer : TenantEntity
         _relations.Remove(existing);
         Touch(byUserId);
         return Result.Success();
+    }
+
+    /// <summary>Perfil fiscal de una relación: pasa por la raíz para que su RowVersion salte.</summary>
+    public Result SetRelationFiscalProfile(
+        Guid relationId,
+        TaxRelationshipRole role,
+        byte[] taxIdentifierCipher,
+        string taxIdentifierBlindIndex,
+        string taxIdentifierLast4,
+        int taxYear,
+        bool qualifiesAsDependent,
+        bool livedWithTaxpayer,
+        Guid byUserId,
+        short taxIdentifierKeyVersion = 1
+    )
+    {
+        var existing = _relations.FirstOrDefault(r => r.Id == relationId);
+        if (existing is null)
+            return Result.Failure(new Error("Customer.RelationNotFound", "Relation not found."));
+
+        var result = existing.SetFiscalProfile(
+            role,
+            taxIdentifierCipher,
+            taxIdentifierBlindIndex,
+            taxIdentifierLast4,
+            taxYear,
+            qualifiesAsDependent,
+            livedWithTaxpayer,
+            byUserId,
+            taxIdentifierKeyVersion
+        );
+        if (result.IsSuccess)
+            Touch(byUserId);
+        return result;
     }
 
     // ============== Fiscal profile ==============
@@ -539,7 +639,9 @@ public sealed class Customer : TenantEntity
         short taxIdentifierKeyVersion = 1
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
 
         if (FiscalProfile is null)
         {
@@ -598,7 +700,9 @@ public sealed class Customer : TenantEntity
         Guid byUserId
     )
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
 
         if (FiscalProfile is null)
             return Result.Failure(new Error("FiscalProfile.NotFound", "There is no fiscal profile to update."));
@@ -615,9 +719,12 @@ public sealed class Customer : TenantEntity
 
     public Result ChangeOccupation(Guid? occupationId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         OccupationId = occupationId;
         Touch(byUserId);
+        RaiseUpdated(byUserId);
         return Result.Success();
     }
 
@@ -627,7 +734,9 @@ public sealed class Customer : TenantEntity
     /// otro primary y denormaliza en <c>AssignedPreparerUserId</c> (para 8879/offboard/chat).</summary>
     public Result AssignPreparer(Guid preparerUserId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (preparerUserId == Guid.Empty)
             return Result.Failure(new Error("Customer.InvalidPreparer", "PreparerUserId is required."));
 
@@ -642,19 +751,32 @@ public sealed class Customer : TenantEntity
 
         AssignedPreparerUserId = preparerUserId;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
     /// <summary>Traspasa el preparador PRIMARY de un empleado que se retira a otro: QUITA la fila del
     /// saliente (no la deja degradada, no debe conservar acceso) y deja al nuevo como primary. Para el
-    /// offboard con sucesor.</summary>
+    /// offboard con sucesor. Si el saliente ya no es el primary, solo pierde su fila.</summary>
     public Result HandOverPreparer(Guid fromUserId, Guid toUserId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (toUserId == Guid.Empty)
             return Result.Failure(new Error("Customer.InvalidPreparer", "PreparerUserId is required."));
 
-        _assignments.RemoveAll(a => a.UserId == fromUserId);
+        // Re-entrega sobre un cliente que otro admin ya reasignó: su preparador actual no se pisa.
+        var removed = _assignments.RemoveAll(a => a.UserId == fromUserId);
+        if (AssignedPreparerUserId != fromUserId)
+        {
+            if (removed > 0)
+            {
+                Touch(byUserId);
+                RaiseAssignmentsChanged();
+            }
+            return Result.Success();
+        }
 
         foreach (var other in _assignments.Where(a => a.IsPrimary && a.UserId != toUserId))
             other.SetPrimary(false);
@@ -667,6 +789,7 @@ public sealed class Customer : TenantEntity
 
         AssignedPreparerUserId = toUserId;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
@@ -674,20 +797,25 @@ public sealed class Customer : TenantEntity
     /// adicionales (no-primary) quedan intactos.</summary>
     public Result UnassignPreparer(Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (AssignedPreparerUserId is null)
             return Result.Failure(new Error("Customer.NoPreparerAssigned", "Customer has no preparer assigned."));
 
         _assignments.RemoveAll(a => a.UserId == AssignedPreparerUserId);
         AssignedPreparerUserId = null;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
     /// <summary>Da acceso a un miembro del staff SIN hacerlo primary (asignación adicional). Idempotente.</summary>
     public Result GrantAccess(Guid userId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         if (userId == Guid.Empty)
             return Result.Failure(new Error("Customer.InvalidAssignee", "UserId is required."));
 
@@ -695,13 +823,16 @@ public sealed class Customer : TenantEntity
             _assignments.Add(CustomerAssignment.Create(TenantId, Id, userId, isPrimary: false, byUserId));
 
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
     /// <summary>Revoca el acceso de un miembro del staff. Si era el primary, limpia la denormalización.</summary>
     public Result RevokeAccess(Guid userId, Guid byUserId)
     {
-        EnsureActive();
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
         var existing = _assignments.FirstOrDefault(a => a.UserId == userId);
         if (existing is null)
             return Result.Failure(new Error("Customer.NotAssigned", "User is not assigned to this customer."));
@@ -711,6 +842,7 @@ public sealed class Customer : TenantEntity
         if (wasPrimary)
             AssignedPreparerUserId = null;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success();
     }
 
@@ -727,6 +859,7 @@ public sealed class Customer : TenantEntity
         if (wasPrimary)
             AssignedPreparerUserId = null;
         Touch(byUserId);
+        RaiseAssignmentsChanged();
         return Result.Success(wasPrimary);
     }
 
@@ -744,6 +877,7 @@ public sealed class Customer : TenantEntity
         ProfilePictureFileId = null;
         ClearPendingProfilePicture();
         Touch(byUserId);
+        AddDomainEvent(new CustomerArchivedDomainEvent(Id, TenantId, byUserId, ArchivedAtUtc.Value));
         return Result.Success();
     }
 
@@ -756,6 +890,7 @@ public sealed class Customer : TenantEntity
         ArchivedAtUtc = null;
         ArchivedByUserId = null;
         Touch(byUserId);
+        AddDomainEvent(new CustomerReactivatedDomainEvent(Id, TenantId, byUserId, UpdatedAtUtc!.Value));
         return Result.Success();
     }
 
@@ -770,6 +905,7 @@ public sealed class Customer : TenantEntity
 
         Status = CustomerStatus.Inactive;
         Touch(byUserId);
+        AddDomainEvent(new CustomerDeactivatedDomainEvent(Id, TenantId, byUserId, UpdatedAtUtc!.Value));
         return Result.Success();
     }
 
@@ -784,12 +920,12 @@ public sealed class Customer : TenantEntity
 
         Status = CustomerStatus.Active;
         Touch(byUserId);
+        AddDomainEvent(new CustomerActivatedDomainEvent(Id, TenantId, byUserId, UpdatedAtUtc!.Value));
         return Result.Success();
     }
 
-    private void EnsureActive()
-    {
-        if (Status == CustomerStatus.Archived)
-            throw new InvalidOperationException("Customer is archived and cannot be modified.");
-    }
+    private Result EnsureActive() =>
+        Status == CustomerStatus.Archived
+            ? Result.Failure(new Error("Customer.Archived", "Customer is archived and cannot be modified."))
+            : Result.Success();
 }

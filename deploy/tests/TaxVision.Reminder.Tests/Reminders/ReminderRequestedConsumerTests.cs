@@ -102,6 +102,28 @@ public sealed class ReminderRequestedConsumerTests
         Assert.Equal(ReminderStatus.Scheduled, Assert.Single(reminders.Stored, r => r.UserId == successor).Status);
     }
 
+    /// <summary>
+    /// Contrato con publicadores por el bus: la clave cancelada no revive con una re-entrega;
+    /// la clave del ciclo siguiente (<c>:r1</c>, TSK-2) sí crea el aviso.
+    /// </summary>
+    [Fact]
+    public async Task CancelledKeyRedelivered_IsIgnored_ButLifecycleKeyCreatesReminder()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var evt = Requested("task-created:7f3a:2b91");
+        await Handle(evt, reminders, scheduler);
+        Assert.True(reminders.Stored[0].Cancel("target_closed", DateTime.UtcNow).IsSuccess);
+
+        await Handle(evt, reminders, scheduler);
+        await Handle(evt with { RequestKey = "task-created:7f3a:2b91:r1" }, reminders, scheduler);
+
+        Assert.Equal(2, reminders.Stored.Count);
+        Assert.Equal(ReminderStatus.Cancelled, reminders.Stored[0].Status);
+        Assert.Equal(ReminderStatus.Scheduled, reminders.Stored[1].Status);
+        Assert.Equal(2, scheduler.Scheduled.Count);
+    }
+
     private static Task Handle(
         ReminderRequestedIntegrationEvent evt,
         FakeReminderRepository reminders,

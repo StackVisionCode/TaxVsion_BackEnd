@@ -28,6 +28,7 @@ public sealed class ContentScannerOptions
 public sealed class HttpContentClassifier(HttpClient http, IOptions<ContentScannerOptions> options) : IContentClassifier
 {
     private const string ApiKeyHeader = "X-Scanner-Key";
+    private const string ModelUnavailableReason = "model_unavailable";
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(options.Value.BaseUrl);
 
@@ -62,6 +63,8 @@ public sealed class HttpContentClassifier(HttpClient http, IOptions<ContentScann
                 using var response = await http.SendAsync(request, ct);
                 if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
                     throw new ContentNotDecodableException("The content scanner could not decode the file.");
+                if (await IsModelUnavailableAsync(response, ct))
+                    throw new ContentClassifierUnavailableException("Content scanner has no model loaded.");
                 if (IsTransient(response.StatusCode))
                 {
                     last = new HttpRequestException($"Content scanner answered {(int)response.StatusCode}.");
@@ -113,6 +116,11 @@ public sealed class HttpContentClassifier(HttpClient http, IOptions<ContentScann
     }
 
     private static Uri BaseUri(string baseUrl) => new(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
+
+    /// <summary>Sin modelo reintentar no sirve: no aparece solo. Se distingue de "ocupado", que sí se reintenta.</summary>
+    private static async Task<bool> IsModelUnavailableAsync(HttpResponseMessage response, CancellationToken ct) =>
+        response.StatusCode == HttpStatusCode.ServiceUnavailable
+        && (await response.Content.ReadAsStringAsync(ct)).Contains(ModelUnavailableReason, StringComparison.Ordinal);
 
     private static bool IsTransient(HttpStatusCode status) =>
         status

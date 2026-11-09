@@ -1,4 +1,3 @@
-using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -11,6 +10,11 @@ using TaxVision.Sms.Domain.Webhooks;
 using Wolverine;
 
 namespace TaxVision.Sms.Application.Webhooks.Commands;
+
+public static class SmsWebhookErrors
+{
+    public static readonly Error UnknownProvider = new("sms.webhook.unknownProvider", "Unknown SMS provider.");
+}
 
 // ───────────────────────── Status / DLR ─────────────────────────
 
@@ -28,6 +32,7 @@ public static class ProcessDeliveryReceiptHandler
         ISmsAdapterFactory adapters,
         ISmsWebhookSecrets secrets,
         IProcessedWebhookRepository processed,
+        IPendingDeliveryReceiptRepository pending,
         ISmsMessageRepository messages,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -35,7 +40,8 @@ public static class ProcessDeliveryReceiptHandler
         CancellationToken ct
     )
     {
-        var provider = adapters.Resolve(command.ProviderCode);
+        if (!adapters.TryResolve(command.ProviderCode, out var provider))
+            return Result.Failure(SmsWebhookErrors.UnknownProvider);
 
         var signature = provider.VerifySignature(
             command.RawPayload,
@@ -56,30 +62,38 @@ public static class ProcessDeliveryReceiptHandler
             return Result.Success();
 
         var message = await messages.GetByProviderMessageIdAsync(command.ProviderCode, update.ProviderMessageId, ct);
+        var nowUtc = DateTime.UtcNow;
         if (message is null)
         {
+            // El DLR puede ganarle al commit del envío: queda guardado hasta que el mensaje se acepte.
+            if (!await pending.ExistsAsync(command.ProviderCode, update.ProviderMessageId, update.EventType, ct))
+            {
+                await pending.AddAsync(
+                    new PendingDeliveryReceipt(
+                        command.ProviderCode,
+                        update.ProviderMessageId,
+                        update.EventType,
+                        update.Status.ToString(),
+                        update.FailureCode,
+                        update.FailureReason,
+                        nowUtc
+                    ),
+                    ct
+                );
+                await unitOfWork.SaveChangesAsync(ct);
+            }
+
             logger.LogInformation(
-                "SMS DLR for unknown message {ProviderMessageId} ({Provider}); ignored.",
+                "SMS DLR for unknown message {ProviderMessageId} ({Provider}); kept until it is accepted.",
                 update.ProviderMessageId,
                 command.ProviderCode
             );
             return Result.Success();
         }
 
-        var nowUtc = DateTime.UtcNow;
-        var transition = update.Status switch
-        {
-            SmsCanonicalStatus.Delivered => message.MarkDelivered(nowUtc),
-            SmsCanonicalStatus.Failed => message.MarkFailed(nowUtc, update.FailureCode, update.FailureReason),
-            SmsCanonicalStatus.Undeliverable => message.MarkUndeliverable(
-                nowUtc,
-                update.FailureCode,
-                update.FailureReason
-            ),
-            SmsCanonicalStatus.Accepted => message.MarkAccepted(update.ProviderMessageId, nowUtc),
-            _ => Result.Success(),
-        };
         // Una transición inválida (estado ya avanzado) no rompe el webhook; se registra la dedup igual.
+        var before = message.Status;
+        SmsDeliveryOutcome.Apply(message, update, nowUtc);
 
         await processed.AddAsync(
             new ProcessedWebhook(
@@ -93,35 +107,12 @@ public static class ProcessDeliveryReceiptHandler
             ct
         );
 
-        bus.TenantId = message.TenantId.ToString();
-        if (message.Status == SmsMessageStatus.Delivered)
-            await bus.PublishAsync(
-                new SmsMessageDeliveredIntegrationEvent
-                {
-                    TenantId = message.TenantId,
-                    CorrelationId = message.CorrelationId,
-                    MessageId = message.Id,
-                    CustomerId = message.CustomerId,
-                    SourceContext = message.SourceContext,
-                    ProviderMessageId = message.ProviderMessageId,
-                }
-            );
-        else if (message.Status is SmsMessageStatus.Failed or SmsMessageStatus.Undeliverable)
-            await bus.PublishAsync(
-                new SmsMessageFailedIntegrationEvent
-                {
-                    TenantId = message.TenantId,
-                    CorrelationId = message.CorrelationId,
-                    MessageId = message.Id,
-                    CustomerId = message.CustomerId,
-                    SourceContext = message.SourceContext,
-                    ProviderMessageId = message.ProviderMessageId,
-                    FailureCode = message.FailureCode,
-                }
-            );
-
+        // Guardar antes de publicar, y solo si cambió: otro tipo de DLR del mismo estado no se vuelve a avisar.
         await unitOfWork.SaveChangesAsync(ct);
-        return transition.IsSuccess ? Result.Success() : Result.Success();
+        if (message.Status != before)
+            await SmsDeliveryOutcome.PublishAsync(bus, message);
+
+        return Result.Success();
     }
 }
 
@@ -150,7 +141,8 @@ public static class ProcessInboundHandler
         CancellationToken ct
     )
     {
-        var provider = adapters.Resolve(command.ProviderCode);
+        if (!adapters.TryResolve(command.ProviderCode, out var provider))
+            return Result.Failure(SmsWebhookErrors.UnknownProvider);
 
         var signature = provider.VerifySignature(
             command.RawPayload,
@@ -174,68 +166,67 @@ public static class ProcessInboundHandler
             return Result.Success(); // número ilegible: no-op auditable
         var phone = phoneResult.Value;
 
-        // Resolver (tenant, customer): hints del proveedor, o el envío más reciente hacia ese número.
+        // Resolver los tenants: con hint, solo ese tenant (número propio de la oficina). Sin hint, el
+        // remitente es compartido y el STOP aplica a cada tenant que le escribió al número (D-SMS-1).
         // Si no se puede resolver con seguridad, NO se inventan ids — se registra y termina no-op.
-        Guid tenantId = inbound.TenantIdHint ?? Guid.Empty;
-        Guid customerId = inbound.CustomerIdHint ?? Guid.Empty;
-        if (tenantId == Guid.Empty || customerId == Guid.Empty)
+        var history = await messages.ListTenantsByPhoneAsync(phone.Value, ct);
+        var targets = new List<SmsPhoneTenant>();
+        if (inbound.TenantIdHint is { } hintTenant && hintTenant != Guid.Empty)
         {
-            var last = await messages.GetLatestByPhoneAsync(phone.Value, ct);
-            if (last is null)
-            {
-                logger.LogWarning(
-                    "SMS inbound {Keyword} from {Phone} ({Provider}) could not be resolved to a tenant/customer; ignored (operational).",
-                    inbound.Keyword,
-                    phone.Value,
-                    command.ProviderCode
-                );
-                await processed.AddAsync(
-                    new ProcessedWebhook(
-                        command.ProviderCode,
-                        inbound.ProviderMessageId,
-                        InboundEventType,
-                        null,
-                        null,
-                        DateTime.UtcNow
-                    ),
-                    ct
-                );
-                await unitOfWork.SaveChangesAsync(ct);
-                return Result.Success();
-            }
-            tenantId = last.TenantId;
-            customerId = last.CustomerId;
+            var customer =
+                inbound.CustomerIdHint is { } hintCustomer && hintCustomer != Guid.Empty
+                    ? hintCustomer
+                    : history.FirstOrDefault(t => t.TenantId == hintTenant)?.CustomerId ?? Guid.Empty;
+            targets.Add(new SmsPhoneTenant(hintTenant, customer));
+        }
+        else
+        {
+            targets.AddRange(history);
         }
 
         var nowUtc = DateTime.UtcNow;
-        var optOut = await optOuts.GetByTenantAndPhoneAsync(tenantId, phone.Value, ct);
-        if (optOut is null)
+        if (targets.Count == 0)
         {
-            optOut = SmsOptOut.CreateSubscribed(tenantId, customerId, phone, nowUtc);
-            await optOuts.AddAsync(optOut, ct);
+            logger.LogWarning(
+                "SMS inbound {Keyword} from {Phone} ({Provider}) could not be resolved to a tenant/customer; ignored (operational).",
+                inbound.Keyword,
+                phone.Value,
+                command.ProviderCode
+            );
+            await processed.AddAsync(
+                new ProcessedWebhook(
+                    command.ProviderCode,
+                    inbound.ProviderMessageId,
+                    InboundEventType,
+                    null,
+                    null,
+                    nowUtc
+                ),
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success();
         }
 
-        switch (inbound.Keyword)
+        if (inbound.Keyword is SmsInboundKeyword.Stop or SmsInboundKeyword.Start)
         {
-            case SmsInboundKeyword.Stop:
-                optOut.OptOut(inbound.RawKeyword, nowUtc);
-                break;
-            case SmsInboundKeyword.Start:
-                optOut.OptIn(inbound.RawKeyword, nowUtc);
-                break;
-            case SmsInboundKeyword.Help:
-            case SmsInboundKeyword.Unknown:
-            default:
-                // HELP/Unknown: sin cambio de estado (respuesta estándar es config futura).
-                break;
+            foreach (var target in targets)
+                await ApplyToNumberAsync(optOuts, target, phone, inbound, nowUtc, ct);
+            if (targets.Count > 1)
+                logger.LogInformation(
+                    "SMS inbound {Keyword} applied to {TenantCount} tenants (shared sender).",
+                    inbound.Keyword,
+                    targets.Count
+                );
         }
+        // HELP/Unknown: sin cambio de estado (respuesta estándar es config futura).
 
         await processed.AddAsync(
             new ProcessedWebhook(
                 command.ProviderCode,
                 inbound.ProviderMessageId,
                 InboundEventType,
-                tenantId,
+                targets.Count == 1 ? targets[0].TenantId : null,
                 null,
                 nowUtc
             ),
@@ -243,5 +234,34 @@ public static class ProcessInboundHandler
         );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
+    }
+
+    // STOP/START cambia todas las filas del número en el tenant; si no hay ninguna, crea una con el cliente.
+    private static async Task ApplyToNumberAsync(
+        ISmsOptOutRepository optOuts,
+        SmsPhoneTenant target,
+        PhoneE164 phone,
+        SmsInboundMessage inbound,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        var rows = (await optOuts.ListByTenantAndPhoneAsync(target.TenantId, phone.Value, ct)).ToList();
+        if (rows.Count == 0)
+        {
+            if (target.CustomerId == Guid.Empty)
+                return;
+            var created = SmsOptOut.CreateSubscribed(target.TenantId, target.CustomerId, phone, nowUtc);
+            await optOuts.AddAsync(created, ct);
+            rows.Add(created);
+        }
+
+        foreach (var row in rows)
+        {
+            if (inbound.Keyword == SmsInboundKeyword.Stop)
+                row.OptOut(inbound.RawKeyword, nowUtc);
+            else
+                row.OptIn(inbound.RawKeyword, nowUtc);
+        }
     }
 }

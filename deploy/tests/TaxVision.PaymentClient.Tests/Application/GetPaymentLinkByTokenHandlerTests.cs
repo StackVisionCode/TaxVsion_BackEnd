@@ -98,6 +98,7 @@ public sealed class GetPaymentLinkByTokenHandlerTests
         public Task<bool> AnyUsedForExternalReferenceAsync(
             Guid tenantId,
             string externalReferenceId,
+            DateTime? usedSinceUtc = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
@@ -201,6 +202,7 @@ public sealed class GetPaymentLinkByTokenHandlerTests
             string status,
             bool isActive,
             DateTime nowUtc,
+            long? tenantVersion,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

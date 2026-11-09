@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -31,7 +32,7 @@ public static class CustomerImportFailedConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{recipient:N}",
+                NotificationRecipient.ForUser(recipient),
                 title,
                 NotificationCategory.Collaboration,
                 "customer.import_failed",

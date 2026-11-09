@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// consuma debe reasignar el trabajo activo del usuario al sucesor y conservar la data de auditoría/procedencia.
 /// Evento NUEVO (no se tocan los contratos existentes): los servicios que no lo manejen simplemente lo ignoran.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardedIntegrationEvent")]
 public sealed record UserOffboardedIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

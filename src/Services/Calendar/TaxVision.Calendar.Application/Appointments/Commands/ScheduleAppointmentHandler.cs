@@ -1,5 +1,3 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
@@ -9,7 +7,6 @@ using TaxVision.Calendar.Application.Types.Abstractions;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
 using TaxVision.Calendar.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
 
@@ -29,7 +26,8 @@ public sealed record ScheduleAppointmentCommand(
     string? RecurrenceRule,
     Guid? CustomerId,
     int? TaxYear,
-    bool IsVirtual
+    bool IsVirtual,
+    int? ReminderLeadMinutes = null
 );
 
 public static class ScheduleAppointmentHandler
@@ -39,9 +37,8 @@ public static class ScheduleAppointmentHandler
         IAppointmentRepository appointments,
         IAppointmentTypeRepository types,
         IAvailabilityRepository availability,
+        IOrganizerScheduleLock scheduleLock,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ICalendarMetrics metrics,
         CancellationToken ct
     )
@@ -51,6 +48,9 @@ public static class ScheduleAppointmentHandler
             return Result.Failure<AppointmentWithWarnings>(built.Error);
 
         var (appointment, type) = built.Value;
+
+        // Comprobar e insertar en serie por organizador: el choque con un tipo bloqueante es regla dura (D-CAL-2).
+        await scheduleLock.AcquireAsync(command.TenantId, appointment.OrganizerUserId, ct);
 
         var conflict = await ConflictProbe.CheckAsync(appointment, type, appointments, availability, ct);
         if (conflict.IsFailure)
@@ -65,7 +65,6 @@ public static class ScheduleAppointmentHandler
         appointments.Add(appointment);
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(AppointmentEvents.Scheduled(appointment, correlation.CorrelationId));
         metrics.RecordCreated(appointment.IsRecurring);
 
         return Result.Success(new AppointmentWithWarnings(AppointmentResponse.From(appointment), conflict.Value));

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
@@ -28,7 +29,7 @@ namespace TaxVision.Notification.Application.Consumers.Communication;
 /// F6: el correo lleva título, hora local con la zona de la oficina, duración, host y código, y si la
 /// reunión tiene fecha, un <c>invite.ics</c> (<c>METHOD:REQUEST</c>). Una reunión en curso
 /// (<c>MeetingStatus = Live</c>) no tiene fecha que poner en el calendario: el correo dice "en curso" y
-/// no adjunta nada. Un invitado con cuenta pasa por su preferencia de Calendar; el externo recibe siempre.
+/// no adjunta nada. Un invitado con cuenta pasa por el gate del gateway (Calendar); el externo recibe siempre.
 /// </para>
 /// </summary>
 public static class MeetingInvitationCreatedConsumer
@@ -41,7 +42,6 @@ public static class MeetingInvitationCreatedConsumer
         NotificationDispatcher dispatcher,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
-        IUserNotificationPreferenceRepository preferences,
         ICalendarInviteBuilder invites,
         IPlatformSettings platform,
         IOptions<PortalOptions> portal,
@@ -52,7 +52,9 @@ public static class MeetingInvitationCreatedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var recipient = evt.InviteeUserId is { } userId ? $"user:{userId:N}" : evt.InviteeEmail ?? "unknown";
+            var recipient = evt.InviteeUserId is { } userId
+                ? NotificationRecipient.ForUser(userId)
+                : NotificationRecipient.ForGuest(evt.InviteeEmail);
             var meetingTitle = MeetingNotifications.Title(evt.MeetingTitle);
             var inProgress = string.Equals(evt.MeetingStatus, "Live", StringComparison.OrdinalIgnoreCase);
             var title = inProgress
@@ -100,18 +102,6 @@ public static class MeetingInvitationCreatedConsumer
                 );
                 return;
             }
-
-            if (
-                !await MeetingNotifications.EmailAllowedAsync(
-                    preferences,
-                    evt.TenantId,
-                    evt.InviteeUserId,
-                    logger,
-                    TemplateKey,
-                    ct
-                )
-            )
-                return;
 
             var render = (
                 await scribeClient.RenderAsync(
@@ -166,6 +156,10 @@ public static class MeetingInvitationCreatedConsumer
                 ) with
                 {
                     InlineAttachments = invite is null ? null : [invite],
+                    // El gate del gateway decide por el invitado con cuenta (inactivo, preferencia, catálogo).
+                    RecipientUserId = evt.InviteeUserId,
+                    Category = NotificationCategory.Calendar,
+                    NotificationKind = NotificationKinds.CommunicationMeetingInvitationCreated,
                 },
                 ct
             );

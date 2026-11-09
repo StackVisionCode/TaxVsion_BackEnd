@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// expirado, cancelado por el pagador). Auth (Fase 9) lo consume para marcar el
 /// <c>TenantOnboarding</c> como <c>PaymentFailed</c>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.OnboardingPaymentFailedIntegrationEvent")]
 public sealed record OnboardingPaymentFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }

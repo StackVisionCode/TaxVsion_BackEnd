@@ -24,6 +24,19 @@ public sealed class MailboxFallbackPolicyTests
     }
 
     [Fact]
+    public void Outcome_unknown_never_falls_back()
+    {
+        // Pudo haber salido: otra vía mandaría un segundo correo.
+        Assert.False(
+            MailboxFallbackPolicy.ShouldFallBack(
+                ProviderScope.TenantPreferred,
+                EmailStream.Transactional,
+                MailboxSendFailure.OutcomeUnknown
+            )
+        );
+    }
+
+    [Fact]
     public void ShouldFallBack_never_for_the_strict_mailbox_scope()
     {
         Assert.False(

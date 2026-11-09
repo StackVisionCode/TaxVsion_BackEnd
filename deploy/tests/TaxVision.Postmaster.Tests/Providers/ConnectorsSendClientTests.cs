@@ -256,6 +256,46 @@ public sealed class ConnectorsSendClientTests
         Assert.Equal(TimeSpan.FromSeconds(25), result.RetryAfter);
     }
 
+    /// <summary>Connectors pudo haberlo enviado: un timeout no dice "no salió".</summary>
+    [Fact]
+    public async Task Timeout_maps_to_outcome_unknown()
+    {
+        var client = new ConnectorsSendClient(
+            new HttpClient(new SlowHttpMessageHandler())
+            {
+                BaseAddress = new Uri("http://localhost:5390/"),
+                Timeout = TimeSpan.FromMilliseconds(100),
+            },
+            new FakeTokenAcquirer(),
+            NullLogger<ConnectorsSendClient>.Instance
+        );
+
+        var result = await client.SendAsync(
+            CreateMessage(),
+            new RenderedContent("Welcome", "<p>Hi</p>", "Hi"),
+            CreateProvider(Guid.NewGuid()),
+            null,
+            null,
+            null,
+            [],
+            [],
+            CancellationToken.None
+        );
+
+        Assert.False(result.Success);
+        Assert.Equal(MailboxSendFailure.OutcomeUnknown, result.MailboxFailure);
+    }
+
+    /// <summary>Tarda más que el timeout del HttpClient.</summary>
+    internal sealed class SlowHttpMessageHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
     [Fact]
     public async Task SendAsync_returns_failure_without_calling_http_when_no_token_available()
     {

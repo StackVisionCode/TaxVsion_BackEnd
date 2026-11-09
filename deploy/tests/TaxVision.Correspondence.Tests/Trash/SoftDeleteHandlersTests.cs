@@ -80,7 +80,6 @@ public sealed class SoftDeleteHandlersTests
             incoming,
             new TaxVision.Correspondence.Tests.Delivery.FakeDeliveryNoticeRepository(),
             new FakeUnitOfWork(),
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -99,9 +98,7 @@ public sealed class SoftDeleteHandlersTests
         var result = await UnarchiveThreadHandler.Handle(
             new UnarchiveThreadCommand(Tenant, thread.Id),
             threads,
-            new FakeIncomingEmailRepository(),
             new FakeUnitOfWork(),
-            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -126,7 +123,6 @@ public sealed class SoftDeleteHandlersTests
             incoming,
             threads,
             uow,
-            new FakeMessageBus(),
             CancellationToken.None
         );
         Assert.True(email.IsDeleted);
@@ -137,7 +133,6 @@ public sealed class SoftDeleteHandlersTests
             incoming,
             threads,
             uow,
-            new FakeMessageBus(),
             CancellationToken.None
         );
         Assert.False(email.IsDeleted);
@@ -161,7 +156,6 @@ public sealed class SoftDeleteHandlersTests
             incoming,
             threads,
             uow,
-            new FakeMessageBus(),
             CancellationToken.None
         );
         await TrashIncomingMessageHandler.Handle(
@@ -169,7 +163,6 @@ public sealed class SoftDeleteHandlersTests
             incoming,
             threads,
             uow,
-            new FakeMessageBus(),
             CancellationToken.None
         );
 

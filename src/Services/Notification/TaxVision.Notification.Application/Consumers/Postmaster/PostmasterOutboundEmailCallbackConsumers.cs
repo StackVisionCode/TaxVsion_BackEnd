@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
+using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Domain.Emailing.Sending;
 
@@ -26,16 +27,29 @@ public static class PostmasterOutboundEmailSucceededConsumer
         IIntegrationEventPublisher publisher,
         IUnitOfWork uow,
         ICorrelationContext correlation,
+        ILogger<PostmasterEmailDeliverySucceededIntegrationEvent> logger,
         CancellationToken ct
     )
     {
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            // Un callback de otro tenant no toca el mensaje.
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
-            message.MarkSent("Postmaster", configurationId: null);
+            var sent = message.MarkSent("Postmaster", configurationId: null);
+            if (sent.IsFailure)
+            {
+                // Reentrega o callback tardío: no se guarda ni se avisa de nuevo.
+                logger.LogDebug(
+                    "Succeeded callback for message {MessageId} ignored: {Error}",
+                    message.Id,
+                    sent.Error.Message
+                );
+                return;
+            }
+
             await uow.SaveChangesAsync(ct);
             await publisher.PublishAsync(
                 new EmailDeliverySucceededIntegrationEvent
@@ -63,16 +77,17 @@ public static class PostmasterOutboundEmailFailedConsumer
         IIntegrationEventPublisher publisher,
         IUnitOfWork uow,
         ICorrelationContext correlation,
+        ILogger<PostmasterEmailDeliveryFailedIntegrationEvent> logger,
         CancellationToken ct
     )
     {
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
-            await FailAsync(message, evt.Reason, publisher, uow, correlation, ct);
+            await FailAsync(message, evt.Reason, publisher, uow, correlation, logger, ct);
         }
     }
 
@@ -82,10 +97,22 @@ public static class PostmasterOutboundEmailFailedConsumer
         IIntegrationEventPublisher publisher,
         IUnitOfWork uow,
         ICorrelationContext correlation,
+        ILogger logger,
         CancellationToken ct
     )
     {
-        message.MarkFailed(reason);
+        var failed = message.MarkFailed(reason);
+        if (failed.IsFailure)
+        {
+            // Reentrega o callback tardío: no se guarda ni se avisa de nuevo.
+            logger.LogDebug(
+                "Failure callback for message {MessageId} ignored: {Error}",
+                message.Id,
+                failed.Error.Message
+            );
+            return;
+        }
+
         await uow.SaveChangesAsync(ct);
         await publisher.PublishAsync(
             // message.Error (no `reason` crudo) por si MarkFailed truncó el mensaje a 1024 chars —
@@ -128,7 +155,7 @@ public static class PostmasterOutboundEmailDeliveredConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             message.MarkDelivered();
@@ -153,7 +180,7 @@ public static class PostmasterOutboundEmailComplainedConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             message.MarkComplained(evt.EventAtUtc);
@@ -179,7 +206,7 @@ public static class PostmasterOutboundEmailEngagementConsumer
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             var changed = evt.Signal switch
@@ -205,16 +232,27 @@ public static class PostmasterOutboundEmailBouncedConsumer
         IIntegrationEventPublisher publisher,
         IUnitOfWork uow,
         ICorrelationContext correlation,
+        ILogger<PostmasterEmailDeliveryBouncedIntegrationEvent> logger,
         CancellationToken ct
     )
     {
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
-            message.MarkBounced($"{evt.BounceType}: {evt.Reason}");
+            var bounced = message.MarkBounced($"{evt.BounceType}: {evt.Reason}");
+            if (bounced.IsFailure)
+            {
+                logger.LogDebug(
+                    "Bounced callback for message {MessageId} ignored: {Error}",
+                    message.Id,
+                    bounced.Error.Message
+                );
+                return;
+            }
+
             await uow.SaveChangesAsync(ct);
             // Un bounce cuenta como fallo a efectos de los contadores de campaña — no existe un
             // "EmailDeliveryBouncedIntegrationEvent" separado que CampaignDeliveryFailedConsumer
@@ -245,13 +283,14 @@ public static class PostmasterOutboundEmailSuppressedConsumer
         IIntegrationEventPublisher publisher,
         IUnitOfWork uow,
         ICorrelationContext correlation,
+        ILogger<PostmasterEmailDeliverySuppressedIntegrationEvent> logger,
         CancellationToken ct
     )
     {
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             await PostmasterOutboundEmailFailedConsumer.FailAsync(
@@ -260,6 +299,7 @@ public static class PostmasterOutboundEmailSuppressedConsumer
                 publisher,
                 uow,
                 correlation,
+                logger,
                 ct
             );
         }
@@ -280,13 +320,14 @@ public static class PostmasterOutboundEmailProviderNotConfiguredConsumer
         IIntegrationEventPublisher publisher,
         IUnitOfWork uow,
         ICorrelationContext correlation,
+        ILogger<PostmasterEmailDeliveryProviderNotConfiguredIntegrationEvent> logger,
         CancellationToken ct
     )
     {
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
-            if (message is null)
+            if (message is null || message.TenantId != evt.TenantId)
                 return;
 
             await PostmasterOutboundEmailFailedConsumer.FailAsync(
@@ -295,6 +336,7 @@ public static class PostmasterOutboundEmailProviderNotConfiguredConsumer
                 publisher,
                 uow,
                 correlation,
+                logger,
                 ct
             );
         }

@@ -52,14 +52,14 @@ public static class ChangeTaskDueHandler
         if (changed.IsFailure)
             return Result.Failure<TaskResponse>(changed.Error);
 
+        await unitOfWork.SaveChangesAsync(ct);
+
         await bus.PublishAsync(BuildEvent(task, previousDueAtUtc, correlation.CorrelationId));
 
         // Quitar el vencimiento no mueve nada: el contrato de Reminder recalcula sobre un ancla, y sin
         // fecha no hay ancla a la que anclarse.
         if (task.Due is not null)
             await bus.PublishAsync(TaskReminderContracts.Moved(task, correlation.CorrelationId));
-
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(TaskResponse.From(task));
     }

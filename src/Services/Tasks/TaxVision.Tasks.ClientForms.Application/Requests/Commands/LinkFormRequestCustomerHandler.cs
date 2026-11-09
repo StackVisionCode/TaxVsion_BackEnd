@@ -109,7 +109,7 @@ public static class LinkFormRequestCustomerHandler
         // Se valida antes de tocar la request: un fallo no deja un vínculo a medias.
         if (participant is null || participant.Status == FormParticipantStatus.Unverified)
             return Result.Failure<bool>(FormRequestErrors.InvalidParticipant);
-        var attached = request.TryAttachCustomer(command.CustomerId, false, null, command.NowUtc);
+        var attached = request.CustomerLinking.TryAttach(command.CustomerId, false, null, command.NowUtc);
         if (attached.IsFailure)
             return Result.Failure<bool>(attached.Error);
         var linked = participant.LinkToCustomer(command.CustomerId, command.ByUserId, command.NowUtc);

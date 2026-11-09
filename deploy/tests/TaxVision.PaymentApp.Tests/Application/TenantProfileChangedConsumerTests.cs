@@ -1,8 +1,8 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
-using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Tenants.IntegrationEvents;
 using TaxVision.PaymentApp.Domain.Tenants;
@@ -62,14 +62,17 @@ public sealed class TenantProfileChangedConsumerTests
         Assert.Equal(0, unitOfWork.SaveCalls);
     }
 
-    // Sin fila no hay nada que actualizar: la crea TenantCreated y el perfil vuelve con el republish.
+    // TEN-10: el perfil llegó antes que TenantCreated; se reintenta, no se descarta.
     [Fact]
-    public async Task An_unknown_tenant_is_a_noop()
+    public async Task Handle_TenantRowMissing_ThrowsDependencyNotReady()
     {
         var unitOfWork = new CountingUnitOfWork();
 
-        await HandleAsync(Event(Guid.NewGuid(), version: 1), new SingleTenantRegistry(null), unitOfWork);
+        var error = await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            HandleAsync(Event(Guid.NewGuid(), version: 1), new SingleTenantRegistry(null), unitOfWork)
+        );
 
+        Assert.Equal("Tenant", error.Dependency);
         Assert.Equal(0, unitOfWork.SaveCalls);
     }
 
@@ -83,7 +86,6 @@ public sealed class TenantProfileChangedConsumerTests
             tenants,
             unitOfWork,
             new NoOpCorrelationContext(),
-            NullLogger<Tenant>.Instance,
             CancellationToken.None
         );
 
@@ -125,6 +127,7 @@ public sealed class TenantProfileChangedConsumerTests
             string status,
             bool isActive,
             DateTime nowUtc,
+            long? tenantVersion,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

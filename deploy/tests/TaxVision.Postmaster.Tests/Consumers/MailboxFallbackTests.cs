@@ -48,6 +48,9 @@ public sealed class MailboxFallbackTests
         public FakeSentMessageRepository SentMessages { get; } = new();
         public FakeMessageBus Bus { get; } = new();
 
+        /// <summary>Por defecto el fake; una prueba puede poner el cliente real de Connectors.</summary>
+        public IConnectedMailboxSender? RealMailboxSender { get; init; }
+
         public FakeProviderResolver ProviderResolver { get; } =
             new()
             {
@@ -70,7 +73,7 @@ public sealed class MailboxFallbackTests
         }
 
         public Task HandleAsync(NotificationsEmailSendRequestedIntegrationEvent evt) =>
-            NotificationsEmailSendRequestedConsumer.Handle(
+            EmailSendPipeline.RunAsync(
                 evt,
                 new FakeIdempotencyGuard(),
                 ProviderResolver,
@@ -78,7 +81,7 @@ public sealed class MailboxFallbackTests
                 new FakeSuppressionListRepository(),
                 new FakeEmailProviderRateLimiter(),
                 SystemSender,
-                MailboxSender,
+                RealMailboxSender ?? MailboxSender,
                 new FakeInlineAssetFetcher(),
                 new FakeOutboundAttachmentFetcher(),
                 SentMessages,
@@ -154,6 +157,41 @@ public sealed class MailboxFallbackTests
         await Assert.ThrowsAnyAsync<Exception>(() => harness.HandleAsync(CreateEvent()));
 
         Assert.Null(harness.SystemSender.LastMessage);
+    }
+
+    /// <summary>
+    /// Connectors no contestó a tiempo: el correo pudo haber salido por el buzón. Mandarlo por el sistema
+    /// lo duplicaría, así que queda fallido con el motivo "resultado desconocido".
+    /// </summary>
+    [Fact]
+    public async Task Connectors_timeout_does_not_send_through_system()
+    {
+        var harness = new Harness(MailboxFailed(MailboxSendFailure.MailboxUnavailable))
+        {
+            RealMailboxSender = new TaxVision.Postmaster.Infrastructure.Providers.Connectors.ConnectorsSendClient(
+                new HttpClient(new Providers.ConnectorsSendClientTests.SlowHttpMessageHandler())
+                {
+                    BaseAddress = new Uri("http://localhost:5390/"),
+                    Timeout = TimeSpan.FromMilliseconds(100),
+                },
+                new FixedTokenAcquirer(),
+                NullLogger<TaxVision.Postmaster.Infrastructure.Providers.Connectors.ConnectorsSendClient>.Instance
+            ),
+        };
+
+        await harness.HandleAsync(CreateEvent());
+
+        Assert.Equal(0, harness.SystemSender.SendCount);
+        var message = Assert.Single(harness.SentMessages.Added);
+        Assert.Equal(SentMessageStatus.Failed, message.Status);
+        Assert.Contains("mailbox.outcomeUnknown", message.ErrorReason);
+    }
+
+    private sealed class FixedTokenAcquirer
+        : TaxVision.Postmaster.Infrastructure.Providers.Assets.IPostmasterServiceTokenAcquirer
+    {
+        public Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<string?>("fake-token");
     }
 
     [Fact]

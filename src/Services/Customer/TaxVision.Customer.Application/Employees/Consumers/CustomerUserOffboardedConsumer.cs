@@ -4,7 +4,6 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Customer.Application.Abstractions;
-using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Domain.Employees;
 using Wolverine;
 using CustomerEntity = TaxVision.Customer.Domain.Customers.Customer;
@@ -16,8 +15,8 @@ namespace TaxVision.Customer.Application.Employees.Consumers;
 /// elegible; (2) traspasa sus clientes PRIMARY activos al sucesor (o los desasigna si no hay) para que la
 /// oficina siga trabajándolos; (3) le revoca los accesos ADICIONALES (no-primary); y (4) lo suelta de los
 /// clientes ARCHIVADOS, sin asignar a nadie, para que al reactivarlos no vuelvan con un preparador retirado.
-/// Idempotente; por lotes (keyset). Publica por cliente para que Communication (preparador) y las
-/// proyecciones de visibilidad (asignación) reruteen.
+/// Idempotente; por lotes (keyset). Publica por cliente el preparador para Communication; el snapshot de
+/// asignación para las proyecciones de visibilidad sale del evento de dominio.
 /// </summary>
 public static class CustomerUserOffboardedConsumer
 {
@@ -135,7 +134,9 @@ public static class CustomerUserOffboardedConsumer
         var actorUserId = ActorOf(msg);
         if (successor is { } successorId)
         {
-            if (customer.HandOverPreparer(msg.UserId, successorId, actorUserId).IsFailure)
+            // Solo se anuncia un traspaso real: Communication rerutearía al sucesor sin serlo.
+            var wasPrimary = customer.AssignedPreparerUserId == msg.UserId;
+            if (customer.HandOverPreparer(msg.UserId, successorId, actorUserId).IsFailure || !wasPrimary)
                 return false;
             await bus.PublishAsync(
                 new CustomerPreparerAssignedIntegrationEvent
@@ -155,7 +156,6 @@ public static class CustomerUserOffboardedConsumer
             await PublishUnassignedAsync(customer, msg, bus, correlationId);
         }
 
-        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlationId));
         return true;
     }
 
@@ -168,7 +168,6 @@ public static class CustomerUserOffboardedConsumer
     {
         if (customer.RevokeAccess(msg.UserId, ActorOf(msg)).IsFailure)
             return false;
-        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlationId));
         return true;
     }
 
@@ -185,7 +184,6 @@ public static class CustomerUserOffboardedConsumer
             return false;
         if (released.Value)
             await PublishUnassignedAsync(customer, msg, bus, correlationId);
-        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlationId));
         return true;
     }
 

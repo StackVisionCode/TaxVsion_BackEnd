@@ -27,4 +27,17 @@ public sealed class HttpResiliencePipelineRegistry(
             k => HttpResiliencePipeline.Create(k, minimumThroughput, breakDuration, maxRetryAttempts, onRetry, onOpened)
         );
     }
+
+    // Pipelines sin reintento en su propio diccionario: no comparten instancia con GetOrCreate.
+    private readonly ConcurrentDictionary<string, HttpResiliencePipeline> _pipelinesWithoutRetry = new();
+
+    /// <summary>Variante sin reintentos para POST no idempotentes; circuit breaker propio por clave.</summary>
+    public HttpResiliencePipeline GetOrCreateWithoutRetry(string key)
+    {
+        var pipelineKey = ResiliencePipelineKey.From(key);
+        return _pipelinesWithoutRetry.GetOrAdd(
+            pipelineKey.Value,
+            k => HttpResiliencePipeline.CreateWithoutRetry(k, minimumThroughput, breakDuration, onOpened)
+        );
+    }
 }

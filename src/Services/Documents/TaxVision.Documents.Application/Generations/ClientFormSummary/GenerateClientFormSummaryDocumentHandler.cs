@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Documents.Application.Abstractions;
 using TaxVision.Documents.Domain.Generations;
 using TaxVision.Documents.Domain.ValueObjects;
@@ -21,8 +22,6 @@ public static class GenerateClientFormSummaryDocumentHandler
     public const string OwnerTypeCustomer = "Customer";
     public const string OwnerTypeParticipant = "FormParticipant";
 
-    private static readonly TimeSpan StalledAfter = TimeSpan.FromMinutes(10);
-
     public static async Task<Result<GenerateClientFormSummaryDocumentResult>> Handle(
         GenerateClientFormSummaryDocumentCommand command,
         IDocumentGenerationRepository repository,
@@ -30,6 +29,7 @@ public static class GenerateClientFormSummaryDocumentHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         TimeProvider clock,
+        IOptions<GenerationRetryOptions> retryOptions,
         ILogger<GenerateClientFormSummaryDocumentResult> logger,
         CancellationToken ct
     )
@@ -47,15 +47,23 @@ public static class GenerateClientFormSummaryDocumentHandler
                 );
 
             var nowUtc = clock.GetUtcNow().UtcDateTime;
-            var existing = await repository.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
-            if (existing is not null && !IsRetryable(existing, nowUtc))
+            var existing = await repository.GetByIdempotencyKeyAsync(
+                command.TenantId,
+                ClientFormSubmissionSummaryRequestedConsumer.SourceService,
+                command.IdempotencyKey,
+                ct
+            );
+            if (
+                existing is not null
+                && !GenerationRetryPolicy.IsRetryable(existing, nowUtc, retryOptions.Value.StalledAfter)
+            )
                 return Result.Success(
                     new GenerateClientFormSummaryDocumentResult(existing.Id, existing.Status.ToString())
                 );
 
             if (existing is not null)
             {
-                var retry = existing.RetryStalled(nowUtc);
+                var retry = GenerationRetryPolicy.Requeue(existing, nowUtc);
                 if (retry.IsFailure)
                     return Result.Failure<GenerateClientFormSummaryDocumentResult>(retry.Error);
                 existing.SetExternalReference(command.GenerationId);
@@ -79,7 +87,12 @@ public static class GenerateClientFormSummaryDocumentHandler
             catch (ConflictException)
             {
                 // Dos entregas del mismo evento a la vez: gana una y la otra devuelve esa.
-                var winner = await repository.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
+                var winner = await repository.GetByIdempotencyKeyAsync(
+                    command.TenantId,
+                    ClientFormSubmissionSummaryRequestedConsumer.SourceService,
+                    command.IdempotencyKey,
+                    ct
+                );
                 if (winner is not null)
                     return Result.Success(
                         new GenerateClientFormSummaryDocumentResult(winner.Id, winner.Status.ToString())
@@ -102,14 +115,6 @@ public static class GenerateClientFormSummaryDocumentHandler
             );
         }
     }
-
-    private static bool IsRetryable(DocumentGeneration generation, DateTime nowUtc) =>
-        generation.Status == DocumentGenerationStatus.Failed
-        || (
-            generation.Status != DocumentGenerationStatus.Completed
-            && generation.Status != DocumentGenerationStatus.Cancelled
-            && nowUtc - generation.UpdatedAtUtc >= StalledAfter
-        );
 
     private static (string OwnerType, Guid OwnerId)? ResolveOwner(ClientFormParticipant participant)
     {

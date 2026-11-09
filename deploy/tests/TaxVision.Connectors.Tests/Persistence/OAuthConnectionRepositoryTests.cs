@@ -34,7 +34,7 @@ public sealed class OAuthConnectionRepositoryTests
         var errored = CreateAccount(account =>
         {
             account.MarkConnected(Now);
-            account.MarkError(Now);
+            account.MarkError(AccountErrors.RefreshRejected, Now);
         });
         var disconnected = CreateAccount(account =>
         {

@@ -370,6 +370,18 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ScanAttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ScanQueuedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("ScanReport")
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
@@ -460,6 +472,12 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<DateTime?>("SoftDeleteExpiresAtUtc")
                         .HasColumnType("datetime2");
 
@@ -483,6 +501,11 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_Folders_Owner_Category")
                         .HasFilter("[Category] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "OwnerType", "OwnerId", "ParentFolderId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Folders_Owner_Parent_Name")
+                        .HasFilter("[SoftDeletedAtUtc] IS NULL AND [Category] IS NULL");
 
                     b.ToTable("Folders", (string)null);
                 });
@@ -931,6 +954,9 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsSuspended")
                         .HasColumnType("bit");
+
+                    b.Property<long?>("LastEntitlementsRevision")
+                        .HasColumnType("bigint");
 
                     b.Property<long>("MaxBytes")
                         .HasColumnType("bigint");

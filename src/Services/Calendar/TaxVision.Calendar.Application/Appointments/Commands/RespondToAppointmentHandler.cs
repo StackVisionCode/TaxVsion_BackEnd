@@ -1,18 +1,17 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Domain.Appointments;
-using Wolverine;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
 
+/// <param name="ExpectedSchedule">Lo que el endpoint leyó antes del primer intento. Si cambió, no se responde.</param>
 public sealed record RespondToAppointmentCommand(
     Guid TenantId,
     Guid AppointmentId,
     Guid RespondingUserId,
-    AttendeeResponse Response
+    AttendeeResponse Response,
+    string? ExpectedSchedule = null
 );
 
 public static class RespondToAppointmentHandler
@@ -21,8 +20,6 @@ public static class RespondToAppointmentHandler
         RespondToAppointmentCommand command,
         IAppointmentRepository appointments,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -31,6 +28,11 @@ public static class RespondToAppointmentHandler
             return found;
 
         var appointment = found.Value;
+
+        // El reintento relee: sin esto, aceptaría en silencio una hora que la persona no vio.
+        if (command.ExpectedSchedule is { } expected && expected != appointment.ScheduleStamp)
+            return Result.Failure(AppointmentErrors.ScheduleChanged);
+
         var responded = appointment.RespondAsAttendee(
             command.Response,
             command.RespondingUserId,
@@ -43,19 +45,6 @@ public static class RespondToAppointmentHandler
             return responded;
 
         await unitOfWork.SaveChangesAsync(ct);
-
-        // Va al organizador: es quien decide si mueve la cita porque alguien no puede.
-        await bus.PublishAsync(
-            new AppointmentAttendeeRespondedIntegrationEvent
-            {
-                TenantId = appointment.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                AppointmentId = appointment.Id,
-                OrganizerUserId = appointment.OrganizerUserId,
-                UserId = command.RespondingUserId,
-                Response = command.Response.ToString(),
-            }
-        );
 
         return Result.Success();
     }

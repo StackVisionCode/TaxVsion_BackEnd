@@ -1,32 +1,32 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
-using BuildingBlocks.Persistence;
+using BuildingBlocks.Tenancy;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Tenant.Application.Compliance.Abstractions;
 using TaxVision.Tenant.Domain.Compliance;
 using TaxVision.Tenant.Infrastructure.Compliance;
+using TaxVision.Tenant.Infrastructure.Persistence;
 using TaxVision.Tenant.Infrastructure.Scheduling;
 using TaxVision.Tenant.Tests.TestSupport;
-using Wolverine;
 
 namespace TaxVision.Tenant.Tests.Infrastructure;
 
-/// <summary>Pasada del job del WISP: recorre por lotes, guarda antes de publicar y una colisión no corta el resto.</summary>
+/// <summary>Pasada del job del WISP: una unidad por oficina, y una colisión no corta el resto.</summary>
 public sealed class WispReviewReminderJobTests
 {
     private static readonly DateTime SavedAt = new(2026, 11, 3, 15, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime Now = new(2026, 12, 2, 12, 0, 0, DateTimeKind.Utc);
 
     private readonly InMemoryOfficeComplianceRepository _compliances = new();
-    private readonly RecordingMessageBus _bus = new();
-    private readonly PublishOrderUnitOfWork _unitOfWork;
-
-    public WispReviewReminderJobTests() => _unitOfWork = new PublishOrderUnitOfWork(_bus);
+    private readonly OutboxRecording _outbox = new();
 
     [Fact]
-    public async Task A_sweep_pages_through_every_candidate_and_saves_before_each_publish()
+    public async Task A_sweep_pages_through_every_candidate_with_one_unit_each()
     {
         var tenants = Enumerable.Range(0, 5).Select(_ => Seed("2025-12-01")).ToList();
         Seed("2026-06-01"); // fuera de ventana
@@ -35,8 +35,8 @@ public sealed class WispReviewReminderJobTests
         var sent = await NewJob().SweepAsync(batchSize: 2, Now, CancellationToken.None);
 
         Assert.Equal(5, sent);
-        Assert.Equal([0, 1, 2, 3, 4], _unitOfWork.PublishedAtSave);
-        var events = _bus.Published.OfType<OfficeWispReviewDueIntegrationEvent>().ToList();
+        Assert.Equal(5, _outbox.Flushes);
+        var events = _outbox.Flushed.OfType<OfficeWispReviewDueIntegrationEvent>().ToList();
         Assert.Equal(tenants.ToHashSet(), events.Select(e => e.OfficeTenantId).ToHashSet());
         Assert.All(events, e => Assert.Equal(OfficeWispReviewStages.Overdue, e.Stage));
         Assert.Single(events.Select(e => e.CorrelationId).Distinct());
@@ -52,7 +52,7 @@ public sealed class WispReviewReminderJobTests
         var again = await job.SweepAsync(batchSize: 10, Now.AddHours(3), CancellationToken.None);
 
         Assert.Equal(0, again);
-        Assert.Single(_bus.Published);
+        Assert.Single(_outbox.Flushed);
     }
 
     [Fact]
@@ -60,13 +60,13 @@ public sealed class WispReviewReminderJobTests
     {
         Seed("2025-12-01");
         Seed("2025-12-01");
-        _unitOfWork.ConflictOnSave.Add(1);
+        _outbox.ConflictOnFlush.Add(1);
 
         var sent = await NewJob().SweepAsync(batchSize: 10, Now, CancellationToken.None);
 
         Assert.Equal(1, sent);
-        Assert.Single(_bus.Published);
-        Assert.Equal([0, 0], _unitOfWork.PublishedAtSave);
+        Assert.Equal(2, _outbox.Flushes);
+        Assert.Single(_outbox.Flushed);
     }
 
     private Guid Seed(string? adoptedOn)
@@ -84,15 +84,19 @@ public sealed class WispReviewReminderJobTests
 
     private WispReviewReminderJob NewJob()
     {
+        var databaseName = Guid.NewGuid().ToString("N");
         var services = new ServiceCollection()
             .AddSingleton<IOfficeComplianceRepository>(_compliances)
-            .AddSingleton<IUnitOfWork>(_unitOfWork)
-            .AddSingleton<IMessageBus>(_bus)
             .AddSingleton<ICorrelationContext, NoopCorrelationContext>()
-            .BuildServiceProvider();
+            .AddSingleton<ITenantContext, NoTenantContext>()
+            .AddDbContext<TenantDbContext>(db =>
+                db.UseInMemoryDatabase(databaseName)
+                    .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            );
+        RecordingTenantOutbox.AddTo(services, _outbox);
 
         return new WispReviewReminderJob(
-            services.GetRequiredService<IServiceScopeFactory>(),
+            services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
             new NoLock(),
             Options.Create(new WispReviewReminderOptions()),
             NullLogger<WispReviewReminderJob>.Instance
@@ -103,5 +107,13 @@ public sealed class WispReviewReminderJobTests
     {
         public Task<IAsyncDisposable?> TryAcquireAsync(string key, TimeSpan ttl, CancellationToken ct = default) =>
             throw new NotSupportedException("SweepAsync runs without the lock in these tests.");
+    }
+
+    private sealed class NoTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
     }
 }

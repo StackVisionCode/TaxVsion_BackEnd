@@ -138,6 +138,7 @@ public static class IssueDownloadUrlHandler
                 clock.UtcNow
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new FileAccessAuditedIntegrationEvent
             {
@@ -150,7 +151,6 @@ public static class IssueDownloadUrlHandler
                 CorrelationId = query.Audit.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(new DownloadUrlResponse(file.Id, url, clock.UtcNow.Add(lifetime)));
     }
 }

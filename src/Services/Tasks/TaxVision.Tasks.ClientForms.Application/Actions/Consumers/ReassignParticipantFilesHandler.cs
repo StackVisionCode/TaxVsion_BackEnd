@@ -38,7 +38,7 @@ public static class ReassignParticipantFilesHandler
             );
             if (request is not { CustomerLinkStatus: CustomerLinkStatus.Linked })
                 return;
-            var pending = request.FilesPendingOwnerReassignment();
+            var pending = request.Files.PendingOwnerReassignment();
             if (pending.Count == 0)
                 return;
             var blocked = false;
@@ -81,7 +81,7 @@ public static class ReassignParticipantFilesHandler
         var blocked = false;
         foreach (var file in result.Value)
         {
-            request.RecordFileReassignment(file.FileId, file.Outcome, DateTime.UtcNow);
+            request.Files.RecordReassignment(file.FileId, file.Outcome, DateTime.UtcNow);
             blocked |=
                 file.Outcome is FormFileReassignmentOutcomes.OwnerMismatch or FormFileReassignmentOutcomes.LegalHold;
         }

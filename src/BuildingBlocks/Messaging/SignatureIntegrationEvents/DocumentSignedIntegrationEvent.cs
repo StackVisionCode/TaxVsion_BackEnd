@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// firmantes si la firma es secuencial. Planner marca la tarea de seguimiento como
 /// completada.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.DocumentSignedIntegrationEvent")]
 public sealed record DocumentSignedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

@@ -18,7 +18,7 @@ namespace TaxVision.PaymentApp.Application.WalletTopUpCheckouts.Commands;
 /// Crea la sesión de checkout hosteada para una recarga de monedero por redirect. Los pasos comunes
 /// (resolver proveedor, idempotencia/replay, crear la sesión, auditar) los pone
 /// <see cref="HostedCheckoutPipeline"/>; acá solo vive lo propio de la recarga. El webhook (source of truth)
-/// confirma el pago y <see cref="Common.SaaSPaymentResultPublisher"/> publica
+/// confirma el pago y el aviso de resultado (<c>SaaSPaymentDomainEventHandler</c>) publica
 /// <c>WalletTopUpPaymentSucceeded</c>, que el Wallet consume para acreditar — SIN cambios en esa cola.
 /// </summary>
 public static class CreateWalletTopUpCheckoutHandler

@@ -23,6 +23,7 @@ using Serilog;
 using StackExchange.Redis;
 using TaxVision.Subscription.Api.Bootstrap;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Seats.Commands.StartSeatReactivationCheckout;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Infrastructure;
 using TaxVision.Subscription.Infrastructure.Configuration;
@@ -81,11 +82,24 @@ builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
 builder.Services.AddHostedService<SubscriptionCatalogReconciler>();
 builder.Services.AddHostedService<AddOnCheckoutReconciliationJob>();
 builder.Services.AddHostedService<SubscriptionRenewalCheckoutReconciliationJob>();
+builder.Services.Configure<SeatReactivationOptions>(
+    builder.Configuration.GetSection(SeatReactivationOptions.SectionName)
+);
+builder.Services.Configure<CheckoutIntentExpirationOptions>(
+    builder.Configuration.GetSection(CheckoutIntentExpirationOptions.SectionName)
+);
 builder.Services.AddHostedService<CheckoutIntentExpirationJob>();
 
 // A6 — anti-entropía del corte por facturación: re-anuncia el estado ACTUAL para que Auth converja
 // tras un evento perdido. Su primer tick es inmediato, así que también reconcilia al arrancar.
 builder.Services.AddHostedService<SubscriptionAccessReconciliationJob>();
+
+// SUB-4 — anti-entropía de entitlements: a diario (y al arrancar) encola el recálculo de cada tenant; solo sube
+// la revisión y avisa si el snapshot cambió.
+builder.Services.Configure<EntitlementSnapshotReconciliationOptions>(
+    builder.Configuration.GetSection(EntitlementSnapshotReconciliationOptions.SectionName)
+);
+builder.Services.AddHostedService<EntitlementSnapshotReconciliationJob>();
 
 // Los downgrades agendados (PendingDowngrade) los aplica TenantSubscriptionRenewalJob mismo,
 // justo antes de facturar la renovación — no hay un job separado.
@@ -221,7 +235,17 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // Eventos de dominio de TenantSubscription: se guardan con el commit del handler (o de la unidad del job) y
+    // su handler devuelve TenantSubscriptionStatusChanged. En serie: los avisos salen en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // Toda cola local durable: RecalculateEntitlementsCommand (y sus abanicos) publicado desde un handler o
+    // un job queda en el outbox con el commit y sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).

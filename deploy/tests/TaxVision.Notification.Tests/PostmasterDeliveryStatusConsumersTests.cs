@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,7 +14,7 @@ public sealed class PostmasterDeliveryStatusConsumersTests
     private static (NotificationLog Log, Guid AttemptId) SentLog()
     {
         var log = NotificationLog
-            .Create(Guid.NewGuid(), NotificationChannel.Email, "to@test.com", "Subject", "auth.welcome", null, null)
+            .Create(Guid.NewGuid(), NotificationChannel.Email, NotificationRecipient.ForEmail("to@test.com").Value, "Subject", "auth.welcome", null, null)
             .Value;
         var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
         log.UpdateAttemptStatus(attempt.Id, NotificationDispatchAttemptStatus.Sent);
@@ -71,16 +72,30 @@ public sealed class PostmasterDeliveryStatusConsumersTests
     }
 
     [Fact]
-    public async Task Delivered_before_Sent_is_retried_instead_of_lost()
+    public async Task Delivered_before_sent_throws_dependency_not_ready()
     {
         var log = NotificationLog
-            .Create(Guid.NewGuid(), NotificationChannel.Email, "to@test.com", "Subject", "auth.welcome", null, null)
+            .Create(Guid.NewGuid(), NotificationChannel.Email, NotificationRecipient.ForEmail("to@test.com").Value, "Subject", "auth.welcome", null, null)
+            .Value;
+        var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
+        var uow = new CountingUnitOfWork();
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() => DeliverAsync(log, attempt.Id, uow));
+
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task Bounced_before_sent_throws_dependency_not_ready()
+    {
+        var log = NotificationLog
+            .Create(Guid.NewGuid(), NotificationChannel.Email, NotificationRecipient.ForEmail("to@test.com").Value, "Subject", "auth.welcome", null, null)
             .Value;
         var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DeliverAsync(log, attempt.Id, new CountingUnitOfWork())
-        );
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() => BounceAsync(log, attempt.Id));
+
+        Assert.NotEqual(NotificationStatus.Bounced, log.Status);
     }
 
     [Fact]
@@ -107,10 +122,37 @@ public sealed class PostmasterDeliveryStatusConsumersTests
     }
 
     [Fact]
+    public async Task Callback_with_other_tenant_does_not_touch_the_log()
+    {
+        var (log, attemptId) = SentLog();
+        var uow = new CountingUnitOfWork();
+
+        await PostmasterEmailDeliveredConsumer.Handle(
+            new PostmasterEmailDeliveredIntegrationEvent
+            {
+                TenantId = Guid.NewGuid(),
+                NotificationLogId = log.Id,
+                DispatchAttemptId = attemptId,
+                SentMessageId = Guid.NewGuid(),
+                EventAtUtc = DateTime.UtcNow,
+            },
+            new SingleLogRepository(log),
+            uow,
+            new NoOpCorrelationContext(),
+            NullLogger<PostmasterEmailDeliveredIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(NotificationStatus.Sent, log.Status);
+        Assert.Equal(NotificationDispatchAttemptStatus.Sent, log.Attempts.Single().Status);
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
     public void MarkDelivered_does_not_revive_a_failed_log()
     {
         var log = NotificationLog
-            .Create(Guid.NewGuid(), NotificationChannel.Email, "to@test.com", "Subject", "auth.welcome", null, null)
+            .Create(Guid.NewGuid(), NotificationChannel.Email, NotificationRecipient.ForEmail("to@test.com").Value, "Subject", "auth.welcome", null, null)
             .Value;
         log.MarkFailed("smtp down");
 
@@ -121,8 +163,15 @@ public sealed class PostmasterDeliveryStatusConsumersTests
 
     private sealed class SingleLogRepository(NotificationLog log) : INotificationLogQueryRepository
     {
-        public Task<NotificationLog?> FindWithAttemptsAsync(Guid notificationLogId, CancellationToken ct) =>
-            Task.FromResult<NotificationLog?>(notificationLogId == log.Id ? log : null);
+        // Igual que el repositorio real: filtra por id y tenant.
+        public Task<NotificationLog?> FindWithAttemptsAsync(
+            Guid tenantId,
+            Guid notificationLogId,
+            CancellationToken ct
+        ) => Task.FromResult<NotificationLog?>(notificationLogId == log.Id && tenantId == log.TenantId ? log : null);
+
+        public Task<bool> ExistsAsync(Guid notificationLogId, CancellationToken ct) =>
+            Task.FromResult(notificationLogId == log.Id);
     }
 
     private sealed class CountingUnitOfWork : IUnitOfWork

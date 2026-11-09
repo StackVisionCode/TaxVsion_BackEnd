@@ -46,7 +46,6 @@ public sealed class ClientFormNotificationSender(
     ICustomerEmailDirectoryRepository customers,
     ICustomerContactPolicyRepository contactPolicies,
     IUserEmailResolver userEmails,
-    IUserNotificationPreferenceRepository preferences,
     IClientFormNotificationSettingsRepository settings,
     IEmailDispatchGateway emailGateway,
     IScribeRenderClient scribe,
@@ -97,7 +96,7 @@ public sealed class ClientFormNotificationSender(
         var host = sendsEmail || sendsPush ? await hosts.ResolveHostAsync(request.TenantId, ct) : null;
 
         if (sendsEmail)
-            await SendEmailAsync(request, entry, destination!, host, ct);
+            await SendEmailAsync(request, destination!, host, ct);
         if (entry.AllowedChannels.Contains(NotificationChannel.InApp))
             await SendInAppAsync(request, ct);
         if (sendsPush)
@@ -132,7 +131,6 @@ public sealed class ClientFormNotificationSender(
 
     private async Task SendEmailAsync(
         ClientFormNotificationRequest request,
-        NotificationCatalogEntry entry,
         Destination destination,
         string? host,
         CancellationToken ct
@@ -143,11 +141,6 @@ public sealed class ClientFormNotificationSender(
             metrics.RecordNoRecipient(request.Kind, "Email");
             return;
         }
-        if (
-            !entry.IsMandatoryFor(NotificationChannel.Email)
-            && !await IsPreferredAsync(request, NotificationChannel.Email, ct)
-        )
-            return;
         if (string.IsNullOrWhiteSpace(destination.Email))
         {
             metrics.RecordNoRecipient(request.Kind, "Email");
@@ -159,16 +152,24 @@ public sealed class ClientFormNotificationSender(
         var render = (
             await scribe.RenderAsync(request.EmailTemplateKey, request.TenantId, variables, audience, ct)
         ).EnsureRendered(request.EmailTemplateKey);
-        await emailGateway.QueueEmailAsync(
+        // El gate del gateway aplica inactivo, preferencia y obligatorio del catálogo (por kind).
+        var result = await emailGateway.QueueEmailAsync(
             render.ToDispatchRequest(
                 request.TenantId,
                 destination.Email,
                 request.EmailTemplateKey,
                 request.EventId,
                 correlation.CorrelationId
-            ),
+            ) with
+            {
+                RecipientUserId = request.RecipientUserId,
+                Category = request.Category,
+                NotificationKind = request.Kind,
+            },
             ct
         );
+        if (result.Status == NotificationDispatchAttemptStatus.Suppressed)
+            metrics.RecordSuppressedByPreference(request.Kind, nameof(NotificationChannel.Email));
     }
 
     private async Task SendInAppAsync(ClientFormNotificationRequest request, CancellationToken ct)
@@ -181,7 +182,7 @@ public sealed class ClientFormNotificationSender(
 
         await dispatcher.RecordInAppAsync(
             request.TenantId,
-            $"user:{userId:N}",
+            NotificationRecipient.ForUser(userId),
             request.Title,
             request.Category,
             request.Kind,
@@ -305,21 +306,6 @@ public sealed class ClientFormNotificationSender(
         var delays = new[] { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15) };
         var next = outcome is null ? request : request with { DeviceIds = outcome.RetryableDeviceIds };
         await retryScheduler.ScheduleAsync(new RetryClientFormPushRequested(next, attempt + 1), delays[attempt]);
-    }
-
-    private async Task<bool> IsPreferredAsync(
-        ClientFormNotificationRequest request,
-        NotificationChannel channel,
-        CancellationToken ct
-    )
-    {
-        // Sin cuenta no hay opt-out que respetar: el cliente sin portal recibe el email (lo filtra su ContactPolicy).
-        if (request.RecipientUserId is not { } userId)
-            return true;
-        var enabled = await preferences.IsEnabledAsync(request.TenantId, userId, request.Category, channel, ct);
-        if (!enabled)
-            metrics.RecordSuppressedByPreference(request.Kind, channel.ToString());
-        return enabled;
     }
 
     private Dictionary<string, object?> Variables(

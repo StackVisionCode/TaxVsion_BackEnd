@@ -15,6 +15,12 @@ public interface ISentMessageRepository
     /// </summary>
     void Remove(SentMessage message);
 
+    /// <summary>Con destinatarios, sin seguimiento y sin filtro de tenant: lo lee el paso de envío.</summary>
+    Task<SentMessage?> GetForDispatchAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>El mensaje de esa clave de idempotencia, si existe (sin seguimiento).</summary>
+    Task<SentMessage?> FindByIdempotencyKeyAsync(Guid tenantId, string idempotencyKey, CancellationToken ct = default);
+
     /// <summary>Incluye Events — usado por el timeline de auditoría (Fase 6).</summary>
     Task<Result<SentMessage>> GetByIdWithEventsAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 

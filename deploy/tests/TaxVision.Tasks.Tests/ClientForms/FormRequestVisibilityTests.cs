@@ -170,7 +170,7 @@ public sealed class FormRequestVisibilityTests
         Assert.True(archived.Archive("Spam", Responsible, Now.AddMinutes(1)).IsSuccess);
         var linkedDuplicate = SubmittedExternal(db, version, duplicateRun: true);
         Assert.True(linkedDuplicate.ReturnForChanges("Fix it", [], Responsible, Now.AddMinutes(1)).IsSuccess);
-        Assert.True(linkedDuplicate.TryAttachCustomer(ExistingCustomer, false, null, Now.AddMinutes(2)).IsSuccess);
+        Assert.True(linkedDuplicate.CustomerLinking.TryAttach(ExistingCustomer, false, null, Now.AddMinutes(2)).IsSuccess);
         var unlinkedDuplicate = SubmittedExternal(db, version, duplicateRun: true);
         Assert.True(unlinkedDuplicate.ReturnForChanges("Fix it", [], Responsible, Now.AddMinutes(1)).IsSuccess);
         await db.SaveChangesAsync();
@@ -210,7 +210,7 @@ public sealed class FormRequestVisibilityTests
             Now
         );
         if (failedRun)
-            request.CloseActionWithoutCommand(
+            request.Actions.CloseWithoutCommand(
                 "create_client",
                 "CreateCustomer",
                 FormActionRunStatus.Failed,
@@ -220,8 +220,8 @@ public sealed class FormRequestVisibilityTests
         if (duplicateRun)
         {
             var command = Guid.NewGuid();
-            request.RequestAction("create_client", "CreateCustomer", command, Now);
-            request.RejectAction(command, FormActionRunErrors.DuplicateFoundCode, ExistingCustomer, "Email", Now);
+            request.Actions.Request("create_client", "CreateCustomer", command, Now);
+            request.Actions.Reject(command, FormActionRunErrors.DuplicateFoundCode, ExistingCustomer, "Email", Now);
         }
         db.FormParticipants.Add(participant);
         db.FormRequests.Add(request);
@@ -291,7 +291,7 @@ public sealed class FormRequestVisibilityTests
             FormActor.ExternalSession(participant.Id, Guid.NewGuid()),
             Now
         );
-        external.CloseActionWithoutCommand(
+        external.Actions.CloseWithoutCommand(
             "create_client",
             "CreateCustomer",
             FormActionRunStatus.Failed,
@@ -299,8 +299,8 @@ public sealed class FormRequestVisibilityTests
             Now
         );
         var duplicateCommand = Guid.NewGuid();
-        external.RequestAction("match_client", "CreateCustomer", duplicateCommand, Now);
-        external.RejectAction(duplicateCommand, FormActionRunErrors.DuplicateFoundCode, ExistingCustomer, "Email", Now);
+        external.Actions.Request("match_client", "CreateCustomer", duplicateCommand, Now);
+        external.Actions.Reject(duplicateCommand, FormActionRunErrors.DuplicateFoundCode, ExistingCustomer, "Email", Now);
         db.FormTemplateVersions.Add(version);
         db.FormParticipants.Add(participant);
         db.FormRequests.Add(CustomerRequest(version, requestedBy: Requester));

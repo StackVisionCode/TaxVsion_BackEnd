@@ -100,7 +100,7 @@ public static class ApplyFormProfileUpdateHandler
     )
     {
         var commandId = Guid.NewGuid();
-        var requested = request.RequestProfileUpdate(commandId, plan.TargetKeys, command.NowUtc);
+        var requested = request.ProfileUpdate.Request(commandId, plan.TargetKeys, command.NowUtc);
         if (requested.IsFailure)
             return Result.Failure<FormRequestResponse>(requested.Error);
 

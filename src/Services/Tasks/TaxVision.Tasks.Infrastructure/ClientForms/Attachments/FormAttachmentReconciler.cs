@@ -124,7 +124,7 @@ internal sealed class FormAttachmentReconciler(
                 continue;
 
             var before = attachment.Status;
-            var outcome = request.ApplyFileVerdict(attachment.FileId, verdict.ToVerdict(), nowUtc);
+            var outcome = request.Files.ApplyVerdict(attachment.FileId, verdict.ToVerdict(), nowUtc);
             if (outcome == FileVerdictOutcome.Ignored)
                 continue;
             verdicts.Add(ClientFormsMetricValues.Of(verdict.Status));
@@ -180,7 +180,7 @@ internal sealed class FormAttachmentReconciler(
                 item.Status == FormAttachmentStatus.Pending && item.RegisteredAtUtc < expiryCutoff
             )
             .ToList();
-        var expired = request.ExpireStalePendingAttachments(expiryCutoff, nowUtc);
+        var expired = request.Files.ExpireStalePending(expiryCutoff, nowUtc);
         verdicts.AddRange(Enumerable.Repeat(ClientFormsMetricValues.Expired, expired));
         foreach (var attachment in expiring)
             await PublishRejectedAsync(request, attachment, ct);

@@ -82,7 +82,7 @@ public sealed class SaveFileFromSourceHandlerTests
         var limits = new FakeStorageLimitRepository();
         limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
         var audit = new FakeStorageAuditRepository();
-        var storage = new FakeObjectStorage();
+        var storage = new FakeObjectStorage { SizeToReturn = 1024 };
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
         var evt = Evt(tenantId, fileId);
@@ -118,7 +118,8 @@ public sealed class SaveFileFromSourceHandlerTests
         );
         Assert.Single(audit.Logs, log => log.Action == "upload.from-source" && log.Details == "service=signature");
         Assert.Single(bus.Published.OfType<ScanFileCommand>(), cmd => cmd.FileId == fileId);
-        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        // Uno decide la reserva, antes de mover el objeto; el otro cierra el registro.
+        Assert.Equal(2, unitOfWork.SaveChangesCallCount);
     }
 
     /// <summary>
@@ -153,7 +154,7 @@ public sealed class SaveFileFromSourceHandlerTests
             limits,
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
-            new FakeObjectStorage(),
+            new FakeObjectStorage { SizeToReturn = 1024 },
             new SystemFolderProvisioner(folders),
             DefaultOptions(),
             new FakeUploadPolicyResolver(),
@@ -217,7 +218,7 @@ public sealed class SaveFileFromSourceHandlerTests
             limits,
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
-            new FakeObjectStorage(),
+            new FakeObjectStorage { SizeToReturn = 1024 },
             new SystemFolderProvisioner(new FakeFolderRepository()),
             DefaultOptions(),
             new FakeUploadPolicyResolver(),
@@ -265,7 +266,7 @@ public sealed class SaveFileFromSourceHandlerTests
             .Value;
         files.Seed(existing);
         var limits = new FakeStorageLimitRepository();
-        var storage = new FakeObjectStorage();
+        var storage = new FakeObjectStorage { SizeToReturn = 1024 };
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
 
@@ -299,7 +300,7 @@ public sealed class SaveFileFromSourceHandlerTests
         var fileId = Guid.NewGuid();
         var limits = new FakeStorageLimitRepository();
         limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
-        var storage = new FakeObjectStorage();
+        var storage = new FakeObjectStorage { SizeToReturn = 1024 };
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
 
@@ -335,7 +336,7 @@ public sealed class SaveFileFromSourceHandlerTests
         // reintentar (RetryWithCooldown de Program.cs) y eventualmente caer a dead-letter si persiste,
         // en vez de perderse en silencio como pasaba antes de este fix.
         var tenantId = Guid.NewGuid();
-        var storage = new FakeObjectStorage();
+        var storage = new FakeObjectStorage { SizeToReturn = 1024 };
         var unitOfWork = new FakeUnitOfWork();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -371,7 +372,7 @@ public sealed class SaveFileFromSourceHandlerTests
         var limit = TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000);
         var limits = new FakeStorageLimitRepository();
         limits.Seed(limit);
-        var storage = new FakeObjectStorage();
+        var storage = new FakeObjectStorage { SizeToReturn = 1024 };
         var unitOfWork = new FakeUnitOfWork();
 
         await SaveFileFromSourceHandler.Handle(
@@ -413,7 +414,7 @@ public sealed class SaveFileFromSourceHandlerTests
         var bus = new FakeMessageBus();
         var limits = new FakeStorageLimitRepository();
         limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 100, maxFileSizeBytes: 1_000_000));
-        var storage = new FakeObjectStorage();
+        var storage = new FakeObjectStorage { SizeToReturn = 10_000 };
         var unitOfWork = new FakeUnitOfWork();
 
         await SaveFileFromSourceHandler.Handle(
@@ -447,7 +448,7 @@ public sealed class SaveFileFromSourceHandlerTests
         var fileId = Guid.NewGuid();
         var limits = new FakeStorageLimitRepository();
         limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
-        var storage = new FakeObjectStorage();
+        var storage = new FakeObjectStorage { SizeToReturn = 0 };
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
 
@@ -512,7 +513,7 @@ public sealed class SaveFileFromSourceHandlerTests
             limits,
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
-            new FakeObjectStorage(),
+            new FakeObjectStorage { SizeToReturn = 1024 },
             new SystemFolderProvisioner(folders),
             DefaultOptions(),
             new FakeUploadPolicyResolver(),
@@ -564,7 +565,7 @@ public sealed class SaveFileFromSourceHandlerTests
             limits,
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
-            new FakeObjectStorage(),
+            new FakeObjectStorage { SizeToReturn = 1024 },
             new SystemFolderProvisioner(folders),
             DefaultOptions(),
             new FakeUploadPolicyResolver(),
@@ -599,7 +600,7 @@ public sealed class SaveFileFromSourceHandlerTests
             limits,
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
-            new FakeObjectStorage(),
+            new FakeObjectStorage { SizeToReturn = 1024 },
             new SystemFolderProvisioner(folders),
             options,
             new FakeUploadPolicyResolver(),
@@ -613,5 +614,199 @@ public sealed class SaveFileFromSourceHandlerTests
 
         var registered = await files.GetAsync(tenantId, fileId, CancellationToken.None);
         Assert.Null(registered!.FolderId);
+    }
+
+    [Fact]
+    public async Task Handle_QuotaConflictOnSave_PublishesFileSaveRejected()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var limits = new FakeStorageLimitRepository();
+        var limit = TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000);
+        limits.Seed(limit);
+        var audit = new FakeStorageAuditRepository();
+        var storage = new FakeObjectStorage { SizeToReturn = 1024 };
+        var bus = new FakeMessageBus();
+        var evt = Evt(tenantId, fileId);
+
+        await SaveFileFromSourceHandler.Handle(
+            evt,
+            files,
+            limits,
+            audit,
+            new DefaultObjectKeyBuilder(),
+            storage,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
+            DefaultOptions(),
+            new FakeUploadPolicyResolver(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new QuotaConflictUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var rejected = Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>());
+        Assert.Equal("QuotaExceeded", rejected.Reason);
+        Assert.Empty(bus.Published.OfType<ScanFileCommand>());
+        // La reserva perdida no queda pendiente; no se copió nada y el rechazo limpia el origen (CST-12).
+        Assert.Null(await files.GetAsync(tenantId, fileId, CancellationToken.None));
+        Assert.Equal(0, limit.ReservedBytes);
+        Assert.Empty(storage.Copied);
+        Assert.Equal((evt.SourceBucket, evt.SourceObjectKey), Assert.Single(storage.Deleted));
+    }
+
+    [Fact]
+    public async Task Handle_DeclaredSizeSmallerThanObject_ReservesRealSize()
+    {
+        const long realSize = 5L * 1024 * 1024;
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var limit = Limit(tenantId);
+        var files = new FakeFileObjectRepository();
+
+        await HandleAsync(
+            Evt(tenantId, fileId, b => b.SizeBytes = 1024),
+            limit,
+            new FakeObjectStorage { SizeToReturn = realSize },
+            files: files
+        );
+
+        Assert.Equal(realSize, limit.ReservedBytes);
+        Assert.Equal(realSize, (await files.GetAsync(tenantId, fileId, CancellationToken.None))!.SizeBytes);
+    }
+
+    [Fact]
+    public async Task Handle_RealSizeOverTheUploadPolicy_IsRejected()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var limit = Limit(tenantId);
+        var storage = new FakeObjectStorage { SizeToReturn = 5000 };
+        var bus = new FakeMessageBus();
+
+        await HandleAsync(
+            Evt(tenantId, fileId, b => b.SizeBytes = 1024),
+            limit,
+            storage,
+            bus,
+            policies: new FakeUploadPolicyResolver { MaxFileSizeOverride = 2048 }
+        );
+
+        Assert.Equal("UploadPolicy", Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>()).Reason);
+        Assert.Equal(0, limit.ReservedBytes);
+        Assert.Empty(storage.Copied);
+    }
+
+    [Fact]
+    public async Task Handle_EmptyObjectDeclaredWithSize_IsRejectedAsEmpty()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await HandleAsync(Evt(tenantId, fileId), Limit(tenantId), new FakeObjectStorage { SizeToReturn = 0 }, bus);
+
+        Assert.Equal("EmptyFile", Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>()).Reason);
+    }
+
+    /// <summary>El intento anterior copió y borró el origen antes de que fallara el commit: se mide lo copiado.</summary>
+    [Fact]
+    public async Task Handle_RetryAfterTheCopy_MeasuresTheCopiedObject()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var evt = Evt(tenantId, fileId);
+        var key = new DefaultObjectKeyBuilder()
+            .Build(fileId, tenantId, OwnerType.Signature, evt.OwnerId, FolderType.Signatures, 2026, evt.OriginalName)
+            .Value.Value;
+        var bucket = new CloudStorageOptions().TempBucket;
+        var storage = new FakeObjectStorage();
+        storage.Existing.Add((bucket, key));
+        storage.ObjectSizes[(bucket, key)] = 4096;
+        var limit = Limit(tenantId);
+
+        await HandleAsync(evt, limit, storage);
+
+        Assert.Equal(4096, limit.ReservedBytes);
+        Assert.Empty(storage.Copied);
+    }
+
+    [Fact]
+    public async Task Handle_Rejected_DeletesSourceObject()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var evt = Evt(tenantId, fileId, b => b.OwnerType = "NotARealOwnerType");
+        var storage = new FakeObjectStorage();
+
+        await HandleAsync(evt, Limit(tenantId), storage);
+
+        Assert.Equal((evt.SourceBucket, evt.SourceObjectKey), Assert.Single(storage.Deleted));
+    }
+
+    [Fact]
+    public async Task Handle_SourceCannotBeDeleted_StillRejects()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await HandleAsync(
+            Evt(tenantId, fileId, b => b.OwnerType = "NotARealOwnerType"),
+            Limit(tenantId),
+            new FakeObjectStorage { ThrowOnDelete = true },
+            bus
+        );
+
+        Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>());
+    }
+
+    private static TenantStorageLimit Limit(Guid tenantId) =>
+        TenantStorageLimit.Create(tenantId, "starter", maxBytes: 100_000_000, maxFileSizeBytes: 100_000_000);
+
+    private static async Task HandleAsync(
+        SaveFileRequestedIntegrationEvent evt,
+        TenantStorageLimit limit,
+        FakeObjectStorage storage,
+        FakeMessageBus? bus = null,
+        FakeFileObjectRepository? files = null,
+        FakeUploadPolicyResolver? policies = null
+    )
+    {
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(limit);
+        await SaveFileFromSourceHandler.Handle(
+            evt,
+            files ?? new FakeFileObjectRepository(),
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            storage,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
+            DefaultOptions(),
+            policies ?? new FakeUploadPolicyResolver(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            bus ?? new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+    }
+
+    private sealed class QuotaConflictUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
+    {
+        private bool _thrown;
+
+        public Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            if (_thrown)
+                return Task.FromResult(1);
+            _thrown = true;
+            throw new BuildingBlocks.Results.ConflictException("Storage.QuotaExceeded", "Simulated quota race.");
+        }
     }
 }

@@ -57,6 +57,8 @@ public sealed class PaymentLinkConfiguration : IEntityTypeConfiguration<PaymentL
         builder.Property(link => link.RelatedTenantPaymentId);
         builder.Property(link => link.CreatedBy).IsRequired();
         builder.Property(link => link.FailedRedemptionAttempts).IsRequired().HasDefaultValue(0);
+        builder.Property(link => link.AttemptSequence).IsRequired().HasDefaultValue(0);
+        builder.Property(link => link.RowVersion).IsRowVersion();
 
         builder.HasIndex(link => new { link.TenantId, link.Status }).HasDatabaseName("IX_PaymentLinks_TenantId_Status");
 

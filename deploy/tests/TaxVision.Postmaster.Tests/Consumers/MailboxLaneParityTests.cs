@@ -226,7 +226,7 @@ public sealed class MailboxLaneParityTests
         public FakeOutboundAttachmentFetcher AttachmentFetcher { get; init; } = new();
 
         public Task HandleAsync(NotificationsEmailSendRequestedIntegrationEvent evt) =>
-            NotificationsEmailSendRequestedConsumer.Handle(
+            EmailSendPipeline.RunAsync(
                 evt,
                 new FakeIdempotencyGuard(),
                 providerResolver,

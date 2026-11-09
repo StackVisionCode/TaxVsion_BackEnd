@@ -1,7 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
-using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Threads;
 
@@ -19,7 +18,6 @@ public static class SetThreadReadStateHandler
         IIncomingEmailRepository incomingEmails,
         IDeliveryNoticeRepository notices,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -52,15 +50,8 @@ public static class SetThreadReadStateHandler
 
         if (anyChanged)
         {
+            thread.NotifyStateChanged(command.ActorUserId, command.CorrelationId);
             await unitOfWork.SaveChangesAsync(ct);
-            await ThreadStateNotifier.PublishAsync(
-                bus,
-                incomingEmails,
-                thread,
-                command.ActorUserId,
-                command.CorrelationId,
-                ct
-            );
         }
 
         return Result.Success();

@@ -40,6 +40,7 @@ public sealed class Note : TenantEntity, IHasOwner
     public NoteStatus Status { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     public IReadOnlyCollection<NoteAttachment> Attachments => _attachments.AsReadOnly();
 
@@ -53,7 +54,8 @@ public sealed class Note : TenantEntity, IHasOwner
         NoteContent content,
         NoteReference reference,
         NoteVisibility visibility,
-        NoteColor? color
+        NoteColor? color,
+        DateTime nowUtc
     )
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -64,7 +66,6 @@ public sealed class Note : TenantEntity, IHasOwner
         if (authorUserId == Guid.Empty)
             return Result.Failure<Note>(new Error("Note.CreatedBy", "CreatedByUserId is required."));
 
-        var now = DateTime.UtcNow;
         var note = new Note
         {
             Id = Guid.NewGuid(),
@@ -75,8 +76,8 @@ public sealed class Note : TenantEntity, IHasOwner
             Color = color,
             IsPinned = false,
             Status = NoteStatus.Active,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
         };
         note.SetTenant(tenantId);
         return Result.Success(note);
@@ -86,7 +87,7 @@ public sealed class Note : TenantEntity, IHasOwner
     // Mutación de contenido/metadata — cada una con SU regla explícita
     // ------------------------------------------------------------------
 
-    public Result UpdateContent(NoteContent newContent, Guid editorUserId)
+    public Result UpdateContent(NoteContent newContent, Guid editorUserId, DateTime nowUtc)
     {
         ArgumentNullException.ThrowIfNull(newContent);
 
@@ -95,51 +96,51 @@ public sealed class Note : TenantEntity, IHasOwner
             return guard;
 
         Content = newContent;
-        Touch(editorUserId);
+        Touch(editorUserId, nowUtc);
         return Result.Success();
     }
 
-    public Result ChangeVisibility(NoteVisibility newVisibility, Guid editorUserId)
+    public Result ChangeVisibility(NoteVisibility newVisibility, Guid editorUserId, DateTime nowUtc)
     {
         var guard = EnsureNotDeleted();
         if (guard.IsFailure)
             return guard;
 
         Visibility = newVisibility;
-        Touch(editorUserId);
+        Touch(editorUserId, nowUtc);
         return Result.Success();
     }
 
-    public Result Pin(Guid editorUserId)
+    public Result Pin(Guid editorUserId, DateTime nowUtc)
     {
         var guard = EnsureNotDeleted();
         if (guard.IsFailure)
             return guard;
 
         IsPinned = true;
-        Touch(editorUserId);
+        Touch(editorUserId, nowUtc);
         return Result.Success();
     }
 
-    public Result Unpin(Guid editorUserId)
+    public Result Unpin(Guid editorUserId, DateTime nowUtc)
     {
         var guard = EnsureNotDeleted();
         if (guard.IsFailure)
             return guard;
 
         IsPinned = false;
-        Touch(editorUserId);
+        Touch(editorUserId, nowUtc);
         return Result.Success();
     }
 
-    public Result SetColor(NoteColor? color, Guid editorUserId)
+    public Result SetColor(NoteColor? color, Guid editorUserId, DateTime nowUtc)
     {
         var guard = EnsureNotDeleted();
         if (guard.IsFailure)
             return guard;
 
         Color = color;
-        Touch(editorUserId);
+        Touch(editorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -148,7 +149,13 @@ public sealed class Note : TenantEntity, IHasOwner
     // el frontend nos entregue el fileId; los consumers mueven Pending → Available/Rejected.
     // ------------------------------------------------------------------
 
-    public Result AttachFile(Guid cloudStorageFileId, string displayName, string contentType, long sizeBytes)
+    public Result AttachFile(
+        Guid cloudStorageFileId,
+        string displayName,
+        string contentType,
+        long sizeBytes,
+        DateTime nowUtc
+    )
     {
         var guard = EnsureNotDeleted();
         if (guard.IsFailure)
@@ -175,39 +182,40 @@ public sealed class Note : TenantEntity, IHasOwner
             displayName.Trim(),
             contentType.Trim(),
             sizeBytes,
-            DateTime.UtcNow
+            nowUtc
         );
         _attachments.Add(attachment);
-        Touch();
+        UpdatedAtUtc = nowUtc;
         return Result.Success();
     }
 
     /// <summary>Idempotente. Invocado por el consumer de <c>FileAvailableIntegrationEvent</c>.</summary>
-    public Result MarkAttachmentAvailable(Guid cloudStorageFileId)
+    public Result MarkAttachmentAvailable(Guid cloudStorageFileId, DateTime nowUtc)
     {
         var attachment = FindAttachmentOrNull(cloudStorageFileId);
         if (attachment is null)
             return Result.Failure(NoteErrors.AttachmentNotFound);
 
-        attachment.MarkAvailable();
-        Touch();
+        // Sin cambio (Detached, infected o ya Available) = éxito sin tocar la nota.
+        if (attachment.MarkAvailable())
+            UpdatedAtUtc = nowUtc;
         return Result.Success();
     }
 
     /// <summary>T-20: el archivo quedó en revisión de contenido. Idempotente.</summary>
-    public Result MarkAttachmentUnderReview(Guid cloudStorageFileId)
+    public Result MarkAttachmentUnderReview(Guid cloudStorageFileId, DateTime nowUtc)
     {
         var attachment = FindAttachmentOrNull(cloudStorageFileId);
         if (attachment is null)
             return Result.Failure(NoteErrors.AttachmentNotFound);
 
-        attachment.MarkUnderReview();
-        Touch();
+        if (attachment.MarkUnderReview())
+            UpdatedAtUtc = nowUtc;
         return Result.Success();
     }
 
     /// <summary>Idempotente. Invocado por los consumers de infected/blocked-by-policy.</summary>
-    public Result MarkAttachmentRejected(Guid cloudStorageFileId, string reason)
+    public Result MarkAttachmentRejected(Guid cloudStorageFileId, string reason, DateTime nowUtc)
     {
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("Note.AttachmentRejectionReason", "Reason is required."));
@@ -216,13 +224,13 @@ public sealed class Note : TenantEntity, IHasOwner
         if (attachment is null)
             return Result.Failure(NoteErrors.AttachmentNotFound);
 
-        attachment.MarkRejected(reason.Trim());
-        Touch();
+        if (attachment.MarkRejected(reason.Trim()))
+            UpdatedAtUtc = nowUtc;
         return Result.Success();
     }
 
     /// <summary>Soft: mueve el adjunto a <see cref="NoteAttachmentStatus.Detached"/>, no lo remueve de la colección.</summary>
-    public Result DetachFile(Guid cloudStorageFileId)
+    public Result DetachFile(Guid cloudStorageFileId, DateTime nowUtc)
     {
         var guard = EnsureNotDeleted();
         if (guard.IsFailure)
@@ -233,7 +241,7 @@ public sealed class Note : TenantEntity, IHasOwner
             return Result.Failure(NoteErrors.AttachmentNotFound);
 
         attachment.MarkDetached();
-        Touch();
+        UpdatedAtUtc = nowUtc;
         return Result.Success();
     }
 
@@ -241,7 +249,7 @@ public sealed class Note : TenantEntity, IHasOwner
     // Ciclo de vida
     // ------------------------------------------------------------------
 
-    public Result Archive(Guid actorUserId)
+    public Result Archive(Guid actorUserId, DateTime nowUtc)
     {
         if (Status == NoteStatus.Deleted)
             return Result.Failure(NoteErrors.Deleted);
@@ -249,11 +257,11 @@ public sealed class Note : TenantEntity, IHasOwner
             return Result.Failure(NoteErrors.InvalidTransition);
 
         Status = NoteStatus.Archived;
-        Touch(actorUserId);
+        Touch(actorUserId, nowUtc);
         return Result.Success();
     }
 
-    public Result Restore(Guid actorUserId)
+    public Result Restore(Guid actorUserId, DateTime nowUtc)
     {
         if (Status == NoteStatus.Deleted)
             return Result.Failure(NoteErrors.Deleted);
@@ -261,17 +269,17 @@ public sealed class Note : TenantEntity, IHasOwner
             return Result.Failure(NoteErrors.InvalidTransition);
 
         Status = NoteStatus.Active;
-        Touch(actorUserId);
+        Touch(actorUserId, nowUtc);
         return Result.Success();
     }
 
-    public Result SoftDelete(Guid actorUserId)
+    public Result SoftDelete(Guid actorUserId, DateTime nowUtc)
     {
         if (Status == NoteStatus.Deleted)
             return Result.Failure(NoteErrors.Deleted);
 
         Status = NoteStatus.Deleted;
-        Touch(actorUserId);
+        Touch(actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -286,11 +294,9 @@ public sealed class Note : TenantEntity, IHasOwner
         _attachments.Find(a => a.CloudStorageFileId == cloudStorageFileId);
 
     /// <summary><paramref name="editorUserId"/> no se persiste todavía (Fase 5 lo usará para enriquecer domain events).</summary>
-    private void Touch(Guid editorUserId)
+    private void Touch(Guid editorUserId, DateTime nowUtc)
     {
         _ = editorUserId;
-        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedAtUtc = nowUtc;
     }
-
-    private void Touch() => UpdatedAtUtc = DateTime.UtcNow;
 }

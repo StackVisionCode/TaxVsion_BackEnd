@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>Publicado por el sweeper cuando una intención de compra de add-on vence sin pago.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.AddOnCheckoutExpiredIntegrationEvent")]
 public sealed record AddOnCheckoutExpiredIntegrationEvent : IntegrationEvent
 {
     public required Guid AddOnPurchaseIntentId { get; init; }

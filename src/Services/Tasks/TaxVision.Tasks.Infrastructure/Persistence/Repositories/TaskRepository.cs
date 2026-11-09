@@ -17,6 +17,11 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         TaskItemStatus.WaitingOnClient,
     ];
 
+    // El tenant sale del argumento y no del contexto: jobs y scopes de Wolverine no traen tenant ambiental
+    // y el filtro global, fail-closed, les devolvería 0 filas. Toda lectura por tenant pasa por aquí.
+    private IQueryable<TaskItem> OfTenant(Guid tenantId) =>
+        context.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId);
+
     public void Add(TaskItem task) => context.Tasks.Add(task);
 
     public void Remove(TaskItem task) => context.Tasks.Remove(task);
@@ -30,20 +35,15 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         if (parentTaskIds.Count == 0)
             return [];
 
-        return await context
-            .Tasks.IgnoreQueryFilters()
-            .Where(t =>
-                t.TenantId == tenantId && t.ParentTaskId != null && parentTaskIds.Contains(t.ParentTaskId.Value)
-            )
+        return await OfTenant(tenantId)
+            .Where(t => t.ParentTaskId != null && parentTaskIds.Contains(t.ParentTaskId.Value))
             .Select(t => t.Id)
             .ToListAsync(ct);
     }
 
     public async Task<Result<TaskItem>> GetByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
     {
-        var task = await context
-            .Tasks.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == taskId, ct);
+        var task = await OfTenant(tenantId).FirstOrDefaultAsync(t => t.Id == taskId, ct);
 
         return task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task);
     }
@@ -56,11 +56,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         CancellationToken ct = default
     )
     {
-        var task = await ApplyVisibility(
-                context.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId && t.Id == taskId),
-                tenantId,
-                assignedToUserId
-            )
+        var task = await ApplyVisibility(OfTenant(tenantId).Where(t => t.Id == taskId), tenantId, assignedToUserId)
             .FirstOrDefaultAsync(ct);
 
         return task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task);
@@ -90,10 +86,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         CancellationToken ct = default
     )
     {
-        var task = await context
-            .Tasks.IgnoreQueryFilters()
-            .Include(t => t.Timers)
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == taskId, ct);
+        var task = await OfTenant(tenantId).Include(t => t.Timers).FirstOrDefaultAsync(t => t.Id == taskId, ct);
 
         return task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task);
     }
@@ -104,14 +97,12 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         CancellationToken ct = default
     )
     {
-        var task = await context
-            .Tasks.IgnoreQueryFilters()
-            .Include(t => t.Attachments)
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == taskId, ct);
+        var task = await OfTenant(tenantId).Include(t => t.Attachments).FirstOrDefaultAsync(t => t.Id == taskId, ct);
 
         return task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task);
     }
 
+    // Cross-tenant: el evento de escaneo trae el archivo; quien llama compara su tenant con el dueño real y lo avisa.
     public async Task<TaskItem?> GetByAttachmentFileIdAsync(Guid fileId, CancellationToken ct = default) =>
         await context
             .Tasks.IgnoreQueryFilters()
@@ -122,12 +113,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         Guid tenantId,
         IReadOnlyCollection<Guid> taskIds,
         CancellationToken ct = default
-    ) =>
-        await context
-            .Tasks.IgnoreQueryFilters()
-            .Include(t => t.Attachments)
-            .Where(t => t.TenantId == tenantId && taskIds.Contains(t.Id))
-            .ToListAsync(ct);
+    ) => await OfTenant(tenantId).Include(t => t.Attachments).Where(t => taskIds.Contains(t.Id)).ToListAsync(ct);
 
     public async Task<PagedResult<TaskItem>> ListSubtasksAsync(
         Guid tenantId,
@@ -138,9 +124,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         CancellationToken ct = default
     )
     {
-        var scoped = context
-            .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && t.ParentTaskId == parentTaskId);
+        var scoped = OfTenant(tenantId).Where(t => t.ParentTaskId == parentTaskId);
 
         var ordered = ApplyVisibility(scoped, tenantId, assignedToUserId)
             .OrderBy(t => t.Due == null)
@@ -193,9 +177,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         CancellationToken ct = default
     )
     {
-        var query = context
-            .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && t.Due!.DueAtUtc >= fromUtc && t.Due!.DueAtUtc <= toUtc);
+        var query = OfTenant(tenantId).Where(t => t.Due!.DueAtUtc >= fromUtc && t.Due!.DueAtUtc <= toUtc);
 
         if (assigneeUserId is { } assignee)
             query = query.Where(t => t.AssigneeUserId == assignee);
@@ -207,7 +189,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
 
     private IQueryable<TaskItem> Filtered(Guid tenantId, TaskQueryFilter filter, Guid? assignedToUserId = null)
     {
-        var query = context.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId);
+        var query = OfTenant(tenantId);
 
         if (!string.IsNullOrWhiteSpace(filter.Text))
         {
@@ -241,9 +223,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         CancellationToken ct = default
     )
     {
-        var query = context
-            .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && t.AssigneeUserId == assigneeUserId);
+        var query = OfTenant(tenantId).Where(t => t.AssigneeUserId == assigneeUserId);
 
         query = status is { } wanted
             ? query.Where(t => t.Status == wanted)
@@ -264,9 +244,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         CancellationToken ct = default
     )
     {
-        var query = context
-            .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && t.AssigneeUserId == assigneeUserId);
+        var query = OfTenant(tenantId).Where(t => t.AssigneeUserId == assigneeUserId);
 
         query = status is { } wanted
             ? query.Where(t => t.Status == wanted)
@@ -280,19 +258,14 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         Guid userId,
         CancellationToken ct = default
     ) =>
-        await context
-            .Tasks.IgnoreQueryFilters()
+        await OfTenant(tenantId)
             .Include(t => t.Timers)
-            .Where(t => t.TenantId == tenantId && t.Timers.Any(x => x.UserId == userId && x.StoppedAtUtc == null))
+            .Where(t => t.Timers.Any(x => x.UserId == userId && x.StoppedAtUtc == null))
             .ToListAsync(ct);
 
     // El timer no lleva tenant: se acota por la tarea dueña.
     public Task<int> CountRunningTimersOfAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
-        context
-            .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId)
-            .SelectMany(t => t.Timers)
-            .CountAsync(x => x.UserId == userId && x.StoppedAtUtc == null, ct);
+        OfTenant(tenantId).SelectMany(t => t.Timers).CountAsync(x => x.UserId == userId && x.StoppedAtUtc == null, ct);
 
     public async Task<PagedResult<TaskItem>> ListByCustomerAsync(
         Guid tenantId,
@@ -304,9 +277,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         CancellationToken ct = default
     )
     {
-        var query = context
-            .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && t.Reference.CustomerId == customerId);
+        var query = OfTenant(tenantId).Where(t => t.Reference.CustomerId == customerId);
 
         if (taxYear is { } year)
             query = query.Where(t => t.Reference.TaxYear == year);
@@ -326,9 +297,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         CancellationToken ct = default
     )
     {
-        var scoped = context
-            .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && t.Status == TaskItemStatus.WaitingOnClient);
+        var scoped = OfTenant(tenantId).Where(t => t.Status == TaskItemStatus.WaitingOnClient);
 
         var ordered = ApplyVisibility(scoped, tenantId, assignedToUserId)
             .OrderBy(t => t.ClientDueAtUtc == null)
@@ -367,9 +336,8 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         // esto termina igual en vez de girar para siempre.
         for (var hop = 0; hop < TaskItem.MaxDepth; hop++)
         {
-            var parentId = await context
-                .Tasks.IgnoreQueryFilters()
-                .Where(t => t.TenantId == tenantId && t.Id == currentId)
+            var parentId = await OfTenant(tenantId)
+                .Where(t => t.Id == currentId)
                 .Select(t => t.ParentTaskId)
                 .FirstOrDefaultAsync(ct);
 
@@ -392,10 +360,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         if (taskIds.Count == 0)
             return [];
 
-        return await context
-            .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && taskIds.Contains(t.Id))
-            .ToListAsync(ct);
+        return await OfTenant(tenantId).Where(t => taskIds.Contains(t.Id)).ToListAsync(ct);
     }
 
     private static async Task<PagedResult<TaskItem>> PageAsync(

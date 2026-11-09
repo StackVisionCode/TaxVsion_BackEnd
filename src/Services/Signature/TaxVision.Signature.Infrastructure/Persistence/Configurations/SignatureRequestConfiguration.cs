@@ -12,6 +12,14 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.ToTable("SignatureRequests");
         builder.HasKey(request => request.Id);
 
+        // Puentes obsoletos de F8: se calculan de Documents, no son columnas.
+#pragma warning disable CS0618
+        builder.Ignore(request => request.OriginalFileId);
+        builder.Ignore(request => request.DocumentHashPre);
+        builder.Ignore(request => request.SealedFileId);
+        builder.Ignore(request => request.DocumentHashPost);
+#pragma warning restore CS0618
+
         builder.Property(request => request.TenantId).IsRequired();
         builder.Property(request => request.CreatedByUserId).IsRequired();
 
@@ -82,6 +90,10 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
 
         builder.Property(request => request.CreatedAtUtc).IsRequired();
         builder.Property(request => request.UpdatedAtUtc).IsRequired();
+
+        // Firmas, expiración y rechazo en paralelo: el segundo guardado choca en vez de pisar al primero.
+        builder.Property(request => request.RowVersion).IsRowVersion();
+        builder.Property(request => request.SealingFailedAtUtc);
 
         // Practitioner PIN — sólo el hash serializado. Sin índices; nunca se busca por PIN.
         builder.Property(request => request.PractitionerPinHash).HasMaxLength(512);

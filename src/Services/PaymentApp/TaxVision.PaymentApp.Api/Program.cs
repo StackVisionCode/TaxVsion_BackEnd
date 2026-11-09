@@ -26,7 +26,9 @@ using Serilog;
 using TaxVision.PaymentApp.Api.Common;
 using TaxVision.PaymentApp.Api.RateLimiting;
 using TaxVision.PaymentApp.Application.Consumers;
+using TaxVision.PaymentApp.Application.HostedCheckout.Commands;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ChargeSaaSPayment;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ExecuteSaaSPaymentCharge;
 using TaxVision.PaymentApp.Infrastructure;
 using TaxVision.PaymentApp.Infrastructure.Observability;
 using TaxVision.PaymentApp.Infrastructure.Persistence;
@@ -216,6 +218,11 @@ builder.Host.UseWolverine(options =>
     // Pide a Documents el recibo de cualquier cobro confirmado del tenant.
     options.PublishMessage<SaaSPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
+    // Llamadas al provider fuera de la transacción que las origina, en cola local durable (sobrevive reinicios).
+    options.LocalQueue("payment-app-provider-calls").UseDurableInbox();
+    options.PublishMessage<ExpireProviderCheckoutSessionCommand>().ToLocalQueue("payment-app-provider-calls");
+    options.PublishMessage<ExecuteSaaSPaymentChargeCommand>().ToLocalQueue("payment-app-provider-calls");
+
     // Consume TenantCreated/TenantStatusChanged (proyección local) y
     // SubscriptionRenewalDue/SeatRenewalDue/AddOnRenewalDue/SubscriptionPlanChangeDue
     // (intents de cobro) del exchange fan-out.
@@ -236,7 +243,16 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // Eventos de dominio de SaaSPayment: se guardan con el commit del handler y su handler devuelve los avisos
+    // de resultado (cascada por el outbox). En serie: los avisos salen en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // Toda cola local durable: lo publicado a un handler propio sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 });
 
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);

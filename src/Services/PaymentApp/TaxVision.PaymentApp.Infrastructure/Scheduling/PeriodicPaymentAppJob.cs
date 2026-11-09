@@ -1,7 +1,9 @@
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TaxVision.PaymentApp.Infrastructure.Persistence;
 
 namespace TaxVision.PaymentApp.Infrastructure.Scheduling;
 
@@ -20,6 +22,13 @@ public abstract class PeriodicPaymentAppJob(
 ) : BackgroundService
 {
     protected abstract string JobName { get; }
+
+    /// <summary>Una unidad transaccional (BB-3) por ítem: la fila y sus avisos se confirman juntos.</summary>
+    protected Task<JobBatchSummary> RunUnitsAsync<TItem>(
+        IEnumerable<TItem> items,
+        Func<TItem, JobUnitContext<PaymentAppDbContext>, CancellationToken, Task<bool>> work,
+        CancellationToken ct
+    ) => TransactionalJobUnit.RunEachAsync(scopeFactory, items, work, logger, ct);
 
     protected abstract Task RunOnceAsync(IServiceProvider services, CancellationToken ct);
 

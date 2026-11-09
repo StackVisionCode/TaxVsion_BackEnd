@@ -21,7 +21,8 @@ public sealed class AppointmentException : BaseEntity, ITenantOwned
     /// <summary>
     /// El <c>RECURRENCE-ID</c> del RFC 5545: identifica <b>qué</b> ocurrencia. Es el inicio que la
     /// serie habria producido, no el nuevo. No tiene setter porque cambiarlo no edita la
-    /// excepción: la reapunta a otra ocurrencia y deja huérfana a la original.
+    /// excepción: la reapunta a otra ocurrencia. Solo cambia cuando se mueve la serie entera
+    /// (<see cref="FollowOccurrenceTo"/>): la ocurrencia es la misma y empieza en otro instante.
     /// </summary>
     public DateTime OriginalStartUtc { get; private set; }
 
@@ -47,6 +48,16 @@ public sealed class AppointmentException : BaseEntity, ITenantOwned
     void ITenantOwned.SetTenant(Guid tenantId) => TenantId = tenantId;
 
     private AppointmentException() { }
+
+    /// <summary>La serie se movió. Devuelve si la excepción cambió de instante.</summary>
+    internal bool FollowOccurrenceTo(DateTime originalStartUtc)
+    {
+        if (OriginalStartUtc == originalStartUtc)
+            return false;
+
+        OriginalStartUtc = originalStartUtc;
+        return true;
+    }
 
     internal static AppointmentException Cancel(
         Guid appointmentId,

@@ -108,7 +108,7 @@ public sealed class IssueCustomerPortalInvitationHandlerTests
         var world = new AccountSessionFixture();
         var customerId = Guid.NewGuid();
         var portal = Portal(world, customerId);
-        portal.Deactivate(DateTime.UtcNow);
+        portal.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
         world.Users.Add(portal);
         var context = new Context(world);
 
@@ -133,6 +133,7 @@ public sealed class IssueCustomerPortalInvitationHandlerTests
                 world.Tenants,
                 Invitations,
                 _tokens,
+                new NullAccountTokenProtector(),
                 world.Audit,
                 world.Request,
                 world.Correlation,

@@ -594,4 +594,68 @@ public class GraphApiClientTests
         Assert.Equal(SendFailureReason.AttachmentTooLarge, exception.Reason);
         Assert.Empty(handler.Requests);
     }
+
+    [Fact]
+    public async Task GetMessage_404_ThrowsNotFound()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.NotFound, """{ "error": { "code": 404 } }""");
+
+        var ex = await Assert.ThrowsAsync<EmailProviderException>(() =>
+            CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1")
+        );
+
+        Assert.True(ex.IsNotFound);
+    }
+
+    [Fact]
+    public async Task GetMessage_503_ThrowsTransient()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.ServiceUnavailable, "{}");
+
+        var ex = await Assert.ThrowsAsync<EmailProviderException>(() =>
+            CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1")
+        );
+
+        Assert.False(ex.IsNotFound);
+    }
+
+    [Fact]
+    public async Task ListInboxMessageIds_FiltersInboxByReceivedDateAndReturnsTheNextLink()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            HttpStatusCode.OK,
+            """{ "value": [ { "id": "m1" }, { "id": "m2" } ], "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$skip=50" }"""
+        );
+        handler.Enqueue(HttpStatusCode.OK, """{ "value": [ { "id": "m3" } ] }""");
+        var from = new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc);
+        var to = new DateTime(2026, 11, 4, 0, 0, 0, DateTimeKind.Utc);
+        var client = CreateClient(handler);
+
+        var first = await client.ListInboxMessageIdsAsync(Guid.NewGuid(), Guid.NewGuid(), from, to, null);
+        var second = await client.ListInboxMessageIdsAsync(Guid.NewGuid(), Guid.NewGuid(), from, to, first.NextPageToken);
+
+        Assert.Equal(["m1", "m2"], first.MessageIds);
+        Assert.Equal(["m3"], second.MessageIds);
+        Assert.Null(second.NextPageToken);
+        var url = Uri.UnescapeDataString(handler.Requests[0].RequestUri!.ToString());
+        Assert.Contains("/me/mailFolders/inbox/messages?", url);
+        Assert.Contains("receivedDateTime ge 2026-11-03T00:00:00Z and receivedDateTime lt 2026-11-04T00:00:00Z", url);
+        Assert.Contains("$select=id", url);
+        Assert.Equal(first.NextPageToken, handler.Requests[1].RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task ListInboxMessageIds_RejectsAPageTokenOutsideGraph()
+    {
+        var handler = new FakeHttpMessageHandler();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateClient(handler)
+                .ListInboxMessageIdsAsync(Guid.NewGuid(), Guid.NewGuid(), DateTime.UtcNow.AddDays(-1), DateTime.UtcNow, "https://evil.example/steal")
+        );
+        Assert.Empty(handler.Requests);
+    }
 }

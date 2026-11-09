@@ -1,4 +1,5 @@
 using BuildingBlocks.Caching;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
@@ -17,7 +18,7 @@ public sealed class TenantSubdomainChangedConsumerTests
     [Fact]
     public async Task Primary_rename_updates_the_slug_saves_once_and_invalidates_the_list_cache()
     {
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC").Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow).Value;
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new CountingUnitOfWork();
         var cache = new RecordingCache();
@@ -30,9 +31,37 @@ public sealed class TenantSubdomainChangedConsumerTests
     }
 
     [Fact]
+    public async Task Handle_OldSlugMismatch_ThrowsDependencyNotReady()
+    {
+        var tenant = TenantEntity.Create("Acme Tax Office", "first-slug", "UTC", DateTime.UtcNow).Value;
+        var repo = new FakeTenantRepository { Existing = tenant };
+        var unitOfWork = new CountingUnitOfWork();
+
+        // Falta el renombre anterior: este evento dice venir de "acme-tax".
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            HandleAsync(Event(tenant.Id, isPrimary: true), repo, unitOfWork, new RecordingCache())
+        );
+
+        Assert.Equal("first-slug", tenant.SubDomain);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Redelivered_rename_is_a_noop()
+    {
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-new", "UTC", DateTime.UtcNow).Value;
+        var repo = new FakeTenantRepository { Existing = tenant };
+        var unitOfWork = new CountingUnitOfWork();
+
+        await HandleAsync(Event(tenant.Id, isPrimary: true), repo, unitOfWork, new RecordingCache());
+
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
     public async Task Non_primary_rename_leaves_the_tenant_untouched()
     {
-        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC").Value;
+        var tenant = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow).Value;
         var repo = new FakeTenantRepository { Existing = tenant };
         var unitOfWork = new CountingUnitOfWork();
         var cache = new RecordingCache();

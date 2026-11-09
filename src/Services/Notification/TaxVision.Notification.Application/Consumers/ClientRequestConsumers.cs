@@ -5,6 +5,7 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -96,7 +97,7 @@ public static class ClientRequestCreatedConsumer
                 var title = $"Nueva solicitud: {evt.Title}";
                 await dispatcher.RecordInAppAsync(
                     evt.TenantId,
-                    $"user:{userId:N}",
+                    NotificationRecipient.ForUser(userId),
                     title,
                     NotificationCategory.DocumentsAndSignatures,
                     "task.client_request_created",
@@ -149,7 +150,7 @@ public static class ClientRequestFulfilledConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{staffUserId:N}",
+                NotificationRecipient.ForUser(staffUserId),
                 title,
                 NotificationCategory.DocumentsAndSignatures,
                 "task.client_request_fulfilled",
@@ -261,7 +262,7 @@ public static class ClientRequestDocumentRejectedConsumer
         var title = $"Tu archivo necesita atencion: {evt.DisplayName}";
         await dispatcher.RecordInAppAsync(
             evt.TenantId,
-            $"user:{userId:N}",
+            NotificationRecipient.ForUser(userId),
             title,
             NotificationCategory.DocumentsAndSignatures,
             "tasks.client_request_document_rejected",
@@ -296,7 +297,7 @@ public static class ClientRequestDocumentRejectedConsumer
         var staffUserId = evt.StaffRecipientUserId ?? evt.RequestedByUserId;
         await dispatcher.RecordInAppAsync(
             evt.TenantId,
-            $"user:{staffUserId:N}",
+            NotificationRecipient.ForUser(staffUserId),
             title,
             NotificationCategory.DocumentsAndSignatures,
             "task.client_request_document_rejected",

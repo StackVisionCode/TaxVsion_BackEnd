@@ -1,27 +1,21 @@
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
-using BuildingBlocks.Persistence;
 using TaxVision.Tenant.Application.Compliance.Abstractions;
 using TaxVision.Tenant.Domain.Compliance;
-using Wolverine;
 
 namespace TaxVision.Tenant.Application.Compliance.Reminders;
 
 /// <summary>
 /// Un paso del job diario del WISP para una oficina: el agregado decide si hoy (en su zona horaria) toca
-/// avisar y lo anota; se guarda y recién después se publica <see cref="OfficeWispReviewDueIntegrationEvent"/>.
-/// Si el guardado falla (p. ej. otra instancia ya lo anotó: <c>ConflictException</c>) la excepción sube y no
-/// se publica nada.
+/// avisar y lo anota. Devuelve el aviso; la unidad del job lo confirma junto con la fila.
 /// </summary>
 public static class WispReviewReminders
 {
-    /// <summary>Lo avisado, o null si hoy no tocaba.</summary>
-    public static async Task<WispReviewReminder?> SendIfDueAsync(
+    /// <summary>El aviso a publicar, o null si hoy no tocaba.</summary>
+    public static async Task<OfficeWispReviewDueIntegrationEvent?> RegisterIfDueAsync(
         WispReminderCandidate candidate,
         DateTime nowUtc,
         string correlationId,
         IOfficeComplianceRepository compliances,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -34,19 +28,15 @@ public static class WispReviewReminders
         if (reminder is null)
             return null;
 
-        await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(
-            new OfficeWispReviewDueIntegrationEvent
-            {
-                TenantId = compliance.TenantId,
-                OfficeTenantId = compliance.TenantId,
-                DueOn = reminder.DueOn,
-                Stage = ToContract(reminder.Stage),
-                SecurityCoordinatorUserId = compliance.SecurityCoordinatorUserId,
-                CorrelationId = correlationId,
-            }
-        );
-        return reminder;
+        return new OfficeWispReviewDueIntegrationEvent
+        {
+            TenantId = compliance.TenantId,
+            OfficeTenantId = compliance.TenantId,
+            DueOn = reminder.DueOn,
+            Stage = ToContract(reminder.Stage),
+            SecurityCoordinatorUserId = compliance.SecurityCoordinatorUserId,
+            CorrelationId = correlationId,
+        };
     }
 
     /// <summary>

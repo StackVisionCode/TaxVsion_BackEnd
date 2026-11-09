@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -12,6 +14,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// guarda <c>RoleIds</c> por usuario (ver <see cref="UserRolesChangedIntegrationEvent.RoleIds"/>)
 /// puede resolver "a quién le pega este cambio" sin llamar a Auth.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.RolePermissionsChangedIntegrationEvent")]
 public sealed record RolePermissionsChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid RoleId { get; init; }

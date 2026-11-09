@@ -15,7 +15,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
 
     public Task<Draft?> FindOpenReplyDraftAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         Guid incomingEmailId,
         CancellationToken ct = default
     ) =>
@@ -27,6 +27,30 @@ internal sealed class FakeDraftRepository : IDraftRepository
                 && x.ReplyContext != null
                 && x.ReplyContext.IncomingEmailId == incomingEmailId
             )
+        );
+
+    public Task<Draft?> FindSentByInternetMessageIdAsync(
+        Guid tenantId,
+        string internetMessageId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            _store.FirstOrDefault(x =>
+                x.TenantId == tenantId && x.Status == DraftStatus.Sent && x.InternetMessageId == internetMessageId
+            )
+        );
+
+    public Task<IReadOnlyList<StuckDraftSend>> ListStuckSendingAsync(
+        DateTime updatedBeforeUtc,
+        int limit,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<StuckDraftSend>>(
+            _store
+                .Where(d => d.Status == DraftStatus.Sending && d.UpdatedAtUtc < updatedBeforeUtc)
+                .Take(limit)
+                .Select(d => new StuckDraftSend(d.TenantId, d.Id))
+                .ToList()
         );
 
     public Task AddAsync(Draft entity, CancellationToken ct = default)

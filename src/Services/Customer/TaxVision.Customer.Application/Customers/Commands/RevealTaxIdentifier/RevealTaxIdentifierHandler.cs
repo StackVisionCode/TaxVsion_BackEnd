@@ -54,8 +54,8 @@ public static class RevealTaxIdentifierHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null || customer.TenantId != cmd.TenantId)
+        var customer = await repository.GetByIdAsync(cmd.TenantId, cmd.CustomerId, ct);
+        if (customer is null)
             return null;
 
         // Visibilidad por asignación: revelar el tax id de un cliente que no le toca es la fuga más

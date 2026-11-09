@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Signature.Application.Abstractions.Sealing;
@@ -21,6 +22,11 @@ public static class SignatureStorage
 
     /// <summary>Código de error de <c>GetFileAsync</c> cuando CloudStorage responde 404 (el archivo no está registrado).</summary>
     public const string FileNotFoundCode = "Signature.Storage.FileNotFound";
+
+    /// <summary>Fallo que puede mejorar reintentando: red, timeout, 5xx/408/429 o token M2M ausente.</summary>
+    public const string TransientCode = "Signature.Storage.Transient";
+
+    public static bool IsTransient(Error error) => error.Code == TransientCode;
 }
 
 /// <summary>
@@ -47,9 +53,9 @@ public sealed record SignatureFileMetadata(
 /// <para>
 /// Fase D0/D1 — DownloadAsync sigue via HTTP+M2M (fuera del scope de D1, ver
 /// project_cloudstorage_hardening_plan.md): el token lo toma
-/// <see cref="ISignatureServiceTokenAcquirer"/>, igual que Notification. UploadAsync en
+/// <see cref="ISignatureServiceTokenAcquirer"/>, igual que Notification. StageAsync en
 /// cambio ya no llama a CloudStorage por HTTP — sube el objeto directo a MinIO con
-/// credenciales propias (IAM scoped) y publica SaveFileRequestedIntegrationEvent; el
+/// credenciales propias (IAM scoped) y devuelve SaveFileRequestedIntegrationEvent; el
 /// TenantId se pasa explícito porque este cliente se llama desde un consumer background
 /// sin request context.
 /// </para>
@@ -59,8 +65,16 @@ public interface ISignatureCloudStorageClient
     /// <summary>Descarga los bytes del PDF original.</summary>
     Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
 
-    /// <summary>Sube un PDF a CloudStorage y devuelve el nuevo <c>FileId</c>.</summary>
-    Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default);
+    /// <summary>
+    /// SIG-6: deja el archivo en MinIO y devuelve el <c>SaveFileRequested</c> sin publicarlo. Quien llama lo publica
+    /// por su outbox, en la transacción que registra el <c>FileId</c>. Si espera el escaneo sin confirmar, lo pide con
+    /// <c>RequestPartialCopyScanCommand</c>.
+    /// </summary>
+    Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
+        Guid tenantId,
+        SignatureFileUpload upload,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// URL firmada de corta vida (adjunto) para que el navegador del firmante baje un archivo de su entrega.

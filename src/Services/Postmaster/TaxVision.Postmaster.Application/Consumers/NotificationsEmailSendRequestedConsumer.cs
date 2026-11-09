@@ -1,8 +1,6 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Results;
-using BuildingBlocks.Security;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Postmaster.Application.Abstractions;
@@ -10,17 +8,24 @@ using TaxVision.Postmaster.Application.Common;
 using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.RateLimit;
 using TaxVision.Postmaster.Application.Sending;
+using TaxVision.Postmaster.Application.Sending.Commands.DispatchSentMessage;
+using TaxVision.Postmaster.Application.Sending.Lanes;
 using TaxVision.Postmaster.Application.Suppression;
 using TaxVision.Postmaster.Domain.Providers;
 using TaxVision.Postmaster.Domain.Sending;
 using Wolverine;
+using Wolverine.ErrorHandling;
+using Wolverine.Runtime;
+using Wolverine.Runtime.Handlers;
 
 namespace TaxVision.Postmaster.Application.Consumers;
 
 /// <summary>
-/// Primer flujo end-to-end: recibe la solicitud de Notification, dedupa, resuelve provider, envía
-/// y publica el callback correspondiente. Dedup adicional por <c>MessageId</c> vía
-/// <c>UseDurableInbox</c> de Wolverine (ya activo a nivel de servicio, Fase 1).
+/// Paso transaccional del envío (PMS-01): recibe la solicitud de Notification, dedupa, resuelve el carril
+/// y deja el <see cref="SentMessage"/> en Sending. La reserva, el mensaje y el
+/// <see cref="DispatchSentMessageCommand"/> se confirman juntos; el envío real lo hace
+/// <see cref="DispatchSentMessageHandler"/>, fuera de la transacción. Dedup adicional por <c>MessageId</c>
+/// vía <c>UseDurableInbox</c> de Wolverine (ya activo a nivel de servicio, Fase 1).
 /// </summary>
 /// <remarks>
 /// Desviaciones documentadas respecto al texto literal del plan §Fase 5:
@@ -42,10 +47,8 @@ namespace TaxVision.Postmaster.Application.Consumers;
 /// Hardening Fase 9 (actualiza el punto anterior): <see cref="Domain.Sending.InlineAsset"/> SÍ se
 /// adjuntan hoy, pero no se resuelven por <c>LogoScope</c> acá — vienen ya resueltos por Scribe
 /// (vía <c>LogoScope</c> en el momento del render, Scribe Fase 4.5) como referencias dentro de
-/// <c>evt.InlineAssets</c>. Este consumer solo las valida (<see cref="ParseInlineAssetReferences"/>)
-/// y descarga los bytes reales (<see cref="FetchInlineAssetBytesAsync"/>) — solo en el path SMTP
-/// (<see cref="SendAndFinalizeAsync"/>); el path del buzón conectado (<see cref="SendViaMailboxAndFinalizeAsync"/>)
-/// sigue sin soporte, ver su propio comentario.
+/// <c>evt.InlineAssets</c>. <see cref="DispatchSentMessageHandler"/> las valida y descarga los bytes
+/// reales para los dos carriles.
 /// </item>
 /// </list>
 /// </remarks>
@@ -57,7 +60,47 @@ public static class NotificationsEmailSendRequestedConsumer
     /// </summary>
     public const int MaxRateLimitedDeliveries = 60;
 
-    private static readonly TimeSpan DefaultRateLimitRetryAfter = TimeSpan.FromSeconds(60);
+    /// <summary>
+    /// PMS-11. Evento malformado: a la cola de errores sin reintentos, y Notification se entera para no quedar en
+    /// Pending. El aviso sale desde esta acción y no desde el handler: lo publicado ahí se revierte al lanzar.
+    /// </summary>
+    public static void Configure(HandlerChain chain) =>
+        chain
+            .OnException<MalformedEmailEventException>()
+            .MoveToErrorQueue()
+            .And(NotifyMalformedAsync, "Tell Notification that the malformed email will not be sent");
+
+    private static async ValueTask NotifyMalformedAsync(
+        IWolverineRuntime runtime,
+        IEnvelopeLifecycle lifecycle,
+        Exception failure
+    )
+    {
+        if (
+            lifecycle.Envelope?.Message is NotificationsEmailSendRequestedIntegrationEvent evt
+            && failure is MalformedEmailEventException malformed
+            && MalformedCallback(evt, malformed.ErrorCode) is { } callback
+        )
+            await new MessageBus(runtime).PublishAsync(callback);
+    }
+
+    internal static PostmasterEmailDeliveryFailedIntegrationEvent? MalformedCallback(
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        string errorCode
+    ) =>
+        evt.NotificationLogId == Guid.Empty
+            ? null
+            : new PostmasterEmailDeliveryFailedIntegrationEvent
+            {
+                TenantId = evt.TenantId,
+                CorrelationId = evt.CorrelationId,
+                NotificationLogId = evt.NotificationLogId,
+                DispatchAttemptId = evt.DispatchAttemptId,
+                SentMessageId = Guid.Empty,
+                Reason = $"event.malformed: {errorCode}",
+                CampaignId = evt.CampaignId,
+                EventAtUtc = DateTime.UtcNow,
+            };
 
     /// <param name="envelope">La entrega actual (la inyecta Wolverine); null en llamadas directas.</param>
     public static async Task Handle(
@@ -67,10 +110,6 @@ public static class NotificationsEmailSendRequestedConsumer
         IConnectedMailboxResolver mailboxResolver,
         ISuppressionListRepository suppressionList,
         IEmailProviderRateLimiter rateLimiter,
-        IEmailSender emailSender,
-        IConnectedMailboxSender mailboxSender,
-        IInlineAssetFetcher inlineAssetFetcher,
-        IOutboundAttachmentFetcher attachmentFetcher,
         ISentMessageRepository sentMessages,
         ITenantDirectoryRepository tenantDirectory,
         IUnitOfWork unitOfWork,
@@ -88,13 +127,7 @@ public static class NotificationsEmailSendRequestedConsumer
             switch (reservation.Outcome)
             {
                 case IdempotencyReservationOutcome.AlreadyCompleted:
-                    await PublishSucceededAsync(
-                        bus,
-                        evt,
-                        reservation.ExistingSentMessageId!.Value,
-                        providerMessageId: null,
-                        ct
-                    );
+                    await PublishReplayAsync(bus, evt, reservation.ExistingSentMessageId!.Value, sentMessages, logger, ct);
                     return;
                 case IdempotencyReservationOutcome.InProgress:
                     // No crear un segundo SentMessage: otro intento concurrente (Notification
@@ -107,6 +140,18 @@ public static class NotificationsEmailSendRequestedConsumer
                 default:
                     break;
             }
+
+            var lane = new LanePreparation(
+                evt,
+                suppressionList,
+                sentMessages,
+                tenantDirectory,
+                idempotencyGuard,
+                unitOfWork,
+                bus,
+                logger,
+                ct
+            );
 
             // Escalón 1 de la cadena. Se decide acá y no en ProviderResolver porque el canal del buzón conectado no
             // envía por SMTP: no produce un ResolvedEmailProvider y tiene su propio camino de envío,
@@ -126,974 +171,76 @@ public static class NotificationsEmailSendRequestedConsumer
                 )
             )
             {
-                await HandleConnectedMailboxPathAsync(
-                    evt,
-                    delivery,
-                    mailboxResult,
-                    suppressionList,
-                    mailboxSender,
-                    new SystemLane(providerResolver, rateLimiter, emailSender),
-                    inlineAssetFetcher,
-                    attachmentFetcher,
-                    sentMessages,
-                    tenantDirectory,
-                    idempotencyGuard,
-                    unitOfWork,
-                    bus,
-                    logger,
-                    ct
-                );
+                await MailboxLaneSender.PrepareAsync(lane, mailboxResult);
                 return;
             }
 
-            await HandleSmtpPathAsync(
-                evt,
-                delivery,
-                providerResolver,
-                suppressionList,
-                rateLimiter,
-                emailSender,
-                inlineAssetFetcher,
-                attachmentFetcher,
-                sentMessages,
-                tenantDirectory,
-                idempotencyGuard,
-                unitOfWork,
-                bus,
-                logger,
-                ct
-            );
+            await SystemLaneSender.PrepareAsync(lane, delivery, providerResolver, rateLimiter);
         }
     }
 
-    private static async Task HandleSmtpPathAsync(
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        int delivery,
-        IProviderResolver providerResolver,
-        ISuppressionListRepository suppressionList,
-        IEmailProviderRateLimiter rateLimiter,
-        IEmailSender emailSender,
-        IInlineAssetFetcher inlineAssetFetcher,
-        IOutboundAttachmentFetcher attachmentFetcher,
-        ISentMessageRepository sentMessages,
-        ITenantDirectoryRepository tenantDirectory,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
+    /// <summary>
+    /// Clave ya cerrada: se repite el resultado guardado (Sent, Failed o Suppressed), no un éxito a ciegas. Sin el
+    /// mensaje se mantiene el aviso de éxito de siempre.
+    /// </summary>
+    private static async Task PublishReplayAsync(
         IMessageBus bus,
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        Guid sentMessageId,
+        ISentMessageRepository sentMessages,
         ILogger logger,
         CancellationToken ct
     )
     {
-        var resolveResult = await providerResolver.ResolveAsync(
-            evt.TenantId,
-            ParseProviderScope(evt.RequiredProviderScope),
-            ParsePriorityHint(evt.PriorityHint),
-            SystemFallbackAllowed(evt),
-            ct
-        );
-        if (resolveResult.Status != ProviderResolutionStatus.Resolved)
+        var message = await sentMessages.GetForDispatchAsync(sentMessageId, ct);
+        switch (message?.Status)
         {
-            await PublishUnresolvedProviderCallbackAsync(bus, evt, resolveResult, logger, ct);
-            return;
-        }
-
-        // Solo se consulta cuando el correo acabó saliendo por el sistema: en los otros escalones el
-        // From ya es el de la oficina y la consulta sería trabajo tirado en cada envío.
-        var onBehalfOf =
-            resolveResult.EffectiveScope == ProviderScope.System
-                ? (await tenantDirectory.FindAsync(evt.TenantId, ct))?.SenderName
-                : null;
-
-        var message = await QueueAndPersistAsync(evt, resolveResult, onBehalfOf, sentMessages, unitOfWork, ct);
-        if (await ApplySuppressionAsync(message, evt, suppressionList, idempotencyGuard, unitOfWork, bus, ct))
-            return;
-
-        if (
-            await ApplyRateLimitAsync(
-                message,
-                evt,
-                delivery,
-                resolveResult.Provider!,
-                rateLimiter,
-                sentMessages,
-                idempotencyGuard,
-                unitOfWork,
-                bus,
-                ct
-            )
-        )
-            return;
-
-        await SendAndFinalizeAsync(
-            message,
-            evt,
-            resolveResult.Provider!,
-            emailSender,
-            inlineAssetFetcher,
-            attachmentFetcher,
-            idempotencyGuard,
-            unitOfWork,
-            bus,
-            logger,
-            ct
-        );
-    }
-
-    /// <summary>
-    /// Sin control de cupo propio a diferencia de <see cref="HandleSmtpPathAsync"/>: el rate limit del
-    /// canal del buzón conectado ya lo aplica Connectors por (tenant, cuenta) en su M2M de envío (D3 §4.4/§7,
-    /// <c>ISendRateLimiter</c>, default 20/min) — duplicarlo acá sería el mismo cupo enforced dos veces
-    /// con configuraciones potencialmente divergentes.
-    /// </summary>
-    private static async Task HandleConnectedMailboxPathAsync(
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        int delivery,
-        MailboxResolveResult resolveResult,
-        ISuppressionListRepository suppressionList,
-        IConnectedMailboxSender mailboxSender,
-        SystemLane systemLane,
-        IInlineAssetFetcher inlineAssetFetcher,
-        IOutboundAttachmentFetcher attachmentFetcher,
-        ISentMessageRepository sentMessages,
-        ITenantDirectoryRepository tenantDirectory,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        if (resolveResult.Status != MailboxResolutionStatus.Resolved)
-        {
-            await PublishMailboxNotConfiguredCallbackAsync(bus, evt, ct);
-            return;
-        }
-
-        // La proyeccion del buzon no guarda nombre, solo la direccion: el From salia pelado. El nombre
-        // de la oficina (comercial si lo tiene) es el del directorio, el mismo que el carril SMTP ya usa.
-        var provider = resolveResult.Provider! with
-        {
-            FromDisplayName = (await tenantDirectory.FindAsync(evt.TenantId, ct))?.SenderName,
-        };
-
-        var message = await QueueAndPersistMailboxAsync(evt, provider, sentMessages, unitOfWork, ct);
-        if (await ApplySuppressionAsync(message, evt, suppressionList, idempotencyGuard, unitOfWork, bus, ct))
-            return;
-
-        await SendViaMailboxAndFinalizeAsync(
-            message,
-            evt,
-            delivery,
-            provider,
-            mailboxSender,
-            systemLane,
-            tenantDirectory,
-            inlineAssetFetcher,
-            attachmentFetcher,
-            sentMessages,
-            idempotencyGuard,
-            unitOfWork,
-            bus,
-            logger,
-            ct
-        );
-    }
-
-    /// <summary>
-    /// Marca como Suppressed los recipients cuya dirección está en la lista negra del tenant. Si TODOS
-    /// quedan suprimidos, el mensaje entero pasa a <see cref="SentMessageStatus.Suppressed"/> sin
-    /// intentar el envío y se publica el callback correspondiente (devuelve true — el caller no debe
-    /// seguir). Si solo ALGUNOS quedan suprimidos, el envío continúa para el resto — <c>MimeMessageBuilder</c>
-    /// excluye los recipients Suppressed del MIME real (Fase 7).
-    /// </summary>
-    private static async Task<bool> ApplySuppressionAsync(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        ISuppressionListRepository suppressionList,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        CancellationToken ct
-    )
-    {
-        var addresses = message.Recipients.Select(r => r.Address).Distinct().ToList();
-        var suppressed = await suppressionList.GetSuppressedAsync(evt.TenantId, addresses, ct);
-        if (suppressed.Count == 0)
-            return false;
-
-        var now = DateTime.UtcNow;
-        foreach (var recipient in message.Recipients.Where(r => suppressed.Contains(r.Address)))
-            message.MarkRecipientSuppressed(recipient.Id, "Address in suppression list.", now);
-
-        if (!message.Recipients.All(r => r.Status == RecipientStatus.Suppressed))
-        {
-            await unitOfWork.SaveChangesAsync(ct);
-            return false;
-        }
-
-        message.MarkAsSuppressed("All recipients are in the suppression list.", now);
-        await idempotencyGuard.CompleteAsync(evt.TenantId, evt.IdempotencyKey, message.Id, ct);
-        await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(
-            new PostmasterEmailDeliverySuppressedIntegrationEvent
-            {
-                TenantId = evt.TenantId,
-                CorrelationId = evt.CorrelationId,
-                NotificationLogId = evt.NotificationLogId,
-                DispatchAttemptId = evt.DispatchAttemptId,
-                SentMessageId = message.Id,
-                SuppressionReason = "All recipients are in the suppression list.",
-                CampaignId = evt.CampaignId,
-                EventAtUtc = now,
-            }
-        );
-        return true;
-    }
-
-    /// <summary>
-    /// Cupo por (ProviderCode, TenantId, Stream) — <c>provider.RateLimitPerMinute</c>/
-    /// <c>BulkRateLimitPerMinute</c> ya vienen resueltos (Fase 3/3.5, Bulk-quota-isolation). Bulk y
-    /// Transactional se parten en baldes de Redis separados (ver <see cref="IEmailProviderRateLimiter"/>)
-    /// para que una ráfaga de campaña nunca demore un email transaccional del mismo tenant. Bulk sin
-    /// <c>BulkRateLimitPerMinute</c> configurado es un fallo de configuración: va a Failed. Con el cupo
-    /// agotado el envío se difiere (ver <see cref="DeferOverQuotaAsync"/>) y solo pasa a Failed tras
-    /// <see cref="MaxRateLimitedDeliveries"/> entregas.
-    /// </summary>
-    private static async Task<bool> ApplyRateLimitAsync(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        int delivery,
-        ResolvedEmailProvider provider,
-        IEmailProviderRateLimiter rateLimiter,
-        ISentMessageRepository sentMessages,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        CancellationToken ct
-    )
-    {
-        var quota = ResolveStreamQuota(message.Stream, provider);
-        if (quota is null)
-        {
-            await FailAndPublishAsync(
-                message,
-                evt,
-                $"BulkRateLimitNotConfigured: provider '{provider.ProviderCode}' has no BulkRateLimitPerMinute configured for the Bulk stream.",
-                idempotencyGuard,
-                unitOfWork,
-                bus,
-                ct
-            );
-            return true;
-        }
-
-        var decision = await rateLimiter.AcquireAsync(
-            provider.ProviderCode,
-            evt.TenantId,
-            message.Stream,
-            quota.Value,
-            ct
-        );
-        if (decision.Allowed)
-            return false;
-
-        var retryAfter = decision.RetryAfter ?? DefaultRateLimitRetryAfter;
-        await DeferOverQuotaAsync(message, evt, delivery, retryAfter, sentMessages, idempotencyGuard, unitOfWork, ct);
-
-        var reason = $"RateLimited: still over the provider quota after {delivery} deliveries.";
-        await FailAndPublishAsync(message, evt, reason, idempotencyGuard, unitOfWork, bus, ct);
-        return true;
-    }
-
-    /// <summary>
-    /// Nada salió al proveedor: se deshace el intento (el <c>SentMessage</c> y la reserva de
-    /// idempotencia, igual que el rollback de Correspondence) y se lanza
-    /// <see cref="EmailRateLimitedException"/> para que Wolverine reprograme la entrega tras
-    /// <paramref name="retryAfter"/>. En la última entrega vuelve sin lanzar y el caller lo da por fallido.
-    /// </summary>
-    private static async Task DeferOverQuotaAsync(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        int delivery,
-        TimeSpan retryAfter,
-        ISentMessageRepository sentMessages,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        if (delivery >= MaxRateLimitedDeliveries)
-            return;
-
-        sentMessages.Remove(message);
-        await idempotencyGuard.ReleaseAsync(evt.TenantId, evt.IdempotencyKey, ct);
-        await unitOfWork.SaveChangesAsync(ct);
-        throw new EmailRateLimitedException(evt.IdempotencyKey, retryAfter);
-    }
-
-    /// <summary>Bulk nunca cae al cupo Transactional por defecto — null hasta que un admin lo configure explícitamente.</summary>
-    private static int? ResolveStreamQuota(EmailStream stream, ResolvedEmailProvider provider) =>
-        stream == EmailStream.Bulk ? provider.BulkRateLimitPerMinute : provider.RateLimitPerMinute;
-
-    /// <summary>
-    /// Los adjuntos fallan CERRADO, al reves que el logo: si no se pueden bajar, el correo no sale.
-    /// Un logo roto es cosmetico; una factura que dice "A PDF copy is attached" y llega sin el PDF es
-    /// un mensaje equivocado. Devuelve null cuando fallo y el carril ya marco el mensaje.
-    /// </summary>
-    private static async Task<IReadOnlyList<OutboundAttachmentBytes>?> FetchAttachmentsOrFailAsync(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        IOutboundAttachmentFetcher attachmentFetcher,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        var inline = DecodeInlineAttachments(evt, logger);
-        if (evt.AttachmentFileIds is not { Count: > 0 } fileIds)
-            return inline;
-
-        var fetched = await attachmentFetcher.FetchByFileIdsAsync(evt.TenantId, fileIds, ct);
-        if (fetched.IsSuccess)
-            return [.. fetched.Value, .. inline];
-
-        logger.LogWarning(
-            "Failed to fetch {Count} attachment(s) for tenant {TenantId}: {Error}. The email will not be sent.",
-            fileIds.Count,
-            evt.TenantId,
-            fetched.Error.Message
-        );
-        await FailAndPublishAsync(message, evt, fetched.Error.Message, idempotencyGuard, unitOfWork, bus, ct);
-        return null;
-    }
-
-    /// <summary>Tope por adjunto en memoria (F6, el <c>.ics</c>): Notification ya aplica 256 KB al total.</summary>
-    public const int MaxInlineAttachmentBytes = 256 * 1024;
-
-    /// <summary>
-    /// Adjuntos que viajan en el evento (base64) y no en CloudStorage. Uno inválido o demasiado grande se
-    /// descarta con aviso y el correo sale igual: a diferencia de la factura sin PDF, una invitación sin
-    /// el <c>.ics</c> sigue siendo correcta (lleva fecha, enlace y código en el cuerpo).
-    /// </summary>
-    private static List<OutboundAttachmentBytes> DecodeInlineAttachments(
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        ILogger logger
-    )
-    {
-        var result = new List<OutboundAttachmentBytes>();
-        if (evt.InlineAttachments is not { Count: > 0 } attachments)
-            return result;
-
-        foreach (var attachment in attachments)
-        {
-            if (string.IsNullOrWhiteSpace(attachment.FileName) || string.IsNullOrWhiteSpace(attachment.ContentType))
-            {
-                logger.LogWarning(
-                    "Discarding inline attachment without file name or content type for tenant {TenantId}.",
-                    evt.TenantId
+            case SentMessageStatus.Failed:
+                await bus.PublishAsync(
+                    new PostmasterEmailDeliveryFailedIntegrationEvent
+                    {
+                        TenantId = evt.TenantId,
+                        CorrelationId = evt.CorrelationId,
+                        NotificationLogId = evt.NotificationLogId,
+                        DispatchAttemptId = evt.DispatchAttemptId,
+                        SentMessageId = sentMessageId,
+                        Reason = message.ErrorReason ?? "send.failed",
+                        CampaignId = evt.CampaignId,
+                        EventAtUtc = DateTime.UtcNow,
+                    }
                 );
-                continue;
-            }
-
-            byte[] bytes;
-            try
-            {
-                bytes = Convert.FromBase64String(attachment.ContentBase64 ?? string.Empty);
-            }
-            catch (FormatException)
-            {
-                logger.LogWarning(
-                    "Discarding inline attachment '{FileName}' for tenant {TenantId}: content is not valid base64.",
-                    attachment.FileName,
-                    evt.TenantId
-                );
-                continue;
-            }
-
-            if (bytes.Length == 0 || bytes.Length > MaxInlineAttachmentBytes)
-            {
-                logger.LogWarning(
-                    "Discarding inline attachment '{FileName}' for tenant {TenantId}: {Bytes} bytes (max {Max}).",
-                    attachment.FileName,
-                    evt.TenantId,
-                    bytes.Length,
-                    MaxInlineAttachmentBytes
-                );
-                continue;
-            }
-
-            result.Add(new OutboundAttachmentBytes(attachment.FileName.Trim(), attachment.ContentType.Trim(), bytes));
-        }
-
-        return result;
-    }
-
-    private static async Task FailAndPublishAsync(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        string reason,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        CancellationToken ct
-    )
-    {
-        var now = DateTime.UtcNow;
-        message.MarkAsFailed(reason, now);
-        await idempotencyGuard.CompleteAsync(evt.TenantId, evt.IdempotencyKey, message.Id, ct);
-        await unitOfWork.SaveChangesAsync(ct);
-        await PublishFailedAsync(bus, evt, message.Id, providerMessageId: null, reason, now, ct);
-    }
-
-    private static async Task<SentMessage> QueueAndPersistAsync(
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        ResolveResult resolved,
-        string? onBehalfOfDisplayName,
-        ISentMessageRepository sentMessages,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        var provider = resolved.Provider!;
-        var effectiveScope = resolved.EffectiveScope ?? ParseProviderScope(evt.RequiredProviderScope);
-
-        var queueResult = SentMessage.Queue(
-            evt.TenantId,
-            evt.IdempotencyKey,
-            SensitiveNotificationContent.ForStorage(evt.TemplateKey, evt.Subject),
-            provider.FromAddress,
-            ParseEmailStream(evt.Stream),
-            provider.ProviderCode,
-            evt.NotificationLogId,
-            evt.CorrelationId,
-            FromDisplayNameFor(onBehalfOfDisplayName, provider, effectiveScope),
-            ReplyToFor(evt, effectiveScope),
-            evt.TemplateKey,
-            DateTime.UtcNow,
-            // Lo que pasó, no lo que se pidió: con TenantPreferred el scope del evento no dice por
-            // cuál transporte salió, y el historial de envíos existe para responder justo eso.
-            effectiveScope,
-            correspondenceDraftId: null,
-            inReplyToInternetMessageId: null,
-            references: null,
-            campaignId: evt.CampaignId,
-            dispatchAttemptId: evt.DispatchAttemptId
-        );
-        if (queueResult.IsFailure)
-            throw new InvalidOperationException(
-                $"Malformed {nameof(NotificationsEmailSendRequestedIntegrationEvent)}: {queueResult.Error.Message}"
-            );
-
-        var message = queueResult.Value;
-        AddRecipients(message, evt);
-
-        await sentMessages.AddAsync(message, ct);
-        await SaveOrThrowInProgressAsync(unitOfWork, evt.IdempotencyKey, ct);
-        return message;
-    }
-
-    private static async Task<SentMessage> QueueAndPersistMailboxAsync(
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        ResolvedMailbox provider,
-        ISentMessageRepository sentMessages,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        var queueResult = SentMessage.Queue(
-            evt.TenantId,
-            evt.IdempotencyKey,
-            SensitiveNotificationContent.ForStorage(evt.TemplateKey, evt.Subject),
-            provider.FromAddress,
-            ParseEmailStream(evt.Stream),
-            provider.ProviderCode,
-            evt.NotificationLogId,
-            evt.CorrelationId,
-            provider.FromDisplayName,
-            replyTo: null,
-            evt.TemplateKey,
-            DateTime.UtcNow,
-            ProviderScope.TenantMailbox,
-            campaignId: evt.CampaignId,
-            deliveryLane: DeliveryLane.TenantMailbox,
-            dispatchAttemptId: evt.DispatchAttemptId
-        );
-        if (queueResult.IsFailure)
-            throw new InvalidOperationException(
-                $"Malformed {nameof(NotificationsEmailSendRequestedIntegrationEvent)}: {queueResult.Error.Message}"
-            );
-
-        var message = queueResult.Value;
-        AddRecipients(message, evt);
-
-        await sentMessages.AddAsync(message, ct);
-        await SaveOrThrowInProgressAsync(unitOfWork, evt.IdempotencyKey, ct);
-        return message;
-    }
-
-    /// <summary>
-    /// Red de seguridad de defensa-en-profundidad (plan §Fase 11, punto 4): aun con el tri-state de
-    /// <see cref="IIdempotencyGuard"/> corregido, dos reservas concurrentes podrían en teoría leer
-    /// "no existe" antes de que cualquiera de las dos escriba — el índice único real de
-    /// <c>SentMessages</c> (<c>SentMessageConfiguration</c>) es el backstop final para esa ventana
-    /// angosta. Se trata igual que <see cref="IdempotencyReservationOutcome.InProgress"/>: nunca debe
-    /// llegar como una excepción sin manejar hasta el middleware genérico.
-    /// </summary>
-    private static async Task SaveOrThrowInProgressAsync(
-        IUnitOfWork unitOfWork,
-        string idempotencyKey,
-        CancellationToken ct
-    )
-    {
-        try
-        {
-            await unitOfWork.SaveChangesAsync(ct);
-        }
-        catch (ConflictException)
-        {
-            throw new IdempotencyReservationInProgressException(idempotencyKey);
-        }
-    }
-
-    private static void AddRecipients(SentMessage message, NotificationsEmailSendRequestedIntegrationEvent evt)
-    {
-        message.AddRecipient(evt.To, RecipientType.To, null);
-        foreach (var cc in evt.Cc ?? [])
-            message.AddRecipient(cc, RecipientType.Cc, null);
-        foreach (var bcc in evt.Bcc ?? [])
-            message.AddRecipient(bcc, RecipientType.Bcc, null);
-    }
-
-    /// <summary>
-    /// Sin provider resuelto no hay <see cref="SentMessage"/> posible (ProviderCode/FromAddress son
-    /// requeridos). La reserva de idempotencia queda sin completar a propósito — si el tenant
-    /// configura su provider antes de que expire la ventana de retry, un reintento real del mismo
-    /// evento puede todavía tener éxito.
-    /// </summary>
-    private static ValueTask PublishUnresolvedProviderCallbackAsync(
-        IMessageBus bus,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        ResolveResult resolveResult,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        var now = DateTime.UtcNow;
-        if (resolveResult.Status == ProviderResolutionStatus.ProviderNotConfigured)
-        {
-            return bus.PublishAsync(
-                new PostmasterEmailDeliveryProviderNotConfiguredIntegrationEvent
-                {
-                    TenantId = evt.TenantId,
-                    CorrelationId = evt.CorrelationId,
-                    NotificationLogId = evt.NotificationLogId,
-                    DispatchAttemptId = evt.DispatchAttemptId,
-                    CampaignId = evt.CampaignId,
-                    EventAtUtc = now,
-                }
-            );
-        }
-
-        var reason =
-            resolveResult.Status == ProviderResolutionStatus.SystemProviderMissing
-                ? $"SystemProviderMissing: {resolveResult.Reason}"
-                : $"ProviderUnhealthy: {resolveResult.Reason}";
-        logger.LogWarning(
-            "Could not resolve a provider for NotificationLog {NotificationLogId}: {Reason}",
-            evt.NotificationLogId,
-            reason
-        );
-        return bus.PublishAsync(
-            new PostmasterEmailDeliveryFailedIntegrationEvent
-            {
-                TenantId = evt.TenantId,
-                CorrelationId = evt.CorrelationId,
-                NotificationLogId = evt.NotificationLogId,
-                DispatchAttemptId = evt.DispatchAttemptId,
-                SentMessageId = Guid.Empty,
-                Reason = reason,
-                CampaignId = evt.CampaignId,
-                EventAtUtc = now,
-            }
-        );
-    }
-
-    /// <summary>
-    /// A diferencia de <see cref="PublishUnresolvedProviderCallbackAsync"/> no hay caso
-    /// SystemProviderMissing/ProviderUnhealthy: <see cref="MailboxResolutionStatus"/> solo distingue
-    /// Resolved de ProviderNotConfigured (D3 §4.3) — la proyección local es la única fuente y no hay
-    /// "salud" que evaluar ahí, la reserva de idempotencia también queda sin completar por el mismo
-    /// motivo que en el camino SMTP.
-    /// </summary>
-    private static ValueTask PublishMailboxNotConfiguredCallbackAsync(
-        IMessageBus bus,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        CancellationToken ct
-    ) =>
-        bus.PublishAsync(
-            new PostmasterEmailDeliveryProviderNotConfiguredIntegrationEvent
-            {
-                TenantId = evt.TenantId,
-                CorrelationId = evt.CorrelationId,
-                NotificationLogId = evt.NotificationLogId,
-                DispatchAttemptId = evt.DispatchAttemptId,
-                CampaignId = evt.CampaignId,
-                EventAtUtc = DateTime.UtcNow,
-            }
-        );
-
-    /// <summary>
-    /// Sin threading en v1 (D3 §11, pendiente documentado): el evento de Notification no trae
-    /// identificadores nativos del proveedor para responder un hilo existente, así que los 3
-    /// parámetros de threading de <see cref="IConnectedMailboxSender.SendAsync"/> van null — mismo criterio
-    /// de incrementalidad que Postmaster ya usó para inline assets en Fase 3.5.
-    ///
-    /// Los inline assets salen por este carril igual que por el SMTP. Antes acá se armaba el
-    /// <c>RenderedContent</c> de 3 args y el logo llegaba roto, sin que nada lo delatara: el envío
-    /// daba "exitoso". <c>MailboxLaneParityTests</c> fija la paridad entre los dos carriles.
-    /// </summary>
-    private static async Task SendViaMailboxAndFinalizeAsync(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        int delivery,
-        ResolvedMailbox provider,
-        IConnectedMailboxSender mailboxSender,
-        SystemLane systemLane,
-        ITenantDirectoryRepository tenantDirectory,
-        IInlineAssetFetcher inlineAssetFetcher,
-        IOutboundAttachmentFetcher attachmentFetcher,
-        ISentMessageRepository sentMessages,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        message.MarkAsSending();
-        var inlineAssetRefs = ParseInlineAssetReferences(evt, logger);
-        var content = new RenderedContent(evt.Subject, evt.HtmlBody, evt.TextBody, inlineAssetRefs);
-        var inlineAssetBytes = await FetchInlineAssetBytesAsync(
-            ResolveInlineAssetTenantId(evt),
-            inlineAssetRefs,
-            inlineAssetFetcher,
-            logger,
-            ct
-        );
-        var attachments = await FetchAttachmentsOrFailAsync(
-            message,
-            evt,
-            attachmentFetcher,
-            idempotencyGuard,
-            unitOfWork,
-            bus,
-            logger,
-            ct
-        );
-        if (attachments is null)
-            return;
-
-        var sendResult = await mailboxSender.SendAsync(
-            message,
-            content,
-            provider,
-            inReplyToInternetMessageId: null,
-            references: null,
-            replyToProviderMessageId: null,
-            attachments,
-            inlineAssetBytes,
-            ct
-        );
-
-        // Connectors rechazó por su cupo por cuenta (429): el email no salió, se difiere igual que en SMTP.
-        if (!sendResult.Success && sendResult.RetryAfter is { } retryAfter)
-            await DeferOverQuotaAsync(
-                message,
-                evt,
-                delivery,
-                retryAfter,
-                sentMessages,
-                idempotencyGuard,
-                unitOfWork,
-                ct
-            );
-
-        if (ShouldFallBack(message, evt, sendResult))
-        {
-            var fallback = await FallBackToSystemAsync(
-                message,
-                evt,
-                delivery,
-                provider,
-                content,
-                inlineAssetBytes,
-                attachments,
-                sendResult.ErrorReason ?? "Office mailbox send failed.",
-                systemLane,
-                tenantDirectory,
-                sentMessages,
-                idempotencyGuard,
-                unitOfWork,
-                bus,
-                logger,
-                ct
-            );
-            if (fallback.AlreadyFinalized)
                 return;
-            sendResult = fallback.Result ?? sendResult;
-        }
-
-        var now = DateTime.UtcNow;
-        SendResultRecorder.Record(message, sendResult, "Unknown Connectors send failure.", now);
-
-        await idempotencyGuard.CompleteAsync(evt.TenantId, evt.IdempotencyKey, message.Id, ct);
-        await unitOfWork.SaveChangesAsync(ct);
-
-        if (sendResult.Success)
-            await PublishSucceededAsync(bus, evt, message.Id, sendResult.ProviderMessageId, ct);
-        else
-            await PublishFailedAsync(
-                bus,
-                evt,
-                message.Id,
-                sendResult.ProviderMessageId,
-                sendResult.ErrorReason ?? "Unknown Connectors send failure.",
-                now,
-                ct
-            );
-    }
-
-    /// <summary>Lo que hace falta para salir por el proveedor del sistema desde la vía buzón.</summary>
-    private sealed record SystemLane(
-        IProviderResolver Resolver,
-        IEmailProviderRateLimiter RateLimiter,
-        IEmailSender Sender
-    );
-
-    /// <param name="AlreadyFinalized">El cupo del sistema ya cerró el mensaje (diferido o fallido): no seguir.</param>
-    /// <param name="Result">El envío por el sistema; null si no se pudo intentar y vale el fallo del buzón.</param>
-    private sealed record FallbackResult(bool AlreadyFinalized, SendResult? Result);
-
-    private static bool ShouldFallBack(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        SendResult sendResult
-    ) =>
-        !sendResult.Success
-        && sendResult.RetryAfter is null
-        && sendResult.MailboxFailure is { } failure
-        && MailboxFallbackPolicy.ShouldFallBack(ParseProviderScope(evt.RequiredProviderScope), message.Stream, failure);
-
-    /// <summary>
-    /// El buzón de la oficina falló por su culpa (desconectado, proveedor caído…): el mismo correo sale
-    /// por el proveedor del sistema en nombre de la oficina, con Reply-To al buzón para que las
-    /// respuestas le lleguen. Si el reconectar hace falta, ese aviso ya lo dio Connectors.
-    /// </summary>
-    private static async Task<FallbackResult> FallBackToSystemAsync(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        int delivery,
-        ResolvedMailbox mailbox,
-        RenderedContent content,
-        IReadOnlyList<InlineAssetBytes> inlineAssetBytes,
-        IReadOnlyList<OutboundAttachmentBytes> attachments,
-        string mailboxFailureReason,
-        SystemLane systemLane,
-        ITenantDirectoryRepository tenantDirectory,
-        ISentMessageRepository sentMessages,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        var resolved = await systemLane.Resolver.ResolveAsync(
-            evt.TenantId,
-            ProviderScope.System,
-            ParsePriorityHint(evt.PriorityHint),
-            systemFallbackAllowed: false,
-            ct
-        );
-        if (resolved.Status != ProviderResolutionStatus.Resolved)
-            return new FallbackResult(false, null);
-
-        var system = resolved.Provider!;
-        var onBehalfOf = (await tenantDirectory.FindAsync(evt.TenantId, ct))?.SenderName;
-        var moved = message.FallBackToSystemProvider(
-            mailboxFailureReason,
-            system.ProviderCode,
-            system.FromAddress,
-            FromDisplayNameFor(onBehalfOf, system, ProviderScope.System),
-            mailbox.FromAddress,
-            DateTime.UtcNow
-        );
-        if (moved.IsFailure)
-            return new FallbackResult(false, null);
-
-        logger.LogInformation(
-            "Office mailbox send failed for SentMessage {SentMessageId}; retrying through the system provider.",
-            message.Id
-        );
-        if (
-            await ApplyRateLimitAsync(
-                message,
-                evt,
-                delivery,
-                system,
-                systemLane.RateLimiter,
-                sentMessages,
-                idempotencyGuard,
-                unitOfWork,
-                bus,
-                ct
-            )
-        )
-            return new FallbackResult(true, null);
-
-        var result = await systemLane.Sender.SendAsync(message, content, system, inlineAssetBytes, attachments, ct);
-        return new FallbackResult(false, result);
-    }
-
-    /// <summary>
-    /// Hardening Fase 9: antes, esto siempre pasaba <c>inlineAssets: []</c> a <see cref="IEmailSender"/>
-    /// — el pipeline de logos CID (Scribe Fase 4.5) estaba completo en cada punta pero nunca conectado
-    /// entre ellas, así que ningún logo llegaba a un email real. Ahora resuelve las referencias que
-    /// trae <paramref name="evt"/> vía <see cref="IInlineAssetFetcher"/> (registrado en DI desde Fase
-    /// 3.5, nunca invocado hasta esta fase) antes de armar el MIME.
-    /// </summary>
-    private static async Task SendAndFinalizeAsync(
-        SentMessage message,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        ResolvedEmailProvider provider,
-        IEmailSender emailSender,
-        IInlineAssetFetcher inlineAssetFetcher,
-        IOutboundAttachmentFetcher attachmentFetcher,
-        IIdempotencyGuard idempotencyGuard,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        message.MarkAsSending();
-        var inlineAssetRefs = ParseInlineAssetReferences(evt, logger);
-        var content = new RenderedContent(evt.Subject, evt.HtmlBody, evt.TextBody, inlineAssetRefs);
-        var inlineAssetBytes = await FetchInlineAssetBytesAsync(
-            ResolveInlineAssetTenantId(evt),
-            inlineAssetRefs,
-            inlineAssetFetcher,
-            logger,
-            ct
-        );
-        var attachments = await FetchAttachmentsOrFailAsync(
-            message,
-            evt,
-            attachmentFetcher,
-            idempotencyGuard,
-            unitOfWork,
-            bus,
-            logger,
-            ct
-        );
-        if (attachments is null)
-            return;
-
-        var sendResult = await emailSender.SendAsync(message, content, provider, inlineAssetBytes, attachments, ct);
-
-        var now = DateTime.UtcNow;
-        SendResultRecorder.Record(message, sendResult, "Unknown SMTP failure.", now);
-
-        await idempotencyGuard.CompleteAsync(evt.TenantId, evt.IdempotencyKey, message.Id, ct);
-        await unitOfWork.SaveChangesAsync(ct);
-
-        if (sendResult.Success)
-            await PublishSucceededAsync(bus, evt, message.Id, sendResult.ProviderMessageId, ct);
-        else
-            await PublishFailedAsync(
-                bus,
-                evt,
-                message.Id,
-                sendResult.ProviderMessageId,
-                sendResult.ErrorReason ?? "Unknown SMTP failure.",
-                now,
-                ct
-            );
-    }
-
-    /// <summary>
-    /// Convierte las referencias del wire (<see cref="EmailInlineAssetReference"/>, sin validar) en el
-    /// VO real de dominio (<see cref="InlineAsset"/>, que sí valida tamaño/shape en su factory). Una
-    /// referencia individualmente inválida se descarta con un warning en vez de tirar abajo el envío
-    /// completo — un logo roto no debería bloquear un email transaccional real.
-    /// </summary>
-    private static IReadOnlyList<InlineAsset> ParseInlineAssetReferences(
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        ILogger logger
-    )
-    {
-        if (evt.InlineAssets is not { Count: > 0 })
-            return [];
-
-        var parsed = new List<InlineAsset>(evt.InlineAssets.Count);
-        foreach (var reference in evt.InlineAssets)
-        {
-            var result = InlineAsset.Create(
-                reference.ContentId,
-                reference.CloudStorageFileId,
-                reference.ContentType,
-                reference.SizeBytes
-            );
-            if (result.IsFailure)
-            {
-                logger.LogWarning(
-                    "Discarding invalid inline asset reference '{ContentId}' for tenant {TenantId}: {Error}",
-                    reference.ContentId,
-                    evt.TenantId,
-                    result.Error.Message
+            case SentMessageStatus.Suppressed:
+                await bus.PublishAsync(
+                    new PostmasterEmailDeliverySuppressedIntegrationEvent
+                    {
+                        TenantId = evt.TenantId,
+                        CorrelationId = evt.CorrelationId,
+                        NotificationLogId = evt.NotificationLogId,
+                        DispatchAttemptId = evt.DispatchAttemptId,
+                        SentMessageId = sentMessageId,
+                        SuppressionReason = message.ErrorReason ?? "recipient.suppressed",
+                        CampaignId = evt.CampaignId,
+                        EventAtUtc = DateTime.UtcNow,
+                    }
                 );
-                continue;
-            }
-
-            parsed.Add(result.Value);
+                return;
+            case SentMessageStatus.Sent:
+                var providerMessageId = message.Recipients.Select(r => r.ProviderMessageId).FirstOrDefault(id => id is not null);
+                await PublishSucceededAsync(bus, evt, sentMessageId, providerMessageId, ct);
+                return;
+            default:
+                logger.LogWarning(
+                    "Replay of SentMessage {SentMessageId} found it {Status}; reported as succeeded.",
+                    sentMessageId,
+                    message?.Status.ToString() ?? "missing"
+                );
+                await PublishSucceededAsync(bus, evt, sentMessageId, providerMessageId: null, ct);
+                return;
         }
-
-        return parsed;
     }
 
-    /// <summary>
-    /// Descarga los bytes reales de CloudStorage para las referencias ya validadas. Degrada con
-    /// gracia (log + <c>[]</c>) si el fetch falla en vez de fallar el envío entero — un logo que no
-    /// se pudo descargar no debería bloquear un email transaccional (password reset, invitación,
-    /// etc.); el peor caso es un ícono roto en el cliente de correo, no un mensaje perdido.
-    /// </summary>
-    private static async Task<IReadOnlyList<InlineAssetBytes>> FetchInlineAssetBytesAsync(
-        Guid tenantId,
-        IReadOnlyList<InlineAsset> inlineAssets,
-        IInlineAssetFetcher inlineAssetFetcher,
-        ILogger logger,
-        CancellationToken ct
-    )
-    {
-        if (inlineAssets.Count == 0)
-            return [];
-
-        var fetched = await inlineAssetFetcher.FetchAllAsync(tenantId, inlineAssets, ct);
-        if (fetched.IsSuccess)
-            return fetched.Value;
-
-        logger.LogWarning(
-            "Failed to fetch {Count} inline asset(s) for tenant {TenantId}: {Error}. Sending without inline logo.",
-            inlineAssets.Count,
-            tenantId,
-            fetched.Error.Message
-        );
-        return [];
-    }
-
-    private static ValueTask PublishSucceededAsync(
+    internal static ValueTask PublishSucceededAsync(
         IMessageBus bus,
         NotificationsEmailSendRequestedIntegrationEvent evt,
         Guid sentMessageId,
@@ -1114,90 +261,12 @@ public static class NotificationsEmailSendRequestedConsumer
             }
         );
 
-    private static ValueTask PublishFailedAsync(
-        IMessageBus bus,
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        Guid sentMessageId,
-        string? providerMessageId,
-        string reason,
-        DateTime eventAtUtc,
-        CancellationToken ct
-    ) =>
-        bus.PublishAsync(
-            new PostmasterEmailDeliveryFailedIntegrationEvent
-            {
-                TenantId = evt.TenantId,
-                CorrelationId = evt.CorrelationId,
-                NotificationLogId = evt.NotificationLogId,
-                DispatchAttemptId = evt.DispatchAttemptId,
-                SentMessageId = sentMessageId,
-                ProviderMessageId = providerMessageId,
-                Reason = reason,
-                CampaignId = evt.CampaignId,
-                EventAtUtc = eventAtUtc,
-            }
-        );
-
-    private static EmailStream ParseEmailStream(string value) =>
+    internal static EmailStream ParseEmailStream(string value) =>
         Enum.TryParse<EmailStream>(value, ignoreCase: true, out var stream) ? stream : EmailStream.Transactional;
 
-    private static ProviderScope ParseProviderScope(string value) =>
+    internal static ProviderScope ParseProviderScope(string value) =>
         Enum.TryParse<ProviderScope>(value, ignoreCase: true, out var scope) ? scope : ProviderScope.System;
 
-    private static ProviderPriorityHint? ParsePriorityHint(string? value) =>
+    internal static ProviderPriorityHint? ParsePriorityHint(string? value) =>
         Enum.TryParse<ProviderPriorityHint>(value, ignoreCase: true, out var hint) ? hint : null;
-
-    /// <summary>
-    /// Las dos condiciones que hacen seguro el último escalón de <see cref="ProviderScope.TenantPreferred"/>.
-    ///
-    /// <para><b>Reply-To</b>: sin él el correo sale con la identidad del sistema y nadie sabe a quién
-    /// contestarle — eso sí sería el spoofing silencioso que la política evita. Con él, la cabecera
-    /// dice la verdad: lo manda la plataforma, responde a la oficina.</para>
-    ///
-    /// <para><b>Transaccional</b>: una campaña que cayera acá mandaría su volumen por el dominio de
-    /// la plataforma. Si un tenant quema su lista, el que acaba en la blacklist es el remitente del
-    /// sistema, y con él el correo transaccional de TODAS las oficinas. Una campaña sin provider
-    /// propio falla visible, que es reparable; la reputación de envío quemada no lo es.</para>
-    /// </summary>
-    private static bool SystemFallbackAllowed(NotificationsEmailSendRequestedIntegrationEvent evt) =>
-        !string.IsNullOrWhiteSpace(evt.ReplyTo) && ParseEmailStream(evt.Stream) == EmailStream.Transactional;
-
-    /// <summary>
-    /// Solo se anuncia a la oficina cuando el correo acabó saliendo por el sistema EN SU NOMBRE. En
-    /// los otros escalones el From ya es el de la oficina y repetirlo sobraría.
-    /// </summary>
-    private static string? FromDisplayNameFor(
-        string? onBehalfOf,
-        ResolvedEmailProvider provider,
-        ProviderScope effectiveScope
-    )
-    {
-        if (effectiveScope != ProviderScope.System || string.IsNullOrWhiteSpace(onBehalfOf))
-            return provider.FromDisplayName;
-
-        var platform = provider.FromDisplayName;
-        return string.IsNullOrWhiteSpace(platform) ? onBehalfOf.Trim() : $"{onBehalfOf.Trim()} (via {platform})";
-    }
-
-    /// <summary>
-    /// El Reply-To solo tiene sentido cuando el From no es ya el de la oficina: en los escalones de
-    /// tenant, ponerlo apuntaría a la misma dirección que ya firma el correo.
-    /// </summary>
-    private static string? ReplyToFor(
-        NotificationsEmailSendRequestedIntegrationEvent evt,
-        ProviderScope effectiveScope
-    ) => effectiveScope == ProviderScope.System ? evt.ReplyTo : null;
-
-    /// <summary>
-    /// Tenant a usar para el fetch M2M de los inline assets en CloudStorage — NO siempre es
-    /// <c>evt.TenantId</c>. El logo del sistema (<c>evt.LogoScope == "System"</c>, Scribe Fase 4.5)
-    /// vive en CloudStorage bajo <see cref="PlatformTenant"/>, no bajo el tenant del destinatario del
-    /// email; <c>ICloudStorageInlineAssetFetcher</c> pide el token M2M y CloudStorage filtra
-    /// <c>Files</c> por tenant (<c>FilesController.IssueDownloadUrl</c>), así que usar
-    /// <c>evt.TenantId</c> ahí siempre devolvía 404 para el logo del sistema. <c>evt.LogoScope</c> ya
-    /// existía en el contrato para esto exacto (ver <see cref="NotificationsEmailSendRequestedIntegrationEvent.LogoScope"/>)
-    /// pero nunca se leía en este consumer.
-    /// </summary>
-    private static Guid ResolveInlineAssetTenantId(NotificationsEmailSendRequestedIntegrationEvent evt) =>
-        string.Equals(evt.LogoScope, "System", StringComparison.OrdinalIgnoreCase) ? PlatformTenant.Id : evt.TenantId;
 }

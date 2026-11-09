@@ -2,11 +2,15 @@ using Wolverine;
 
 namespace TaxVision.PaymentApp.Tests.TestDoubles;
 
-/// <summary>Fake de <see cref="IMessageBus"/> que solo captura lo publicado; el resto lanza.</summary>
+/// <summary>Fake de <see cref="IMessageBus"/> que captura lo publicado y lo invocado; el resto lanza.</summary>
 internal sealed class CapturingMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
+    public List<(object Message, string? TenantId)> Invoked { get; } = [];
     public string? TenantId { get; set; }
+
+    /// <summary>Si tiene valor, resuelve InvokeAsync con el handler real del comando.</summary>
+    public Func<object, object>? Route { get; set; }
 
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
@@ -53,8 +57,16 @@ internal sealed class CapturingMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotSupportedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
+    // Responde Success a los comandos que devuelven Result; cualquier otro tipo no está soportado.
+    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        Invoked.Add((message, TenantId));
+        if (Route is not null)
+            return (Task<T>)Route(message);
+        if (typeof(T) == typeof(BuildingBlocks.Results.Result))
+            return Task.FromResult((T)(object)BuildingBlocks.Results.Result.Success());
         throw new NotSupportedException();
+    }
 
     public Task<T> InvokeAsync<T>(
         object message,

@@ -1,15 +1,14 @@
-using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Moderation;
 using TaxVision.CloudStorage.Domain.Quotas;
-using Wolverine;
 
 namespace TaxVision.CloudStorage.Application.Moderation;
 
@@ -150,7 +149,6 @@ public static class ApproveContentReviewHandler
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -168,16 +166,19 @@ public static class ApproveContentReviewHandler
             return reserved;
 
         var now = clock.UtcNow;
-        var approved = file.ApproveReview(now);
+        var approved = file.ApproveReview(now, command.Audit.CorrelationId);
         if (approved.IsFailure)
             return approved;
 
-        var quarantine = options.Value.QuarantineBucket;
+        // El objeto puede seguir en temp si RelocateScannedBlob todavía no lo movió a cuarentena.
         var main = options.Value.MainBucket;
-        if (await storage.ExistsAsync(quarantine, file.ObjectKey, ct))
+        var source = await ScanFileHandler.LocateStoredObjectAsync(storage, options.Value, file.ObjectKey, ct);
+        if (source is not null && source != main)
+            await storage.CopyAsync(source, file.ObjectKey, main, ct);
+        foreach (var bucket in new[] { options.Value.TempBucket, options.Value.QuarantineBucket })
         {
-            await storage.CopyAsync(quarantine, file.ObjectKey, main, ct);
-            await storage.DeleteAsync(quarantine, file.ObjectKey, ct);
+            if (await storage.ExistsAsync(bucket, file.ObjectKey, ct))
+                await storage.DeleteAsync(bucket, file.ObjectKey, ct);
         }
         if (file.FolderType == FolderType.Avatars)
             await storage.SetObjectTagsAsync(main, file.ObjectKey, StorageObjectTags.Avatar, ct);
@@ -193,25 +194,6 @@ public static class ApproveContentReviewHandler
                 null,
                 now
             )
-        );
-        await bus.PublishAsync(
-            new FileAvailableIntegrationEvent
-            {
-                TenantId = file.TenantId,
-                FileId = file.Id,
-                ObjectKey = file.ObjectKey,
-                ContentType = file.DetectedContentType ?? file.DeclaredContentType,
-                SizeBytes = file.SizeBytes,
-                ChecksumSha256 = file.ChecksumSha256!,
-                CreatedBy = file.CreatedBy,
-                OwnerType = file.OwnerType.ToString(),
-                OwnerId = file.OwnerId,
-                FolderId = file.FolderId,
-                FolderType = file.FolderType.ToString(),
-                OriginalName = file.OriginalName,
-                TaxYear = file.TaxYear,
-                CorrelationId = command.Audit.CorrelationId,
-            }
         );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
@@ -238,7 +220,6 @@ public static class RejectContentReviewHandler
         IStorageAuditRepository audit,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -249,7 +230,7 @@ public static class RejectContentReviewHandler
             return Result.Failure(ContentModerationErrors.NotUnderModeration);
 
         var now = clock.UtcNow;
-        var rejected = file.RejectReview(Report, now);
+        var rejected = file.RejectReview(Report, now, command.Audit.CorrelationId);
         if (rejected.IsFailure)
             return rejected;
         if (!file.IsLegalHeld)
@@ -265,20 +246,6 @@ public static class RejectContentReviewHandler
                 Trim(command.Notes),
                 now
             )
-        );
-        await bus.PublishAsync(
-            new FileBlockedByPolicyIntegrationEvent
-            {
-                TenantId = file.TenantId,
-                FileId = file.Id,
-                ObjectKey = file.ObjectKey,
-                PolicyReason = Report,
-                CreatedBy = file.CreatedBy,
-                OwnerType = file.OwnerType.ToString(),
-                OwnerId = file.OwnerId,
-                FolderType = file.FolderType.ToString(),
-                CorrelationId = command.Audit.CorrelationId,
-            }
         );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();

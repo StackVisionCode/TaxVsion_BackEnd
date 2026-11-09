@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.GrowthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Common;
@@ -20,6 +21,7 @@ using Serilog;
 using StackExchange.Redis;
 using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
+using TaxVision.Growth.Api.Messaging;
 using TaxVision.Growth.Infrastructure;
 using TaxVision.Growth.Infrastructure.Observability;
 using TaxVision.Growth.Infrastructure.Persistence;
@@ -144,6 +146,9 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, GrowthDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    // Primer evento que Growth publica. Hoy no tiene consumidor.
+    options.PublishMessage<CodeReservationCommittedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
     options
         .ListenToRabbitQueue(
             "growth-events",
@@ -154,7 +159,14 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    // Antes de la estándar: gana la primera regla que matchea.
+    options.ApplyGrowthFailurePolicies();
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // BB-1: eventos de dominio de CodeReservation; en serie para que los avisos salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
 });
 
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);

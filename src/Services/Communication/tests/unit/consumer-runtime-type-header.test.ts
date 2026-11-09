@@ -166,4 +166,63 @@ describe('ConsumerRuntime — resolución del header AMQP `type`', () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler.mock.calls[0]![0].eventType).toBe(eventType);
   });
+
+  // Cierre de revisión: estos tipos de .NET no tenían mapeo y caían como "sin handler".
+  const clrCases: Array<[string, string]> = [
+    [
+      'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentCancelledIntegrationEvent',
+      'calendar.appointment_cancelled.v1',
+    ],
+    [
+      'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerReactivatedIntegrationEvent',
+      'customer.reactivated.v1',
+    ],
+    [
+      'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerActivatedIntegrationEvent',
+      'customer.activated.v1',
+    ],
+  ];
+  for (const [clr, alias] of clrCases) {
+    it(`mapea ${clr.split('.').at(-1)} a ${alias}`, async () => {
+      const { dispatch, handler } = await startRuntime(alias);
+
+      await dispatch(message(clr, { eventId: 'evt-clr', tenantId: 'tenant-1' }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler.mock.calls[0]![0].eventType).toBe(alias);
+    });
+  }
+
+  it('lee occurredOn (camelCase de Wolverine) como fecha del sobre', async () => {
+    const { dispatch, handler } = await startRuntime('auth.user.deactivated.v1');
+
+    await dispatch(
+      message('BuildingBlocks.Messaging.AuthIntegrationEvents.UserDeactivatedIntegrationEvent', {
+        eventId: 'evt-occ',
+        tenantId: 'tenant-1',
+        occurredOn: '2026-11-01T10:00:00.1234567Z',
+        userId: 'user-1',
+      }),
+    );
+
+    expect(handler.mock.calls[0]![0].occurredOnUtc).toBe('2026-11-01T10:00:00.1234567Z');
+  });
+
+  // Ruido de logs: llegan con estos nombres (eventType del cuerpo o header `type`) y no son de Communication.
+  const ignored: Array<[string, Record<string, unknown>]> = [
+    ['signature.request.purged.v1', {}],
+    ['catalog.item.tracking_changed.v1', {}],
+    ['billing.invoice.payment_rejected.v1', { eventType: 'billing.invoice.payment_rejected' }],
+    ['growth.codes.reservation_committed.v1', { eventType: 'growth.codes.reservation_committed' }],
+  ];
+  for (const [amqpType, body] of ignored) {
+    it(`no advierte por ${amqpType}, ignorado a propósito`, async () => {
+      const { dispatch } = await startRuntime();
+
+      await dispatch(message(amqpType, { EventId: 'evt-noise', TenantId: 'tenant-1', ...body }));
+
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(channel.ack).toHaveBeenCalledTimes(1);
+    });
+  }
 });

@@ -27,6 +27,9 @@ public static class CampaignScheduleErrors
         "Invalid state transition."
     );
     public static readonly Error NotFound = new("CampaignSchedule.NotFound", "Schedule not found.");
+
+    // Otro claim tomó el slot o el agendado cambió desde el claim: este disparo no hace nada.
+    public static readonly Error LeaseLost = new("CampaignSchedule.LeaseLost", "The schedule lease is no longer held.");
     public static readonly Error SuccessorRequired = new(
         "CampaignSchedule.SuccessorRequired",
         "A successor is required to hand over the schedule."

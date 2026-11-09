@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -37,7 +38,7 @@ public static class ConnectorsWatchExpiredConsumer
             {
                 await dispatcher.RecordInAppAsync(
                     evt.TenantId,
-                    $"user:{userId:N}",
+                    NotificationRecipient.ForUser(userId),
                     title,
                     NotificationCategory.Collaboration,
                     "connectors.watch.expired",

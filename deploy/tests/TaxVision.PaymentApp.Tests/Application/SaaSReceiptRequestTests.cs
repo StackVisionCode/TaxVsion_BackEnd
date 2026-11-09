@@ -23,13 +23,7 @@ public sealed class SaaSReceiptRequestTests
         var payment = SucceededPayment(SaaSPaymentType.SeatsPurchaseCharge);
         var bus = new CapturingMessageBus();
 
-        await SaaSPaymentResultPublisher.PublishAsync(
-            payment,
-            bus,
-            "corr",
-            CancellationToken.None,
-            new FakeTenantRegistry("Acme Tax")
-        );
+        bus.Published.AddRange(await SaaSPaymentEventReplay.DispatchAsync(payment, new FakeTenantRegistry("Acme Tax")));
 
         var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
         Assert.Equal(payment.Id, requested.SaaSPaymentId);
@@ -45,13 +39,7 @@ public sealed class SaaSReceiptRequestTests
         var payment = SucceededPayment(SaaSPaymentType.SubscriptionRenewal);
         var bus = new CapturingMessageBus();
 
-        await SaaSPaymentResultPublisher.PublishAsync(
-            payment,
-            bus,
-            "corr",
-            CancellationToken.None,
-            new FakeTenantRegistry("Acme Tax")
-        );
+        bus.Published.AddRange(await SaaSPaymentEventReplay.DispatchAsync(payment, new FakeTenantRegistry("Acme Tax")));
 
         var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
         Assert.Equal("st_1", requested.ProviderReferenceMask);
@@ -75,7 +63,7 @@ public sealed class SaaSReceiptRequestTests
         MarkPaid(payment);
         var bus = new CapturingMessageBus();
 
-        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
+        bus.Published.AddRange(await SaaSPaymentEventReplay.DispatchAsync(payment));
 
         Assert.Empty(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
     }
@@ -117,13 +105,16 @@ public sealed class SaaSReceiptRequestTests
         var payment = SucceededPayment(SaaSPaymentType.SeatsPurchaseCharge);
         var bus = new CapturingMessageBus();
 
-        await SaaSPaymentResultPublisher.PublishReceiptRequestAsync(
-            payment,
-            bus,
-            "corr",
-            new FakeTenantRegistry("Acme Tax"),
-            CancellationToken.None
-        );
+        if (
+            await SaaSPaymentResultMessages.ReceiptRequestAsync(
+                payment.Snapshot(),
+                "corr",
+                new FakeTenantRegistry("Acme Tax"),
+                CancellationToken.None
+            ) is
+            { } receipt
+        )
+            bus.Published.Add(receipt);
 
         Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
         Assert.Empty(bus.Published.OfType<SeatsCheckoutPaidIntegrationEvent>());
@@ -139,13 +130,16 @@ public sealed class SaaSReceiptRequestTests
         var payment = SucceededPayment(SaaSPaymentType.SeatsPurchaseCharge, quantity: 3, unitAmountCents: 500);
         var bus = new CapturingMessageBus();
 
-        await SaaSPaymentResultPublisher.PublishReceiptRequestAsync(
-            payment,
-            bus,
-            "corr",
-            new FakeTenantRegistry("Acme Tax"),
-            CancellationToken.None
-        );
+        if (
+            await SaaSPaymentResultMessages.ReceiptRequestAsync(
+                payment.Snapshot(),
+                "corr",
+                new FakeTenantRegistry("Acme Tax"),
+                CancellationToken.None
+            ) is
+            { } receipt
+        )
+            bus.Published.Add(receipt);
 
         var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
         Assert.Equal(3, requested.Quantity);
@@ -160,13 +154,16 @@ public sealed class SaaSReceiptRequestTests
         var payment = SucceededPayment(SaaSPaymentType.PlanChangeCharge);
         var bus = new CapturingMessageBus();
 
-        await SaaSPaymentResultPublisher.PublishReceiptRequestAsync(
-            payment,
-            bus,
-            "corr",
-            new FakeTenantRegistry("Acme Tax"),
-            CancellationToken.None
-        );
+        if (
+            await SaaSPaymentResultMessages.ReceiptRequestAsync(
+                payment.Snapshot(),
+                "corr",
+                new FakeTenantRegistry("Acme Tax"),
+                CancellationToken.None
+            ) is
+            { } receipt
+        )
+            bus.Published.Add(receipt);
 
         var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
         Assert.Null(requested.Quantity);
@@ -185,13 +182,16 @@ public sealed class SaaSReceiptRequestTests
                 tenant.ApplyProfile(1, "Acme Tax LLC", "12-3456789", "1 Main St, Miami, FL 33101", DateTime.UtcNow)
         );
 
-        await SaaSPaymentResultPublisher.PublishReceiptRequestAsync(
-            payment,
-            bus,
-            "corr",
-            tenants,
-            CancellationToken.None
-        );
+        if (
+            await SaaSPaymentResultMessages.ReceiptRequestAsync(
+                payment.Snapshot(),
+                "corr",
+                tenants,
+                CancellationToken.None
+            ) is
+            { } receipt
+        )
+            bus.Published.Add(receipt);
 
         var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
         Assert.Equal("Acme Tax", requested.OfficeName);
@@ -212,13 +212,16 @@ public sealed class SaaSReceiptRequestTests
             tenant => tenant.ApplyProfile(1, " ", null, "", DateTime.UtcNow)
         );
 
-        await SaaSPaymentResultPublisher.PublishReceiptRequestAsync(
-            payment,
-            bus,
-            "corr",
-            tenants,
-            CancellationToken.None
-        );
+        if (
+            await SaaSPaymentResultMessages.ReceiptRequestAsync(
+                payment.Snapshot(),
+                "corr",
+                tenants,
+                CancellationToken.None
+            ) is
+            { } receipt
+        )
+            bus.Published.Add(receipt);
 
         var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
         Assert.Null(requested.BilledTo);

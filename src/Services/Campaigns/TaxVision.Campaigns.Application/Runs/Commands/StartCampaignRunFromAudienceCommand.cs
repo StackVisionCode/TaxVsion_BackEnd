@@ -1,14 +1,9 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Options;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
-using TaxVision.Campaigns.Application.Contacts.Abstractions;
-using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Audience;
-using TaxVision.Campaigns.Application.Senders.Abstractions;
 using TaxVision.Campaigns.Domain.Campaigns;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Campaigns.Application.Runs.Commands;
 
@@ -16,7 +11,7 @@ namespace TaxVision.Campaigns.Application.Runs.Commands;
 /// Arranca una ejecución (<c>send-now</c>) resolviendo la audiencia desde <b>listas de contactos</b>
 /// y/o <b>entradas manuales</b> (Customer llega en fase posterior). La resolución (opt-out, sin destino,
 /// dedupe) vive en <see cref="AudienceResolver"/>; el arranque + fan-out se comparte con el send-now
-/// manual (<see cref="StartCampaignRunHandler.StartAndDispatchAsync"/>). SIN dinero.
+/// manual (<see cref="CampaignRunStarter.StartAsync"/>). SIN dinero.
 /// </summary>
 public sealed record StartCampaignRunFromAudienceCommand(
     Guid TenantId,
@@ -39,20 +34,14 @@ public sealed record StartCampaignRunFromAudienceCommand(
 
 public static class StartCampaignRunFromAudienceHandler
 {
+    // Sin transacción: la audiencia y el Wallet son llamadas HTTP (patrón BB-8, ver CampaignRunStarter.StartAsync).
+    [NonTransactional]
     public static async Task<Result<CampaignRunResponse>> Handle(
         StartCampaignRunFromAudienceCommand command,
         ICampaignRepository campaigns,
-        ICampaignRunRepository runs,
-        IContactRepository contacts,
-        IContactListRepository lists,
-        ICustomerAudienceClient customerClient,
-        ICampaignCustomerAssignmentReader assignmentReader,
-        IOptions<CampaignsVisibilityOptions> visibility,
-        ISenderProfileRepository senderProfiles,
-        IWalletSpendClient wallet,
-        IUnitOfWork unitOfWork,
+        CampaignAudienceService audience,
+        CampaignRunStarter starter,
         IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -62,44 +51,28 @@ public static class StartCampaignRunFromAudienceHandler
         if (campaign.Status == CampaignStatus.Archived)
             return Result.Failure<CampaignRunResponse>(CampaignErrors.Archived);
 
-        // Alcance de la fuente "Clients": selección explícita (CustomerIds) y/o "todos", acotado por la
-        // visibilidad por asignación (P2) cuando el actor no ve todo. Ver AudienceResolver.ResolveCustomerScopeAsync.
-        var (includeCustomers, restrictCustomerIds) = await AudienceResolver.ResolveCustomerScopeAsync(
-            command.TenantId,
-            command.TriggeredByUserId,
-            command.IncludeCustomers,
-            command.CustomerIds,
-            command.CanViewAllCustomers,
-            visibility.Value.Enabled,
-            assignmentReader,
+        var resolved = await audience.ResolveAsync(
+            campaign,
+            new CampaignAudienceRequest(
+                command.TriggeredByUserId,
+                command.ContactListIds ?? [],
+                command.Manual ?? [],
+                command.IncludeCustomers,
+                command.CustomerIds,
+                command.CanViewAllCustomers
+            ),
             ct
         );
+        if (resolved.IsFailure)
+            return Result.Failure<CampaignRunResponse>(resolved.Error);
 
-        var units = await AudienceResolver.ResolveAsync(
-            command.TenantId,
-            campaign.Channels,
-            command.ContactListIds ?? [],
-            command.Manual ?? [],
-            contacts,
-            lists,
-            includeCustomers,
-            customerClient,
-            restrictCustomerIds,
-            ct
-        );
-
-        return await StartCampaignRunHandler.StartAndDispatchAsync(
+        return await starter.StartAsync(
             campaign,
             command.TriggerKind,
             command.TriggeredByUserId,
-            units,
-            runs,
-            senderProfiles,
-            wallet,
+            resolved.Value,
             command.CallerBearerToken,
-            unitOfWork,
             bus,
-            correlation,
             ct
         );
     }

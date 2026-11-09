@@ -125,20 +125,6 @@ public static class CreateRoleHandler
 
         await roles.AddAsync(role, ct);
 
-        // También al crear: un consumidor que cachea rol → permisos no puede esperar al primer
-        // set-permissions para enterarse de que el rol existe.
-        await bus.PublishAsync(
-            new RolePermissionsChangedIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                RoleId = role.Id,
-                RoleName = role.Name,
-                PermissionCodes = ResolvePermissionCodesFor(role, catalogForActorTypeCheck),
-                PermissionsVersion = role.PermissionsVersion,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 command.TenantId,
@@ -154,6 +140,19 @@ public static class CreateRoleHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        // También al crear: un consumidor que cachea rol → permisos no puede esperar al primer
+        // set-permissions para enterarse de que el rol existe.
+        await bus.PublishAsync(
+            new RolePermissionsChangedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                RoleId = role.Id,
+                RoleName = role.Name,
+                PermissionCodes = ResolvePermissionCodesFor(role, catalogForActorTypeCheck),
+                PermissionsVersion = role.PermissionsVersion,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         return Result.Success(await ToResponseAsync(role, roles, ct));
     }
@@ -398,27 +397,24 @@ public static class SetRolePermissionsHandler
         // este rol nunca se entera de que perdieron/ganaron un permiso hasta que alguien les
         // toque el rol individualmente (que puede no pasar nunca).
         var catalog = await roles.GetPermissionsCatalogAsync(ct);
-        await bus.PublishAsync(
-            new RolePermissionsChangedIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                RoleId = role.Id,
-                RoleName = role.Name,
-                PermissionCodes = CreateRoleHandler.ResolvePermissionCodesFor(role, catalog),
-                PermissionsVersion = role.PermissionsVersion,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
+        var roleChanged = new RolePermissionsChangedIntegrationEvent
+        {
+            TenantId = command.TenantId,
+            RoleId = role.Id,
+            RoleName = role.Name,
+            PermissionCodes = CreateRoleHandler.ResolvePermissionCodesFor(role, catalog),
+            PermissionsVersion = role.PermissionsVersion,
+            CorrelationId = correlation.CorrelationId,
+        };
 
         // Y por titular: el evento de arriba solo dice qué tiene el rol. Los denies por usuario
         // viven solo acá, así que los códigos efectivos de cada titular los tiene que resolver Auth.
-        await RolePermissionsFanOut.PublishForRoleHoldersAsync(
+        var holderNotices = await RolePermissionsFanOut.PrepareForRoleHoldersAsync(
             command.TenantId,
             role.Id,
             catalog,
             users,
             roles,
-            bus,
             correlation.CorrelationId,
             ct
         );
@@ -439,6 +435,11 @@ public static class SetRolePermissionsHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        await bus.PublishAsync(roleChanged);
+        foreach (var notice in holderNotices)
+            await bus.PublishAsync(notice);
+
         return Result.Success();
     }
 }
@@ -470,13 +471,12 @@ public static class DeactivateRoleHandler
         // Desactivar un rol le retira permisos a todos sus titulares. Sin este fan-out la
         // proyección de cada uno se quedaba con los permisos del rol desactivado.
         var catalog = await roles.GetPermissionsCatalogAsync(ct);
-        await RolePermissionsFanOut.PublishForRoleHoldersAsync(
+        var holderNotices = await RolePermissionsFanOut.PrepareForRoleHoldersAsync(
             command.TenantId,
             role.Id,
             catalog,
             users,
             roles,
-            bus,
             correlation.CorrelationId,
             ct
         );
@@ -496,6 +496,10 @@ public static class DeactivateRoleHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        foreach (var notice in holderNotices)
+            await bus.PublishAsync(notice);
+
         return Result.Success();
     }
 }
@@ -531,13 +535,12 @@ public static class ReactivateRoleHandler
             return result;
 
         var catalog = await roles.GetPermissionsCatalogAsync(ct);
-        await RolePermissionsFanOut.PublishForRoleHoldersAsync(
+        var holderNotices = await RolePermissionsFanOut.PrepareForRoleHoldersAsync(
             command.TenantId,
             role.Id,
             catalog,
             users,
             roles,
-            bus,
             correlation.CorrelationId,
             ct
         );
@@ -557,6 +560,10 @@ public static class ReactivateRoleHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        foreach (var notice in holderNotices)
+            await bus.PublishAsync(notice);
+
         return Result.Success();
     }
 }

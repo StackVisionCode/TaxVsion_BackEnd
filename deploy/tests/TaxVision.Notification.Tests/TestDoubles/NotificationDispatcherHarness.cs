@@ -20,25 +20,38 @@ public sealed class NotificationDispatcherHarness
         INotificationLogRepository? logs = null,
         IUserNotificationPreferenceRepository? preferences = null,
         INotificationDispatchMetrics? metrics = null,
-        IUserEmailDirectoryRepository? userDirectory = null
+        IUserEmailDirectoryRepository? userDirectory = null,
+        ISmsSender? smsSender = null,
+        IUnitOfWork? unitOfWork = null
     )
     {
-        Dispatcher = new NotificationDispatcher(
-            new NoOpSmsSender(),
+        Dispatcher = TestDispatchers.Create(
+            smsSender ?? new NoOpSmsSender(),
             pushSender ?? new NoOpPushSender(),
             pushDeviceTokens ?? new NoOpPushDeviceTokenRepository(),
             logs ?? new NoOpNotificationLogRepository(),
-            preferences ?? new AlwaysEnabledPreferences(),
-            userDirectory ?? new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                preferences ?? new AlwaysEnabledPreferences(),
+                userDirectory ?? new InMemoryUserEmailDirectoryRepository()
+            ),
             Publisher,
-            new NoOpUnitOfWork(),
+            unitOfWork ?? new NoOpUnitOfWork(),
             metrics ?? new NoOpNotificationDispatchMetrics(),
-            NullLogger<NotificationDispatcher>.Instance
+            new InlinePushAttemptRecorder(logs)
         );
     }
 
     private sealed class NoOpNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public Task AddAsync(NotificationLog log, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task<(IReadOnlyList<NotificationLog> Items, int TotalCount)> GetPagedAsync(
@@ -82,6 +95,9 @@ public sealed class NotificationDispatcherHarness
 
     private sealed class NoOpPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task<PushDeviceToken?> FindByTokenAsync(Guid tenantId, string token, CancellationToken ct = default) =>

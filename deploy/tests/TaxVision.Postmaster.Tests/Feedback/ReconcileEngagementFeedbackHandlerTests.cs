@@ -3,6 +3,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Postmaster.Application.Feedback;
+using TaxVision.Postmaster.Application.Feedback.Commands.ApplyPolledDeliveryFeedback;
 using TaxVision.Postmaster.Application.Feedback.Commands.ProcessDeliveryFeedback;
 using TaxVision.Postmaster.Application.Feedback.Commands.ReconcileEngagementFeedback;
 using TaxVision.Postmaster.Domain.Sending;
@@ -69,16 +70,31 @@ public sealed class ReconcileEngagementFeedbackHandlerTests
             api is null ? [] : [Smtp2GoActivityFeedbackPollerTests.CreatePoller(api)]
         );
 
+    /// <summary>El comando de aplicar corre en línea, como <c>InvokeAsync</c>, sobre el mismo contexto.</summary>
+    private static FakeMessageBus ApplyingBus(PostmasterDbContext db)
+    {
+        var bus = new FakeMessageBus();
+        bus.OnInvoke = async message =>
+            await ApplyPolledDeliveryFeedbackHandler.Handle(
+                (ApplyPolledDeliveryFeedbackCommand)message,
+                new SentMessageRepository(db),
+                new DeliveryFeedbackReceiptRepository(db),
+                new UnmatchedDeliveryFeedbackRepository(db),
+                new SuppressionListRepository(db),
+                db,
+                bus,
+                NullLogger.Instance,
+                CancellationToken.None
+            );
+        return bus;
+    }
+
     private static Task<DeliveryFeedbackTally> ReconcileAsync(PostmasterDbContext db, FakeSmtp2GoHttpHandler? api) =>
         ReconcileEngagementFeedbackHandler.Handle(
-            new ReconcileEngagementFeedbackCommand(Now.AddHours(-48), Now, 2000, Now),
+            new ReconcileEngagementFeedbackCommand(Now.AddHours(-48), Now, 2000, Now, ApplyBatchSize: 50),
             Capabilities(api),
             new SentMessageRepository(db),
-            new DeliveryFeedbackReceiptRepository(db),
-            new UnmatchedDeliveryFeedbackRepository(db),
-            new SuppressionListRepository(db),
-            db,
-            new FakeMessageBus(),
+            ApplyingBus(db),
             NullLogger.Instance,
             CancellationToken.None
         );

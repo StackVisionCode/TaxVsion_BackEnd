@@ -5,6 +5,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Tenant.Application.Abstractions;
@@ -30,6 +31,8 @@ public static class InfrastructureRegistration
 {
     public static IServiceCollection AddTenantInfrastructure(this IServiceCollection services, IConfiguration config)
     {
+        services.TryAddSingleton(TimeProvider.System);
+
         services.AddDbContext<TenantDbContext>(opt => opt.UseSqlServer(config.GetConnectionString("Default")));
 
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<TenantDbContext>());

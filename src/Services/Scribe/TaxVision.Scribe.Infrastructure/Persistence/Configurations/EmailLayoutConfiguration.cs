@@ -21,6 +21,7 @@ public sealed class EmailLayoutConfiguration : IEntityTypeConfiguration<EmailLay
             .HasMaxLength(LayoutKey.MaxLength)
             .IsRequired();
 
+        builder.Property(l => l.RowVersion).IsRowVersion();
         builder.Property(l => l.Name).HasMaxLength(200).IsRequired();
         builder.Property(l => l.Description).HasMaxLength(2000);
         builder.Property(l => l.Status).HasConversion<string>().HasMaxLength(16).IsRequired();

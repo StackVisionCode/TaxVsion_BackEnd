@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -10,7 +11,6 @@ using Microsoft.Extensions.Options;
 using Minio;
 using Minio.DataModel.Args;
 using TaxVision.Signature.Application.Abstractions.Sealing;
-using Wolverine;
 
 namespace TaxVision.Signature.Infrastructure.Sealing.HttpClients;
 
@@ -20,11 +20,11 @@ namespace TaxVision.Signature.Infrastructure.Sealing.HttpClients;
 /// <para>
 /// DownloadAsync sigue el flujo HTTP+M2M presignado (initiate → GET, ver
 /// <see cref="ISignatureServiceTokenAcquirer"/>) — fuera del scope de la Fase D1, ver
-/// project_cloudstorage_hardening_plan.md. UploadAsync ya NO llama a CloudStorage por
+/// project_cloudstorage_hardening_plan.md. StageAsync ya NO llama a CloudStorage por
 /// HTTP (Fase D1): sube el objeto directo a MinIO con credenciales propias (IAM
-/// scoped a taxvision-temp/signature/*) y publica SaveFileRequestedIntegrationEvent
-/// para que CloudStorage lo registre y escanee de forma asincrona — el mismo patron
-/// que ya usa el flujo normal de subida (initiate → complete → scan async).
+/// scoped a taxvision-temp/signature/*) y devuelve SaveFileRequestedIntegrationEvent;
+/// quien llama lo publica para que CloudStorage lo registre y escanee de forma asincrona
+/// — el mismo patron que ya usa el flujo normal de subida (initiate → complete → scan async).
 /// </para>
 ///
 /// <para>Estructurado con métodos privados por fase para mantener SRP.</para>
@@ -34,7 +34,6 @@ internal sealed class SignatureCloudStorageClient(
     ISignatureServiceTokenAcquirer tokenAcquirer,
     IMinioClient minioClient,
     IOptions<SignatureMinioOptions> minioOptions,
-    IMessageBus bus,
     ICorrelationContext correlation,
     ILogger<SignatureCloudStorageClient> logger
 ) : ISignatureCloudStorageClient
@@ -59,7 +58,7 @@ internal sealed class SignatureCloudStorageClient(
         return await FetchBytesAsync(urlResult.Value, ct);
     }
 
-    public async Task<Result<Guid>> UploadAsync(
+    public async Task<Result<SaveFileRequestedIntegrationEvent>> StageAsync(
         Guid tenantId,
         SignatureFileUpload upload,
         CancellationToken ct = default
@@ -87,10 +86,12 @@ internal sealed class SignatureCloudStorageClient(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "MinIO PUT failed for sealed document upload ({FileName}).", upload.FileName);
-            return Result.Failure<Guid>(new Error("Signature.Storage.Upload", "MinIO PUT failed."));
+            return Result.Failure<SaveFileRequestedIntegrationEvent>(
+                new Error(SignatureStorage.TransientCode, "MinIO PUT failed.")
+            );
         }
 
-        await bus.PublishAsync(
+        return Result.Success(
             new SaveFileRequestedIntegrationEvent
             {
                 TenantId = tenantId,
@@ -109,8 +110,6 @@ internal sealed class SignatureCloudStorageClient(
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        return Result.Success(fileId);
     }
 
     public async Task<Result<Guid>> CopyToCustomerAsync(
@@ -226,7 +225,9 @@ internal sealed class SignatureCloudStorageClient(
     {
         var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
         return string.IsNullOrEmpty(token)
-            ? Result.Failure<string>(new Error("Signature.Storage.Auth", "No CloudStorage credentials available."))
+            ? Result.Failure<string>(
+                new Error(SignatureStorage.TransientCode, "No CloudStorage credentials available.")
+            )
             : Result.Success(token);
     }
 
@@ -235,11 +236,27 @@ internal sealed class SignatureCloudStorageClient(
         using var request = new HttpRequestMessage(HttpMethod.Post, $"storage/files/{fileId}/download-url");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        using var response = await httpClient.SendAsync(request, ct);
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(request, ct);
+        }
+        catch (Exception ex) when (IsNetworkFailure(ex, ct))
+        {
+            logger.LogWarning(ex, "CloudStorage download-url call threw.");
+            return Result.Failure<Uri>(new Error(SignatureStorage.TransientCode, "download-url request failed."));
+        }
+
+        using var _ = response;
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("CloudStorage download-url call failed ({Status}).", (int)response.StatusCode);
-            return Result.Failure<Uri>(new Error("Signature.Storage.Download", "download-url request failed."));
+            return Result.Failure<Uri>(
+                new Error(
+                    ErrorCodeFor(response.StatusCode, "Signature.Storage.Download"),
+                    "download-url request failed."
+                )
+            );
         }
         var payload = await response.Content.ReadFromJsonAsync<DownloadUrlResponseDto>(Json, ct);
         return payload is null
@@ -249,15 +266,38 @@ internal sealed class SignatureCloudStorageClient(
 
     private async Task<Result<byte[]>> FetchBytesAsync(Uri url, CancellationToken ct)
     {
-        using var response = await httpClient.GetAsync(url, ct);
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            logger.LogWarning("MinIO presigned download failed ({Status}).", (int)response.StatusCode);
-            return Result.Failure<byte[]>(new Error("Signature.Storage.Download", "presigned download failed."));
+            using var response = await httpClient.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("MinIO presigned download failed ({Status}).", (int)response.StatusCode);
+                return Result.Failure<byte[]>(
+                    new Error(
+                        ErrorCodeFor(response.StatusCode, "Signature.Storage.Download"),
+                        "presigned download failed."
+                    )
+                );
+            }
+            var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+            return Result.Success(bytes);
         }
-        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
-        return Result.Success(bytes);
+        catch (Exception ex) when (IsNetworkFailure(ex, ct))
+        {
+            logger.LogWarning(ex, "MinIO presigned download threw.");
+            return Result.Failure<byte[]>(new Error(SignatureStorage.TransientCode, "presigned download failed."));
+        }
     }
+
+    // 5xx, 408 y 429 pueden mejorar reintentando; el resto de 4xx no.
+    private static string ErrorCodeFor(HttpStatusCode status, string permanentCode) =>
+        (int)status >= 500 || status is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests
+            ? SignatureStorage.TransientCode
+            : permanentCode;
+
+    // Red caída o timeout del HttpClient; una cancelación pedida por el host no es un fallo del servicio.
+    private static bool IsNetworkFailure(Exception ex, CancellationToken ct) =>
+        ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested);
 
     // ==================== DTOs privados ====================
 

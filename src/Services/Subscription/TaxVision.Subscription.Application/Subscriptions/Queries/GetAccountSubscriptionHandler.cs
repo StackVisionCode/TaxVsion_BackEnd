@@ -124,8 +124,8 @@ public static class GetAccountSubscriptionHandler
                         openCheckout.Id,
                         openCheckout.SeatType.ToString(),
                         openCheckout.Quantity,
-                        openCheckout.ProratedTotalCents,
-                        openCheckout.Currency,
+                        openCheckout.ProratedTotal.Cents,
+                        openCheckout.ProratedTotal.Currency,
                         openCheckout.CheckoutUrl!,
                         openCheckout.CheckoutExpiresAtUtc!.Value
                     ),
@@ -166,8 +166,8 @@ public static class GetAccountSubscriptionHandler
                     intent.AddOnCode,
                     displayByCode.GetValueOrDefault(intent.AddOnCode, intent.AddOnCode),
                     intent.Quantity,
-                    intent.ProratedTotalCents,
-                    intent.Currency,
+                    intent.ProratedTotal.Cents,
+                    intent.ProratedTotal.Currency,
                     intent.CheckoutUrl!,
                     intent.CheckoutExpiresAtUtc!.Value
                 )

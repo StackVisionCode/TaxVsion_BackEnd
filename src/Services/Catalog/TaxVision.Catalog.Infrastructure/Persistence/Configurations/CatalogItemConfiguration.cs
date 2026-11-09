@@ -28,6 +28,7 @@ public sealed class CatalogItemConfiguration : IEntityTypeConfiguration<CatalogI
         builder.Property(i => i.IsDeleted).IsRequired();
         builder.Property(i => i.CreatedAtUtc).IsRequired();
         builder.Property(i => i.UpdatedAtUtc).IsRequired();
+        builder.Property(i => i.RowVersion).IsRowVersion();
 
         // Precio (multi-moneda) como owned type → columnas Price_Amount / Price_Currency.
         builder.OwnsOne(

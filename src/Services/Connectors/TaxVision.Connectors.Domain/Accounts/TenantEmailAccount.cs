@@ -18,7 +18,7 @@ public enum TenantEmailAccountStatus
 /// Connectors nunca decide si un mensaje entrante se guarda — eso es responsabilidad de Correspondence
 /// filtrando contra CustomerEmailAddresses (ver Connectors_Service_Design_And_Implementation_Plan.md).
 /// </summary>
-public sealed class TenantEmailAccount : TenantEntity
+public sealed class TenantEmailAccount : AggregateRoot
 {
     private TenantEmailAccount() { }
 
@@ -59,6 +59,8 @@ public sealed class TenantEmailAccount : TenantEntity
     /// <summary>Motivo de la revisión; ver <see cref="OfficeMailboxReviewReasons"/>.</summary>
     public string? ReviewReason { get; private set; }
 
+    public byte[] RowVersion { get; private set; } = [];
+
     public bool NeedsReview => ReviewRequiredAtUtc is not null;
 
     public static Result<TenantEmailAccount> Create(
@@ -74,7 +76,7 @@ public sealed class TenantEmailAccount : TenantEntity
         if (tenantId == Guid.Empty)
             return Result.Failure<TenantEmailAccount>(new Error("TenantEmailAccount.Tenant", "Tenant is required."));
 
-        var emailValidation = ValidateEmailAddress(emailAddress);
+        var emailValidation = MailboxAddress.Create(emailAddress);
         if (emailValidation.IsFailure)
             return Result.Failure<TenantEmailAccount>(emailValidation.Error);
 
@@ -86,7 +88,7 @@ public sealed class TenantEmailAccount : TenantEntity
         var account = new TenantEmailAccount
         {
             Id = Guid.NewGuid(),
-            EmailAddress = emailValidation.Value,
+            EmailAddress = emailValidation.Value.Value,
             ProviderCode = providerCode,
             DisplayName = displayName is { Length: > 200 } ? displayName[..200] : displayName,
             Status = TenantEmailAccountStatus.Draft,
@@ -155,10 +157,7 @@ public sealed class TenantEmailAccount : TenantEntity
     {
         if (!IsOffice || Status == TenantEmailAccountStatus.Disconnected)
             return null;
-        if (
-            !string.IsNullOrWhiteSpace(email)
-            && string.Equals(EmailAddress, email.Trim(), StringComparison.OrdinalIgnoreCase)
-        )
+        if (MailboxAddress.Create(email) is { IsSuccess: true } address && address.Value.Matches(EmailAddress))
             return OfficeMailboxReviewReasons.AddressOfOffboardedUser;
         return userId != Guid.Empty && CreatedByUserId == userId
             ? OfficeMailboxReviewReasons.ConnectedByOffboardedUser
@@ -201,26 +200,46 @@ public sealed class TenantEmailAccount : TenantEntity
 
     /// <summary>
     /// Cualquier estado activo → Error (refresh de token o renewal de watch fallaron tras reintentos,
-    /// Fases 4/6). Transición unconditional — un error puede llegar desde Connected o Active por igual.
+    /// Fases 4/6). Falla si ya estaba en Error o Disconnected: el aviso al usuario sale solo en la transición.
     /// </summary>
-    public void MarkError(DateTime erroredAtUtc)
+    public Result MarkError(TenantEmailAccountErrorCause cause, DateTime erroredAtUtc)
     {
-        Status = TenantEmailAccountStatus.Error;
-        LastActivityAtUtc = erroredAtUtc;
+        if (Status is TenantEmailAccountStatus.Error or TenantEmailAccountStatus.Disconnected)
+            return Result.Failure(InvalidTransition(TenantEmailAccountStatus.Error));
+
+        EnterError(cause, erroredAtUtc);
+        return Result.Success();
     }
 
     /// <summary>
     /// Connected|Active → Error: el servidor IMAP rechazó usuario o contraseña. Falla si ya estaba en
     /// Error o Disconnected, así el aviso al usuario sale una sola vez.
     /// </summary>
-    public Result MarkCredentialsRejected(DateTime rejectedAtUtc)
+    public Result MarkCredentialsRejected(TenantEmailAccountErrorCause cause, DateTime rejectedAtUtc)
     {
         if (Status is not (TenantEmailAccountStatus.Connected or TenantEmailAccountStatus.Active))
             return Result.Failure(InvalidTransition(TenantEmailAccountStatus.Error));
 
-        Status = TenantEmailAccountStatus.Error;
-        LastActivityAtUtc = rejectedAtUtc;
+        EnterError(cause, rejectedAtUtc);
         return Result.Success();
+    }
+
+    private void EnterError(TenantEmailAccountErrorCause cause, DateTime erroredAtUtc)
+    {
+        Status = TenantEmailAccountStatus.Error;
+        LastActivityAtUtc = erroredAtUtc;
+        AddDomainEvent(
+            new TenantEmailAccountErroredDomainEvent(
+                TenantId,
+                Id,
+                ProviderCode,
+                cause,
+                CreatedByUserId,
+                IsOffice,
+                OwnerUserId,
+                erroredAtUtc
+            )
+        );
     }
 
     public void TouchActivity(DateTime activityAtUtc) => LastActivityAtUtc = activityAtUtc;
@@ -264,20 +283,6 @@ public sealed class TenantEmailAccount : TenantEntity
         ProviderCode = newProvider;
         LastActivityAtUtc = now;
         return Result.Success();
-    }
-
-    private static Result<string> ValidateEmailAddress(string address)
-    {
-        if (string.IsNullOrWhiteSpace(address))
-            return Result.Failure<string>(new Error("TenantEmailAccount.EmailAddress", "Email address is required."));
-
-        var trimmed = address.Trim();
-        if (trimmed.Length > 320 || !trimmed.Contains('@') || trimmed.StartsWith('@') || trimmed.EndsWith('@'))
-            return Result.Failure<string>(
-                new Error("TenantEmailAccount.EmailAddress", $"'{address}' is not a valid email address.")
-            );
-
-        return Result.Success(trimmed.ToLowerInvariant());
     }
 
     private Error InvalidTransition(TenantEmailAccountStatus target) =>

@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using Wolverine;
 
 namespace TaxVision.Tenant.Application.Tenants.Abstractions;
 
@@ -36,10 +37,12 @@ public interface ITenantBrandingCloudStorageClient
 
     /// <summary>Publica SaveFileRequested para que CloudStorage catalogue y escanee el archivo ya
     /// subido. Se llama DESPUÉS de guardar el asset Pending.</summary>
+    /// <param name="bus">El del handler: el pedido sale con su outbox (BB-17).</param>
     Task RequestCatalogAsync(
         Guid tenantId,
         TenantLogoUpload upload,
         TenantBrandStoredFile stored,
+        IMessageBus bus,
         CancellationToken ct = default
     );
 

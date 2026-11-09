@@ -42,7 +42,7 @@ public static class SeatCheckoutProvisioning
         intent.MarkProvisioned(nowUtc);
 
         metrics.RecordSeatsPurchased(intent.SeatType.ToString(), intent.Quantity);
-        metrics.RecordSeatsBilled(intent.SeatType.ToString(), intent.ProratedTotalCents);
+        metrics.RecordSeatsBilled(intent.SeatType.ToString(), intent.ProratedTotal.Cents);
         await AuditEntryFactory.AppendAsync(
             audit,
             intent.TenantId,
@@ -56,7 +56,7 @@ public static class SeatCheckoutProvisioning
             {
                 SeatType = intent.SeatType.ToString(),
                 intent.Quantity,
-                BilledCents = intent.ProratedTotalCents,
+                BilledCents = intent.ProratedTotal.Cents,
                 Method = provisioningMethod,
             },
             reason: null,

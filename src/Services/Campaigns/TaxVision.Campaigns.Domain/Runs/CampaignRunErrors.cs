@@ -13,6 +13,7 @@ public static class CampaignRunErrors
     public static readonly Error NotFound = new("CampaignRun.NotFound", "Campaign run not found.");
     public static readonly Error RecipientNotFound = new("CampaignRun.RecipientNotFound", "Dispatch unit not found.");
     public static readonly Error NotDispatching = new("CampaignRun.NotDispatching", "The run is not dispatching.");
+    public static readonly Error NotCreated = new("CampaignRun.NotCreated", "The run is not waiting for funds.");
     public static readonly Error AlreadyDispatched = new(
         "CampaignRun.AlreadyDispatched",
         "The run already dispatched units and cannot be rejected."
@@ -28,6 +29,12 @@ public static class CampaignRunErrors
             $"Saldo insuficiente para enviar: faltan {dollars:0.######} {currency} ({deficitMicros} micros)."
         );
     }
+
+    // La fuente "Clients" no se pudo leer completa: fail-closed, no se envía a una parte. Transitorio (503).
+    public static readonly Error AudienceIncomplete = new(
+        "CampaignRun.AudienceIncomplete",
+        "The client directory did not respond completely; try again in a few seconds."
+    );
 
     // El Wallet no respondió al autorizar el cobro: fail-closed, el envío no sale. Transitorio (503).
     public static readonly Error WalletUnavailable = new(

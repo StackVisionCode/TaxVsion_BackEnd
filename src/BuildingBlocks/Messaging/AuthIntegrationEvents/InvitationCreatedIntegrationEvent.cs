@@ -1,3 +1,6 @@
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -5,12 +8,18 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// para enviar el email/SMS con el enlace de activación. El token viaja únicamente
 /// por el bus interno y nunca se persiste en claro.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.InvitationCreatedIntegrationEvent")]
 public sealed record InvitationCreatedIntegrationEvent : IntegrationEvent
 {
     public required Guid InvitationId { get; init; }
     public required string Email { get; init; }
     public required string ActorType { get; init; }
-    public required string RawToken { get; init; }
+    // NOT-04: solo viaja si Auth no pudo cifrar; no se borra para no romper mensajes en cola.
+    public string? RawToken { get; init; }
+
+    // NOT-04: el mismo token cifrado (AuthTokenPayloadSchemas). Notification lo prefiere.
+    public ProtectedPayload? ProtectedToken { get; init; }
+
     public required DateTime ExpiresAtUtc { get; init; }
     public string? TenantName { get; init; }
     public string? TenantSubdomain { get; init; }

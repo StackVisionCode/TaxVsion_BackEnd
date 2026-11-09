@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>Publicado por Subscription cuando un tenant compra/activa un add-on.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.AddOnActivatedIntegrationEvent")]
 public sealed record AddOnActivatedIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantAddOnId { get; init; }

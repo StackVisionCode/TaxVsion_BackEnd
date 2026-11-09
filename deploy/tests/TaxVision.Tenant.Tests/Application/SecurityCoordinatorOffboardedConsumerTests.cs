@@ -118,6 +118,7 @@ public sealed class SecurityCoordinatorOffboardedConsumerTests
             _bus,
             new NoopCorrelationContext(),
             NullLogger<OfficeCompliance>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 }

@@ -2,7 +2,6 @@
 // (ver anotación [Obsolete] en el enum). Silenciamos CS0618 en el archivo entero porque esa
 // tolerancia es intencional en cada mutación y en los predicados "pre-envío".
 #pragma warning disable CS0618
-using System.ComponentModel.DataAnnotations.Schema;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Domain.Platform;
@@ -163,6 +162,12 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public DateTime? RejectedAtUtc { get; private set; }
     public Guid? RejectedBySignerId { get; private set; }
 
+    /// <summary>Control de concurrencia: dos escrituras desde lecturas viejas no se pisan.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
+    /// <summary>El sellado se dio por fallido; el job de reconciliación no lo reintenta hasta un reseal manual.</summary>
+    public DateTime? SealingFailedAtUtc { get; private set; }
+
     /// <summary>Timestamp de la última tanda de reminders emitida por el scheduler.</summary>
     public DateTime? LastReminderSentAtUtc { get; private set; }
 
@@ -192,6 +197,11 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public Guid? LegalHoldLiftedByUserId { get; private set; }
     public DateTime? LegalHoldLiftedAtUtc { get; private set; }
 
+    private static readonly Error TypedNameMismatch = new(
+        "Signature.Public.TypedNameMismatch",
+        "Typed name must match the signer full name."
+    );
+
     public IReadOnlyList<Signer> Signers => _signers.AsReadOnly();
     public IReadOnlyList<RequestDocument> Documents => _documents.AsReadOnly();
 
@@ -200,19 +210,15 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
 
     // Puente de compilación durante la migración F8. No forma parte del modelo EF y se elimina
     // cuando todos los callers de T3-T6 consuman Documents de manera explícita.
-    [NotMapped]
     [Obsolete("Use Documents and select an explicit document.")]
     public Guid OriginalFileId => _documents.Count == 1 ? _documents[0].OriginalFileId : Guid.Empty;
 
-    [NotMapped]
     [Obsolete("Use Documents and select an explicit document.")]
     public DocumentHash? DocumentHashPre => _documents.Count == 1 ? _documents[0].DocumentHashPre : null;
 
-    [NotMapped]
     [Obsolete("Use Documents and select an explicit document.")]
     public Guid? SealedFileId => _documents.Count == 1 ? _documents[0].SealedFileId : null;
 
-    [NotMapped]
     [Obsolete("Use Documents and select an explicit document.")]
     public DocumentHash? DocumentHashPost => _documents.Count == 1 ? _documents[0].DocumentHashPost : null;
 
@@ -492,17 +498,6 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             fieldsInvalidated += _preparerFields.RemoveAll(field => field.DocumentId == documentId);
         }
 
-        AddDomainEvent(
-            new DocumentReplaced(
-                documentId,
-                oldFileId,
-                newFileId,
-                oldPageCount,
-                newPageCount,
-                fieldsInvalidated,
-                DateTime.UtcNow
-            )
-        );
         Touch();
         return Result.Success(
             new DocumentReplaceOutcome(oldFileId, newFileId, oldPageCount, newPageCount, fieldsInvalidated)
@@ -1918,6 +1913,50 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         return completed.IsSuccess ? Result.Success() : Result.Failure(completed.Error);
     }
 
+    /// <summary>Valida la evidencia sin mutar: va antes de anclar los valores de los campos.</summary>
+    public Result ValidateSignatureEvidence(
+        Guid signerId,
+        SignatureCaptureMethod captureMethod,
+        string? typedName,
+        Guid? signatureImageFileId
+    )
+    {
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        return captureMethod switch
+        {
+            SignatureCaptureMethod.Typed => ValidateTypedName(signer, typedName),
+            SignatureCaptureMethod.Drawn or SignatureCaptureMethod.Uploaded => ValidateImageFileId(
+                signatureImageFileId
+            ),
+            _ => Result.Failure(new Error("Signature.Public.UnknownMethod", "Unknown signature capture method.")),
+        };
+    }
+
+    private static Result ValidateTypedName(Signer signer, string? typedName)
+    {
+        if (string.IsNullOrWhiteSpace(typedName))
+            return Result.Failure(
+                new Error("Signature.Public.TypedNameEmpty", "Typed name is required for Typed method.")
+            );
+
+        return signer.FullName.Matches(typedName) ? Result.Success() : Result.Failure(TypedNameMismatch);
+    }
+
+    private static Result ValidateImageFileId(Guid? fileId)
+    {
+        if (fileId is null || fileId == Guid.Empty)
+            return Result.Failure(
+                new Error(
+                    "Signature.Public.ImageRequired",
+                    "SignatureImageFileId is required for Drawn/Uploaded methods."
+                )
+            );
+        return Result.Success();
+    }
+
     /// <summary>Completes only selected documents and keeps the signer active until all are complete.</summary>
     public Result<IReadOnlyList<Guid>> MarkSignerDocumentsCompleted(
         Guid signerId,
@@ -1972,6 +2011,14 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 )
             );
 
+        // Sin nombre (firma sin evidencia tipeada) no hay nada que comparar; lo exige ValidateSignatureEvidence.
+        if (
+            captureMethod == SignatureCaptureMethod.Typed
+            && typedName is not null
+            && !signer.FullName.Matches(typedName)
+        )
+            return Result.Failure<IReadOnlyList<Guid>>(TypedNameMismatch);
+
         var participatingDocumentIds = signer.Fields.Select(field => field.DocumentId).Distinct().ToList();
         var recordResult = signer.CompleteDocuments(
             documentIds,
@@ -1985,9 +2032,6 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         );
         if (recordResult.IsFailure)
             return Result.Failure<IReadOnlyList<Guid>>(recordResult.Error);
-
-        foreach (var documentId in recordResult.Value)
-            AddDomainEvent(new SignerCompletedDocument(signer.Id, documentId, signedAtUtc));
 
         // F7 — engancha la copia parcial una vez. El consumer la lee después via query y la emite.
         if (SendPartialCopyOnEachSignature && PartialCopyAudience.Includes(signer.Id))
@@ -2189,6 +2233,61 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         BumpRevocationEpoch();
         Touch();
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Reposición: todos los firmantes firmaron pero la solicitud quedó sin completar (dos firmas que se
+    /// pisaron). Devuelve <c>true</c> si la completó ahora y <c>false</c> si ya estaba completada.
+    /// Una <c>Expired</c> solo se completa con <paramref name="allowExpired"/> (D-SIG-1).
+    /// </summary>
+    public Result<bool> ReconcileCompletion(DateTime nowUtc, bool allowExpired)
+    {
+        var evaluation = EvaluateCompletionReconciliation(allowExpired);
+        if (evaluation.IsFailure || !evaluation.Value)
+            return evaluation;
+
+        TransitionToCompleted(nowUtc);
+        return Result.Success(true);
+    }
+
+    /// <summary>Lo mismo que <see cref="ReconcileCompletion"/> sin modificar nada (simulación).</summary>
+    public Result<bool> EvaluateCompletionReconciliation(bool allowExpired)
+    {
+        if (Status == SignatureRequestStatus.Completed)
+            return Result.Success(false);
+
+        var reconcilable =
+            Status == SignatureRequestStatus.InProgress || (allowExpired && Status == SignatureRequestStatus.Expired);
+        if (!reconcilable)
+            return Result.Failure<bool>(
+                new Error(
+                    "Signature.Request.NotReconcilable",
+                    $"A request in status {Status} cannot be completed by reconciliation."
+                )
+            );
+
+        if (!AllSignersHaveSigned())
+            return Result.Failure<bool>(
+                new Error("Signature.Request.SignersPending", "Not every signer has signed this request.")
+            );
+
+        return Result.Success(true);
+    }
+
+    public void MarkSealingFailed(DateTime failedAtUtc)
+    {
+        SealingFailedAtUtc = failedAtUtc;
+        Touch();
+    }
+
+    /// <summary>Reseal manual: el job vuelve a considerar la solicitud.</summary>
+    public void ClearSealingFailure()
+    {
+        if (SealingFailedAtUtc is null)
+            return;
+
+        SealingFailedAtUtc = null;
+        Touch();
     }
 
     public Result ExtendExpiration(SignatureLimits limits, int additionalHours)
@@ -2496,7 +2595,12 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public string? RotateSignerToken(Guid signerId, string tokenId)
     {
         var signer = FindSignerOrNull(signerId);
-        return signer?.RotateCurrentToken(tokenId);
+        if (signer is null)
+            return null;
+
+        var previous = signer.RotateCurrentToken(tokenId);
+        Touch();
+        return previous;
     }
 
     private bool EmailAlreadyPresent(SignerEmail email) => _signers.Any(s => s.Email.Value == email.Value);

@@ -37,6 +37,14 @@ public interface ICategoryRepository
     /// <summary>¿La categoría tiene subcategorías o ítems? (para no borrar categorías en uso).</summary>
     Task<bool> HasChildrenAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default);
 
+    /// <summary>Sube por <c>ParentCategoryId</c> sin pasar de <paramref name="maxDepth"/>, incluidas las borradas: un ciclo viejo llena la lista hasta el tope.</summary>
+    Task<IReadOnlyList<Guid>> GetAncestorIdsAsync(
+        Guid tenantId,
+        Guid categoryId,
+        int maxDepth,
+        CancellationToken ct = default
+    );
+
     Task<IReadOnlyList<Category>> ListAsync(Guid tenantId, bool activeOnly, CancellationToken ct = default);
 
     Task AddAsync(Category category, CancellationToken ct = default);

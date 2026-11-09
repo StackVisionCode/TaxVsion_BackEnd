@@ -6,6 +6,7 @@ using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Audit;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
+using Wolverine.Attributes;
 
 namespace TaxVision.Correspondence.Application.Compose;
 
@@ -29,9 +30,26 @@ namespace TaxVision.Correspondence.Application.Compose;
 /// sin ganar nada: el resultado es idéntico (409, Postmaster nunca llamado) tanto si se chequea acá
 /// como si se deja que <see cref="Draft.MarkSending"/> lo rechace.
 /// </para>
+///
+/// <para>
+/// Sin transacción propia (COR-08): <see cref="Draft.MarkSending"/> se confirma antes de llamar a Postmaster y el
+/// resultado se guarda aparte. Si ese guardado falla o no hay respuesta, el borrador queda en Sending y lo cierra
+/// <see cref="DraftSendReconciler"/>; nunca vuelve a Draft, así que un nuevo intento del usuario no reenvía.
+/// </para>
 /// </summary>
 public static class SendDraftHandler
 {
+    // Sin respuesta legible de Postmaster, el correo pudo haber salido.
+    private static readonly HashSet<string> OutcomeUnknownCodes =
+    [
+        "PostmasterClient.RequestFailed",
+        "PostmasterClient.EmptyResponse",
+        "PostmasterClient.UnexpectedStatus",
+    ];
+
+    public static bool IsOutcomeUnknown(Error error) => OutcomeUnknownCodes.Contains(error.Code);
+
+    [NonTransactional]
     public static async Task<Result<SendDraftResult>> Handle(
         SendDraftCommand command,
         IDraftRepository drafts,
@@ -58,6 +76,25 @@ public static class SendDraftHandler
 
         var sendResult = await SendViaPostmasterAsync(draft, postmaster, ct);
 
+        // Postmaster ya contestó: el resultado se guarda aunque el usuario haya cancelado el pedido.
+        var saveCt = CancellationToken.None;
+
+        // 202 de Postmaster: el envío sigue en curso; el borrador queda en Sending y no se marca enviado.
+        if (sendResult is { IsSuccess: true, Value.InProgress: true })
+        {
+            await RecordAuditLogAsync(command, "Send in progress.", auditLogs, correlation, logger, saveCt);
+            await unitOfWork.SaveChangesAsync(saveCt);
+            return Result.Success(new SendDraftResult(sendResult.Value.SentMessageId, null, InProgress: true));
+        }
+
+        if (sendResult.IsFailure && IsOutcomeUnknown(sendResult.Error))
+        {
+            var detail = $"Send outcome unknown ({sendResult.Error.Code}).";
+            await RecordAuditLogAsync(command, detail, auditLogs, correlation, logger, saveCt);
+            await unitOfWork.SaveChangesAsync(saveCt);
+            return Result.Success(new SendDraftResult(Guid.Empty, null, InProgress: true));
+        }
+
         return sendResult.IsSuccess
             ? await HandleSendSuccessAsync(
                 command,
@@ -67,7 +104,7 @@ public static class SendDraftHandler
                 correlation,
                 unitOfWork,
                 logger,
-                ct
+                saveCt
             )
             : await HandleSendFailureAsync(
                 command,
@@ -77,7 +114,7 @@ public static class SendDraftHandler
                 correlation,
                 unitOfWork,
                 logger,
-                ct
+                saveCt
             );
     }
 
@@ -129,7 +166,7 @@ public static class SendDraftHandler
         return Result.Success();
     }
 
-    private static Task<Result<SendDraftPostmasterResult>> SendViaPostmasterAsync(
+    internal static Task<Result<SendDraftPostmasterResult>> SendViaPostmasterAsync(
         Draft draft,
         IPostmasterClient postmaster,
         CancellationToken ct
@@ -196,7 +233,7 @@ public static class SendDraftHandler
         CancellationToken ct
     )
     {
-        var markSentResult = draft.MarkSent(postmasterResult.SentMessageId);
+        var markSentResult = draft.MarkSent(postmasterResult.SentMessageId, postmasterResult.InternetMessageId);
         if (markSentResult.IsFailure)
             return Result.Failure<SendDraftResult>(markSentResult.Error);
 

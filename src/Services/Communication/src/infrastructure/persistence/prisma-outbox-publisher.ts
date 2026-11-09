@@ -21,7 +21,8 @@ export class PrismaOutboxPublisher implements IntegrationEventPublisher {
         TenantId: event.tenantId,
         EventType: event.eventType,
         Payload: JSON.stringify(event),
-        CorrelationId: event.correlationId ?? null,
+        // La columna es NVarChar(64) y .NET acepta X-Correlation-Id de hasta 128: se recorta, como el consumer in-app.
+        CorrelationId: event.correlationId?.slice(0, 64) ?? null,
         OccurredAtUtc: new Date(event.occurredOnUtc),
       },
     });

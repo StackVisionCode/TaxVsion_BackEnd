@@ -15,6 +15,9 @@ public sealed record SmsMediaInput(string Url, string ContentType, string? FileN
 /// </summary>
 public sealed class SmsMessage : TenantEntity
 {
+    /// <summary>Motivo de supresión cuando el cliente apagó los SMS en su política de contacto.</summary>
+    public const string ContactPolicySuppressionCode = "contact_policy";
+
     private readonly List<SmsMedia> _media = [];
 
     public Guid CustomerId { get; private set; }
@@ -43,6 +46,18 @@ public sealed class SmsMessage : TenantEntity
     public DateTime? FailedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Momento en que se reservó la fila para enviar. Null en filas que nunca salieron al proveedor.</summary>
+    public DateTime? SendAttemptedAtUtc { get; private set; }
+
+    /// <summary>El lote se cobra al Wallet (envío individual). La conciliación liquida solo estos lotes.</summary>
+    public bool WalletCharged { get; private set; }
+
+    /// <summary>Concurrencia optimista: el webhook, la conciliación y el registro del envío escriben la misma fila.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
+    /// <summary>Envío pedido sin resultado final todavía (en curso o desconocido).</summary>
+    public bool IsUnresolved => Status is SmsMessageStatus.Pending or SmsMessageStatus.OutcomeUnknown;
+
     public IReadOnlyCollection<SmsMedia> Media => _media;
 
     private SmsMessage() { }
@@ -59,7 +74,8 @@ public sealed class SmsMessage : TenantEntity
         string? sourceContext,
         IReadOnlyList<SmsMediaInput> media,
         DateTime nowUtc,
-        string? recipientName = null
+        string? recipientName = null,
+        bool walletCharged = false
     )
     {
         if (tenantId == Guid.Empty)
@@ -85,6 +101,7 @@ public sealed class SmsMessage : TenantEntity
             Status = SmsMessageStatus.Pending,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
+            WalletCharged = walletCharged,
         };
         message.SetTenant(tenantId);
 
@@ -94,15 +111,55 @@ public sealed class SmsMessage : TenantEntity
         return Result.Success(message);
     }
 
-    /// <summary>El proveedor aceptó el envío (aún sin confirmación de entrega). Idempotente.</summary>
-    public Result MarkAccepted(string providerMessageId, DateTime nowUtc)
+    /// <summary>La fila queda reservada para enviar (fase 1). Solo en <see cref="SmsMessageStatus.Pending"/>.</summary>
+    public Result MarkSendAttempted(DateTime nowUtc)
     {
-        if (Status == SmsMessageStatus.Accepted)
+        if (Status != SmsMessageStatus.Pending)
+            return Result.Failure(SmsErrors.InvalidTransition);
+
+        SendAttemptedAtUtc ??= nowUtc;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>No se sabe si el proveedor lo envió (timeout después de pedirlo). Idempotente.</summary>
+    public Result MarkOutcomeUnknown(
+        DateTime nowUtc,
+        string? providerMessageId,
+        string code,
+        string? reason,
+        string? providerCode = null
+    )
+    {
+        if (Status == SmsMessageStatus.OutcomeUnknown)
             return Result.Success();
         if (Status != SmsMessageStatus.Pending)
             return Result.Failure(SmsErrors.InvalidTransition);
 
+        if (!string.IsNullOrWhiteSpace(providerCode))
+            ProviderCode = providerCode;
         ProviderMessageId = providerMessageId;
+        Status = SmsMessageStatus.OutcomeUnknown;
+        FailureCode = code;
+        FailureReason = reason;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>El proveedor aceptó el envío (aún sin confirmación de entrega). Idempotente.
+    /// <paramref name="providerCode"/> registra el proveedor que lo envió cuando hubo failover.</summary>
+    public Result MarkAccepted(string providerMessageId, DateTime nowUtc, string? providerCode = null)
+    {
+        if (Status == SmsMessageStatus.Accepted)
+            return Result.Success();
+        if (Status is not (SmsMessageStatus.Pending or SmsMessageStatus.OutcomeUnknown))
+            return Result.Failure(SmsErrors.InvalidTransition);
+
+        if (!string.IsNullOrWhiteSpace(providerCode))
+            ProviderCode = providerCode;
+        ProviderMessageId = providerMessageId;
+        FailureCode = null;
+        FailureReason = null;
         Status = SmsMessageStatus.Accepted;
         AcceptedAtUtc = nowUtc;
         UpdatedAtUtc = nowUtc;
@@ -114,7 +171,7 @@ public sealed class SmsMessage : TenantEntity
     {
         if (Status == SmsMessageStatus.Delivered)
             return Result.Success();
-        if (Status is not (SmsMessageStatus.Accepted or SmsMessageStatus.Pending))
+        if (Status is not (SmsMessageStatus.Accepted or SmsMessageStatus.Pending or SmsMessageStatus.OutcomeUnknown))
             return Result.Failure(SmsErrors.InvalidTransition);
 
         Status = SmsMessageStatus.Delivered;
@@ -128,7 +185,7 @@ public sealed class SmsMessage : TenantEntity
     {
         if (Status == SmsMessageStatus.Failed)
             return Result.Success();
-        if (Status is not (SmsMessageStatus.Pending or SmsMessageStatus.Accepted))
+        if (Status is not (SmsMessageStatus.Pending or SmsMessageStatus.Accepted or SmsMessageStatus.OutcomeUnknown))
             return Result.Failure(SmsErrors.InvalidTransition);
 
         Status = SmsMessageStatus.Failed;
@@ -144,7 +201,7 @@ public sealed class SmsMessage : TenantEntity
     {
         if (Status == SmsMessageStatus.Undeliverable)
             return Result.Success();
-        if (Status is not (SmsMessageStatus.Pending or SmsMessageStatus.Accepted))
+        if (Status is not (SmsMessageStatus.Pending or SmsMessageStatus.Accepted or SmsMessageStatus.OutcomeUnknown))
             return Result.Failure(SmsErrors.InvalidTransition);
 
         Status = SmsMessageStatus.Undeliverable;
@@ -155,8 +212,8 @@ public sealed class SmsMessage : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>Suprimido por opt-out (el destinatario hizo STOP): NO se envía al proveedor.</summary>
-    public Result MarkSuppressed(string reason, DateTime nowUtc)
+    /// <summary>Suprimido (STOP o política de contacto del cliente): NO se envía al proveedor.</summary>
+    public Result MarkSuppressed(string reason, DateTime nowUtc, string code = "suppressed")
     {
         if (Status == SmsMessageStatus.Suppressed)
             return Result.Success();
@@ -164,7 +221,7 @@ public sealed class SmsMessage : TenantEntity
             return Result.Failure(SmsErrors.InvalidTransition);
 
         Status = SmsMessageStatus.Suppressed;
-        FailureCode = "suppressed";
+        FailureCode = code;
         FailureReason = reason;
         UpdatedAtUtc = nowUtc;
         return Result.Success();

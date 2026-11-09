@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// el timestamp del bloqueo automático. Notification lo consume para alertar al staff
 /// cuando la cuenta se acerca al lock y para pintar el estado en el dashboard.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerPinFailedIntegrationEvent")]
 public sealed record SignerPinFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

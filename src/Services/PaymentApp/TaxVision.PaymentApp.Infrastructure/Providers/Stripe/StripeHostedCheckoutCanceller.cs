@@ -75,6 +75,9 @@ public sealed class StripeHostedCheckoutCanceller
         var message = ex.StripeError?.Message ?? ex.Message ?? string.Empty;
         return message.Contains("already expired", StringComparison.OrdinalIgnoreCase)
             || message.Contains("already completed", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("cannot be expired", StringComparison.OrdinalIgnoreCase);
+            || message.Contains("cannot be expired", StringComparison.OrdinalIgnoreCase)
+            // Forma actual: "... can be expired. This Checkout Session has a status of `expired`."
+            || message.Contains("status of `expired`", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("status of `complete`", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -16,6 +16,31 @@ public sealed class StockLevelTests
         StockLevel.Create(Tenant, Item, qty, min, 0, 0, Now).Value;
 
     [Fact]
+    public void ApplyCatalogTracking_ignores_events_not_newer_than_last_applied()
+    {
+        var level = StockLevel.CreateFromCatalog(Tenant, Item, tracked: true, Now, Now).Value;
+
+        Assert.False(level.ApplyCatalogTracking(false, Now, Now));
+        Assert.False(level.ApplyCatalogTracking(false, Now.AddSeconds(-1), Now));
+        Assert.True(level.IsTracked);
+        Assert.Equal(Now, level.CatalogStateAtUtc);
+
+        Assert.True(level.ApplyCatalogTracking(false, Now.AddSeconds(1), Now));
+        Assert.False(level.IsTracked);
+        Assert.Equal(Now.AddSeconds(1), level.CatalogStateAtUtc);
+    }
+
+    [Fact]
+    public void CreateFromCatalog_untracked_is_a_level_in_zero_that_remembers_the_event()
+    {
+        var level = StockLevel.CreateFromCatalog(Tenant, Item, tracked: false, Now, Now).Value;
+
+        Assert.False(level.IsTracked);
+        Assert.Equal(0, level.QuantityOnHand);
+        Assert.Equal(Now, level.CatalogStateAtUtc);
+    }
+
+    [Fact]
     public void Purchase_and_return_add()
     {
         var s = New(10);

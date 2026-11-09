@@ -16,6 +16,7 @@ public sealed class ReminderConfiguration : IEntityTypeConfiguration<ReminderAgg
         builder.Property(r => r.Status).HasConversion<int>().IsRequired();
         builder.Property(r => r.CreatedAtUtc).IsRequired();
         builder.Property(r => r.FiredAtUtc);
+        builder.Property(r => r.AnchorAsOfUtc);
         builder.Property(r => r.ResolvedAtUtc);
         builder.Property(r => r.CancellationReason).HasMaxLength(100);
         builder.Property(r => r.SnoozeCount).IsRequired();

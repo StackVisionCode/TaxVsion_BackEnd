@@ -71,7 +71,8 @@ public sealed class WebhookEvent : TenantEntity
             is WebhookEventStatus.Applied
                 or WebhookEventStatus.Rejected
                 or WebhookEventStatus.Duplicate
-                or WebhookEventStatus.Stale;
+                or WebhookEventStatus.Stale
+                or WebhookEventStatus.NeedsReview;
 
     public Result MarkProcessing(DateTime nowUtc)
     {
@@ -127,6 +128,21 @@ public sealed class WebhookEvent : TenantEntity
 
         Status = WebhookEventStatus.Failed;
         ProcessingError = error;
+        ProcessedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Éxito del proveedor que no se aplicó: queda terminal y visible para revisión manual.</summary>
+    public Result MarkNeedsReview(Guid relatedTenantPaymentId, string reason, DateTime nowUtc)
+    {
+        if (Status != WebhookEventStatus.Processing)
+            return Result.Failure(
+                new Error("WebhookEvent.InvalidTransition", $"Cannot mark for review from {Status}.")
+            );
+
+        Status = WebhookEventStatus.NeedsReview;
+        RelatedTenantPaymentId = relatedTenantPaymentId;
+        ProcessingError = reason;
         ProcessedAtUtc = nowUtc;
         return Result.Success();
     }

@@ -8,7 +8,7 @@ namespace TaxVision.Auth.Domain.Terms;
 /// este historial existe para poder probar, ante una disputa legal, que el tenant
 /// acepto esa version especifica en un momento dado — nunca se actualiza in place.
 ///
-/// PayFlow Fase 6 (retrofit): TermsVersionId enlaza con Onboarding.TermsVersions.TermsVersion
+/// PayFlow Fase 6 (retrofit): TermsVersionId enlaza con TermsVersion
 /// (Opcion C del plan). ContentHash es nullable a nivel de columna solo para las filas legacy
 /// backfilleadas por la migracion de retrofit (no tenian un documento con hash rastreado) —
 /// AcceptedInContext distingue ese caso ("LegacyPreV2") de las aceptaciones nuevas, que si

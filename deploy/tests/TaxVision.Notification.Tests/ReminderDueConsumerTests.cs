@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -99,6 +100,35 @@ public sealed class ReminderDueConsumerTests
         Assert.Equal(NotificationCategory.Reminders, harness.Preferences.LastAskedCategory);
     }
 
+    /// <summary>Con el gateway real: la preferencia (Reminders, Email) apagada también corta el correo.</summary>
+    [Fact]
+    public async Task Email_is_not_queued_when_user_disabled_reminders_email()
+    {
+        var harness = new Harness(preferencesEnabled: false, withActiveDevice: true);
+        harness.Directory.Seed(TenantId, UserId, "perez@example.com");
+        var publisher = new CapturingIntegrationEventPublisher();
+        var gateway = harness.RealGateway(publisher);
+
+        await ReminderDueConsumer.Handle(
+            Due(),
+            harness.Dispatcher,
+            harness.EmailResolver,
+            gateway,
+            new StubScribeRenderClient(),
+            Options.Create(new PortalOptions()),
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.DoesNotContain(
+            publisher.Published,
+            message => message is NotificationsEmailSendRequestedIntegrationEvent
+        );
+        Assert.Empty(publisher.SentToQueue);
+        Assert.Empty(harness.Logs.Logs);
+        Assert.Empty(harness.PushSender.Sent);
+    }
+
     /// <summary>
     /// Staff suspendido o retirado: no le llega por ningún canal. El correo lo corta el resolver y
     /// in-app/push el gate del dispatcher, sin que el consumer tenga que saberlo.
@@ -197,19 +227,27 @@ public sealed class ReminderDueConsumerTests
             if (withActiveDevice)
                 devices.AddActiveDevice(TenantId, UserId, "token-1");
 
-            Dispatcher = new NotificationDispatcher(
+            Dispatcher = TestDispatchers.Create(
                 new NoOpSmsSender(),
                 PushSender,
                 devices,
                 Logs,
-                Preferences,
-                Directory,
+                TestDeliveryGates.For(Preferences, Directory),
                 new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
-                NullLogger<NotificationDispatcher>.Instance
+                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(Logs)
             );
         }
+
+        internal EventBasedEmailDispatchGateway RealGateway(CapturingIntegrationEventPublisher publisher) =>
+            new(
+                publisher,
+                Logs,
+                new NoOpUnitOfWork(),
+                TestDeliveryGates.For(Preferences, Directory),
+                NullLogger<EventBasedEmailDispatchGateway>.Instance
+            );
     }
 
     private sealed class RecordingPushSender : IPushSender
@@ -225,6 +263,9 @@ public sealed class ReminderDueConsumerTests
 
     private sealed class FakeDeviceRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         private readonly List<PushDeviceToken> _devices = [];
 
         public void AddActiveDevice(Guid tenantId, Guid userId, string token) =>
@@ -256,6 +297,15 @@ public sealed class ReminderDueConsumerTests
 
     private sealed class RecordingLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public List<NotificationLog> Logs { get; } = [];
 
         public Task AddAsync(NotificationLog log, CancellationToken ct = default)
@@ -336,6 +386,21 @@ public sealed class ReminderDueConsumerTests
 
     private sealed class StubScribeRenderClient : IScribeRenderClient
     {
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ct);
+
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
             string eventKey,
             Guid tenantId,

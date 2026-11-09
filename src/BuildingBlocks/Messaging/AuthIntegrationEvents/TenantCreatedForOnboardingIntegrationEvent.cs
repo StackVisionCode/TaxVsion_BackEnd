@@ -1,4 +1,5 @@
 using Wolverine.Persistence.Sagas;
+using Wolverine.Attributes;
 
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
@@ -12,6 +13,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// <see cref="IntegrationEvent.TenantId"/> ya es el tenant real recién creado (no
 /// <c>PlatformTenant.Id</c>): a partir de este evento el resto de la cadena opera dentro del tenant.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantCreatedForOnboardingIntegrationEvent")]
 public sealed record TenantCreatedForOnboardingIntegrationEvent : IntegrationEvent
 {
     [SagaIdentity]

@@ -43,6 +43,8 @@ public static class DependencyInjection
         services.AddScoped<ICodeRedemptionRepository, CodeRedemptionRepository>();
         services.AddScoped<ICodeCompensationRepository, CodeCompensationRepository>();
         services.AddScoped<ICodeUsageCounterRepository, CodeUsageCounterRepository>();
+        services.AddScoped<ILateCommitReviewRepository, LateCommitReviewRepository>();
+        services.AddScoped<ICodesAuditTrail, TaxVision.Growth.Infrastructure.Persistence.Audit.GrowthCodesAuditTrail>();
         services.AddScoped<SqlBusinessIdempotencyExecutor>();
         services.AddScoped<IBusinessIdempotencyExecutor>(provider =>
             provider.GetRequiredService<SqlBusinessIdempotencyExecutor>()
@@ -51,7 +53,16 @@ public static class DependencyInjection
         services.AddSingleton<ICodeTokenHasher, HmacSha256CodeTokenHasher>();
         services.AddSingleton<IReferralCodeTokenHasher, HmacSha256ReferralCodeTokenHasher>();
         services.AddSingleton<IReferralCodeTokenGenerator, HmacSha256ReferralCodeTokenGenerator>();
-        services.AddSingleton<IPaymentOutcomeVerifier, FailClosedPaymentOutcomeVerifier>();
+        // GRW-1: verificación real del commit tardío contra PaymentApp (M2M, solo lectura).
+        services.AddHttpClient<IPaymentOutcomeVerifier, PaymentAppPaymentOutcomeVerifier>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentOutcomeVerifierOptions>>().Value;
+                if (!string.IsNullOrWhiteSpace(opt.PaymentAppBaseUrl))
+                    http.BaseAddress = new Uri(NormalizeBaseUrl(opt.PaymentAppBaseUrl));
+                http.Timeout = opt.Timeout;
+            }
+        );
         services.AddScoped<IReferralProgramRepository, ReferralProgramRepository>();
         services.AddScoped<IReferralCodeRepository, ReferralCodeRepository>();
         services.AddScoped<IReferralAttributionRepository, ReferralAttributionRepository>();
@@ -105,6 +116,11 @@ public static class DependencyInjection
         services
             .AddOptions<PaymentOutcomeVerifierOptions>()
             .Bind(configuration.GetSection(PaymentOutcomeVerifierOptions.SectionName))
+            .Validate(
+                value => !value.Enabled || Uri.TryCreate(value.PaymentAppBaseUrl, UriKind.Absolute, out _),
+                "Growth:PaymentOutcomeVerifier:PaymentAppBaseUrl is required when the verifier is enabled."
+            )
+            .Validate(value => value.Timeout > TimeSpan.Zero, "Growth:PaymentOutcomeVerifier:Timeout must be positive.")
             .ValidateOnStart();
 
         return services;

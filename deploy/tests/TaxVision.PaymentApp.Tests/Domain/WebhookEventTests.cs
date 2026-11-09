@@ -22,6 +22,35 @@ public sealed class WebhookEventTests
     }
 
     [Fact]
+    public void MarkNeedsReview_FromProcessing_IsTerminal()
+    {
+        var webhookEvent = CreateReceivedEvent();
+        var paymentId = Guid.NewGuid();
+        webhookEvent.MarkProcessing(DateTime.UtcNow);
+
+        var result = webhookEvent.MarkNeedsReview(paymentId, "SaaSPayment.InvalidTransition", DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(WebhookEventStatus.NeedsReview, webhookEvent.Status);
+        Assert.Equal(paymentId, webhookEvent.RelatedSaaSPaymentId);
+        Assert.Equal("SaaSPayment.InvalidTransition", webhookEvent.ProcessingError);
+        Assert.True(webhookEvent.IsTerminal);
+        // Una nueva entrega del provider no lo reprocesa.
+        Assert.True(webhookEvent.MarkReprocessing(DateTime.UtcNow).IsFailure);
+    }
+
+    [Fact]
+    public void MarkNeedsReview_outside_Processing_fails()
+    {
+        var webhookEvent = CreateReceivedEvent();
+
+        var result = webhookEvent.MarkNeedsReview(Guid.NewGuid(), "WebhookEvent.AmountMismatch", DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(WebhookEventStatus.Received, webhookEvent.Status);
+    }
+
+    [Fact]
     public void Receive_starts_in_Received_status()
     {
         var webhookEvent = CreateReceivedEvent();

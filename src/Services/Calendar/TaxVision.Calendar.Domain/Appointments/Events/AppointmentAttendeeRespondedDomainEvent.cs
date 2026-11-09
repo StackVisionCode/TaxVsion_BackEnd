@@ -8,5 +8,7 @@ public sealed record AppointmentAttendeeRespondedDomainEvent(
     Guid TenantId,
     Guid AttendeeId,
     AttendeeResponse Response,
-    DateTime RespondedAtUtc
+    DateTime RespondedAtUtc,
+    Guid OrganizerUserId,
+    Guid? UserId
 ) : IDomainEvent;

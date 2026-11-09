@@ -1,4 +1,4 @@
-using TaxVision.Auth.Infrastructure.Onboarding.Security;
+using TaxVision.Auth.Infrastructure.Security;
 
 namespace TaxVision.Auth.Infrastructure.RateLimiting;
 
@@ -10,7 +10,7 @@ namespace TaxVision.Auth.Infrastructure.RateLimiting;
 /// fuente misma de los tokens M2M — no tiene un acquirer HTTP-hacia-Auth propio porque eso sería
 /// llamarse a sí mismo por HTTP para algo que puede resolver en proceso. Auth ya mintea tokens de
 /// servicio localmente para sus propios clientes salientes (Subscription/PaymentApp/Tenant/
-/// Documents/CloudStorage) vía <see cref="OnboardingServiceTokenCache"/> (que a su vez llama a
+/// Documents/CloudStorage) vía <see cref="ServiceTokenCache"/> (que a su vez llama a
 /// <c>IJwtTokenGenerator.GenerateScopedServiceToken</c> directo, sin pasar por el endpoint HTTP
 /// <c>POST auth/service-token</c>) — este adaptador reusa exactamente ese mecanismo en vez de
 /// inventar uno nuevo.
@@ -22,7 +22,7 @@ namespace TaxVision.Auth.Infrastructure.RateLimiting;
 /// <c>actor_type=Service</c>, sin scopes de permiso.
 /// </para>
 /// </summary>
-internal sealed class AuthServiceTokenAcquirer(OnboardingServiceTokenCache tokenCache)
+internal sealed class AuthServiceTokenAcquirer(ServiceTokenCache tokenCache)
     : BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
 {
     private const string ClientId = "auth-ratelimit-plan-catalog";

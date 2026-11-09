@@ -22,5 +22,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Customer\TaxVision.Customer.Domain\TaxVision.Customer.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Customer\TaxVision.Customer.Api\TaxVision.Customer.Api.csproj" />
+    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" Aliases="BbTesting" />
   </ItemGroup>
 </Project>

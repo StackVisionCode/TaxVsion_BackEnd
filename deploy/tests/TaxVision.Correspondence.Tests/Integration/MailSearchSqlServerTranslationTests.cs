@@ -30,9 +30,7 @@ public sealed class MailSearchSqlServerTranslationTests
     [InlineData(true, true)]
     public async Task Search_and_folder_queries_translate_on_sql_server(bool restricted, bool gated)
     {
-        var connectionString = Environment.GetEnvironmentVariable("CORRESPONDENCE_SQLSERVER_TESTS");
-        if (string.IsNullOrWhiteSpace(connectionString))
-            return;
+        var connectionString = CorrespondenceIntegrationDatabase.ConnectionString;
 
         var tenantId = Guid.NewGuid();
         await using var db = new CorrespondenceDbContext(
@@ -179,9 +177,7 @@ public sealed class MailSearchSqlServerTranslationTests
     [Fact]
     public async Task A_bounce_round_trips_on_sql_server_inside_a_rolled_back_transaction()
     {
-        var connectionString = Environment.GetEnvironmentVariable("CORRESPONDENCE_SQLSERVER_TESTS");
-        if (string.IsNullOrWhiteSpace(connectionString))
-            return;
+        var connectionString = CorrespondenceIntegrationDatabase.ConnectionString;
 
         var tenantId = Guid.NewGuid();
         var account = Guid.NewGuid();
@@ -219,7 +215,6 @@ public sealed class MailSearchSqlServerTranslationTests
             new DraftRepository(db),
             new EmailThreadRepository(db),
             new DeliveryNoticeRepository(db),
-            new IncomingEmailRepository(db),
             db,
             new Ingest.FakeMessageBus(),
             new Projections.FakeCorrelationContext(),
@@ -249,9 +244,7 @@ public sealed class MailSearchSqlServerTranslationTests
     [Fact]
     public async Task People_aggregate_on_sql_server_inside_a_rolled_back_transaction()
     {
-        var connectionString = Environment.GetEnvironmentVariable("CORRESPONDENCE_SQLSERVER_TESTS");
-        if (string.IsNullOrWhiteSpace(connectionString))
-            return;
+        var connectionString = CorrespondenceIntegrationDatabase.ConnectionString;
 
         var tenantId = Guid.NewGuid();
         var account = Guid.NewGuid();

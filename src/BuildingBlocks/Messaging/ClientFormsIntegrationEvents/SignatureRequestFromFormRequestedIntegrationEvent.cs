@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
+using Wolverine.Attributes;
 
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
@@ -8,6 +9,7 @@ namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 /// nunca viajan bytes del PDF. El email del firmante va en claro porque la cola es punto a punto
 /// (un solo consumidor, Signature) y Signature lo necesita en claro para invitar a firmar.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.SignatureRequestFromFormRequestedIntegrationEvent")]
 public sealed record SignatureRequestFromFormRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid RequestId { get; init; }

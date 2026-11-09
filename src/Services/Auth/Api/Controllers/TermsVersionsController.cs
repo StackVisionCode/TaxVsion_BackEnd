@@ -7,9 +7,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Auth.Api.Common;
-using TaxVision.Auth.Application.Onboarding.TermsVersions.Commands;
-using TaxVision.Auth.Application.Onboarding.TermsVersions.Queries;
-using TaxVision.Auth.Domain.Onboarding.TermsVersions;
+using TaxVision.Auth.Application.Terms.Versions.Commands;
+using TaxVision.Auth.Application.Terms.Versions.Queries;
+using TaxVision.Auth.Domain.Terms;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;

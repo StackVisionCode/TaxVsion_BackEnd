@@ -15,6 +15,7 @@ public enum SmsMessageStatusFilter
     Failed,
     Undeliverable,
     Suppressed,
+    OutcomeUnknown,
 }
 
 /// <summary>Fila del historial de SMS. NO expone datos de infraestructura (proveedor, id de proveedor):
@@ -77,5 +78,7 @@ public sealed record SmsStatsResponse(
     int Failed,
     int Undeliverable,
     int Suppressed,
-    int OptedOut
+    int OptedOut,
+    // Sin confirmación del proveedor: todavía puede salir.
+    int OutcomeUnknown = 0
 );

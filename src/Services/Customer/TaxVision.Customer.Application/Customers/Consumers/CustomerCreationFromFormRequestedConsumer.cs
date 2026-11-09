@@ -187,7 +187,7 @@ public static class CustomerCreationFromFormRequestedConsumer
             return;
         }
 
-        var created = await RegisterAsync(context, draft, ct);
+        var created = await RegisterAsync(context, draft, creationLock, ct);
         if (created.IsFailure)
         {
             await PublishRejectedAsync(context, created.Error.Code);
@@ -203,6 +203,7 @@ public static class CustomerCreationFromFormRequestedConsumer
     private static Task<Result<CustomerResponse>> RegisterAsync(
         CreationContext context,
         CustomerFormDraft draft,
+        ICustomerCreationLock creationLock,
         CancellationToken ct
     ) =>
         CreateCustomerHandler.Handle(
@@ -210,6 +211,7 @@ public static class CustomerCreationFromFormRequestedConsumer
             context.Repository,
             context.Duplicates,
             context.EmployeeDirectory,
+            creationLock,
             context.UnitOfWork,
             context.Bus,
             context.Correlation,
@@ -260,7 +262,7 @@ public static class CustomerCreationFromFormRequestedConsumer
     private static async Task RecordOriginAsync(CreationContext context, Guid customerId, CancellationToken ct)
     {
         var customer =
-            await context.Repository.GetByIdAsync(customerId, ct)
+            await context.Repository.GetByIdAsync(context.Command.TenantId, customerId, ct)
             ?? throw new InvalidOperationException("The customer created from the form was not found.");
         var origin = CustomerOrigin.Create(context.Command.SourceService, context.Command.SourceReferenceId);
         Result recorded = origin.IsSuccess ? customer.RecordOrigin(origin.Value) : origin;

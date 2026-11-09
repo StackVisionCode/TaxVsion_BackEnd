@@ -89,6 +89,7 @@ public static class AddOnCheckoutPaidConsumer
                 return;
             }
 
+            await unitOfWork.SaveChangesAsync(ct);
             await bus.PublishAsync(
                 new AddOnActivatedIntegrationEvent
                 {
@@ -100,7 +101,6 @@ public static class AddOnCheckoutPaidConsumer
                     CorrelationId = correlation.CorrelationId,
                 }
             );
-            await unitOfWork.SaveChangesAsync(ct);
 
             bus.TenantId = evt.TenantId.ToString();
             await bus.RecalculateEntitlementsSafelyAsync(evt.TenantId, logger, ct);

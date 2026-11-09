@@ -28,7 +28,6 @@ public static class CancelTaskHandler
         ITaskSeriesMaterializer seriesMaterializer,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -45,57 +44,35 @@ public static class CancelTaskHandler
         if (cancelled.IsFailure)
             return Result.Failure<TaskResponse>(cancelled.Error);
 
-        if (wasOpen)
-            await CascadeAsync(command, task, unblocking, hierarchy, seriesMaterializer, bus, correlation, ct);
+        IReadOnlyList<TaskUnblockedIntegrationEvent> unblocked = wasOpen
+            ? await CascadeAsync(command, task, unblocking, hierarchy, seriesMaterializer, ct)
+            : [];
 
         await unitOfWork.SaveChangesAsync(ct);
+
+        foreach (var notice in unblocked)
+            await bus.PublishAsync(notice);
+
         return Result.Success(TaskResponse.From(task));
     }
 
     /// <summary>
-    /// Cancelar arrastra lo mismo que completar —sucesoras, padre, serie, aviso a Reminder— pero sin
-    /// fecha de cierre: la ocurrencia siguiente se calcula desde la regla, no desde un cierre que no
-    /// hubo.
+    /// Cancelar arrastra lo mismo que completar —sucesoras, padre y serie— pero sin fecha de cierre: la
+    /// ocurrencia siguiente se calcula desde la regla. Los avisos los devuelve TaskCancelledDomainEventHandler.
     /// </summary>
-    private static async Task CascadeAsync(
+    private static async Task<IReadOnlyList<TaskUnblockedIntegrationEvent>> CascadeAsync(
         CancelTaskCommand command,
         TaskItem task,
         ITaskUnblockingService unblocking,
         ITaskHierarchyService hierarchy,
         ITaskSeriesMaterializer seriesMaterializer,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
-        await unblocking.ApplyPredecessorClosedAsync(command.TenantId, task.Id, ct);
+        var unblocked = await unblocking.ApplyPredecessorClosedAsync(command.TenantId, task.Id, ct);
         await hierarchy.ApplyChildClosedAsync(command.TenantId, task.ParentTaskId, ct);
 
-        var next = await seriesMaterializer.ApplyInstanceClosedAsync(task, null, ct);
-        if (next is not null)
-            await TaskDueReminder.PublishIfDueAsync(next, bus, correlation);
-
-        await bus.PublishAsync(BuildEvent(task, command, correlation.CorrelationId));
-        await bus.PublishAsync(
-            TaskReminderContracts.Closed(
-                task,
-                TaskReminderContracts.ClosureReasons.Cancelled,
-                correlation.CorrelationId
-            )
-        );
+        await seriesMaterializer.ApplyInstanceClosedAsync(task, null, ct);
+        return unblocked;
     }
-
-    private static TaskCancelledIntegrationEvent BuildEvent(
-        TaskItem task,
-        CancelTaskCommand command,
-        string correlationId
-    ) =>
-        new()
-        {
-            TenantId = task.TenantId,
-            CorrelationId = correlationId,
-            TaskId = task.Id,
-            Reason = command.Reason!.Trim(),
-            CancelledByUserId = command.ByUserId,
-        };
 }

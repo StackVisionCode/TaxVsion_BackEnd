@@ -32,7 +32,8 @@ public sealed record AppointmentResponse(
     int? TaxYear,
     bool IsVirtual,
     string? MeetingShortCode,
-    IReadOnlyList<AppointmentAttendeeResponse> Attendees
+    IReadOnlyList<AppointmentAttendeeResponse> Attendees,
+    int? ReminderLeadMinutes
 )
 {
     public static AppointmentResponse From(Appointment appointment)
@@ -72,7 +73,8 @@ public sealed record AppointmentResponse(
             appointment.TaxYear,
             appointment.IsVirtual,
             appointment.MeetingShortCode,
-            attendees
+            attendees,
+            appointment.ReminderLeadMinutes
         );
     }
 }

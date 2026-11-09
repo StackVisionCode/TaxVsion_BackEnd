@@ -23,8 +23,8 @@ public sealed class GetPublicBrandingBySlugHandlerTests
             BrandSurface.Crm,
             b =>
             {
-                b.SetColor(BrandColorToken.Primary, "#1E466B");
-                b.SetColor(BrandColorToken.Accent, "#67BAF4");
+                b.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow);
+                b.SetColor(BrandColorToken.Accent, "#67BAF4", DateTime.UtcNow);
             }
         );
 
@@ -54,8 +54,8 @@ public sealed class GetPublicBrandingBySlugHandlerTests
             BrandSurface.Crm,
             b =>
             {
-                b.SetColor(BrandColorToken.Primary, "#AA0000");
-                b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, 40, 40);
+                b.SetColor(BrandColorToken.Primary, "#AA0000", DateTime.UtcNow);
+                b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, 40, 40, DateTime.UtcNow);
                 b.ConfirmAsset(BrandAssetKey.Logo, fileId, "image/png", 100, 40, 40, DateTime.UtcNow);
             }
         );
@@ -80,7 +80,7 @@ public sealed class GetPublicBrandingBySlugHandlerTests
         brandRepo.Seed(
             tenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var result = await GetPublicBrandingBySlugHandler.Handle(
@@ -129,7 +129,7 @@ public sealed class GetPublicBrandingBySlugHandlerTests
 
         public void Seed(Guid tenantId, BrandSurface surface, Action<TenantBrand> configure)
         {
-            var brand = TenantBrand.Create(tenantId, surface);
+            var brand = TenantBrand.Create(tenantId, surface, DateTime.UtcNow);
             configure(brand);
             _brands.Add(brand);
         }

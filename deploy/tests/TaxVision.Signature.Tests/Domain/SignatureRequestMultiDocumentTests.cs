@@ -34,7 +34,7 @@ public sealed class SignatureRequestMultiDocumentTests
     }
 
     [Fact]
-    public void Signer_completion_emits_one_domain_event_per_participating_document()
+    public void Signer_completion_records_one_completion_per_participating_document()
     {
         var request = NewReadyRequest();
         var signer = request.Signers.Single();
@@ -43,12 +43,12 @@ public sealed class SignatureRequestMultiDocumentTests
         var result = request.MarkSignerSigned(signer.Id, DateTime.UtcNow, null, null);
 
         Assert.True(result.IsSuccess);
-        var events = request.DomainEvents.OfType<SignerCompletedDocument>().ToList();
-        Assert.Equal(2, events.Count);
         Assert.Equal(
             request.Documents.Select(document => document.Id).Order(),
-            events.Select(e => e.DocumentId).Order()
+            signer.DocumentCompletions.Select(completion => completion.DocumentId).Order()
         );
+        // SIG-BB1: Signature no levanta eventos de dominio; los avisos salen por el handler.
+        Assert.Empty(request.DomainEvents);
     }
 
     [Fact]
@@ -109,7 +109,6 @@ public sealed class SignatureRequestMultiDocumentTests
         Assert.True(duplicate.IsSuccess);
         Assert.Empty(duplicate.Value);
         Assert.Single(signer.DocumentCompletions);
-        Assert.Single(request.DomainEvents.OfType<SignerCompletedDocument>());
     }
 
     [Fact]

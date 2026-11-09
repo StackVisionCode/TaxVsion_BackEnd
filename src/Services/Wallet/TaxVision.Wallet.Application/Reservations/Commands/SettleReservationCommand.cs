@@ -1,12 +1,11 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Wallet.Application.Reservations.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Domain.Reservations;
-using Wolverine;
+using TaxVision.Wallet.Domain.ValueObjects;
+using TaxVision.Wallet.Domain.Wallet;
 
 namespace TaxVision.Wallet.Application.Reservations.Commands;
 
@@ -28,8 +27,6 @@ public static class SettleReservationHandler
         IReservationRepository reservations,
         IWalletRepository wallets,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<WalletReservation> logger,
         CancellationToken ct
     )
@@ -49,6 +46,19 @@ public static class SettleReservationHandler
                 new SettlementView(reservation.ConsumedMicros, reservation.ReleasedMicros, reservation.Currency)
             );
 
+        // Vencida por TTL: ya se liberó todo; el consumo tardío no se cobra (lo absorbe la plataforma).
+        if (reservation.Status == ReservationStatus.Expired)
+        {
+            logger.LogWarning(
+                "Late settle for expired reservation {RefType}:{RefId} (tenant {TenantId}, {ConsumedUnits} units); not charged.",
+                command.ReferenceType,
+                command.ReferenceId,
+                command.TenantId,
+                command.ConsumedUnits
+            );
+            return Result.Failure<SettlementView>(ReservationErrors.Expired);
+        }
+
         var reserved = reservation.ReservedMicros;
         var reservedUnits = reservation.ReservedUnits;
         // Prorrateo estimado por unidades usadas (clamp 0..reservadas). Entero en micros, sin pérdida.
@@ -56,7 +66,7 @@ public static class SettleReservationHandler
         var consumed = reservedUnits > 0 ? reserved * usedUnits / reservedUnits : 0;
         var released = reserved - consumed;
 
-        var wallet = await wallets.GetByTenantAsync(command.TenantId, ct);
+        var wallet = await wallets.GetByTenantAsync(command.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
         if (wallet is null)
         {
             logger.LogError(
@@ -68,10 +78,28 @@ public static class SettleReservationHandler
             return Result.Failure<SettlementView>(ReservationErrors.NotFound);
         }
 
+        var consumedAmount = WalletMoney.Create(consumed, reservation.Currency);
+        if (consumedAmount.IsFailure)
+            return Result.Failure<SettlementView>(consumedAmount.Error);
+        var releasedAmount = WalletMoney.Create(released, reservation.Currency);
+        if (releasedAmount.IsFailure)
+            return Result.Failure<SettlementView>(releasedAmount.Error);
+
+        // Validar todo antes de mutar: después de tocar un agregado rastreado no se devuelve Failure.
+        var total = consumedAmount.Value.Add(releasedAmount.Value);
+        if (total.IsFailure)
+            return Result.Failure<SettlementView>(total.Error);
+        var covered = wallet.EnsureHoldCovers(total.Value);
+        if (covered.IsFailure)
+            return Result.Failure<SettlementView>(covered.Error);
+        var settled = reservation.Settle(consumedAmount.Value, releasedAmount.Value);
+        if (settled.IsFailure)
+            return Result.Failure<SettlementView>(settled.Error);
+
         if (consumed > 0)
         {
             var consume = wallet.Consume(
-                consumed,
+                consumedAmount.Value,
                 opKey: $"wallet-consume:{command.ReferenceType}:{command.ReferenceId:N}",
                 referenceId: command.ReferenceId
             );
@@ -83,7 +111,7 @@ public static class SettleReservationHandler
         if (released > 0)
         {
             var release = wallet.Release(
-                released,
+                releasedAmount.Value,
                 opKey: $"wallet-release:{command.ReferenceType}:{command.ReferenceId:N}",
                 referenceId: command.ReferenceId
             );
@@ -92,21 +120,8 @@ public static class SettleReservationHandler
             await wallets.AddLedgerEntryAsync(release.Value, ct);
         }
 
-        var settled = reservation.Settle(consumed, released);
-        if (settled.IsFailure)
-            return Result.Failure<SettlementView>(settled.Error);
-
+        // El aviso de saldo sale del evento de dominio del monedero (BB-1).
         await unitOfWork.SaveChangesAsync(ct);
-
-        // Tiempo real: el saldo cambió (consumo + liberación) → avisa para refrescar el front.
-        await bus.PublishAsync(
-            new WalletBalanceChangedIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                Reason = "settle",
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
 
         return Result.Success(new SettlementView(consumed, released, reservation.Currency));
     }

@@ -17,6 +17,7 @@ internal sealed class CustomerEmailProjectionConfiguration : IEntityTypeConfigur
         builder.Property(p => p.NormalizedEmail).IsRequired().HasMaxLength(320);
         builder.Property(p => p.DisplayName).IsRequired().HasMaxLength(200);
         builder.Property(p => p.IsArchived).IsRequired();
+        builder.Property(p => p.SourceOccurredOnUtc);
         builder.Property(p => p.CreatedAtUtc).IsRequired();
         builder.Property(p => p.UpdatedAtUtc).IsRequired();
 

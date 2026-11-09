@@ -4,6 +4,7 @@ using TaxVision.Customer.Application.Customers.Commands.PortalMfa;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -134,8 +135,11 @@ public sealed class CustomerPortalMfaHandlerTests
 
     private sealed class SingleCustomer(DomainCustomer customer) : ICustomerRepository
     {
-        public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct) =>
-            Task.FromResult<DomainCustomer?>(id == customer.Id ? customer : null);
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
+            Task.FromResult<DomainCustomer?>(id == customer.Id && tenantId == customer.TenantId ? customer : null);
+
+        public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+            Task.FromResult(new[] { customer }.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));
 
         public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(
             Guid tenantId,
@@ -172,5 +176,60 @@ public sealed class CustomerPortalMfaHandlerTests
         ) => throw new NotImplementedException();
 
         public Task AddAsync(DomainCustomer customer, CancellationToken ct) => throw new NotImplementedException();
+
+        public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeCustomerId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindCustomerIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeCustomerId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeRelationId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindRelationIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeRelationId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public Task<IReadOnlyList<DomainCustomer>> ListNonPrimaryAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<int> CountActiveByAssignedPreparerAsync(Guid tenantId, Guid preparerUserId, CancellationToken ct) =>
+            Task.FromResult(0);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListArchivedAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
+            Task.FromResult(OffboardingClientCounts.None);
+
+        public Task<Guid?> FindIdByOriginAsync(
+            Guid tenantId,
+            string sourceService,
+            Guid sourceReferenceId,
+            CancellationToken ct
+        ) => Task.FromResult<Guid?>(null);
     }
 }

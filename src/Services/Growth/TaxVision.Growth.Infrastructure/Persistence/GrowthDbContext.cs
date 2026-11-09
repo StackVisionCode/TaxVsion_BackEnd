@@ -22,15 +22,12 @@ using TaxVision.Referrals.Domain.Fraud;
 using TaxVision.Referrals.Domain.Programs;
 using TaxVision.Referrals.Domain.Qualifications;
 using TaxVision.Referrals.Domain.Rewards;
-using Wolverine;
 
 namespace TaxVision.Growth.Infrastructure.Persistence;
 
-public sealed class GrowthDbContext(
-    DbContextOptions<GrowthDbContext> options,
-    ITenantContext tenantContext,
-    IMessageBus? messageBus = null
-) : DbContext(options), IUnitOfWork
+public sealed class GrowthDbContext(DbContextOptions<GrowthDbContext> options, ITenantContext tenantContext)
+    : DbContext(options),
+        IUnitOfWork
 {
     public DbSet<CodeDefinition> CodeDefinitions => Set<CodeDefinition>();
     public DbSet<CodeRuleVersion> CodeRules => Set<CodeRuleVersion>();
@@ -40,6 +37,7 @@ public sealed class GrowthDbContext(
     public DbSet<CodeRedemption> CodeRedemptions => Set<CodeRedemption>();
     public DbSet<CodeCompensation> CodeCompensations => Set<CodeCompensation>();
     public DbSet<CodeUsageCounter> CodeUsageCounters => Set<CodeUsageCounter>();
+    public DbSet<LateCommitReview> LateCommitReviews => Set<LateCommitReview>();
 
     public DbSet<ReferralProgram> ReferralPrograms => Set<ReferralProgram>();
     public DbSet<ReferralCode> ReferralCodes => Set<ReferralCode>();
@@ -78,20 +76,7 @@ public sealed class GrowthDbContext(
 
         try
         {
-            // Persistir el estado del agregado ANTES de despachar sus domain events, y recién
-            // después publicarlos + limpiarlos. Wolverine corre este SaveChanges dentro de su
-            // transacción ambiental (AutoApplyTransactions + WithDbContextAbstraction en
-            // Program.cs) sin confirmarla todavía, así que los eventos publicados acá se
-            // encolan en el outbox durable (PersistMessagesWithSqlServer) y se entregan de
-            // forma atómica al commitear la misma transacción — nunca antes.
-            //
-            // El orden importa: si base.SaveChangesAsync falla (concurrencia, unique-violation),
-            // NO se despacha ni se limpia ningún evento, así que no hay eventos fantasma para un
-            // estado que nunca se persistió y el retry de Wolverine vuelve a materializarlos desde
-            // el agregado recargado. Despachar/limpiar antes del guardado (bug B-01) los perdía.
-            var affected = await base.SaveChangesAsync(cancellationToken);
-            await DispatchDomainEventsAsync(cancellationToken);
-            return affected;
+            return await base.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException ex)
         {
@@ -145,36 +130,5 @@ public sealed class GrowthDbContext(
 
         if (invalidEntry is not null)
             throw new InvalidOperationException("Growth audit entries are append-only.");
-    }
-
-    private async Task DispatchDomainEventsAsync(CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            var aggregates = ChangeTracker
-                .Entries<AggregateRoot>()
-                .Select(entry => entry.Entity)
-                .Where(aggregate => aggregate.DomainEvents.Count > 0)
-                .ToList();
-
-            if (aggregates.Count == 0)
-                return;
-
-            if (messageBus is null)
-            {
-                throw new InvalidOperationException(
-                    "IMessageBus is required to persist aggregate roots with pending domain events."
-                );
-            }
-
-            foreach (var aggregate in aggregates)
-            {
-                var domainEvents = aggregate.DomainEvents.ToList();
-                aggregate.ClearDomainEvents();
-
-                foreach (var domainEvent in domainEvents)
-                    await messageBus.PublishAsync(domainEvent);
-            }
-        }
     }
 }

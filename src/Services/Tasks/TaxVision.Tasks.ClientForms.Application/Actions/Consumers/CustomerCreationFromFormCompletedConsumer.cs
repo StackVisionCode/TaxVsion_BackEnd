@@ -60,7 +60,7 @@ public static class CustomerCreationFromFormCompletedConsumer
     // Un Completed repetido, o de un comando que no es nuestro, no cambia nada.
     private static bool Complete(FormRequest request, CustomerCreationFromFormCompletedIntegrationEvent evt)
     {
-        var completed = request.CompleteAction(
+        var completed = request.Actions.Complete(
             evt.RequestId,
             FormActionNames.CustomerResult,
             evt.CustomerId,

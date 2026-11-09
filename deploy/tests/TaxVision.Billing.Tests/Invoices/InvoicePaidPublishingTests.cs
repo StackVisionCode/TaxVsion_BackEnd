@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Domain;
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -6,6 +7,8 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
+using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
+using TaxVision.Billing.Application.Invoices.GenerateInvoicePdf;
 using TaxVision.Billing.Application.Invoices.IntegrationEvents;
 using TaxVision.Billing.Application.Invoices.IssueInvoice;
 using TaxVision.Billing.Application.Invoices.RecordManualPayment;
@@ -17,6 +20,10 @@ using Xunit;
 
 namespace TaxVision.Billing.Tests.Invoices;
 
+/// <summary>
+/// Un solo InvoicePaid por pago: cuenta lo publicado a mano más lo que devuelve el handler del evento de dominio.
+/// Si conviven los dos caminos, el aviso sale dos veces y esto falla. Ningún evento de dominio sale por el bus.
+/// </summary>
 public sealed class InvoicePaidPublishingTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
@@ -44,7 +51,6 @@ public sealed class InvoicePaidPublishingTests
             Options.Create(new BillingVisibilityOptions()),
             new UnitOfWorkStub(),
             bus,
-            new CorrelationContextStub("manual-payment"),
             TimeProvider.System,
             CancellationToken.None
         );
@@ -54,15 +60,16 @@ public sealed class InvoicePaidPublishingTests
             Options.Create(new BillingVisibilityOptions()),
             new UnitOfWorkStub(),
             bus,
-            new CorrelationContextStub("manual-payment"),
             TimeProvider.System,
             CancellationToken.None
         );
 
-        var published = Assert.Single(bus.Published.OfType<InvoicePaidIntegrationEvent>());
+        var emitted = Emitted(bus, invoice);
+        var published = Assert.Single(emitted.OfType<InvoicePaidIntegrationEvent>());
         Assert.Equal(invoice.Id, published.InvoiceId);
-        Assert.Equal("manual-payment", published.CorrelationId);
+        Assert.Equal(DomainEventReplay.CorrelationId, published.CorrelationId);
         Assert.Null(published.ReceiptId);
+        Assert.Single(emitted.OfType<GenerateInvoicePdfCommand>());
     }
 
     [Fact]
@@ -88,25 +95,31 @@ public sealed class InvoicePaidPublishingTests
         await InvoicePaymentSucceededConsumer.Handle(
             payment,
             repository,
+            new InMemoryUnappliedPaymentRepository(),
             new UnitOfWorkStub(),
             bus,
             correlation,
+            new NoopMetrics(),
             NullLogger<Invoice>.Instance,
             CancellationToken.None
         );
         await InvoicePaymentSucceededConsumer.Handle(
             payment,
             repository,
+            new InMemoryUnappliedPaymentRepository(),
             new UnitOfWorkStub(),
             bus,
             correlation,
+            new NoopMetrics(),
             NullLogger<Invoice>.Instance,
             CancellationToken.None
         );
 
-        var published = Assert.Single(bus.Published.OfType<InvoicePaidIntegrationEvent>());
-        Assert.Equal("online-payment", published.CorrelationId);
+        var emitted = Emitted(bus, invoice);
+        var published = Assert.Single(emitted.OfType<InvoicePaidIntegrationEvent>());
         Assert.Equal(PaymentMethod.Online.ToString(), published.PaymentMethod);
+        Assert.Equal(invoice.AmountPaid.AmountCents, published.AmountPaidCents);
+        Assert.Single(emitted.OfType<GenerateInvoicePdfCommand>());
     }
 
     [Fact]
@@ -125,21 +138,31 @@ public sealed class InvoicePaidPublishingTests
             new InventoryClientStub(),
             new UnitOfWorkStub(),
             bus,
-            new CorrelationContextStub("carried-credit"),
             TimeProvider.System,
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
-        var published = Assert.Single(bus.Published.OfType<InvoicePaidIntegrationEvent>());
+        var emitted = Emitted(bus, invoice);
+        var published = Assert.Single(emitted.OfType<InvoicePaidIntegrationEvent>());
         Assert.Equal(invoice.AmountPaid.AmountCents, published.AmountPaidCents);
-        Assert.Equal("carried-credit", published.CorrelationId);
+        Assert.Equal(invoice.InvoiceNumber, published.InvoiceNumber);
+        // El PDF de la emisión lo encadena EnsureInvoicePaymentLink; no se pide otro.
+        Assert.Single(emitted.OfType<EnsureInvoicePaymentLinkCommand>());
+        Assert.Empty(emitted.OfType<GenerateInvoicePdfCommand>());
+    }
+
+    // Lo publicado a mano más lo que el commit despacharía por la cola domain-events.
+    private static IReadOnlyList<object> Emitted(FakeMessageBus bus, Invoice invoice)
+    {
+        Assert.DoesNotContain(bus.Published, m => m is IDomainEvent);
+        return [.. bus.Published, .. DomainEventReplay.Dispatch([invoice])];
     }
 
     private static Invoice CreateIssuedInvoice()
     {
         var invoice = CreateDraftInvoice();
-        var issued = invoice.Issue("INV-2026-00001", Now, Now.AddDays(30), ActorUserId);
+        var issued = invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId);
         Assert.True(issued.IsSuccess);
         return invoice;
     }
@@ -171,6 +194,9 @@ public sealed class InvoicePaidPublishingTests
         public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             Task.FromResult<Invoice?>(null);
 
+        public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
+            Task.FromResult<Invoice?>(null);
+
         public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
             Guid tenantId,
             int take,
@@ -199,6 +225,22 @@ public sealed class InvoicePaidPublishingTests
             IReadOnlyList<InvoiceSaleLine> lines,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success());
+
+        public Task<Result> CheckInvoiceSaleAsync(
+            Guid tenantId,
+            Guid invoiceId,
+            IReadOnlyList<InvoiceSaleLine> lines,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Success());
+    }
+
+    private sealed class NoopMetrics : IBillingMetrics
+    {
+        public void RecordOverpayment() { }
+
+        public void RecordPaymentRejected(string reason) { }
+
+        public void RecordStockSyncInsufficient() { }
     }
 
     private sealed class UnitOfWorkStub : IUnitOfWork

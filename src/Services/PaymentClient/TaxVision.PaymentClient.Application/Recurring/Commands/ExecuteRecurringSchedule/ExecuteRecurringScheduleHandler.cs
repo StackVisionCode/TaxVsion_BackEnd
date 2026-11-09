@@ -37,12 +37,28 @@ public static class ExecuteRecurringScheduleHandler
                 new Error("TenantRecurringPayment.NotFound", "TenantRecurringPayment does not exist.")
             );
 
+        // Un cobro anterior de este intento sigue sin resultado: una clave nueva podría cobrar dos veces. Espera a la
+        // reconciliación, y la próxima vuelta lee lo que quedó con la misma clave.
+        var scheduleToCharge = plan.Schedules.SingleOrDefault(s => s.Id == command.ScheduleId);
+        if (
+            scheduleToCharge is not null
+            && IsWaitingForTheProvider(
+                await payments.GetByIdempotencyKeyAsync(
+                    plan.TenantId,
+                    scheduleToCharge.ChargeIdempotencyKey(plan.Id),
+                    ct
+                )
+            )
+        )
+            return Result.Success();
+
         var nowUtc = DateTime.UtcNow;
         var processingResult = plan.MarkScheduleProcessing(command.ScheduleId, Guid.Empty, nowUtc);
         if (processingResult.IsFailure)
             return processingResult;
 
-        var idempotencyKey = $"recurring:{plan.Id:N}:{command.ScheduleId:N}";
+        var schedule = plan.Schedules.Single(s => s.Id == command.ScheduleId);
+        var idempotencyKey = schedule.ChargeIdempotencyKey(plan.Id);
         var chargeResult = await bus.InvokeAsync<Result<Guid>>(
             new ChargeTenantPaymentCommand(
                 plan.TenantId,
@@ -79,6 +95,14 @@ public static class ExecuteRecurringScheduleHandler
         }
 
         var payment = await payments.GetByIdAsync(chargeResult.Value, plan.TenantId, ct);
+
+        // Sin resultado final: se revierte el "en proceso" del schedule para no reintentar con otra clave. El webhook o
+        // la reconciliación cierran el pago, y la próxima vuelta lee lo que quedó con la misma clave.
+        if (IsWaitingForTheProvider(payment))
+            throw new InvalidOperationException(
+                $"TenantPayment {payment!.Id} has no final result yet; recurring schedule {command.ScheduleId} stays as it was."
+            );
+
         var succeeded = payment?.Status == PaymentStatus.Succeeded;
 
         var applyResult = succeeded
@@ -129,6 +153,10 @@ public static class ExecuteRecurringScheduleHandler
 
         return Result.Success();
     }
+
+    // D-PAY-13: Processing y RequiresAction no son fallos: el cargo sigue abierto en el proveedor.
+    private static bool IsWaitingForTheProvider(TenantPayment? payment) =>
+        payment?.Status is PaymentStatus.Pending or PaymentStatus.Processing or PaymentStatus.RequiresAction;
 
     private static async Task AuditFailureAsync(
         IPaymentAuditLogWriter audit,

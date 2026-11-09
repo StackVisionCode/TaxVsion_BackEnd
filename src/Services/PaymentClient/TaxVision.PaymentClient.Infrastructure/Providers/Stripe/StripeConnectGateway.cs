@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Stripe;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
 using TaxVision.PaymentClient.Domain.Connect;
+using TaxVision.PaymentClient.Domain.TenantPayments;
 
 namespace TaxVision.PaymentClient.Infrastructure.Providers.Stripe;
 
@@ -171,6 +172,8 @@ public sealed class StripeConnectGateway : IStripeConnectGateway
             "account.updated" or "capability.updated" => ParseAccountEvent(stripeEvent),
             "payout.paid" => ParsePayoutEvent(stripeEvent, failed: false),
             "payout.failed" => ParsePayoutEvent(stripeEvent, failed: true),
+            StripePaymentAdapter.PaymentIntentSucceeded => ParseChargeEvent(stripeEvent, PaymentStatus.Succeeded),
+            StripePaymentAdapter.PaymentIntentFailed => ParseChargeEvent(stripeEvent, PaymentStatus.Failed),
             _ => Result.Failure<ConnectWebhookEvent>(
                 new Error(
                     "StripeConnect.Webhook.UnsupportedEventType",
@@ -213,7 +216,8 @@ public sealed class StripeConnectGateway : IStripeConnectGateway
                 PayoutReference: null,
                 PayoutAmountCents: null,
                 PayoutCurrency: null,
-                PayoutFailureReason: null
+                PayoutFailureReason: null,
+                OccurredAtUtc: stripeEvent.Created
             )
         );
     }
@@ -245,6 +249,36 @@ public sealed class StripeConnectGateway : IStripeConnectGateway
                 PayoutAmountCents: payout.Amount,
                 PayoutCurrency: payout.Currency,
                 PayoutFailureReason: failed ? payout.FailureMessage ?? "Payout failed." : null
+            )
+        );
+    }
+
+    /// <summary>Cobro en la cuenta conectada (PCL-9): mismo payload que el webhook de la oficina.</summary>
+    private static Result<ConnectWebhookEvent> ParseChargeEvent(Event stripeEvent, PaymentStatus status)
+    {
+        if (string.IsNullOrWhiteSpace(stripeEvent.Account))
+            return Result.Failure<ConnectWebhookEvent>(
+                new Error("StripeConnect.Webhook.MissingAccount", "Charge event did not carry a connected account id.")
+            );
+
+        var payload = StripePaymentAdapter.ParsePaymentIntent(stripeEvent, status);
+        if (payload.IsFailure)
+            return Result.Failure<ConnectWebhookEvent>(payload.Error);
+
+        return Result.Success(
+            new ConnectWebhookEvent(
+                stripeEvent.Id,
+                stripeEvent.Type,
+                stripeEvent.Account,
+                ChargesEnabled: null,
+                PayoutsEnabled: null,
+                RequirementsCurrentlyDue: null,
+                PayoutReference: null,
+                PayoutAmountCents: null,
+                PayoutCurrency: null,
+                PayoutFailureReason: null,
+                OccurredAtUtc: stripeEvent.Created,
+                ChargeUpdate: payload.Value
             )
         );
     }

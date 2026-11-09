@@ -49,6 +49,8 @@ public sealed class CalendarDbContext(DbContextOptions<CalendarDbContext> option
 
     public DbSet<CalendarFeedToken> CalendarFeedTokens => Set<CalendarFeedToken>();
 
+    public DbSet<StartingSoonNotice> StartingSoonNotices => Set<StartingSoonNotice>();
+
     /// <summary>Marca de backfill ya corrido, una fila por tenant descubierto.</summary>
     public DbSet<TenantBackfillState> TenantBackfillStates => Set<TenantBackfillState>();
 
@@ -124,6 +126,14 @@ public sealed class CalendarDbContext(DbContextOptions<CalendarDbContext> option
         try
         {
             return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The appointment was modified by someone else. Reload and try again.",
+                ex
+            );
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {

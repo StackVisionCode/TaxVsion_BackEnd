@@ -1,26 +1,23 @@
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Postmaster.Application.Feedback.Commands.ApplyPolledDeliveryFeedback;
 using TaxVision.Postmaster.Application.Sending;
-using TaxVision.Postmaster.Application.Suppression;
 using TaxVision.Postmaster.Domain.ValueObjects;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Postmaster.Application.Feedback.Commands.ReconcileDeliveryFeedback;
 
 /// <summary>
 /// Hoy el único proveedor del sistema es SMTP2GO. Sin poller registrado (no hay API key) no hace nada:
-/// el webhook sigue funcionando solo.
+/// el webhook sigue funcionando solo. La consulta corre sin transacción (PMS-06); aplicar es otro comando.
 /// </summary>
 public static class ReconcileDeliveryFeedbackHandler
 {
+    [NonTransactional]
     public static async Task<DeliveryFeedbackTally> Handle(
         ReconcileDeliveryFeedbackCommand cmd,
         IDeliveryFeedbackCapabilities capabilities,
         ISentMessageRepository sentMessages,
-        IDeliveryFeedbackReceiptRepository receipts,
-        IUnmatchedDeliveryFeedbackRepository unmatched,
-        ISuppressionListRepository suppressionList,
-        IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger logger,
         CancellationToken ct
@@ -49,8 +46,7 @@ public static class ReconcileDeliveryFeedbackHandler
         }
 
         var polled = await poller.PollAsync(pending, ct);
-        var stores = new DeliveryFeedbackStores(sentMessages, receipts, unmatched, suppressionList, unitOfWork, bus);
-        var tally = await DeliveryFeedbackApplier.ApplyAllAsync(polled, cmd.NowUtc, stores, logger, ct);
+        var tally = await PolledFeedbackBatches.ApplyAsync(polled, cmd.NowUtc, cmd.ApplyBatchSize, bus, logger, ct);
 
         logger.LogInformation(
             "Delivery feedback reconciliation checked {Pending} recipient(s): {Applied} applied, {Duplicates} already known.",

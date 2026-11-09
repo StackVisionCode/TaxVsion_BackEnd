@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 /// hereda; Notification avisa a quienes administran la oficina (<c>settings.manage</c>) para que designen
 /// a otro en Office settings → Compliance.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TenantIntegrationEvents.OfficeSecurityCoordinatorVacatedIntegrationEvent")]
 public sealed record OfficeSecurityCoordinatorVacatedIntegrationEvent : IntegrationEvent
 {
     public required Guid OfficeTenantId { get; init; }

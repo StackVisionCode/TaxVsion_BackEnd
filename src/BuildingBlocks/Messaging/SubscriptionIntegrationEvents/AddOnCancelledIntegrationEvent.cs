@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>Publicado por Subscription cuando se cancela un add-on de un tenant.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.AddOnCancelledIntegrationEvent")]
 public sealed record AddOnCancelledIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantAddOnId { get; init; }

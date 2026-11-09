@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using Wolverine.Attributes;
 
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
@@ -7,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// solo correo con todos sus archivos y el enlace a la página de entrega <c>/d/{token}</c>. El token viaja
 /// cifrado en <see cref="ProtectedToken"/> (el exchange es fanout); no es un share de CloudStorage.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignedDocumentsDeliveryReadyIntegrationEvent")]
 public sealed record SignedDocumentsDeliveryReadyIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

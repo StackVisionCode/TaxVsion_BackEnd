@@ -44,6 +44,8 @@ public static class SignatureReadyForDownloadConsumer
         {
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
 
+            // Se renderiza todo antes de escribir: Scribe no corre con filas ya bloqueadas (NOT-07).
+            var rendered = new List<(string Email, ScribeRenderedEmail Render)>();
             foreach (var signer in evt.Signers)
             {
                 var downloads = evt
@@ -114,17 +116,20 @@ public static class SignatureReadyForDownloadConsumer
                     )
                 ).EnsureRendered("sig.request_completed.v1");
 
+                rendered.Add((signer.Email, render));
+            }
+
+            foreach (var (email, render) in rendered)
                 await gateway.QueueEmailAsync(
                     render.ToDispatchRequest(
                         tenantId: evt.TenantId,
-                        to: signer.Email,
+                        to: email,
                         templateKey: TemplateKey,
                         relatedEventId: evt.EventId,
                         correlationId: correlationId
                     ),
                     ct
                 );
-            }
         }
     }
 

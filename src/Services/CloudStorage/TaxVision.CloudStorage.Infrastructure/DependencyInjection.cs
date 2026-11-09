@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddDbContext<CloudStorageDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<CloudStorageDbContext>());
         services.AddScoped<IFileObjectRepository, FileObjectRepository>();
+        services.AddScoped<IScanClaims, SqlScanClaims>();
         services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
         services.AddScoped<IStoragePolicyRepository, StoragePolicyRepository>();
         services.AddScoped<ITenantCloudConnectionRepository, TenantCloudConnectionRepository>();
@@ -79,6 +80,15 @@ public static class DependencyInjection
         services.AddScoped<IStoragePlatformSettingsProvider, StoragePlatformSettingsProvider>();
 
         services.Configure<CloudStorageOptions>(configuration.GetSection(CloudStorageOptions.SectionName));
+        services
+            .AddOptions<TaxVision.CloudStorage.Application.Sharing.PublicShareConflictRetryOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.CloudStorage.Application.Sharing.PublicShareConflictRetryOptions.SectionName
+                )
+            )
+            .Validate(o => o.MaxAttempts > 0, "CloudStorage:PublicShareConflictRetry:MaxAttempts must be positive.")
+            .ValidateOnStart();
         services.Configure<MinioOptions>(configuration.GetSection(MinioOptions.SectionName));
         services.Configure<ClamAvOptions>(configuration.GetSection(ClamAvOptions.SectionName));
         services.Configure<ContentScannerOptions>(configuration.GetSection(ContentScannerOptions.SectionName));
@@ -105,6 +115,7 @@ public static class DependencyInjection
         services.AddScoped<IStoragePolicyProviderAdapter>(sp => sp.GetRequiredService<OneDriveFileMirror>());
         services.AddScoped<IStoragePolicyProviderAdapter>(sp => sp.GetRequiredService<DropboxFileMirror>());
         services.AddScoped<StoragePolicyDispatcher>();
+        services.AddScoped<IStoragePolicyDispatcher, StoragePolicyDispatcher>();
         services.AddHostedService<CloudStorageBackupWorker>();
 
         // Sin key = cliente INTERNO (red de Docker / loopback) — todas las operaciones reales:
@@ -219,6 +230,8 @@ public static class DependencyInjection
         services.AddHostedService<MinioBucketBootstrapper>();
         services.AddHostedService<ExpiredUploadCleanupService>();
         services.AddHostedService<RecycleBinPurgeService>();
+        services.AddScoped<SqlStuckScanRescueLock>();
+        services.AddHostedService<StuckScanRescueService>();
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
         // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma
         // instancia scoped satisface el puerto local rico (para los consumers) y el puerto

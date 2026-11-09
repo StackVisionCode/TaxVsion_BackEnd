@@ -3,6 +3,8 @@ using TaxVision.Correspondence.Domain.Compose;
 
 namespace TaxVision.Correspondence.Application.Abstractions;
 
+public sealed record StuckDraftSend(Guid TenantId, Guid DraftId);
+
 /// <summary>
 /// Fase 10 — el primer repositorio de <see cref="Draft"/>, deliberadamente mínimo: solo lo que
 /// <see cref="Compose.StartReplyHandler"/> necesita. Fase 15 agrega las consultas de lectura para
@@ -22,12 +24,26 @@ public interface IDraftRepository
     /// </summary>
     Task<Draft?> FindOpenReplyDraftAsync(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         Guid incomingEmailId,
         CancellationToken ct = default
     );
 
     Task AddAsync(Draft entity, CancellationToken ct = default);
+
+    /// <summary>Borradores en Sending sin cambios desde el corte, de todos los tenants (job de COR-08).</summary>
+    Task<IReadOnlyList<StuckDraftSend>> ListStuckSendingAsync(
+        DateTime updatedBeforeUtc,
+        int limit,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Enviado (Sent) con ese Message-ID ya normalizado (COR-16). Tracked: la ingesta puede enlazarle el hilo.</summary>
+    Task<Draft?> FindSentByInternetMessageIdAsync(
+        Guid tenantId,
+        string internetMessageId,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// Fase 15 — "retomar un autoguardado": drafts en <see cref="DraftStatus.Draft"/> (nunca
@@ -114,10 +130,8 @@ public interface IDraftRepository
     );
 
     /// <summary>Cuántos borradores ABIERTOS tiene el autor (mismo filtro que ListOpenByAuthorAsync, sin
-    /// materializar) — pre-flight de impacto al retirarlo. Default 0 para no romper los fakes; el repo
-    /// real lo implementa con COUNT.</summary>
-    Task<int> CountOpenByAuthorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct = default) =>
-        Task.FromResult(0);
+    /// materializar) — pre-flight de impacto al retirarlo.</summary>
+    Task<int> CountOpenByAuthorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct = default);
 
     // Borrado permanente (solo desde la papelera).
     void Remove(Draft entity);

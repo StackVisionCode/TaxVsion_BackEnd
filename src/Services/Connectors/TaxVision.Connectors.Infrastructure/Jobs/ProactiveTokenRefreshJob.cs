@@ -51,7 +51,7 @@ public sealed class ProactiveTokenRefreshJob(IServiceProvider serviceProvider, I
         }
     }
 
-    private async Task RunOnceAsync(CancellationToken ct)
+    public async Task RunOnceAsync(CancellationToken ct)
     {
         using var scope = serviceProvider.CreateScope();
         var connectionRepository = scope.ServiceProvider.GetRequiredService<IOAuthConnectionRepository>();
@@ -64,29 +64,8 @@ public sealed class ProactiveTokenRefreshJob(IServiceProvider serviceProvider, I
         var refreshed = 0;
         foreach (var accountId in accountIds)
         {
-            // Scope propio por cuenta: cada refresh hace su propio SaveChanges vía IUnitOfWork
-            // (dentro de OAuthTokenManager) — reusar un DbContext entre iteraciones de un loop
-            // largo acumula tracking de aggregates ya persistidos, innecesario acá.
-            using var accountScope = serviceProvider.CreateScope();
-            var tokenManager = accountScope.ServiceProvider.GetRequiredService<IOAuthTokenManager>();
-            var correlation = accountScope.ServiceProvider.GetRequiredService<ICorrelationContext>();
-
-            using (correlation.Push(Guid.NewGuid().ToString("N")))
-            {
-                var result = await tokenManager.GetValidAccessTokenAsync(accountId, ct);
-                if (result.IsSuccess)
-                {
-                    refreshed++;
-                }
-                else
-                {
-                    logger.LogWarning(
-                        "ProactiveTokenRefreshJob could not refresh account {AccountId}: {Error}",
-                        accountId,
-                        result.Error.Message
-                    );
-                }
-            }
+            if (await RefreshOneAsync(accountId, ct))
+                refreshed++;
         }
 
         logger.LogInformation(
@@ -94,5 +73,36 @@ public sealed class ProactiveTokenRefreshJob(IServiceProvider serviceProvider, I
             refreshed,
             accountIds.Count
         );
+    }
+
+    // Scope propio por cuenta: reusar un DbContext en un loop largo acumula tracking innecesario. El proveedor se
+    // llama sin transacción; el rechazo se confirma en su propia unidad (IMailboxFailureUnit). Un error en una
+    // cuenta no corta el barrido.
+    private async Task<bool> RefreshOneAsync(Guid accountId, CancellationToken ct)
+    {
+        using var accountScope = serviceProvider.CreateScope();
+        var tokenManager = accountScope.ServiceProvider.GetRequiredService<IOAuthTokenManager>();
+        var correlation = accountScope.ServiceProvider.GetRequiredService<ICorrelationContext>();
+
+        using (correlation.Push(Guid.NewGuid().ToString("N")))
+        {
+            try
+            {
+                var result = await tokenManager.GetValidAccessTokenAsync(accountId, ct);
+                if (result.IsSuccess)
+                    return true;
+
+                logger.LogWarning(
+                    "ProactiveTokenRefreshJob could not refresh account {AccountId}: {Error}",
+                    accountId,
+                    result.Error.Message
+                );
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "ProactiveTokenRefreshJob failed on account {AccountId}.", accountId);
+            }
+            return false;
+        }
     }
 }

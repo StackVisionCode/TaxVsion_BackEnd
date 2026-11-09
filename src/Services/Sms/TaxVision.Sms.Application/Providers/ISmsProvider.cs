@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Sms.Application.Providers;
@@ -44,13 +45,13 @@ public interface ISmsProvider
     /// (por su <c>ProviderMessageId</c>) y devuelve las actualizaciones canónicas. Es el backstop de los DLR
     /// por webhook (push) — para reconciliar cuando el webhook no llega (el proveedor no alcanza nuestra URL
     /// pública, típico en dev local) o se pierde. Solo aplica si <see cref="SmsProviderCapabilities.SupportsStatusPull"/>.
-    /// El default no soporta pull (lista vacía), así ningún adapter existente se rompe: agregar pull = override.
+    /// Un adapter sin pull devuelve lista vacía de forma explícita.
     /// Devuelve solo los mensajes de los que el proveedor tiene un estado; los ausentes se dejan igual.
     /// </summary>
     Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
         IReadOnlyList<string> providerMessageIds,
         CancellationToken ct = default
-    ) => Task.FromResult(Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]));
+    );
 
     /// <summary>Transforma un inbound (STOP/START/HELP) al modelo canónico.</summary>
     Result<SmsInboundMessage> ParseInbound(string rawPayload);
@@ -61,6 +62,9 @@ public interface ISmsAdapterFactory
 {
     /// <summary>Resuelve el adapter por su código. Un código no registrado es misconfiguración del host.</summary>
     ISmsProvider Resolve(string code);
+
+    /// <summary>Resuelve sin lanzar; para códigos que llegan de afuera (webhook anónimo).</summary>
+    bool TryResolve(string code, [NotNullWhen(true)] out ISmsProvider? provider);
 }
 
 /// <summary>Marca una clase <see cref="ISmsProvider"/> con su código para el registro reflexivo (keyed DI).</summary>
@@ -68,4 +72,7 @@ public interface ISmsAdapterFactory
 public sealed class SmsProviderAttribute(string code) : Attribute
 {
     public string Code { get; } = code;
+
+    /// <summary>Solo se registra con <c>Sms:Providers:{code}:Enabled = true</c> (adaptadores de prueba).</summary>
+    public bool RequiresOptIn { get; set; }
 }

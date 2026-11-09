@@ -249,7 +249,7 @@ public static class CreateSignatureRequestHandler
         }
         else
         {
-            existing.MarkAvailable(
+            existing.ConfirmAvailable(
                 metadata.ObjectKey ?? existing.ObjectKey,
                 metadata.ContentType ?? existing.ContentType,
                 metadata.SizeBytes,

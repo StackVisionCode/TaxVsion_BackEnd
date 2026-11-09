@@ -2,6 +2,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Postmaster.Application.Feedback;
+using TaxVision.Postmaster.Application.Feedback.Commands.ApplyPolledDeliveryFeedback;
 using TaxVision.Postmaster.Application.Feedback.Commands.ReconcileDeliveryFeedback;
 using TaxVision.Postmaster.Domain.Sending;
 using TaxVision.Postmaster.Domain.ValueObjects;
@@ -97,23 +98,67 @@ public sealed class ReconcileDeliveryFeedbackHandlerTests
         return message;
     }
 
+    /// <summary>El comando de aplicar corre en línea, como <c>InvokeAsync</c>, sobre el mismo contexto.</summary>
+    private static FakeMessageBus ApplyingBus(PostmasterDbContext db)
+    {
+        var bus = new FakeMessageBus();
+        bus.OnInvoke = async message =>
+            await ApplyPolledDeliveryFeedbackHandler.Handle(
+                (ApplyPolledDeliveryFeedbackCommand)message,
+                new SentMessageRepository(db),
+                new DeliveryFeedbackReceiptRepository(db),
+                new UnmatchedDeliveryFeedbackRepository(db),
+                new SuppressionListRepository(db),
+                db,
+                bus,
+                NullLogger.Instance,
+                CancellationToken.None
+            );
+        return bus;
+    }
+
     private static Task<DeliveryFeedbackTally> ReconcileAsync(
         PostmasterDbContext db,
         IDeliveryFeedbackPoller? poller,
-        int max = 50
+        int max = 50,
+        FakeMessageBus? bus = null
     ) =>
         ReconcileDeliveryFeedbackHandler.Handle(
-            new ReconcileDeliveryFeedbackCommand(Now.AddHours(-72), Now.AddHours(-6), max, Now),
+            new ReconcileDeliveryFeedbackCommand(Now.AddHours(-72), Now.AddHours(-6), max, Now, ApplyBatchSize: 50),
             new DeliveryFeedbackCapabilities([], poller is null ? [] : [poller], []),
             new SentMessageRepository(db),
-            new DeliveryFeedbackReceiptRepository(db),
-            new UnmatchedDeliveryFeedbackRepository(db),
-            new SuppressionListRepository(db),
-            db,
-            new FakeMessageBus(),
+            bus ?? ApplyingBus(db),
             NullLogger.Instance,
             CancellationToken.None
         );
+
+    // Un choque con el webhook deja ese lote para la próxima vuelta y no corta los demás.
+    [Fact]
+    public async Task Conflict_in_one_batch_keeps_the_others()
+    {
+        await using var db = CreateContext();
+        await AddSentAsync(db, Now.AddHours(-10));
+        await AddSentAsync(db, Now.AddHours(-10));
+        var bus = ApplyingBus(db);
+        var calls = 0;
+        bus.BeforeInvoke = _ =>
+        {
+            if (++calls == 1)
+                throw new BuildingBlocks.Results.ConflictException("Persistence.ConcurrencyConflict", "Modified.");
+        };
+
+        var tally = await ReconcileDeliveryFeedbackHandler.Handle(
+            new ReconcileDeliveryFeedbackCommand(Now.AddHours(-72), Now.AddHours(-6), 50, Now, ApplyBatchSize: 1),
+            new DeliveryFeedbackCapabilities([], [new FakePoller()], []),
+            new SentMessageRepository(db),
+            bus,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(2, calls);
+        Assert.Equal(1, tally.Applied);
+    }
 
     [Fact]
     public async Task Handle_asks_only_for_system_emails_inside_the_window_without_final_outcome()

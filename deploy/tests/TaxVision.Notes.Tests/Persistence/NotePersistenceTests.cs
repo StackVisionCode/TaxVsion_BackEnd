@@ -38,7 +38,8 @@ public sealed class NotePersistenceTests
             NoteContent.Create("<p>Llamar al cliente mañana.</p>").Value,
             NoteReference.Create(NoteTargetType.Customer, customerId).Value,
             NoteVisibility.Team,
-            NoteColor.Create(NoteColorKind.FollowUp).Value
+            NoteColor.Create(NoteColorKind.FollowUp).Value,
+            DateTime.UtcNow
         ).Value;
 
     [Fact]
@@ -56,7 +57,7 @@ public sealed class NotePersistenceTests
         {
             var note = NewNote(tenantId, authorUserId, customerId);
             noteId = note.Id;
-            Assert.True(note.AttachFile(Guid.NewGuid(), "contrato.pdf", "application/pdf", 4096).IsSuccess);
+            Assert.True(note.AttachFile(Guid.NewGuid(), "contrato.pdf", "application/pdf", 4096, DateTime.UtcNow).IsSuccess);
 
             db.Notes.Add(note);
             await db.SaveChangesAsync();

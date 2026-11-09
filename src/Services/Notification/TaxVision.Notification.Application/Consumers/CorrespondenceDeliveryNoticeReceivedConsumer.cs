@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -39,7 +40,7 @@ public static class CorrespondenceDeliveryNoticeReceivedConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.SentByUserId:N}",
+                NotificationRecipient.ForUser(evt.SentByUserId),
                 title,
                 NotificationCategory.Collaboration,
                 "correspondence.delivery_notice_received",

@@ -1,5 +1,7 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Consumers;
+using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests.Lifecycle;
@@ -70,6 +72,7 @@ public sealed class UserEmailDirectoryOffboardingConsumerTests
             directory,
             unitOfWork,
             new NoOpCorrelation(),
+            NullLogger<UserEmailDirectoryEntry>.Instance,
             CancellationToken.None
         );
 

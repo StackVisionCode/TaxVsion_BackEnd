@@ -1,3 +1,5 @@
+using BuildingBlocks.Messaging.ReminderIntegrationEvents;
+using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
 using TaxVision.Tasks.Application.Hierarchy.Abstractions;
 using TaxVision.Tasks.Application.Permissions.Abstractions;
@@ -53,23 +55,61 @@ public sealed class ReopenTaskHandlerTests
         Assert.Equal(assignee, task.AssigneeUserId);
     }
 
-    private static Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> ReopenAsync(
+    [Fact]
+    public async Task Reopen_WithDueAndAssignee_RequestsReminderWithLifecycleKey()
+    {
+        var assignee = Guid.NewGuid();
+        var task = ClosedTask(assignee, DueDate.Create(DateTime.UtcNow.AddDays(3), "America/New_York", false).Value);
+        var bus = new FakeMessageBus();
+
+        await ReopenAsync(task, new Users(UserPermissionsProjection.Create(TenantId, assignee, 1, [], [])), bus);
+
+        var reminder = Assert.Single(bus.Published.OfType<ReminderRequestedIntegrationEvent>());
+        Assert.EndsWith(":r1", reminder.RequestKey);
+        Assert.Equal(assignee, reminder.UserId);
+        Assert.Equal(task.Due!.DueAtUtc, reminder.AnchorAtUtc);
+    }
+
+    [Fact]
+    public async Task ReopenTwice_UsesDistinctKeys()
+    {
+        var assignee = Guid.NewGuid();
+        var task = ClosedTask(assignee, DueDate.Create(DateTime.UtcNow.AddDays(3), "America/New_York", false).Value);
+        var users = new Users(UserPermissionsProjection.Create(TenantId, assignee, 1, [], []));
+        var bus = new FakeMessageBus();
+
+        await ReopenAsync(task, users, bus);
+        task.Complete(Manager, DateTime.UtcNow);
+        await ReopenAsync(task, users, bus);
+
+        var keys = bus.Published.OfType<ReminderRequestedIntegrationEvent>().Select(r => r.RequestKey).ToList();
+        Assert.Equal(2, keys.Count);
+        Assert.EndsWith(":r1", keys[0]);
+        Assert.EndsWith(":r2", keys[1]);
+    }
+
+    // TaskReopened y el recordatorio salen del handler del evento de dominio (el replay los deja en el bus).
+    private static async Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> ReopenAsync(
         TaskItem task,
-        IUserPermissionsProjectionRepository users
-    ) =>
-        ReopenTaskHandler.Handle(
+        IUserPermissionsProjectionRepository users,
+        FakeMessageBus? bus = null
+    )
+    {
+        var tasks = new InMemoryTaskRepository(task);
+        var result = await ReopenTaskHandler.Handle(
             new ReopenTaskCommand(TenantId, task.Id, Manager, HasManageAll: true),
-            new InMemoryTaskRepository(task),
+            tasks,
             new NoOpUnblocking(),
             new NoOpHierarchy(),
             users,
             new RecordingUnitOfWork(),
-            new FakeMessageBus(),
-            new NoOpCorrelationContext(),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus ?? new FakeMessageBus(), tasks);
+        return result;
+    }
 
-    private static TaskItem ClosedTask(Guid assignee)
+    private static TaskItem ClosedTask(Guid assignee, DueDate? due = null)
     {
         var task = TaskItem
             .Create(
@@ -79,7 +119,7 @@ public sealed class ReopenTaskHandlerTests
                 null,
                 TaskPriority.Normal,
                 TaskReference.None,
-                null,
+                due,
                 null,
                 assignee,
                 Now
@@ -106,11 +146,11 @@ public sealed class ReopenTaskHandlerTests
 
     private sealed class NoOpUnblocking : ITaskUnblockingService
     {
-        public Task ApplyPredecessorClosedAsync(
+        public Task<IReadOnlyList<TaskUnblockedIntegrationEvent>> ApplyPredecessorClosedAsync(
             Guid tenantId,
             Guid predecessorTaskId,
             CancellationToken ct = default
-        ) => Task.CompletedTask;
+        ) => Task.FromResult<IReadOnlyList<TaskUnblockedIntegrationEvent>>([]);
 
         public Task ApplyPredecessorReopenedAsync(
             Guid tenantId,

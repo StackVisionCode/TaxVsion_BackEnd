@@ -1,16 +1,10 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using TaxVision.Connectors.Application.Audit;
-using TaxVision.Connectors.Application.OAuth;
-using TaxVision.Connectors.Application.Sync;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Watch;
-using TaxVision.Connectors.Domain.Accounts;
-using TaxVision.Connectors.Domain.Audit;
-using TaxVision.Connectors.Domain.Shared;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Accounts;
 
@@ -22,27 +16,23 @@ namespace TaxVision.Connectors.Application.Accounts;
 /// que usa Gmail/Graph tras el callback de OAuth.
 ///
 /// Se llama en proceso (no vía <c>bus.InvokeAsync(new SetupWatchCommand(...))</c>) para compartir la
-/// MISMA transacción/DbContext que <see cref="PersistAsync"/> — ver el docblock de
+/// MISMA transacción/DbContext que <see cref="ManualAccountProvisioner"/> — ver el docblock de
 /// <see cref="WatchActivationService"/> para el bug real que este approach evita.
+///
+/// CON-12: la prueba IMAP/SMTP tarda segundos y va antes, sin transacción. Lo que se guarda va en una sola
+/// unidad: si algo falla no queda nada.
 /// </summary>
 public static class ConnectManualAccountHandler
 {
+    [NonTransactional]
     public static async Task<Result<ConnectManualAccountResult>> Handle(
         ConnectManualAccountCommand cmd,
-        ITenantEmailAccountRepository accountRepository,
-        IImapCredentialsRepository imapCredentialsRepository,
-        ISmtpCredentialsRepository smtpCredentialsRepository,
-        IOAuthConnectionRepository oauthConnectionRepository,
-        IProviderSyncCursorRepository providerSyncCursorRepository,
+        ManualAccountProvisioner provisioner,
         IManualAccountConnectivityValidator connectivityValidator,
-        IEncryptedSecretProtector protector,
-        IProviderConnectionAuditLogRepository auditLogRepository,
-        IProviderWatchSubscriptionRepository watchSubscriptionRepository,
-        IWatchProviderClientFactory watchClientFactory,
+        AccountConnectionFinisher finisher,
         IUserPermissionsProjectionReader initiatorProjections,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
+        IOutboxUnit unit,
         CancellationToken ct
     )
     {
@@ -58,12 +48,12 @@ public static class ConnectManualAccountHandler
 
         // ¿Existe ya una fila (tenant, email)? Una DESCONECTADA de un buzón manual se reconecta
         // (revive la fila + credenciales, paridad con OAuth); cualquier otro estado = AlreadyConnected.
-        var targetResult = await ResolveReconnectTargetAsync(cmd, accountRepository, ct);
+        var targetResult = await provisioner.ResolveReconnectTargetAsync(cmd, ct);
         if (targetResult.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(targetResult.Error);
         var existingAccount = targetResult.Value;
 
-        var connectivityCheck = await ValidateConnectivityAsync(cmd, connectivityValidator, ct);
+        var connectivityCheck = await ManualAccountConnectivityCheck.ValidateAsync(cmd, connectivityValidator, ct);
         if (connectivityCheck.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(connectivityCheck.Error);
 
@@ -78,382 +68,43 @@ public static class ConnectManualAccountHandler
         if (initiatorCheck.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(initiatorCheck.Error);
 
-        // Fila desconectada que era personal de otra persona (p. ej. un retirado re-invitado): pasa a quien conecta.
-        existingAccount?.ReassignOwnerOnReconnect(cmd.AsOffice ? null : cmd.InitiatedByUserId);
+        var outcome = Result.Failure<ConnectManualAccountResult>(
+            new Error("ConnectManualAccountHandler.NotSaved", "The account could not be saved.")
+        );
+        await unit.RunAsync(
+            async (outbox, token) =>
+            {
+                outcome = await SaveAndActivateAsync(outbox, token);
+                return outcome.IsSuccess;
+            },
+            ct
+        );
+        return outcome;
 
-        TenantEmailAccount account;
-        if (existingAccount is null)
+        async Task<Result<ConnectManualAccountResult>> SaveAndActivateAsync(IMessageBus outbox, CancellationToken token)
         {
-            var buildResult = BuildAccountAndCredentials(cmd, protector);
-            if (buildResult.IsFailure)
-                return Result.Failure<ConnectManualAccountResult>(buildResult.Error);
-            var (newAccount, imapCredentials, smtpCredentials) = buildResult.Value;
-            account = newAccount;
+            var provisioned = await provisioner.ProvisionAsync(cmd, existingAccount, token);
+            if (provisioned.IsFailure)
+                return Result.Failure<ConnectManualAccountResult>(provisioned.Error);
+            var account = provisioned.Value;
 
-            await PersistAsync(
+            var activateResult = await finisher.ActivateAsync(
+                cmd.TenantId,
+                account.Id,
+                new HandlerTransactionUnit(unitOfWork, outbox),
+                token
+            );
+            if (activateResult.IsFailure)
+                return Result.Failure<ConnectManualAccountResult>(activateResult.Error);
+
+            await finisher.AuditConnectedAsync(
                 account,
-                imapCredentials,
-                smtpCredentials,
-                accountRepository,
-                imapCredentialsRepository,
-                smtpCredentialsRepository,
-                unitOfWork,
-                ct
+                $"Connected {account.EmailAddress} via manual IMAP+SMTP.",
+                DateTime.UtcNow,
+                token
             );
-        }
-        else if (existingAccount.ProviderCode != ProviderCode.Imap)
-        {
-            // Switch cross-provider: la fila existe como OAuth (Gmail/Graph) Disconnected y el usuario
-            // ahora reconecta por manual IMAP. Reusamos el Id (paridad con el flujo IMAP→OAuth del
-            // CompleteOAuthConnectHandler): ChangeProvider al aggregate, purga OAuthConnection+Token y
-            // ProviderWatchSubscription que son del proveedor anterior, y crea nuevas IMAP+SMTP creds.
-            var switchResult = await SwitchFromOAuthToManualAsync(
-                existingAccount,
-                cmd,
-                protector,
-                oauthConnectionRepository,
-                watchSubscriptionRepository,
-                providerSyncCursorRepository,
-                imapCredentialsRepository,
-                smtpCredentialsRepository,
-                unitOfWork,
-                ct
-            );
-            if (switchResult.IsFailure)
-                return Result.Failure<ConnectManualAccountResult>(switchResult.Error);
-            account = existingAccount;
-        }
-        else
-        {
-            var reconnectResult = await ReconnectCredentialsAsync(
-                existingAccount,
-                cmd,
-                protector,
-                imapCredentialsRepository,
-                smtpCredentialsRepository,
-                unitOfWork,
-                ct
-            );
-            if (reconnectResult.IsFailure)
-                return Result.Failure<ConnectManualAccountResult>(reconnectResult.Error);
-            account = existingAccount;
-        }
 
-        // WatchActivationService publica ConnectorsTenantEmailAccountConnected al activar; acá solo se
-        // audita (antes se publicaba también acá — se quitó para no duplicar el evento).
-        var activateResult = await WatchActivationService.ActivateAsync(
-            cmd.TenantId,
-            account.Id,
-            accountRepository,
-            watchSubscriptionRepository,
-            watchClientFactory,
-            unitOfWork,
-            bus,
-            correlation,
-            ct
-        );
-        if (activateResult.IsFailure)
-            return Result.Failure<ConnectManualAccountResult>(activateResult.Error);
-
-        await RecordConnectionAuditAsync(account, auditLogRepository, unitOfWork, ct);
-
-        return Result.Success(new ConnectManualAccountResult(account.Id, account.EmailAddress));
-    }
-
-    /// <summary>
-    /// Resuelve contra qué fila trabajar: null = no existe (alta nueva); una cuenta = reconexión de un
-    /// buzón manual desconectado (se revive reutilizando su Id y credenciales, como el flujo OAuth);
-    /// Failure = duplicado real (ya conectado, o un buzón OAuth con ese email → reconectar por su vía).
-    /// Scoped al tenant (uniqueness (TenantId, EmailAddress)): el mismo buzón en OTRO tenant no colisiona.
-    /// </summary>
-    private static async Task<Result<TenantEmailAccount?>> ResolveReconnectTargetAsync(
-        ConnectManualAccountCommand cmd,
-        ITenantEmailAccountRepository accountRepository,
-        CancellationToken ct
-    )
-    {
-        var existingResult = await accountRepository.GetByTenantAndEmailAsync(cmd.TenantId, cmd.EmailAddress, ct);
-        if (existingResult.IsFailure)
-            return Result.Success<TenantEmailAccount?>(null);
-
-        var account = existingResult.Value;
-        // Disconnected admite reconexión en sitio: mismo proveedor = reusa credenciales,
-        // proveedor distinto (ex-OAuth → manual IMAP) = switch cross-provider con purga.
-        if (account.Status == TenantEmailAccountStatus.Disconnected)
-            return Result.Success<TenantEmailAccount?>(account);
-
-        return Result.Failure<TenantEmailAccount?>(
-            new Error(
-                "ConnectManualAccountHandler.AlreadyConnected",
-                $"'{cmd.EmailAddress}' is already connected. Disconnect it first before reconnecting."
-            )
-        );
-    }
-
-    /// <summary>
-    /// Cross-provider switch: la fila existe como OAuth Disconnected y el usuario quiere pasar a manual
-    /// IMAP. Simétrico del flujo IMAP→OAuth en <see cref="CompleteOAuthConnectHandler"/>: cambia el
-    /// ProviderCode del aggregate (guardrail de estado dentro), purga OAuthConnection+Token y la
-    /// ProviderWatchSubscription (artefactos específicos del proveedor saliente), y crea nuevas
-    /// credenciales IMAP+SMTP. Todo en la misma unidad de trabajo que luego comitea el caller.
-    /// </summary>
-    private static async Task<Result> SwitchFromOAuthToManualAsync(
-        TenantEmailAccount account,
-        ConnectManualAccountCommand cmd,
-        IEncryptedSecretProtector protector,
-        IOAuthConnectionRepository oauthConnectionRepository,
-        IProviderWatchSubscriptionRepository watchSubscriptionRepository,
-        IProviderSyncCursorRepository providerSyncCursorRepository,
-        IImapCredentialsRepository imapCredentialsRepository,
-        ISmtpCredentialsRepository smtpCredentialsRepository,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        var changeResult = account.ChangeProvider(ProviderCode.Imap, DateTime.UtcNow);
-        if (changeResult.IsFailure)
-            return changeResult;
-
-        var staleOAuth = await oauthConnectionRepository.GetByAccountIdAsync(account.Id, ct);
-        if (staleOAuth.IsSuccess)
-            oauthConnectionRepository.Remove(staleOAuth.Value);
-        var staleWatch = await watchSubscriptionRepository.GetByAccountIdAsync(account.Id, ct);
-        if (staleWatch.IsSuccess)
-            watchSubscriptionRepository.Remove(staleWatch.Value);
-        // El cursor del proveedor saliente (historyId Gmail / deltaLink Graph) explota si lo mandas a
-        // IMAP: el ReconciliationJob lo re-seedea con el formato correcto cuando no encuentra fila.
-        var staleCursor = await providerSyncCursorRepository.GetByAccountIdAsync(account.Id, ct);
-        if (staleCursor.IsSuccess)
-            providerSyncCursorRepository.Remove(staleCursor.Value);
-
-        var imapCipher = EncryptedSecret.Create(cmd.ImapPassword, protector);
-        if (imapCipher.IsFailure)
-            return Result.Failure(imapCipher.Error);
-        var smtpCipher = EncryptedSecret.Create(cmd.SmtpPassword, protector);
-        if (smtpCipher.IsFailure)
-            return Result.Failure(smtpCipher.Error);
-
-        var imapResult = ImapCredentials.Create(
-            account.Id,
-            cmd.ImapHost,
-            cmd.ImapPort,
-            cmd.ImapUseSsl,
-            cmd.ImapUsername,
-            imapCipher.Value
-        );
-        if (imapResult.IsFailure)
-            return Result.Failure(imapResult.Error);
-        var smtpResult = SmtpCredentials.Create(
-            account.Id,
-            cmd.SmtpHost,
-            cmd.SmtpPort,
-            cmd.SmtpUseStartTls,
-            cmd.SmtpUsername,
-            smtpCipher.Value
-        );
-        if (smtpResult.IsFailure)
-            return Result.Failure(smtpResult.Error);
-
-        await imapCredentialsRepository.AddAsync(imapResult.Value, ct);
-        await smtpCredentialsRepository.AddAsync(smtpResult.Value, ct);
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success();
-    }
-
-    /// <summary>
-    /// Reconexión: el buzón Imap desconectado conserva sus filas de credenciales (1:1 por AccountId), así
-    /// que se actualizan en sitio con lo que el usuario reingresó (servidor/usuario/contraseña pueden
-    /// cambiar). No se recrea la cuenta: <see cref="WatchActivationService"/> la revive Disconnected→Active.
-    /// </summary>
-    private static async Task<Result> ReconnectCredentialsAsync(
-        TenantEmailAccount account,
-        ConnectManualAccountCommand cmd,
-        IEncryptedSecretProtector protector,
-        IImapCredentialsRepository imapCredentialsRepository,
-        ISmtpCredentialsRepository smtpCredentialsRepository,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        var imapCipher = EncryptedSecret.Create(cmd.ImapPassword, protector);
-        if (imapCipher.IsFailure)
-            return Result.Failure(imapCipher.Error);
-        var smtpCipher = EncryptedSecret.Create(cmd.SmtpPassword, protector);
-        if (smtpCipher.IsFailure)
-            return Result.Failure(smtpCipher.Error);
-
-        // El retiro purga las credenciales del buzón personal: si ya no están, se crean de nuevo.
-        var imapResult = await imapCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
-        if (imapResult.IsSuccess)
-            imapResult.Value.UpdateSettings(
-                cmd.ImapHost,
-                cmd.ImapPort,
-                cmd.ImapUseSsl,
-                cmd.ImapUsername,
-                imapCipher.Value
-            );
-        else
-        {
-            var created = ImapCredentials.Create(
-                account.Id,
-                cmd.ImapHost,
-                cmd.ImapPort,
-                cmd.ImapUseSsl,
-                cmd.ImapUsername,
-                imapCipher.Value
-            );
-            if (created.IsFailure)
-                return Result.Failure(created.Error);
-            await imapCredentialsRepository.AddAsync(created.Value, ct);
-        }
-
-        var smtpResult = await smtpCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
-        if (smtpResult.IsSuccess)
-            smtpResult.Value.UpdateSettings(
-                cmd.SmtpHost,
-                cmd.SmtpPort,
-                cmd.SmtpUseStartTls,
-                cmd.SmtpUsername,
-                smtpCipher.Value
-            );
-        else
-        {
-            var created = SmtpCredentials.Create(
-                account.Id,
-                cmd.SmtpHost,
-                cmd.SmtpPort,
-                cmd.SmtpUseStartTls,
-                cmd.SmtpUsername,
-                smtpCipher.Value
-            );
-            if (created.IsFailure)
-                return Result.Failure(created.Error);
-            await smtpCredentialsRepository.AddAsync(created.Value, ct);
-        }
-
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success();
-    }
-
-    /// <summary>
-    /// Prueba real de conectividad antes de persistir nada — evita que credenciales mal tipeadas
-    /// queden guardadas como si estuvieran bien (§ IManualAccountConnectivityValidator).
-    /// </summary>
-    private static async Task<Result> ValidateConnectivityAsync(
-        ConnectManualAccountCommand cmd,
-        IManualAccountConnectivityValidator connectivityValidator,
-        CancellationToken ct
-    )
-    {
-        var imapCheck = await connectivityValidator.ValidateImapAsync(
-            cmd.ImapHost,
-            cmd.ImapPort,
-            cmd.ImapUseSsl,
-            cmd.ImapUsername,
-            cmd.ImapPassword,
-            ct
-        );
-        if (imapCheck.IsFailure)
-            return imapCheck;
-
-        return await connectivityValidator.ValidateSmtpAsync(
-            cmd.SmtpHost,
-            cmd.SmtpPort,
-            cmd.SmtpUseStartTls,
-            cmd.SmtpUsername,
-            cmd.SmtpPassword,
-            ct
-        );
-    }
-
-    private static Result<(
-        TenantEmailAccount Account,
-        ImapCredentials Imap,
-        SmtpCredentials Smtp
-    )> BuildAccountAndCredentials(ConnectManualAccountCommand cmd, IEncryptedSecretProtector protector)
-    {
-        var accountResult = TenantEmailAccount.Create(
-            cmd.TenantId,
-            cmd.EmailAddress,
-            ProviderCode.Imap,
-            cmd.InitiatedByUserId,
-            DateTime.UtcNow,
-            // Oficina = sin dueño (compartido); personal = del usuario que conecta.
-            ownerUserId: cmd.AsOffice ? null : cmd.InitiatedByUserId,
-            displayName: cmd.DisplayName
-        );
-        if (accountResult.IsFailure)
-            return Result.Failure<(TenantEmailAccount, ImapCredentials, SmtpCredentials)>(accountResult.Error);
-        var account = accountResult.Value;
-
-        var imapCipherResult = EncryptedSecret.Create(cmd.ImapPassword, protector);
-        if (imapCipherResult.IsFailure)
-            return Result.Failure<(TenantEmailAccount, ImapCredentials, SmtpCredentials)>(imapCipherResult.Error);
-
-        var imapResult = ImapCredentials.Create(
-            account.Id,
-            cmd.ImapHost,
-            cmd.ImapPort,
-            cmd.ImapUseSsl,
-            cmd.ImapUsername,
-            imapCipherResult.Value
-        );
-        if (imapResult.IsFailure)
-            return Result.Failure<(TenantEmailAccount, ImapCredentials, SmtpCredentials)>(imapResult.Error);
-
-        var smtpCipherResult = EncryptedSecret.Create(cmd.SmtpPassword, protector);
-        if (smtpCipherResult.IsFailure)
-            return Result.Failure<(TenantEmailAccount, ImapCredentials, SmtpCredentials)>(smtpCipherResult.Error);
-
-        var smtpResult = SmtpCredentials.Create(
-            account.Id,
-            cmd.SmtpHost,
-            cmd.SmtpPort,
-            cmd.SmtpUseStartTls,
-            cmd.SmtpUsername,
-            smtpCipherResult.Value
-        );
-        if (smtpResult.IsFailure)
-            return Result.Failure<(TenantEmailAccount, ImapCredentials, SmtpCredentials)>(smtpResult.Error);
-
-        return Result.Success((account, imapResult.Value, smtpResult.Value));
-    }
-
-    private static async Task PersistAsync(
-        TenantEmailAccount account,
-        ImapCredentials imapCredentials,
-        SmtpCredentials smtpCredentials,
-        ITenantEmailAccountRepository accountRepository,
-        IImapCredentialsRepository imapCredentialsRepository,
-        ISmtpCredentialsRepository smtpCredentialsRepository,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        await accountRepository.AddAsync(account, ct);
-        await imapCredentialsRepository.AddAsync(imapCredentials, ct);
-        await smtpCredentialsRepository.AddAsync(smtpCredentials, ct);
-        await unitOfWork.SaveChangesAsync(ct);
-    }
-
-    private static async Task RecordConnectionAuditAsync(
-        TenantEmailAccount account,
-        IProviderConnectionAuditLogRepository auditLogRepository,
-        IUnitOfWork unitOfWork,
-        CancellationToken ct
-    )
-    {
-        var auditResult = ProviderConnectionAuditLog.Create(
-            account.Id,
-            ProviderConnectionAuditAction.Connect,
-            $"Connected {account.EmailAddress} via manual IMAP+SMTP.",
-            "Success",
-            DateTime.UtcNow
-        );
-        if (auditResult.IsSuccess)
-        {
-            await auditLogRepository.AddAsync(auditResult.Value, ct);
-            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success(new ConnectManualAccountResult(account.Id, account.EmailAddress));
         }
     }
 }

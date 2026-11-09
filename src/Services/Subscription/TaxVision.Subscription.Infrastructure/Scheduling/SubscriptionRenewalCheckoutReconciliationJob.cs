@@ -1,5 +1,4 @@
-using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
-using BuildingBlocks.Persistence;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
@@ -7,7 +6,7 @@ using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitl
 using TaxVision.Subscription.Application.Subscriptions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.Subscriptions;
-using Wolverine;
+using TaxVision.Subscription.Infrastructure.Persistence;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -37,10 +36,6 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var intents = services.GetRequiredService<IRenewalCheckoutIntentRepository>();
-        var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
-        var payments = services.GetRequiredService<IRenewalCheckoutPaymentClient>();
-        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
-        var bus = services.GetRequiredService<IMessageBus>();
         var jobLogger = services.GetRequiredService<ILogger<SubscriptionRenewalCheckoutReconciliationJob>>();
 
         var nowUtc = DateTime.UtcNow;
@@ -48,20 +43,7 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
         if (stale.Count == 0)
             return;
 
-        var reactivatedCount = 0;
-        foreach (var intent in stale)
-        {
-            try
-            {
-                if (await ReconcileOneAsync(intent, subscriptions, payments, unitOfWork, bus, jobLogger, nowUtc, ct))
-                    reactivatedCount++;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                jobLogger.LogError(ex, "Renewal checkout reconcile failed for intent {IntentId}.", intent.Id);
-            }
-        }
-
+        var reactivatedCount = await ReconcileAsync([.. stale.Select(intent => intent.Id)], nowUtc, ct);
         if (reactivatedCount > 0)
             jobLogger.LogInformation(
                 "SubscriptionRenewalCheckoutReconciliationJob reactivated {Count} paid-but-pending intent(s).",
@@ -69,27 +51,91 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
             );
     }
 
-    private static async Task<bool> ReconcileOneAsync(
-        SubscriptionRenewalIntent intent,
-        ISubscriptionRepository subscriptions,
-        IRenewalCheckoutPaymentClient payments,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ILogger logger,
+    // Por intención: la consulta a PaymentApp va fuera de la transacción; después, una unidad (BB-3) en la que la
+    // reactivación, su aviso SelfServiceRenewed (evento de dominio), los cobros superados y el recálculo se
+    // confirman juntos. Un fallo o un conflicto no arrastra a las demás.
+    internal async Task<int> ReconcileAsync(IReadOnlyList<Guid> intentIds, DateTime nowUtc, CancellationToken ct)
+    {
+        var reactivatedCount = 0;
+        foreach (var intentId in intentIds)
+        {
+            var payment = await ReadPaymentStatusAsync(intentId, ct);
+            if (payment is null)
+                continue;
+
+            var reactivated = false;
+            var result = await RunUnitAsync(
+                async (unit, token) =>
+                {
+                    var outcome = await ApplyAsync(unit, intentId, payment, nowUtc, token);
+                    reactivated = outcome == ReconcileOutcome.Reactivated;
+                    return outcome != ReconcileOutcome.Nothing;
+                },
+                ct
+            );
+
+            if (result.Outcome == JobUnitOutcome.Committed && reactivated)
+                reactivatedCount++;
+            else if (result.Outcome == JobUnitOutcome.Conflict)
+                Logger.LogInformation("Renewal checkout intent {IntentId} changed by another writer.", intentId);
+            else if (result.Outcome == JobUnitOutcome.Failed)
+                Logger.LogWarning("Renewal checkout reconcile failed for intent {IntentId}.", intentId);
+        }
+
+        return reactivatedCount;
+    }
+
+    private enum ReconcileOutcome
+    {
+        Nothing,
+        Reactivated,
+        MarkedFailed,
+    }
+
+    private async Task<RenewalPaymentStatusResult?> ReadPaymentStatusAsync(Guid intentId, CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var intent = await scope
+                .ServiceProvider.GetRequiredService<IRenewalCheckoutIntentRepository>()
+                .GetByIdForProvisioningAsync(intentId, ct);
+            if (intent is not { Status: SubscriptionRenewalIntentStatus.Pending, SaaSPaymentId: { } paymentId })
+                return null;
+
+            // null: PaymentApp no respondió — se reintenta el próximo tick.
+            return await scope
+                .ServiceProvider.GetRequiredService<IRenewalCheckoutPaymentClient>()
+                .GetPaymentStatusAsync(intent.TenantId, paymentId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogError(ex, "Renewal checkout reconcile failed for intent {IntentId}.", intentId);
+            return null;
+        }
+    }
+
+    private static async Task<ReconcileOutcome> ApplyAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
+        Guid intentId,
+        RenewalPaymentStatusResult status,
         DateTime nowUtc,
         CancellationToken ct
     )
     {
-        if (intent.SaaSPaymentId is not { } paymentId)
-            return false;
+        var logger = unit.Services.GetRequiredService<ILogger<SubscriptionRenewalCheckoutReconciliationJob>>();
+        var intent = await unit
+            .Services.GetRequiredService<IRenewalCheckoutIntentRepository>()
+            .GetByIdForProvisioningAsync(intentId, ct);
+        if (intent is null || intent.Status != SubscriptionRenewalIntentStatus.Pending)
+            return ReconcileOutcome.Nothing;
 
-        var status = await payments.GetPaymentStatusAsync(intent.TenantId, paymentId, ct);
-        if (status is null)
-            return false; // PaymentApp no respondió — se reintenta el próximo tick
-
+        unit.UseTenant(intent.TenantId);
         if (string.Equals(status.Status, "Succeeded", StringComparison.OrdinalIgnoreCase))
         {
-            var subscription = await subscriptions.GetByTenantIdAsync(intent.TenantId, ct);
+            var subscription = await unit
+                .Services.GetRequiredService<ISubscriptionRepository>()
+                .GetByTenantIdAsync(intent.TenantId, ct);
             if (subscription is null)
             {
                 logger.LogWarning(
@@ -97,7 +143,7 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
                     intent.TenantId,
                     intent.Id
                 );
-                return false;
+                return ReconcileOutcome.Nothing;
             }
 
             var outcome = SubscriptionRenewalProvisioning.TryReactivate(
@@ -107,27 +153,14 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
                 nowUtc
             );
             if (!outcome.Provisioned)
-                return false;
+                return ReconcileOutcome.Nothing;
 
-            await unitOfWork.SaveChangesAsync(ct);
-            bus.TenantId = intent.TenantId.ToString();
-            if (outcome.StatusChanged)
-            {
-                await bus.PublishStatusChangedAsync(
-                    subscription,
-                    outcome.PreviousStatus,
-                    SubscriptionChangeReason.SelfServiceRenewed,
-                    intent.RequestedByUserId,
-                    correlationId: intent.Id.ToString("N")
-                );
-            }
-
-            await bus.PublishRenewalChargesSupersededAsync(
+            await unit.Outbox.PublishRenewalChargesSupersededAsync(
                 intent.TenantId,
                 outcome.SupersededChargeKeys,
                 intent.Id.ToString("N")
             );
-            await bus.RecalculateEntitlementsSafelyAsync(intent.TenantId, logger, ct);
+            await unit.PublishAsync(new RecalculateEntitlementsCommand(intent.TenantId));
 
             logger.LogInformation(
                 "Reconcile reactivated subscription for tenant {TenantId} from paid-but-pending intent {IntentId} (was {PreviousStatus}).",
@@ -135,7 +168,7 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
                 intent.Id,
                 outcome.PreviousStatus
             );
-            return true;
+            return ReconcileOutcome.Reactivated;
         }
 
         if (
@@ -144,10 +177,9 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
         )
         {
             var failed = intent.MarkFailed($"Payment {status.Status} (reconciled).", nowUtc);
-            if (failed.IsSuccess)
-                await unitOfWork.SaveChangesAsync(ct);
+            return failed.IsSuccess ? ReconcileOutcome.MarkedFailed : ReconcileOutcome.Nothing;
         }
 
-        return false;
+        return ReconcileOutcome.Nothing;
     }
 }

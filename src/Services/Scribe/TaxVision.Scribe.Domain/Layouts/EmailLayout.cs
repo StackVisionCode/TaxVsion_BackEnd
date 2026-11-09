@@ -27,6 +27,9 @@ public sealed class EmailLayout : BaseEntity, INullableTenantOwned
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }
 
+    /// <summary>SCR-03: cubre también las versiones, porque todo cambio en ellas pasa por la raíz.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public IReadOnlyList<EmailLayoutVersion> Versions => _versions.AsReadOnly();
 
     public static Result<EmailLayout> CreateNew(

@@ -42,6 +42,7 @@ public sealed class BaselineSmokeTests
             publisher,
             logRepo,
             uow,
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var portal = Options.Create(new PortalOptions { BaseUrl = "https://app.test" });
@@ -64,13 +65,19 @@ public sealed class BaselineSmokeTests
             portal,
             TestPlatform.Settings,
             new FakeTenantHostResolver(),
+            new AuthAccountTokenReader(
+                new NoProtectedPayloadCodec(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<AuthAccountTokenReader>.Instance
+            ),
             correlation,
             CancellationToken.None
         );
 
-        var request = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(
-            Assert.Single(publisher.Published)
-        );
+        // El enlace lleva token: va directo a la cola de Postmaster, no al fanout (NOT-04).
+        Assert.Empty(publisher.Published);
+        var sent = Assert.Single(publisher.SentToQueue);
+        Assert.Equal(EventBasedEmailDispatchGateway.PostmasterQueue, sent.Queue);
+        var request = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(sent.Message);
         Assert.Equal("user@test.com", request.To);
         Assert.Single(logRepo.Logs);
         var log = logRepo.Logs[0];
@@ -94,6 +101,7 @@ public sealed class BaselineSmokeTests
             publisher,
             logRepo,
             uow,
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var correlation = new NoOpCorrelationContext();
@@ -153,17 +161,19 @@ public sealed class BaselineSmokeTests
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
-        var dispatcher = new NotificationDispatcher(
+        var dispatcher = TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new InMemoryUserEmailDirectoryRepository()
+            ),
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
         var meetingId = Guid.NewGuid();
@@ -195,17 +205,19 @@ public sealed class BaselineSmokeTests
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
-        var dispatcher = new NotificationDispatcher(
+        var dispatcher = TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new InMemoryUserEmailDirectoryRepository()
+            ),
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
         var evt = new MeetingRecordingFailedIntegrationEvent
@@ -233,17 +245,19 @@ public sealed class BaselineSmokeTests
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
-        var dispatcher = new NotificationDispatcher(
+        var dispatcher = TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new InMemoryUserEmailDirectoryRepository()
+            ),
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
         var evt = new CallRecordingReadyIntegrationEvent
@@ -273,17 +287,19 @@ public sealed class BaselineSmokeTests
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
-        var dispatcher = new NotificationDispatcher(
+        var dispatcher = TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new InMemoryUserEmailDirectoryRepository()
+            ),
             new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
         var evt = new CallRecordingFailedIntegrationEvent
@@ -316,12 +332,36 @@ public sealed class BaselineSmokeTests
             string eventKey,
             Guid tenantId,
             IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            CancellationToken ct = default
+        ) => RenderAsync(eventKey, tenantId, variables, ct);
+
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
+
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success(new ScribeRenderedEmail("Test subject", "<p>Test body</p>", "Test body")));
     }
 
     private sealed class RecordingNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public List<NotificationLog> Logs { get; } = new();
 
         public Task AddAsync(NotificationLog log, CancellationToken ct = default)
@@ -395,6 +435,9 @@ public sealed class BaselineSmokeTests
 
     private sealed class EmptyPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public static readonly EmptyPushDeviceTokenRepository Instance = new();
 
         public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;

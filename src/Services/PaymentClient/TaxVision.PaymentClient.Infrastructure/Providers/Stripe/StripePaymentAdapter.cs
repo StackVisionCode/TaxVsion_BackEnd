@@ -24,8 +24,8 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
 
     public PaymentProviderCode Code => PaymentProviderCode.Stripe;
 
-    private const string PaymentIntentSucceeded = "payment_intent.succeeded";
-    private const string PaymentIntentFailed = "payment_intent.payment_failed";
+    internal const string PaymentIntentSucceeded = "payment_intent.succeeded";
+    internal const string PaymentIntentFailed = "payment_intent.payment_failed";
     private const string PaymentIntentCanceled = "payment_intent.canceled";
     private const string ChargeRefunded = "charge.refunded";
     private const string ChargeDisputeCreated = "charge.dispute.created";
@@ -105,19 +105,21 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
                     Status: PaymentStatus.Failed,
                     FailureCode: ex.StripeError?.Code,
                     FailureMessage: ex.StripeError?.Message ?? ex.Message,
-                    Payer: StripePayerDetailsReader.FromError(ex.StripeError)
+                    Payer: StripePayerDetailsReader.FromError(ex.StripeError),
+                    OutcomeUnknown: StripeChargeFailure.IsOutcomeUnknown(ex)
                 )
             );
         }
     }
 
     private static ChargeAuthorizationResult MapToChargeResult(PaymentIntent intent) =>
-        MapStatus(intent) with
+        MapChargeStatus(intent) with
         {
             Payer = StripePayerDetailsReader.FromPaymentIntent(intent),
         };
 
-    private static ChargeAuthorizationResult MapStatus(PaymentIntent intent) =>
+    /// <summary>Resultado del cobro. En <c>requires_action</c> incluye el clientSecret para el 3DS con Stripe.js.</summary>
+    public static ChargeAuthorizationResult MapChargeStatus(PaymentIntent intent) =>
         intent.Status switch
         {
             "succeeded" => new ChargeAuthorizationResult(intent.Id, PaymentStatus.Succeeded),
@@ -125,7 +127,8 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
                 intent.Id,
                 PaymentStatus.RequiresAction,
                 NextActionType: intent.NextAction?.Type,
-                NextActionUrl: intent.NextAction?.RedirectToUrl?.Url
+                NextActionUrl: intent.NextAction?.RedirectToUrl?.Url,
+                NextActionClientSecret: intent.ClientSecret
             ),
             "processing" => new ChargeAuthorizationResult(intent.Id, PaymentStatus.Processing),
             _ => new ChargeAuthorizationResult(
@@ -168,6 +171,80 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
         }
     }
 
+    /// <summary>Busca el PaymentIntent por la metadata <c>tenantPaymentId</c> (en Connect, dentro de la cuenta
+    /// conectada). Search tarda hasta un minuto en ver un cargo nuevo: la reconciliación llega mucho después.</summary>
+    public async Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeSearch search,
+        CancellationToken ct
+    )
+    {
+        var service = new PaymentIntentService(_clients.Create(credentials.SecretKey));
+        try
+        {
+            var found = await service.SearchAsync(
+                new PaymentIntentSearchOptions { Query = $"metadata['tenantPaymentId']:'{search.TenantPaymentId:N}'" },
+                new RequestOptions { StripeAccount = search.OnBehalfOf },
+                ct
+            );
+            var intent = found.Data.OrderByDescending(candidate => candidate.Created).FirstOrDefault();
+            return Result.Success<ChargeAuthorizationResult?>(intent is null ? null : MapChargeStatus(intent));
+        }
+        catch (StripeException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Stripe charge search failed for TenantPayment {TenantPaymentId}.",
+                search.TenantPaymentId
+            );
+            return Result.Failure<ChargeAuthorizationResult?>(
+                new Error("Stripe.ChargeSearch.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
+        }
+    }
+
+    /// <summary>Cancela el PaymentIntent abandonado (en Connect, dentro de la cuenta conectada). Si Stripe lo
+    /// rechaza porque el intento cambió de estado (p. ej. se completó en ese momento), se vuelve a consultar
+    /// y se devuelve el estado real.</summary>
+    public async Task<Result<WebhookEventPayload>> CancelChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeStatusLookup lookup,
+        CancellationToken ct
+    )
+    {
+        var service = new PaymentIntentService(_clients.Create(credentials.SecretKey));
+        try
+        {
+            var intent = await service.CancelAsync(
+                lookup.ProviderChargeReference,
+                new PaymentIntentCancelOptions { CancellationReason = "abandoned" },
+                new RequestOptions { StripeAccount = lookup.OnBehalfOf },
+                ct
+            );
+            return Result.Success(MapIntentStatus(intent));
+        }
+        catch (StripeException ex) when (ex.StripeError?.Code == "payment_intent_unexpected_state")
+        {
+            logger.LogInformation(
+                "Stripe refused to cancel PaymentIntent {Reference} ({Message}); reading its current status.",
+                lookup.ProviderChargeReference,
+                ex.StripeError?.Message
+            );
+            return await GetChargeStatusAsync(credentials, lookup, ct);
+        }
+        catch (StripeException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Stripe PaymentIntent cancel failed. Reference={Reference}",
+                lookup.ProviderChargeReference
+            );
+            return Result.Failure<WebhookEventPayload>(
+                new Error("Stripe.CancelCharge.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
+        }
+    }
+
     /// <summary>Estado del PaymentIntent en el payload canónico del webhook. <c>requires_payment_method</c>
     /// solo cuenta como fallo si Stripe dejó el error del intento; si no, sigue pendiente.</summary>
     public static WebhookEventPayload MapIntentStatus(PaymentIntent intent) =>
@@ -196,7 +273,14 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
                 error.Message,
                 null
             ),
-            "requires_action" => new WebhookEventPayload(intent.Id, PaymentStatus.RequiresAction, null, null, null),
+            "requires_action" => new WebhookEventPayload(
+                intent.Id,
+                PaymentStatus.RequiresAction,
+                null,
+                null,
+                null,
+                NextActionClientSecret: intent.ClientSecret
+            ),
             _ => new WebhookEventPayload(intent.Id, PaymentStatus.Processing, null, null, null),
         };
 
@@ -397,7 +481,7 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
         return Task.FromResult(result);
     }
 
-    private static Result<WebhookEventPayload> ParsePaymentIntent(Event stripeEvent, PaymentStatus mappedStatus)
+    internal static Result<WebhookEventPayload> ParsePaymentIntent(Event stripeEvent, PaymentStatus mappedStatus)
     {
         if (stripeEvent.Data.Object is not PaymentIntent intent)
             return Result.Failure<WebhookEventPayload>(

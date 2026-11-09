@@ -110,7 +110,7 @@ public sealed class FormRetentionServiceTests
         await using var db = NewDb();
         var fileId = Guid.NewGuid();
         var request = CustomerRequest();
-        request.RegisterAttachment(
+        request.Files.Register(
             new FormAnswerAddress(FileComponent, null),
             fileId,
             "return.pdf",
@@ -155,7 +155,7 @@ public sealed class FormRetentionServiceTests
         var fileId = Guid.NewGuid();
 
         var cancelled = CustomerRequest();
-        cancelled.RegisterAttachment(
+        cancelled.Files.Register(
             new FormAnswerAddress(FileComponent, null),
             fileId,
             "return.pdf",
@@ -170,7 +170,7 @@ public sealed class FormRetentionServiceTests
 
         // Otra request activa referencia el MISMO archivo: Tasks no debe pedir su borrado.
         var other = CustomerRequest();
-        other.RegisterAttachment(
+        other.Files.Register(
             new FormAnswerAddress(FileComponent, null),
             fileId,
             "return.pdf",
@@ -197,7 +197,7 @@ public sealed class FormRetentionServiceTests
     {
         await using var db = NewDb();
         var request = CustomerRequest();
-        request.RegisterAttachment(
+        request.Files.Register(
             new FormAnswerAddress(FileComponent, null),
             Guid.NewGuid(),
             "return.pdf",

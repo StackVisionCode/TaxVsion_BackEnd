@@ -111,6 +111,8 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     /// <summary>Reintentos al fusionar contadores de cuota que chocaron con otra escritura.</summary>
     internal const int MaxQuotaMergeAttempts = 5;
 
+    private const int SqlDeadlockVictim = 1205;
+
     private static readonly string[] QuotaCounters =
     [
         nameof(TenantStorageLimit.UsedBytes),
@@ -133,19 +135,36 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
                     ex
                 );
             }
+            catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: SqlDeadlockVictim })
+            {
+                throw ConcurrencyConflict(ex);
+            }
             // Dos escaneos/subidas en paralelo mueven la cuota del mismo tenant: solo chocan los contadores.
             // Se relee la fila y se aplican encima los mismos incrementos; EF deshace el intento fallido.
             catch (DbUpdateConcurrencyException ex)
                 when (attempt < MaxQuotaMergeAttempts && ex.Entries.All(e => e.Entity is TenantStorageLimit))
             {
                 foreach (var entry in ex.Entries)
-                    await MergeQuotaCountersAsync(entry, cancellationToken);
+                    await MergeQuotaCountersAsync(entry, ex, cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                throw ConcurrencyConflict(ex);
             }
         }
     }
 
+    // HTTP responde 409; por mensaje, Wolverine reintenta sobre lo nuevo.
+    internal static ConflictException ConcurrencyConflict(Exception inner) =>
+        new(
+            "Persistence.ConcurrencyConflict",
+            "The resource was modified by someone else. Reload and try again.",
+            inner
+        );
+
     private static async Task MergeQuotaCountersAsync(
         Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry,
+        DbUpdateConcurrencyException conflict,
         CancellationToken cancellationToken
     )
     {
@@ -156,6 +175,23 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
         var database =
             await entry.GetDatabaseValuesAsync(cancellationToken)
             ?? throw new InvalidOperationException("Tenant quota row was deleted while it was being updated.");
+
+        // Otro snapshot entró antes: hay que releer para decidir por revisión, no fusionar encima.
+        var revision = entry.Property(nameof(TenantStorageLimit.LastEntitlementsRevision));
+        if (revision.IsModified && !Equals(database[revision.Metadata.Name], revision.OriginalValue))
+            throw ConcurrencyConflict(conflict);
+
+        // Cada reserva pasó el chequeo con la fila vieja: juntas no pueden superar el tope.
+        var used = (long)database[nameof(TenantStorageLimit.UsedBytes)]!;
+        var reserved = (long)database[nameof(TenantStorageLimit.ReservedBytes)]!;
+        var reservedDelta = deltas[nameof(TenantStorageLimit.ReservedBytes)];
+        var usedDelta = deltas[nameof(TenantStorageLimit.UsedBytes)];
+        if (
+            reservedDelta > 0
+            && used + usedDelta + reserved + reservedDelta > (long)database[nameof(TenantStorageLimit.MaxBytes)]!
+        )
+            throw new ConflictException(QuotaErrors.ConcurrentExceededCode, QuotaErrors.Exceeded.Message, conflict);
+
         // Lo que no son contadores se toma de la base salvo que este contexto lo haya cambiado.
         foreach (var property in entry.Properties.Where(p => !QuotaCounters.Contains(p.Metadata.Name)))
         {

@@ -251,10 +251,118 @@ public sealed class SeriesSplitTests
             Now
         );
 
-        // Siguen apuntando a las mismas ocurrencias por su OriginalStartUtc, que no cambia.
         Assert.True(result.IsSuccess);
         Assert.Single(original.Exceptions);
     }
+
+    [Fact]
+    public void Moving_the_entire_series_keeps_a_cancelled_occurrence_cancelled()
+    {
+        var original = SeriesWithFebruaryCancellation();
+
+        MoveToTenAm(original);
+
+        var february = Expand(original, Utc(2026, 2, 1), Utc(2026, 3, 1));
+        Assert.DoesNotContain(february, o => DateOnly.FromDateTime(o.StartUtc) == new DateOnly(2026, 2, 16));
+        Assert.Equal(3, february.Count);
+        Assert.Equal(Utc(2026, 2, 16, 15), Assert.Single(original.Exceptions).OriginalStartUtc);
+        Assert.Equal(1, original.ChildrenRevision - RevisionAfterSeed);
+    }
+
+    [Fact]
+    public void Moving_the_series_across_dst_keeps_the_same_occurrence_cancelled()
+    {
+        var original = SeriesWithFebruaryCancellation();
+        // 16 de marzo, ya en horario de verano: 09:00 en Nueva York son las 13:00 UTC.
+        Assert.True(original.CancelOccurrence(Utc(2026, 3, 16, 13), Organizer, canManageAll: false, Now).IsSuccess);
+
+        MoveToTenAm(original);
+
+        var march = Expand(original, Utc(2026, 3, 1), Utc(2026, 4, 1));
+        Assert.DoesNotContain(march, o => DateOnly.FromDateTime(o.StartUtc) == new DateOnly(2026, 3, 16));
+    }
+
+    [Fact]
+    public void Moving_the_entire_series_keeps_an_occurrence_with_its_own_title()
+    {
+        var original = SeriesWithFebruaryCancellation();
+        Assert.True(
+            original
+                .OverrideOccurrence(Utc(2026, 2, 23, 14), null, null, "Special", null, Organizer, false, Now)
+                .IsSuccess
+        );
+
+        MoveToTenAm(original);
+
+        var occurrence = Assert.Single(
+            Expand(original, Utc(2026, 2, 1), Utc(2026, 3, 1)),
+            o => DateOnly.FromDateTime(o.StartUtc) == new DateOnly(2026, 2, 23)
+        );
+        Assert.Equal("Special", occurrence.Title);
+        Assert.Equal(Utc(2026, 2, 23, 15), occurrence.StartUtc);
+    }
+
+    [Fact]
+    public void Moving_the_entire_series_does_not_duplicate_an_occurrence_moved_on_its_own()
+    {
+        var original = SeriesWithFebruaryCancellation();
+        var movedTo = Utc(2026, 2, 24, 18);
+        Assert.True(
+            original
+                .OverrideOccurrence(
+                    Utc(2026, 2, 23, 14),
+                    movedTo,
+                    movedTo.AddHours(1),
+                    null,
+                    null,
+                    Organizer,
+                    false,
+                    Now
+                )
+                .IsSuccess
+        );
+
+        MoveToTenAm(original);
+
+        var february = Expand(original, Utc(2026, 2, 1), Utc(2026, 3, 1));
+        Assert.Contains(february, o => o.StartUtc == movedTo);
+        Assert.DoesNotContain(february, o => DateOnly.FromDateTime(o.StartUtc) == new DateOnly(2026, 2, 23));
+    }
+
+    [Fact]
+    public void Shortening_the_series_drops_the_exceptions_it_no_longer_reaches()
+    {
+        var original = SeriesWithFebruaryCancellation();
+
+        var result = original.EditEntireSeries(
+            TenAmFrom(new DateOnly(2026, 1, 5)),
+            RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO;COUNT=4").Value,
+            Organizer,
+            canManageAll: false,
+            Now
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(original.Exceptions);
+    }
+
+    private const int RevisionAfterSeed = 2;
+
+    private static void MoveToTenAm(Appointment series) =>
+        Assert.True(
+            series
+                .EditEntireSeries(
+                    TenAmFrom(new DateOnly(2026, 1, 5)),
+                    RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
+                    Organizer,
+                    canManageAll: false,
+                    Now
+                )
+                .IsSuccess
+        );
+
+    private static IReadOnlyList<Occurrence> Expand(Appointment series, DateTime fromUtc, DateTime toUtc) =>
+        OccurrenceExpander.Expand(series, fromUtc, toUtc).Value;
 
     [Fact]
     public void The_until_of_the_old_series_is_written_in_utc()

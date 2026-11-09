@@ -33,6 +33,8 @@ public sealed class TasksArchitectureTests
     private static readonly Assembly ClientFormsApplicationAssembly =
         typeof(TaxVision.Tasks.ClientForms.Application.Templates.Commands.CreateFormTemplateHandler).Assembly;
     private static readonly Assembly ClientFormsDomainAssembly = typeof(FormTemplate).Assembly;
+    private const int MaxAggregateRootLines = 600;
+    private static readonly Regex AggregateRootDeclaration = new(@"\bclass\s+(?<name>\w+)\s*:\s*AggregateRoot\b");
     private static readonly Assembly EngineAssembly = typeof(IFormEngine).Assembly;
 
     [Fact]
@@ -71,11 +73,10 @@ public sealed class TasksArchitectureTests
     }
 
     /// <summary>
-    /// Si Domain referenciara EF, las decisiones del agregado quedarían imposibles de probar sin base
-    /// de datos. <c>Ical.Net</c> sí está permitido: es una librería de dominio puro, sin IO.
+    /// Domain sin EF, ASP.NET ni Wolverine lo cubre <see cref="TasksLayeringTests"/>. <c>Ical.Net</c> sí está
+    /// permitido: es una librería de dominio puro, sin IO.
     /// </summary>
     [Theory]
-    [InlineData("Microsoft.EntityFrameworkCore")]
     [InlineData("TaxVision.Tasks.Infrastructure")]
     [InlineData("TaxVision.Tasks.Application")]
     public void Domain_should_not_depend_on_infrastructure_concerns(string forbiddenNamespace)
@@ -85,21 +86,8 @@ public sealed class TasksArchitectureTests
         Assert.True(result.IsSuccessful, $"Domain types depending on {forbiddenNamespace}: " + Describe(result));
     }
 
-    [Fact]
-    public void Application_should_not_depend_on_infrastructure()
-    {
-        var result = Types
-            .InAssembly(ApplicationAssembly)
-            .ShouldNot()
-            .HaveDependencyOn("TaxVision.Tasks.Infrastructure")
-            .GetResult();
-
-        Assert.True(result.IsSuccessful, "Application types depending on Infrastructure: " + Describe(result));
-    }
-
+    // Domain sin EF ni Wolverine lo cubre ClientFormsLayeringTests.
     [Theory]
-    [InlineData("Microsoft.EntityFrameworkCore")]
-    [InlineData("Wolverine")]
     [InlineData("TaxVision.Tasks.Domain")]
     [InlineData("TaxVision.Tasks.Application")]
     [InlineData("TaxVision.Tasks.ClientForms.Application")]
@@ -114,9 +102,8 @@ public sealed class TasksArchitectureTests
         Assert.True(result.IsSuccessful, $"Client Forms Domain depends on {forbiddenNamespace}: " + Describe(result));
     }
 
+    // Application sin EF ni Infrastructure lo cubre ClientFormsLayeringTests.
     [Theory]
-    [InlineData("Microsoft.EntityFrameworkCore")]
-    [InlineData("TaxVision.Tasks.Infrastructure")]
     [InlineData("TaxVision.Tasks.Domain")]
     [InlineData("TaxVision.Tasks.Application")]
     public void Client_forms_application_should_stay_isolated(string forbiddenNamespace)
@@ -179,6 +166,70 @@ public sealed class TasksArchitectureTests
 
         Assert.Empty(violations);
     }
+
+    /// <summary>
+    /// TSK-9: una raíz de agregado de ClientForms no pasa de 600 líneas, contando sus partes: los tipos que reciben la
+    /// raíz en el constructor (<c>FormRequestActions</c>, <c>FormRequestSummary</c>…) son el mismo agregado.
+    /// </summary>
+    [Fact]
+    public void AggregateRoots_Under600Lines()
+    {
+        var files = SourceFiles("TaxVision.Tasks.ClientForms.Domain")
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .Select(file => (Path: file, Text: File.ReadAllText(file)))
+            .ToArray();
+        var roots = ClientFormsDomainAssembly
+            .GetTypes()
+            .Where(type => type.IsClass && typeof(BuildingBlocks.Domain.AggregateRoot).IsAssignableFrom(type))
+            .ToArray();
+
+        var measured = roots
+            .Select(root =>
+            {
+                var members = AggregatePartsOf(root).Prepend(root).Select(type => type.Name).ToArray();
+                var lines = files
+                    .Where(file => members.Any(name => Regex.IsMatch(file.Text, $@"\bclass\s+{name}\b")))
+                    .Sum(file => File.ReadLines(file.Path).Count());
+                return (Root: root.Name, Lines: lines, Parts: members.Length - 1);
+            })
+            .ToArray();
+        var offenders = measured
+            .Where(root => root.Lines >= MaxLinesFor(root.Root))
+            .Select(root => $"{root.Root} = {root.Lines} (con {root.Parts} partes; tope {MaxLinesFor(root.Root)})")
+            .ToArray();
+
+        Assert.NotEmpty(roots);
+        Assert.True(
+            offenders.Length == 0,
+            $"Raíces de agregado sobre su tope: {string.Join(" | ", offenders)}"
+        );
+    }
+
+    // Una parte del agregado recibe la raíz en su constructor y guarda su estado en ella.
+    private static IEnumerable<Type> AggregatePartsOf(Type root) =>
+        ClientFormsDomainAssembly
+            .GetTypes()
+            .Where(type => type != root && !type.IsNested)
+            .Where(type =>
+                type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Any(ctor => ctor.GetParameters().Any(parameter => parameter.ParameterType == root))
+            );
+
+    /// <summary>
+    /// Excepciones con techo congelado y fecha de revisión: vencida la fecha, vuelve el tope general y la regla falla
+    /// hasta decidir. FormRequest: partirlo exige tablas nuevas para la firma y el PDF y mover la frontera de
+    /// consistencia de TSK-4 y TSK-11; se revisa después de la temporada de impuestos.
+    /// </summary>
+    private static readonly Dictionary<string, (int MaxLines, DateOnly ReviewBy)> AggregateSizeExceptions = new()
+    {
+        ["FormRequest"] = (1_100, new DateOnly(2027, 5, 31)),
+    };
+
+    private static int MaxLinesFor(string root) =>
+        AggregateSizeExceptions.TryGetValue(root, out var exception)
+        && DateOnly.FromDateTime(DateTime.UtcNow) <= exception.ReviewBy
+            ? exception.MaxLines
+            : MaxAggregateRootLines;
 
     /// <summary>
     /// El regex no ve un operador invocado sin punto ni uno que llegue por un alias; el IL sí.
@@ -396,6 +447,69 @@ public sealed class TasksArchitectureTests
         );
     }
 
+    /// <summary>
+    /// Todo <c>IgnoreQueryFilters</c> fuera de ClientForms compara <c>TenantId</c> en la misma expresión o dice por
+    /// qué es cross-tenant en las líneas de arriba. El filtro global no reemplaza esa comparación: es fail-closed y
+    /// en jobs y scopes de Wolverine sin tenant devuelve 0 filas sin avisar.
+    /// </summary>
+    [Fact]
+    public void Infrastructure_IgnoreQueryFilters_must_filter_by_tenant()
+    {
+        var violations = new List<string>();
+
+        foreach (var file in InfrastructureSourceFiles())
+        {
+            var name = Path.GetFileName(file);
+            var text = File.ReadAllText(file);
+            if (!text.Contains("IgnoreQueryFilters", StringComparison.Ordinal))
+                continue;
+
+            var inClientForms = file.Contains(
+                $"{Path.DirectorySeparatorChar}ClientForms{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal
+            );
+            if (inClientForms)
+            {
+                if (!text.Contains("TenantId", StringComparison.Ordinal) && !SanctionedCrossTenantReaders.Contains(name))
+                    violations.Add(name);
+                continue;
+            }
+
+            violations.AddRange(UnscopedIgnoreQueryFilters(name, text));
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "IgnoreQueryFilters sin TenantId ni motivo cross-tenant: " + string.Join(" | ", violations)
+        );
+    }
+
+    private static IEnumerable<string> UnscopedIgnoreQueryFilters(string fileName, string text)
+    {
+        const string Call = ".IgnoreQueryFilters()";
+        for (var at = text.IndexOf(Call, StringComparison.Ordinal); at >= 0; at = text.IndexOf(Call, at + 1, StringComparison.Ordinal))
+        {
+            var start = Math.Max(text.LastIndexOf(';', at), text.LastIndexOf('{', at)) + 1;
+            var end = text.IndexOf(';', at);
+            var expression = text[start..end];
+            if (expression.Contains("TenantId", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var above = text[..at].Split('\n').TakeLast(10);
+            if (above.Any(line => line.Contains("cross-tenant", StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            yield return $"{fileName}:{text[..at].Count(c => c == '\n') + 1}";
+        }
+    }
+
+    private static IEnumerable<string> InfrastructureSourceFiles() =>
+        Directory
+            .EnumerateFiles(Path.Combine(ServiceRoot, "TaxVision.Tasks.Infrastructure"), "*.cs", SearchOption.AllDirectories)
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}"));
+
     // Lectores cross-tenant a propósito: gauges para todos los tenants y uso de catálogo (plataforma).
     private static readonly HashSet<string> SanctionedCrossTenantReaders = new(StringComparer.Ordinal)
     {
@@ -580,7 +694,7 @@ public sealed class TasksArchitectureTests
         // Sólo comparaciones: un literal que viaja dentro de un contrato de integración es texto por
         // diseño, y prohibirlo obligaría a inventar un enum compartido entre servicios.
         var pattern = new Regex(
-            @"(==|!=|\.Equals\(|case\s+)\s*""(completed|complete|completado|completada|done|terminado|terminada)""",
+            @"(==|!=|\.Equals\(|\bcase\s+)\s*""(completed|complete|completado|completada|done|terminado|terminada)""",
             RegexOptions.IgnoreCase
         );
 

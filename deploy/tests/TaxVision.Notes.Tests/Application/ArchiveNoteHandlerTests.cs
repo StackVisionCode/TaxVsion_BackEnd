@@ -13,7 +13,8 @@ public sealed class ArchiveNoteHandlerTests
             NoteContent.Create("<p>x</p>").Value,
             NoteReference.Create(NoteTargetType.None, null).Value,
             NoteVisibility.Private,
-            null
+            null,
+            DateTime.UtcNow
         ).Value;
 
     [Fact]
@@ -30,6 +31,7 @@ public sealed class ArchiveNoteHandlerTests
             new ArchiveNoteCommand(tenantId, note.Id, authorId, ActorHasViewAll: false),
             repo,
             uow,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -51,6 +53,7 @@ public sealed class ArchiveNoteHandlerTests
             new ArchiveNoteCommand(tenantId, note.Id, Guid.NewGuid(), ActorHasViewAll: true),
             repo,
             new NoOpUnitOfWork(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -70,6 +73,7 @@ public sealed class ArchiveNoteHandlerTests
             new ArchiveNoteCommand(tenantId, note.Id, Guid.NewGuid(), ActorHasViewAll: false),
             repo,
             new NoOpUnitOfWork(),
+            TimeProvider.System,
             CancellationToken.None
         );
 

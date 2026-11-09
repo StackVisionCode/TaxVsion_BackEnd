@@ -90,9 +90,8 @@ public interface IOAuthProviderClient
 
     /// <summary>
     /// Revoca el grant del lado del proveedor, best-effort (D3 §12.4, <c>DELETE /connectors/accounts/{id}</c>)
-    /// — nunca lanza ni bloquea la desconexión local si falla. Default no-op: Graph no expone una API
-    /// de revocación equivalente vía Microsoft Graph (la única forma real es que el usuario la revoque
-    /// él mismo desde myaccount.microsoft.com/consents) — solo Google la sobreescribe.
+    /// — nunca lanza ni bloquea la desconexión local si falla. Microsoft la implementa como no-op: Graph
+    /// no expone una API de revocación equivalente (el usuario la revoca desde myaccount.microsoft.com/consents).
     /// </summary>
-    Task RevokeAsync(string refreshToken, CancellationToken ct = default) => Task.CompletedTask;
+    Task RevokeAsync(string refreshToken, CancellationToken ct = default);
 }

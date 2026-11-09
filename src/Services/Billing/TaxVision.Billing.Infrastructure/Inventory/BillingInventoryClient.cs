@@ -21,11 +21,26 @@ public sealed class BillingInventoryClient(
     ILogger<BillingInventoryClient> logger
 ) : IInventoryStockClient
 {
-    public async Task<Result> CommitInvoiceSaleAsync(
+    public Task<Result> CommitInvoiceSaleAsync(
         Guid tenantId,
         Guid invoiceId,
         IReadOnlyList<InvoiceSaleLine> lines,
         CancellationToken ct = default
+    ) => PostSaleAsync("commit-sale", tenantId, invoiceId, lines, ct);
+
+    public Task<Result> CheckInvoiceSaleAsync(
+        Guid tenantId,
+        Guid invoiceId,
+        IReadOnlyList<InvoiceSaleLine> lines,
+        CancellationToken ct = default
+    ) => PostSaleAsync("check-sale", tenantId, invoiceId, lines, ct);
+
+    private async Task<Result> PostSaleAsync(
+        string operation,
+        Guid tenantId,
+        Guid invoiceId,
+        IReadOnlyList<InvoiceSaleLine> lines,
+        CancellationToken ct
     )
     {
         var token = await tokenProvider.GetTokenAsync(BillingServiceClientsOptions.PlatformClientName, tenantId, ct);
@@ -40,7 +55,7 @@ public sealed class BillingInventoryClient(
             lines = lines.Select(l => new { catalogItemId = l.CatalogItemId, quantity = l.Quantity }),
         };
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "internal/stock/commit-sale")
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"internal/stock/{operation}")
         {
             Content = JsonContent.Create(body),
         };
@@ -65,7 +80,8 @@ public sealed class BillingInventoryClient(
 
             var errorBody = await response.Content.ReadAsStringAsync(ct);
             logger.LogWarning(
-                "Inventory commit-sale for invoice {InvoiceId} failed: {Status} {Body}",
+                "Inventory {Operation} for invoice {InvoiceId} failed: {Status} {Body}",
+                operation,
                 invoiceId,
                 (int)response.StatusCode,
                 errorBody
@@ -76,7 +92,7 @@ public sealed class BillingInventoryClient(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            logger.LogWarning(ex, "Inventory commit-sale for invoice {InvoiceId} threw.", invoiceId);
+            logger.LogWarning(ex, "Inventory {Operation} for invoice {InvoiceId} threw.", operation, invoiceId);
             return Result.Failure(
                 new Error("Billing.Inventory.Unreachable", "Inventory service is unreachable; cannot verify stock.")
             );

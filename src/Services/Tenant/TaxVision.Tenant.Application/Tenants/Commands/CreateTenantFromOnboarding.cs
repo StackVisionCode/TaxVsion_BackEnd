@@ -23,7 +23,7 @@ public sealed record CreateTenantFromOnboardingCommand(
 /// PayFlow (Fase 16) — receptor del <c>POST internal/tenants/from-onboarding</c> que la Saga de Auth
 /// (Fase 15, <c>Sagas/Commands/CreateTenantForOnboardingCommand.cs</c>) invoca. No hay invitación de
 /// TenantAdmin en este flujo (el owner se crea directo vía Fase 16's
-/// <c>internal/tenants/{id}/owners</c>) — <see cref="TenantCreatedIntegrationEvent.AdminInvitationTokenHash"/>
+/// <c>CreateTenantOwnerFromOnboardingCommand</c>) — <see cref="TenantCreatedIntegrationEvent.AdminInvitationTokenHash"/>
 /// queda vacío a propósito: Auth.TenantCreatedConsumer salta ese bloque entero cuando
 /// <c>OnboardingId != null</c> (ver Fase 16's cambio a ese consumer), así que el valor nunca se lee.
 /// <para>
@@ -43,6 +43,7 @@ public static class CreateTenantFromOnboardingHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -61,6 +62,7 @@ public static class CreateTenantFromOnboardingHandler
             command.OfficeName,
             command.Subdomain,
             OnboardingTimeZoneOrUtc(command.DefaultTimeZoneId),
+            clock.GetUtcNow().UtcDateTime,
             command.OnboardingId
         );
         if (createResult.IsFailure)
@@ -68,6 +70,8 @@ public static class CreateTenantFromOnboardingHandler
 
         var tenant = createResult.Value;
         await repo.AddAsync(tenant, ct);
+        // Guardar antes de publicar: el reintento en línea no descarta lo publicado por un intento revertido.
+        await unitOfWork.SaveChangesAsync(ct);
 
         await bus.PublishAsync(
             new TenantCreatedForOnboardingIntegrationEvent
@@ -94,8 +98,6 @@ public static class CreateTenantFromOnboardingHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
     }

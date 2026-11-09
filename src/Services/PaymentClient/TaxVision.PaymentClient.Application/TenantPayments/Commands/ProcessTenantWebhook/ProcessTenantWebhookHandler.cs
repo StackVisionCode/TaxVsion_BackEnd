@@ -5,9 +5,7 @@ using BuildingBlocks.Security;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
-using TaxVision.PaymentClient.Application.Common;
 using TaxVision.PaymentClient.Application.TenantPayments.Common;
-using TaxVision.PaymentClient.Domain.TenantPayments;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 using TaxVision.PaymentClient.Domain.Webhooks;
 using Wolverine;
@@ -180,78 +178,19 @@ public static class ProcessTenantWebhookHandler
             return Result.Success();
         }
 
-        var statusBeforeWebhook = payment.Status;
-        var transitionResult = TenantPaymentProviderUpdate.Apply(payment, payload, metrics);
-        if (transitionResult.IsFailure)
-        {
-            webhookEvent.MarkStale(payment.Id, transitionResult.Error.Code, DateTime.UtcNow);
-            await unitOfWork.SaveChangesAsync(ct);
-            logger.LogInformation(
-                "{Provider} webhook {EventType} ({ProviderEventId}) is stale for TenantPayment {TenantPaymentId}: {ErrorCode}.",
-                command.ProviderCode,
-                verification.EventType,
-                verification.ProviderEventId,
-                payment.Id,
-                transitionResult.Error.Code
-            );
-            return Result.Success();
-        }
-
-        var appliedResult = webhookEvent.MarkApplied(payment.Id, DateTime.UtcNow);
-        if (appliedResult.IsFailure)
-            return appliedResult;
-
-        await AuditEntryFactory.AppendAsync(
+        return await TenantPaymentWebhookApplier.ApplyAsync(
+            payment,
+            webhookEvent,
+            payload,
+            $"{command.ProviderCode}Webhook",
+            links,
             audit,
-            payment.TenantId,
-            nameof(TenantPayment),
-            payment.Id,
-            TenantPaymentProviderUpdate.MapAuditAction(payment.Status),
-            actorUserId: Guid.Empty,
-            correlation.CorrelationId,
-            before: (object?)null,
-            after: new
-            {
-                payment.Status,
-                Source = $"{command.ProviderCode}Webhook",
-                verification.EventType,
-            },
-            reason: null,
-            DateTime.UtcNow,
+            unitOfWork,
+            bus,
+            metrics,
+            correlation,
+            logger,
             ct
         );
-
-        // Stripe reenvía payment_intent.succeeded incluso para pagos que ya confirmamos
-        // sincrónicamente — solo contamos GMV si ESTE webhook fue el que causó la transición
-        // (el caso 3DS/SCA async), nunca si el pago ya estaba Succeeded de antes.
-        PaymentLinkCompletionEvents? linkEvents = null;
-        if (payment.Status == PaymentStatus.Succeeded && statusBeforeWebhook != PaymentStatus.Succeeded)
-        {
-            metrics.RecordPaymentSucceeded(payment.Amount.AmountCents, payment.Amount.Currency);
-            linkEvents = await TenantPaymentProviderUpdate.CompletePaymentLinkIfAnyAsync(
-                payment,
-                links,
-                audit,
-                metrics,
-                correlation,
-                source: "Webhook",
-                ct
-            );
-        }
-
-        // Guardar antes de publicar: un reintento en línea no debe filtrar eventos del intento revertido.
-        await unitOfWork.SaveChangesAsync(ct);
-        await TenantPaymentProviderUpdate.PublishAsync(bus, linkEvents);
-
-        logger.LogInformation(
-            "{Provider} webhook {EventType} ({ProviderEventId}) applied to TenantPayment {TenantPaymentId}: now {Status}.",
-            command.ProviderCode,
-            verification.EventType,
-            verification.ProviderEventId,
-            payment.Id,
-            payment.Status
-        );
-
-        return Result.Success();
     }
 }

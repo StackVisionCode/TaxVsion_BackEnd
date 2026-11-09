@@ -44,6 +44,7 @@ function setup() {
     upsert: vi.fn(),
     findByCustomerId: vi.fn(),
     markInactive: vi.fn(),
+    markActive: vi.fn(),
     clearAvatar: vi.fn(),
   } as unknown as CustomerDirectoryRepository;
   const customerPreparerAssignments = {
@@ -65,7 +66,7 @@ function setup() {
     customerAssignments,
     inAppSource: 'Communication',
   });
-  return { handlers, emitter, customerAssignments };
+  return { handlers, emitter, customerAssignments, customerDirectory };
 }
 
 function envelope(eventType: string, payload: Record<string, unknown>): IncomingEnvelope {
@@ -93,6 +94,8 @@ describe('bindCustomerConsumers — customer.changed realtime (F4)', () => {
     },
     { event: 'customer.deactivated.v1', payload: { customerId: 'c-1' }, changeType: 'deactivated' },
     { event: 'customer.archived.v1', payload: { customerId: 'c-1' }, changeType: 'archived' },
+    { event: 'customer.reactivated.v1', payload: { customerId: 'c-1' }, changeType: 'reactivated' },
+    { event: 'customer.activated.v1', payload: { customerId: 'c-1' }, changeType: 'activated' },
   ];
 
   for (const { event, payload, changeType } of cases) {
@@ -124,6 +127,27 @@ describe('bindCustomerConsumers — customer.changed realtime (F4)', () => {
 
     expect(emitter.emitToTenantStaff).not.toHaveBeenCalled();
   });
+});
+
+// Cliente restaurado (Archived→Active) o activado (Inactive→Active): sin handler seguía inactivo en el
+// directorio hasta la reconciliación. Mismo control de orden que los avisos de Auth: fecha del sobre.
+describe('bindCustomerConsumers — estado del cliente en el directorio', () => {
+  const at = '2026-11-01T10:00:00.000Z';
+  const cases: Array<[string, 'markActive' | 'markInactive']> = [
+    ['customer.reactivated.v1', 'markActive'],
+    ['customer.activated.v1', 'markActive'],
+    ['customer.deactivated.v1', 'markInactive'],
+    ['customer.archived.v1', 'markInactive'],
+  ];
+  for (const [event, method] of cases) {
+    it(`${event} llama ${method} con la fecha del aviso`, async () => {
+      const { handlers, customerDirectory } = setup();
+
+      await handlers.get(event)!({ ...envelope(event, { customerId: 'c-1' }), occurredOnUtc: at });
+
+      expect(customerDirectory[method]).toHaveBeenCalledWith('c-1', new Date(at));
+    });
+  }
 });
 
 describe('bindCustomerConsumers — customer.assignments_changed.v1 (P2.5, proyeccion M:N)', () => {

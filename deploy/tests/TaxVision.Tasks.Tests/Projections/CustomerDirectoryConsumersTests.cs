@@ -1,7 +1,10 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Tasks.Application.Backfill;
 using TaxVision.Tasks.Application.Projections.CustomerEvents;
 using TaxVision.Tasks.Domain.Projections;
+using TaxVision.Tasks.Tests.Dependencies;
 
 namespace TaxVision.Tasks.Tests.Projections;
 
@@ -11,11 +14,12 @@ public sealed class CustomerDirectoryConsumersTests
     private static readonly DateTime T0 = new(2026, 8, 12, 10, 0, 0, DateTimeKind.Utc);
 
     [Fact]
-    public async Task CustomerCreated_inserts_the_entry_and_triggers_backfill_first()
+    public async Task CustomerCreated_inserts_the_entry_and_requests_the_backfill()
     {
         var customerId = Guid.NewGuid();
         var repository = new InMemoryCustomerDirectoryRepository();
-        var backfill = new RecordingBackfillService();
+        var backfill = new RecordingBackfillService { Needed = true };
+        var bus = new FakeMessageBus();
         var uow = new RecordingUnitOfWork();
 
         await CustomerCreatedConsumer.Handle(
@@ -32,6 +36,7 @@ public sealed class CustomerDirectoryConsumersTests
             },
             repository,
             backfill,
+            bus,
             uow,
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
@@ -42,7 +47,8 @@ public sealed class CustomerDirectoryConsumersTests
         Assert.Equal("Acme", stored!.DisplayName);
         Assert.Equal(CustomerDirectoryStatus.Active, stored.Status);
         Assert.Equal(1, uow.SaveCount);
-        Assert.Equal([TenantId], backfill.Calls);
+        Assert.Equal(TenantId, Assert.IsType<BackfillTenantCustomersCommand>(Assert.Single(bus.Published)).TenantId);
+        Assert.Empty(backfill.Calls);
     }
 
     /// <summary>
@@ -71,6 +77,7 @@ public sealed class CustomerDirectoryConsumersTests
             },
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new RecordingUnitOfWork(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
@@ -99,6 +106,7 @@ public sealed class CustomerDirectoryConsumersTests
             },
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new RecordingUnitOfWork(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
@@ -110,32 +118,91 @@ public sealed class CustomerDirectoryConsumersTests
         Assert.Equal("Acme", stored.DisplayName);
     }
 
-    /// <summary>
-    /// Consistencia eventual: el evento de status puede adelantarse al <c>Created</c>. No hay nada
-    /// que actualizar, y crear una fila desde acá inventaría un customer sin nombre — el backfill o
-    /// la reconciliación la traen después.
-    /// </summary>
+    // TSK-8: un cambio de estado que llega antes que Created se reintenta, no se descarta.
     [Fact]
-    public async Task CustomerDeactivated_is_a_no_op_when_the_entry_is_unknown()
+    public async Task CustomerDeactivated_ArrivesBeforeCreated_ThrowsDependencyNotReady()
     {
         var repository = new InMemoryCustomerDirectoryRepository();
         var uow = new RecordingUnitOfWork();
 
-        await CustomerDeactivatedConsumer.Handle(
-            new CustomerDeactivatedIntegrationEvent
-            {
-                TenantId = TenantId,
-                CustomerId = Guid.NewGuid(),
-                DeactivatedByUserId = Guid.NewGuid(),
-                DeactivatedAtUtc = T0,
-                OccurredOn = T0,
-            },
-            repository,
-            new RecordingBackfillService(),
-            uow,
-            new NoOpCorrelationContext(),
-            NullLogger<CustomerDirectoryEntry>.Instance,
-            CancellationToken.None
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            CustomerDeactivatedConsumer.Handle(
+                new CustomerDeactivatedIntegrationEvent
+                {
+                    TenantId = TenantId,
+                    CustomerId = Guid.NewGuid(),
+                    DeactivatedByUserId = Guid.NewGuid(),
+                    DeactivatedAtUtc = T0,
+                    OccurredOn = T0,
+                },
+                repository,
+                new RecordingBackfillService(),
+                new FakeMessageBus(),
+                uow,
+                new NoOpCorrelationContext(),
+                NullLogger<CustomerDirectoryEntry>.Instance,
+                CancellationToken.None
+            )
+        );
+
+        Assert.Empty(repository.Entries);
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task CustomerReactivated_ArrivesBeforeCreated_ThrowsDependencyNotReady()
+    {
+        var repository = new InMemoryCustomerDirectoryRepository();
+        var uow = new RecordingUnitOfWork();
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            CustomerReactivatedConsumer.Handle(
+                new CustomerReactivatedIntegrationEvent
+                {
+                    TenantId = TenantId,
+                    CustomerId = Guid.NewGuid(),
+                    ReactivatedByUserId = Guid.NewGuid(),
+                    ReactivatedAtUtc = T0,
+                    OccurredOn = T0,
+                },
+                repository,
+                new RecordingBackfillService(),
+                new FakeMessageBus(),
+                uow,
+                new NoOpCorrelationContext(),
+                NullLogger<CustomerDirectoryEntry>.Instance,
+                CancellationToken.None
+            )
+        );
+
+        Assert.Empty(repository.Entries);
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task CustomerActivated_ArrivesBeforeCreated_ThrowsDependencyNotReady()
+    {
+        var repository = new InMemoryCustomerDirectoryRepository();
+        var uow = new RecordingUnitOfWork();
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            CustomerActivatedConsumer.Handle(
+                new CustomerActivatedIntegrationEvent
+                {
+                    TenantId = TenantId,
+                    CustomerId = Guid.NewGuid(),
+                    ActivatedByUserId = Guid.NewGuid(),
+                    ActivatedAtUtc = T0,
+                    OccurredOn = T0,
+                },
+                repository,
+                new RecordingBackfillService(),
+                new FakeMessageBus(),
+                uow,
+                new NoOpCorrelationContext(),
+                NullLogger<CustomerDirectoryEntry>.Instance,
+                CancellationToken.None
+            )
         );
 
         Assert.Empty(repository.Entries);
@@ -152,6 +219,7 @@ public sealed class CustomerDirectoryConsumersTests
             NewBulkEvent([Guid.NewGuid(), shared], [shared, Guid.NewGuid()]),
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
             CancellationToken.None
@@ -176,6 +244,7 @@ public sealed class CustomerDirectoryConsumersTests
             NewBulkEvent(ids, []),
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
             CancellationToken.None
@@ -194,6 +263,7 @@ public sealed class CustomerDirectoryConsumersTests
             NewBulkEvent([], []),
             repository,
             new RecordingBackfillService(),
+            new FakeMessageBus(),
             new NoOpCorrelationContext(),
             NullLogger<CustomerDirectoryEntry>.Instance,
             CancellationToken.None

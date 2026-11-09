@@ -26,6 +26,7 @@ public sealed class EmailTemplateVersionConfiguration : IEntityTypeConfiguration
         builder.Property(v => v.LayoutId);
         builder.Property(v => v.LayoutVersionNumber);
         builder.Property(v => v.CreatedAtUtc).IsRequired();
+        builder.Property(v => v.SeedContentHash).HasMaxLength(64);
 
         builder.HasIndex(v => new { v.EmailTemplateId, v.VersionNumber }).IsUnique();
 

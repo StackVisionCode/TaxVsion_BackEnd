@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Catalog.Application.Abstractions;
 using TaxVision.Catalog.Application.Common;
 using TaxVision.Catalog.Domain;
@@ -68,6 +69,7 @@ public static class UpdateCategoryHandler
         UpdateCategoryCommand command,
         ICategoryRepository categories,
         IUnitOfWork unitOfWork,
+        IOptions<CategoryTreeOptions> tree,
         CancellationToken ct
     )
     {
@@ -75,12 +77,17 @@ public static class UpdateCategoryHandler
         if (category is null)
             return Result.Failure<CategoryDto>(CatalogErrors.CategoryNotFound);
 
-        if (
-            command.ParentCategoryId is { } parent
-            && parent != Guid.Empty
-            && !await categories.ExistsAsync(command.TenantId, parent, ct)
-        )
-            return Result.Failure<CategoryDto>(CatalogErrors.CategoryNotFound);
+        if (command.ParentCategoryId is { } parent && parent != Guid.Empty)
+        {
+            if (!await categories.ExistsAsync(command.TenantId, parent, ct))
+                return Result.Failure<CategoryDto>(CatalogErrors.CategoryNotFound);
+
+            // Cruza agregados: por eso no vive en Category.Update. Llegar al tope es un ciclo viejo en los datos.
+            var maxDepth = tree.Value.MaxDepth;
+            var ancestors = await categories.GetAncestorIdsAsync(command.TenantId, parent, maxDepth, ct);
+            if (ancestors.Contains(command.Id) || ancestors.Count >= maxDepth)
+                return Result.Failure<CategoryDto>(CatalogErrors.CategoryCycle);
+        }
 
         var updated = category.Update(command.Name, command.Description, command.ParentCategoryId, DateTime.UtcNow);
         if (updated.IsFailure)

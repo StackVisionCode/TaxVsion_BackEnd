@@ -6,11 +6,15 @@ namespace TaxVision.Connectors.Application.Providers;
 public sealed class EmailProviderException(
     string message,
     Exception? innerException = null,
-    bool requiresReconnect = false
+    bool requiresReconnect = false,
+    bool isNotFound = false
 ) : Exception(message, innerException)
 {
     /// <summary>No se pudo obtener un access token porque la cuenta necesita reconectarse (ver <c>OAuthTokenErrorCodes.RequiresReconnect</c>).</summary>
     public bool RequiresReconnect { get; } = requiresReconnect;
+
+    /// <summary>El proveedor dice que el mensaje no existe (borrado o expurgado): reintentar no lo trae.</summary>
+    public bool IsNotFound { get; } = isNotFound;
 }
 
 /// <summary>
@@ -38,6 +42,19 @@ public interface IEmailProviderClient
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Ids del INBOX recibidos en [fromUtc, toUtc), por páginas, sin tocar el cursor ni usar el history/delta
+    /// (su retención no limita la ventana). Solo para la re-sincronización (CON-07).
+    /// </summary>
+    Task<InboxMessageIdPage> ListInboxMessageIdsAsync(
+        Guid accountId,
+        Guid tenantId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string? pageToken,
+        CancellationToken ct = default
+    );
+
     Task<RawMessage> GetMessageAsync(
         Guid accountId,
         Guid tenantId,
@@ -46,31 +63,15 @@ public interface IEmailProviderClient
     );
 
     /// <summary>
-    /// Metadata de varios mensajes. Por defecto pide uno por uno; IMAP lo resuelve en un solo FETCH.
-    /// Un mensaje que falla queda con su error y no corta a los demás.
+    /// Metadata de varios mensajes. Gmail y Graph piden uno por uno (<see cref="EmailProviderClientExtensions.GetMessagesOneByOneAsync"/>);
+    /// IMAP lo resuelve en un solo FETCH. Un mensaje que falla queda con su error y no corta a los demás.
     /// </summary>
-    async Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
+    Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
         Guid accountId,
         Guid tenantId,
         IReadOnlyList<string> providerMessageIds,
         CancellationToken ct = default
-    )
-    {
-        var results = new List<ProviderMessageFetch>(providerMessageIds.Count);
-        foreach (var id in providerMessageIds)
-        {
-            try
-            {
-                results.Add(ProviderMessageFetch.Found(id, await GetMessageAsync(accountId, tenantId, id, ct)));
-            }
-            catch (EmailProviderException ex)
-            {
-                results.Add(ProviderMessageFetch.Failed(id, ex));
-            }
-        }
-
-        return results;
-    }
+    );
 
     /// <summary>Fetch completo bajo demanda (Fase 8, format=full/body select) — nunca se llama desde el pipeline de webhooks (metadata-first), solo desde el endpoint M2M de body fetch.</summary>
     Task<MessageBody> GetMessageBodyAsync(
@@ -98,4 +99,32 @@ public interface IEmailProviderClient
         string attachmentId,
         CancellationToken ct = default
     );
+}
+
+public static class EmailProviderClientExtensions
+{
+    /// <summary>Lectura de varios mensajes pidiendo uno por uno, para los proveedores sin lote nativo.</summary>
+    public static async Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesOneByOneAsync(
+        this IEmailProviderClient client,
+        Guid accountId,
+        Guid tenantId,
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    )
+    {
+        var results = new List<ProviderMessageFetch>(providerMessageIds.Count);
+        foreach (var id in providerMessageIds)
+        {
+            try
+            {
+                results.Add(ProviderMessageFetch.Found(id, await client.GetMessageAsync(accountId, tenantId, id, ct)));
+            }
+            catch (EmailProviderException ex)
+            {
+                results.Add(ProviderMessageFetch.Failed(id, ex));
+            }
+        }
+
+        return results;
+    }
 }

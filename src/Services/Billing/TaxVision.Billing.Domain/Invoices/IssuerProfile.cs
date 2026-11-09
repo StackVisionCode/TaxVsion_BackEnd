@@ -36,6 +36,9 @@ public sealed class IssuerProfile : TenantEntity
     public long SourceVersion { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>La versión se compara en memoria: sin esto, dos eventos en paralelo se pisan.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     private IssuerProfile() { }
 
     public static IssuerProfile Create(Guid tenantId, DateTime nowUtc)

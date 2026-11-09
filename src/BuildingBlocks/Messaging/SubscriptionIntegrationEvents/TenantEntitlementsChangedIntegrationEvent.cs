@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>
@@ -12,6 +14,7 @@ namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 /// Subscription para reaccionar — consumidores más adelante pueden seguir prefiriendo un
 /// GET /entitlements/summary si necesitan el estado más reciente en vez del embebido aquí.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantEntitlementsChangedIntegrationEvent")]
 public sealed record TenantEntitlementsChangedIntegrationEvent : IntegrationEvent
 {
     public required long RevisionNumber { get; init; }

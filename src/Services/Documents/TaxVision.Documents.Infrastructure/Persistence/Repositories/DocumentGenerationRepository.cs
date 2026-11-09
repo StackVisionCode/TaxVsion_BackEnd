@@ -21,12 +21,19 @@ public sealed class DocumentGenerationRepository(DocumentsDbContext dbContext) :
 
     public Task<DocumentGeneration?> GetByIdempotencyKeyAsync(
         Guid tenantId,
+        string sourceService,
         string idempotencyKey,
         CancellationToken ct = default
     ) =>
         dbContext
             .DocumentGenerations.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(g => g.TenantId == tenantId && g.IdempotencyKey == idempotencyKey, ct);
+            .FirstOrDefaultAsync(
+                g =>
+                    g.TenantId == tenantId
+                    && g.SourceService == sourceService.Trim()
+                    && g.IdempotencyKey == idempotencyKey,
+                ct
+            );
 
     public Task<DocumentGeneration?> GetByFileIdAsync(Guid fileId, CancellationToken ct = default) =>
         dbContext.DocumentGenerations.IgnoreQueryFilters().FirstOrDefaultAsync(g => g.FileId == fileId, ct);

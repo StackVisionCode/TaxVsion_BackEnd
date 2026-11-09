@@ -4,6 +4,7 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\CustomerVisibility\BuildingBlocks.CustomerVisibility.csproj" />
     <ProjectReference Include="..\TaxVision.Signature.Application\TaxVision.Signature.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Jobs\BuildingBlocks.Jobs.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -34,6 +35,8 @@
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.9" />
+    <!-- Outbox de EF para los jobs: una unidad por solicitud (misma versión que el Api). -->
+    <PackageReference Include="WolverineFx.EntityFrameworkCore" Version="6.14.0" />
   </ItemGroup>
 
   <ItemGroup>

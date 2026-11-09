@@ -107,6 +107,40 @@ public sealed class FailurePolicyContractTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// BB-11. Quien aplica la política estándar aplica también la de conflictos, y antes: gana la primera regla
+    /// que matchea. Sin ella, un conflicto por HTTP vuelve a reintentarse en línea sin que nadie lo vea.
+    /// </summary>
+    [Fact]
+    public void CadaServicioAplicaLaPoliticaDeConflictosAntesDeLaEstandar()
+    {
+        var standardCall = new Regex(
+            @"\.\s*" + nameof(WolverineFailurePolicies.ApplyStandardFailurePolicies) + @"\s*\("
+        );
+        var conflictCall = new Regex(@"\.\s*" + nameof(WolverineConflictPolicy.UseTaxVisionConflictPolicy) + @"\s*\(");
+        var files = ServiceProgramFiles().Where(f => standardCall.IsMatch(File.ReadAllText(f.FullName))).ToArray();
+        Assert.NotEmpty(files);
+
+        var offenders = files
+            .Where(f =>
+            {
+                var text = File.ReadAllText(f.FullName);
+                var conflict = conflictCall.Match(text);
+                return !conflict.Success || conflict.Index > standardCall.Match(text).Index;
+            })
+            .Select(f => f.FullName)
+            .Order()
+            .ToArray();
+
+        output.WriteLine($"BB-11 — servicios verificados: {files.Length}");
+
+        Assert.True(
+            offenders.Length == 0,
+            "Estos Program.cs llaman ApplyStandardFailurePolicies() sin UseTaxVisionConflictPolicy() antes:\n  "
+                + string.Join("\n  ", offenders)
+        );
+    }
+
+    /// <summary>
     /// La lista de excepciones permanentes es deliberadamente corta. Este test no la congela —
     /// afirma la regla que la gobierna: nada entra si un reintento pudiera ayudar. Los tres tipos
     /// de abajo se descartaron uno a uno porque bajo consistencia eventual el segundo intento sí

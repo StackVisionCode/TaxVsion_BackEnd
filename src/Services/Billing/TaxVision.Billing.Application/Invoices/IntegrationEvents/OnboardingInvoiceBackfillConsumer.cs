@@ -19,6 +19,7 @@ public static class OnboardingInvoiceBackfillConsumer
     public static async Task Handle(
         TenantCreatedForOnboardingIntegrationEvent evt,
         IInvoiceRepository invoices,
+        IOnboardingTenantMapRepository tenantMaps,
         IUnitOfWork unitOfWork,
         TimeProvider clock,
         ICorrelationContext correlation,
@@ -30,11 +31,16 @@ public static class OnboardingInvoiceBackfillConsumer
             string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
         );
 
+        // BIL-5: siempre y antes de buscar la factura. Si llega después, su consumidor lee esta fila.
+        var nowUtc = clock.GetUtcNow().UtcDateTime;
+        await tenantMaps.UpsertAsync(evt.OnboardingId, evt.CreatedTenantId, nowUtc, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+
         var invoice = await invoices.GetByOnboardingIdAsync(evt.OnboardingId, ct);
         if (invoice is null)
             return; // Onboarding sin factura (aún no asentada o flujo sin código); nada que re-hospedar.
 
-        var result = invoice.RehomeToTenant(evt.CreatedTenantId, clock.GetUtcNow().UtcDateTime);
+        var result = invoice.RehomeToTenant(evt.CreatedTenantId, nowUtc);
         if (result.IsFailure)
         {
             logger.LogWarning(

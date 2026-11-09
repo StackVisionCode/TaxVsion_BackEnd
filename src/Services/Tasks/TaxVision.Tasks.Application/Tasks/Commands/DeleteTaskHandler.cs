@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
@@ -39,18 +40,21 @@ public static class DeleteTaskHandler
             return Result.Failure(TaskErrors.Forbidden);
 
         var wasOpen = found.Value.Status is not (TaskItemStatus.Completed or TaskItemStatus.Cancelled);
-        if (wasOpen)
-            await unblocking.ApplyPredecessorClosedAsync(command.TenantId, command.TaskId, ct);
+        IReadOnlyList<TaskUnblockedIntegrationEvent> unblocked = wasOpen
+            ? await unblocking.ApplyPredecessorClosedAsync(command.TenantId, command.TaskId, ct)
+            : [];
 
         // Borrar la instancia abierta libera la serie y siembra la siguiente: para cortar la serie hay
         // que pausarla o terminarla, no borrar su ocurrencia.
-        var next = await seriesMaterializer.ApplyInstanceClosedAsync(found.Value, null, ct);
-        if (next is not null)
-            await TaskDueReminder.PublishIfDueAsync(next, bus, correlation);
-        await bus.PublishAsync(TaskReminderContracts.Closed(found.Value, "deleted", correlation.CorrelationId));
+        await seriesMaterializer.ApplyInstanceClosedAsync(found.Value, null, ct);
+        var closed = TaskReminderContracts.Closed(found.Value, "deleted", correlation.CorrelationId);
 
         await hierarchy.DeleteWithDescendantsAsync(command.TenantId, command.TaskId, command.ByUserId, ct);
         await unitOfWork.SaveChangesAsync(ct);
+
+        foreach (var notice in unblocked)
+            await bus.PublishAsync(notice);
+        await bus.PublishAsync(closed);
 
         return Result.Success();
     }

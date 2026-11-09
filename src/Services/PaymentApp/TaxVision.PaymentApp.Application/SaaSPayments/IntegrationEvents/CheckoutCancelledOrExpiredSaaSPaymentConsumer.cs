@@ -3,7 +3,9 @@ using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
+using TaxVision.PaymentApp.Application.HostedCheckout.Commands;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
+using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.IntegrationEvents;
 
@@ -21,6 +23,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
         SeatCheckoutCancelledIntegrationEvent evt,
         ISaaSPaymentRepository payments,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -33,6 +36,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
             "BuyerCancelled",
             payments,
             unitOfWork,
+            bus,
             correlation,
             logger,
             ct
@@ -42,6 +46,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
         SeatCheckoutExpiredIntegrationEvent evt,
         ISaaSPaymentRepository payments,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -54,6 +59,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
             "IntentExpired",
             payments,
             unitOfWork,
+            bus,
             correlation,
             logger,
             ct
@@ -63,6 +69,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
         AddOnCheckoutCancelledIntegrationEvent evt,
         ISaaSPaymentRepository payments,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -75,6 +82,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
             "BuyerCancelled",
             payments,
             unitOfWork,
+            bus,
             correlation,
             logger,
             ct
@@ -84,6 +92,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
         AddOnCheckoutExpiredIntegrationEvent evt,
         ISaaSPaymentRepository payments,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -96,6 +105,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
             "IntentExpired",
             payments,
             unitOfWork,
+            bus,
             correlation,
             logger,
             ct
@@ -105,6 +115,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
         SubscriptionRenewalCheckoutCancelledIntegrationEvent evt,
         ISaaSPaymentRepository payments,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -117,6 +128,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
             "BuyerCancelled",
             payments,
             unitOfWork,
+            bus,
             correlation,
             logger,
             ct
@@ -126,6 +138,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
         SubscriptionRenewalCheckoutExpiredIntegrationEvent evt,
         ISaaSPaymentRepository payments,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -138,6 +151,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
             "IntentExpired",
             payments,
             unitOfWork,
+            bus,
             correlation,
             logger,
             ct
@@ -147,6 +161,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
         PlanChangeUpgradeCancelledIntegrationEvent evt,
         ISaaSPaymentRepository payments,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -159,6 +174,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
             "BuyerCancelled",
             payments,
             unitOfWork,
+            bus,
             correlation,
             logger,
             ct
@@ -168,6 +184,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
         PlanChangeUpgradeExpiredIntegrationEvent evt,
         ISaaSPaymentRepository payments,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -180,6 +197,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
             "IntentExpired",
             payments,
             unitOfWork,
+            bus,
             correlation,
             logger,
             ct
@@ -193,6 +211,7 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
         string reason,
         ISaaSPaymentRepository payments,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
@@ -237,6 +256,12 @@ public static class CheckoutCancelledOrExpiredSaaSPaymentConsumer
             }
 
             await unitOfWork.SaveChangesAsync(ct);
+
+            // La sesión del provider puede seguir viva: se expira fuera de esta transacción (comando durable).
+            if (payment.ProviderCheckoutSessionId is { } sessionId)
+                await bus.PublishAsync(
+                    new ExpireProviderCheckoutSessionCommand(payment.Id, payment.ProviderCode, sessionId)
+                );
 
             logger.LogInformation("SaaSPayment {PaymentId} marked Cancelled (reason={Reason}).", payment.Id, reason);
         }

@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Accounts;
@@ -53,10 +54,10 @@ public class ProcessGraphNotificationHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -79,10 +80,10 @@ public class ProcessGraphNotificationHandlerTests
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Graph)),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -119,10 +120,10 @@ public class ProcessGraphNotificationHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -184,10 +185,10 @@ public class ProcessGraphNotificationHandlerTests
                 factory,
                 sharedLock,
                 sharedPendingFlag,
-                unitOfWork,
-                bus,
+                new HandlerTransactionUnit(unitOfWork, bus),
                 correlation,
                 NullLogger.Instance,
+                FetchFailures.None(),
                 CancellationToken.None
             )
         );
@@ -203,10 +204,10 @@ public class ProcessGraphNotificationHandlerTests
             factory,
             sharedLock,
             sharedPendingFlag,
-            unitOfWork,
-            bus,
+            new HandlerTransactionUnit(unitOfWork, bus),
             correlation,
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -252,7 +253,7 @@ public class ProcessGraphNotificationHandlerTests
     {
         var account = CreateActiveAccount();
         if (status == TenantEmailAccountStatus.Error)
-            account.MarkError(Now);
+            account.MarkError(AccountErrors.RefreshRejected, Now);
         else
             account.Disconnect(Now);
         var accountRepository = new FakeTenantEmailAccountRepository();
@@ -322,10 +323,10 @@ public class ProcessGraphNotificationHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
     }
@@ -354,10 +355,10 @@ public class ProcessGraphNotificationHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             correlation,
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -377,10 +378,10 @@ public class ProcessGraphNotificationHandlerTests
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Graph)),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
     }

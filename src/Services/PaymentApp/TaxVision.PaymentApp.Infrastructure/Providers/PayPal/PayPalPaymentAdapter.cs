@@ -33,6 +33,13 @@ public sealed class PayPalPaymentAdapter(
             )
         );
 
+    /// <summary>PayPal no busca órdenes por <c>custom_id</c>: sin referencia no se puede saber.</summary>
+    public Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    ) => Task.FromResult(Result.Success(new ChargeLookup(ChargeLookupOutcome.NotSupported)));
+
     public Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
         ChargeAuthorizationRequest request,
         CancellationToken ct
@@ -68,6 +75,7 @@ public sealed class PayPalPaymentAdapter(
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     )
     {
@@ -76,7 +84,7 @@ public sealed class PayPalPaymentAdapter(
                 providerChargeReference,
                 PayPalGateway.FormatAmount(amount.AmountCents),
                 amount.Currency,
-                BuildRefundIdempotencyKey(providerChargeReference, amount)
+                idempotencyKey
             ),
             ct
         );
@@ -499,9 +507,6 @@ public sealed class PayPalPaymentAdapter(
     }
 
     private static string BuildCaptureIdempotencyKey(string orderId) => $"paypal-capture-{orderId}";
-
-    private static string BuildRefundIdempotencyKey(string captureId, Money amount) =>
-        $"paypal-refund-{captureId}-{amount.AmountCents}-{amount.Currency.ToUpperInvariant()}";
 
     private static PaymentStatus MapRefundStatus(string status) =>
         status.ToUpperInvariant() switch

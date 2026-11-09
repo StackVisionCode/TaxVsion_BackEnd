@@ -8,6 +8,8 @@ public sealed class CampaignRunConfiguration : IEntityTypeConfiguration<Campaign
 {
     public void Configure(EntityTypeBuilder<CampaignRun> builder)
     {
+        builder.Ignore(r => r.DomainEvents);
+
         builder.ToTable("CampaignRuns");
         builder.HasKey(r => r.Id);
 
@@ -27,6 +29,8 @@ public sealed class CampaignRunConfiguration : IEntityTypeConfiguration<Campaign
         builder.Property(r => r.CounterSkipped).IsRequired();
         builder.Property(r => r.CounterUnknown).IsRequired();
         builder.Property(r => r.RowVersion).IsRowVersion();
+        builder.Property(r => r.ScheduleId);
+        builder.Property(r => r.ScheduledSlotUtc);
 
         builder.HasMany(r => r.Recipients).WithOne().HasForeignKey(x => x.RunId).OnDelete(DeleteBehavior.Cascade);
         builder
@@ -35,5 +39,12 @@ public sealed class CampaignRunConfiguration : IEntityTypeConfiguration<Campaign
 
         builder.HasIndex(r => new { r.TenantId, r.CampaignId }).HasDatabaseName("IX_CampaignRuns_TenantId_CampaignId");
         builder.HasIndex(r => new { r.TenantId, r.Status }).HasDatabaseName("IX_CampaignRuns_TenantId_Status");
+
+        // Red final contra el doble disparo: un solo run por (agendado, slot).
+        builder
+            .HasIndex(r => new { r.ScheduleId, r.ScheduledSlotUtc })
+            .IsUnique()
+            .HasFilter("[ScheduleId] IS NOT NULL")
+            .HasDatabaseName("IX_CampaignRuns_ScheduleId_ScheduledSlotUtc_Unique");
     }
 }

@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
 using TaxVision.Tasks.Application.Hierarchy.Abstractions;
 using TaxVision.Tasks.Application.Permissions.Abstractions;
+using TaxVision.Tasks.Application.Reminders;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 using Wolverine;
@@ -27,8 +28,6 @@ public static class ReopenTaskHandler
         ITaskHierarchyService hierarchy,
         IUserPermissionsProjectionRepository users,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -45,10 +44,10 @@ public static class ReopenTaskHandler
         if (reopened.IsFailure)
             return Result.Failure<TaskResponse>(reopened.Error);
 
+        // TaskReopened y el recordatorio del ciclo nuevo los devuelve TaskReopenedDomainEventHandler.
         await DropInactiveAssigneeAsync(task, users, command.ByUserId, nowUtc, ct);
         await unblocking.ApplyPredecessorReopenedAsync(command.TenantId, task.Id, ct);
         await hierarchy.ApplyChildReopenedAsync(command.TenantId, task.ParentTaskId, ct);
-        await bus.PublishAsync(BuildEvent(task, command.ByUserId, nowUtc, correlation.CorrelationId));
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(TaskResponse.From(task));
@@ -68,19 +67,4 @@ public static class ReopenTaskHandler
         if (await users.GetAsync(task.TenantId, assignee, ct) is { IsActive: false })
             task.Unassign(byUserId, nowUtc);
     }
-
-    private static TaskReopenedIntegrationEvent BuildEvent(
-        TaskItem task,
-        Guid byUserId,
-        DateTime nowUtc,
-        string correlationId
-    ) =>
-        new()
-        {
-            TenantId = task.TenantId,
-            CorrelationId = correlationId,
-            TaskId = task.Id,
-            ReopenedByUserId = byUserId,
-            ReopenedAtUtc = nowUtc,
-        };
 }

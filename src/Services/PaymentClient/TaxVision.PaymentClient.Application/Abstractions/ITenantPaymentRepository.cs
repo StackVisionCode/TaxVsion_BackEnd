@@ -17,6 +17,13 @@ public interface ITenantPaymentRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Cobro Connect por su referencia en la cuenta conectada. El tenant sale de esa cuenta.</summary>
+    Task<TenantPayment?> GetByConnectChargeReferenceAsync(
+        Guid tenantId,
+        string providerChargeReferenceOnConnect,
+        CancellationToken ct = default
+    );
+
     /// <summary>Pagos que siguen esperando al proveedor (<c>Processing</c>/<c>RequiresAction</c>) sin cambios
     /// desde <paramref name="stuckBeforeUtc"/> y creados después de <paramref name="createdAfterUtc"/>, de todos
     /// los tenants. Primero los nunca consultados y luego los consultados hace más tiempo (no se acaparan).</summary>
@@ -51,6 +58,29 @@ public interface ITenantPaymentRepository
     /// <summary>De los proveedores configurados por la oficina, los que tienen al menos un pago (una consulta).</summary>
     Task<IReadOnlySet<PaymentProviderCode>> GetConfiguredProvidersWithPaymentsAsync(
         Guid tenantId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>¿Hay un cobro sin terminar (Pending/Processing/RequiresAction) para esta referencia externa
+    /// (factura)? Tenant explícito: lo llama el resolver público.</summary>
+    Task<bool> AnyInProgressForReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>¿Hay un pago <c>Succeeded</c> de esta referencia externa cobrado después de
+    /// <paramref name="sinceUtc"/>? Tenant explícito: lo llama el resolver público.</summary>
+    Task<bool> AnySucceededForReferenceSinceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        DateTime sinceUtc,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Pagos por id de todos los tenants (reposición de plataforma).</summary>
+    Task<IReadOnlyList<TenantPayment>> GetByIdsAcrossTenantsAsync(
+        IReadOnlyCollection<Guid> tenantPaymentIds,
         CancellationToken ct = default
     );
 

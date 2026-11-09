@@ -1,12 +1,12 @@
 using System.Collections.Generic;
 using System.Linq;
-using BuildingBlocks.Caching;
 using BuildingBlocks.Persistence;
 using TaxVision.Tenant.Application.Brands;
 using TaxVision.Tenant.Application.Brands.Abstractions;
 using TaxVision.Tenant.Application.Brands.Commands;
 using TaxVision.Tenant.Domain.Brands;
 using TaxVision.Tenant.Domain.Enums;
+using TaxVision.Tenant.Tests.TestSupport;
 
 namespace TaxVision.Tenant.Tests.Application;
 
@@ -19,13 +19,14 @@ public sealed class TenantBrandColorHandlersTests
     {
         var repo = new FakeBrandRepository();
         var uow = new FakeUnitOfWork();
-        var cache = new RecordingCache();
+        var bus = new RecordingMessageBus();
 
         var result = await UpdateTenantBrandColorsHandler.Handle(
             new UpdateTenantBrandColorsCommand(TenantId, BrandSurface.Crm, "#1E466B", "#67BAF4"),
             repo,
             uow,
-            cache,
+            bus,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -33,20 +34,21 @@ public sealed class TenantBrandColorHandlersTests
         var brand = Assert.Single(repo.All);
         Assert.Equal(2, brand.Colors.Count);
         Assert.Equal(1, uow.SaveChangesCallCount);
-        Assert.Contains(BrandCacheKeys.Brand(TenantId, BrandSurface.Crm), cache.Removed);
+        Assert.Contains(new InvalidateTenantBrandCacheCommand(TenantId, BrandSurface.Crm), bus.Published);
     }
 
     [Fact]
     public async Task UpdateColors_upserts_without_duplicating()
     {
         var repo = new FakeBrandRepository();
-        repo.Seed(TenantId, BrandSurface.Crm, b => b.SetColor(BrandColorToken.Primary, "#1E466B"));
+        repo.Seed(TenantId, BrandSurface.Crm, b => b.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow));
 
         await UpdateTenantBrandColorsHandler.Handle(
             new UpdateTenantBrandColorsCommand(TenantId, BrandSurface.Crm, "#0F5132", null),
             repo,
             new FakeUnitOfWork(),
-            new RecordingCache(),
+            new RecordingMessageBus(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -64,8 +66,8 @@ public sealed class TenantBrandColorHandlersTests
             BrandSurface.Crm,
             b =>
             {
-                b.SetColor(BrandColorToken.Primary, "#1E466B");
-                b.SetColor(BrandColorToken.Accent, "#67BAF4");
+                b.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow);
+                b.SetColor(BrandColorToken.Accent, "#67BAF4", DateTime.UtcNow);
             }
         );
 
@@ -73,7 +75,8 @@ public sealed class TenantBrandColorHandlersTests
             new UpdateTenantBrandColorsCommand(TenantId, BrandSurface.Crm, null, "#67BAF4"),
             repo,
             new FakeUnitOfWork(),
-            new RecordingCache(),
+            new RecordingMessageBus(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -92,7 +95,8 @@ public sealed class TenantBrandColorHandlersTests
             new UpdateTenantBrandColorsCommand(TenantId, BrandSurface.Crm, "not-a-color", "#67BAF4"),
             repo,
             uow,
-            new RecordingCache(),
+            new RecordingMessageBus(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -111,7 +115,8 @@ public sealed class TenantBrandColorHandlersTests
             new ResetTenantBrandColorsCommand(TenantId, BrandSurface.Crm),
             repo,
             uow,
-            new RecordingCache(),
+            new RecordingMessageBus(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -123,13 +128,14 @@ public sealed class TenantBrandColorHandlersTests
     public async Task ResetColors_clears_a_customized_brand()
     {
         var repo = new FakeBrandRepository();
-        repo.Seed(TenantId, BrandSurface.Crm, b => b.SetColor(BrandColorToken.Primary, "#1E466B"));
+        repo.Seed(TenantId, BrandSurface.Crm, b => b.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow));
 
         await ResetTenantBrandColorsHandler.Handle(
             new ResetTenantBrandColorsCommand(TenantId, BrandSurface.Crm),
             repo,
             new FakeUnitOfWork(),
-            new RecordingCache(),
+            new RecordingMessageBus(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -144,7 +150,7 @@ public sealed class TenantBrandColorHandlersTests
 
         public void Seed(Guid tenantId, BrandSurface surface, Action<TenantBrand> configure)
         {
-            var brand = TenantBrand.Create(tenantId, surface);
+            var brand = TenantBrand.Create(tenantId, surface, DateTime.UtcNow);
             configure(brand);
             All.Add(brand);
         }
@@ -183,28 +189,5 @@ public sealed class TenantBrandColorHandlersTests
             SaveChangesCallCount++;
             return Task.FromResult(1);
         }
-    }
-
-    private sealed class RecordingCache : ICacheService
-    {
-        public List<string> Removed { get; } = [];
-
-        public Task<T?> GetAsync<T>(string key, CancellationToken ct = default) => Task.FromResult<T?>(default);
-
-        public Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken ct = default) =>
-            Task.CompletedTask;
-
-        public Task RemoveAsync(string key, CancellationToken ct = default)
-        {
-            Removed.Add(key);
-            return Task.CompletedTask;
-        }
-
-        public Task<T> GetOrCreateAsync<T>(
-            string key,
-            Func<CancellationToken, Task<T>> factory,
-            TimeSpan? ttl = null,
-            CancellationToken ct = default
-        ) => factory(ct);
     }
 }

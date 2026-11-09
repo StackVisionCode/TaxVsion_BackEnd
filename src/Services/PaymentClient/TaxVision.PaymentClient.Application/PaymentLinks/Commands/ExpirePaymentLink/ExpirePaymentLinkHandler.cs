@@ -46,6 +46,8 @@ public static class ExpirePaymentLinkHandler
             ct
         );
 
+        await unitOfWork.SaveChangesAsync(ct);
+
         await bus.PublishAsync(
             new PaymentLinkExpiredIntegrationEvent
             {
@@ -54,8 +56,6 @@ public static class ExpirePaymentLinkHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
     }

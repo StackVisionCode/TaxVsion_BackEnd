@@ -54,7 +54,13 @@ public interface IConnectorsClient
 }
 
 /// <summary>Un buzón del tenant tal cual lo conoce Connectors.</summary>
-public sealed record MailboxAddress(Guid AccountId, string EmailAddress, string? DisplayName);
+public sealed record MailboxAddress(
+    Guid AccountId,
+    string EmailAddress,
+    string? DisplayName,
+    Guid? OwnerUserId = null,
+    bool? IsActive = null
+);
 
 /// <summary>
 /// Body de un mensaje tal cual lo devuelve Connectors. Deliberadamente no incluye los adjuntos

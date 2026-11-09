@@ -1,18 +1,8 @@
 using BuildingBlocks.Results;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
+using TaxVision.Wallet.Domain.Pricing;
 
 namespace TaxVision.Wallet.Application.Pricing;
-
-public static class PricingErrors
-{
-    public static readonly Error NoActiveVersion = new(
-        "Pricing.NoActiveVersion",
-        "No hay un catálogo de precios vigente."
-    );
-
-    public static Error ChannelNotPriced(string channel) =>
-        new("Pricing.ChannelNotPriced", $"El canal '{channel}' no tiene tarifa en el catálogo vigente.");
-}
 
 // ─────────── GET /wallet/rates ───────────
 public sealed record GetRatesQuery;
@@ -65,7 +55,7 @@ public static class EstimateHandler
             lines.Add(new EstimateLine(channel.ToString(), units, price.Value, subtotal));
         }
 
-        var wallet = await wallets.GetByTenantAsync(query.TenantId, ct);
+        var wallet = await wallets.GetByTenantAsync(query.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
         var available = wallet?.AvailableMicros ?? 0;
         var currency = wallet?.Currency ?? Domain.Wallet.Wallet.DefaultCurrency;
         var sufficient = available >= cost;

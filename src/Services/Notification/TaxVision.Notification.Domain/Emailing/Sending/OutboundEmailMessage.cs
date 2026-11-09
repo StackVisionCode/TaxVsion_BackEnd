@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Notification.Domain.Notifications;
 
 namespace TaxVision.Notification.Domain.Emailing.Sending;
 
@@ -56,6 +57,7 @@ public sealed class OutboundEmailMessage : TenantEntity
     /// <summary>El destinatario lo marcó como spam. Postmaster ya suprimió la dirección.</summary>
     public DateTime? ComplainedAtUtc { get; private set; }
     public DateTime? BouncedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     public IReadOnlyCollection<EmailRecipient> Recipients => _recipients.AsReadOnly();
     public IReadOnlyCollection<EmailDeliveryLog> DeliveryLogs => _deliveryLogs.AsReadOnly();
@@ -92,7 +94,7 @@ public sealed class OutboundEmailMessage : TenantEntity
             );
 
         foreach (var r in recipients)
-            if (string.IsNullOrWhiteSpace(r.Address) || !r.Address.Contains('@'))
+            if (!NotificationRecipient.IsValidEmail(r.Address))
                 return Result.Failure<OutboundEmailMessage>(
                     new Error("Email.Recipients", $"Invalid recipient address: {r.Address}.")
                 );
@@ -127,29 +129,44 @@ public sealed class OutboundEmailMessage : TenantEntity
         _deliveryLogs.Add(EmailDeliveryLog.Create(EmailStatus.Sending, null));
     }
 
-    public void MarkSent(string providerType, Guid? configurationId)
+    /// <summary>Confirma el envío. Un callback tardío no pisa un rebote ni una entrega.</summary>
+    public Result MarkSent(string providerType, Guid? configurationId)
     {
+        if (Status is not (EmailStatus.Queued or EmailStatus.Sending or EmailStatus.Failed))
+            return InvalidTransition(EmailStatus.Sent);
+
         Status = EmailStatus.Sent;
         ProviderType = providerType;
         ConfigurationId = configurationId;
         SentAtUtc = DateTime.UtcNow;
         Error = null;
         _deliveryLogs.Add(EmailDeliveryLog.Create(EmailStatus.Sent, providerType));
+        return Result.Success();
     }
 
-    public void MarkFailed(string error)
+    /// <summary>Registra el fallo. Un callback tardío o repetido no pisa lo que ya se sabe del correo.</summary>
+    public Result MarkFailed(string error)
     {
+        if (Status is not (EmailStatus.Queued or EmailStatus.Sending))
+            return InvalidTransition(EmailStatus.Failed);
+
         Status = EmailStatus.Failed;
         Error = error is { Length: > 1024 } ? error[..1024] : error;
         RetryCount++;
         _deliveryLogs.Add(EmailDeliveryLog.Create(EmailStatus.Failed, error));
+        return Result.Success();
     }
 
-    public void MarkBounced(string? detail)
+    /// <summary>Registra el rebote. Puede llegar tarde, con el correo ya entregado.</summary>
+    public Result MarkBounced(string? detail)
     {
+        if (Status is not (EmailStatus.Sending or EmailStatus.Sent or EmailStatus.Delivered))
+            return InvalidTransition(EmailStatus.Bounced);
+
         Status = EmailStatus.Bounced;
         BouncedAtUtc = DateTime.UtcNow;
         _deliveryLogs.Add(EmailDeliveryLog.Create(EmailStatus.Bounced, detail));
+        return Result.Success();
     }
 
     /// <summary>Confirma la entrega (webhook del proveedor). Solo avanza desde Sent.</summary>
@@ -181,4 +198,7 @@ public sealed class OutboundEmailMessage : TenantEntity
 
     /// <summary>True si el mensaje está en un estado desde el que puede (re)intentarse el envío.</summary>
     public bool CanDeliver() => (Status is EmailStatus.Queued or EmailStatus.Failed) && RetryCount < MaxRetries;
+
+    private Result InvalidTransition(EmailStatus target) =>
+        Result.Failure(new Error("Email.InvalidTransition", $"Cannot move the message from {Status} to {target}."));
 }

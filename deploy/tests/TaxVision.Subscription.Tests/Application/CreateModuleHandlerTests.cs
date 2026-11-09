@@ -1,7 +1,6 @@
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using TaxVision.Subscription.Application.Catalog.Commands.CreateModule;
 using TaxVision.Subscription.Domain.Catalog;
-using TaxVision.Subscription.Infrastructure.Catalog.Concurrency;
 using TaxVision.Subscription.Tests.TestDoubles;
 using Xunit;
 
@@ -18,7 +17,7 @@ public sealed class CreateModuleHandlerTests
         var result = await CreateModuleHandler.Handle(
             Command("Core", null, null),
             modules,
-            new InMemoryModuleEditSerializer(),
+            new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -41,7 +40,7 @@ public sealed class CreateModuleHandlerTests
         var result = await CreateModuleHandler.Handle(
             Command("Commercial", 15m, 150m),
             modules,
-            new InMemoryModuleEditSerializer(),
+            new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
             new CapturingMessageBus(),
             new FakeCorrelationContext(),
@@ -65,7 +64,7 @@ public sealed class CreateModuleHandlerTests
                 Code = "WALLET",
             },
             new FakeModuleRepo(existing),
-            new InMemoryModuleEditSerializer(),
+            new NoOpModuleEditSerializer(),
             unitOfWork,
             new CapturingMessageBus(),
             new FakeCorrelationContext(),
@@ -83,7 +82,7 @@ public sealed class CreateModuleHandlerTests
         var result = await CreateModuleHandler.Handle(
             Command("Legacy", null, null),
             new FakeModuleRepo(),
-            new InMemoryModuleEditSerializer(),
+            new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
             new CapturingMessageBus(),
             new FakeCorrelationContext(),

@@ -14,7 +14,7 @@ public sealed class NotificationDispatchAttemptTests
             .Create(
                 tenantId: Guid.NewGuid(),
                 channel: NotificationChannel.Email,
-                recipient: "user@test.com",
+                recipient: NotificationRecipient.ForEmail("user@test.com").Value,
                 subject: "Test",
                 templateKey: "test.key",
                 relatedEventId: null,

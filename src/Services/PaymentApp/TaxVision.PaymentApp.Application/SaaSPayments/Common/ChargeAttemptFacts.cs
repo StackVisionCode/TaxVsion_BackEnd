@@ -1,4 +1,5 @@
 using TaxVision.PaymentApp.Application.Abstractions;
+using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Common;
@@ -23,7 +24,7 @@ public sealed record ChargeAttemptFacts(
     /// los últimos 4 ("your saved card").
     /// </summary>
     public static async Task<ChargeAttemptFacts> ResolveAsync(
-        SaaSPayment payment,
+        SaaSPaymentSnapshot payment,
         ITenantProviderCustomerRepository? customers,
         CancellationToken ct
     )
@@ -46,13 +47,13 @@ public sealed record ChargeAttemptFacts(
         }
 
         // El checkout hosteado deja su sesión: ahí el usuario paga en pantalla y reintenta él mismo.
-        var isAutomaticCharge = payment.ProviderCheckoutSessionId is null;
+        var isAutomaticCharge = !payment.HasCheckoutSession;
 
         return new ChargeAttemptFacts(
-            Math.Max(1, payment.Attempts.Count),
-            SaaSPaymentChargeOutcome.MaxDunningAttempts,
-            payment.Amount.AmountCents,
-            payment.Amount.Currency,
+            Math.Max(1, payment.AttemptCount),
+            DunningPolicy.MaxAttempts,
+            payment.AmountCents,
+            payment.Currency,
             brand,
             last4,
             isAutomaticCharge

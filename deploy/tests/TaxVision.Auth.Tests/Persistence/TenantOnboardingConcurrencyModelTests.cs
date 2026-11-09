@@ -1,7 +1,7 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Tests.Application;
 
@@ -22,7 +22,6 @@ public sealed class TenantOnboardingConcurrencyModelTests
     {
         using var db = new AuthDbContext(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
-            new FakeMessageBus(),
             new NoTenantContext()
         );
 

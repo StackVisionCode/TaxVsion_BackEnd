@@ -172,7 +172,8 @@ public sealed class NotificationDispatcherPushTests
             .Create(
                 TenantId,
                 NotificationChannel.Push,
-                UserId.ToString(),
+                NotificationRecipient.ForPushTarget(UserId),
+
                 "Title",
                 "task.form_request_assigned.push.v1",
                 eventId,
@@ -381,21 +382,25 @@ public sealed class NotificationDispatcherPushTests
         INotificationLogRepository logs,
         INotificationDispatchMetrics metrics
     ) =>
-        new(
+        TestDispatchers.Create(
             NoOpSmsSender.Instance,
             pushSender,
             pushDeviceTokens,
             logs,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
+            ),
             new NoOpIntegrationEventPublisher(),
             new NoOpUnitOfWork(),
             metrics,
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(logs)
         );
 
     private sealed class CountingDispatchMetrics : INotificationDispatchMetrics
     {
+        public void RecordClientFormPushFailure(string code) { }
+
         public int Sent { get; private set; }
         public int Failed { get; private set; }
         public int NoRecipient { get; private set; }
@@ -453,17 +458,19 @@ public sealed class NotificationDispatcherPushTests
         INotificationLogRepository logs,
         IUnitOfWork uow
     ) =>
-        new(
+        TestDispatchers.Create(
             NoOpSmsSender.Instance,
             pushSender,
             pushDeviceTokens,
             logs,
-            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
-            new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
+            ),
             new NoOpIntegrationEventPublisher(),
             uow,
             new NoOpNotificationDispatchMetrics(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(logs)
         );
 
     private sealed class NoOpIntegrationEventPublisher : IIntegrationEventPublisher
@@ -500,6 +507,9 @@ public sealed class NotificationDispatcherPushTests
 
     private sealed class FakePushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         private readonly Dictionary<Guid, PushDeviceToken> _devices = [];
         public List<Guid> RevokedIds { get; } = [];
 

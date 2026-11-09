@@ -50,6 +50,32 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerAssignmentProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Sms.Domain.Customers.CustomerContactPolicyProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("SmsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerContactPolicyProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Sms.Domain.Messages.SmsMedia", b =>
                 {
                     b.Property<Guid>("Id")
@@ -150,6 +176,15 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime?>("SendAttemptedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("SourceContext")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
@@ -169,6 +204,9 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool>("WalletCharged")
+                        .HasColumnType("bit");
 
                     b.HasKey("Id");
 
@@ -347,6 +385,55 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("TenantPlanCodeProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Sms.Domain.Webhooks.PendingDeliveryReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CanonicalStatus")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("ProviderCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ProviderMessageId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceivedAtUtc")
+                        .HasDatabaseName("IX_SmsPendingDeliveryReceipts_ReceivedAt");
+
+                    b.HasIndex("ProviderCode", "ProviderMessageId", "EventType")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SmsPendingDeliveryReceipts_Provider_MessageId_EventType");
+
+                    b.ToTable("smsPendingDeliveryReceipts", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Sms.Domain.Webhooks.ProcessedWebhook", b =>

@@ -28,6 +28,11 @@ public static class AppointmentErrors
         "Every appointment needs an organizer."
     );
 
+    public static readonly Error ReminderLeadTooLong = new(
+        "Calendar.Appointment.ReminderLeadTooLong",
+        $"The reminder cannot be set more than {Appointment.MaxReminderLeadMinutes} minutes before the appointment."
+    );
+
     public static readonly Error TypeRequired = new(
         "Calendar.Appointment.TypeRequired",
         "Every appointment needs an appointment type."
@@ -83,6 +88,12 @@ public static class AppointmentErrors
     public static readonly Error Conflict = new(
         "Calendar.Appointment.Conflict",
         "The appointment overlaps another one and this type does not allow it."
+    );
+
+    /// <summary>Otro la reprogramó mientras se respondía. Mismo código que un choque de versión: el CRM ya sabe qué decir.</summary>
+    public static readonly Error ScheduleChanged = new(
+        "Persistence.ConcurrencyConflict",
+        "The appointment was rescheduled while you were responding. Check the new time and respond again."
     );
 
     public static readonly Error ScopeRequired = new(

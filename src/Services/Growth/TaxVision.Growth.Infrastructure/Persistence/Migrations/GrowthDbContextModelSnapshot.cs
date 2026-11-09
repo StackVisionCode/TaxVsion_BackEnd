@@ -506,6 +506,62 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("TaxVision.Codes.Domain.Reservations.LateCommitReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CodeReservationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("ErrorCode")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PaymentSource")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("RelatedPaymentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("ResolvedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SourceEventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeReservationId", "SourceEventId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_LateCommitReviews_Reservation_Event");
+
+                    b.HasIndex("ResolvedAtUtc", "CreatedAtUtc")
+                        .HasDatabaseName("IX_LateCommitReviews_Pending");
+
+                    b.ToTable("LateCommitReviews", "codes");
+                });
+
             modelBuilder.Entity("TaxVision.Codes.Domain.Usage.CodeUsageCounter", b =>
                 {
                     b.Property<Guid>("Id")

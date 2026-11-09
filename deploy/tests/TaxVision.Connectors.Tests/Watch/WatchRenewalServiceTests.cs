@@ -5,6 +5,7 @@ using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Domain.Watch;
 using TaxVision.Connectors.Infrastructure.Watch;
+using TaxVision.Connectors.Tests.Accounts;
 using TaxVision.Connectors.Tests.OAuth;
 
 namespace TaxVision.Connectors.Tests.Watch;
@@ -50,10 +51,14 @@ public class WatchRenewalServiceTests
 
         var service = new WatchRenewalService(
             subscriptionRepository,
-            accountRepository,
             new FakeWatchProviderClientFactory(watchClient),
             unitOfWork,
-            bus,
+            new InlineMailboxFailureUnit(
+                accountRepository,
+                subscriptionRepository,
+                new FakeOAuthConnectionRepository(),
+                unitOfWork
+            ),
             correlation,
             NullLogger<WatchRenewalService>.Instance
         );
@@ -116,13 +121,50 @@ public class WatchRenewalServiceTests
         Assert.Equal(ProviderWatchStatus.Failed, fixture.Subscription.Status);
         Assert.Equal(TenantEmailAccountStatus.Error, fixture.Account.Status);
 
-        var published = Assert.Single(fixture.Bus.Published);
+        var published = Assert.Single(DomainEventReplay.Emitted(fixture.Bus, fixture.Account));
         var expiredEvent = Assert.IsType<ConnectorsWatchExpiredIntegrationEvent>(published);
         Assert.Equal(fixture.Subscription.AccountId, expiredEvent.AccountId);
         Assert.Equal(3, expiredEvent.FailureCount);
         Assert.Equal(fixture.Account.CreatedByUserId, expiredEvent.CreatedByUserId);
         Assert.True(expiredEvent.IsOfficeMailbox);
         Assert.Null(expiredEvent.MailboxOwnerUserId);
+    }
+
+    // CON-11: cuenta lo emitido por el comando. Con los dos caminos daría 2.
+    [Fact]
+    public async Task ThirdFailure_EmitsExactlyOneWatchExpired()
+    {
+        var fixture = CreateFixture();
+        fixture.Subscription.RecordRenewalFailure();
+        fixture.Subscription.RecordRenewalFailure();
+        fixture.WatchClient.ThrowOnRenew = new WatchProviderException("Gmail watch request returned HTTP 500.");
+
+        await fixture.Service.RenewAsync(fixture.Subscription.Id);
+
+        var notice = Assert.IsType<ConnectorsWatchExpiredIntegrationEvent>(
+            Assert.Single(DomainEventReplay.Emitted(fixture.Bus, fixture.Account))
+        );
+        Assert.Equal("test-correlation", notice.CorrelationId);
+        Assert.Equal(fixture.Subscription.Id, notice.SubscriptionId);
+        DomainEventReplay.AssertNoDomainEventOnBus(fixture.Bus);
+    }
+
+    // La cuenta ya avisó por otra causa: la suscripción cae igual, pero no sale un segundo aviso.
+    [Fact]
+    public async Task ThirdFailure_AccountAlreadyError_EmitsNoWatchExpired()
+    {
+        var fixture = CreateFixture();
+        fixture.Account.MarkError(AccountErrors.RefreshRejected, Now);
+        fixture.Account.ClearDomainEvents();
+        fixture.Subscription.RecordRenewalFailure();
+        fixture.Subscription.RecordRenewalFailure();
+        fixture.WatchClient.ThrowOnRenew = new WatchProviderException("Gmail watch request returned HTTP 500.");
+
+        var result = await fixture.Service.RenewAsync(fixture.Subscription.Id);
+
+        Assert.Equal("WatchRenewalService.SubscriptionExpired", result.Error.Code);
+        Assert.Equal(ProviderWatchStatus.Failed, fixture.Subscription.Status);
+        Assert.Empty(DomainEventReplay.Emitted(fixture.Bus, fixture.Account));
     }
 
     [Fact]

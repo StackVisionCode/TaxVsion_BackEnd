@@ -56,20 +56,48 @@ public sealed class ConnectedMailbox
         };
     }
 
-    public void ReconnectAt(string providerCode, string fromAddress, DateTime connectedAtUtc)
+    /// <summary>
+    /// Lápida: la desconexión llegó antes que cualquier alta. La fila queda inactiva con la fecha del retiro y frena
+    /// a un alta más vieja que llegue después.
+    /// </summary>
+    public static ConnectedMailbox Tombstone(
+        Guid tenantId,
+        Guid accountId,
+        string providerCode,
+        string fromAddress,
+        DateTime disconnectedAtUtc
+    )
     {
+        var mailbox = ForNewConnection(tenantId, accountId, providerCode, fromAddress, disconnectedAtUtc);
+        mailbox.IsActive = false;
+        mailbox.DisconnectedAtUtc = disconnectedAtUtc;
+        return mailbox;
+    }
+
+    /// <summary>False si el aviso es anterior al último aplicado: la cola no garantiza el orden.</summary>
+    public bool ReconnectAt(string providerCode, string fromAddress, DateTime connectedAtUtc)
+    {
+        if (connectedAtUtc < UpdatedAtUtc)
+            return false;
+
         ProviderCode = providerCode;
         FromAddress = fromAddress;
         IsActive = true;
         ConnectedAtUtc = connectedAtUtc;
         DisconnectedAtUtc = null;
         UpdatedAtUtc = connectedAtUtc;
+        return true;
     }
 
-    public void MarkDisconnected(DateTime disconnectedAtUtc)
+    /// <summary>False si el aviso es anterior al último aplicado: la cola no garantiza el orden.</summary>
+    public bool MarkDisconnected(DateTime disconnectedAtUtc)
     {
+        if (disconnectedAtUtc < UpdatedAtUtc)
+            return false;
+
         IsActive = false;
         DisconnectedAtUtc = disconnectedAtUtc;
         UpdatedAtUtc = disconnectedAtUtc;
+        return true;
     }
 }

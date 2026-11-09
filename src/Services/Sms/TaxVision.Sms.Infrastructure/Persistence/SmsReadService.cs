@@ -265,7 +265,8 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
             Failed: CountOf(SmsMessageStatus.Failed),
             Undeliverable: CountOf(SmsMessageStatus.Undeliverable),
             Suppressed: CountOf(SmsMessageStatus.Suppressed),
-            OptedOut: optedOut
+            OptedOut: optedOut,
+            OutcomeUnknown: CountOf(SmsMessageStatus.OutcomeUnknown)
         );
     }
 
@@ -334,6 +335,7 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
             SmsMessageStatusFilter.Failed => SmsMessageStatus.Failed,
             SmsMessageStatusFilter.Undeliverable => SmsMessageStatus.Undeliverable,
             SmsMessageStatusFilter.Suppressed => SmsMessageStatus.Suppressed,
+            SmsMessageStatusFilter.OutcomeUnknown => SmsMessageStatus.OutcomeUnknown,
             _ => null,
         };
 }

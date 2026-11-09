@@ -145,6 +145,7 @@ public static class DocumentFileAvailableConsumer
                 ContentType = storage.ContentType,
                 SizeBytes = storage.SizeBytes,
                 ContentHash = generation.ContentHash?.Value,
+                IdempotencyKey = generation.IdempotencyKey,
                 // P-18: copias + ancla de firma. Vacío/nulo salvo que esta generación pidiera copia de firma.
                 Copies = BuildCopies(generation, storage),
                 SignatureAnchor = BuildSignatureAnchor(generation),

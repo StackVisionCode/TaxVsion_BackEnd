@@ -17,7 +17,7 @@ public sealed class SeatPurchaseIntentTests
                 autoRenew: true,
                 Money.Create(15m, "USD").Value,
                 BillingCycle.Monthly,
-                proratedTotalCents: 3000,
+                proratedTotal: Money.FromCents(3000, "USD"),
                 Guid.NewGuid(),
                 DateTime.UtcNow
             )
@@ -29,8 +29,18 @@ public sealed class SeatPurchaseIntentTests
         var intent = CreatePending();
 
         Assert.Equal(SeatPurchaseIntentStatus.Pending, intent.Status);
-        Assert.Equal("USD", intent.Currency);
-        Assert.Equal(3000, intent.ProratedTotalCents);
+        Assert.Equal("USD", intent.ProratedTotal.Currency);
+        Assert.Equal(3000, intent.ProratedTotal.Cents);
+    }
+
+    [Fact]
+    public void ProratedTotal_RoundTripsCentsAndCurrency()
+    {
+        var intent = CreatePending();
+
+        Assert.Equal(3000, intent.ProratedTotal.Cents);
+        Assert.Equal(30m, intent.ProratedTotal.Amount);
+        Assert.Equal("USD", intent.ProratedTotal.Currency);
     }
 
     [Fact]
@@ -43,7 +53,7 @@ public sealed class SeatPurchaseIntentTests
             autoRenew: false,
             Money.Zero("USD"),
             BillingCycle.Monthly,
-            proratedTotalCents: 0,
+            proratedTotal: Money.FromCents(0, "USD"),
             Guid.NewGuid(),
             DateTime.UtcNow
         );

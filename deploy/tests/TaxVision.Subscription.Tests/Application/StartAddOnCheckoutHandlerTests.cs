@@ -1,3 +1,4 @@
+using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.AddOns.Commands.StartAddOnCheckout;
@@ -18,7 +19,65 @@ namespace TaxVision.Subscription.Tests.Application;
 /// </summary>
 public sealed class StartAddOnCheckoutHandlerTests
 {
+    // Corre el orquestador con los handlers reales de reserva y adjunto, como los enruta Wolverine.
+    private static Task<Result<StartAddOnCheckoutResponse>> Start(
+        StartAddOnCheckoutCommand command,
+        ISubscriptionRepository subscriptions,
+        IPlanRepository plans,
+        IModuleRepository modules,
+        IAddOnDefinitionRepository definitions,
+        ISubscriptionTenantSettingsRepository settings,
+        ITenantAddOnRepository tenantAddOns,
+        IAddOnPurchaseIntentRepository intents,
+        IAddOnCheckoutPaymentClient client,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var bus = new CapturingMessageBus();
+        bus.OnInvoke = async (message, token) =>
+            message switch
+            {
+                ReserveAddOnCheckoutCommand reserve => await ReserveAddOnCheckoutHandler.Handle(
+                    reserve,
+                    new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(subscriptions, plans, modules, definitions, settings, tenantAddOns),
+                    intents,
+                    unitOfWork,
+                    token
+                ),
+                AttachAddOnCheckoutCommand attach => await AttachAddOnCheckoutHandler.Handle(
+                    attach,
+                    intents,
+                    unitOfWork,
+                    bus,
+                    token
+                ),
+                _ => throw new NotSupportedException(),
+            };
+        return StartAddOnCheckoutHandler.Handle(command, bus, client, ct);
+    }
+
     private static readonly Guid TenantId = Guid.NewGuid();
+
+    // SUB-7: la intención ya está confirmada; repetir la compra reusa su clave.
+    [Fact]
+    public async Task A_provider_failure_keeps_the_intent_and_the_retry_reuses_its_key()
+    {
+        var scenario = Scenario();
+        var failing = scenario with
+        {
+            Client = new FakeAddOnCheckoutPaymentClient(
+                Result.Failure<AddOnCheckoutClientResult>(new Error("AddOn.Checkout.ProviderError", "boom"))
+            ),
+        };
+
+        await HandleAsync(failing, quantity: 1);
+        var retry = await HandleAsync(scenario, quantity: 1);
+
+        Assert.True(retry.IsSuccess);
+        Assert.Single(scenario.Intents.Added);
+        Assert.Equal(failing.Client.LastRequest!.IdempotencyKey, scenario.Client.LastRequest!.IdempotencyKey);
+    }
 
     [Fact]
     public async Task Creates_an_intent_and_returns_the_checkout_url_without_activating_the_add_on()
@@ -32,7 +91,7 @@ public sealed class StartAddOnCheckoutHandlerTests
         Assert.Single(scenario.Intents.Added);
         Assert.Equal(AddOnPurchaseIntentStatus.Pending, scenario.Intents.Added[0].Status);
         Assert.Empty(scenario.TenantAddOns.Added);
-        Assert.Equal(scenario.Intents.Added[0].ProratedTotalCents, scenario.Client.LastRequest!.AmountCents);
+        Assert.Equal(scenario.Intents.Added[0].ProratedTotal.Cents, scenario.Client.LastRequest!.AmountCents);
         Assert.True(scenario.Client.LastRequest.AmountCents > 0);
     }
 
@@ -125,7 +184,7 @@ public sealed class StartAddOnCheckoutHandlerTests
     }
 
     private static Task<Result<StartAddOnCheckoutResponse>> HandleAsync(Fixture fixture, int quantity) =>
-        StartAddOnCheckoutHandler.Handle(
+        Start(
             new StartAddOnCheckoutCommand(
                 TenantId,
                 fixture.Definition.Code.Value,

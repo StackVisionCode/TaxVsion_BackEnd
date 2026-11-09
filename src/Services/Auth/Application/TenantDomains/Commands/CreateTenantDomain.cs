@@ -57,7 +57,7 @@ public static class CreateTenantDomainHandler
 
         await domains.AddAsync(domain, ct);
         // domain.AddDomainEvent(TenantDomainCreated) ya quedó encolado en el factory;
-        // AuthDbContext.SaveChangesAsync lo drena y publica (auditoría + integration event).
+        // Wolverine lo saca al confirmar y su handler audita y avisa.
         await unitOfWork.SaveChangesAsync(ct);
 
         var cloudflareResult = provisionResult.Value;
@@ -132,6 +132,7 @@ public static class CreateTenantDomainHandler
             ct
         );
 
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new TenantDomainProvisioningFailedIntegrationEvent
             {
@@ -142,7 +143,5 @@ public static class CreateTenantDomainHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        await unitOfWork.SaveChangesAsync(ct);
     }
 }

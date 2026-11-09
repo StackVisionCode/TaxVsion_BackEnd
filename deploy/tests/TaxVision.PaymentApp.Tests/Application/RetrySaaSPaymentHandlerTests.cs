@@ -21,7 +21,6 @@ public sealed class RetrySaaSPaymentHandlerTests
     {
         var payment = DueFailedPayment();
         var payments = new FakeSaaSPaymentRepository { ById = payment };
-        var bus = new CapturingMessageBus();
 
         // FakePaymentProvider lanza si se le pide crear customer o cobrar: el test falla si se llama.
         var result = await RetrySaaSPaymentHandler.Handle(
@@ -31,19 +30,22 @@ public sealed class RetrySaaSPaymentHandlerTests
             new FakePaymentAdapterFactory(new FakePaymentProvider()),
             new FakePaymentAuditLogWriter(),
             new FakeUnitOfWork(),
-            bus,
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            new CapturingMessageBus(),
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Failed, payment.Status);
-        Assert.Equal(SaaSPaymentChargeOutcome.MissingPaymentMethodCode, payment.FailureCode);
+        Assert.Equal(DunningPolicy.MissingPaymentMethodCode, payment.FailureCode);
         Assert.Null(payment.NextRetryAtUtc);
-        var failed = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
+        // PAY-BB1: un solo aviso de fallo por reintento, devuelto por el handler del evento de dominio.
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
+        var failed = Assert.IsType<SubscriptionRenewalPaymentFailedIntegrationEvent>(Assert.Single(emitted));
         Assert.False(failed.WillRetry);
+        Assert.Equal(2, failed.AttemptNumber);
     }
 
     [Theory]
@@ -57,7 +59,7 @@ public sealed class RetrySaaSPaymentHandlerTests
             payment,
             new Error(failureCode, "Cannot charge automatically."),
             Guid.Empty,
-            DateTime.UtcNow.AddHours(6),
+            DunningDecision.RetryAt(DateTime.UtcNow.AddHours(6)),
             new FakePaymentAppMetrics()
         );
 
@@ -73,7 +75,7 @@ public sealed class RetrySaaSPaymentHandlerTests
             payment,
             new Error("card_declined", "Declined."),
             Guid.Empty,
-            DateTime.UtcNow.AddHours(6),
+            DunningDecision.RetryAt(DateTime.UtcNow.AddHours(6)),
             new FakePaymentAppMetrics()
         );
 
@@ -102,11 +104,7 @@ public sealed class RetrySaaSPaymentHandlerTests
                 DateTime.UtcNow
             )
             .Value;
-        payment.MarkFailed(
-            "card_declined",
-            "Declined.",
-            true,
-            DateTime.UtcNow.AddMinutes(-1),
+        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow.AddMinutes(-1)),
             Guid.Empty,
             DateTime.UtcNow
         );

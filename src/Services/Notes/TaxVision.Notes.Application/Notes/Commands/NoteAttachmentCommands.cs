@@ -34,6 +34,8 @@ public static class AttachFileToNoteHandler
         INoteRepository notes,
         IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -55,14 +57,24 @@ public static class AttachFileToNoteHandler
             command.CloudStorageFileId,
             command.DisplayName,
             command.ContentType,
-            command.SizeBytes
+            command.SizeBytes,
+            clock.GetUtcNow().UtcDateTime
         );
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
+
+        // NTS-1: si el veredicto ya salió antes del attach, el consumer lo descartó; se pregunta después.
+        await bus.ScheduleAsync(
+            new ReconcilePendingAttachmentCommand(note.TenantId, note.Id, command.CloudStorageFileId),
+            ReconcileDelay
+        );
+
         return Result.Success(NoteResponse.From(note));
     }
+
+    public static readonly TimeSpan ReconcileDelay = TimeSpan.FromSeconds(30);
 }
 
 public sealed record DetachFileFromNoteCommand(
@@ -82,6 +94,7 @@ public static class DetachFileFromNoteHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -99,7 +112,7 @@ public static class DetachFileFromNoteHandler
         )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
-        var result = note.DetachFile(command.CloudStorageFileId);
+        var result = note.DetachFile(command.CloudStorageFileId, clock.GetUtcNow().UtcDateTime);
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
 

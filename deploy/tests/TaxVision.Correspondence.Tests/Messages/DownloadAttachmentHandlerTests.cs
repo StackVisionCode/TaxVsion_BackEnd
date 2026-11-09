@@ -62,15 +62,25 @@ public sealed class DownloadAttachmentHandlerTests
         var email = NewIncomingEmail(tenantId, customerId, accountId, receivedAtUtc);
         var repo = new FakeIncomingEmailRepository();
         await repo.AddAsync(email);
+        var bus = new FakeMessageBus();
+        var unitOfWork = new FakeUnitOfWork();
+        bus.OnInvoke = async message =>
+            await CompleteAttachmentDownloadHandler.Handle(
+                (CompleteAttachmentDownloadCommand)message,
+                repo,
+                bus,
+                unitOfWork,
+                CancellationToken.None
+            );
         return (
             email,
             repo,
             new Ingest.FakeEmailThreadRepository(),
             new FakeConnectorsClient(),
             new FakeTempBucketUploader(),
-            new FakeMessageBus(),
+            bus,
             new FakeCorrelationContext(),
-            new FakeUnitOfWork()
+            unitOfWork
         );
     }
 
@@ -130,7 +140,7 @@ public sealed class DownloadAttachmentHandlerTests
         Assert.Equal("application/pdf", evt.ContentType);
 
         // MarkInProgress + MarkDownloaded — 2 saves (idempotency checkpoint + final commit).
-        Assert.Equal(2, uow.SaveChangesCallCount);
+        Assert.Equal(1, uow.SaveChangesCallCount);
     }
 
     [Fact]
@@ -205,7 +215,7 @@ public sealed class DownloadAttachmentHandlerTests
         Assert.Contains("GetMessageAttachmentHandler.ProviderFailed", attachment.FailureReason);
         Assert.Empty(uploader.Calls);
         Assert.Empty(bus.Published);
-        Assert.Equal(2, uow.SaveChangesCallCount);
+        Assert.Equal(1, uow.SaveChangesCallCount);
     }
 
     [Fact]
@@ -241,7 +251,7 @@ public sealed class DownloadAttachmentHandlerTests
         Assert.Equal("CorrespondenceTempBucketUploader.UploadFailed", result.Error.Code);
         Assert.Equal(AttachmentDownloadStatus.Failed, attachment.DownloadStatus);
         Assert.Empty(bus.Published);
-        Assert.Equal(2, uow.SaveChangesCallCount);
+        Assert.Equal(1, uow.SaveChangesCallCount);
     }
 
     [Fact]

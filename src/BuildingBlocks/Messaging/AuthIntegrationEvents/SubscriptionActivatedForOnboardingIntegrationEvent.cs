@@ -1,4 +1,5 @@
 using Wolverine.Persistence.Sagas;
+using Wolverine.Attributes;
 
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
@@ -9,6 +10,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// <c>TaxVision.Auth.Application.Onboarding.Sagas.TenantOnboardingProcessManager</c> (Fase 15) para
 /// avanzar al paso <c>CloudStorage</c>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.SubscriptionActivatedForOnboardingIntegrationEvent")]
 public sealed record SubscriptionActivatedForOnboardingIntegrationEvent : IntegrationEvent
 {
     [SagaIdentity]

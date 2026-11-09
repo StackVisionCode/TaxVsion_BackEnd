@@ -2,14 +2,16 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Tasks.Application.Backfill;
 using TaxVision.Tasks.Application.Backfill.Abstractions;
 using TaxVision.Tasks.Application.Projections.Abstractions;
 using TaxVision.Tasks.Domain.Projections;
+using Wolverine;
 
 namespace TaxVision.Tasks.Application.Projections.CustomerEvents;
 
-// Los siete consumers de este grupo mantienen CustomerDirectoryEntry. Todos arrancan llamando a
-// EnsureBackfilledAsync: recibir cualquier evento de Customer es la única forma en que Task
+// Los siete consumers de este grupo mantienen CustomerDirectoryEntry. Todos arrancan pidiendo
+// BackfillTenantCustomersCommand: recibir cualquier evento de Customer es la única forma en que Task
 // descubre que un tenant existe.
 
 public static class CustomerCreatedConsumer
@@ -18,6 +20,7 @@ public static class CustomerCreatedConsumer
         CustomerCreatedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
         ITenantCustomerBackfillService backfill,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
@@ -30,7 +33,7 @@ public static class CustomerCreatedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            await TenantCustomerBackfillRequest.RequestIfNeededAsync(evt.TenantId, backfill, bus, ct);
 
             await UpsertAsync(evt, repository, ct);
             await unitOfWork.SaveChangesAsync(ct);

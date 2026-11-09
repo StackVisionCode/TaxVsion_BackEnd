@@ -9,9 +9,9 @@ using TaxVision.Tasks.Domain.Projections;
 namespace TaxVision.Tasks.Application.Backfill;
 
 /// <summary>
-/// Siembra el directorio de customers la primera vez que Task ve un tenant. Se dispara como primera
-/// línea de cada consumer de evento de Customer, nunca como hosted service al arrancar: no hay
-/// endpoint que enumere tenants, así que el evento es el único descubrimiento posible.
+/// Siembra el directorio de customers la primera vez que Task ve un tenant. Cada consumer de evento de
+/// Customer lo pide por <see cref="BackfillTenantCustomersCommand"/>, nunca un hosted service al arrancar: no
+/// hay endpoint que enumere tenants, así que el evento es el único descubrimiento posible.
 ///
 /// <para>
 /// Sólo hace el backfill inicial, una vez por tenant. Rellenar nombres faltantes de tenants ya
@@ -29,7 +29,10 @@ public sealed class TenantCustomerBackfillService(
 {
     private const int PageSize = 100;
 
-    public async Task EnsureBackfilledAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<bool> NeedsBackfillAsync(Guid tenantId, CancellationToken ct = default) =>
+        await stateRepository.GetByTenantIdAsync(tenantId, ct) is null;
+
+    public async Task BackfillAsync(Guid tenantId, CancellationToken ct = default)
     {
         if (await stateRepository.GetByTenantIdAsync(tenantId, ct) is not null)
             return;
@@ -64,6 +67,7 @@ public sealed class TenantCustomerBackfillService(
 
             foreach (var customer in result.Items)
                 await SeedCustomerAsync(tenantId, customer, ct);
+            await unitOfWork.SaveChangesAsync(ct);
 
             if (!result.HasMore)
                 return true;

@@ -19,7 +19,7 @@ public sealed class CapturingSeatRepo : ISubscriptionSeatRepository
         Task.FromResult<IReadOnlyList<SubscriptionSeat>>(Added);
 
     public Task<SubscriptionSeat?> GetByIdAsync(Guid id, Guid t, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+        Task.FromResult(Added.FirstOrDefault(seat => seat.Id == id && seat.TenantId == t));
 
     public Task<IReadOnlyList<SubscriptionSeat>> GetDueForRenewalAsync(
         DateTime n,

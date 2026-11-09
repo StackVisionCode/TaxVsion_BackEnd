@@ -21,6 +21,7 @@ internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
     public List<object> Invoked { get; } = [];
+    public Exception? InvokeThrows { get; set; }
 
     /// <summary>Resultado devuelto por InvokeAsync&lt;Result&gt;, el tipo que invocan los handlers de Connectors.</summary>
     public Result InvokeResult { get; set; } = Result.Success();
@@ -89,6 +90,9 @@ internal sealed class FakeMessageBus : IMessageBus
     {
         if (message is not null)
             Invoked.Add(message);
+
+        if (InvokeThrows is not null)
+            throw InvokeThrows;
 
         if (typeof(T) == typeof(Result))
             return Task.FromResult((T)(object)InvokeResult);
@@ -204,6 +208,23 @@ internal sealed class FakeTenantEmailAccountRepository : ITenantEmailAccountRepo
         );
     }
 
+    public Task<IReadOnlyList<Guid>> ListSyncableGmailByEmailAddressAsync(
+        string emailAddress,
+        CancellationToken ct = default
+    )
+    {
+        var normalized = emailAddress.Trim().ToLowerInvariant();
+        IReadOnlyList<Guid> ids = Accounts
+            .Where(a =>
+                a.EmailAddress == normalized
+                && a.ProviderCode == ProviderCode.Gmail
+                && a.Status is TenantEmailAccountStatus.Active or TenantEmailAccountStatus.Connected
+            )
+            .Select(a => a.Id)
+            .ToList();
+        return Task.FromResult(ids);
+    }
+
     public Task<Result<TenantEmailAccount>> GetByTenantAndEmailAsync(
         Guid tenantId,
         string emailAddress,
@@ -293,6 +314,9 @@ internal sealed class FakeOAuthConnectionRepository : IOAuthConnectionRepository
         );
     }
 
+    public Task<Result<OAuthConnection>> GetByAccountIdReadOnlyAsync(Guid accountId, CancellationToken ct = default) =>
+        GetByAccountIdAsync(accountId, ct);
+
     public Task<IReadOnlyList<Guid>> ListAccountIdsWithTokenExpiringBeforeAsync(
         DateTime thresholdUtc,
         CancellationToken ct = default
@@ -323,6 +347,27 @@ internal sealed class FakeOAuthConnectionRepository : IOAuthConnectionRepository
     public void Remove(OAuthConnection connection) => Connections.Remove(connection);
 }
 
+/// <summary>El guardado propio del token, sobre el repositorio en memoria de la prueba.</summary>
+internal sealed class InlineOAuthTokenStore(IOAuthConnectionRepository connections, IUnitOfWork unitOfWork)
+    : IOAuthTokenStore
+{
+    public async Task<bool> SaveAsync(
+        Guid accountId,
+        byte[] expectedRowVersion,
+        Action<OAuthToken> update,
+        CancellationToken ct = default
+    )
+    {
+        var connection = await connections.GetByAccountIdAsync(accountId, ct);
+        if (connection.IsFailure || connection.Value.Token is null)
+            return false;
+
+        update(connection.Value.Token);
+        await unitOfWork.SaveChangesAsync(ct);
+        return true;
+    }
+}
+
 internal sealed class FakeOAuthProviderClient(ProviderCode providerCode) : IOAuthProviderClient
 {
     private int _callCount;
@@ -343,9 +388,11 @@ internal sealed class FakeOAuthProviderClient(ProviderCode providerCode) : IOAut
     public string BuildAuthorizationUrl(string state) => $"https://provider.example.com/authorize?state={state}";
 
     public Exception? ThrowOnRevoke { get; set; }
+    public Action? OnRevoke { get; set; }
 
     public Task RevokeAsync(string refreshToken, CancellationToken ct = default)
     {
+        OnRevoke?.Invoke();
         if (ThrowOnRevoke is not null)
             throw ThrowOnRevoke;
         RevokedRefreshTokens.Add(refreshToken);
@@ -450,6 +497,10 @@ internal sealed class InMemoryDistributedLock : IDistributedLock
         public bool IsAcquired => true;
         public string Key => key;
 
+        // Sigue siendo nuestro mientras no se libere.
+        public Task<bool> ExtendAsync(TimeSpan ttl, CancellationToken ct = default) =>
+            Task.FromResult(owner._held.ContainsKey(key));
+
         public ValueTask DisposeAsync()
         {
             owner._held.TryRemove(key, out _);
@@ -461,6 +512,8 @@ internal sealed class InMemoryDistributedLock : IDistributedLock
     {
         public bool IsAcquired => false;
         public string Key { get; } = key;
+
+        public Task<bool> ExtendAsync(TimeSpan ttl, CancellationToken ct = default) => Task.FromResult(false);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

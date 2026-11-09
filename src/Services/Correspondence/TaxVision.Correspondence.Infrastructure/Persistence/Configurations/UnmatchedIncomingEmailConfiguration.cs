@@ -25,6 +25,9 @@ internal sealed class UnmatchedIncomingEmailConfiguration : IEntityTypeConfigura
         builder.Property(x => x.Reason).IsRequired().HasConversion<string>().HasMaxLength(32);
         builder.Property(x => x.CreatedAtUtc).IsRequired();
         builder.Property(x => x.ExpiresAtUtc).IsRequired();
+        builder.Property(x => x.RejectionCode).HasMaxLength(UnmatchedIncomingEmail.RejectionCodeMaxLength);
+        builder.Property(x => x.ProviderCode).HasMaxLength(UnmatchedIncomingEmail.ProviderCodeMaxLength);
+        builder.Property(x => x.InternetMessageId).HasMaxLength(UnmatchedIncomingEmail.InternetMessageIdMaxLength);
 
         // Para el futuro job de limpieza (plan §20/§30 "PurgeUnmatched" — no implementado en esta fase).
         builder.HasIndex(x => x.ExpiresAtUtc).HasDatabaseName("IX_UnmatchedIncomingEmails_ExpiresAtUtc");

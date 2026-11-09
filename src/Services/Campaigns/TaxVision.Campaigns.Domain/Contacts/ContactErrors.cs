@@ -12,6 +12,7 @@ public static class ContactErrors
     );
     public static readonly Error NameTooLong = new("Contact.NameTooLong", "Name exceeds the maximum length.");
     public static readonly Error EmailTooLong = new("Contact.EmailTooLong", "Email exceeds the maximum length.");
+    public static readonly Error EmailInvalid = new("Contact.EmailInvalid", "Email address is not valid.");
     public static readonly Error PhoneTooLong = new("Contact.PhoneTooLong", "Phone exceeds the maximum length.");
     public static readonly Error PhoneNotE164 = new(
         "Contact.PhoneNotE164",

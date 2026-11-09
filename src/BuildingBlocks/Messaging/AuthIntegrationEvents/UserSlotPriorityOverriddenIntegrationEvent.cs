@@ -1,5 +1,8 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.UserSlotPriorityOverriddenIntegrationEvent")]
 public sealed record UserSlotPriorityOverriddenIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

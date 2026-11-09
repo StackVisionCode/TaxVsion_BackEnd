@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// scheduler background; deja el aggregate en estado terminal <c>Expired</c>. Los
 /// tokens vigentes quedan invalidados vía incremento de <c>RevocationEpoch</c>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestExpiredIntegrationEvent")]
 public sealed record SignatureRequestExpiredIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

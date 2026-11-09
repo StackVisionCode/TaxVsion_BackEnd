@@ -13,7 +13,7 @@ internal static class SendResultRecorder
     {
         if (!sendResult.Success)
         {
-            message.MarkAsFailed(sendResult.ErrorReason ?? fallbackFailureReason, nowUtc);
+            message.MarkAsFailed(sendResult.ErrorReason ?? fallbackFailureReason, nowUtc, sendResult.ProviderMessageId);
             return;
         }
 
@@ -31,7 +31,8 @@ internal static class SendResultRecorder
         message.MarkAsSent(
             sendResult.ProviderReference ?? sendResult.ProviderMessageId,
             nowUtc,
-            sendResult.ProviderThreadId
+            sendResult.ProviderThreadId,
+            sendResult.ProviderMessageId
         );
         if (sendResult.ProviderAcceptance is not null)
             message.RecordProviderAcceptance(sendResult.ProviderAcceptance);

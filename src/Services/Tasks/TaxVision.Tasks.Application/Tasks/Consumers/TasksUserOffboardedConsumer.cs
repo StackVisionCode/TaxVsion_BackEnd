@@ -31,7 +31,6 @@ public static class TasksUserOffboardedConsumer
         ITaskRepository tasks,
         ITaskSeriesRepository series,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TaskItem> logger,
         CancellationToken ct
@@ -43,17 +42,7 @@ public static class TasksUserOffboardedConsumer
         var actor = msg.OffboardedByUserId ?? msg.UserId;
         var successor = msg.SuccessorUserId is { } candidate && candidate != msg.UserId ? candidate : (Guid?)null;
 
-        var reassignedTasks = await ReassignOpenTasksAsync(
-            msg,
-            tasks,
-            bus,
-            unitOfWork,
-            correlation,
-            successor,
-            actor,
-            now,
-            ct
-        );
+        var reassignedTasks = await ReassignOpenTasksAsync(msg, tasks, unitOfWork, successor, actor, now, ct);
         var affectedSeries = await RedirectSeriesAsync(msg, series, unitOfWork, successor, ct);
 
         if (reassignedTasks > 0 || affectedSeries > 0)
@@ -76,9 +65,7 @@ public static class TasksUserOffboardedConsumer
     private static async Task<int> ReassignOpenTasksAsync(
         UserOffboardedIntegrationEvent msg,
         ITaskRepository tasks,
-        IMessageBus bus,
         IUnitOfWork unitOfWork,
-        ICorrelationContext correlation,
         Guid? successor,
         Guid actor,
         DateTime now,
@@ -94,7 +81,7 @@ public static class TasksUserOffboardedConsumer
 
             var changed = 0;
             foreach (var task in batch.Items)
-                changed += await ReassignOneAsync(msg, task, bus, correlation, successor, actor, now) ? 1 : 0;
+                changed += ReassignOne(task, successor, actor, now) ? 1 : 0;
 
             await unitOfWork.SaveChangesAsync(ct);
             total += changed;
@@ -105,39 +92,12 @@ public static class TasksUserOffboardedConsumer
         return total;
     }
 
-    private static async Task<bool> ReassignOneAsync(
-        UserOffboardedIntegrationEvent msg,
-        TaskItem task,
-        IMessageBus bus,
-        ICorrelationContext correlation,
-        Guid? successor,
-        Guid actor,
-        DateTime now
-    )
-    {
-        if (successor is not { } newAssignee)
-            return task.Unassign(actor, now).IsSuccess;
-
-        var previous = task.AssigneeUserId;
-        if (task.Assign(newAssignee, actor, now).IsFailure)
-            return false;
-
-        await bus.PublishAsync(
-            new TaskAssignedIntegrationEvent
-            {
-                TenantId = msg.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                TaskId = task.Id,
-                Title = task.Title.Value,
-                AssigneeUserId = newAssignee,
-                PreviousAssigneeUserId = previous,
-                DueAtUtc = task.Due?.DueAtUtc,
-            }
-        );
-        // El del retirado lo cancela Reminder; el sucesor pide el suyo (clave por usuario, idempotente).
-        await TaskDueReminder.PublishIfDueAsync(task, bus, correlation);
-        return true;
-    }
+    // El aviso al sucesor y su recordatorio los devuelve TaskAssignedDomainEventHandler; el del retirado lo
+    // cancela Reminder.
+    private static bool ReassignOne(TaskItem task, Guid? successor, Guid actor, DateTime now) =>
+        successor is { } newAssignee
+            ? task.Assign(newAssignee, actor, now).IsSuccess
+            : task.Unassign(actor, now).IsSuccess;
 
     /// <summary>
     /// Series del que se va, como asignado por defecto o como dueño (pocas por tenant → se filtran en memoria

@@ -22,6 +22,12 @@ public interface ITaskSeriesMaterializer
     );
 
     /// <summary>
+    /// La primera ocurrencia, en el alta de la serie: a diferencia de <see cref="MaterializeNextAsync"/>, avisa la
+    /// asignación (D-TSK-1).
+    /// </summary>
+    Task<Result<TaskItem>> MaterializeFirstAsync(TaskSeries series, CancellationToken ct = default);
+
+    /// <summary>
     /// La instancia abierta se cerró: libera la serie y siembra la siguiente en el mismo paso.
     /// Devuelve la ocurrencia nueva —o <c>null</c> si la tarea no era de una serie o la regla se
     /// agotó— para que quien la llamó le pida su recordatorio, igual que a una tarea creada a mano.

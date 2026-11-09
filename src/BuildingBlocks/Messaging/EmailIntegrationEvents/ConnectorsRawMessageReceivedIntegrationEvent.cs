@@ -52,4 +52,7 @@ public sealed record ConnectorsRawMessageReceivedIntegrationEvent : IntegrationE
     public required string SpfResult { get; init; }
     public required string DkimResult { get; init; }
     public required string DmarcResult { get; init; }
+
+    /// <summary>Re-sincronización desde el proveedor (CON-07): se ingesta igual, pero sin avisos al usuario.</summary>
+    public bool IsReplay { get; init; }
 }

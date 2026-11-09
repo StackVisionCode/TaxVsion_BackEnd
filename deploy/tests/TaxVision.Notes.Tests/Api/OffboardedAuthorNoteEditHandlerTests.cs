@@ -26,7 +26,8 @@ public sealed class OffboardedAuthorNoteEditHandlerTests
             NoteContent.Create("<p>x</p>").Value,
             NoteReference.Create(NoteTargetType.None, null).Value,
             NoteVisibility.Team,
-            null
+            null,
+            DateTime.UtcNow
         ).Value;
 
     private static ClaimsPrincipal User(Guid userId) =>

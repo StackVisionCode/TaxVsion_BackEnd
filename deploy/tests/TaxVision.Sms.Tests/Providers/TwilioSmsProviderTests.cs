@@ -25,8 +25,14 @@ public sealed class TwilioSmsProviderTests
                 Content = new StringContent("{\"sid\":\"SM123\",\"status\":\"queued\",\"error_code\":null}"),
             };
 
+        public Exception? Throws { get; set; }
+        public int Calls { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            Calls++;
+            if (Throws is not null)
+                throw Throws;
             LastRequest = request;
             if (request.Content is not null)
                 LastBody = await request.Content.ReadAsStringAsync(ct);
@@ -120,6 +126,69 @@ public sealed class TwilioSmsProviderTests
 
         Assert.False(result.Value.Accepted);
         Assert.Equal("21211", result.Value.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SendAsync_maps_unsubscribed_recipient_to_recipient_opted_out()
+    {
+        var handler = new CapturingHandler
+        {
+            Response = new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent(
+                    "{\"code\":21610,\"message\":\"Attempt to send to unsubscribed recipient\",\"status\":400}"
+                ),
+            },
+        };
+        var provider = Build(handler);
+
+        var result = await provider.SendAsync(Send());
+
+        Assert.False(result.Value.Accepted);
+        Assert.Equal(SmsSendFailure.RecipientOptedOut, result.Value.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SendAsync_timeout_after_request_is_outcome_unknown()
+    {
+        var handler = new CapturingHandler { Throws = new TaskCanceledException("timeout") };
+        var provider = Build(handler);
+
+        var result = await provider.SendAsync(Send());
+
+        Assert.False(result.Value.Accepted);
+        Assert.Equal("sms.providerOutcomeUnknown", result.Value.ErrorCode);
+        Assert.Equal(1, handler.Calls); // sin reintento: otro POST podría mandar un segundo SMS
+    }
+
+    [Fact]
+    public async Task SendAsync_connection_drop_after_request_is_outcome_unknown_without_retry()
+    {
+        var handler = new CapturingHandler { Throws = new HttpRequestException("connection reset") };
+        var provider = Build(handler);
+
+        var result = await provider.SendAsync(Send());
+
+        Assert.False(result.Value.Accepted);
+        Assert.Equal(SmsSendFailure.OutcomeUnknown, result.Value.ErrorCode);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task SendAsync_connection_refused_is_provider_unavailable_without_retry()
+    {
+        // Sin conexión la petición no salió: se puede pasar al siguiente proveedor.
+        var handler = new CapturingHandler
+        {
+            Throws = new HttpRequestException(HttpRequestError.ConnectionError, "connection refused"),
+        };
+        var provider = Build(handler);
+
+        var result = await provider.SendAsync(Send());
+
+        Assert.False(result.Value.Accepted);
+        Assert.Equal("providerUnavailable", result.Value.ErrorCode);
+        Assert.Equal(1, handler.Calls);
     }
 
     [Theory]

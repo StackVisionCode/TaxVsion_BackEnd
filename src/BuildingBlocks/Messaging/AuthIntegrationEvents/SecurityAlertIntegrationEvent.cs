@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
 /// Publicado por Auth ante eventos de seguridad relevantes: reutilización de refresh
 /// token, lockout por fuerza bruta, login desde dispositivo nuevo, MFA desactivado.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.SecurityAlertIntegrationEvent")]
 public sealed record SecurityAlertIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

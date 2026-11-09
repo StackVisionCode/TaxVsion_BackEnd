@@ -5,10 +5,9 @@ using TaxVision.Correspondence.Domain.ValueObjects;
 namespace TaxVision.Correspondence.Domain.Inbox;
 
 /// <summary>
-/// Un correo recibido de un customer del tenant. <see cref="CustomerId"/> y
-/// <see cref="EmailThreadId"/> son obligatorios por diseño — es la regla de negocio central
-/// del rediseño de Correspondence: un correo cuyo sender no matcheó contra un customer nunca
-/// llega a instanciar este aggregate (ver plan de diseño §2/§14).
+/// Un correo recibido en un buzón del tenant. <see cref="CustomerId"/> null = el remitente todavía no es cliente
+/// (D-COR-3, vista "Not a client"): cuando el cliente aparece, el correo se le enlaza. <see cref="EmailThreadId"/>
+/// siempre es obligatorio.
 ///
 /// <para>
 /// A propósito, este factory NO depende del evento de integración
@@ -17,7 +16,7 @@ namespace TaxVision.Correspondence.Domain.Inbox;
 /// crudo a estos primitivos es responsabilidad del consumer de Fase 4.
 /// </para>
 /// </summary>
-public sealed class IncomingEmail : ITenantOwned
+public sealed class IncomingEmail : AggregateRoot
 {
     public const int ProviderCodeMaxLength = 20;
     public const int ProviderMessageIdMaxLength = 200;
@@ -30,16 +29,13 @@ public sealed class IncomingEmail : ITenantOwned
 
     private readonly List<IncomingEmailRecipient> _recipients = [];
     private readonly List<IncomingEmailAttachment> _attachments = [];
+    private readonly List<IncomingEmailMailbox> _mailboxes = [];
 
     private IncomingEmail() { }
 
-    public Guid Id { get; private set; }
-    public Guid TenantId { get; private set; }
-    public Guid CustomerId { get; private set; }
+    /// <summary>Null = el remitente no es cliente (todavía).</summary>
+    public Guid? CustomerId { get; private set; }
     public Guid EmailThreadId { get; private set; }
-
-    /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
-    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     /// <summary>
     /// Referencia opaca al <c>TenantEmailAccount</c> de Connectors. Sin FK ni navegación a
@@ -88,9 +84,12 @@ public sealed class IncomingEmail : ITenantOwned
     public IReadOnlyCollection<IncomingEmailRecipient> Recipients => _recipients.AsReadOnly();
     public IReadOnlyCollection<IncomingEmailAttachment> Attachments => _attachments.AsReadOnly();
 
+    /// <summary>Buzones que recibieron este mensaje. El primero es <see cref="AccountId"/>.</summary>
+    public IReadOnlyCollection<IncomingEmailMailbox> Mailboxes => _mailboxes.AsReadOnly();
+
     public static Result<IncomingEmail> Create(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         Guid emailThreadId,
         Guid accountId,
         string providerCode,
@@ -132,7 +131,6 @@ public sealed class IncomingEmail : ITenantOwned
         var email = new IncomingEmail
         {
             Id = Guid.NewGuid(),
-            TenantId = tenantId,
             CustomerId = customerId,
             EmailThreadId = emailThreadId,
             AccountId = accountId,
@@ -152,6 +150,8 @@ public sealed class IncomingEmail : ITenantOwned
             AttachmentCount = attachmentCount,
             Authentication = authentication ?? SenderAuthentication.Unknown,
         };
+        email.SetTenant(tenantId);
+        email._mailboxes.Add(IncomingEmailMailbox.Create(tenantId, email.Id, accountId, providerMessageId));
 
         foreach (var recipient in recipients ?? [])
             email._recipients.Add(
@@ -179,6 +179,50 @@ public sealed class IncomingEmail : ITenantOwned
             );
 
         return Result.Success(email);
+    }
+
+    /// <summary>
+    /// Avisa que entró un correo nuevo. La ingesta lo llama salvo en una réplica (CON-07): el correo viejo recuperado
+    /// no genera campana. Los datos del buzón los trae el evento de Connectors; el agregado no los guarda.
+    /// El correo de quien no es cliente tampoco avisa: boletines y spam no deben llenar la campana.
+    /// </summary>
+    public void NotifyReceived(Guid? mailboxAccountId, Guid? mailboxOwnerUserId, string correlationId)
+    {
+        if (CustomerId is not { } customerId)
+            return;
+
+        AddDomainEvent(
+            new IncomingEmailReceivedDomainEvent(
+                TenantId,
+                Id,
+                customerId,
+                EmailThreadId,
+                Subject,
+                mailboxAccountId,
+                mailboxOwnerUserId,
+                correlationId
+            )
+        );
+    }
+
+    /// <summary>Registra que otro buzón recibió este mensaje (COR-03). Devuelve <c>true</c> si la copia es nueva.</summary>
+    public bool AddMailboxCopy(Guid accountId, string providerMessageId)
+    {
+        if (accountId == AccountId || _mailboxes.Exists(m => m.AccountId == accountId))
+            return false;
+
+        _mailboxes.Add(IncomingEmailMailbox.Create(TenantId, Id, accountId, providerMessageId));
+        return true;
+    }
+
+    /// <summary>El remitente ya es cliente (COR-05). No pisa un cliente ya asignado. Devuelve <c>true</c> si cambió.</summary>
+    public bool LinkToCustomer(Guid customerId)
+    {
+        if (CustomerId is not null || customerId == Guid.Empty)
+            return false;
+
+        CustomerId = customerId;
+        return true;
     }
 
     /// <summary>Idempotente: si el body ya se pidió al menos una vez, es un no-op.</summary>
@@ -222,6 +266,16 @@ public sealed class IncomingEmail : ITenantOwned
         return true;
     }
 
+    /// <summary>Reposición (COR-02): el correo pasa al hilo de su propio cliente. Idempotente.</summary>
+    public Result MoveToThread(Guid emailThreadId)
+    {
+        if (emailThreadId == Guid.Empty)
+            return Result.Failure(new Error("IncomingEmail.EmailThreadIdRequired", "EmailThreadId is required."));
+
+        EmailThreadId = emailThreadId;
+        return Result.Success();
+    }
+
     /// <summary>Idempotente. Devuelve <c>true</c> solo si cambió el estado.</summary>
     public bool MarkUnread()
     {
@@ -235,7 +289,7 @@ public sealed class IncomingEmail : ITenantOwned
 
     private static Error? Validate(
         Guid tenantId,
-        Guid customerId,
+        Guid? customerId,
         Guid emailThreadId,
         Guid accountId,
         string providerCode,

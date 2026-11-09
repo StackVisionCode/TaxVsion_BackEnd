@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Calendar.Application.Backfill;
 using TaxVision.Calendar.Application.Backfill.Abstractions;
 using TaxVision.Calendar.Application.Projections.Abstractions;
 using TaxVision.Calendar.Domain.Projections;
@@ -10,10 +11,10 @@ namespace TaxVision.Calendar.Application.Projections.CustomerEvents;
 
 public static class CustomerUpdatedConsumer
 {
-    public static async Task Handle(
+    public static async Task<BackfillTenantCustomersCommand?> Handle(
         CustomerUpdatedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
-        ITenantCustomerBackfillService backfill,
+        ITenantBackfillStateRepository backfillStates,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
@@ -26,7 +27,7 @@ public static class CustomerUpdatedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            var backfill = await BackfillTenantCustomersCommand.IfMissingAsync(evt.TenantId, backfillStates, ct);
 
             await UpsertAsync(evt, repository, ct);
             await unitOfWork.SaveChangesAsync(ct);
@@ -35,6 +36,7 @@ public static class CustomerUpdatedConsumer
                 evt.TenantId,
                 evt.CustomerId
             );
+            return backfill;
         }
     }
 

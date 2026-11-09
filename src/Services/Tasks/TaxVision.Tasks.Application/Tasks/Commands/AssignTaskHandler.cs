@@ -28,8 +28,6 @@ public static class AssignTaskHandler
         AssignTaskCommand command,
         ITaskRepository tasks,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -41,39 +39,12 @@ public static class AssignTaskHandler
         if (!TaskAccessPolicy.CanMutate(task, command.ByUserId, command.HasManageAll))
             return Result.Failure<TaskResponse>(TaskErrors.Forbidden);
 
-        var previousAssigneeUserId = task.AssigneeUserId;
+        // El aviso y el recordatorio del nuevo asignado los devuelve TaskAssignedDomainEventHandler.
         var assigned = task.Assign(command.AssigneeUserId, command.ByUserId, DateTime.UtcNow);
         if (assigned.IsFailure)
             return Result.Failure<TaskResponse>(assigned.Error);
 
-        if (previousAssigneeUserId != command.AssigneeUserId)
-        {
-            await bus.PublishAsync(
-                BuildEvent(task, previousAssigneeUserId, command.ByUserId, correlation.CorrelationId)
-            );
-            // El recordatorio de vencimiento es por persona: el nuevo asignado pide el suyo (clave idempotente).
-            await TaskDueReminder.PublishIfDueAsync(task, bus, correlation);
-        }
-
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(TaskResponse.From(task));
     }
-
-    private static TaskAssignedIntegrationEvent BuildEvent(
-        TaskItem task,
-        Guid? previousAssigneeUserId,
-        Guid assignedByUserId,
-        string correlationId
-    ) =>
-        new()
-        {
-            TenantId = task.TenantId,
-            CorrelationId = correlationId,
-            TaskId = task.Id,
-            Title = task.Title.Value,
-            AssigneeUserId = task.AssigneeUserId!.Value,
-            PreviousAssigneeUserId = previousAssigneeUserId,
-            DueAtUtc = task.Due?.DueAtUtc,
-            AssignedByUserId = assignedByUserId,
-        };
 }

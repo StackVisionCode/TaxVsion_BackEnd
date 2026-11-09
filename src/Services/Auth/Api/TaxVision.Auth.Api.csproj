@@ -19,8 +19,10 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Jobs\BuildingBlocks.Jobs.csproj" />
     <ProjectReference Include="..\Application\TaxVision.Auth.Application.csproj" />
     <ProjectReference Include="..\Infrastructure\TaxVision.Auth.Infrastructure.csproj" />
+    <ProjectReference Include="..\Onboarding\Infrastructure\TaxVision.Auth.Onboarding.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
 

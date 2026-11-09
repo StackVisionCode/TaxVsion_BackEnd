@@ -7,8 +7,8 @@ import { logger } from '../logger/logger.js';
 /**
  * Publica el contrato .NET existente `FilesDeletionRequestedIntegrationEvent` punto a punto a la cola
  * `cloudstorage-file-deletions` (exchange por defecto, routingKey = cola). Cuerpo en PascalCase como
- * las propiedades C#; el `type` AMQP es el nombre completo del tipo, que es como Wolverine lo resuelve
- * cuando el contrato no declara `[MessageIdentity]`.
+ * las propiedades C#; el `type` AMQP es la identidad que declara su `[MessageIdentity]` (el nombre
+ * completo del tipo), que es por lo que Wolverine lo resuelve.
  */
 export class RabbitFileDeletionRequester implements FileDeletionRequester {
   async requestDeletion(input: {

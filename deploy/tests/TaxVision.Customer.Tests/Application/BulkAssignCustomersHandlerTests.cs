@@ -8,6 +8,7 @@ using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Domain.Employees;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -79,13 +80,17 @@ public sealed class BulkAssignCustomersHandlerTests
         Assert.Equal("Customer.AssigneeNotEligible", result.Error.Code);
     }
 
-    private static Task<Result<BulkAssignResponse>> Handle(
+    // Lo sembrado ya está guardado; lo emitido por el comando sale por el bus como en Wolverine.
+    private static async Task<Result<BulkAssignResponse>> Handle(
         FakeCustomers repo,
         FakeMessageBus bus,
         IReadOnlyList<Guid> ids,
         bool eligible = true
-    ) =>
-        BulkAssignCustomersHandler.Handle(
+    )
+    {
+        foreach (var customer in repo.All)
+            customer.ClearDomainEvents();
+        var result = await BulkAssignCustomersHandler.Handle(
             new BulkAssignCustomersCommand(TenantId, Assignee, ids, Admin),
             repo,
             new FakeDirectory(eligible),
@@ -94,6 +99,9 @@ public sealed class BulkAssignCustomersHandlerTests
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, repo, repo.All);
+        return result;
+    }
 
     private static DomainCustomer NewCustomer()
     {
@@ -130,6 +138,8 @@ public sealed class BulkAssignCustomersHandlerTests
     {
         private readonly List<DomainCustomer> _all = [.. seed];
 
+        public IReadOnlyList<DomainCustomer> All => _all;
+
         public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(
             Guid tenantId,
             IReadOnlyCollection<Guid> ids,
@@ -139,7 +149,10 @@ public sealed class BulkAssignCustomersHandlerTests
                 _all.FindAll(c => c.TenantId == tenantId && ids.Contains(c.Id))
             );
 
-        public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) => throw new NotImplementedException();
+
+        public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+            Task.FromResult(_all.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));
 
         public Task<IReadOnlyList<DomainCustomer>> GetByIdsAsync(
             Guid tenantId,
@@ -170,6 +183,61 @@ public sealed class BulkAssignCustomersHandlerTests
         ) => throw new NotImplementedException();
 
         public Task AddAsync(DomainCustomer customer, CancellationToken ct) => throw new NotImplementedException();
+
+        public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeCustomerId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindCustomerIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeCustomerId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeRelationId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindRelationIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeRelationId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public Task<IReadOnlyList<DomainCustomer>> ListNonPrimaryAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<int> CountActiveByAssignedPreparerAsync(Guid tenantId, Guid preparerUserId, CancellationToken ct) =>
+            Task.FromResult(0);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListArchivedAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
+            Task.FromResult(OffboardingClientCounts.None);
+
+        public Task<Guid?> FindIdByOriginAsync(
+            Guid tenantId,
+            string sourceService,
+            Guid sourceReferenceId,
+            CancellationToken ct
+        ) => Task.FromResult<Guid?>(null);
     }
 
     private sealed class NoOpUnitOfWork : IUnitOfWork

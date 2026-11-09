@@ -54,6 +54,13 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
         return Result.Success(new ProviderCustomerToken(response.CustId, PaymentProviderCode.Intellipay));
     }
 
+    /// <summary>Intellipay no busca cargos por metadata: sin referencia no se puede saber.</summary>
+    public Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    ) => Task.FromResult(Result.Success(new ChargeLookup(ChargeLookupOutcome.NotSupported)));
+
     public async Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
         ChargeAuthorizationRequest request,
         CancellationToken ct
@@ -84,7 +91,8 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
                 ProviderChargeReference: response.TransactionId ?? string.Empty,
                 Status: PaymentStatus.Failed,
                 FailureCode: response.Response,
-                FailureMessage: response.Message
+                FailureMessage: response.Message,
+                OutcomeUnknown: response.Response == IntellipayResponse.OutcomeUnknown
             )
         );
     }
@@ -99,9 +107,11 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     )
     {
+        // Intellipay no acepta clave de idempotencia en el reembolso (SupportsIdempotencyKeys = false).
         var response = await gateway.RefundAsync(
             new IntellipayRefundRequest(
                 TransactionId: providerChargeReference,
@@ -118,8 +128,14 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
                 providerChargeReference,
                 response.Message
             );
+            // Sin clave de idempotencia: un resultado desconocido no se reintenta, se concilia.
             return Result.Failure<RefundResult>(
-                new Error("Intellipay.Refund.Failed", response.Message ?? "Unknown Intellipay error.")
+                new Error(
+                    response.Response == IntellipayResponse.OutcomeUnknown
+                        ? "Intellipay.Refund.Unavailable"
+                        : "Intellipay.Refund.Failed",
+                    response.Message ?? "Unknown Intellipay error."
+                )
             );
         }
 

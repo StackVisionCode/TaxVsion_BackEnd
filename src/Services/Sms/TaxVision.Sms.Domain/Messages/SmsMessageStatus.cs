@@ -10,4 +10,7 @@ public enum SmsMessageStatus
     Failed,
     Undeliverable,
     Suppressed,
+
+    // Se pidió el envío y no se sabe si salió (timeout): no se cobra hasta que el proveedor confirme.
+    OutcomeUnknown,
 }

@@ -22,6 +22,7 @@ using Serilog;
 using StackExchange.Redis;
 using TaxVision.Campaigns.Application;
 using TaxVision.Campaigns.Infrastructure;
+using TaxVision.Campaigns.Infrastructure.Messaging;
 using TaxVision.Campaigns.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
@@ -119,7 +120,22 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CampaignsDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+    options.Policies.Add(
+        new WalletReleaseRetryPolicy(
+            builder.Configuration.GetSection(WalletReleaseRetryOptions.SectionName).Get<WalletReleaseRetryOptions>()
+                ?? new WalletReleaseRetryOptions()
+        )
+    );
+
+    // BB-1: los eventos del run salen con su transacción y sus handlers devuelven los avisos. En serie, para que
+    // run.started y run.completed salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // BB-2: lo que entra a una cola local sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 
     // PUBLICADOS (guardrail 13) — un PublishMessage<T> por CADA evento que se publica; sin esta línea
     // Wolverine descarta el evento en silencio (nunca sale del outbox). Contrato dispatch/result +

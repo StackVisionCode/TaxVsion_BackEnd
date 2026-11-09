@@ -79,6 +79,7 @@ public static class RestoreFileHandler
                 clock.UtcNow
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new FileRestoredIntegrationEvent
             {
@@ -88,7 +89,6 @@ public static class RestoreFileHandler
                 CorrelationId = command.Audit.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
     }
 }
 
@@ -117,22 +117,27 @@ public static class RestoreFolderHandler
             return Result.Failure(FolderErrors.NotDeleted);
         var batchId = root.Id;
 
+        // Mientras estuvo en la papelera pudo crearse otra con ese nombre: el índice único la rechazaría.
+        if (
+            root.Category is null
+            && await folders.NameExistsUnderParentAsync(
+                command.TenantId,
+                root.ParentFolderId,
+                root.Name,
+                root.OwnerType,
+                root.OwnerId,
+                root.Id,
+                ct
+            )
+        )
+            return Result.Failure(FolderErrors.NameAlreadyExists);
+
         foreach (var folder in await folders.ListBatchAsync(command.TenantId, batchId, ct))
             folder.Restore();
 
-        foreach (var file in await files.ListByDeletedBatchAsync(command.TenantId, batchId, ct))
-        {
+        var restored = await files.ListByDeletedBatchAsync(command.TenantId, batchId, ct);
+        foreach (var file in restored)
             file.Restore();
-            await bus.PublishAsync(
-                new FileRestoredIntegrationEvent
-                {
-                    TenantId = command.TenantId,
-                    FileId = file.Id,
-                    CreatedBy = file.CreatedBy,
-                    CorrelationId = command.Audit.CorrelationId,
-                }
-            );
-        }
 
         audit.Add(
             StorageAccessLog.Create(
@@ -149,6 +154,17 @@ public static class RestoreFolderHandler
             )
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        foreach (var file in restored)
+            await bus.PublishAsync(
+                new FileRestoredIntegrationEvent
+                {
+                    TenantId = command.TenantId,
+                    FileId = file.Id,
+                    CreatedBy = file.CreatedBy,
+                    CorrelationId = command.Audit.CorrelationId,
+                }
+            );
         return Result.Success();
     }
 }
@@ -172,6 +188,7 @@ public static class EmptyRecycleBinHandler
         IStorageLimitRepository limits,
         IStorageAuditRepository audit,
         IObjectStorage storage,
+        IMultipartUploadStorage multipartStorage,
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
@@ -184,11 +201,12 @@ public static class EmptyRecycleBinHandler
         var purgedCount = await PurgeEach(
             candidates,
             command,
-            options.Value.MainBucket,
+            options.Value,
             files,
             limits,
             audit,
             storage,
+            multipartStorage,
             clock,
             logger,
             ct
@@ -209,11 +227,12 @@ public static class EmptyRecycleBinHandler
     private static async Task<int> PurgeEach(
         IReadOnlyList<FileObject> candidates,
         EmptyRecycleBinCommand command,
-        string mainBucket,
+        CloudStorageOptions options,
         IFileObjectRepository files,
         IStorageLimitRepository limits,
         IStorageAuditRepository audit,
         IObjectStorage storage,
+        IMultipartUploadStorage multipartStorage,
         ISystemClock clock,
         ILogger logger,
         CancellationToken ct
@@ -225,11 +244,12 @@ public static class EmptyRecycleBinHandler
             var purged = await RecycleBinPurger.PurgeAsync(
                 file,
                 "manual",
-                mainBucket,
+                options,
                 files,
                 limits,
                 audit,
                 storage,
+                multipartStorage,
                 clock,
                 command.ActorId,
                 command.Audit.CorrelationId,

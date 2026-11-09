@@ -16,12 +16,12 @@ public sealed class FormRequest : AggregateRoot
     private FormRequest() { }
 
     public FormParticipantKind ParticipantKind { get; private set; }
-    public Guid? CustomerId { get; private set; }
+    public Guid? CustomerId { get; internal set; }
     public Guid? ParticipantId { get; private set; }
-    public CustomerLinkStatus CustomerLinkStatus { get; private set; }
-    public Guid? LinkBlockedCustomerId { get; private set; }
-    public string? LinkBlockedReason { get; private set; }
-    public Guid? LinkConflictingRequestId { get; private set; }
+    public CustomerLinkStatus CustomerLinkStatus { get; internal set; }
+    public Guid? LinkBlockedCustomerId { get; internal set; }
+    public string? LinkBlockedReason { get; internal set; }
+    public Guid? LinkConflictingRequestId { get; internal set; }
     public FormRequestOrigin Origin { get; private set; }
     public Guid? IntakeLinkId { get; private set; }
 
@@ -62,10 +62,10 @@ public sealed class FormRequest : AggregateRoot
     public int ReminderCount { get; private set; }
     public DateTime? LastReminderAtUtc { get; private set; }
     public Guid? PrefillSourceRequestId { get; private set; }
-    public FormProfileUpdateStatus ProfileUpdateStatus { get; private set; }
-    public Guid? ProfileUpdateCommandId { get; private set; }
-    public DateTime? ProfileUpdateRequestedAtUtc { get; private set; }
-    public DateTime? ProfileUpdateResolvedAtUtc { get; private set; }
+    public FormProfileUpdateStatus ProfileUpdateStatus { get; internal set; }
+    public Guid? ProfileUpdateCommandId { get; internal set; }
+    public DateTime? ProfileUpdateRequestedAtUtc { get; internal set; }
+    public DateTime? ProfileUpdateResolvedAtUtc { get; internal set; }
     public DateTime LastActivityAtUtc { get; private set; }
     public FormSubmission? Submission { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
@@ -78,6 +78,13 @@ public sealed class FormRequest : AggregateRoot
     public IReadOnlyList<FormProfileUpdateOutcome> ProfileUpdateOutcomes => _profileUpdateOutcomes;
 
     public FormSubmissionRevision? LatestRevision => Submission?.CurrentRevision(CurrentRevisionNumber);
+
+    // Partes del agregado (TSK-9): misma fila, misma RowVersion y misma transacción que la raíz.
+    public FormRequestActions Actions => new(this, _actionRuns);
+    public FormRequestSummary Summary => new(this);
+    public FormRequestFiles Files => new(this);
+    public FormRequestCustomerLinking CustomerLinking => new(this);
+    public FormRequestProfileUpdate ProfileUpdate => new(this, _profileUpdateOutcomes);
 
     public FormParticipantRef Participant =>
         ParticipantKind == FormParticipantKind.Customer
@@ -224,116 +231,6 @@ public sealed class FormRequest : AggregateRoot
         DraftProgressPercent = progressPercent;
         Touch(nowUtc);
         return Result.Success();
-    }
-
-    public Result<FormAttachment> RegisterAttachment(
-        FormAnswerAddress address,
-        Guid fileId,
-        string displayName,
-        string contentType,
-        long sizeBytes,
-        int maxForField,
-        int maxPerSubmission,
-        FormFileVerdict? knownVerdict,
-        DateTime nowUtc
-    )
-    {
-        var editable = EnsureEditable();
-        if (editable.IsFailure)
-            return Result.Failure<FormAttachment>(editable.Error);
-        if (
-            fileId == Guid.Empty
-            || sizeBytes < 0
-            || string.IsNullOrWhiteSpace(displayName)
-            || displayName.Length > 255
-            || string.IsNullOrWhiteSpace(contentType)
-            || contentType.Length > 128
-            || maxForField < 1
-            || maxPerSubmission < 1
-        )
-            return Result.Failure<FormAttachment>(FormRequestErrors.InvalidComponent);
-
-        Submission ??= FormSubmission.Create(Id, null, nowUtc);
-        var result = Submission.RegisterAttachment(
-            TenantId,
-            address,
-            fileId,
-            displayName,
-            contentType,
-            sizeBytes,
-            maxForField,
-            maxPerSubmission,
-            knownVerdict,
-            ExpectedFileOwners(),
-            nowUtc
-        );
-        if (result.IsSuccess)
-            Touch(nowUtc);
-        return result;
-    }
-
-    public Result DetachAttachment(Guid attachmentId, DateTime nowUtc)
-    {
-        var editable = EnsureEditable();
-        if (editable.IsFailure)
-            return editable;
-        if (Submission is null)
-            return Result.Failure(FormRequestErrors.AttachmentNotFound);
-        var result = Submission.DetachAttachment(attachmentId, nowUtc);
-        if (result.IsSuccess)
-            Touch(nowUtc);
-        return result;
-    }
-
-    public FileVerdictOutcome ApplyFileVerdict(Guid fileId, FormFileVerdict verdict, DateTime nowUtc)
-    {
-        if (Submission is null)
-            return FileVerdictOutcome.Ignored;
-
-        var overall = FileVerdictOutcome.Ignored;
-        foreach (var attachment in Submission.Attachments)
-        {
-            if (attachment.FileId != fileId)
-                continue;
-            var previousStatus = attachment.Status;
-            var outcome = attachment.ApplyVerdict(verdict, ExpectedFileOwners(), nowUtc);
-            if (outcome != FileVerdictOutcome.Ignored)
-                overall = outcome;
-            if (outcome == FileVerdictOutcome.Rejected && previousStatus != FormAttachmentStatus.Rejected)
-                AddDomainEvent(
-                    new FormAttachmentRejected(Id, TenantId, attachment.Id, fileId, attachment.RejectionCode!, nowUtc)
-                );
-        }
-        if (overall != FileVerdictOutcome.Ignored)
-            Touch(nowUtc);
-        return overall;
-    }
-
-    public int ExpireStalePendingAttachments(DateTime olderThanUtc, DateTime nowUtc)
-    {
-        if (Submission is null)
-            return 0;
-        var expired = 0;
-        foreach (var attachment in Submission.Attachments)
-        {
-            if (attachment.Status != FormAttachmentStatus.Pending || attachment.RegisteredAtUtc >= olderThanUtc)
-                continue;
-            attachment.Expire(nowUtc);
-            expired++;
-            AddDomainEvent(
-                new FormAttachmentRejected(
-                    Id,
-                    TenantId,
-                    attachment.Id,
-                    attachment.FileId,
-                    attachment.RejectionCode!,
-                    nowUtc
-                )
-            );
-        }
-        if (expired > 0)
-            Touch(nowUtc);
-        return expired;
     }
 
     public Result<FormSensitiveAnswer> CaptureSensitiveAnswer(
@@ -532,442 +429,6 @@ public sealed class FormRequest : AggregateRoot
         return Result.Success();
     }
 
-    public Result<CustomerLinkResult> TryAttachCustomer(
-        Guid customerId,
-        bool customerHasOpenRequestForTemplate,
-        Guid? conflictingRequestId,
-        DateTime nowUtc
-    )
-    {
-        if (ParticipantKind != FormParticipantKind.External || customerId == Guid.Empty)
-            return Result.Failure<CustomerLinkResult>(FormRequestErrors.InvalidParticipant);
-        if (CustomerLinkStatus == CustomerLinkStatus.Linked)
-            return CustomerId == customerId
-                ? Result.Success(CustomerLinkResult.Unchanged)
-                : Result.Failure<CustomerLinkResult>(FormRequestErrors.AlreadyLinked);
-
-        if (customerHasOpenRequestForTemplate)
-        {
-            CustomerId = null;
-            CustomerLinkStatus = CustomerLinkStatus.Blocked;
-            LinkBlockedCustomerId = customerId;
-            LinkBlockedReason = "customer_has_open_request";
-            LinkConflictingRequestId = conflictingRequestId;
-            Touch(nowUtc);
-            return Result.Success(CustomerLinkResult.Blocked);
-        }
-
-        CustomerId = customerId;
-        CustomerLinkStatus = CustomerLinkStatus.Linked;
-        LinkBlockedCustomerId = null;
-        LinkBlockedReason = null;
-        LinkConflictingRequestId = null;
-        Touch(nowUtc);
-        return Result.Success(CustomerLinkResult.Linked);
-    }
-
-    public Result<CustomerLinkResult> RetryCustomerLink(
-        bool customerHasOpenRequestForTemplate,
-        Guid? conflictingRequestId,
-        DateTime nowUtc
-    )
-    {
-        if (CustomerLinkStatus != CustomerLinkStatus.Blocked || LinkBlockedCustomerId is null)
-            return Result.Failure<CustomerLinkResult>(FormRequestErrors.LinkNotBlocked);
-        return TryAttachCustomer(
-            LinkBlockedCustomerId.Value,
-            customerHasOpenRequestForTemplate,
-            conflictingRequestId,
-            nowUtc
-        );
-    }
-
-    public Result MarkPdfRequested(int revisionNumber, Guid generationId)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkPdfRequested(generationId);
-        return Result.Success();
-    }
-
-    public Result LinkPdf(Guid generationId, Guid fileId)
-    {
-        var revision = Submission?.RevisionForPdf(generationId);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.LinkPdf(fileId);
-        return Result.Success();
-    }
-
-    public Result MarkPdfFailed(Guid generationId)
-    {
-        var revision = Submission?.RevisionForPdf(generationId);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkPdfFailed();
-        return Result.Success();
-    }
-
-    // --- Firma (P-18). Correlación por número de revisión; la del dispatch, por GenerationId. ---
-
-    public int? RevisionNumberForGeneration(Guid generationId) =>
-        Submission?.RevisionForPdf(generationId)?.RevisionNumber;
-
-    public Guid? SignatureRequestIdFor(int revisionNumber) =>
-        Submission?.CurrentRevision(revisionNumber)?.SignatureRequestId;
-
-    public bool RevisionHasPendingSignature(int revisionNumber) =>
-        Submission?.CurrentRevision(revisionNumber)?.HasPendingSignature ?? false;
-
-    public FormRevisionSignatureStatus RevisionSignatureStatus(int revisionNumber) =>
-        Submission?.CurrentRevision(revisionNumber)?.SignatureStatus ?? FormRevisionSignatureStatus.None;
-
-    public bool RevisionAwaitsSignature(int revisionNumber) =>
-        Submission?.CurrentRevision(revisionNumber)?.AwaitsSignature ?? false;
-
-    public Result MarkSignatureRequesting(int revisionNumber, Guid copyFileId, string documentHashPre)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureRequesting(copyFileId, documentHashPre);
-        return Result.Success();
-    }
-
-    public Result LinkSignatureRequest(int revisionNumber, Guid signatureRequestId)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.LinkSignatureRequest(signatureRequestId);
-        return Result.Success();
-    }
-
-    public Result MarkSignatureFailed(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        // Un segundo aviso de fallo (dispatch duplicado) no vuelve a planificar ni a notificar.
-        return revision.MarkSignatureFailed()
-            ? Result.Success()
-            : Result.Failure(FormRequestErrors.SignatureNotPending);
-    }
-
-    public Result MarkSignatureSigned(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureSigned();
-        return Result.Success();
-    }
-
-    public Result MarkSignatureCompleted(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureCompleted();
-        return Result.Success();
-    }
-
-    public Result MarkSignatureSealed(
-        int revisionNumber,
-        Guid sealedFileId,
-        string documentHashPost,
-        Guid? certificateFileId
-    )
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureSealed(sealedFileId, documentHashPost, certificateFileId);
-        return Result.Success();
-    }
-
-    public Result MarkSignatureDeclined(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureDeclined();
-        return Result.Success();
-    }
-
-    public Result MarkSignatureCanceled(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureCanceled();
-        return Result.Success();
-    }
-
-    public Result MarkSignatureExpired(int revisionNumber)
-    {
-        var revision = Submission?.CurrentRevision(revisionNumber);
-        if (revision is null)
-            return Result.Failure(FormRequestErrors.NotFound);
-        revision.MarkSignatureExpired();
-        return Result.Success();
-    }
-
-    public Result<FormActionRun> RequestAction(string actionKey, string actionType, Guid commandId, DateTime nowUtc) =>
-        commandId == Guid.Empty
-            ? Result.Failure<FormActionRun>(FormActionRunErrors.Invalid)
-            : AddActionRun(actionKey, actionType, null, commandId, nowUtc);
-
-    // Termina sin emitir nada: Skipped (condición o disponibilidad) o Failed (no se pudo armar el comando).
-    public Result<FormActionRun> CloseActionWithoutCommand(
-        string actionKey,
-        string actionType,
-        FormActionRunStatus status,
-        string errorCode,
-        DateTime nowUtc
-    )
-    {
-        if (status is not (FormActionRunStatus.Skipped or FormActionRunStatus.Failed))
-            return Result.Failure<FormActionRun>(FormActionRunErrors.Invalid);
-        if (string.IsNullOrWhiteSpace(errorCode))
-            return Result.Failure<FormActionRun>(FormActionRunErrors.Invalid);
-        var run = AddActionRun(actionKey, actionType, null, null, nowUtc);
-        if (run.IsSuccess)
-            run.Value.CloseWithoutCommand(status, errorCode, nowUtc);
-        return run;
-    }
-
-    public Result<FormActionRun> GetRetryableAction(Guid runId)
-    {
-        var run = _actionRuns.Find(item => item.Id == runId);
-        if (run is null)
-            return Result.Failure<FormActionRun>(FormActionRunErrors.NotFound);
-        return run.IsRetryable ? Result.Success(run) : Result.Failure<FormActionRun>(FormActionRunErrors.NotRetryable);
-    }
-
-    // Mismo IdempotencyKey, Attempt + 1. Sin comando (failureCode), el intento nace fallido.
-    public Result<FormActionRun> RetryAction(Guid runId, Guid? commandId, string? failureCode, DateTime nowUtc)
-    {
-        var previous = GetRetryableAction(runId);
-        if (previous.IsFailure)
-            return previous;
-        if ((commandId is null) == string.IsNullOrWhiteSpace(failureCode) || commandId == Guid.Empty)
-            return Result.Failure<FormActionRun>(FormActionRunErrors.Invalid);
-        var next = AddActionRun(
-            previous.Value.ActionKey,
-            previous.Value.ActionType,
-            previous.Value.IdempotencyKey,
-            commandId,
-            nowUtc
-        );
-        if (next.IsFailure)
-            return next;
-        previous.Value.MarkRetried(nowUtc);
-        if (failureCode is not null)
-            next.Value.CloseWithoutCommand(FormActionRunStatus.Failed, failureCode, nowUtc);
-        return next;
-    }
-
-    public bool HasActiveAction(string actionType) =>
-        _actionRuns.Exists(run => run.ActionType == actionType && run.Status != FormActionRunStatus.Skipped);
-
-    // Ya hay un cierre sin comando de esta acción en la revisión con ese motivo (eventos repetidos).
-    public bool HasClosedAction(string actionKey, int revisionNumber, string errorCode) =>
-        _actionRuns.Exists(run =>
-            run.ActionKey == actionKey
-            && run.RevisionNumber == revisionNumber
-            && run.Status == FormActionRunStatus.Skipped
-            && run.ErrorCode == errorCode
-        );
-
-    public FormActionRun? LatestAction(string actionType) =>
-        _actionRuns.Find(run =>
-            run.ActionType == actionType && run.IsLatestAttempt && run.Status != FormActionRunStatus.Skipped
-        );
-
-    public FormActionRun? FindActionByCommand(Guid commandId) =>
-        commandId == Guid.Empty ? null : _actionRuns.Find(run => run.CommandId == commandId);
-
-    public Result<FormActionRunTransition> CompleteAction(
-        Guid commandId,
-        string resultKind,
-        Guid resultId,
-        string? warnings,
-        DateTime nowUtc
-    )
-    {
-        var run = FindActionByCommand(commandId);
-        if (run is null)
-            return Result.Failure<FormActionRunTransition>(FormActionRunErrors.NotFound);
-        if (resultId == Guid.Empty || string.IsNullOrWhiteSpace(resultKind))
-            return Result.Failure<FormActionRunTransition>(FormActionRunErrors.Invalid);
-        return Result.Success(run.Complete(resultKind, resultId, warnings, nowUtc));
-    }
-
-    public Result<FormActionRunTransition> RejectAction(
-        Guid commandId,
-        string errorCode,
-        Guid? existingCustomerId,
-        string? detail,
-        DateTime nowUtc
-    )
-    {
-        var run = FindActionByCommand(commandId);
-        if (run is null)
-            return Result.Failure<FormActionRunTransition>(FormActionRunErrors.NotFound);
-        if (string.IsNullOrWhiteSpace(errorCode))
-            return Result.Failure<FormActionRunTransition>(FormActionRunErrors.Invalid);
-        return Result.Success(run.Reject(errorCode, existingCustomerId, detail, nowUtc));
-    }
-
-    // Adjuntos vigentes que todavía no pasaron al cliente vinculado.
-    public IReadOnlyList<Guid> FilesPendingOwnerReassignment()
-    {
-        var files = new List<Guid>();
-        if (
-            Submission is null
-            || ParticipantKind != FormParticipantKind.External
-            || CustomerLinkStatus != CustomerLinkStatus.Linked
-        )
-            return files;
-        foreach (var attachment in Submission.Attachments)
-        {
-            if (attachment.Status != FormAttachmentStatus.Detached && !attachment.OwnerReassignmentSettled)
-                files.Add(attachment.FileId);
-        }
-        return files;
-    }
-
-    public Result RecordFileReassignment(Guid fileId, string outcome, DateTime nowUtc)
-    {
-        if (!FormFileReassignmentOutcomes.IsKnown(outcome) || Submission is null)
-            return Result.Failure(FormRequestErrors.AttachmentNotFound);
-        var found = false;
-        foreach (var attachment in Submission.Attachments)
-        {
-            if (attachment.FileId != fileId || attachment.Status == FormAttachmentStatus.Detached)
-                continue;
-            attachment.RecordOwnerReassignment(outcome, nowUtc);
-            found = true;
-        }
-        return found ? Result.Success() : Result.Failure(FormRequestErrors.AttachmentNotFound);
-    }
-
-    // P-13 — pedir aplicar las respuestas aprobadas al perfil del cliente. Pasa a Processing y queda
-    // a la espera del hecho de Customer. La autorización ya la validó el handler antes de llamar aquí.
-    public Result RequestProfileUpdate(Guid commandId, IReadOnlyCollection<string> targets, DateTime nowUtc)
-    {
-        if (Status != FormRequestStatus.Completed || !CustomerId.HasValue)
-            return Result.Failure(FormRequestErrors.ProfileUpdateNotAllowed);
-        if (ProfileUpdateStatus == FormProfileUpdateStatus.Processing)
-            return Result.Failure(FormRequestErrors.ProfileUpdateInProgress);
-        if (commandId == Guid.Empty || targets.Count == 0)
-            return Result.Failure(FormRequestErrors.ProfileUpdateNoTargets);
-
-        ProfileUpdateStatus = FormProfileUpdateStatus.Processing;
-        ProfileUpdateCommandId = commandId;
-        ProfileUpdateRequestedAtUtc = nowUtc;
-        ProfileUpdateResolvedAtUtc = null;
-        _profileUpdateOutcomes.Clear();
-        foreach (var target in targets)
-            _profileUpdateOutcomes.Add(new FormProfileUpdateOutcome(target, false, null));
-        Touch(nowUtc);
-        return Result.Success();
-    }
-
-    // Hecho Applied: aplicados + fallidos. Con fallos => PartiallyApplied. Idempotente si ya se resolvió.
-    public Result MarkProfileUpdateApplied(
-        Guid commandId,
-        IReadOnlyCollection<FormProfileUpdateOutcome> outcomes,
-        DateTime nowUtc
-    )
-    {
-        var guard = EnsureProfileCommand(commandId);
-        if (guard.IsFailure)
-            return guard;
-        if (ProfileUpdateStatus != FormProfileUpdateStatus.Processing)
-            return Result.Success();
-
-        var hasFailures = false;
-        _profileUpdateOutcomes.Clear();
-        foreach (var outcome in outcomes)
-        {
-            _profileUpdateOutcomes.Add(outcome);
-            if (!outcome.Applied)
-                hasFailures = true;
-        }
-        ProfileUpdateStatus = hasFailures ? FormProfileUpdateStatus.PartiallyApplied : FormProfileUpdateStatus.Applied;
-        ProfileUpdateResolvedAtUtc = nowUtc;
-        Touch(nowUtc);
-        return Result.Success();
-    }
-
-    // Hecho Rejected: nada se aplicó. Idempotente si ya se resolvió.
-    public Result MarkProfileUpdateRejected(
-        Guid commandId,
-        IReadOnlyCollection<FormProfileUpdateOutcome> failures,
-        DateTime nowUtc
-    )
-    {
-        var guard = EnsureProfileCommand(commandId);
-        if (guard.IsFailure)
-            return guard;
-        if (ProfileUpdateStatus != FormProfileUpdateStatus.Processing)
-            return Result.Success();
-
-        _profileUpdateOutcomes.Clear();
-        foreach (var failure in failures)
-            _profileUpdateOutcomes.Add(failure with { Applied = false });
-        ProfileUpdateStatus = FormProfileUpdateStatus.Rejected;
-        ProfileUpdateResolvedAtUtc = nowUtc;
-        Touch(nowUtc);
-        return Result.Success();
-    }
-
-    private Result EnsureProfileCommand(Guid commandId) =>
-        commandId != Guid.Empty && ProfileUpdateCommandId == commandId
-            ? Result.Success()
-            : Result.Failure(FormRequestErrors.ProfileUpdateCommandMismatch);
-
-    private Result<FormActionRun> AddActionRun(
-        string actionKey,
-        string actionType,
-        string? idempotencyKey,
-        Guid? commandId,
-        DateTime nowUtc
-    )
-    {
-        if (
-            CurrentRevisionNumber < 1
-            || string.IsNullOrWhiteSpace(actionKey)
-            || actionKey.Length > FormActionRun.ActionKeyMaxLength
-            || string.IsNullOrWhiteSpace(actionType)
-            || actionType.Length > FormActionRun.ActionTypeMaxLength
-        )
-            return Result.Failure<FormActionRun>(FormActionRunErrors.Invalid);
-        var key = idempotencyKey ?? FormActionRun.IdempotencyKeyFor(Id, CurrentRevisionNumber, actionKey);
-        var attempt = 1;
-        foreach (var existing in _actionRuns)
-        {
-            if (existing.IdempotencyKey == key && existing.Attempt >= attempt)
-                attempt = existing.Attempt + 1;
-        }
-        var run = FormActionRun.Create(
-            TenantId,
-            Id,
-            CurrentRevisionNumber,
-            actionKey,
-            actionType,
-            key,
-            attempt,
-            commandId,
-            nowUtc
-        );
-        _actionRuns.Add(run);
-        return Result.Success(run);
-    }
-
     public IReadOnlyCollection<(string OwnerType, Guid OwnerId)> ExpectedFileOwners()
     {
         if (ParticipantKind == FormParticipantKind.Customer)
@@ -1023,5 +484,9 @@ public sealed class FormRequest : AggregateRoot
             : Result.Success(revision);
     }
 
-    private void Touch(DateTime nowUtc) => LastActivityAtUtc = nowUtc;
+    internal void Touch(DateTime nowUtc) => LastActivityAtUtc = nowUtc;
+
+    internal void Raise(IDomainEvent domainEvent) => AddDomainEvent(domainEvent);
+
+    internal FormSubmission EnsureSubmission(DateTime nowUtc) => Submission ??= FormSubmission.Create(Id, null, nowUtc);
 }

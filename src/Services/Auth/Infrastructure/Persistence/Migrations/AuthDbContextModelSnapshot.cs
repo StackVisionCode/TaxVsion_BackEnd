@@ -22,53 +22,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("TaxVision.Auth.Application.Onboarding.Sagas.TenantOnboardingProcessManager", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("BillingCycle")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("FirstName")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("LastName")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<Guid?>("PasswordHashReference")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("PlanId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("SubscriptionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Version")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("OnboardingSagas", (string)null);
-                });
-
             modelBuilder.Entity("TaxVision.Auth.Domain.Audit.AuthAuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -587,383 +540,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("OffboardingRunSteps", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.EmailVerification.EmailVerificationChallenge", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Attempts")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<DateTime>("ExpiresAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("OtpHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<int>("ResendCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("SupersededAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("VerifiedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Email", "CreatedAtUtc");
-
-                    b.HasIndex("Email", "SupersededAtUtc", "VerifiedAtUtc", "ExpiresAtUtc");
-
-                    b.ToTable("EmailVerificationChallenges", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.SubdomainReservations.OnboardingSubdomainReservation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("ConsumedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("ExpiresAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("OnboardingId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ReservedByEmail")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("Slug")
-                        .IsRequired()
-                        .HasMaxLength(63)
-                        .HasColumnType("nvarchar(63)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OnboardingId");
-
-                    b.HasIndex("Slug", "ConsumedAtUtc", "ExpiresAtUtc");
-
-                    b.ToTable("OnboardingSubdomainReservations", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.OnboardingCodeReservation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("BenefitType")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
-
-                    b.Property<string>("Code")
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<Guid>("CodeReservationId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long>("DiscountCents")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("OnboardingId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Order")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SnapshotHash")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CodeReservationId");
-
-                    b.HasIndex("OnboardingId");
-
-                    b.ToTable("OnboardingCodeReservations", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.TenantOnboarding", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("AcceptedFromIp")
-                        .HasMaxLength(45)
-                        .HasColumnType("nvarchar(45)");
-
-                    b.Property<bool>("AutoRenewRequested")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<string>("BillingCycle")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(24)
-                        .HasColumnType("nvarchar(24)")
-                        .HasDefaultValue("Monthly");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Currency")
-                        .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)");
-
-                    b.Property<string>("CurrentStep")
-                        .IsRequired()
-                        .HasMaxLength(24)
-                        .HasColumnType("nvarchar(24)");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<DateTime>("EmailVerifiedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("FailedStep")
-                        .HasMaxLength(24)
-                        .HasColumnType("nvarchar(24)");
-
-                    b.Property<string>("FailureCode")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("FailureReason")
-                        .HasMaxLength(1024)
-                        .HasColumnType("nvarchar(1024)");
-
-                    b.Property<string>("FirstName")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<bool>("FullyCovered")
-                        .HasColumnType("bit");
-
-                    b.Property<long?>("GrossAmountCents")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("LastName")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<long?>("NetAmountCents")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime?>("NextRetryAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("OfficeName")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<DateTime?>("PaymentCompletedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("PaymentId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("PaymentReference")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<int>("PaymentRetryCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
-
-                    b.Property<string>("PaymentStatus")
-                        .HasMaxLength(24)
-                        .HasColumnType("nvarchar(24)");
-
-                    b.Property<string>("Phone")
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<Guid>("PlanId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("ProvisioningStartedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("ReceiptFileId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ReferralAttributionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("RegistrationCompletedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("RegistrationEmailSentAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("RegistrationTokenExpiresAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("RegistrationTokenHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<Guid?>("RegistrationTokenReference")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("RegistrationTokenUsedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("RequestedSubdomain")
-                        .HasMaxLength(63)
-                        .HasColumnType("nvarchar(63)");
-
-                    b.Property<int>("RetryAttempt")
-                        .HasColumnType("int");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(24)
-                        .HasColumnType("nvarchar(24)");
-
-                    b.Property<Guid?>("SubscriptionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("TermsAcceptedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("TermsContentHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<Guid?>("TermsVersionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("TimeZoneId")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<long?>("TotalDiscountCents")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("UserAgent")
-                        .HasMaxLength(512)
-                        .HasColumnType("nvarchar(512)");
-
-                    b.Property<Guid?>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NextRetryAtUtc")
-                        .HasDatabaseName("IX_TenantOnboardings_NextRetryAtUtc")
-                        .HasFilter("[NextRetryAtUtc] IS NOT NULL");
-
-                    b.HasIndex("ReceiptFileId")
-                        .IsUnique()
-                        .HasFilter("[ReceiptFileId] IS NOT NULL");
-
-                    b.HasIndex("RegistrationTokenHash")
-                        .IsUnique()
-                        .HasFilter("[RegistrationTokenHash] IS NOT NULL");
-
-                    b.HasIndex("Email", "Status");
-
-                    b.HasIndex("Status", "CreatedAtUtc");
-
-                    b.ToTable("TenantOnboardings", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TermsVersions.TermsVersion", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ContentFileId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ContentHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("ContentUri")
-                        .HasMaxLength(2048)
-                        .HasColumnType("nvarchar(2048)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("EffectiveFromUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("EffectiveUntilUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("Locale")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
-
-                    b.Property<string>("Version")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Kind", "Locale", "EffectiveFromUtc");
-
-                    b.ToTable("TermsVersions", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.RateLimiting.TenantPlanCodeProjection", b =>
@@ -4004,6 +3580,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<int>("PermissionsVersion")
                         .HasColumnType("int");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<string>("TargetActorType")
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
@@ -4258,6 +3840,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<long?>("LastProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("LastStatusVersion")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -4379,6 +3967,57 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantTermsAcceptances", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Domain.Terms.TermsVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ContentFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ContentUri")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("EffectiveFromUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Kind", "Locale", "EffectiveFromUtc");
+
+                    b.ToTable("TermsVersions", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Users.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4406,8 +4045,15 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("CustomerStatusChangedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("DeactivatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("DeactivationReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -4471,6 +4117,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("RemovedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateTime?>("SlotPriorityAt")
                         .HasColumnType("datetime2");
@@ -4550,6 +4202,379 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantSeatSlotProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Onboarding.Application.Sagas.TenantOnboardingProcessManager", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid?>("PasswordHashReference")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OnboardingSagas", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Onboarding.Domain.EmailVerification.EmailVerificationChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OtpHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("ResendCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SupersededAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("VerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email", "CreatedAtUtc");
+
+                    b.HasIndex("Email", "SupersededAtUtc", "VerifiedAtUtc", "ExpiresAtUtc");
+
+                    b.ToTable("EmailVerificationChallenges", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Onboarding.Domain.SubdomainReservations.OnboardingSubdomainReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReservedByEmail")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(63)
+                        .HasColumnType("nvarchar(63)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId");
+
+                    b.HasIndex("Slug", "ConsumedAtUtc", "ExpiresAtUtc");
+
+                    b.ToTable("OnboardingSubdomainReservations", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Onboarding.Domain.TenantOnboardings.OnboardingCodeReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BenefitType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("CodeReservationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("DiscountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SnapshotHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeReservationId");
+
+                    b.HasIndex("OnboardingId");
+
+                    b.ToTable("OnboardingCodeReservations", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Onboarding.Domain.TenantOnboardings.TenantOnboarding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AcceptedFromIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<bool>("AutoRenewRequested")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)")
+                        .HasDefaultValue("Monthly");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("CurrentStep")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("EmailVerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FailedStep")
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool>("FullyCovered")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("GrossAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<long?>("NetAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("NextRetryAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OfficeName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("PaymentCompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("PaymentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PaymentReference")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("PaymentRetryCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("PaymentStatus")
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ProvisioningStartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReceiptFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ReferralAttributionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RegistrationCompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RegistrationEmailSentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RegistrationTokenExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RegistrationTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("RegistrationTokenReference")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RegistrationTokenUsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RequestedSubdomain")
+                        .HasMaxLength(63)
+                        .HasColumnType("nvarchar(63)");
+
+                    b.Property<int>("RetryAttempt")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<Guid?>("SubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("TermsAcceptedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TermsContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("TermsVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long?>("TotalDiscountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NextRetryAtUtc")
+                        .HasDatabaseName("IX_TenantOnboardings_NextRetryAtUtc")
+                        .HasFilter("[NextRetryAtUtc] IS NOT NULL");
+
+                    b.HasIndex("ReceiptFileId")
+                        .IsUnique()
+                        .HasFilter("[ReceiptFileId] IS NOT NULL");
+
+                    b.HasIndex("RegistrationTokenHash")
+                        .IsUnique()
+                        .HasFilter("[RegistrationTokenHash] IS NOT NULL");
+
+                    b.HasIndex("Email", "Status");
+
+                    b.HasIndex("Status", "CreatedAtUtc");
+
+                    b.ToTable("TenantOnboardings", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Credentials.EmailVerificationToken", b =>
                 {
                     b.HasOne("TaxVision.Auth.Domain.Users.User", null)
@@ -4609,15 +4634,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.HasOne("TaxVision.Auth.Domain.Offboarding.OffboardingRun", null)
                         .WithMany("Steps")
                         .HasForeignKey("RunId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.OnboardingCodeReservation", b =>
-                {
-                    b.HasOne("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.TenantOnboarding", null)
-                        .WithMany("CodeReservations")
-                        .HasForeignKey("OnboardingId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -4690,19 +4706,28 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Onboarding.Domain.TenantOnboardings.OnboardingCodeReservation", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Onboarding.Domain.TenantOnboardings.TenantOnboarding", null)
+                        .WithMany("CodeReservations")
+                        .HasForeignKey("OnboardingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Offboarding.OffboardingRun", b =>
                 {
                     b.Navigation("Steps");
                 });
 
-            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.TenantOnboarding", b =>
-                {
-                    b.Navigation("CodeReservations");
-                });
-
             modelBuilder.Entity("TaxVision.Auth.Domain.Roles.Role", b =>
                 {
                     b.Navigation("Permissions");
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Onboarding.Domain.TenantOnboardings.TenantOnboarding", b =>
+                {
+                    b.Navigation("CodeReservations");
                 });
 #pragma warning restore 612, 618
         }

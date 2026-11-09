@@ -60,13 +60,34 @@ public static class CustomerEmailDirectoryConsumer
         CancellationToken ct
     ) => SetActiveAsync(repository, unitOfWork, evt.TenantId, evt.CustomerId, false, ct);
 
+    // NOT-21: la importación no manda CustomerCreated ni trae correos: se piden a Customer fuera de esta transacción.
+    public static SyncImportedCustomerEmailsCommand? Handle(CustomersBulkImportedIntegrationEvent evt)
+    {
+        var customerIds = evt.CreatedCustomerIds.Concat(evt.UpdatedCustomerIds).Distinct().ToList();
+        return customerIds.Count == 0 ? null : new SyncImportedCustomerEmailsCommand(evt.TenantId, customerIds);
+    }
+
+    private static async Task UpsertAsync(
+        ICustomerEmailDirectoryRepository repository,
+        IUnitOfWork unitOfWork,
+        Guid tenantId,
+        Guid customerId,
+        string? email,
+        string? displayName,
+        bool isActive,
+        CancellationToken ct
+    )
+    {
+        if (await ApplyAsync(repository, tenantId, customerId, email, displayName, isActive, ct))
+            await unitOfWork.SaveChangesAsync(ct);
+    }
+
     /// <summary>
     /// Sin email no se crea la fila: una entrada vacía haría creer que el cliente es alcanzable y el
     /// envío fallaría en silencio en vez de saltarse el aviso con un motivo claro.
     /// </summary>
-    private static async Task UpsertAsync(
+    internal static async Task<bool> ApplyAsync(
         ICustomerEmailDirectoryRepository repository,
-        IUnitOfWork unitOfWork,
         Guid tenantId,
         Guid customerId,
         string? email,
@@ -86,9 +107,9 @@ public static class CustomerEmailDirectoryConsumer
                 ct
             );
         else
-            return;
+            return false;
 
-        await unitOfWork.SaveChangesAsync(ct);
+        return true;
     }
 
     /// <summary>

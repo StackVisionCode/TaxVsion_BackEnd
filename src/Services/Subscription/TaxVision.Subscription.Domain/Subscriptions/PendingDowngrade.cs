@@ -110,4 +110,15 @@ public sealed class PendingDowngrade : BaseEntity
         CancelledAtUtc = nowUtc;
         return Result.Success();
     }
+
+    /// <summary>SUB-15: el upgrade que lo reemplazó no se pagó, así que vuelve a quedar agendado.</summary>
+    internal void Reinstate(DateTime effectiveAtUtc)
+    {
+        if (Status != PendingDowngradeStatus.Cancelled)
+            return;
+
+        Status = PendingDowngradeStatus.Scheduled;
+        CancelledAtUtc = null;
+        EffectiveAtUtc = effectiveAtUtc;
+    }
 }

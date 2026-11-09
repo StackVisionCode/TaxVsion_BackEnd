@@ -122,6 +122,12 @@ public sealed class StripeOffSessionCharger : IOffSessionCharger
                 FailureMessage: intent.LastPaymentError?.Message
                     ?? "Issuing bank requires customer authentication; retry with an on-session flow."
             ),
+            "processing" => new OffSessionChargeOutcome(
+                OffSessionChargeStatus.Processing,
+                intent.Id,
+                FailureCode: null,
+                FailureMessage: null
+            ),
             _ => new OffSessionChargeOutcome(
                 OffSessionChargeStatus.Failed,
                 intent.Id,
@@ -146,6 +152,17 @@ public sealed class StripeOffSessionCharger : IOffSessionCharger
                 OffSessionChargeStatus.RequiresUserAction,
                 string.IsNullOrEmpty(intentId) ? null : intentId,
                 FailureCode: code,
+                FailureMessage: ex.StripeError?.Message ?? ex.Message
+            );
+        }
+
+        if (StripeChargeFailure.IsOutcomeUnknown(ex))
+        {
+            _logger.LogWarning(ex, "Stripe off-session charge has no known outcome. IntentHint={Intent}", intentId);
+            return new OffSessionChargeOutcome(
+                OffSessionChargeStatus.OutcomeUnknown,
+                string.IsNullOrEmpty(intentId) ? null : intentId,
+                FailureCode: code ?? "stripe_error",
                 FailureMessage: ex.StripeError?.Message ?? ex.Message
             );
         }

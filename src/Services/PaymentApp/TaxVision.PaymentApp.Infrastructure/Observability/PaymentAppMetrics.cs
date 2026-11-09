@@ -27,6 +27,7 @@ public sealed class PaymentAppMetrics : IPaymentAppMetrics, IDisposable
     private readonly Counter<long> _webhookDuplicateTotal;
     private readonly Counter<long> _webhookSignatureFailedTotal;
     private readonly Histogram<double> _providerLatencyMs;
+    private readonly Counter<long> _reviewRequiredTotal;
 
     public PaymentAppMetrics(IServiceScopeFactory scopeFactory)
     {
@@ -41,6 +42,7 @@ public sealed class PaymentAppMetrics : IPaymentAppMetrics, IDisposable
         _webhookDuplicateTotal = _meter.CreateCounter<long>("paymentapp.webhook.duplicate_total");
         _webhookSignatureFailedTotal = _meter.CreateCounter<long>("paymentapp.webhook.signature_failed_total");
         _providerLatencyMs = _meter.CreateHistogram<double>("paymentapp.provider.latency_ms", unit: "ms");
+        _reviewRequiredTotal = _meter.CreateCounter<long>("paymentapp.payments.review_required");
 
         _meter.CreateObservableGauge("paymentapp.dunning.queue_depth", () => ComputeDunningQueueDepth(scopeFactory));
         _meter.CreateObservableGauge("paymentapp.mrr_usd", () => ComputeMrrUsd(scopeFactory));
@@ -88,6 +90,13 @@ public sealed class PaymentAppMetrics : IPaymentAppMetrics, IDisposable
             milliseconds,
             new KeyValuePair<string, object?>("provider", provider),
             new KeyValuePair<string, object?>("method", method)
+        );
+
+    public void RecordPaymentReviewRequired(string provider, string reason) =>
+        _reviewRequiredTotal.Add(
+            1,
+            new KeyValuePair<string, object?>("provider", provider),
+            new KeyValuePair<string, object?>("reason", reason)
         );
 
     private static long ComputeDunningQueueDepth(IServiceScopeFactory scopeFactory)

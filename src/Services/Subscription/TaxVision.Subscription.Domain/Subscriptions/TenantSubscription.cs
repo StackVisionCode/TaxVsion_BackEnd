@@ -3,6 +3,7 @@ using BuildingBlocks.Results;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Renewals;
 using TaxVision.Subscription.Domain.Settings;
+using TaxVision.Subscription.Domain.Subscriptions.Events;
 using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Domain.Subscriptions;
@@ -11,9 +12,10 @@ namespace TaxVision.Subscription.Domain.Subscriptions;
 /// Derecho comercial y de acceso de un tenant a la plataforma. Un registro activo por
 /// tenant. Independiente de los asientos (<see cref="Seats.SubscriptionSeat"/>): renovar
 /// esta suscripción no renueva seats, y viceversa. Cada transición de estado es un método
-/// explícito con su propia precondición — no existe un ChangeStatus(...) genérico.
+/// explícito con su propia precondición — no existe un ChangeStatus(...) genérico. Las transiciones que se
+/// anuncian registran <see cref="SubscriptionStatusChangedDomainEvent"/>.
 /// </summary>
-public sealed class TenantSubscription : TenantEntity
+public sealed class TenantSubscription : AggregateRoot
 {
     private readonly List<TenantSubscriptionRenewal> _renewals = [];
     private readonly List<PlanChangeRequest> _planChangeRequests = [];
@@ -191,9 +193,11 @@ public sealed class TenantSubscription : TenantEntity
         if (Status != SubscriptionStatus.Trialing)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot expire trial from {Status}."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Expired;
         ExpiredAtUtc = nowUtc;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.TrialEnded, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -259,7 +263,7 @@ public sealed class TenantSubscription : TenantEntity
     /// de facturación desde hoy) o se descarta si falla (<see cref="FailUpgradeCharge"/>).
     /// Rechaza si ya hay un upgrade AwaitingPayment (evita doble cobro por un segundo submit
     /// mientras el primero está en vuelo); si había un downgrade agendado, lo cancela — un
-    /// upgrade reemplaza cualquier cambio pendiente.
+    /// upgrade reemplaza cualquier cambio pendiente. SUB-15: si no se paga, lo reemplazado vuelve.
     /// </summary>
     public Result RequestUpgrade(
         SubscriptionPlan newPlan,
@@ -269,7 +273,8 @@ public sealed class TenantSubscription : TenantEntity
         string chargeCurrency,
         string paymentIdempotencyKey,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        bool usesHostedCheckout = false
     )
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
@@ -289,6 +294,10 @@ public sealed class TenantSubscription : TenantEntity
             return Result.Failure(
                 new Error("PlanChangeRequest.PaymentInProgress", "A plan change payment is already being processed.")
             );
+
+        var replacedDowngradeId = FindScheduledDowngrade()?.Id;
+        var replacedCancellationAtUtc = CancelAtPeriodEnd ? CancellationScheduledAtUtc ?? nowUtc : (DateTime?)null;
+        var replacedCancellationReason = CancelAtPeriodEnd ? CancellationReason : null;
 
         var cancelDowngradeResult = CancelScheduledDowngradeIfAny(nowUtc);
         if (cancelDowngradeResult.IsFailure)
@@ -311,11 +320,17 @@ public sealed class TenantSubscription : TenantEntity
             nowUtc,
             chargeAmountCents,
             chargeCurrency,
-            paymentIdempotencyKey
+            paymentIdempotencyKey,
+            usesHostedCheckout
         );
         if (requestResult.IsFailure)
             return Result.Failure(requestResult.Error);
 
+        requestResult.Value.RememberReplaced(
+            replacedDowngradeId,
+            replacedCancellationAtUtc,
+            replacedCancellationReason
+        );
         _planChangeRequests.Add(requestResult.Value);
         Touch(actorUserId, nowUtc);
         return Result.Success();
@@ -381,13 +396,74 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>SUB-13: libera el upgrade por redirect que se quedó sin sesión. Un off-session no se toca.</summary>
+    public Result ExpireUpgradeWithoutCheckout(Guid requestId, Guid actorUserId, DateTime nowUtc)
+    {
+        var request = FindPlanChangeRequestById(requestId);
+        if (request is null)
+            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        if (!request.IsHostedWithoutCheckout)
+            return Result.Success();
+
+        var expired = request.ExpireWithoutCheckout(nowUtc);
+        if (expired.IsFailure)
+            return expired;
+
+        RestoreReplacedSchedule(request);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>SUB-15: la sesión del upgrade venció sin pagarse. Por la raíz, para devolver lo agendado.</summary>
+    public Result ExpireUpgradeSession(Guid requestId, Guid actorUserId, DateTime nowUtc)
+    {
+        var request = FindPlanChangeRequestById(requestId);
+        if (request is null)
+            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        if (request.Status != PlanChangeRequestStatus.AwaitingPayment)
+            return Result.Success();
+
+        var expired = request.Expire(nowUtc);
+        if (expired.IsFailure || request.Status != PlanChangeRequestStatus.Expired)
+            return expired;
+
+        RestoreReplacedSchedule(request);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result FailUpgradeCharge(Guid requestId, Guid saaSPaymentId, DateTime nowUtc)
     {
         var request = FindPlanChangeRequestById(requestId);
         if (request is null)
             return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
 
-        return request.MarkPaymentFailed(saaSPaymentId, nowUtc);
+        var failed = request.MarkPaymentFailed(saaSPaymentId, nowUtc);
+        if (failed.IsFailure)
+            return failed;
+
+        RestoreReplacedSchedule(request);
+        Touch(request.RequestedByUserId, nowUtc);
+        return Result.Success();
+    }
+
+    // SUB-15: sin aviso, igual que al quitarlos. En una suscripción que ya no sigue activa no hay nada que agendar.
+    private void RestoreReplacedSchedule(PlanChangeRequest request)
+    {
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
+            return;
+
+        if (request.ReplacedCancellationAtUtc is { } scheduledAtUtc)
+        {
+            CancelAtPeriodEnd = true;
+            CancellationScheduledAtUtc = scheduledAtUtc;
+            CancellationReason = request.ReplacedCancellationReason;
+        }
+
+        if (request.ReplacedDowngradeId is { } downgradeId)
+            FindPendingDowngradeById(downgradeId)?.Reinstate(CurrentPeriodEndUtc);
     }
 
     /// <summary>
@@ -556,11 +632,17 @@ public sealed class TenantSubscription : TenantEntity
         if (cancelled.IsFailure)
             return Result.Failure<PlanChangeRequest?>(cancelled.Error);
 
+        RestoreReplacedSchedule(awaiting);
         Touch(actorUserId, nowUtc);
         return Result.Success<PlanChangeRequest?>(awaiting);
     }
 
-    public Result MarkPastDueBecauseRenewalFailed(string failureCode, Guid actorUserId, DateTime nowUtc)
+    public Result MarkPastDueBecauseRenewalFailed(
+        string failureCode,
+        Guid actorUserId,
+        DateTime nowUtc,
+        bool notifiedByChargeFailedEmail = false
+    )
     {
         if (Status != SubscriptionStatus.Active)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot mark past due from {Status}."));
@@ -568,8 +650,17 @@ public sealed class TenantSubscription : TenantEntity
         if (string.IsNullOrWhiteSpace(failureCode))
             return Result.Failure(new Error("Subscription.InvalidFailureCode", "FailureCode is required."));
 
+        var previous = Status;
         Status = SubscriptionStatus.PastDue;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(
+            previous,
+            SubscriptionStatusChangeReason.RenewalPaymentFailed,
+            actorUserId,
+            nowUtc,
+            failureCode,
+            notifiedByChargeFailedEmail
+        );
         return Result.Success();
     }
 
@@ -578,8 +669,10 @@ public sealed class TenantSubscription : TenantEntity
         if (Status != SubscriptionStatus.PastDue)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot recover from {Status}."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Active;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.PaymentRecovered, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -589,9 +682,27 @@ public sealed class TenantSubscription : TenantEntity
         if (Status != SubscriptionStatus.PastDue)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot suspend from {Status}."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Suspended;
         SuspendedAtUtc = nowUtc;
         SuspensionReason = "RenewalFailed";
+        Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.RenewalPaymentFailed, actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Solo una suscripción en prueba o activa compra add-ons o asientos.</summary>
+    public bool AcceptsPurchases => IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active);
+
+    /// <summary>Compra directa de add-ons o asientos: toca la fila para que su RowVersion serialice dos
+    /// compras simultáneas del mismo tenant (la segunda choca al guardar).</summary>
+    public Result RecordPurchase(Guid actorUserId, DateTime nowUtc)
+    {
+        if (!AcceptsPurchases)
+            return Result.Failure(
+                new Error("Subscription.CannotPurchase", $"Cannot purchase while subscription is {Status}.")
+            );
+
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -604,10 +715,12 @@ public sealed class TenantSubscription : TenantEntity
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("Subscription.InvalidReason", "Reason is required."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Suspended;
         SuspendedAtUtc = nowUtc;
         SuspensionReason = reason.Length > 500 ? reason[..500] : reason;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.AdminSuspended, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -624,6 +737,7 @@ public sealed class TenantSubscription : TenantEntity
         if (periodEndUtc <= periodStartUtc)
             return Result.Failure(new Error("Subscription.InvalidPeriod", "Period end must be after period start."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Active;
         SuspendedAtUtc = null;
         SuspensionReason = null;
@@ -631,6 +745,7 @@ public sealed class TenantSubscription : TenantEntity
         CurrentPeriodEndUtc = periodEndUtc;
         NextRenewalAtUtc = periodEndUtc;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.AdminReactivated, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -654,6 +769,7 @@ public sealed class TenantSubscription : TenantEntity
         if (periodEndUtc <= periodStartUtc)
             return Result.Failure(new Error("Subscription.InvalidPeriod", "Period end must be after period start."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Active;
         SuspendedAtUtc = null;
         SuspensionReason = null;
@@ -662,6 +778,7 @@ public sealed class TenantSubscription : TenantEntity
         CurrentPeriodEndUtc = periodEndUtc;
         NextRenewalAtUtc = periodEndUtc;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.SelfServiceRenewed, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -670,9 +787,11 @@ public sealed class TenantSubscription : TenantEntity
         if (Status != SubscriptionStatus.Suspended)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot expire from {Status}."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Expired;
         ExpiredAtUtc = nowUtc;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.SuspensionTimeout, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -684,10 +803,13 @@ public sealed class TenantSubscription : TenantEntity
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("Subscription.InvalidReason", "Reason is required."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Cancelled;
         CancelledAtUtc = nowUtc;
         CancellationReason = reason.Length > 500 ? reason[..500] : reason;
         Touch(actorUserId, nowUtc);
+        // Decisión del dueño (2026-11-05): la cancelación inmediata se anuncia; trial→activo y upgrade no.
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.CancellationRequested, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -711,6 +833,7 @@ public sealed class TenantSubscription : TenantEntity
         CancellationScheduledAtUtc = nowUtc;
         CancellationReason = reason.Length > 500 ? reason[..500] : reason;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(Status, SubscriptionStatusChangeReason.CancellationScheduled, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -730,6 +853,7 @@ public sealed class TenantSubscription : TenantEntity
         CancellationScheduledAtUtc = null;
         CancellationReason = null;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(Status, SubscriptionStatusChangeReason.CancellationResumed, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -745,10 +869,12 @@ public sealed class TenantSubscription : TenantEntity
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot expire from {Status}."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Expired;
         CancelledAtUtc ??= nowUtc;
         ExpiredAtUtc = nowUtc;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.CancellationEnded, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -757,9 +883,11 @@ public sealed class TenantSubscription : TenantEntity
         if (Status != SubscriptionStatus.Cancelled)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot expire from {Status}."));
 
+        var previous = Status;
         Status = SubscriptionStatus.Expired;
         ExpiredAtUtc = nowUtc;
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.CancellationEnded, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -859,7 +987,8 @@ public sealed class TenantSubscription : TenantEntity
         bool willRetry,
         DateTime? nextRetryAtUtc,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        bool notifiedByChargeFailedEmail = false
     )
     {
         var renewal = FindRenewalById(renewalId);
@@ -881,7 +1010,7 @@ public sealed class TenantSubscription : TenantEntity
 
         return effectiveWillRetry
             ? Result.Success()
-            : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
+            : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc, notifiedByChargeFailedEmail);
     }
 
     private static Result CompleteRenewalAttempt(
@@ -981,12 +1110,14 @@ public sealed class TenantSubscription : TenantEntity
                 new Error("Subscription.RenewalNotOverdue", "The renewal is not overdue.")
             );
 
+        var previous = Status;
         Status = SubscriptionStatus.Suspended;
         SuspendedAtUtc = nowUtc;
         SuspensionReason = "RenewalOverdue";
         // Desde acá se vuelve pagando a mano: un cobro automático tardío ya no reactivaría la cuenta.
         var stoppedKeys = SettleUnpaidRenewals(null, actorUserId, nowUtc);
         Touch(actorUserId, nowUtc);
+        AnnounceStatusChange(previous, SubscriptionStatusChangeReason.RenewalOverdue, actorUserId, nowUtc);
         return Result.Success(stoppedKeys);
     }
 
@@ -1030,6 +1161,56 @@ public sealed class TenantSubscription : TenantEntity
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Un aviso por caso de uso: si ya hay uno pendiente (PastDue → Suspended en el mismo cobro fallido), se funde
+    /// con él y conserva el estado de partida, el motivo y el código de fallo del primero.
+    /// </summary>
+    private void AnnounceStatusChange(
+        SubscriptionStatus previous,
+        SubscriptionStatusChangeReason reason,
+        Guid actorUserId,
+        DateTime nowUtc,
+        string? failureCode = null,
+        bool notifiedByChargeFailedEmail = false
+    )
+    {
+        SubscriptionStatusChangedDomainEvent? pending = null;
+        var others = new List<IDomainEvent>();
+        foreach (var domainEvent in DomainEvents)
+        {
+            if (domainEvent is SubscriptionStatusChangedDomainEvent statusChanged)
+                pending = statusChanged;
+            else
+                others.Add(domainEvent);
+        }
+
+        if (pending is not null)
+        {
+            ClearDomainEvents();
+            foreach (var other in others)
+                AddDomainEvent(other);
+            previous = pending.PreviousStatus;
+            reason = pending.Reason;
+            failureCode ??= pending.FailureCode;
+            notifiedByChargeFailedEmail |= pending.NotifiedByChargeFailedEmail;
+        }
+
+        AddDomainEvent(
+            new SubscriptionStatusChangedDomainEvent(
+                TenantId,
+                Id,
+                previous,
+                Status,
+                reason,
+                CancelAtPeriodEnd ? CurrentPeriodEndUtc : null,
+                failureCode,
+                actorUserId == Guid.Empty ? pending?.ActorUserId : actorUserId,
+                notifiedByChargeFailedEmail,
+                nowUtc
+            )
+        );
     }
 
     private void Touch(Guid actorUserId, DateTime nowUtc)

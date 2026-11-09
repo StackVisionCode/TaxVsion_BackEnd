@@ -1,7 +1,9 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Application.Moderation;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Moderation;
@@ -31,8 +33,10 @@ public sealed class ContentReviewHandlerTests
         return file;
     }
 
-    private Task<BuildingBlocks.Results.Result> ApproveAsync(FileObject file) =>
-        ApproveContentReviewHandler.Handle(
+    private async Task<BuildingBlocks.Results.Result> ApproveAsync(FileObject file)
+    {
+        file.ClearDomainEvents();
+        var result = await ApproveContentReviewHandler.Handle(
             new ApproveContentReviewCommand(file.TenantId, file.Id, Guid.NewGuid(), Audit),
             _files,
             _limits,
@@ -41,9 +45,26 @@ public sealed class ContentReviewHandlerTests
             Options.Create(_options),
             _clock,
             new FakeUnitOfWork(),
-            _bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(_bus, file);
+        return result;
+    }
+
+    // CST-9: la red contra el aviso doble. Si vuelve la publicación a mano, aquí salen dos.
+    [Fact]
+    public async Task ApproveReview_EmitsExactlyOneFileAvailable()
+    {
+        var file = Seed();
+
+        await ApproveAsync(file);
+
+        var available = Assert.Single(_bus.Published.OfType<FileAvailableIntegrationEvent>());
+        Assert.Equal(file.Id, available.FileId);
+        Assert.Equal(file.TenantId, available.TenantId);
+        Assert.Equal("corr-review", available.CorrelationId);
+        Assert.Empty(_bus.Published.OfType<CustomerDocumentUploadedIntegrationEvent>());
+    }
 
     [Fact]
     public async Task Approving_moves_the_file_out_of_quarantine_counts_it_and_publishes_it()
@@ -89,20 +110,55 @@ public sealed class ContentReviewHandlerTests
         Assert.Empty(_storage.Copied);
     }
 
+    // Una aprobación que llega antes de que RelocateScannedBlob mueva el objeto no termina con el archivo en cuarentena.
+    [Fact]
+    public async Task Approval_before_the_relocation_leaves_the_object_in_main()
+    {
+        var file = Seed();
+        _storage.Existing.Remove((_options.QuarantineBucket, file.ObjectKey));
+        _storage.Existing.Add((_options.TempBucket, file.ObjectKey));
+
+        Assert.True((await ApproveAsync(file)).IsSuccess);
+        await RelocateScannedBlobHandler.Handle(
+            new RelocateScannedBlobCommand(
+                file.TenantId,
+                file.Id,
+                file.ObjectKey,
+                _options.TempBucket,
+                _options.QuarantineBucket,
+                Guid.NewGuid(),
+                "corr-scan"
+            ),
+            _files,
+            Options.Create(_options),
+            _storage,
+            _audit,
+            _clock,
+            new FakeUnitOfWork(),
+            NullLogger<RelocateScannedBlobCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(FileStatus.Available, file.Status);
+        Assert.Contains(_storage.Copied, copy => copy.DestinationBucket == _options.MainBucket);
+        Assert.DoesNotContain(_storage.Copied, copy => copy.DestinationBucket == _options.QuarantineBucket);
+    }
+
     [Fact]
     public async Task Rejecting_blocks_holds_and_notifies()
     {
         var file = Seed();
 
+        file.ClearDomainEvents();
         var result = await RejectContentReviewHandler.Handle(
             new RejectContentReviewCommand(file.TenantId, file.Id, Guid.NewGuid(), new string('n', 3000), Audit),
             _files,
             _audit,
             _clock,
             new FakeUnitOfWork(),
-            _bus,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(_bus, file);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(FileStatus.BlockedByPolicy, file.Status);

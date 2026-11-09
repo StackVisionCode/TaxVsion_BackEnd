@@ -26,7 +26,7 @@ public sealed class RecycleBinDomainTests
                 DateTime.UtcNow.AddHours(24)
             )
             .Value;
-        file.MarkPendingScan();
+        file.MarkPendingScan(DateTime.UtcNow);
         file.MarkScanning();
         file.MarkAvailable(ChecksumSha256.Create(new string('a', 64)).Value, "application/pdf", DateTime.UtcNow);
         return file;
@@ -44,6 +44,32 @@ public sealed class RecycleBinDomainTests
         Assert.Equal(FileStatus.Available, file.Status);
         Assert.Null(file.SoftDeletedAtUtc);
         Assert.Null(file.SoftDeleteExpiresAtUtc);
+    }
+
+    [Fact]
+    public void MoveToFolder_SoftDeletedFile_Fails()
+    {
+        var file = AvailableFile(Guid.NewGuid());
+        var folderBefore = file.FolderId;
+        file.SoftDelete(DateTime.UtcNow, TimeSpan.FromDays(30));
+
+        var result = file.MoveToFolder(Guid.NewGuid(), DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.InvalidTransition, result.Error);
+        Assert.Equal(folderBefore, file.FolderId);
+    }
+
+    [Fact]
+    public void MoveToFolder_ActiveFile_Moves()
+    {
+        var file = AvailableFile(Guid.NewGuid());
+        var folderId = Guid.NewGuid();
+
+        var result = file.MoveToFolder(folderId, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(folderId, file.FolderId);
     }
 
     [Fact]
@@ -77,7 +103,7 @@ public sealed class RecycleBinDomainTests
                 DateTime.UtcNow.AddHours(24)
             )
             .Value;
-        file.MarkPendingScan();
+        file.MarkPendingScan(DateTime.UtcNow);
         file.MarkScanning();
         file.MarkInfected("EICAR test signature", "text/plain", DateTime.UtcNow);
         return file;

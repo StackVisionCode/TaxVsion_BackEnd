@@ -31,8 +31,7 @@ public interface IRoleRepository
     Task<IReadOnlyList<Guid>> GetDeniedPermissionIdsAsync(Guid userId, CancellationToken ct = default);
 
     /// <summary>Los denies vigentes del usuario con su razón y su expiración, para mostrarlos en la UI.</summary>
-    Task<IReadOnlyList<UserPermissionDeny>> GetActiveDeniesAsync(Guid userId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<UserPermissionDeny>>([]);
+    Task<IReadOnlyList<UserPermissionDeny>> GetActiveDeniesAsync(Guid userId, CancellationToken ct = default);
 
     /// <summary>Replaces the user's full deny set with the given entries (idempotent). Mirrors
     /// <see cref="ReplaceUserRolesAsync"/>.</summary>
@@ -48,24 +47,23 @@ public interface IRoleRepository
         DateTime nowUtc,
         int take,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<(Guid, Guid)>>([]);
+    );
 
     /// <summary>Borra los denies vencidos del usuario y devuelve cuántos quitó.</summary>
-    Task<int> RemoveExpiredDeniesAsync(Guid userId, DateTime nowUtc, CancellationToken ct = default) =>
-        Task.FromResult(0);
+    Task<int> RemoveExpiredDeniesAsync(Guid userId, DateTime nowUtc, CancellationToken ct = default);
 
     /// <summary>Los roles de cada uno de estos usuarios, en una sola consulta — el fan-out por
     /// titular necesita la unión completa de cada uno, no solo el rol que cambió.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>> GetRolesByUsersAsync(
         IReadOnlyCollection<Guid> userIds,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>>(new Dictionary<Guid, IReadOnlyList<Role>>());
+    );
 
     /// <summary>Los denies de cada uno de estos usuarios, en una sola consulta.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetDeniedPermissionIdsByUsersAsync(
         IReadOnlyCollection<Guid> userIds,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(new Dictionary<Guid, IReadOnlyList<Guid>>());
+    );
 
     /// <summary>Crea los roles de sistema del tenant si no existen (idempotente).</summary>
     Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default);

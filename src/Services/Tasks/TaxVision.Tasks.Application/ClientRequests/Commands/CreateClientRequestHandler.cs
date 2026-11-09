@@ -48,8 +48,8 @@ public static class CreateClientRequestHandler
 
         requests.Add(created.Value);
 
-        await bus.PublishAsync(BuildEvent(created.Value, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(BuildEvent(created.Value, correlation.CorrelationId));
 
         return Result.Success(ClientRequestResponse.From(created.Value));
     }

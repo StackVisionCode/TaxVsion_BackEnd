@@ -52,6 +52,9 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
     /// <summary>Derivado del contador, no una columna de estado.</summary>
     public bool IsBlocked => OpenBlockerCount > 0;
 
+    /// <summary>Veces reabierta: da la clave del recordatorio por ciclo de vida.</summary>
+    public int ReopenCount { get; private set; }
+
     public Guid? SeriesId { get; private set; }
     public int? OccurrenceNumber { get; private set; }
 
@@ -98,7 +101,8 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         DueDate? due,
         EstimatedHours? estimated,
         Guid? assigneeUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        bool recurringOccurrence = false
     )
     {
         if (tenantId == Guid.Empty || createdByUserId == Guid.Empty)
@@ -123,7 +127,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         task.SetTenant(tenantId);
 
         task.AddDomainEvent(
-            new TaskCreatedDomainEvent(task.Id, tenantId, createdByUserId, assigneeUserId, null, nowUtc)
+            new TaskCreatedDomainEvent(task.Id, tenantId, createdByUserId, assigneeUserId, null, nowUtc, recurringOccurrence)
         );
         return Result.Success(task);
     }
@@ -236,8 +240,11 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
 
         Status = StartedAtUtc is null ? TaskItemStatus.NotStarted : TaskItemStatus.InProgress;
         CompletedAtUtc = null;
+        ReopenCount++;
 
-        AddDomainEvent(new TaskReopenedDomainEvent(Id, TenantId, ParentTaskId, Status, byUserId, nowUtc));
+        AddDomainEvent(
+            new TaskReopenedDomainEvent(Id, TenantId, ParentTaskId, Status, byUserId, nowUtc, ReopenCount)
+        );
         return Result.Success();
     }
 
@@ -279,7 +286,15 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         AssigneeUserId = assigneeUserId;
 
         AddDomainEvent(
-            new TaskAssignedDomainEvent(Id, TenantId, assigneeUserId, previousAssigneeUserId, byUserId, nowUtc)
+            new TaskAssignedDomainEvent(
+                Id,
+                TenantId,
+                assigneeUserId,
+                previousAssigneeUserId,
+                byUserId,
+                nowUtc,
+                ReopenCount
+            )
         );
         return Result.Success();
     }

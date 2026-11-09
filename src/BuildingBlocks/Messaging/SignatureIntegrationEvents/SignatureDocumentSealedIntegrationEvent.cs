@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>Un documento concreto de la solicitud terminó su pipeline de sellado.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureDocumentSealedIntegrationEvent")]
 public sealed record SignatureDocumentSealedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

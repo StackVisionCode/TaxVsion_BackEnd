@@ -148,13 +148,25 @@ public sealed class MeetingInvitationCreatedConsumerTests
         Assert.Equal("externo@example.com", email.To);
     }
 
+    /// <summary>NOT-03: un invitado con cuenta inactiva no recibe el correo.</summary>
+    [Fact]
+    public async Task Inactive_invitee_gets_no_email()
+    {
+        var harness = new Harness();
+        var invitation = Invitation("cliente@example.com");
+        harness.Directory.Seed(TenantId, invitation.InviteeUserId!.Value, "cliente@example.com", isActive: false);
+
+        await Handle(harness, invitation);
+
+        Assert.Empty(harness.Gateway.Queued);
+    }
+
     private static Task Handle(Harness harness, MeetingInvitationCreatedIntegrationEvent evt) =>
         MeetingInvitationCreatedConsumer.Handle(
             evt,
             harness.Dispatcher.Dispatcher,
             harness.Gateway,
             harness.Render,
-            harness.Preferences,
             new CalendarInviteBuilder(TestPlatform.Settings),
             TestPlatform.Settings,
             Options.Create(new PortalOptions()),
@@ -192,7 +204,8 @@ public sealed class MeetingInvitationCreatedConsumerTests
     private sealed class Harness
     {
         internal RecordingNotificationLogs Logs { get; } = new();
-        internal RecordingEmailGateway Gateway { get; } = new();
+        internal InMemoryUserEmailDirectoryRepository Directory { get; } = new();
+        internal GatedEmailGateway Gateway { get; }
         internal RecordingScribeRenderClient Render { get; } = new();
         internal SwitchableNotificationPreferences Preferences { get; }
         internal NotificationDispatcherHarness Dispatcher { get; }
@@ -200,6 +213,8 @@ public sealed class MeetingInvitationCreatedConsumerTests
         internal Harness(bool preferencesEnabled = true)
         {
             Preferences = new SwitchableNotificationPreferences(preferencesEnabled);
+            // El gateway real aplica el gate de entrega (inactivo, preferencia, catálogo).
+            Gateway = new GatedEmailGateway(Preferences, Directory);
             // El in-app no depende de la preferencia de email que se prueba acá: el dispatcher usa la suya (siempre on).
             Dispatcher = new NotificationDispatcherHarness(logs: Logs);
         }

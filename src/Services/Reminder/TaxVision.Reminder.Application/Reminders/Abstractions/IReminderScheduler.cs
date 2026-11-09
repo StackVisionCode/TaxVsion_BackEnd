@@ -5,9 +5,10 @@ namespace TaxVision.Reminder.Application.Reminders.Abstractions;
 /// puerto; el adaptador (<c>QuartzReminderScheduler</c>) vive en Infrastructure.
 ///
 /// <para>
-/// <b>EF y Quartz no comparten transacción.</b> El orden elegido es EF primero, Quartz después: el
-/// riesgo aceptado es un recordatorio guardado sin trigger, nunca un trigger huérfano apuntando a
-/// una fila que no existe. Ese riesgo lo cubre <c>ReminderScheduleReconciliationJob</c>.
+/// <b>EF y Quartz no comparten transacción.</b> El handler guarda y después agenda, pero Wolverine
+/// confirma al terminar el handler. Si el commit falla, queda un trigger huérfano, inofensivo:
+/// <c>FireReminderHandler</c> lo descarta. Un recordatorio sin trigger lo repara
+/// <c>ReminderScheduleReconciliationJob</c>.
 /// </para>
 ///
 /// <para>

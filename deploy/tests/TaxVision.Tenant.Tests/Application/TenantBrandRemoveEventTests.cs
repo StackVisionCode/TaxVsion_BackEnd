@@ -15,7 +15,7 @@ public sealed class TenantBrandRemoveEventTests
     private static async Task<RecordingMessageBus> RemoveAsync(BrandSurface surface, BrandAssetKey key)
     {
         var repo = new InMemoryBrandRepository();
-        repo.Seed(TenantId, surface, b => b.SetAssetPending(key, Guid.NewGuid(), "image/png", 100, null, null));
+        repo.Seed(TenantId, surface, b => b.SetAssetPending(key, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow));
         var bus = new RecordingMessageBus();
 
         await RemoveTenantBrandAssetHandler.Handle(
@@ -23,9 +23,9 @@ public sealed class TenantBrandRemoveEventTests
             repo,
             new FakeBrandingCloudStorageClient(),
             new CountingUnitOfWork(),
-            new NoopCache(),
             bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -64,8 +64,8 @@ public sealed class TenantBrandRemoveEventTests
             BrandSurface.Crm,
             b =>
             {
-                b.SetColor(BrandColorToken.Primary, "#AA0000");
-                b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null);
+                b.SetColor(BrandColorToken.Primary, "#AA0000", DateTime.UtcNow);
+                b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow);
             }
         );
         var bus = new RecordingMessageBus();
@@ -75,9 +75,9 @@ public sealed class TenantBrandRemoveEventTests
             repo,
             new FakeBrandingCloudStorageClient(),
             new CountingUnitOfWork(),
-            new NoopCache(),
             bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 

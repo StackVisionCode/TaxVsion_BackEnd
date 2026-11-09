@@ -6,6 +6,7 @@ using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using TaxVision.Calendar.Api.Requests;
 using TaxVision.Calendar.Application.Appointments;
 using TaxVision.Calendar.Application.Appointments.Commands;
@@ -19,7 +20,11 @@ namespace TaxVision.Calendar.Api.Controllers;
 [ApiController]
 [Route("calendar/appointments")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSource permissionsSource) : ControllerBase
+public sealed class AppointmentsController(
+    IMessageBus bus,
+    IUserPermissionsSource permissionsSource,
+    IOptions<AttendeeResponseConflictRetryOptions> responseRetry
+) : ControllerBase
 {
     /// <summary>
     /// Devuelve 201 con <c>warnings</c> cuando el solapamiento sólo avisa, y 409 cuando el tipo de
@@ -50,7 +55,8 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
                 request.RecurrenceRule,
                 request.CustomerId,
                 request.TaxYear,
-                request.IsVirtual
+                request.IsVirtual,
+                request.ReminderLeadMinutes
             ),
             ct
         );
@@ -238,7 +244,8 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
                 request.Duration,
                 request.TimeZoneId,
                 request.RecurrenceRule,
-                canManageAll
+                canManageAll,
+                request.ReminderLeadMinutes
             ),
             ct
         );
@@ -346,8 +353,24 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result>(
-            new RespondToAppointmentCommand(tenantId, appointmentId, userId, request.Response),
+        // Se lee antes de responder: si el primer intento pierde, ya no se sabría contra qué.
+        var schedule = await bus.InvokeAsync<Result<string>>(
+            new GetAppointmentScheduleStampQuery(tenantId, appointmentId),
+            ct
+        );
+        if (schedule.IsFailure)
+            return StatusCode(schedule.Error.ToHttpStatusCode(), schedule.Error);
+
+        var command = new RespondToAppointmentCommand(
+            tenantId,
+            appointmentId,
+            userId,
+            request.Response,
+            schedule.Value
+        );
+        var result = await AttendeeResponseConflictRetry.InvokeAsync(
+            token => bus.InvokeAsync<Result>(command, token),
+            responseRetry.Value.MaxAttempts,
             ct
         );
 

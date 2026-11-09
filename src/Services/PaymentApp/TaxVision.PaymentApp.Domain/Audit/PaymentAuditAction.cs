@@ -26,4 +26,9 @@ public enum PaymentAuditAction
     // SaaSPayment) — AggregateType="RateLimitPolicy", AggregateId=Guid.Empty.
     RateLimitBlocked = 16,
     OnboardingPaymentMethodAvailabilityChanged = 17,
+    SaaSPaymentReviewRequired = 18,
+    SaaSPaymentReviewResolved = 19,
+
+    // El proveedor rechazó el reembolso: no se movió dinero.
+    SaaSPaymentRefundRejected = 20,
 }

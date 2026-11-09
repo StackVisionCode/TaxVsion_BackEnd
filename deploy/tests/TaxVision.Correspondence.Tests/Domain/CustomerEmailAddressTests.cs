@@ -39,7 +39,7 @@ public sealed class CustomerEmailAddressTests
         var before = entity.UpdatedAtUtc;
         Thread.Sleep(10);
 
-        entity.UpdateEmail(EmailAddress.Create("New@Example.com").Value);
+        entity.UpdateEmail(EmailAddress.Create("New@Example.com").Value, DateTime.UtcNow);
 
         Assert.Equal("new@example.com", entity.EmailAddress);
         Assert.True(entity.UpdatedAtUtc > before);
@@ -56,7 +56,7 @@ public sealed class CustomerEmailAddressTests
         var before = entity.UpdatedAtUtc;
         Thread.Sleep(10);
 
-        entity.UpdateEmail(EmailAddress.Create("Same@Example.com").Value);
+        entity.UpdateEmail(EmailAddress.Create("Same@Example.com").Value, DateTime.UtcNow);
 
         Assert.Equal(before, entity.UpdatedAtUtc);
     }
@@ -70,11 +70,11 @@ public sealed class CustomerEmailAddressTests
             EmailAddress.Create("a@example.com").Value
         );
 
-        entity.SoftDelete();
+        entity.SoftDelete(DateTime.UtcNow);
         var firstDeletedAt = entity.DeletedAtUtc;
         Assert.False(entity.IsActive);
 
-        entity.SoftDelete();
+        entity.SoftDelete(DateTime.UtcNow);
 
         Assert.Equal(firstDeletedAt, entity.DeletedAtUtc);
     }
@@ -87,9 +87,9 @@ public sealed class CustomerEmailAddressTests
             Guid.NewGuid(),
             EmailAddress.Create("old@example.com").Value
         );
-        entity.SoftDelete();
+        entity.SoftDelete(DateTime.UtcNow);
 
-        entity.Reactivate(EmailAddress.Create("updated@example.com").Value);
+        entity.Reactivate(DateTime.UtcNow, EmailAddress.Create("updated@example.com").Value);
 
         Assert.True(entity.IsActive);
         Assert.Equal("updated@example.com", entity.EmailAddress);
@@ -103,11 +103,54 @@ public sealed class CustomerEmailAddressTests
             Guid.NewGuid(),
             EmailAddress.Create("keep@example.com").Value
         );
-        entity.SoftDelete();
+        entity.SoftDelete(DateTime.UtcNow);
 
-        entity.Reactivate();
+        entity.Reactivate(DateTime.UtcNow);
 
         Assert.True(entity.IsActive);
         Assert.Equal("keep@example.com", entity.EmailAddress);
+    }
+
+    [Fact]
+    public void UpdateEmail_OlderEvent_IsIgnored()
+    {
+        var t1 = DateTime.UtcNow.AddMinutes(-30);
+        var entity = CustomerEmailAddress.Create(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            EmailAddress.Create("x@example.com").Value,
+            t1
+        );
+        Assert.True(entity.UpdateEmail(EmailAddress.Create("z@example.com").Value, t1.AddMinutes(20)));
+
+        var applied = entity.UpdateEmail(EmailAddress.Create("y@example.com").Value, t1.AddMinutes(10));
+
+        Assert.False(applied);
+        Assert.Equal("z@example.com", entity.EmailAddress);
+    }
+
+    [Fact]
+    public void SoftDelete_OlderThanReactivation_IsIgnored()
+    {
+        var t1 = DateTime.UtcNow.AddMinutes(-30);
+        var entity = CustomerEmailAddress.Create(Guid.NewGuid(), Guid.NewGuid(), EmailAddress.Create("x@example.com").Value);
+        Assert.True(entity.Reactivate(t1.AddMinutes(20)));
+
+        Assert.False(entity.SoftDelete(t1.AddMinutes(10)));
+        Assert.True(entity.IsActive);
+    }
+
+    [Fact]
+    public void Reactivate_OlderThanLastEmailChange_StillApplies()
+    {
+        var t1 = DateTime.UtcNow.AddMinutes(-30);
+        var entity = CustomerEmailAddress.Create(Guid.NewGuid(), Guid.NewGuid(), EmailAddress.Create("x@example.com").Value);
+        Assert.True(entity.SoftDelete(t1));
+        Assert.True(entity.UpdateEmail(EmailAddress.Create("z@example.com").Value, t1.AddMinutes(20)));
+
+        // El email y el estado se ordenan por separado: un cambio de email no tapa una reactivación anterior.
+        Assert.True(entity.Reactivate(t1.AddMinutes(10)));
+        Assert.True(entity.IsActive);
+        Assert.Equal("z@example.com", entity.EmailAddress);
     }
 }

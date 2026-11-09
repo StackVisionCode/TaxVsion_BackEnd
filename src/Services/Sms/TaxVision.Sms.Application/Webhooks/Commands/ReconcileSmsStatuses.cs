@@ -1,11 +1,13 @@
-using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Sms.Application.Abstractions;
+using TaxVision.Sms.Application.Messages.Commands;
 using TaxVision.Sms.Application.Providers;
+using TaxVision.Sms.Domain;
 using TaxVision.Sms.Domain.Messages;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Sms.Application.Webhooks.Commands;
 
@@ -17,22 +19,49 @@ namespace TaxVision.Sms.Application.Webhooks.Commands;
 /// la transición canónica (Delivered/Failed/Undeliverable), publicando el evento de resultado igual que la ruta
 /// del webhook. El proveedor de cada mensaje sale del propio mensaje (<c>ProviderCode</c>) — el orquestador no
 /// hace <c>switch(provider)</c>. Idempotente: releer un estado ya aplicado es un no-op (transiciones del dominio).
+/// También cierra sin reenviar los envíos que nunca tuvieron confirmación (D-SMS-3).
 /// </summary>
 /// <param name="TenantId">Si se indica, solo ese tenant (endpoint manual); null = todos (job de fondo).</param>
 /// <param name="MaxMessages">Tope de mensajes a reconciliar por corrida.</param>
 /// <param name="MinAgeSeconds">Antigüedad mínima desde el último cambio para considerar un mensaje atascado
 /// (evita competir con un DLR que quizá está por llegar).</param>
-public sealed record ReconcileSmsStatusesCommand(Guid? TenantId = null, int MaxMessages = 200, int MinAgeSeconds = 60);
+/// <param name="PendingTimeoutMinutes">Una fila Pending sin id del proveedor más vieja que esto quedó a medias.</param>
+/// <param name="OutcomeUnknownTimeoutMinutes">Un resultado desconocido sin confirmación más viejo que esto se
+/// cierra sin cobro (vencimiento de la reserva <c>individual-sms</c>, D-WAL-TTL).</param>
+public sealed record ReconcileSmsStatusesCommand(
+    Guid? TenantId = null,
+    int MaxMessages = 200,
+    int MinAgeSeconds = 60,
+    int PendingTimeoutMinutes = 15,
+    int OutcomeUnknownTimeoutMinutes = 60
+);
 
-public sealed record ReconcileSmsStatusesResponse(int Examined, int Updated);
+/// <summary>Lote cobrado al Wallet que quedó resuelto y hay que liquidar.</summary>
+public sealed record SmsBatchToSettle(Guid TenantId, Guid BatchId);
 
+public sealed record ReconcileSmsStatusesResponse(
+    int Examined,
+    int Updated,
+    IReadOnlyList<SmsBatchToSettle>? BatchesToSettle = null
+);
+
+/// <summary>Una unidad de la conciliación: aplica el reporte del proveedor o, sin <paramref name="Report"/>, cierra un
+/// envío que nunca tuvo confirmación (D-SMS-3).</summary>
+public sealed record ApplySmsReconciliationCommand(Guid TenantId, Guid MessageId, SmsDeliveryUpdate? Report);
+
+public sealed record ApplySmsReconciliationResponse(bool Updated, SmsBatchToSettle? BatchToSettle);
+
+/// <summary>
+/// Orquestador sin transacción (BB-8): lee los mensajes y le pregunta a cada proveedor fuera de cualquier transacción.
+/// Cada cambio se aplica en su propia unidad, que relee la fila: la consulta puede haber quedado vieja.
+/// </summary>
 public static class ReconcileSmsStatusesHandler
 {
+    [NonTransactional]
     public static async Task<Result<ReconcileSmsStatusesResponse>> Handle(
         ReconcileSmsStatusesCommand command,
         ISmsAdapterFactory adapters,
         ISmsMessageRepository messages,
-        IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger<ReconcileSmsStatusesCommand> logger,
         CancellationToken ct
@@ -43,10 +72,17 @@ public static class ReconcileSmsStatusesHandler
         var limit = Math.Clamp(command.MaxMessages, 1, 1000);
 
         var stuck = await messages.GetStuckForReconciliationAsync(command.TenantId, olderThanUtc, limit, ct);
-        if (stuck.Count == 0)
+        var unconfirmed = await messages.GetUnconfirmedSendsAsync(
+            command.TenantId,
+            nowUtc.AddMinutes(-Math.Max(1, command.PendingTimeoutMinutes)),
+            nowUtc.AddMinutes(-Math.Max(1, command.OutcomeUnknownTimeoutMinutes)),
+            limit,
+            ct
+        );
+        if (stuck.Count == 0 && unconfirmed.Count == 0)
             return Result.Success(new ReconcileSmsStatusesResponse(0, 0));
 
-        var updated = 0;
+        var units = new List<ApplySmsReconciliationCommand>();
         foreach (var group in stuck.GroupBy(m => m.ProviderCode, StringComparer.OrdinalIgnoreCase))
         {
             ISmsProvider provider;
@@ -73,73 +109,99 @@ public static class ReconcileSmsStatusesHandler
                 continue;
 
             foreach (var update in fetched.Value)
-            {
-                if (!byProviderId.TryGetValue(update.ProviderMessageId, out var message))
-                    continue;
-
-                var before = message.Status;
-                ApplyTransition(message, update, nowUtc);
-                if (message.Status == before)
-                    continue; // sin cambio (aún PENDING, o ya en ese estado) → no-op
-
-                await PublishOutcomeAsync(bus, message, ct);
-                updated++;
-            }
+                if (byProviderId.TryGetValue(update.ProviderMessageId, out var message) && CanChange(message, update))
+                    units.Add(new ApplySmsReconciliationCommand(message.TenantId, message.Id, update));
         }
 
-        if (updated > 0)
-            await unitOfWork.SaveChangesAsync(ct);
+        // Sin confirmación a tiempo: se cierra sin reenviar y su unidad no se cobra (D-SMS-3). Va después de los
+        // reportes: lo que el pull resolvió ya no está sin resolver.
+        units.AddRange(unconfirmed.Select(m => new ApplySmsReconciliationCommand(m.TenantId, m.Id, null)));
 
+        var updated = 0;
+        var batches = new HashSet<SmsBatchToSettle>();
+        foreach (var unit in units)
+        {
+            ApplySmsReconciliationResponse applied;
+            try
+            {
+                applied = await bus.InvokeAsync<ApplySmsReconciliationResponse>(unit, ct);
+            }
+            catch (ConflictException ex) when (ex.Code == ConcurrencyConflictCode)
+            {
+                // El webhook escribió el mensaje en este momento: un mensaje no corta la vuelta.
+                logger.LogInformation(
+                    "SMS {MessageId} changed during reconciliation; next run reads it.",
+                    unit.MessageId
+                );
+                continue;
+            }
+
+            if (applied.Updated)
+                updated++;
+            if (applied.BatchToSettle is { } batch)
+                batches.Add(batch);
+        }
+
+        var examined = stuck.Concat(unconfirmed).Select(m => m.Id).Distinct().Count();
         logger.LogInformation(
-            "SMS reconciliation examined {Examined} stuck message(s); updated {Updated}.",
-            stuck.Count,
+            "SMS reconciliation examined {Examined} message(s); updated {Updated}.",
+            examined,
             updated
         );
-        return Result.Success(new ReconcileSmsStatusesResponse(stuck.Count, updated));
+        return Result.Success(new ReconcileSmsStatusesResponse(examined, updated, [.. batches]));
     }
 
-    private static void ApplyTransition(SmsMessage message, SmsDeliveryUpdate update, DateTime nowUtc)
-    {
-        _ = update.Status switch
-        {
-            SmsCanonicalStatus.Delivered => message.MarkDelivered(nowUtc),
-            SmsCanonicalStatus.Failed => message.MarkFailed(nowUtc, update.FailureCode, update.FailureReason),
-            SmsCanonicalStatus.Undeliverable => message.MarkUndeliverable(
-                nowUtc,
-                update.FailureCode,
-                update.FailureReason
-            ),
-            _ => Result.Success(), // Accepted/PENDING: nada que reconciliar todavía
-        };
-    }
+    private const string ConcurrencyConflictCode = "Persistence.ConcurrencyConflict";
 
-    private static async Task PublishOutcomeAsync(IMessageBus bus, SmsMessage message, CancellationToken ct)
+    // Accepted solo resuelve un resultado desconocido; en los demás, el proveedor todavía no tiene nada nuevo.
+    private static bool CanChange(SmsMessage message, SmsDeliveryUpdate update) =>
+        update.Status != SmsCanonicalStatus.Accepted || message.Status == SmsMessageStatus.OutcomeUnknown;
+}
+
+public static class ApplySmsReconciliationHandler
+{
+    public static async Task<ApplySmsReconciliationResponse> Handle(
+        ApplySmsReconciliationCommand command,
+        ISmsMessageRepository messages,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        CancellationToken ct
+    )
     {
-        bus.TenantId = message.TenantId.ToString();
-        if (message.Status == SmsMessageStatus.Delivered)
-            await bus.PublishAsync(
-                new SmsMessageDeliveredIntegrationEvent
-                {
-                    TenantId = message.TenantId,
-                    CorrelationId = message.CorrelationId,
-                    MessageId = message.Id,
-                    CustomerId = message.CustomerId,
-                    SourceContext = message.SourceContext,
-                    ProviderMessageId = message.ProviderMessageId,
-                }
-            );
-        else if (message.Status is SmsMessageStatus.Failed or SmsMessageStatus.Undeliverable)
-            await bus.PublishAsync(
-                new SmsMessageFailedIntegrationEvent
-                {
-                    TenantId = message.TenantId,
-                    CorrelationId = message.CorrelationId,
-                    MessageId = message.Id,
-                    CustomerId = message.CustomerId,
-                    SourceContext = message.SourceContext,
-                    ProviderMessageId = message.ProviderMessageId,
-                    FailureCode = message.FailureCode,
-                }
-            );
+        var message = await messages.GetByIdAsync(command.TenantId, command.MessageId, ct);
+        if (message is null)
+            return new ApplySmsReconciliationResponse(false, null);
+
+        var nowUtc = DateTime.UtcNow;
+        var before = message.Status;
+        var wasUnresolved = message.IsUnresolved;
+        if (command.Report is { } report)
+            SmsDeliveryOutcome.Apply(message, report, nowUtc);
+        else if (wasUnresolved)
+            message.MarkFailed(nowUtc, SmsErrors.ProviderOutcomeUnknown.Code, "No provider confirmation.");
+
+        if (message.Status == before)
+            return new ApplySmsReconciliationResponse(false, null);
+
+        // Guardar antes de publicar. La liquidación sale con el estado: si no, un Wallet caído la pierde.
+        await unitOfWork.SaveChangesAsync(ct);
+        await SmsDeliveryOutcome.PublishAsync(bus, message);
+
+        if (!wasUnresolved || !message.WalletCharged)
+            return new ApplySmsReconciliationResponse(true, null);
+
+        var batch = new SmsBatchToSettle(message.TenantId, message.BatchId);
+        await bus.PublishAsync(new SettleSmsBatchCommand(batch.TenantId, batch.BatchId));
+        return new ApplySmsReconciliationResponse(true, batch);
     }
+}
+
+/// <summary>Conciliación completa: cada estado y el pedido de liquidación de su lote, en una transacción por mensaje.</summary>
+public static class SmsReconciliation
+{
+    public static Task<Result<ReconcileSmsStatusesResponse>> RunAsync(
+        IMessageBus bus,
+        ReconcileSmsStatusesCommand command,
+        CancellationToken ct
+    ) => bus.InvokeAsync<Result<ReconcileSmsStatusesResponse>>(command, ct);
 }

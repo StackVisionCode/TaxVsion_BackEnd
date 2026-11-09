@@ -14,6 +14,10 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <!-- Host real de Wolverine en los tests de la política del acuse del retiro (codegen en runtime). -->
     <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.14.0" />
+    <!-- BB-1/BB-2: host mínimo con outbox SQL y EF Core en las T-INT. -->
+    <PackageReference Include="WolverineFx.SqlServer" Version="6.14.0" />
+    <PackageReference Include="WolverineFx.EntityFrameworkCore" Version="6.14.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -26,5 +30,9 @@
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Imaging\BuildingBlocks.Imaging.csproj" />
+    <!-- BB-3: unidad transaccional para jobs. -->
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Jobs\BuildingBlocks.Jobs.csproj" />
+    <!-- BB-6: base de reglas de capas que heredan los servicios. -->
+    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" />
   </ItemGroup>
 </Project>

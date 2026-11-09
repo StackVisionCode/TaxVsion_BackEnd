@@ -19,6 +19,7 @@ public sealed class Category : TenantEntity
     public DateTime UpdatedAtUtc { get; private set; }
     public bool IsDeleted { get; private set; }
     public DateTime? DeletedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     private Category() { }
 
@@ -56,7 +57,7 @@ public sealed class Category : TenantEntity
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > NameMax)
             return Result.Failure(CatalogErrors.InvalidName);
         if (parentCategoryId == Id)
-            return Result.Failure(new Error("catalog.categoryCycle", "A category cannot be its own parent."));
+            return Result.Failure(CatalogErrors.CategoryCycle);
 
         Name = name.Trim();
         Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();

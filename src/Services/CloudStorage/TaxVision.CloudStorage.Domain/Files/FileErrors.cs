@@ -104,6 +104,17 @@ public static class FileErrors
         "Too many folders requested for a single ZIP."
     );
 
+    /// <summary>El objeto no está en temp ni en main: irrecuperable, hay que volver a subirlo.</summary>
+    public static readonly Error BlobMissing = new(
+        "Storage.BlobMissing",
+        "The stored object for this file no longer exists. Upload the file again."
+    );
+
+    public static readonly Error ScanAttemptsExhausted = new(
+        "File.ScanAttemptsExhausted",
+        "The file scan was requeued too many times without finishing."
+    );
+
     /// <summary>Fase U — el ensamblado final del multipart upload en el storage fallo (ETags invalidos, parte faltante, etc).</summary>
     public static readonly Error MultipartCompleteFailed = new(
         "File.MultipartCompleteFailed",

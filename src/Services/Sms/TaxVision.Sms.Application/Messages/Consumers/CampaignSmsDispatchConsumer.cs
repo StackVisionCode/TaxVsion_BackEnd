@@ -52,7 +52,9 @@ public static class CampaignSmsDispatchConsumer
                 ],
                 // Actor de sistema: no hay usuario cuyo alcance medir.
                 ActorUserId: null,
-                CanViewAll: false
+                CanViewAll: false,
+                // D-CMP-3: la política de contacto del cliente se aplica en el envío.
+                EnforceContactPolicy: true
             ),
             ct
         );
@@ -65,12 +67,15 @@ public static class CampaignSmsDispatchConsumer
         {
             "Accepted" => "Accepted",
             "Suppressed" => "Skipped",
+            // Todavía puede salir: la conciliación publica SmsMessageDelivered/Failed con el SourceContext.
+            "Pending" or "OutcomeUnknown" => "Unknown",
             _ => "Failed",
         };
         return ToResult(evt, outcome, item?.ProviderMessageId, item?.ErrorCode);
     }
 
-    /// <summary>SMS pide un CustomerId Guid; si el <c>ContactRef</c> ya es un Guid, se usa; si no, se deriva determinísticamente (opt-out/idempotencia estables).</summary>
+    /// <summary>SMS pide un CustomerId Guid; si el <c>ContactRef</c> ya es un Guid, se usa; si no, se deriva determinísticamente (idempotencia estable).
+    /// El STOP no depende de este id: el gate es por (tenant, número).</summary>
     private static Guid ResolveCustomerId(string contactRef)
     {
         if (Guid.TryParse(contactRef, out var parsed))

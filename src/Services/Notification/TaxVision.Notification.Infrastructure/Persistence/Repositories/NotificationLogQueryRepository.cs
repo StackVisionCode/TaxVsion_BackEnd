@@ -16,9 +16,13 @@ public sealed class NotificationLogQueryRepository(NotificationDbContext dbConte
     // vacío). El notificationLogId viene del propio evento de callback, no adivinable (fue generado
     // en el envío original). Sin esto, TODOS los callbacks de Postmaster caían en el "log
     // desconocido; dropping" fallback y los NotificationLog quedaban Pending para siempre.
-    public Task<NotificationLog?> FindWithAttemptsAsync(Guid notificationLogId, CancellationToken ct) =>
+    // El tenant del evento es el filtro real: un callback de otro tenant no toca el log.
+    public Task<NotificationLog?> FindWithAttemptsAsync(Guid tenantId, Guid notificationLogId, CancellationToken ct) =>
         dbContext
             .NotificationLogs.IgnoreQueryFilters()
             .Include(l => l.Attempts)
-            .FirstOrDefaultAsync(l => l.Id == notificationLogId, ct);
+            .FirstOrDefaultAsync(l => l.Id == notificationLogId && l.TenantId == tenantId, ct);
+
+    public Task<bool> ExistsAsync(Guid notificationLogId, CancellationToken ct) =>
+        dbContext.NotificationLogs.IgnoreQueryFilters().AnyAsync(l => l.Id == notificationLogId, ct);
 }

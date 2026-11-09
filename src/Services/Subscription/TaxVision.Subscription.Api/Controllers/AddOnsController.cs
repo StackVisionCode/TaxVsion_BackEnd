@@ -61,18 +61,39 @@ public sealed class AddOnsController(IMessageBus bus, ILogger<AddOnsController> 
 
     public sealed record PurchaseAddOnRequest(string AddOnCode, int Quantity, bool AutoRenew);
 
+    private const int MaxIdempotencyKeyLength = 64;
+
     [HttpPost]
     [HasPermission(SubscriptionPermissions.AddOnsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("subscription.g.addon_manage")]
     [ProducesResponseType<Guid>(StatusCodes.Status201Created)]
-    public async Task<IActionResult> Purchase(PurchaseAddOnRequest request, CancellationToken ct)
+    public async Task<IActionResult> Purchase(
+        PurchaseAddOnRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CancellationToken ct
+    )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        if (idempotencyKey is { Length: > MaxIdempotencyKeyLength })
+            return BadRequest(
+                new Error(
+                    "AddOn.InvalidIdempotencyKey",
+                    $"Idempotency-Key must be at most {MaxIdempotencyKeyLength} characters."
+                )
+            );
+
         var result = await bus.InvokeAsync<Result<Guid>>(
-            new PurchaseAddOnCommand(tenantId, request.AddOnCode, request.Quantity, request.AutoRenew, userId),
+            new PurchaseAddOnCommand(
+                tenantId,
+                request.AddOnCode,
+                request.Quantity,
+                request.AutoRenew,
+                userId,
+                idempotencyKey
+            ),
             ct
         );
 

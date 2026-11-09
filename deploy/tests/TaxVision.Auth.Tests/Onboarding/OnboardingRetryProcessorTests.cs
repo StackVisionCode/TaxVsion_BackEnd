@@ -1,7 +1,7 @@
-using TaxVision.Auth.Application.Onboarding.Sagas.Commands;
-using TaxVision.Auth.Application.Onboarding.Sagas.Services;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
-using TaxVision.Auth.Domain.Onboarding.ValueObjects;
+using TaxVision.Auth.Onboarding.Application.Sagas.Commands;
+using TaxVision.Auth.Onboarding.Application.Sagas.Services;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Domain.ValueObjects;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;

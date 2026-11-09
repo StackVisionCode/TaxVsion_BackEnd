@@ -117,7 +117,7 @@ public sealed class FormAttachmentReconcilerTests
         var request = CustomerRequest();
         Assert.True(
             request
-                .RegisterAttachment(
+                .Files.Register(
                     new FormAnswerAddress(FileComponent, null),
                     fileId,
                     "return.pdf",

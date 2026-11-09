@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Series.Abstractions;
@@ -7,6 +8,7 @@ using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.Templates;
 using TaxVision.Tasks.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.Tasks.Application.Templates.Commands;
 
@@ -57,12 +59,15 @@ public static class ApplyTaskTemplateHandler
         if (applied.IsFailure)
             return Result.Failure<TemplateApplicationResponse>(applied.Error);
 
+        // Cada tarea creada se anuncia por su evento de alta (TaskCreatedDomainEventHandler).
         await unitOfWork.SaveChangesAsync(ct);
 
-        return applied;
+        return Result.Success(applied.Value.Response);
     }
 
-    private static Result<TemplateApplicationResponse> InstantiateGraph(
+    private sealed record Applied(TemplateApplicationResponse Response, IReadOnlyList<TaskItem> Tasks);
+
+    private static Result<Applied> InstantiateGraph(
         ApplyTaskTemplateCommand command,
         TaskTemplate template,
         ITaskTemplateInstantiator instantiator
@@ -71,8 +76,10 @@ public static class ApplyTaskTemplateHandler
         var instantiated = instantiator.Instantiate(template, ToApplication(command));
 
         return instantiated.IsFailure
-            ? Result.Failure<TemplateApplicationResponse>(instantiated.Error)
-            : Result.Success(ToResponse(command.TemplateId, instantiated.Value));
+            ? Result.Failure<Applied>(instantiated.Error)
+            : Result.Success(
+                new Applied(ToResponse(command.TemplateId, instantiated.Value), instantiated.Value.Tasks)
+            );
     }
 
     /// <summary>
@@ -80,7 +87,7 @@ public static class ApplyTaskTemplateHandler
     /// Las otras tres las trae la regla al cerrar cada una, que es lo que evita que el preparador vea
     /// en enero el trabajo de septiembre.
     /// </summary>
-    private static async Task<Result<TemplateApplicationResponse>> OpenSeriesAsync(
+    private static async Task<Result<Applied>> OpenSeriesAsync(
         ApplyTaskTemplateCommand command,
         TaskTemplate template,
         ITaskSeriesRepository seriesRepository,
@@ -90,7 +97,7 @@ public static class ApplyTaskTemplateHandler
     {
         var blueprint = BuildBlueprint(command, template);
         if (blueprint.IsFailure)
-            return Result.Failure<TemplateApplicationResponse>(blueprint.Error);
+            return Result.Failure<Applied>(blueprint.Error);
 
         var series = TaskSeries.Create(
             command.TenantId,
@@ -104,19 +111,20 @@ public static class ApplyTaskTemplateHandler
             DateTime.UtcNow
         );
         if (series.IsFailure)
-            return Result.Failure<TemplateApplicationResponse>(series.Error);
+            return Result.Failure<Applied>(series.Error);
 
         seriesRepository.Add(series.Value);
-        var first = await materializer.MaterializeNextAsync(series.Value, null, null, ct);
+        var first = await materializer.MaterializeFirstAsync(series.Value, ct);
         if (first.IsFailure)
-            return Result.Failure<TemplateApplicationResponse>(first.Error);
+            return Result.Failure<Applied>(first.Error);
 
         first.Value.AttachToTemplate(template.Id);
 
-        return Result.Success(
-            new TemplateApplicationResponse(template.Id, 1, 0, first.Value.Id, [first.Value.Id], series.Value.Id)
-        );
+        return Result.Success(SeriesApplied(template.Id, first.Value, series.Value.Id));
     }
+
+    private static Applied SeriesApplied(Guid templateId, TaskItem first, Guid seriesId) =>
+        new(new TemplateApplicationResponse(templateId, 1, 0, first.Id, [first.Id], seriesId), [first]);
 
     private static Result<TaskItemBlueprint> BuildBlueprint(ApplyTaskTemplateCommand command, TaskTemplate template)
     {

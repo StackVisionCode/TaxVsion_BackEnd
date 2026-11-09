@@ -24,10 +24,7 @@ internal sealed class QuartzReminderScheduler(
         var scheduler = await schedulerFactory.GetScheduler(ct);
         var trigger = BuildTrigger(tenantId, reminderId, fireAtUtc);
 
-        // replace: true hace la operación idempotente — reagendar el mismo recordatorio sustituye el
-        // trigger en vez de reventar con ObjectAlreadyExistsException. Sin esto la reconciliación no
-        // podría reintentar.
-        await scheduler.ScheduleJob(trigger, ct);
+        await TryCreateAsync(scheduler, trigger, ct);
 
         logger.LogDebug(
             "Scheduled reminder {ReminderId} of tenant {TenantId} for {FireAtUtc:O}.",
@@ -78,12 +75,30 @@ internal sealed class QuartzReminderScheduler(
         var next = await scheduler.RescheduleJob(key, trigger, ct);
         if (next is null)
         {
-            await scheduler.ScheduleJob(trigger, ct);
+            // Si otra réplica lo creó en medio, manda la hora nueva: se reprograma el suyo.
+            if (!await TryCreateAsync(scheduler, trigger, ct))
+                await scheduler.RescheduleJob(key, trigger, ct);
+
             logger.LogInformation(
                 "Reminder {ReminderId} of tenant {TenantId} had no live trigger; scheduled instead of rescheduled.",
                 reminderId,
                 tenantId
             );
+        }
+    }
+
+    /// <summary>Dos réplicas pueden crear el mismo trigger a la vez. El que llega segundo no es un error.</summary>
+    private async Task<bool> TryCreateAsync(IScheduler scheduler, ITrigger trigger, CancellationToken ct)
+    {
+        try
+        {
+            await scheduler.ScheduleJob(trigger, ct);
+            return true;
+        }
+        catch (ObjectAlreadyExistsException)
+        {
+            logger.LogDebug("Trigger {TriggerKey} was already scheduled by another replica.", trigger.Key);
+            return false;
         }
     }
 

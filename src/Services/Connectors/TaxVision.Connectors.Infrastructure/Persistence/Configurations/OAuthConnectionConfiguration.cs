@@ -17,6 +17,7 @@ public sealed class OAuthConnectionConfiguration : IEntityTypeConfiguration<OAut
         builder.Property(c => c.AuthorizedAtUtc).IsRequired();
         builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(c => c.RevokedAtUtc);
+        builder.Property(c => c.RowVersion).IsRowVersion();
 
         builder.HasIndex(c => c.AccountId).IsUnique();
 

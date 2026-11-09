@@ -11,6 +11,7 @@ public sealed class ScannerBusyException() : Exception("Content scanner is busy.
 
 /// <summary>
 /// Orquesta un escaneo con concurrencia acotada (la CPU del host es compartida con el resto de la plataforma).
+/// El turno lo pide el endpoint antes de escribir el cuerpo a disco, y lo suelta al terminar.
 /// </summary>
 public sealed class ScanService(
     IFrameExtractor extractor,
@@ -28,45 +29,53 @@ public sealed class ScanService(
             Math.Clamp(maxFrames ?? _options.MaxFrames, 1, _options.MaxFrames)
         );
 
-    public async Task<ScanResult> ScanAsync(string path, MediaKind kind, FrameSampling sampling, CancellationToken ct)
+    /// <summary>Espera un turno; pasado <c>QueueTimeoutSeconds</c> lanza <see cref="ScannerBusyException"/>.</summary>
+    public async Task<IAsyncDisposable> AcquireSlotAsync(CancellationToken ct)
     {
         if (!await _turns.WaitAsync(TimeSpan.FromSeconds(_options.QueueTimeoutSeconds), ct))
             throw new ScannerBusyException();
-        try
+        return new Slot(_turns);
+    }
+
+    public async Task<ScanResult> ScanAsync(string path, MediaKind kind, FrameSampling sampling, CancellationToken ct)
+    {
+        var watch = Stopwatch.StartNew();
+        // Solo se modera lo visual: un audio en contenedor de video (nota de voz) no tiene nada que puntuar.
+        if (kind == MediaKind.Video && !await extractor.HasVideoStreamAsync(path, ct))
         {
-            var watch = Stopwatch.StartNew();
-            // Solo se modera lo visual: un audio en contenedor de video (nota de voz) no tiene nada que puntuar.
-            if (kind == MediaKind.Video && !await extractor.HasVideoStreamAsync(path, ct))
-            {
-                logger.LogInformation("No video stream in {Kind}: nothing visual to score", kind);
-                return new ScanResult("audio", 0, 0f, watch.ElapsedMilliseconds);
-            }
-            var frames = await extractor.ExtractAsync(path, kind, sampling, ct);
-            var worst = 0f;
-            foreach (var frame in frames)
-            {
-                ct.ThrowIfCancellationRequested();
-                worst = Math.Max(worst, classifier.Score(frame));
-            }
-            watch.Stop();
-            logger.LogInformation(
-                "Scanned {Kind} with {Frames} frame(s) in {ElapsedMs} ms",
-                kind,
-                frames.Count,
-                watch.ElapsedMilliseconds
-            );
-            return new ScanResult(
-                kind == MediaKind.Video ? "video" : "image",
-                frames.Count,
-                worst,
-                watch.ElapsedMilliseconds
-            );
+            logger.LogInformation("No video stream in {Kind}: nothing visual to score", kind);
+            return new ScanResult("audio", 0, 0f, watch.ElapsedMilliseconds);
         }
-        finally
+        var frames = await extractor.ExtractAsync(path, kind, sampling, ct);
+        var worst = 0f;
+        foreach (var frame in frames)
         {
-            _turns.Release();
+            ct.ThrowIfCancellationRequested();
+            worst = Math.Max(worst, classifier.Score(frame));
         }
+        watch.Stop();
+        logger.LogInformation(
+            "Scanned {Kind} with {Frames} frame(s) in {ElapsedMs} ms",
+            kind,
+            frames.Count,
+            watch.ElapsedMilliseconds
+        );
+        return new ScanResult(
+            kind == MediaKind.Video ? "video" : "image",
+            frames.Count,
+            worst,
+            watch.ElapsedMilliseconds
+        );
     }
 
     public void Dispose() => _turns.Dispose();
+
+    private sealed class Slot(SemaphoreSlim turns) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync()
+        {
+            turns.Release();
+            return ValueTask.CompletedTask;
+        }
+    }
 }

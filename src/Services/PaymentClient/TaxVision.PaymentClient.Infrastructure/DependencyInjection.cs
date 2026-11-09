@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
+using TaxVision.PaymentClient.Application.Admin.Queries;
 using TaxVision.PaymentClient.Application.RateLimiting.Abstractions;
 using TaxVision.PaymentClient.Infrastructure.Observability;
 using TaxVision.PaymentClient.Infrastructure.Persistence;
@@ -45,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantRegistry, TenantRegistry>();
         services.AddScoped<IPaymentAuditLogWriter, PaymentAuditLogWriter>();
         services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
+        services.AddScoped<IWebhookReviewReader, WebhookReviewReader>();
         // RBAC Fase 6 — ISessionDenylistReader se registra en Program.cs (AddSessionDenylist vive en
         // BuildingBlocks.Web, capa que Infrastructure no debe referenciar).
         services.AddScoped<IPaymentLinkRepository, PaymentLinkRepository>();

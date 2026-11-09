@@ -89,6 +89,23 @@ public sealed class HttpContentClassifierTests
     }
 
     [Fact]
+    public async Task Classify_ModelUnavailable503_DoesNotRetry()
+    {
+        var handler = new StubHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = new StringContent("""{"reason":"model_unavailable"}""", Encoding.UTF8, "application/json"),
+            }
+        );
+
+        await Assert.ThrowsAsync<ContentClassifierUnavailableException>(() =>
+            Create(handler).ClassifyAsync(new MemoryStream([1]), "image/png", Sampling, CancellationToken.None)
+        );
+
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
     public void Without_a_base_url_it_reports_not_configured()
     {
         Assert.False(Create(new StubHandler(_ => Json("{}")), baseUrl: "").IsConfigured);

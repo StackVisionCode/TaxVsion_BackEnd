@@ -14,13 +14,18 @@ namespace TaxVision.Notification.Application.Abstractions;
 /// de esta fase este campo no existía y Scribe lo devolvía en vano — el consumer nunca lo pasaba). El
 /// default vacío preserva a los consumers que aún no arman <c>Dictionary</c> con logo (ninguno hoy)
 /// o a tests que construyen <c>ScribeRenderedEmail</c> con los 3 argumentos originales.
+/// <paramref name="TemplateVersion"/> y <paramref name="LayoutVersion"/> (SCR-10) dicen qué contenido se
+/// usó. Null si Scribe aún no los manda.
 /// </summary>
 public sealed record ScribeRenderedEmail(
     string Subject,
     string Html,
     string? Text,
     IReadOnlyList<EmailInlineAssetReference> InlineAssets,
-    EmailDispatchScope DispatchScope
+    EmailDispatchScope DispatchScope,
+    string? TemplateKey = null,
+    int? TemplateVersion = null,
+    int? LayoutVersion = null
 )
 {
     public ScribeRenderedEmail(string Subject, string Html, string? Text)
@@ -67,7 +72,7 @@ public interface IScribeRenderClient
 
     /// <summary>
     /// Render para una audiencia: <see cref="ScribeRenderAudience.Client"/> lleva el logo del portal de
-    /// la oficina. Default de interfaz = render de siempre, para los dobles que no lo implementan.
+    /// la oficina.
     /// </summary>
     Task<Result<ScribeRenderedEmail>> RenderAsync(
         string eventKey,
@@ -75,17 +80,12 @@ public interface IScribeRenderClient
         IReadOnlyDictionary<string, object?> variables,
         ScribeRenderAudience audience,
         CancellationToken ct = default
-    ) => RenderAsync(eventKey, tenantId, variables, ct);
+    );
 
     Task<Result<ScribeRenderedText>> RenderTextAsync(
         string eventKey,
         Guid tenantId,
         IReadOnlyDictionary<string, object?> variables,
         CancellationToken ct = default
-    ) =>
-        Task.FromResult(
-            Result.Failure<ScribeRenderedText>(
-                new Error("Notification.ScribeTextUnsupported", "Text rendering is not supported by this client.")
-            )
-        );
+    );
 }

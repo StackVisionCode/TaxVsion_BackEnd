@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// aceptar la firma electrónica. Se emite para audit y para actualizar el estado en
 /// el dashboard del staff.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerConsentAcceptedIntegrationEvent")]
 public sealed record SignerConsentAcceptedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

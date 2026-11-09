@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
-using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -16,12 +15,6 @@ namespace TaxVision.Subscription.Application.Seats.Commands.PurchaseSeats;
 
 public static class PurchaseSeatsHandler
 {
-    private static readonly SubscriptionStatus[] PurchasableStatuses =
-    [
-        SubscriptionStatus.Trialing,
-        SubscriptionStatus.Active,
-    ];
-
     public static async Task<Result<IReadOnlyList<Guid>>> Handle(
         PurchaseSeatsCommand command,
         ISubscriptionRepository subscriptions,
@@ -37,6 +30,10 @@ public static class PurchaseSeatsHandler
         CancellationToken ct
     )
     {
+        var replay = await SeatPurchaseReplay.TryReplayAsync(command, seats, ct);
+        if (replay is not null)
+            return replay;
+
         var validation = await ValidateRequestAsync(command, subscriptions, seats, settingsRepository, ct);
         if (validation.IsFailure)
             return Result.Failure<IReadOnlyList<Guid>>(validation.Error);
@@ -48,30 +45,32 @@ public static class PurchaseSeatsHandler
             return Result.Failure<IReadOnlyList<Guid>>(unitPrice.Error);
 
         var nowUtc = DateTime.UtcNow;
-        var built = BuildActivatedSeats(command, subscription, seatType, unitPrice.Value, nowUtc);
-        if (built.IsFailure)
-            return Result.Failure<IReadOnlyList<Guid>>(built.Error);
-
-        var newSeats = built.Value;
-        var charges = PrepareInitialCharges(
-            newSeats,
+        var purchased = SeatPurchasePolicy.Purchase(
             subscription,
+            seatType,
+            unitPrice.Value,
+            command.Quantity,
+            command.AutoRenew,
             command.RequestedByUserId,
             nowUtc,
-            correlation.CorrelationId
+            index => SeatPurchaseReplay.RequestedSeatId(command, index),
+            IdempotencyKeyFactory.SeatInitialCharge
         );
-        if (charges.IsFailure)
-            return Result.Failure<IReadOnlyList<Guid>>(charges.Error);
+        if (purchased.IsFailure)
+            return Result.Failure<IReadOnlyList<Guid>>(purchased.Error);
+
+        var newSeats = purchased.Value.Seats;
+        var charges = purchased.Value.Charges.Select(charge => RenewalDue(charge, correlation.CorrelationId)).ToList();
 
         foreach (var seat in newSeats)
             await seats.AddAsync(seat, ct);
 
-        // Publish-before-save (outbox): el intent de cobro sale al confirmar la transacción.
-        foreach (var charge in charges.Value)
-            await bus.PublishAsync(charge);
+        // Guardar antes de publicar: un reintento en línea no debe dejar salir el cobro del intento fallido.
         await unitOfWork.SaveChangesAsync(ct);
+        foreach (var charge in charges)
+            await bus.PublishAsync(charge);
 
-        await RecordPurchaseAsync(command, seatType, newSeats, charges.Value, audit, metrics, correlation, nowUtc, ct);
+        await RecordPurchaseAsync(command, seatType, newSeats, charges, audit, metrics, correlation, nowUtc, ct);
         await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
@@ -133,15 +132,9 @@ public static class PurchaseSeatsHandler
         CancellationToken ct
     )
     {
-        if (command.Quantity is < 1 or > 500)
-        {
-            return Result.Failure<(TenantSubscription, SeatType)>(
-                new Error("Seat.InvalidQuantity", "Quantity must be between 1 and 500.")
-            );
-        }
-
-        if (!Enum.TryParse<SeatType>(command.SeatType, ignoreCase: true, out var seatType))
-            return Result.Failure<(TenantSubscription, SeatType)>(new Error("Seat.InvalidType", "Unknown seat type."));
+        var request = SeatPurchasePolicy.ParseRequest(command.Quantity, command.SeatType);
+        if (request.IsFailure)
+            return Result.Failure<(TenantSubscription, SeatType)>(request.Error);
 
         var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
         if (subscription is null)
@@ -149,32 +142,20 @@ public static class PurchaseSeatsHandler
                 new Error("Subscription.NotFound", "Subscription does not exist.")
             );
 
-        if (Array.IndexOf(PurchasableStatuses, subscription.Status) < 0)
-        {
-            return Result.Failure<(TenantSubscription, SeatType)>(
-                new Error(
-                    "Subscription.CannotPurchaseSeats",
-                    $"Cannot purchase seats while subscription is {subscription.Status}."
-                )
-            );
-        }
+        var allowed = SeatPurchasePolicy.EnsureSubscriptionAllows(subscription);
+        if (allowed.IsFailure)
+            return Result.Failure<(TenantSubscription, SeatType)>(allowed.Error);
 
         var settings = await settingsRepository.GetByTenantIdAsync(command.TenantId, ct);
         if (settings?.MaxSeatsAllowed is { } maxSeats)
         {
-            var currentSeatCount = await CountNonTerminalSeatsAsync(seats, command.TenantId, ct);
-            if (currentSeatCount + command.Quantity > maxSeats)
-            {
-                return Result.Failure<(TenantSubscription, SeatType)>(
-                    new Error(
-                        "Seat.MaxSeatsExceeded",
-                        $"Purchasing {command.Quantity} seat(s) would exceed the tenant's limit of {maxSeats}."
-                    )
-                );
-            }
+            var tenantSeats = await seats.GetByTenantIdAsync(command.TenantId, ct);
+            var withinLimit = SeatPurchasePolicy.EnsureWithinLimit(maxSeats, tenantSeats, command.Quantity);
+            if (withinLimit.IsFailure)
+                return Result.Failure<(TenantSubscription, SeatType)>(withinLimit.Error);
         }
 
-        return Result.Success((subscription, seatType));
+        return Result.Success((subscription, request.Value));
     }
 
     private static async Task<Result<Money>> ResolveUnitPriceAsync(
@@ -191,114 +172,18 @@ public static class PurchaseSeatsHandler
         return pricing.ResolveUnitPrice(seatType, billingCycle);
     }
 
-    // Asiento Standard = capacidad de cupo: se activa optimísticamente al comprar (co-terminado al período
-    // de la base, como los add-ons) para que cuente contra el cupo de inmediato; el cobro prorrateado va
-    // async. Si el pago falla, dunning lo lleva a PastDue → grace → Suspended. No se asigna 1-a-1.
-    private static Result<List<SubscriptionSeat>> BuildActivatedSeats(
-        PurchaseSeatsCommand command,
-        TenantSubscription subscription,
-        SeatType seatType,
-        Money unitPrice,
-        DateTime nowUtc
-    )
-    {
-        var newSeats = new List<SubscriptionSeat>(command.Quantity);
-
-        for (var i = 0; i < command.Quantity; i++)
+    // Reusa el pipeline de renovación de seats: un SeatRenewalDueIntegrationEvent por asiento, que PaymentApp cobra
+    // vía IPaymentAdapterFactory (multi-provider) y cuyo resultado cierran SeatRenewalPayment{Succeeded,Failed}.
+    private static SeatRenewalDueIntegrationEvent RenewalDue(SeatCharge charge, string correlationId) =>
+        new()
         {
-            // Precio unitario resuelto del catálogo GLOBAL (SeatPricing), COPIADO en el asiento:
-            // editar el catálogo luego afecta compras nuevas, no las vigentes.
-            var seat = SubscriptionSeat
-                .Purchase(
-                    command.TenantId,
-                    seatType,
-                    SeatSourceType.Plan,
-                    subscription.PlanId,
-                    unitPrice,
-                    subscription.BillingCycle,
-                    command.AutoRenew,
-                    command.RequestedByUserId,
-                    nowUtc
-                )
-                .Value;
-
-            var activated = seat.Activate(nowUtc, subscription.CurrentPeriodEndUtc, command.RequestedByUserId, nowUtc);
-            if (activated.IsFailure)
-                return Result.Failure<List<SubscriptionSeat>>(activated.Error);
-
-            newSeats.Add(seat);
-        }
-
-        return Result.Success(newSeats);
-    }
-
-    // Cargo del período parcial inicial, prorrateado por días sobre el período vigente de la base (idéntico
-    // para cada asiento del lote). Reusa el pipeline de renovación de seats: publica un
-    // SeatRenewalDueIntegrationEvent por asiento, que PaymentApp cobra vía IPaymentAdapterFactory
-    // (multi-provider) y cuyo resultado cierran los consumers SeatRenewalPayment{Succeeded,Failed}. Devuelve
-    // lista vacía si no hay nada que cobrar (proración <= 0).
-    private static Result<List<SeatRenewalDueIntegrationEvent>> PrepareInitialCharges(
-        IReadOnlyList<SubscriptionSeat> seats,
-        TenantSubscription subscription,
-        Guid actorUserId,
-        DateTime nowUtc,
-        string correlationId
-    )
-    {
-        var charges = new List<SeatRenewalDueIntegrationEvent>(seats.Count);
-
-        foreach (var seat in seats)
-        {
-            var prorated = ProrationCalculator.InitialPeriod(
-                seat.UnitPrice,
-                subscription.CurrentPeriodStartUtc,
-                subscription.CurrentPeriodEndUtc,
-                nowUtc
-            );
-            if (prorated.IsFailure)
-                return Result.Failure<List<SeatRenewalDueIntegrationEvent>>(prorated.Error);
-
-            if (prorated.Value.Amount <= 0m)
-                continue;
-
-            var key = IdempotencyKeyFactory.SeatInitialCharge(seat.Id, seat.CurrentPeriodStartUtc!.Value);
-            var begun = seat.BeginInitialCharge(key, actorUserId, nowUtc);
-            if (begun.IsFailure)
-                return Result.Failure<List<SeatRenewalDueIntegrationEvent>>(begun.Error);
-
-            charges.Add(
-                new SeatRenewalDueIntegrationEvent
-                {
-                    TenantId = seat.TenantId,
-                    CorrelationId = correlationId,
-                    SeatId = seat.Id,
-                    PeriodStartUtc = seat.CurrentPeriodStartUtc!.Value,
-                    PeriodEndUtc = seat.CurrentPeriodEndUtc!.Value,
-                    IdempotencyKey = key,
-                    AmountCents = (long)Math.Round(prorated.Value.Amount * 100m, MidpointRounding.AwayFromZero),
-                    Currency = prorated.Value.Currency,
-                }
-            );
-        }
-
-        return Result.Success(charges);
-    }
-
-    private static async Task<int> CountNonTerminalSeatsAsync(
-        ISubscriptionSeatRepository seats,
-        Guid tenantId,
-        CancellationToken ct
-    )
-    {
-        var tenantSeats = await seats.GetByTenantIdAsync(tenantId, ct);
-
-        var count = 0;
-        foreach (var seat in tenantSeats)
-        {
-            if (seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired))
-                count++;
-        }
-
-        return count;
-    }
+            TenantId = charge.Seat.TenantId,
+            CorrelationId = correlationId,
+            SeatId = charge.Seat.Id,
+            PeriodStartUtc = charge.Seat.CurrentPeriodStartUtc!.Value,
+            PeriodEndUtc = charge.Seat.CurrentPeriodEndUtc!.Value,
+            IdempotencyKey = charge.Charge.IdempotencyKey,
+            AmountCents = charge.Charge.AmountCents,
+            Currency = charge.Charge.Currency,
+        };
 }

@@ -22,7 +22,7 @@ public sealed class CustomerAvatarPendingSweeperTests
         var fresh = Pending(Guid.NewGuid(), Now.AddMinutes(-2));
         var current = Guid.NewGuid();
         expiredA.BeginProfilePictureChange(current, Guid.NewGuid(), Now.AddDays(-1));
-        expiredA.ConfirmProfilePicture(current);
+        expiredA.ConfirmProfilePicture(current, Guid.Empty);
         expiredA.BeginProfilePictureChange(Guid.NewGuid(), Guid.NewGuid(), Now.AddMinutes(-11));
 
         await using (var seed = CreateContext())

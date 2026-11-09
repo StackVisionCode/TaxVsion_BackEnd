@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
 /// Publicado por Auth cuando cambia el perfil visible de un usuario: nombre/apellido
 /// (UpdateMyProfileCommand) o foto (confirmada o quitada). Lleva siempre el estado actual completo.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent")]
 public sealed record UserProfileUpdatedIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

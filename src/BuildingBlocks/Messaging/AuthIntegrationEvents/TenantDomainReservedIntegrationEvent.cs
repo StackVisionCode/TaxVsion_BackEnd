@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// diseño — todavía no existe un Tenant en este punto del flujo — así que TenantId
 /// (heredado de IntegrationEvent) viaja como BuildingBlocks.Tenancy.PlatformTenant.Id.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantDomainReservedIntegrationEvent")]
 public sealed record TenantDomainReservedIntegrationEvent : IntegrationEvent
 {
     public required string Slug { get; init; }

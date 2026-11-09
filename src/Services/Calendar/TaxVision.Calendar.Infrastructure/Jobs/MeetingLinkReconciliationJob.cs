@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Calendar.Domain.Appointments;
+using TaxVision.Calendar.Domain.Scheduling;
 using TaxVision.Calendar.Infrastructure.Persistence;
 using Wolverine;
 
@@ -99,7 +100,7 @@ internal sealed class MeetingLinkReconciliationJob(
         );
     }
 
-    private static AppointmentMeetingRoomRequestedIntegrationEvent Rebuild(
+    internal static AppointmentMeetingRoomRequestedIntegrationEvent Rebuild(
         Appointment appointment,
         string correlationId
     ) =>
@@ -110,6 +111,15 @@ internal sealed class MeetingLinkReconciliationJob(
             AppointmentId = appointment.Id,
             Title = appointment.Title.Value,
             OrganizerUserId = appointment.OrganizerUserId,
-            StartUtc = appointment.Timing.StartUtc,
+            // Una serie no guarda UTC (CAL-10): la sala se pide para su próxima ocurrencia; con la primera,
+            // ya pasada, Communication la expiraría en el siguiente barrido.
+            StartUtc =
+                appointment.Timing.StartUtc
+                ?? (
+                    appointment.Recurrence is null
+                        ? null
+                        : OccurrenceExpander.NextStart(appointment, DateTime.UtcNow)
+                            ?? OccurrenceExpander.FirstStart(appointment)
+                ),
         };
 }

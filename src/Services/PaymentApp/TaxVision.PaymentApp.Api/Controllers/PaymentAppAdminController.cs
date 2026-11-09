@@ -119,18 +119,68 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
 
     public sealed record RefundRequest(long RefundAmountCents, string Reason);
 
+    private const int MaxIdempotencyKeyLength = 64;
+
     /// <summary>Reembolso de soporte. Nunca self-service: un tenant no se reembolsa su propia suscripción.</summary>
     [HttpPost("payments/{id:guid}/refund")]
     [HasPermission(PaymentAppPermissions.SaaSPaymentRefund)]
     [RateLimit("payment_app.m.refund")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Refund(Guid id, RefundRequest request, CancellationToken ct)
+    public async Task<IActionResult> Refund(
+        Guid id,
+        RefundRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        // La clave viaja al proveedor (PayPal-Request-Id admite hasta 108 caracteres).
+        if (idempotencyKey is { Length: > MaxIdempotencyKeyLength })
+            return BadRequest(
+                new Error(
+                    "SaaSPayment.InvalidIdempotencyKey",
+                    $"Idempotency-Key must be at most {MaxIdempotencyKeyLength} characters."
+                )
+            );
+
+        var result = await bus.InvokeAsync<Result>(
+            new RefundSaaSPaymentCommand(id, request.RefundAmountCents, request.Reason, userId, idempotencyKey),
+            ct
+        );
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record ResolveReviewRequest(string Resolution, string? Note);
+
+    /// <summary>Pagos con un éxito del proveedor que no se aplicó (pago cerrado o monto distinto). Solo lectura.</summary>
+    [HttpGet("payments/review")]
+    [HasPermission(PaymentAppPermissions.SaaSPaymentRefund)]
+    [RateLimit("payment_app.f.admin_read")]
+    [ProducesResponseType<IReadOnlyList<SaaSPaymentReviewResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListForReview([FromQuery] bool resolved, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<SaaSPaymentReviewResponse>>>(
+            new ListSaaSPaymentsForReviewQuery(resolved),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Registra la decisión tomada a mano (Refunded | BenefitApplied | NoActionNeeded). Nunca
+    /// reembolsa ni aplica beneficios.</summary>
+    [HttpPost("payments/{id:guid}/review/resolve")]
+    [HasPermission(PaymentAppPermissions.SaaSPaymentRefund)]
+    [RateLimit("payment_app.m.refund")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> ResolveReview(Guid id, ResolveReviewRequest request, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new RefundSaaSPaymentCommand(id, request.RefundAmountCents, request.Reason, userId),
+            new ResolveSaaSPaymentReviewCommand(id, request.Resolution, request.Note, userId),
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

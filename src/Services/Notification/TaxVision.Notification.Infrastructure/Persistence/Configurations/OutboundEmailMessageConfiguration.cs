@@ -9,6 +9,7 @@ public sealed class OutboundEmailMessageConfiguration : IEntityTypeConfiguration
     public void Configure(EntityTypeBuilder<OutboundEmailMessage> builder)
     {
         builder.ToTable("OutboundEmailMessages");
+        builder.Property(m => m.RowVersion).IsRowVersion();
         builder.HasKey(m => m.Id);
         builder.Property(m => m.TenantId).IsRequired();
         builder.Property(m => m.Subject).HasMaxLength(300).IsRequired();

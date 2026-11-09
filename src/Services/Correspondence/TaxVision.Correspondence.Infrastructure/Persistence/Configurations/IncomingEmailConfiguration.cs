@@ -15,7 +15,8 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
         builder.Property(x => x.Id).ValueGeneratedNever();
 
         builder.Property(x => x.TenantId).IsRequired();
-        builder.Property(x => x.CustomerId).IsRequired();
+        // Opcional (D-COR-3): null = el remitente no es cliente.
+        builder.Property(x => x.CustomerId);
         builder.Property(x => x.EmailThreadId).IsRequired();
         builder.Property(x => x.AccountId).IsRequired();
 
@@ -38,6 +39,7 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
 
         // Veredicto derivado, no se persiste.
         builder.Ignore(x => x.SenderTrust);
+        builder.Ignore(x => x.DomainEvents);
 
         // SPF/DKIM/DMARC en 3 columnas (owned value object).
         builder.OwnsOne(
@@ -57,6 +59,18 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
             .IsUnique()
             .HasFilter("[InternetMessageId] IS NOT NULL")
             .HasDatabaseName("IX_IncomingEmails_TenantId_InternetMessageId_Unique");
+
+        // Dedup sin InternetMessageId: misma copia del mismo buzón (red contra dos ingestas concurrentes).
+        builder
+            .HasIndex(x => new
+            {
+                x.TenantId,
+                x.AccountId,
+                x.ProviderMessageId,
+            })
+            .IsUnique()
+            .HasFilter("[InternetMessageId] IS NULL")
+            .HasDatabaseName("IX_IncomingEmails_TenantId_AccountId_ProviderMessageId_NoInternetId");
 
         // Inbox por customer, más reciente primero (ReceivedAtUtc DESC per plan §24).
         builder
@@ -104,6 +118,15 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
                 x.AccountId,
             })
             .HasDatabaseName("IX_IncomingEmails_TenantId_From");
+
+        builder
+            .HasMany(x => x.Mailboxes)
+            .WithOne()
+            .HasForeignKey(m => m.IncomingEmailId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder
+            .Metadata.FindNavigation(nameof(IncomingEmail.Mailboxes))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
 
         builder
             .HasMany(x => x.Recipients)

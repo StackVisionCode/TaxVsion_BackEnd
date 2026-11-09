@@ -31,6 +31,18 @@ public sealed class FakeSeatPurchaseIntentRepository : ISeatPurchaseIntentReposi
                 .FirstOrDefault()
         );
 
+    public Task<SeatPurchaseIntent?> GetUnattachedByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult(
+            Added
+                .Where(intent =>
+                    intent.TenantId == tenantId
+                    && intent.Status == SeatPurchaseIntentStatus.Pending
+                    && intent.CheckoutUrl == null
+                )
+                .OrderByDescending(intent => intent.CreatedAtUtc)
+                .FirstOrDefault()
+        );
+
     public Task<SeatPurchaseIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default) =>
         Task.FromResult(Added.FirstOrDefault(intent => intent.Id == intentId));
 

@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
@@ -15,17 +16,56 @@ public sealed class CampaignRunRepository(CampaignsDbContext db) : ICampaignRunR
             .Include(r => r.Recipients)
             .FirstOrDefaultAsync(r => r.Id == id && r.TenantId == tenantId, ct);
 
-    public Task<CampaignRun?> GetByDispatchIdAsync(Guid tenantId, string dispatchId, CancellationToken ct = default) =>
-        db
-            .CampaignRuns.IgnoreQueryFilters()
-            .Include(r => r.Recipients)
-            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Recipients.Any(x => x.DispatchId == dispatchId), ct);
+    public Task<CampaignRun?> GetForResultAsync(
+        Guid tenantId,
+        Guid runId,
+        string dispatchId,
+        CancellationToken ct = default
+    ) => LoadForResultAsync(tenantId, runId, x => x.DispatchId == dispatchId, ct);
 
-    public Task<CampaignRun?> GetByRecipientIdAsync(Guid tenantId, Guid recipientId, CancellationToken ct = default) =>
+    public async Task<CampaignRun?> GetForDispatchResultAsync(
+        Guid tenantId,
+        string dispatchId,
+        CancellationToken ct = default
+    )
+    {
+        var runId = await db
+            .CampaignRecipients.IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId && r.DispatchId == dispatchId)
+            .Select(r => (Guid?)r.RunId)
+            .FirstOrDefaultAsync(ct);
+        return runId is { } id ? await LoadForResultAsync(tenantId, id, x => x.DispatchId == dispatchId, ct) : null;
+    }
+
+    public async Task<CampaignRun?> GetForRecipientResultAsync(
+        Guid tenantId,
+        Guid recipientId,
+        CancellationToken ct = default
+    )
+    {
+        var runId = await db
+            .CampaignRecipients.IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId && r.Id == recipientId)
+            .Select(r => (Guid?)r.RunId)
+            .FirstOrDefaultAsync(ct);
+        return runId is { } id ? await LoadForResultAsync(tenantId, id, x => x.Id == recipientId, ct) : null;
+    }
+
+    // CMP-04: UPDLOCK pone en fila los resultados de un run hasta el commit, también entre réplicas. Sin él, en una
+    // ráfaga casi todos pierden la RowVersion y los reintentos se agotan. La RowVersion sigue contra los demás escritores.
+    private Task<CampaignRun?> LoadForResultAsync(
+        Guid tenantId,
+        Guid runId,
+        Expression<Func<CampaignRecipient, bool>> unit,
+        CancellationToken ct
+    ) =>
         db
-            .CampaignRuns.IgnoreQueryFilters()
-            .Include(r => r.Recipients)
-            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Recipients.Any(x => x.Id == recipientId), ct);
+            .CampaignRuns.FromSqlInterpolated(
+                $"SELECT * FROM CampaignRuns WITH (UPDLOCK, ROWLOCK) WHERE Id = {runId} AND TenantId = {tenantId}"
+            )
+            .IgnoreQueryFilters()
+            .Include(r => r.Recipients.AsQueryable().Where(unit))
+            .FirstOrDefaultAsync(ct);
 
     public async Task<PagedResult<CampaignRun>> ListByCampaignAsync(
         Guid tenantId,
@@ -47,4 +87,42 @@ public sealed class CampaignRunRepository(CampaignsDbContext db) : ICampaignRunR
 
     public async Task AddAsync(CampaignRun run, CancellationToken ct = default) =>
         await db.CampaignRuns.AddAsync(run, ct);
+
+    public async Task<IReadOnlyList<StaleRunRef>> ListStaleDispatchingAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .CampaignRuns.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.Status == CampaignRunStatus.Dispatching && r.CreatedAtUtc < createdBeforeUtc)
+            .OrderBy(r => r.CreatedAtUtc)
+            .Take(batchSize)
+            .Select(r => new StaleRunRef(r.TenantId, r.Id))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<StaleRunRef>> ListCreatedBeforeAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .CampaignRuns.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.Status == CampaignRunStatus.Created && r.CreatedAtUtc < createdBeforeUtc)
+            .OrderBy(r => r.CreatedAtUtc)
+            .Take(batchSize)
+            .Select(r => new StaleRunRef(r.TenantId, r.Id))
+            .ToListAsync(ct);
+
+    public Task<bool> ExistsAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
+        db.CampaignRuns.IgnoreQueryFilters().AnyAsync(r => r.TenantId == tenantId && r.Id == runId, ct);
+
+    public Task<Guid?> GetScheduleIdAsync(Guid tenantId, Guid runId, CancellationToken ct = default) =>
+        db
+            .CampaignRuns.IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId && r.Id == runId)
+            .Select(r => r.ScheduleId)
+            .FirstOrDefaultAsync(ct);
 }

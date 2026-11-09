@@ -9,5 +9,6 @@ public sealed record AppointmentOccurrenceOverriddenDomainEvent(
     DateTime OriginalStartUtc,
     DateTime? NewStartUtc,
     Guid ModifiedByUserId,
-    DateTime ModifiedAtUtc
+    DateTime ModifiedAtUtc,
+    DateTime? NewEndUtc
 ) : IDomainEvent;

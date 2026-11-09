@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// están listas para dispatch. Notification lo consume para enviar los correos/SMS a
 /// los firmantes en el canal preseleccionado.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestSentIntegrationEvent")]
 public sealed record SignatureRequestSentIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

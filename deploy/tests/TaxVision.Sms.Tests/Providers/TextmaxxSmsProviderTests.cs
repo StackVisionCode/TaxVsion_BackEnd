@@ -74,6 +74,27 @@ public sealed class TextmaxxSmsProviderTests
     }
 
     [Fact]
+    public async Task SendAsync_connection_drop_is_outcome_unknown_without_retry()
+    {
+        var handler = new Fakes.ThrowingHttpHandler(new HttpRequestException("connection reset"));
+        var options = Options.Create(new SmsProvidersOptions { Providers = { ["textmaxx"] = TextmaxxConfig() } });
+        var provider = new TextmaxxSmsProvider(
+            new Fakes.SingleHttpClientFactory(handler),
+            options,
+            new HttpResiliencePipelineRegistry(),
+            NullLogger<TextmaxxSmsProvider>.Instance
+        );
+
+        var result = await provider.SendAsync(
+            new SmsSendRequest(Guid.NewGuid(), Guid.NewGuid(), "+18095551234", "hola", [], "corr", "idem", null)
+        );
+
+        Assert.False(result.Value.Accepted);
+        Assert.Equal(SmsSendFailure.OutcomeUnknown, result.Value.ErrorCode);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
     public async Task SendAsync_uses_basic_auth_base64_of_key_colon_token()
     {
         var handler = new CapturingHandler();

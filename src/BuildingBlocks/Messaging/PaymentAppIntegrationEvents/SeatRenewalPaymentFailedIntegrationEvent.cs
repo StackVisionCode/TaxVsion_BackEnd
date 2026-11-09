@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// <see cref="SubscriptionIntegrationEvents.SeatRenewalDueIntegrationEvent"/>). Subscription
 /// lo consume para transicionar el seat a PastDue / agendar dunning.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SeatRenewalPaymentFailedIntegrationEvent")]
 public sealed record SeatRenewalPaymentFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid SeatId { get; init; }

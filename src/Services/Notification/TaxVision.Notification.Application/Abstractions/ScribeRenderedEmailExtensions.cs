@@ -35,6 +35,8 @@ public static class ScribeRenderedEmailExtensions
             RelatedEventId: relatedEventId,
             CorrelationId: correlationId,
             InlineAssets: render.InlineAssets,
-            Scope: render.DispatchScope
+            Scope: render.DispatchScope,
+            RenderedTemplateVersion: render.TemplateVersion,
+            RenderedLayoutVersion: render.LayoutVersion
         );
 }

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// cerrar la <c>AddOnPurchaseIntent</c>: el add-on nunca llegó a existir, así que no hay nada que revertir.
 /// Alias v1.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.AddOnCheckoutFailedIntegrationEvent")]
 public sealed record AddOnCheckoutFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid AddOnPurchaseIntentId { get; init; }

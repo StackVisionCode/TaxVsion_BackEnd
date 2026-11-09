@@ -12,8 +12,12 @@ internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
 
+    /// <summary>Se llama en cada publicación; sirve para mirar el estado en ese momento.</summary>
+    public Action? OnPublish { get; set; }
+
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
+        OnPublish?.Invoke();
         if (message is not null)
             Published.Add(message);
         return ValueTask.CompletedTask;
@@ -53,8 +57,11 @@ internal sealed class FakeMessageBus : IMessageBus
         set { }
     }
 
+    /// <summary>Si se asigna, atiende <c>InvokeAsync</c>; si no, lanza como el resto.</summary>
+    public Func<object, Task>? OnInvoke { get; set; }
+
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+        OnInvoke?.Invoke(message) ?? throw new NotImplementedException();
 
     public Task InvokeAsync(
         object message,

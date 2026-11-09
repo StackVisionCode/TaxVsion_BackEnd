@@ -286,11 +286,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             "https://checkout.example.com/old",
             now
         );
-        payment.MarkFailed(
-            "card_declined",
-            "Your card was declined.",
-            willRetry: false,
-            nextRetryAtUtc: null,
+        payment.MarkFailed("card_declined", "Your card was declined.", DunningDecision.NoRetry,
             Guid.Empty,
             now
         );

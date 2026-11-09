@@ -71,5 +71,7 @@ public sealed class StripePaymentAdapterWebhookTests
         public void RecordWebhookSignatureFailed(string provider) { }
 
         public void RecordProviderLatency(double milliseconds, string provider, string method) { }
+
+        public void RecordPaymentReviewRequired(string provider, string reason) { }
     }
 }

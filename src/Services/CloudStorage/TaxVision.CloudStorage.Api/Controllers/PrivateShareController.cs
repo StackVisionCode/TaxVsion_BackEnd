@@ -3,6 +3,7 @@ using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Api.Common;
 using TaxVision.CloudStorage.Application.Sharing;
 using Wolverine;
@@ -20,7 +21,10 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 [Route("storage")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin, ActorType.CustomerPortal)]
-public sealed class PrivateShareController(IMessageBus bus) : ControllerBase
+public sealed class PrivateShareController(
+    IMessageBus bus,
+    IOptions<PublicShareConflictRetryOptions> conflictRetry
+) : ControllerBase
 {
     /// <summary>Fase C4 — fileId es obligatorio cuando el token es de un link de tipo Folder (ver FolderShareCoverage).</summary>
     [HttpGet("private/{token}")]
@@ -30,8 +34,10 @@ public sealed class PrivateShareController(IMessageBus bus) : ControllerBase
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<ShareAccessResult>(
-            new ResolvePrivateShareQuery(token, tenantId, actorId, scope, fileId, RemoteIp(), UserAgent()),
+        var query = new ResolvePrivateShareQuery(token, tenantId, actorId, scope, fileId, RemoteIp(), UserAgent());
+        var result = await PublicShareConflictRetry.InvokeAsync(
+            cancellation => bus.InvokeAsync<ShareAccessResult>(query, cancellation),
+            conflictRetry.Value.MaxAttempts,
             ct
         );
         return result.Outcome == ShareAccessOutcome.Redirect ? Redirect(result.PresignedUrl!) : NotFound();

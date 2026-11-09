@@ -349,14 +349,14 @@ public sealed class CreateMultiDocumentRequestTests
 
     private sealed class UnexpectedStorage : ISignatureCloudStorageClient
     {
-        public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
-            throw new InvalidOperationException("Available local projections must avoid storage download.");
-
-        public Task<Result<Guid>> UploadAsync(
+        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
             Guid tenantId,
             SignatureFileUpload upload,
             CancellationToken ct = default
-        ) => throw new InvalidOperationException("Create must not upload files.");
+        ) => throw new NotSupportedException();
+
+        public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            throw new InvalidOperationException("Available local projections must avoid storage download.");
 
         public Task<Result<Guid>> CopyToCustomerAsync(
             Guid tenantId,

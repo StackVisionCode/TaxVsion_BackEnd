@@ -1,7 +1,14 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
+using TaxVision.Sms.Api.RateLimiting;
+using TaxVision.Sms.Application;
+using TaxVision.Sms.Application.Providers;
+using TaxVision.Sms.Application.Webhooks;
 using TaxVision.Sms.Application.Webhooks.Commands;
 using Wolverine;
 
@@ -15,22 +22,37 @@ namespace TaxVision.Sms.Api.Controllers;
 [ApiController]
 [Route("sms/webhooks")]
 [AllowAnonymous]
-public sealed class WebhooksController(IMessageBus bus) : ControllerBase
+[EnableRateLimiting(SmsWebhookRateLimiting.PolicyName)]
+public sealed class WebhooksController(IMessageBus bus, ISmsAdapterFactory adapters, IOptions<SmsOptions> options)
+    : ControllerBase
 {
+    private const string AnonymousExemptReason =
+        "Anónimo: [RateLimit] particiona por tenant/usuario y quedaría abierto. Lo limita el limiter nativo por IP.";
+
     [HttpPost("{provider}/status")]
+    [RateLimitExempt(AnonymousExemptReason)]
     public async Task<IActionResult> Status(string provider, CancellationToken ct)
     {
+        // Un código desconocido no llega al bus: 404 inmediato, sin reintentos en línea.
+        if (!adapters.TryResolve(provider, out _))
+            return NotFound(SmsWebhookErrors.UnknownProvider);
         var rawBody = await ReadBodyAsync(ct);
-        var result = await bus.InvokeAsync<Result>(
-            new ProcessDeliveryReceiptCommand(provider, rawBody, ReadSignature(), BuildPublicUrl()),
-            ct
+        var command = new ProcessDeliveryReceiptCommand(provider, rawBody, ReadSignature(), BuildPublicUrl());
+
+        // No todos los proveedores reenvían un DLR rechazado: un choque con la conciliación se resuelve aquí.
+        var result = await SmsConflictRetry.InvokeAsync(
+            () => bus.InvokeAsync<Result>(command, ct),
+            options.Value.ConflictRetryAttempts
         );
         return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost("{provider}/inbound")]
+    [RateLimitExempt(AnonymousExemptReason)]
     public async Task<IActionResult> Inbound(string provider, CancellationToken ct)
     {
+        if (!adapters.TryResolve(provider, out _))
+            return NotFound(SmsWebhookErrors.UnknownProvider);
         var rawBody = await ReadBodyAsync(ct);
         var result = await bus.InvokeAsync<Result>(
             new ProcessInboundCommand(provider, rawBody, ReadSignature(), BuildPublicUrl()),

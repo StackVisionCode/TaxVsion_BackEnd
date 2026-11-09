@@ -70,7 +70,7 @@ internal static class AvatarTestFiles
 
     private static void MakeAvailable(FileObject file, string detectedContentType, DateTime now)
     {
-        Assert.True(file.MarkPendingScan().IsSuccess);
+        Assert.True(file.MarkPendingScan(DateTime.UtcNow).IsSuccess);
         Assert.True(file.MarkScanning().IsSuccess);
         Assert.True(file.MarkAvailable(ChecksumSha256.Create(Sha256).Value, detectedContentType, now).IsSuccess);
     }

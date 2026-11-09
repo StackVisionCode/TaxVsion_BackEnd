@@ -60,7 +60,7 @@ internal sealed class CustomerImportCleanupHostedService(
         }
     }
 
-    private async Task PurgeOnceAsync(CancellationToken ct)
+    internal async Task PurgeOnceAsync(CancellationToken ct)
     {
         var keepDays = config.GetValue<int?>("CustomerImport:ReportRetentionDays") ?? 90;
         var cutoff = DateTime.UtcNow.AddDays(-keepDays);
@@ -70,8 +70,7 @@ internal sealed class CustomerImportCleanupHostedService(
         var cloudStorage = scope.ServiceProvider.GetRequiredService<ICustomerImportCloudStorageClient>();
 
         // RBAC Fase 5 — purga deliberadamente cross-tenant (recorre TODOS los tenants en cada
-        // corrida diaria); IgnoreQueryFilters() explícito en ambas queries de este método.
-        // Filas se borran por cascade desde attempts via FK. Pero por seguridad las borramos primero.
+        // corrida diaria); IgnoreQueryFilters() explícito en todas las queries de este método.
         var oldAttempts = await db
             .CustomerImportAttempts.IgnoreQueryFilters()
             .Where(a =>
@@ -91,6 +90,8 @@ internal sealed class CustomerImportCleanupHostedService(
             return;
         }
 
+        var deletedAttempts = 0;
+        var deletedRows = 0;
         foreach (var a in oldAttempts)
         {
             var deleteResult = await cloudStorage.DeleteAsync(a.TenantId, a.Id, ct);
@@ -100,17 +101,24 @@ internal sealed class CustomerImportCleanupHostedService(
                     a.Id,
                     deleteResult.Error.Message
                 );
+
+            // La FK no tiene cascade: filas y luego el intento, un intento por transacción.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            deletedRows += await db
+                .CustomerImportRows.IgnoreQueryFilters()
+                .Where(r => r.CustomerImportAttemptId == a.Id)
+                .ExecuteDeleteAsync(ct);
+            deletedAttempts += await db
+                .CustomerImportAttempts.IgnoreQueryFilters()
+                .Where(x => x.Id == a.Id)
+                .ExecuteDeleteAsync(ct);
+            await tx.CommitAsync(ct);
         }
 
-        var attemptIds = oldAttempts.Select(a => a.Id).ToList();
-        var deletedAttempts = await db
-            .CustomerImportAttempts.IgnoreQueryFilters()
-            .Where(a => attemptIds.Contains(a.Id))
-            .ExecuteDeleteAsync(ct);
-
         logger.LogInformation(
-            "Cleanup: removed {Attempts} import attempts (rows cascade) older than {Days} days",
+            "Cleanup: removed {Attempts} import attempts and {Rows} rows older than {Days} days",
             deletedAttempts,
+            deletedRows,
             keepDays
         );
     }

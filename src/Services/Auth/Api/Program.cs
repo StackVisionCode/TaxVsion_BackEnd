@@ -36,9 +36,11 @@ using TaxVision.Auth.Api.RateLimiting;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Infrastructure;
-using TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Infrastructure.Security;
+using TaxVision.Auth.Onboarding.Application.Sagas;
+using TaxVision.Auth.Onboarding.Infrastructure;
+using TaxVision.Auth.Onboarding.Infrastructure.HttpClients;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
@@ -47,7 +49,7 @@ using Wolverine.SqlServer;
 // BuildingBlocks.Infrastructure.RateLimiting expone otro SubscriptionClientOptions (el del lector
 // de PlanRateLimits). Acá siempre se quiere el de Onboarding, que trae el BaseUrl usado por el
 // health check de downstream.
-using SubscriptionClientOptions = TaxVision.Auth.Infrastructure.Onboarding.HttpClients.SubscriptionClientOptions;
+using SubscriptionClientOptions = TaxVision.Auth.Onboarding.Infrastructure.HttpClients.SubscriptionClientOptions;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("auth-service");
@@ -61,6 +63,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
+builder.Services.AddAuthOnboardingInfrastructure(builder.Configuration);
 
 // Fotos de perfil del staff: 512 px WebP sin metadatos, con tope de decodificaciones simultáneas.
 builder.Services.AddAvatarImageNormalizer();
@@ -124,14 +127,14 @@ builder.Services.AddHostedService<AuthMaintenanceService>();
 builder.Services.AddHostedService<ExpiredPermissionDeniesService>();
 builder.Services.AddHostedService<OnboardingRetryScheduler>();
 builder.Services.AddHostedService<OnboardingRegistrationReminderScheduler>();
-builder.Services.Configure<TaxVision.Auth.Application.Onboarding.OnboardingExpirationOptions>(
-    builder.Configuration.GetSection(TaxVision.Auth.Application.Onboarding.OnboardingExpirationOptions.SectionName)
+builder.Services.Configure<TaxVision.Auth.Onboarding.Application.OnboardingExpirationOptions>(
+    builder.Configuration.GetSection(TaxVision.Auth.Onboarding.Application.OnboardingExpirationOptions.SectionName)
 );
 builder.Services.AddHostedService<OnboardingExpirationJob>();
 
 // OBF-2.7 — orphan detector: pagados sin office-setup después de 24h → evento alerta/metrica.
-builder.Services.Configure<TaxVision.Auth.Application.Onboarding.OnboardingOrphanDetectorOptions>(
-    builder.Configuration.GetSection(TaxVision.Auth.Application.Onboarding.OnboardingOrphanDetectorOptions.SectionName)
+builder.Services.Configure<TaxVision.Auth.Onboarding.Application.OnboardingOrphanDetectorOptions>(
+    builder.Configuration.GetSection(TaxVision.Auth.Onboarding.Application.OnboardingOrphanDetectorOptions.SectionName)
 );
 builder.Services.AddHostedService<OnboardingOrphanDetectorJob>();
 
@@ -170,7 +173,7 @@ builder
 builder.Services.AddTaxVisionOpenTelemetry(
     builder.Configuration,
     "auth-service",
-    TaxVision.Auth.Infrastructure.Onboarding.Observability.OnboardingMetrics.MeterName,
+    TaxVision.Auth.Onboarding.Infrastructure.Observability.OnboardingMetrics.MeterName,
     TaxVision.Auth.Infrastructure.Subscriptions.Observability.SubscriptionAccessMetrics.MeterName,
     TaxVision.Auth.Application.SlotGating.SeatSlotProjectionMetrics.MeterName
 );
@@ -494,6 +497,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(LoginHandler).Assembly);
+    options.Discovery.IncludeAssembly(typeof(TenantOnboardingProcessManager).Assembly);
     options.ListenForPlatformSettings();
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
@@ -509,6 +513,14 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, AuthDbContext>();
     options.Policies.AutoApplyTransactions();
+
+    // Eventos de dominio de los agregados: se guardan con el commit del handler y sus handlers devuelven los
+    // avisos. En serie, para que los avisos de un mismo agregado salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // Toda cola local durable: lo publicado a un handler propio sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event), ver
@@ -559,7 +571,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<OnboardingProvisioningStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingProvisioningStepFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantOnboardingCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    // PayFlow (Fase 16) — publicado por InternalTenantOwnersController, no por la Saga.
+    // PayFlow (Fase 16) — publicado por CreateTenantOwnerFromOnboardingHandler, no por la Saga.
     options.PublishMessage<TenantOwnerCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // PayFlow (Fase 17) — publicados por CancelAndRefundOnboardingAdminHandler; sin estos registros
     // Wolverine nunca los mandaba a RabbitMQ y toda la compensación (refund Stripe, close tenant,
@@ -594,6 +606,7 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 });
 

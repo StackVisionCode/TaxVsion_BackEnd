@@ -10,9 +10,10 @@ namespace TaxVision.Correspondence.Application.Abstractions;
 /// </summary>
 public interface IEmailThreadRepository
 {
-    /// <summary>Busca por <c>(TenantId, ProviderThreadId)</c>. Devuelve <c>null</c> si no existe.</summary>
+    /// <summary>Busca por <c>(TenantId, CustomerId, ProviderThreadId)</c>: un hilo por cliente (COR-02). <c>null</c> si no existe.</summary>
     Task<EmailThread?> FindByProviderThreadIdAsync(
         Guid tenantId,
+        Guid? customerId,
         string providerThreadId,
         CancellationToken ct = default
     );

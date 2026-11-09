@@ -39,7 +39,7 @@ public static class ActivateTenantDomainHandler
 
         // domain.MarkActive encola TenantDomainActivated (domain event); la auditoría y
         // los TenantDomainVerified/ActivatedIntegrationEvent salen de ahí, vía
-        // AuthDbContext.SaveChangesAsync — ver TenantDomainActivatedHandler (Fase A7).
+        // Wolverine al confirmar — ver TenantDomainActivatedHandler (Fase A7).
         // El mismo evento cubre tanto esta activación manual como la automática del poller.
         var activateResult = domain.MarkActive(DateTime.UtcNow, command.ActingUserId);
         if (activateResult.IsFailure)

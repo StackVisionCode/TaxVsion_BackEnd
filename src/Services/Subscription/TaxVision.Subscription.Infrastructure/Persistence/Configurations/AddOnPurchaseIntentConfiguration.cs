@@ -17,8 +17,9 @@ public sealed class AddOnPurchaseIntentConfiguration : IEntityTypeConfiguration<
         builder.Property(intent => intent.Quantity).IsRequired();
         builder.Property(intent => intent.AutoRenew).IsRequired();
         builder.Property(intent => intent.BillingCycle).HasConversion<string>().HasMaxLength(20).IsRequired();
-        builder.Property(intent => intent.ProratedTotalCents).IsRequired();
-        builder.Property(intent => intent.Currency).HasMaxLength(3).IsRequired();
+        // Money sale de estas dos columnas: el dominio las expone juntas, el esquema no cambia.
+        builder.Property<long>("ProratedTotalCents").IsRequired();
+        builder.Property<string>("Currency").HasMaxLength(3).IsRequired();
         builder.Property(intent => intent.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(intent => intent.SaaSPaymentId);
         builder.Property(intent => intent.CheckoutUrl).HasMaxLength(2048);
@@ -32,6 +33,7 @@ public sealed class AddOnPurchaseIntentConfiguration : IEntityTypeConfiguration<
         builder.Property(intent => intent.CancelledByUserId);
         builder.Property(intent => intent.CancelReason).HasMaxLength(500);
         builder.Property(intent => intent.FailureReason).HasMaxLength(1000);
+        builder.Property(intent => intent.RowVersion).IsRowVersion();
 
         builder.OwnsOne(
             intent => intent.UnitPrice,

@@ -220,6 +220,20 @@ public sealed class TaskItemTests
         Assert.NotEqual(TaskItemStatus.WaitingOnClient, task.Status);
     }
 
+    // El contador da la clave del recordatorio por ciclo de vida (TSK-2).
+    [Fact]
+    public void Reopen_FromCompleted_IncrementsReopenCount()
+    {
+        var task = NewTask();
+        task.Complete(UserId, Now);
+
+        Assert.True(task.Reopen(UserId, Now.AddHours(1)).IsSuccess);
+        Assert.Equal(1, task.ReopenCount);
+
+        Assert.True(task.Reopen(UserId, Now.AddHours(2)).IsFailure);
+        Assert.Equal(1, task.ReopenCount);
+    }
+
     [Fact]
     public void Reopen_on_an_open_task_is_an_invalid_transition()
     {

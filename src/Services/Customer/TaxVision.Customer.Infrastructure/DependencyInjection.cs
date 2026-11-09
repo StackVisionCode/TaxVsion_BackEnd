@@ -74,6 +74,8 @@ public static class InfrastructureRegistration
         services.AddScoped<CsvCustomerImportReader>();
         services.AddScoped<XlsxCustomerImportReader>();
         services.AddScoped<ICustomerImportReaderFactory, CustomerImportReaderFactory>();
+        // BB-3: el cierre de la importación (Completed/Failed) y su aviso van en la misma transacción.
+        services.AddSingleton<ITransactionalUnitRunner, CustomerTransactionalUnitRunner>();
 
         // Archivo de import en CloudStorage (reemplaza CustomerImportFiles/IImportFileStore) —
         // sube directo a MinIO con credenciales propias; descarga/borrado via HTTP+M2M.

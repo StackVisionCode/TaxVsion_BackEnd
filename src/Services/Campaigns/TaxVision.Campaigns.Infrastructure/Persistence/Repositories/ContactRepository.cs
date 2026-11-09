@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
+using TaxVision.Campaigns.Domain;
 using TaxVision.Campaigns.Domain.Contacts;
 
 namespace TaxVision.Campaigns.Infrastructure.Persistence.Repositories;
@@ -20,7 +21,7 @@ public sealed class ContactRepository(CampaignsDbContext db) : IContactRepositor
         CancellationToken ct = default
     )
     {
-        var e = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+        var e = EmailAddress.Normalize(email);
         var p = string.IsNullOrWhiteSpace(phoneE164) ? null : phoneE164.Trim();
         if (e is null && p is null)
             return Task.FromResult<Contact?>(null);

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -39,8 +40,12 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         ILogger<StripePaymentAdapter> logger,
         IPaymentAppMetrics metrics
     )
+        : this(new StripeClient(options.Value.SecretKey), logger, metrics) { }
+
+    // Para pruebas: un StripeClient con HttpClient falso.
+    internal StripePaymentAdapter(StripeClient client, ILogger<StripePaymentAdapter> logger, IPaymentAppMetrics metrics)
     {
-        _client = new StripeClient(options.Value.SecretKey);
+        _client = client;
         _logger = logger;
         _metrics = metrics;
     }
@@ -219,7 +224,8 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                     ProviderChargeReference: ex.StripeError?.PaymentIntent?.Id ?? string.Empty,
                     Status: PaymentStatus.Failed,
                     FailureCode: ex.StripeError?.Code,
-                    FailureMessage: ex.StripeError?.Message ?? ex.Message
+                    FailureMessage: ex.StripeError?.Message ?? ex.Message,
+                    OutcomeUnknown: StripeChargeFailure.IsOutcomeUnknown(ex)
                 )
             );
         }
@@ -278,6 +284,41 @@ public sealed class StripePaymentAdapter : IPaymentProvider
             _logger.LogWarning(ex, "Stripe GetChargeStatus failed. Reference={Reference}", providerChargeReference);
             return Result.Failure<ChargeAuthorizationResult>(
                 new Error("Stripe.ChargeStatus.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
+        }
+    }
+
+    /// <summary>Search tarda hasta un minuto en ver un cargo nuevo: la reconciliación llega mucho después. Cada
+    /// reintento del dunning deja su propio PaymentIntent con la misma metadata.</summary>
+    public async Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    )
+    {
+        var service = new PaymentIntentService(_client);
+        try
+        {
+            var found = await service.SearchAsync(
+                new PaymentIntentSearchOptions { Query = $"metadata['saaSPaymentId']:'{saaSPaymentId:N}'" },
+                cancellationToken: ct
+            );
+            var intents = found.Data.OrderByDescending(intent => intent.Created).ToList();
+            var charge =
+                intents.FirstOrDefault(intent => intent.Status == "succeeded")
+                ?? intents.FirstOrDefault(intent => intent.Created >= createdAfterUtc);
+
+            return Result.Success(
+                charge is null
+                    ? new ChargeLookup(ChargeLookupOutcome.NotFound)
+                    : new ChargeLookup(ChargeLookupOutcome.Found, MapToChargeResult(charge))
+            );
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogWarning(ex, "Stripe charge search failed for SaaSPayment {SaaSPaymentId}.", saaSPaymentId);
+            return Result.Failure<ChargeLookup>(
+                new Error("Stripe.ChargeSearch.Failed", ex.StripeError?.Message ?? ex.Message)
             );
         }
     }
@@ -365,6 +406,7 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     )
     {
@@ -379,7 +421,8 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                     Amount = amount.AmountCents,
                     Metadata = new Dictionary<string, string> { ["reason"] = reason },
                 },
-                cancellationToken: ct
+                new RequestOptions { IdempotencyKey = idempotencyKey },
+                ct
             );
 
             var status = refund.Status == "succeeded" ? PaymentStatus.Refunded : PaymentStatus.Processing;
@@ -388,8 +431,14 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe Refund failed. Reference={Reference}", providerChargeReference);
+            // 5xx, sin respuesta o 429: se reintenta con la misma clave; un 4xx es rechazo.
+            var transient =
+                StripeChargeFailure.IsOutcomeUnknown(ex) || ex.HttpStatusCode == HttpStatusCode.TooManyRequests;
             return Result.Failure<RefundResult>(
-                new Error("Stripe.Refund.Failed", ex.StripeError?.Message ?? ex.Message)
+                new Error(
+                    transient ? "Stripe.Refund.Unavailable" : "Stripe.Refund.Failed",
+                    ex.StripeError?.Message ?? ex.Message
+                )
             );
         }
         finally

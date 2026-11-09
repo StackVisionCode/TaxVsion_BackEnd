@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ReconcilePendingSaaSPayment;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ReconcileStuckSaaSPayment;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using TaxVision.PaymentApp.Infrastructure.Providers.PayPal;
@@ -39,60 +41,83 @@ public sealed class PaymentAppSchedulingTests
     }
 
     [Fact]
-    public async Task Pending_reconciliation_marks_old_provider_not_found_payment_failed_without_retry()
+    public async Task PendingChargeReconciliationJob_invokes_one_command_per_stuck_payment()
     {
-        var nowUtc = DateTime.UtcNow;
-        var payment = CreateProcessingOnboardingPayment(nowUtc.AddHours(-1));
-        var repository = new StuckPaymentRepository([payment]);
+        var stuck = Enumerable
+            .Range(0, 3)
+            .Select(_ => CreateProcessingRenewalPayment(Guid.NewGuid(), DateTime.UtcNow.AddMinutes(-5)))
+            .ToList();
         var unitOfWork = new FakeUnitOfWork();
         var bus = new CapturingMessageBus();
         using var services = BuildReconciliationServices(
-            repository,
+            new StuckPaymentRepository(stuck),
             unitOfWork,
             bus,
             new StatusPaymentProvider(
-                Result.Failure<ChargeAuthorizationResult>(
-                    new Error("PayPal.ChargeStatus.NotFound", "PayPal returned HTTP 404.")
+                Result.Success(
+                    new ChargeAuthorizationResult("pi_done", PaymentStatus.Succeeded, null, null, null, null)
                 )
             )
         );
-        var job = CreateReconciliationJob(services);
 
-        await InvokeRunOnceAsync(job, services);
+        await InvokeRunOnceAsync(CreateReconciliationJob(services), services);
 
-        Assert.Equal(PaymentStatus.Failed, payment.Status);
-        Assert.Equal("PayPal.ChargeStatus.NotFound", payment.FailureCode);
-        Assert.Null(payment.NextRetryAtUtc);
-        Assert.Equal(1, unitOfWork.SaveCalls);
-
-        var published = Assert.Single(bus.Published.OfType<OnboardingPaymentFailedIntegrationEvent>());
-        Assert.Equal(payment.Id, published.SaaSPaymentId);
-        Assert.Equal("PayPal.ChargeStatus.NotFound", published.FailureCode);
+        // Un comando por pago, con su tenant; el job no publica ni guarda nada por su cuenta.
+        var invoked = bus.Invoked.Where(i => i.Message is ReconcileStuckSaaSPaymentCommand).ToList();
+        Assert.Equal(3, invoked.Count);
+        Assert.Equal(stuck.Select(p => p.TenantId.ToString()), invoked.Select(i => i.TenantId));
+        Assert.Equal(
+            stuck.Select(p => p.Id),
+            invoked.Select(i => ((ReconcileStuckSaaSPaymentCommand)i.Message).SaaSPaymentId)
+        );
+        Assert.Empty(bus.Published);
+        Assert.Equal(0, unitOfWork.SaveCalls);
+        Assert.All(stuck, payment => Assert.Equal(PaymentStatus.Processing, payment.Status));
     }
 
     [Fact]
-    public async Task Pending_reconciliation_keeps_recent_provider_not_found_payment_processing()
+    public async Task PendingChargeReconciliationJob_invokes_one_command_per_stale_pending_payment()
     {
-        var payment = CreateProcessingOnboardingPayment(DateTime.UtcNow);
-        var repository = new StuckPaymentRepository([payment]);
-        var unitOfWork = new FakeUnitOfWork();
+        var pending = CreateProcessingRenewalPayment(Guid.NewGuid(), DateTime.UtcNow.AddHours(-1));
         var bus = new CapturingMessageBus();
         using var services = BuildReconciliationServices(
-            repository,
-            unitOfWork,
+            new StuckPaymentRepository([], [pending]),
+            new FakeUnitOfWork(),
             bus,
-            new StatusPaymentProvider(
-                Result.Failure<ChargeAuthorizationResult>(
-                    new Error("PayPal.ChargeStatus.NotFound", "PayPal returned HTTP 404.")
-                )
-            )
+            new StatusPaymentProvider(Result.Failure<ChargeAuthorizationResult>(new Error("unused", "unused")))
         );
-        var job = CreateReconciliationJob(services);
 
-        await InvokeRunOnceAsync(job, services);
+        await InvokeRunOnceAsync(CreateReconciliationJob(services), services);
 
-        Assert.Equal(PaymentStatus.Processing, payment.Status);
-        Assert.Empty(bus.Published);
+        var (message, tenantId) = Assert.Single(bus.Invoked);
+        var command = Assert.IsType<ReconcilePendingSaaSPaymentCommand>(message);
+        Assert.Equal(pending.Id, command.SaaSPaymentId);
+        Assert.Equal(pending.TenantId.ToString(), tenantId);
+    }
+
+    private static SaaSPayment CreateProcessingRenewalPayment(Guid tenantId, DateTime nowUtc)
+    {
+        var payment = SaaSPayment
+            .Create(
+                tenantId,
+                IdempotencyKey.Create($"renewal-{Guid.NewGuid():N}").Value,
+                Money.Create(4900, "USD").Value,
+                SaaSPaymentType.SubscriptionRenewal,
+                Guid.NewGuid(),
+                PaymentProviderCode.PayPal,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                Guid.Empty,
+                nowUtc
+            )
+            .Value;
+        payment.MarkProcessing(
+            ExternalPaymentReference.Create(PaymentProviderCode.PayPal, $"pi_{Guid.NewGuid():N}").Value,
+            "processing",
+            null,
+            Guid.Empty,
+            nowUtc
+        );
+        return payment;
     }
 
     private static PendingChargeReconciliationJob CreateReconciliationJob(ServiceProvider services) =>
@@ -116,6 +141,11 @@ public sealed class PaymentAppSchedulingTests
             .AddSingleton<ICorrelationContext>(new FakeCorrelationContext())
             .AddSingleton<ITenantRegistry>(new FakeTenantRegistry("Acme Tax"))
             .AddSingleton<ILogger<PendingChargeReconciliationJob>>(NullLogger<PendingChargeReconciliationJob>.Instance)
+            .AddSingleton(
+                Microsoft.Extensions.Options.Options.Create(
+                    new TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentChargeOptions()
+                )
+            )
             .BuildServiceProvider();
 
     private static async Task InvokeRunOnceAsync(PendingChargeReconciliationJob job, ServiceProvider services)
@@ -127,30 +157,6 @@ public sealed class PaymentAppSchedulingTests
 
         var task = (Task)method.Invoke(job, [services, CancellationToken.None])!;
         await task;
-    }
-
-    private static SaaSPayment CreateProcessingOnboardingPayment(DateTime nowUtc)
-    {
-        var payment = SaaSPayment
-            .CreateForOnboarding(
-                Guid.Parse("11111111-1111-1111-1111-111111111111"),
-                IdempotencyKey.Create($"onboarding-{Guid.NewGuid():N}").Value,
-                Money.Create(4900, "USD").Value,
-                Guid.Parse("22222222-2222-2222-2222-222222222222"),
-                PaymentProviderCode.PayPal,
-                StatementDescriptor.Create("TAXVISION SAAS").Value,
-                nowUtc
-            )
-            .Value;
-
-        payment.RecordHostedCheckoutSession(
-            "ORDER-404",
-            ExternalPaymentReference.Create(PaymentProviderCode.PayPal, "ORDER-404").Value,
-            "https://paypal.example/checkout",
-            nowUtc
-        );
-
-        return payment;
     }
 
     private sealed class TimeoutThrowingJob(IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory)
@@ -207,13 +213,25 @@ public sealed class PaymentAppSchedulingTests
         public void StopApplication() => _stopping.Cancel();
     }
 
-    private sealed class StuckPaymentRepository(IReadOnlyList<SaaSPayment> stuck) : ISaaSPaymentRepository
+    private sealed class StuckPaymentRepository(
+        IReadOnlyList<SaaSPayment> stuck,
+        IReadOnlyList<SaaSPayment>? stalePending = null
+    ) : ISaaSPaymentRepository
     {
-        public Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
             DateTime cutoffUtc,
             int batchSize,
             CancellationToken ct = default
-        ) => Task.FromResult(stuck);
+        ) =>
+            Task.FromResult<IReadOnlyList<(Guid Id, Guid TenantId)>>(
+                (stalePending ?? []).Select(p => (p.Id, p.TenantId)).ToList()
+            );
+
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<(Guid Id, Guid TenantId)>>(stuck.Select(p => (p.Id, p.TenantId)).ToList());
 
         public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -298,77 +316,5 @@ public sealed class PaymentAppSchedulingTests
         ) => throw new NotSupportedException();
 
         public Task AddAsync(SaaSPayment payment, CancellationToken ct = default) => throw new NotSupportedException();
-    }
-
-    private sealed class StatusPaymentProvider(Result<ChargeAuthorizationResult> result) : IPaymentProvider
-    {
-        public PaymentProviderCode Code => PaymentProviderCode.PayPal;
-        public ProviderCapabilities Capabilities => PayPalCapabilities.Instance;
-
-        public Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
-            string providerChargeReference,
-            CancellationToken ct
-        ) => Task.FromResult(result);
-
-        public Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
-            string providerChargeReference,
-            Money amount,
-            CancellationToken ct
-        ) => Task.FromResult(result);
-
-        public Task<Result<ProviderCustomerToken>> GetOrCreateCustomerAsync(
-            Guid tenantId,
-            string email,
-            string? name,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
-            ChargeAuthorizationRequest request,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<CaptureResult>> CaptureAsync(
-            string providerChargeReference,
-            Money amount,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<RefundResult>> RefundAsync(
-            string providerChargeReference,
-            Money amount,
-            string reason,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-            ProviderWebhookVerificationRequest request,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(
-            string rawPayload,
-            string eventType,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(
-            ProviderCustomerToken customer,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
-            ProviderCustomerToken customer,
-            string paymentMethodReference,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result> DetachPaymentMethodAsync(string paymentMethodReference, CancellationToken ct) =>
-            throw new NotSupportedException();
-
-        public Task<Result<HostedCheckoutSessionResult>> CreateHostedCheckoutSessionAsync(
-            HostedCheckoutSessionRequest request,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
     }
 }

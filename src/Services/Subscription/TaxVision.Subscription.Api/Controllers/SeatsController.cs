@@ -85,18 +85,39 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
 
     public sealed record PurchaseSeatsRequest(string SeatType, int Quantity, bool AutoRenew);
 
+    private const int MaxIdempotencyKeyLength = 64;
+
     [HttpPost("purchase")]
     [HasPermission(SubscriptionPermissions.SeatsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("subscription.l.seat_purchase")]
     [ProducesResponseType<IReadOnlyList<Guid>>(StatusCodes.Status201Created)]
-    public async Task<IActionResult> Purchase(PurchaseSeatsRequest request, CancellationToken ct)
+    public async Task<IActionResult> Purchase(
+        PurchaseSeatsRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CancellationToken ct
+    )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        if (idempotencyKey is { Length: > MaxIdempotencyKeyLength })
+            return BadRequest(
+                new Error(
+                    "Seat.InvalidIdempotencyKey",
+                    $"Idempotency-Key must be at most {MaxIdempotencyKeyLength} characters."
+                )
+            );
+
         var result = await bus.InvokeAsync<Result<IReadOnlyList<Guid>>>(
-            new PurchaseSeatsCommand(tenantId, request.SeatType, request.Quantity, request.AutoRenew, userId),
+            new PurchaseSeatsCommand(
+                tenantId,
+                request.SeatType,
+                request.Quantity,
+                request.AutoRenew,
+                userId,
+                idempotencyKey
+            ),
             ct
         );
 

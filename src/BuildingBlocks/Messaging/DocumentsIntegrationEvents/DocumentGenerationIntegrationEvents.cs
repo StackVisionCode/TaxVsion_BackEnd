@@ -1,7 +1,10 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.DocumentsIntegrationEvents;
 
 /// <summary>Un servicio pide una generación de forma totalmente asíncrona (sin M2M). Documents lo
 /// consume. Idempotente por la clave del payload. Transporta solo referencias/datos, nunca bytes.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.DocumentsIntegrationEvents.DocumentGenerationRequestedIntegrationEvent")]
 public sealed record DocumentGenerationRequestedIntegrationEvent : DocumentsIntegrationEvent
 {
     public override string EventType => "documents.generation.requested";
@@ -19,6 +22,7 @@ public sealed record DocumentGenerationRequestedIntegrationEvent : DocumentsInte
 }
 
 /// <summary>Documents empezó a procesar una generación.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.DocumentsIntegrationEvents.DocumentGenerationStartedIntegrationEvent")]
 public sealed record DocumentGenerationStartedIntegrationEvent : DocumentsIntegrationEvent
 {
     public override string EventType => "documents.generation.started";
@@ -28,6 +32,7 @@ public sealed record DocumentGenerationStartedIntegrationEvent : DocumentsIntegr
 
 /// <summary>La generación terminó y el archivo quedó en CloudStorage. El consumidor (p.ej. Billing)
 /// reacciona con el FileId — nunca recibe bytes.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.DocumentsIntegrationEvents.DocumentGenerationCompletedIntegrationEvent")]
 public sealed record DocumentGenerationCompletedIntegrationEvent : DocumentsIntegrationEvent
 {
     public override string EventType => "documents.generation.completed";
@@ -45,6 +50,9 @@ public sealed record DocumentGenerationCompletedIntegrationEvent : DocumentsInte
     public required string ContentType { get; init; }
     public required long SizeBytes { get; init; }
     public string? ContentHash { get; init; }
+
+    /// <summary>BIL-7: la clave con que se pidió, para saber qué versión llegó. Aditivo; nulo si el emisor no la copia.</summary>
+    public string? IdempotencyKey { get; init; }
 
     /// <summary>P-18: copias generadas (además de la principal). Aditivo; vacío si no hubo copia de firma.</summary>
     public IReadOnlyList<DocumentGenerationCopy> Copies { get; init; } = [];
@@ -72,6 +80,7 @@ public sealed record DocumentSignatureAnchor
 }
 
 /// <summary>La generación falló de forma terminal.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.DocumentsIntegrationEvents.DocumentGenerationFailedIntegrationEvent")]
 public sealed record DocumentGenerationFailedIntegrationEvent : DocumentsIntegrationEvent
 {
     public override string EventType => "documents.generation.failed";
@@ -88,6 +97,7 @@ public sealed record DocumentGenerationFailedIntegrationEvent : DocumentsIntegra
 }
 
 /// <summary>El archivo generado quedó almacenado (correlación con CloudStorage FileAvailable).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.DocumentsIntegrationEvents.DocumentStoredIntegrationEvent")]
 public sealed record DocumentStoredIntegrationEvent : DocumentsIntegrationEvent
 {
     public override string EventType => "documents.stored";

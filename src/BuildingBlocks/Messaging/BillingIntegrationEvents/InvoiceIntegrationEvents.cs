@@ -1,6 +1,9 @@
-﻿namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
+﻿using Wolverine.Attributes;
+
+namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
 
 /// <summary>Publicado cuando una factura se emite (Draft → Issued).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceIssuedIntegrationEvent")]
 public sealed record InvoiceIssuedIntegrationEvent : BillingIntegrationEvent
 {
     public override string EventType => "billing.invoice.issued";
@@ -13,6 +16,7 @@ public sealed record InvoiceIssuedIntegrationEvent : BillingIntegrationEvent
 }
 
 /// <summary>Publicado cuando una factura queda totalmente pagada.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaidIntegrationEvent")]
 public sealed record InvoicePaidIntegrationEvent : BillingIntegrationEvent
 {
     public override string EventType => "billing.invoice.paid";
@@ -28,6 +32,7 @@ public sealed record InvoicePaidIntegrationEvent : BillingIntegrationEvent
 }
 
 /// <summary>Publicado cuando se aplica un pago parcial.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePartiallyPaidIntegrationEvent")]
 public sealed record InvoicePartiallyPaidIntegrationEvent : BillingIntegrationEvent
 {
     public override string EventType => "billing.invoice.partially_paid";
@@ -39,6 +44,7 @@ public sealed record InvoicePartiallyPaidIntegrationEvent : BillingIntegrationEv
 }
 
 /// <summary>Publicado cuando un intento de cobro asociado a una factura falla.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaymentFailedIntegrationEvent")]
 public sealed record InvoicePaymentFailedIntegrationEvent : BillingIntegrationEvent
 {
     public override string EventType => "billing.invoice.payment_failed";
@@ -49,6 +55,7 @@ public sealed record InvoicePaymentFailedIntegrationEvent : BillingIntegrationEv
 }
 
 /// <summary>Publicado cuando se registra un reembolso sobre una factura pagada.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceRefundedIntegrationEvent")]
 public sealed record InvoiceRefundedIntegrationEvent : BillingIntegrationEvent
 {
     public override string EventType => "billing.invoice.refunded";
@@ -67,6 +74,7 @@ public sealed record InvoiceRefundedIntegrationEvent : BillingIntegrationEvent
 /// <para>Antes no existía: el CRM componía el HTML a mano y lo mandaba a
 /// <c>/notifications/email/send</c>, por eso llegaba sin marca ni formato.</para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent")]
 public sealed record InvoiceSentToCustomerIntegrationEvent : BillingIntegrationEvent
 {
     public override string EventType => "billing.invoice_sent.v1";
@@ -96,6 +104,7 @@ public sealed record InvoiceSentToCustomerIntegrationEvent : BillingIntegrationE
 }
 
 /// <summary>Publicado cuando una factura se anula.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceVoidedIntegrationEvent")]
 public sealed record InvoiceVoidedIntegrationEvent : BillingIntegrationEvent
 {
     public override string EventType => "billing.invoice.voided";
@@ -104,7 +113,23 @@ public sealed record InvoiceVoidedIntegrationEvent : BillingIntegrationEvent
     public string? Reason { get; init; }
 }
 
+/// <summary>Un cobro confirmado no se pudo aplicar a una factura; queda como UnappliedPayment para la oficina.</summary>
+[MessageIdentity("billing.invoice.payment_rejected.v1")]
+public sealed record InvoicePaymentRejectedIntegrationEvent : BillingIntegrationEvent
+{
+    public override string EventType => "billing.invoice.payment_rejected";
+    public required Guid UnappliedPaymentId { get; init; }
+    public required Guid TenantPaymentId { get; init; }
+    public Guid? InvoiceId { get; init; }
+    public required string ExternalReferenceId { get; init; }
+    public required long AmountCents { get; init; }
+    public required string Currency { get; init; }
+    public required string Reason { get; init; }
+    public required DateTime PaidAtUtc { get; init; }
+}
+
 /// <summary>Publicado cuando se emite un comprobante de pago. Notification lo consume para el email.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.ReceiptIssuedIntegrationEvent")]
 public sealed record ReceiptIssuedIntegrationEvent : BillingIntegrationEvent
 {
     public override string EventType => "billing.receipt.issued";

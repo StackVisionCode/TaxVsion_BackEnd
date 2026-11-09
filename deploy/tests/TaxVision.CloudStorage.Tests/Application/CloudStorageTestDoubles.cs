@@ -32,6 +32,19 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
     public Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>
         Task.FromResult(_byId.TryGetValue(fileId, out var file) && file.TenantId == tenantId ? file : null);
 
+    public Task<IReadOnlyList<QuotaFootprintInput>> ListQuotaInputsAsync(Guid tenantId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<QuotaFootprintInput>>(
+            _byId
+                .Values.Where(file => file.TenantId == tenantId)
+                .Select(file => new QuotaFootprintInput(
+                    file.Status,
+                    file.StatusBeforeSoftDelete,
+                    file.ScanReport,
+                    file.SizeBytes
+                ))
+                .ToList()
+        );
+
     public int LockedReads { get; private set; }
 
     public Task<FileObject?> GetForUpdateAsync(Guid tenantId, Guid fileId, CancellationToken ct)
@@ -82,6 +95,18 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
 
     public Task<IReadOnlyList<FileObject>> ListExpiredUploadsAsync(DateTime nowUtc, int take, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<FileObject>>([]);
+
+    public Task<IReadOnlyList<FileObject>> ListStuckScansAsync(DateTime olderThanUtc, int take, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<FileObject>>(
+            _byId
+                .Values.Where(file =>
+                    file.Status is FileStatus.PendingScan or FileStatus.Scanning
+                    && (file.ScanQueuedAtUtc ?? file.CreatedAtUtc) <= olderThanUtc
+                )
+                .OrderBy(file => file.ScanQueuedAtUtc ?? file.CreatedAtUtc)
+                .Take(take)
+                .ToList()
+        );
 
     public Task<IReadOnlyList<Guid>> DistinctTenantsWithUnfiledFilesAsync(
         IReadOnlyCollection<FolderType> navigableTypes,
@@ -339,6 +364,32 @@ internal sealed class FakeFolderRepository : IFolderRepository
     public Task<Folder?> GetAsync(Guid tenantId, Guid folderId, CancellationToken ct) =>
         Task.FromResult(_byId.TryGetValue(folderId, out var folder) && folder.TenantId == tenantId ? folder : null);
 
+    public List<Guid> LockedReads { get; } = [];
+
+    public Task<Folder?> GetForUpdateAsync(Guid tenantId, Guid folderId, CancellationToken ct)
+    {
+        LockedReads.Add(folderId);
+        return GetAsync(tenantId, folderId, ct);
+    }
+
+    public Task<Folder?> GetByNameUnderParentAsync(
+        Guid tenantId,
+        Guid? parentFolderId,
+        string name,
+        OwnerType ownerType,
+        Guid? ownerId,
+        CancellationToken ct
+    ) =>
+        Task.FromResult(
+            _byId.Values.FirstOrDefault(f =>
+                f.TenantId == tenantId
+                && f.ParentFolderId == parentFolderId
+                && f.Name == name
+                && f.OwnerType == ownerType
+                && f.OwnerId == ownerId
+            )
+        );
+
     private IEnumerable<Folder> Subfolders(
         Guid tenantId,
         Guid? parentFolderId,
@@ -516,6 +567,8 @@ internal sealed class FakeStorageLimitRepository : IStorageLimitRepository
 
     public Task<TenantStorageLimit?> GetAsync(Guid tenantId, CancellationToken ct) =>
         Task.FromResult(_byTenant.GetValueOrDefault(tenantId));
+
+    public Task<TenantStorageLimit?> GetForUpdateAsync(Guid tenantId, CancellationToken ct) => GetAsync(tenantId, ct);
 }
 
 /// <summary>Fase C3 — resuelve por hash igual que la implementacion real (byte[] no tiene equality estructural, se compara con SequenceEqual).</summary>
@@ -738,8 +791,13 @@ internal sealed class FakeObjectStorage : IObjectStorage
     /// <summary>Null (el default) = comportamiento previo, revienta si algun test la llama sin haberla seteado antes.</summary>
     public long? SizeToReturn { get; set; }
 
+    /// <summary>Tamaño por objeto; gana sobre <see cref="SizeToReturn"/>.</summary>
+    public Dictionary<(string Bucket, string ObjectKey), long> ObjectSizes { get; } = [];
+
     public Task<long> GetSizeAsync(string bucket, string objectKey, CancellationToken ct) =>
-        SizeToReturn is { } size ? Task.FromResult(size) : throw new NotImplementedException();
+        ObjectSizes.TryGetValue((bucket, objectKey), out var known) ? Task.FromResult(known)
+        : SizeToReturn is { } size ? Task.FromResult(size)
+        : throw new NotImplementedException();
 
     /// <summary>Seedable para probar el guard de idempotencia de SaveFileFromSourceHandler (destino ya copiado en un intento anterior).</summary>
     public HashSet<(string Bucket, string ObjectKey)> Existing { get; } = [];
@@ -758,9 +816,13 @@ internal sealed class FakeObjectStorage : IObjectStorage
         await destination.WriteAsync(DownloadContent, ct);
     }
 
+    /// <summary>Copias y borrados en orden ("copy:origen->destino", "delete:bucket").</summary>
+    public List<string> Operations { get; } = [];
+
     public Task CopyAsync(string sourceBucket, string objectKey, string destinationBucket, CancellationToken ct)
     {
         Copied.Add((sourceBucket, objectKey, destinationBucket, objectKey));
+        Operations.Add($"copy:{sourceBucket}->{destinationBucket}");
         return Task.CompletedTask;
     }
 
@@ -780,12 +842,18 @@ internal sealed class FakeObjectStorage : IObjectStorage
     )
     {
         Copied.Add((sourceBucket, sourceObjectKey, destinationBucket, destinationObjectKey));
+        Operations.Add($"copy:{sourceBucket}->{destinationBucket}");
         return Task.CompletedTask;
     }
 
+    public bool ThrowOnDelete { get; set; }
+
     public Task DeleteAsync(string bucket, string objectKey, CancellationToken ct)
     {
+        if (ThrowOnDelete)
+            throw new InvalidOperationException("Simulated storage outage.");
         Deleted.Add((bucket, objectKey));
+        Operations.Add($"delete:{bucket}");
         return Task.CompletedTask;
     }
 
@@ -913,9 +981,14 @@ internal sealed class FakeUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
     /// </summary>
     public bool ThrowConflictOnNextSave { get; set; }
 
+    /// <summary>Simula que el guardado falla cuando se cumple la condición (p. ej. el último SaveChanges).</summary>
+    public Func<bool>? FailSaveWhen { get; set; }
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         SaveChangesCallCount++;
+        if (FailSaveWhen?.Invoke() == true)
+            throw new InvalidOperationException("Simulated save failure.");
         if (ThrowConflictOnNextSave)
         {
             ThrowConflictOnNextSave = false;
@@ -926,9 +999,26 @@ internal sealed class FakeUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
 }
 
 /// <summary>Fake minimo de IMessageBus — solo captura lo publicado via PublishAsync; el resto lanza si se usa.</summary>
+/// <summary>Turno de escaneo en memoria: los archivos de <see cref="ScansInProgress"/> ya los tiene otro.</summary>
+internal sealed class FakeScanClaims : IScanClaims
+{
+    public HashSet<Guid> ScansInProgress { get; } = [];
+
+    public Task<IAsyncDisposable?> TryClaimAsync(Guid fileId, CancellationToken ct) =>
+        Task.FromResult<IAsyncDisposable?>(ScansInProgress.Contains(fileId) ? null : new Claim());
+
+    private sealed class Claim : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}
+
 internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
+
+    /// <summary>Atiende <c>InvokeAsync</c> (p. ej. con el handler real del mensaje); sin esto, revienta.</summary>
+    public Func<object, Task>? OnInvoke { get; set; }
 
     /// <summary>Se llama al publicar (p. ej. para comprobar que ya se guardó).</summary>
     public Action<object>? OnPublish { get; init; }
@@ -978,7 +1068,7 @@ internal sealed class FakeMessageBus : IMessageBus
     }
 
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+        OnInvoke is { } invoke ? invoke(message) : throw new NotImplementedException();
 
     public Task InvokeAsync(
         object message,

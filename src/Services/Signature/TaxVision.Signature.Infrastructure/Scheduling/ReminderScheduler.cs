@@ -1,6 +1,6 @@
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -8,7 +8,7 @@ using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
-using Wolverine;
+using TaxVision.Signature.Infrastructure.Persistence;
 
 namespace TaxVision.Signature.Infrastructure.Scheduling;
 
@@ -18,11 +18,13 @@ namespace TaxVision.Signature.Infrastructure.Scheduling;
 /// preparador, con default de tenant). Emite un <c>SignatureRequestReminderDueIntegrationEvent</c> por
 /// firmante pendiente (Notification hace el dispatch email/SMS). La expiración corta la serie y hay un
 /// cap de seguridad; la decisión de "a quién le toca" vive en el dominio (<c>IsReminderDue</c>) y se
-/// refleja en la query del repositorio.
+/// refleja en la query del repositorio. Cada solicitud va en su propia unidad (BB-3): el contador y los
+/// avisos se confirman juntos.
 /// </summary>
 public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<ReminderScheduler> logger)
     : BackgroundService
 {
+    private const string LockKey = "signature:reminder-scheduler";
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(30);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -59,42 +61,69 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
         }
     }
 
-    private async Task RunOnceAsync(CancellationToken ct)
+    internal async Task RunOnceAsync(CancellationToken ct)
     {
-        using var scope = serviceProvider.CreateScope();
-        var repository = scope.ServiceProvider.GetRequiredService<ISignatureRequestRepository>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var tokenService = scope.ServiceProvider.GetRequiredService<ISigningTokenService>();
-        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-        var platform = scope.ServiceProvider.GetRequiredService<ISignaturePlatformSettingsProvider>();
+        // SIG-15: una sola réplica por pasada; la otra sale y retoma en su próximo tick.
+        await using var handle = await serviceProvider
+            .GetRequiredService<IDistributedLock>()
+            .AcquireAsync(LockKey, Interval, ct);
+        if (!handle.IsAcquired)
+            return;
 
         var now = DateTime.UtcNow;
-        var maxReminders = (await platform.GetAsync(ct)).MaxRemindersPerRequest;
-        var candidates = await repository.ListReminderCandidatesAsync(now, maxReminders, ct);
+        IReadOnlyList<ReminderCandidate> candidates;
+        using (var scope = serviceProvider.CreateScope())
+        {
+            var platform = scope.ServiceProvider.GetRequiredService<ISignaturePlatformSettingsProvider>();
+            var maxReminders = (await platform.GetAsync(ct)).MaxRemindersPerRequest;
+            candidates = (
+                await scope
+                    .ServiceProvider.GetRequiredService<ISignatureRequestRepository>()
+                    .ListReminderCandidatesAsync(now, maxReminders, ct)
+            )
+                .Select(r => new ReminderCandidate(r.TenantId, r.Id))
+                .ToList();
+        }
         if (candidates.Count == 0)
             return;
 
-        var events = new List<SignatureRequestReminderDueIntegrationEvent>();
-        foreach (var request in candidates)
-        {
-            var recorded = request.RecordReminderDispatched(now);
-            if (recorded.IsFailure)
-                continue;
-
-            foreach (var signer in PendingSigners(request))
-                events.Add(BuildReminderEvent(request, signer, tokenService));
-        }
-
-        await unitOfWork.SaveChangesAsync(ct);
-        foreach (var evt in events)
-            await bus.PublishAsync(evt);
-
+        var summary = await DispatchAsync(candidates, now, ct);
         logger.LogInformation(
-            "ReminderScheduler emitted {Count} reminder events over {Requests} requests.",
-            events.Count,
-            candidates.Count
+            "ReminderScheduler recorded reminders on {Committed} of {Requests} requests ({Conflicts} modified concurrently, {Failed} failed).",
+            summary.Committed,
+            candidates.Count,
+            summary.Conflicts,
+            summary.Failed
         );
     }
+
+    internal sealed record ReminderCandidate(Guid TenantId, Guid SignatureRequestId);
+
+    // SIG-BB3: una unidad por solicitud; un conflicto o un fallo no arrastra a las demás.
+    internal Task<JobBatchSummary> DispatchAsync(
+        IReadOnlyList<ReminderCandidate> candidates,
+        DateTime now,
+        CancellationToken ct
+    ) =>
+        TransactionalJobUnit.RunEachAsync<ReminderCandidate, SignatureDbContext>(
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            candidates,
+            async (candidate, unit, token) =>
+            {
+                var request = await unit
+                    .Services.GetRequiredService<ISignatureRequestRepository>()
+                    .GetByIdAsync(candidate.TenantId, candidate.SignatureRequestId, token);
+                if (request is null || request.RecordReminderDispatched(now).IsFailure)
+                    return false;
+
+                var tokenService = unit.Services.GetRequiredService<ISigningTokenService>();
+                foreach (var signer in PendingSigners(request))
+                    await unit.PublishAsync(BuildReminderEvent(request, signer, tokenService));
+                return true;
+            },
+            logger,
+            ct
+        );
 
     // ------------------------------------------------------------------
     // Métodos privados: cada uno una responsabilidad

@@ -10,5 +10,9 @@ namespace TaxVision.Notification.Application.Abstractions;
 /// </summary>
 public interface INotificationLogQueryRepository
 {
-    Task<NotificationLog?> FindWithAttemptsAsync(Guid notificationLogId, CancellationToken ct);
+    /// <summary>El log solo se devuelve si es del tenant del callback.</summary>
+    Task<NotificationLog?> FindWithAttemptsAsync(Guid tenantId, Guid notificationLogId, CancellationToken ct);
+
+    /// <summary>Existe con cualquier tenant: distingue un callback de otro tenant de un id desconocido.</summary>
+    Task<bool> ExistsAsync(Guid notificationLogId, CancellationToken ct);
 }

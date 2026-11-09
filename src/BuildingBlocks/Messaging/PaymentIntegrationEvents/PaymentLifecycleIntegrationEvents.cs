@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentIntegrationEvents;
 
 /// <summary>
@@ -26,6 +28,7 @@ public abstract record PaymentLifecycleIntegrationEvent : IntegrationEvent
     public string? PromotionSnapshotHash { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.PaymentIntegrationEvents.PaymentSucceededIntegrationEvent")]
 public sealed record PaymentSucceededIntegrationEvent : PaymentLifecycleIntegrationEvent
 {
     public override string EventType => "payments.payment_succeeded";
@@ -33,6 +36,7 @@ public sealed record PaymentSucceededIntegrationEvent : PaymentLifecycleIntegrat
     public required DateTime PaidAtUtc { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.PaymentIntegrationEvents.PaymentFailedIntegrationEvent")]
 public sealed record PaymentFailedIntegrationEvent : PaymentLifecycleIntegrationEvent
 {
     public override string EventType => "payments.payment_failed";
@@ -41,6 +45,7 @@ public sealed record PaymentFailedIntegrationEvent : PaymentLifecycleIntegration
     public required DateTime FailedAtUtc { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.PaymentIntegrationEvents.PaymentCancelledIntegrationEvent")]
 public sealed record PaymentCancelledIntegrationEvent : PaymentLifecycleIntegrationEvent
 {
     public override string EventType => "payments.payment_cancelled";
@@ -52,6 +57,7 @@ public sealed record PaymentCancelledIntegrationEvent : PaymentLifecycleIntegrat
 /// RefundDeltaAmountCents representa este movimiento y
 /// CumulativeRefundedAmountCents el total autoritativo del pago.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentIntegrationEvents.PaymentRefundedIntegrationEvent")]
 public sealed record PaymentRefundedIntegrationEvent : PaymentLifecycleIntegrationEvent
 {
     public override string EventType => "payments.payment_refunded";
@@ -65,6 +71,7 @@ public sealed record PaymentRefundedIntegrationEvent : PaymentLifecycleIntegrati
 /// DisputeVersion permite ignorar redeliveries y cambios fuera de orden sin
 /// convertir a Growth en owner del chargeback.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentIntegrationEvents.PaymentChargebackChangedIntegrationEvent")]
 public sealed record PaymentChargebackChangedIntegrationEvent : PaymentLifecycleIntegrationEvent
 {
     public override string EventType => "payments.chargeback_changed";

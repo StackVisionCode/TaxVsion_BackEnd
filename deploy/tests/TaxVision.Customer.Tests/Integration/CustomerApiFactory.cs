@@ -1,7 +1,11 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.Customer.Tests.Integration;
 
@@ -22,6 +26,8 @@ public sealed class CustomerApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        // BB-10: base temporal; con la local compartiría los sobres de la flota.
+        builder.UseSetting("ConnectionStrings:Default", CustomerIntegrationDatabase.ConnectionString);
         builder.ConfigureAppConfiguration(
             (_, config) =>
                 config.AddInMemoryCollection(
@@ -35,5 +41,17 @@ public sealed class CustomerApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+        // Sin transportes externos el host de prueba no le roba mensajes a la cola del Customer local, y sin
+        // jobs propios no corre contra la base de desarrollo. MediatorOnly no sirve: los eventos de dominio van
+        // a una cola local durable y cada alta fallaría.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            foreach (var hosted in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
+            {
+                if (hosted.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal) == true)
+                    services.Remove(hosted);
+            }
+        });
     }
 }

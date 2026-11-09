@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 /// Portal). Scribe, Documents y Signature lo proyectan; lo que ve el cliente usa el del Portal y cae
 /// al del CRM si no hay.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TenantIntegrationEvents.TenantLogoUpdatedIntegrationEvent")]
 public sealed record TenantLogoUpdatedIntegrationEvent : IntegrationEvent
 {
     public required Guid CloudStorageFileId { get; init; }

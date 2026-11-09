@@ -1,5 +1,4 @@
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Users;
@@ -98,25 +97,25 @@ public sealed class LoginHandlerTests
         string password,
         UserAccountKind? accountKind,
         string email = Email
-    ) =>
-        LoginHandler.Handle(
-            new LoginCommand(world.Tenant.Id, email, password, AccountKind: accountKind),
-            world.Users,
-            world.Tenants,
-            new PrefixedPasswordHasher(),
-            world.Roles,
+    )
+    {
+        var steps = LoginStepsFixture.Build(
+            world,
+            new NoUserLoginLock(),
             new NoMfaRepository(),
-            world.Issuer,
-            world.Sessions,
             new NoopSessionTakeoverTicketStore(),
-            world.TokenService,
             new PermissiveLoginThrottler(),
-            world.Audit,
-            world.Request,
-            world.Correlation,
+            new MfaOptions { Enforced = false }
+        );
+        return LoginHandler.Handle(
+            new LoginCommand(world.Tenant.Id, email, password, AccountKind: accountKind),
+            steps.Discovery,
+            steps.Password,
+            steps.Mfa,
+            steps.Session,
             world.UnitOfWork,
             new FakeMessageBus(),
-            Options.Create(new MfaOptions { Enforced = false }),
             CancellationToken.None
         );
+    }
 }

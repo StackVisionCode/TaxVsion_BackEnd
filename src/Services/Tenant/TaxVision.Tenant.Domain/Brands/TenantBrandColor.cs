@@ -18,7 +18,13 @@ public sealed class TenantBrandColor : TenantEntity
     public HexColor Color { get; private set; } = default!;
     public DateTime UpdatedAtUtc { get; private set; }
 
-    internal static TenantBrandColor Create(Guid tenantId, Guid brandId, BrandColorToken token, HexColor color)
+    internal static TenantBrandColor Create(
+        Guid tenantId,
+        Guid brandId,
+        BrandColorToken token,
+        HexColor color,
+        DateTime nowUtc
+    )
     {
         var entity = new TenantBrandColor
         {
@@ -26,15 +32,15 @@ public sealed class TenantBrandColor : TenantEntity
             TenantBrandId = brandId,
             Token = token,
             Color = color,
-            UpdatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = nowUtc,
         };
         entity.SetTenant(tenantId);
         return entity;
     }
 
-    internal void Update(HexColor color)
+    internal void Update(HexColor color, DateTime nowUtc)
     {
         Color = color;
-        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedAtUtc = nowUtc;
     }
 }

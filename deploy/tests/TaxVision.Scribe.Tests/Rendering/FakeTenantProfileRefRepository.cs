@@ -21,7 +21,7 @@ internal sealed class FakeTenantProfileRefRepository : ITenantProfileRefReposito
         return Task.FromResult<TenantProfileRef?>(row);
     }
 
-    public Task UpsertAsync(
+    public Task AddIfMissingAsync(
         Guid tenantId,
         string name,
         string subDomain,

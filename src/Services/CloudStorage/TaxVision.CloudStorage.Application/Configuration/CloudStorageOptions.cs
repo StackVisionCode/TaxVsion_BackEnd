@@ -19,6 +19,12 @@ public sealed class CloudStorageOptions
     /// </summary>
     public bool AutoSystemFolders { get; set; } = true;
 
+    /// <summary>
+    /// CST-15: minutos desde el evento en que una reasignación espera a que el archivo se catalogue. Tiene que
+    /// cubrir las esperas de <c>Messaging:DependencyNotReady</c>, para que lo fresco termine en la cola de errores.
+    /// </summary>
+    public int ReassignOwnerFileWaitMinutes { get; set; } = 60;
+
     /// <summary>Cuota del tenant cuando su plan aún no trae <c>storage.max_bytes</c>.</summary>
     public long DefaultStorageQuotaBytes { get; set; } = 10L * 1024 * 1024 * 1024;
 
@@ -28,4 +34,29 @@ public sealed class CloudStorageOptions
     /// ser mas chica) — no bajar de eso o InitiateMultipartUpload/UploadPart fallan.
     /// </summary>
     public long MultipartPartSizeBytes { get; set; } = 5L * 1024 * 1024;
+
+    // Rescate de escaneos atascados (CST-1).
+    public bool StuckScanRescueEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Escaneos a la vez en esta instancia (CST-16). Cada uno ocupa una conexión de ClamAV, un archivo temporal
+    /// y un turno de ContentScanner: no conviene pasar de su <c>MaxConcurrentScans</c>.
+    /// </summary>
+    public int ScanParallelism { get; set; } = 2;
+
+    /// <summary>Antigüedad mínima en PendingScan/Scanning; mayor que el peor vaciado de la cola.</summary>
+    public int StuckScanThresholdMinutes { get; set; } = 120;
+
+    public int StuckScanRescueIntervalMinutes { get; set; } = 15;
+
+    public int StuckScanRescueBatchSize { get; set; } = 100;
+
+    /// <summary>Reencolados antes de marcar el archivo ScanFailed con motivo scan_stalled.</summary>
+    public int MaxScanAttempts { get; set; } = 3;
+
+    /// <summary>
+    /// D-CST-5/CST-18: días que la regla de lifecycle de cuarentena conserva la evidencia bajo purged/,
+    /// contados desde la purga.
+    /// </summary>
+    public int QuarantinePurgedRetentionDays { get; set; } = 30;
 }

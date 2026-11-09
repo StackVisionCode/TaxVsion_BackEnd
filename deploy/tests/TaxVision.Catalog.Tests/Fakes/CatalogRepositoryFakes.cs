@@ -69,6 +69,28 @@ internal sealed class FakeCategoryRepository : ICategoryRepository
     public Task<bool> HasChildrenAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default) =>
         Task.FromResult(HasChildrenResult);
 
+    public Task<IReadOnlyList<Guid>> GetAncestorIdsAsync(
+        Guid tenantId,
+        Guid categoryId,
+        int maxDepth,
+        CancellationToken ct = default
+    )
+    {
+        var ancestors = new List<Guid>();
+        var current = categoryId;
+        while (ancestors.Count < maxDepth)
+        {
+            var id = current;
+            var parent = Store.Concat(Added).FirstOrDefault(c => c.TenantId == tenantId && c.Id == id)?.ParentCategoryId;
+            if (parent is not { } parentId)
+                break;
+
+            ancestors.Add(parentId);
+            current = parentId;
+        }
+        return Task.FromResult<IReadOnlyList<Guid>>(ancestors);
+    }
+
     public Task<IReadOnlyList<Category>> ListAsync(Guid tenantId, bool activeOnly, CancellationToken ct = default)
     {
         var q = Store.Concat(Added).Where(c => c.TenantId == tenantId && !c.IsDeleted);

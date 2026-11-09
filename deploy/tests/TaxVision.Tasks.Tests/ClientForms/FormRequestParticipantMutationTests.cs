@@ -101,7 +101,7 @@ public sealed class FormRequestParticipantMutationTests
         var version = Version();
         var request = CustomerRequest(version);
         var attachment = request
-            .RegisterAttachment(
+            .Files.Register(
                 new FormAnswerAddress(FileComponent, null),
                 Guid.NewGuid(),
                 "return.pdf",

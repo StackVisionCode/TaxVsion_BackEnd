@@ -14,10 +14,8 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Repositories;
 /// </summary>
 public sealed class EmailTemplateRepository(ScribeDbContext dbContext) : IEmailTemplateRepository
 {
-    // IgnoreQueryFilters: llamado exclusivamente desde el pipeline de render M2M
-    // (FluidTemplateRenderer ← RenderController, ActorType.Service — sin claim tenant_id, así que
-    // el ITenantContext ambiente nunca refleja el tenant real del render). El aislamiento acá lo da
-    // el parámetro tenantId explícito de la query, no el filtro global (RBAC Fase 5).
+    // IgnoreQueryFilters: el aislamiento lo da el parámetro tenantId explícito de la query, no el filtro
+    // global (RBAC Fase 5). Lo usan los comandos; el render lee por IPublishedTemplateReader (SCR-09).
     public async Task<Result<EmailTemplate>> GetByKeyAsync(
         TemplateKey templateKey,
         Guid? tenantId,

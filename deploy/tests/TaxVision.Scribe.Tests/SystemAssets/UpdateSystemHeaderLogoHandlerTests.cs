@@ -14,6 +14,35 @@ public sealed class UpdateSystemHeaderLogoHandlerTests
 {
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
+    // Corre el orquestador con el handler real de guardado, como lo enruta Wolverine.
+    private static Task<BuildingBlocks.Results.Result<UpdateSystemHeaderLogoResult>> RunAsync(
+        UpdateSystemHeaderLogoCommand command,
+        TaxVision.Scribe.Application.Abstractions.ISystemAssetRefRepository repository,
+        TaxVision.Scribe.Application.Templates.Storage.ITemplateStorageService storage,
+        IMemoryCache cache,
+        BuildingBlocks.Persistence.IUnitOfWork unitOfWork
+    )
+    {
+        var bus = new FakeMessageBus
+        {
+            OnInvoke = async message =>
+                await SaveSystemHeaderLogoHandler.Handle(
+                    (SaveSystemHeaderLogoCommand)message,
+                    repository,
+                    unitOfWork,
+                    CancellationToken.None
+                ),
+        };
+        return UpdateSystemHeaderLogoHandler.Handle(
+            command,
+            storage,
+            bus,
+            cache,
+            NullLogger<UpdateSystemHeaderLogoCommand>.Instance,
+            CancellationToken.None
+        );
+    }
+
     private static byte[] ValidPng(int totalBytes = 64)
     {
         var bytes = new byte[Math.Max(totalBytes, PngSignature.Length)];
@@ -37,14 +66,12 @@ public sealed class UpdateSystemHeaderLogoHandlerTests
         Assert.True(seeded);
         var unitOfWork = new FakeUnitOfWork();
 
-        var result = await UpdateSystemHeaderLogoHandler.Handle(
+        var result = await RunAsync(
             new UpdateSystemHeaderLogoCommand(ValidPng(), "image/png", Guid.NewGuid()),
             repo,
             storage,
             cache,
-            unitOfWork,
-            NullLogger<UpdateSystemHeaderLogoCommand>.Instance,
-            CancellationToken.None
+            unitOfWork
         );
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
@@ -69,14 +96,12 @@ public sealed class UpdateSystemHeaderLogoHandlerTests
         var (cache, _) = SeededCache();
         var unitOfWork = new FakeUnitOfWork();
 
-        var result = await UpdateSystemHeaderLogoHandler.Handle(
+        var result = await RunAsync(
             new UpdateSystemHeaderLogoCommand(ValidPng(128), "image/png", Guid.NewGuid()),
             repo,
             storage,
             cache,
-            unitOfWork,
-            NullLogger<UpdateSystemHeaderLogoCommand>.Instance,
-            CancellationToken.None
+            unitOfWork
         );
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
@@ -93,14 +118,12 @@ public sealed class UpdateSystemHeaderLogoHandlerTests
         var repo = new FakeSystemAssetRefRepository();
         var unitOfWork = new FakeUnitOfWork();
 
-        var result = await UpdateSystemHeaderLogoHandler.Handle(
+        var result = await RunAsync(
             new UpdateSystemHeaderLogoCommand(ValidPng(), "image/svg+xml", Guid.NewGuid()),
             repo,
             new FakeTemplateStorageService(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
-            unitOfWork,
-            NullLogger<UpdateSystemHeaderLogoCommand>.Instance,
-            CancellationToken.None
+            unitOfWork
         );
 
         Assert.True(result.IsFailure);
@@ -114,14 +137,12 @@ public sealed class UpdateSystemHeaderLogoHandlerTests
     {
         var unitOfWork = new FakeUnitOfWork();
 
-        var result = await UpdateSystemHeaderLogoHandler.Handle(
+        var result = await RunAsync(
             new UpdateSystemHeaderLogoCommand([0x3C, 0x73, 0x76, 0x67], "image/png", Guid.NewGuid()), // "<svg"
             new FakeSystemAssetRefRepository(),
             new FakeTemplateStorageService(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
-            unitOfWork,
-            NullLogger<UpdateSystemHeaderLogoCommand>.Instance,
-            CancellationToken.None
+            unitOfWork
         );
 
         Assert.True(result.IsFailure);
@@ -132,14 +153,12 @@ public sealed class UpdateSystemHeaderLogoHandlerTests
     [Fact]
     public async Task Rejects_an_empty_file()
     {
-        var result = await UpdateSystemHeaderLogoHandler.Handle(
+        var result = await RunAsync(
             new UpdateSystemHeaderLogoCommand([], "image/png", Guid.NewGuid()),
             new FakeSystemAssetRefRepository(),
             new FakeTemplateStorageService(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
-            new FakeUnitOfWork(),
-            NullLogger<UpdateSystemHeaderLogoCommand>.Instance,
-            CancellationToken.None
+            new FakeUnitOfWork()
         );
 
         Assert.True(result.IsFailure);
@@ -149,14 +168,12 @@ public sealed class UpdateSystemHeaderLogoHandlerTests
     [Fact]
     public async Task Rejects_a_file_larger_than_one_megabyte()
     {
-        var result = await UpdateSystemHeaderLogoHandler.Handle(
+        var result = await RunAsync(
             new UpdateSystemHeaderLogoCommand(ValidPng(1_048_577), "image/png", Guid.NewGuid()),
             new FakeSystemAssetRefRepository(),
             new FakeTemplateStorageService(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
-            new FakeUnitOfWork(),
-            NullLogger<UpdateSystemHeaderLogoCommand>.Instance,
-            CancellationToken.None
+            new FakeUnitOfWork()
         );
 
         Assert.True(result.IsFailure);

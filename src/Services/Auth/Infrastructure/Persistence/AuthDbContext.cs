@@ -6,16 +6,11 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using TaxVision.Auth.Application.Onboarding.Sagas;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Mfa;
 using TaxVision.Auth.Domain.Offboarding;
-using TaxVision.Auth.Domain.Onboarding.EmailVerification;
-using TaxVision.Auth.Domain.Onboarding.SubdomainReservations;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
-using TaxVision.Auth.Domain.Onboarding.TermsVersions;
 using TaxVision.Auth.Domain.RateLimiting;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
@@ -23,9 +18,13 @@ using TaxVision.Auth.Domain.Sessions;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Terms;
+using TaxVision.Auth.Domain.Terms;
 using TaxVision.Auth.Domain.Users;
 using TaxVision.Auth.Infrastructure.Persistence.Projections;
-using Wolverine;
+using TaxVision.Auth.Onboarding.Application.Sagas;
+using TaxVision.Auth.Onboarding.Domain.EmailVerification;
+using TaxVision.Auth.Onboarding.Domain.SubdomainReservations;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 
 namespace TaxVision.Auth.Infrastructure.Persistence;
 
@@ -37,11 +36,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence;
 /// pre-autenticación, resuelto por Host para saber a qué tenant pertenece un login/registro
 /// antes de que exista un JWT — nunca alimenta este filtro EF.
 /// </summary>
-public sealed class AuthDbContext(
-    DbContextOptions<AuthDbContext> options,
-    IMessageBus bus,
-    ITenantContext tenantContext
-) : DbContext(options), IUnitOfWork
+public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options, ITenantContext tenantContext)
+    : DbContext(options),
+        IUnitOfWork
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantPlanLimits> TenantPlanLimits => Set<TenantPlanLimits>();
@@ -121,15 +118,12 @@ public sealed class AuthDbContext(
         }
     }
 
+    // Los eventos de dominio no se despachan aquí: Wolverine los saca de los agregados al confirmar
+    // (UseTaxVisionDomainEvents en Program.cs). Fuera de un handler, guardar con TransactionalJobUnit.
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            // Domain events se despachan ANTES del commit (mismo criterio que Wolverine
-            // exige para integration events con outbox, capítulo 11 del libro): así, si un
-            // handler local agrega una fila de auditoría o encola un evento de integración,
-            // todo entra en la MISMA transacción que el cambio de estado que los originó.
-            await DispatchDomainEventsAsync(cancellationToken);
             return await base.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
@@ -147,36 +141,6 @@ public sealed class AuthDbContext(
                 "The record was updated by another process. Refresh and retry the operation.",
                 ex
             );
-        }
-    }
-
-    /// <summary>
-    /// Drena los domain events de todos los agregados rastreados y los publica
-    /// in-process vía Wolverine (nunca registrados a RabbitMQ, así que solo llegan a
-    /// handlers locales). Repite hasta que ningún agregado tenga eventos pendientes,
-    /// por si un handler local llega a mutar otro agregado con eventos propios.
-    /// </summary>
-    private async Task DispatchDomainEventsAsync(CancellationToken ct)
-    {
-        while (true)
-        {
-            var aggregatesWithEvents = ChangeTracker
-                .Entries<AggregateRoot>()
-                .Select(entry => entry.Entity)
-                .Where(aggregate => aggregate.DomainEvents.Count > 0)
-                .ToList();
-
-            if (aggregatesWithEvents.Count == 0)
-                break;
-
-            foreach (var aggregate in aggregatesWithEvents)
-            {
-                var domainEvents = aggregate.DomainEvents.ToList();
-                aggregate.ClearDomainEvents();
-
-                foreach (var domainEvent in domainEvents)
-                    await bus.PublishAsync(domainEvent);
-            }
         }
     }
 }

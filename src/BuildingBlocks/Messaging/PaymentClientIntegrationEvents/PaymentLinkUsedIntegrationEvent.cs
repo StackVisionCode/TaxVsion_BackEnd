@@ -1,7 +1,10 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 
 /// <summary>Publicado cuando un taxpayer redime exitosamente un link mágico — el tenant lo
 /// consume para reconciliar contra la invoice/caso que originó el cobro.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentClientIntegrationEvents.PaymentLinkUsedIntegrationEvent")]
 public sealed record PaymentLinkUsedIntegrationEvent : IntegrationEvent
 {
     public required Guid PaymentLinkId { get; init; }

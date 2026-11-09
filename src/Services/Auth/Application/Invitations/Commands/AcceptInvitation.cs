@@ -152,6 +152,7 @@ public static class AcceptInvitationHandler
             }
         }
 
+        UserRolesChangedIntegrationEvent? rolesChanged = null;
         if (roleIds.Count > 0)
         {
             await roles.ReplaceUserRolesAsync(user.Id, roleIds, invitation.InvitedByUserId, ct);
@@ -167,44 +168,22 @@ public static class AcceptInvitationHandler
             var tenantRoles = await roles.GetByIdsAsync(invitation.TenantId, roleIds, ct);
             var catalog = await roles.GetPermissionsCatalogAsync(ct);
 
-            await bus.PublishAsync(
-                new UserRolesChangedIntegrationEvent
-                {
-                    TenantId = user.TenantId,
-                    UserId = user.Id,
-                    PermissionsVersion = user.PermissionsVersion,
-                    RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
-                    RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
-                    PermissionCodes = UserAccessResolver.ResolveEffectivePermissionCodes(tenantRoles, catalog),
-                    ActorType = user.ActorType.ToString(),
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
+            rolesChanged = new UserRolesChangedIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                PermissionsVersion = user.PermissionsVersion,
+                RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
+                RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
+                PermissionCodes = UserAccessResolver.ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                ActorType = user.ActorType.ToString(),
+                CorrelationId = correlation.CorrelationId,
+            };
 
             // Ya quedó reparado acá mismo — que PermissionsBackfillService no lo vuelva a
             // reprocesar (y republicar) en cada arranque de Auth de ahí en adelante.
             user.MarkPermissionsBackfilled(now);
         }
-
-        // Publicar ANTES de SaveChangesAsync: Wolverine + UseEntityFrameworkCoreTransactions()
-        // agrupa el outbox del mensaje con el commit del UnitOfWork cuando PublishAsync
-        // ocurre antes del SaveChanges del mismo DbContext (mismo patrón que
-        // DeactivateUserHandler/AssignUserRolesHandler). Publicar después del commit
-        // (como estaba antes) rompe la atomicidad: si el proceso muere entre el
-        // SaveChanges y el PublishAsync, el usuario queda creado pero el evento nunca sale.
-        await bus.PublishAsync(
-            new UserRegisteredIntegrationEvent
-            {
-                UserId = user.Id,
-                TenantId = user.TenantId,
-                Email = user.Email,
-                ActorType = user.ActorType.ToString(),
-                CustomerId = user.CustomerId,
-                Name = user.Name,
-                LastName = user.LastName,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -221,6 +200,23 @@ public static class AcceptInvitationHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        // Tras guardar: la transacción de Wolverine sigue abierta, así que sigue siendo atómico (BB-16).
+        if (rolesChanged is not null)
+            await bus.PublishAsync(rolesChanged);
+        await bus.PublishAsync(
+            new UserRegisteredIntegrationEvent
+            {
+                UserId = user.Id,
+                TenantId = user.TenantId,
+                Email = user.Email,
+                ActorType = user.ActorType.ToString(),
+                CustomerId = user.CustomerId,
+                Name = user.Name,
+                LastName = user.LastName,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         return Result.Success(ToResponse(user));
     }

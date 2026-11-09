@@ -97,16 +97,6 @@ public static class ResetCustomerPortalMfaHandler
         var details = JsonSerializer.Serialize(
             new { resetBy = "office", requestedByUserId = command.RequestedByUserId }
         );
-        await bus.PublishAsync(
-            new SecurityAlertIntegrationEvent
-            {
-                TenantId = user.TenantId,
-                UserId = user.Id,
-                AlertType = SecurityAlertType.MfaDisabled,
-                DetailsJson = details,
-                CorrelationId = command.CorrelationId,
-            }
-        );
 
         // La IP y el agente serían los del servicio que llama; quién lo pidió va como actor del registro.
         await audit.AddAsync(
@@ -124,6 +114,16 @@ public static class ResetCustomerPortalMfaHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new SecurityAlertIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                AlertType = SecurityAlertType.MfaDisabled,
+                DetailsJson = details,
+                CorrelationId = command.CorrelationId,
+            }
+        );
         return Result.Success(new ResetCustomerPortalMfaResult(CustomerPortalMfaResetOutcome.Reset));
     }
 }

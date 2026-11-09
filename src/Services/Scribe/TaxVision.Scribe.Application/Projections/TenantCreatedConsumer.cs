@@ -14,7 +14,8 @@ namespace TaxVision.Scribe.Application.Projections;
 /// <para>Se reusa <c>TenantCreatedIntegrationEvent</c>, que ya trae <c>Name</c> y <c>SubDomain</c> y
 /// que varios servicios ya proyectan igual, en vez de pedir un evento nuevo.</para>
 ///
-/// <para>Idempotente por <c>UpsertAsync</c>: el bus lo reparte a varios consumers y puede reentregarlo.</para>
+/// <para>Idempotente: solo crea la fila si falta. El bus puede reentregarlo, y un alta vieja no deshace un
+/// renombre ni un cambio de subdominio ya aplicados.</para>
 /// </summary>
 public static class TenantCreatedConsumer
 {
@@ -33,7 +34,7 @@ public static class TenantCreatedConsumer
 
         using (correlation.Push(correlationId))
         {
-            await repository.UpsertAsync(evt.NewTenantId, evt.Name, evt.SubDomain, DateTime.UtcNow, ct);
+            await repository.AddIfMissingAsync(evt.NewTenantId, evt.Name, evt.SubDomain, DateTime.UtcNow, ct);
             await unitOfWork.SaveChangesAsync(ct);
 
             logger.LogInformation(

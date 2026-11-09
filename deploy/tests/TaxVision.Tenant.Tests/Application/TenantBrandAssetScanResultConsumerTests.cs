@@ -1,8 +1,10 @@
 using System.Linq;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Tenant.Application.Brands;
+using TaxVision.Tenant.Application.Brands.Commands;
 using TaxVision.Tenant.Application.Brands.Consumers;
 using TaxVision.Tenant.Domain.Brands;
 using TaxVision.Tenant.Domain.Enums;
@@ -35,17 +37,17 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, 40, 40)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, 40, 40, DateTime.UtcNow)
         );
 
         await TenantBrandAssetScanResultConsumer.Handle(
             Available(fileId),
             repo,
             new CountingUnitOfWork(),
-            new NoopCache(),
             bus,
             new NoopCorrelationContext(),
             NullLogger<TenantBrand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -66,17 +68,17 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Portal,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         await TenantBrandAssetScanResultConsumer.Handle(
             Available(fileId),
             repo,
             new CountingUnitOfWork(),
-            new NoopCache(),
             bus,
             new NoopCorrelationContext(),
             NullLogger<TenantBrand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -87,31 +89,34 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         Assert.Equal(TenantBrandSurfaces.Portal, evt.Surface);
     }
 
+    // El handler ya no recibe la caché: no puede tocarla antes del commit.
     [Fact]
-    public async Task Confirming_an_asset_invalidates_the_cached_brand_of_its_surface()
+    public async Task FileAvailable_DoesNotInvalidateCacheInline_PublishesInvalidationCommand()
     {
         var repo = new InMemoryBrandRepository();
-        var cache = new RecordingCache();
+        var bus = new RecordingMessageBus();
         var fileId = Guid.NewGuid();
         repo.Seed(
             TenantId,
             BrandSurface.Portal,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         await TenantBrandAssetScanResultConsumer.Handle(
             Available(fileId),
             repo,
             new CountingUnitOfWork(),
-            cache,
-            new RecordingMessageBus(),
+            bus,
             new NoopCorrelationContext(),
             NullLogger<TenantBrand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
-        // El CRM consulta la marca mientras escanea: la respuesta "Pending" cacheada debe caer.
-        Assert.Equal([BrandCacheKeys.Brand(TenantId, BrandSurface.Portal)], cache.Removed);
+        Assert.Equal(
+            new InvalidateTenantBrandCacheCommand(TenantId, BrandSurface.Portal),
+            Assert.Single(bus.Published.OfType<InvalidateTenantBrandCacheCommand>())
+        );
     }
 
     [Fact]
@@ -123,17 +128,17 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Favicon, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Favicon, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         await TenantBrandAssetScanResultConsumer.Handle(
             Available(fileId),
             repo,
             new CountingUnitOfWork(),
-            new NoopCache(),
             bus,
             new NoopCorrelationContext(),
             NullLogger<TenantBrand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -148,7 +153,7 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         // Evento de un fileId que no es de ninguna marca de este tenant (p.ej. logo del modelo viejo).
@@ -156,10 +161,10 @@ public sealed class TenantBrandAssetScanResultConsumerTests
             Available(Guid.NewGuid()),
             repo,
             new CountingUnitOfWork(),
-            new NoopCache(),
             bus,
             new NoopCorrelationContext(),
             NullLogger<TenantBrand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -188,10 +193,10 @@ public sealed class TenantBrandAssetScanResultConsumerTests
                 },
                 repo,
                 new CountingUnitOfWork(),
-                new NoopCache(),
                 bus,
                 new NoopCorrelationContext(),
                 NullLogger<TenantBrand>.Instance,
+                TimeProvider.System,
                 CancellationToken.None
             );
             return bus;
@@ -207,10 +212,10 @@ public sealed class TenantBrandAssetScanResultConsumerTests
             },
             repo,
             new CountingUnitOfWork(),
-            new NoopCache(),
             bus,
             new NoopCorrelationContext(),
             NullLogger<TenantBrand>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
         return bus;
@@ -224,7 +229,7 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var bus = await DiscardAsync(repo, fileId);
@@ -241,7 +246,7 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var bus = await DiscardAsync(repo, fileId, blockedByPolicy: true);
@@ -258,7 +263,7 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Portal,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var bus = await DiscardAsync(repo, fileId);
@@ -276,13 +281,13 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Portal,
-            b => b.SetAssetPending(BrandAssetKey.Favicon, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Favicon, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         var bus = await DiscardAsync(repo, fileId);
 
         Assert.Empty(repo.All.Single().Assets);
-        Assert.Empty(bus.Published);
+        Assert.Empty(bus.Published.OfType<IIntegrationEvent>());
     }
 
     [Fact]
@@ -293,7 +298,7 @@ public sealed class TenantBrandAssetScanResultConsumerTests
         repo.Seed(
             TenantId,
             BrandSurface.Crm,
-            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null)
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
         );
 
         await DiscardAsync(repo, fileId);
@@ -303,7 +308,7 @@ public sealed class TenantBrandAssetScanResultConsumerTests
     }
 
     [Fact]
-    public async Task An_infected_event_for_a_confirmed_logo_is_a_no_op()
+    public async Task FileInfected_ForConfirmedAsset_RemovesIt()
     {
         var repo = new InMemoryBrandRepository();
         var fileId = Guid.NewGuid();
@@ -312,14 +317,68 @@ public sealed class TenantBrandAssetScanResultConsumerTests
             BrandSurface.Crm,
             b =>
             {
-                b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null);
+                b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow);
                 b.ConfirmAsset(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow);
             }
         );
 
         var bus = await DiscardAsync(repo, fileId);
 
-        Assert.Equal(BrandAssetStatus.Confirmed, repo.All.Single().Assets.Single().Status);
+        // Red de seguridad: un archivo confirmado que resultó infectado deja de servirse.
+        Assert.Empty(repo.All.Single().Assets);
+        Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task FileInfected_ForReplacedAsset_KeepsTheNewFile()
+    {
+        var repo = new InMemoryBrandRepository();
+        var newFileId = Guid.NewGuid();
+        repo.Seed(
+            TenantId,
+            BrandSurface.Crm,
+            b => b.SetAssetPending(BrandAssetKey.Logo, newFileId, "image/png", 100, null, null, DateTime.UtcNow)
+        );
+
+        var bus = await DiscardAsync(repo, Guid.NewGuid());
+
+        Assert.Equal(newFileId, repo.All.Single().Assets.Single().FileId);
         Assert.Empty(bus.Published);
+    }
+
+    [Theory]
+    [InlineData("blob_missing")]
+    [InlineData("scan_stalled")]
+    public async Task FileScanFailed_ForPendingAsset_DiscardsIt(string reason)
+    {
+        var repo = new InMemoryBrandRepository();
+        var bus = new RecordingMessageBus();
+        var fileId = Guid.NewGuid();
+        repo.Seed(
+            TenantId,
+            BrandSurface.Crm,
+            b => b.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow)
+        );
+
+        await TenantBrandAssetScanResultConsumer.Handle(
+            new FileScanFailedIntegrationEvent
+            {
+                TenantId = TenantId,
+                FileId = fileId,
+                ObjectKey = $"tenant-branding/{fileId:N}/logo.png",
+                Reason = reason,
+            },
+            repo,
+            new CountingUnitOfWork(),
+            bus,
+            new NoopCorrelationContext(),
+            NullLogger<TenantBrand>.Instance,
+            TimeProvider.System,
+            CancellationToken.None
+        );
+
+        // El CRM deja de ver "Pending" y puede volver a subir.
+        Assert.Empty(repo.All.Single().Assets);
+        Assert.Single(bus.Published.OfType<TenantLogoRemovedIntegrationEvent>());
     }
 }

@@ -17,11 +17,17 @@ public static class ScribeRenderResultExtensions
     /// <summary>
     /// Devuelve el email renderizado si Scribe respondió con éxito; si no, lanza
     /// <see cref="ScribeRenderFailedException"/> para que Wolverine reintente/DLQ el mensaje en vez
-    /// de que el consumer complete silenciosamente sin haber enviado nada.
+    /// de que el consumer complete silenciosamente sin haber enviado nada. Un rechazo determinista
+    /// lanza <see cref="ScribeRenderRejectedException"/>, que va directo a la cola de errores.
     /// </summary>
     public static ScribeRenderedEmail EnsureRendered(this Result<ScribeRenderedEmail> result, string eventKey) =>
-        result.IsSuccess ? result.Value : throw new ScribeRenderFailedException(eventKey, result.Error);
+        result.IsSuccess ? result.Value : throw ToException(eventKey, result.Error);
 
     public static ScribeRenderedText EnsureRendered(this Result<ScribeRenderedText> result, string eventKey) =>
-        result.IsSuccess ? result.Value : throw new ScribeRenderFailedException(eventKey, result.Error);
+        result.IsSuccess ? result.Value : throw ToException(eventKey, result.Error);
+
+    private static Exception ToException(string eventKey, Error error) =>
+        error.Code == ScribeRenderRejectedException.ErrorCode
+            ? new ScribeRenderRejectedException(eventKey, error)
+            : new ScribeRenderFailedException(eventKey, error);
 }

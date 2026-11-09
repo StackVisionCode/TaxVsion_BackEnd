@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// no decide el canal: el consumidor avisa a <see cref="RecipientUserId"/> o, si es null, a quienes tienen
 /// <see cref="AudiencePermission"/> (admins de firma). Nunca se deja una solicitud bloqueada en silencio.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignaturePreparerAttentionRequiredIntegrationEvent")]
 public sealed record SignaturePreparerAttentionRequiredIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

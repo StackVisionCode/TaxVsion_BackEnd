@@ -467,13 +467,16 @@ public sealed class CustomerAvatarScanResultConsumerTests
         return fileId;
     }
 
-    private static Task AvailableAsync(
+    // Lo sembrado ya está guardado; lo emitido por el consumer sale por el bus como en Wolverine.
+    private static async Task AvailableAsync(
         DomainCustomer customer,
         Guid fileId,
         FakeMessageBus bus,
         RecordingUnitOfWork unitOfWork
-    ) =>
-        CustomerAvatarScanResultConsumer.Handle(
+    )
+    {
+        customer.ClearDomainEvents();
+        await CustomerAvatarScanResultConsumer.Handle(
             Available(customer, fileId),
             Repo(customer),
             unitOfWork,
@@ -482,6 +485,8 @@ public sealed class CustomerAvatarScanResultConsumerTests
             NullLogger<DomainCustomer>.Instance,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, Repo(customer), customer);
+    }
 
     private static FileAvailableIntegrationEvent Available(DomainCustomer customer, Guid fileId) =>
         new()

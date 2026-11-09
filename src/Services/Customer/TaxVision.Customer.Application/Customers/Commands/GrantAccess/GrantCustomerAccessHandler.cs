@@ -1,12 +1,11 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
-using Wolverine;
 
 namespace TaxVision.Customer.Application.Customers.Commands.GrantAccess;
 
 // Da acceso a un cliente a un miembro del staff (asignación adicional, no primary). Solo el admin reparte.
+// El snapshot de asignaciones sale del evento de dominio.
 public static class GrantCustomerAccessHandler
 {
     public static async Task<Result> Handle(
@@ -14,13 +13,11 @@ public static class GrantCustomerAccessHandler
         ICustomerRepository repository,
         ITenantEmployeeDirectoryRepository employeeDirectory,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null || customer.TenantId != cmd.TenantId)
+        var customer = await repository.GetByIdAsync(cmd.TenantId, cmd.CustomerId, ct);
+        if (customer is null)
             return Result.Failure(new Error("Customer.NotFound", "Customer not found."));
 
         // El asignado debe ser staff activo del mismo tenant (misma invariante que AssignPreparer).
@@ -35,8 +32,6 @@ public static class GrantCustomerAccessHandler
             return result;
 
         await unitOfWork.SaveChangesAsync(ct);
-
-        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlation.CorrelationId));
 
         return Result.Success();
     }

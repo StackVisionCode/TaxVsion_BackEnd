@@ -135,7 +135,7 @@ internal sealed class DeliveryTestKit
     public DeliverableFiles DeliverableFiles() => new(Files, Storage);
 
     public SignedDocumentDeliveryIssuer Issuer() =>
-        new(Deliveries, Settings, Files, Audit, Codec, Bus, new FixedCorrelation());
+        new(Deliveries, Settings, Files, Audit, Codec, new FixedCorrelation(), new FreeIssuanceLock());
 
     private static void Place(SignatureRequest request, Signer signer, RequestDocument document) =>
         Assert.True(
@@ -279,6 +279,12 @@ internal sealed class ReadableCodec : IProtectedPayloadCodec
 
 internal sealed class RecordingStorage : ISignatureCloudStorageClient
 {
+    public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
+        Guid tenantId,
+        SignatureFileUpload upload,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
+
     public List<Guid> Presigned { get; } = [];
     public List<(Guid Source, Guid Customer)> Copies { get; } = [];
     public HashSet<Guid> FailCopiesOf { get; } = [];
@@ -306,9 +312,6 @@ internal sealed class RecordingStorage : ISignatureCloudStorageClient
     public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
         throw new NotSupportedException();
 
-    public Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default) =>
-        throw new NotSupportedException();
-
     /// <summary>Estado de cada archivo en CloudStorage (la fuente); los que no estén aquí no existen.</summary>
     public Dictionary<Guid, string> RemoteStatuses { get; } = [];
 
@@ -322,6 +325,36 @@ internal sealed class RecordingStorage : ISignatureCloudStorageClient
                 ? Result.Success(new SignatureFileMetadata(fileId, status, null, "application/pdf", 1024, null))
                 : Result.Failure<SignatureFileMetadata>(new Error("File.NotFound", "The file does not exist."))
         );
+}
+
+internal static class StagedFile
+{
+    public static BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent For(
+        Guid tenantId,
+        Guid fileId,
+        SignatureFileUpload upload
+    ) =>
+        new()
+        {
+            TenantId = tenantId,
+            FileId = fileId,
+            RequestingService = SignatureStorage.RequestingService,
+            SourceBucket = "temp",
+            SourceObjectKey = $"signature/{fileId:N}/{upload.FileName}",
+            ActorId = upload.ActorId,
+            OwnerType = upload.OwnerType,
+            OwnerId = upload.OwnerId,
+            FolderType = upload.FolderType,
+            TaxYear = upload.TaxYear,
+            OriginalName = upload.FileName,
+            ContentType = upload.ContentType,
+            SizeBytes = upload.Content.LongLength,
+        };
+}
+
+internal sealed class FreeIssuanceLock : IDeliveryIssuanceLock
+{
+    public Task AcquireAsync(Guid signatureRequestId, CancellationToken ct = default) => Task.CompletedTask;
 }
 
 internal sealed class FixedCorrelation : ICorrelationContext
@@ -363,8 +396,11 @@ internal sealed class CapturingBus : IMessageBus
 
     public IDestinationEndpoint EndpointFor(Uri uri) => throw new NotSupportedException();
 
-    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotSupportedException();
+    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        Messages.Add(message);
+        return Task.CompletedTask;
+    }
 
     public Task InvokeAsync(
         object message,

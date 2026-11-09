@@ -32,10 +32,22 @@ public sealed class GraphWebhookQueueWiringTests(ConnectorsApiFactory factory) :
             },
             // Gmail: Pub/Sub reintenta si tardamos, pero un 200 ya entregado no vuelve.
             { new GmailPushReceived("office@gmail.com", "100", "correlation"), "gmail-webhook" },
+            { new GmailAccountPushReceived(Guid.NewGuid(), "100", "correlation"), "gmail-webhook" },
             // Avisos de no entrega: bajar el MIME no debe frenar el sync, y un reinicio no los pierde.
             {
                 new InspectDeliveryReport(Guid.NewGuid(), Guid.NewGuid(), "report-1", DateTime.UtcNow, "correlation"),
                 "delivery-reports"
+            },
+            // Re-sincronización (CON-07): cada página encadena la siguiente; un reinicio no corta la cadena.
+            {
+                new ResyncMailboxCommand(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    DateTime.UtcNow.AddDays(-1),
+                    DateTime.UtcNow,
+                    null
+                ),
+                "mailbox-resync"
             },
         };
 

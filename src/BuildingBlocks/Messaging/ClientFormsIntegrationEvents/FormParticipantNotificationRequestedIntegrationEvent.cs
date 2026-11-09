@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 /// sin vincular: el equivalente de los avisos al cliente, que salen del hecho. Es un comando punto a
 /// punto a Notification porque lleva el email del externo, y ese dato nunca va por el fanout.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormParticipantNotificationRequestedIntegrationEvent")]
 public sealed record FormParticipantNotificationRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid CommandId { get; init; }

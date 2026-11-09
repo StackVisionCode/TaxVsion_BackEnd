@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Auth.Application.TenantDomains;
+using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 using Xunit;
@@ -236,6 +237,44 @@ public sealed class TenantSubscriptionEmailConsumerTests
 
     private sealed class FakeUserRepository(User? admin) : IUserRepository
     {
+        public Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<IReadOnlyList<User>> GetActiveByRoleAsync(
+            Guid tenantId,
+            Guid roleId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<TenantOwnerReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<CustomerPortalAccountReconciliationResponse>> ListPortalAccountsForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<StaffUserReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<UserDirectoryReconciliationResponse>> ListUsersForDirectoryReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<UserDirectoryReconciliationResponse>([], page, size, 0));
+
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult(admin);
 

@@ -22,6 +22,7 @@ using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Serilog;
 using TaxVision.Connectors.Api.Options;
 using TaxVision.Connectors.Application;
@@ -81,9 +82,12 @@ builder
     .Services.AddAuthorizationBuilder()
     .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
-builder.Services.Configure<GmailPushWebhookOptions>(
-    builder.Configuration.GetSection(GmailPushWebhookOptions.SectionName)
-);
+builder
+    .Services.AddOptions<GmailPushWebhookOptions>()
+    .Bind(builder.Configuration.GetSection(GmailPushWebhookOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<GmailPushWebhookOptions>, GmailPushWebhookOptionsValidator>();
+builder.Services.AddSingleton<IGmailPushTokenVerifier, GoogleGmailPushTokenVerifier>();
 builder.Services.Configure<ConnectorsPortalOptions>(
     builder.Configuration.GetSection(ConnectorsPortalOptions.SectionName)
 );
@@ -170,7 +174,13 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // CON-11: "pasa a Error y avisa" sale del agregado por la cola domain-events, en orden de commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+    options.UseTaxVisionDurableLocalQueues();
 
     // Sin estas reglas, Wolverine no enruta el evento a RabbitMQ y bus.PublishAsync lo descarta en
     // silencio — ningun otro servicio llega a recibirlo.
@@ -204,6 +214,10 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<TaxVision.Connectors.Application.Sync.GmailPushReceived>()
         .ToLocalQueue("gmail-webhook")
         .UseDurableInbox();
+    options
+        .PublishMessage<TaxVision.Connectors.Application.Sync.GmailAccountPushReceived>()
+        .ToLocalQueue("gmail-webhook")
+        .UseDurableInbox();
 
     // Avisos de no entrega: se revisan aparte del sync (bajan el MIME completo).
     options
@@ -213,6 +227,12 @@ builder.Host.UseWolverine(options =>
     options
         .PublishMessage<BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsDeliveryReportDetectedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
+
+    // Re-sincronización (CON-07): cada página encadena la siguiente; durable para que un reinicio no corte la cadena.
+    options
+        .PublishMessage<TaxVision.Connectors.Application.Sync.ResyncMailboxCommand>()
+        .ToLocalQueue("mailbox-resync")
+        .UseDurableInbox();
 
     // Cola propia desde el arranque (Fase 1) aunque todavía no haya ningún consumer — mismo
     // patrón que Postmaster/Scribe: el binding queda listo en Rabbit antes de que exista lógica.

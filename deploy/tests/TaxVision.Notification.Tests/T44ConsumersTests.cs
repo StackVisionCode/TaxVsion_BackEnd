@@ -187,17 +187,19 @@ public sealed class T44ConsumersTests
     }
 
     private static NotificationDispatcher BuildDispatcher(IIntegrationEventPublisher publisher) =>
-        new(
+        TestDispatchers.Create(
             new NoOpSmsSender(),
             new NoOpPushSender(),
             new NoOpPushDeviceTokenRepository(),
             new NoOpNotificationLogRepository(),
-            new AlwaysEnabledPreferences(),
-            new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository(),
+            TestDeliveryGates.For(
+                new AlwaysEnabledPreferences(),
+                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
+            ),
             publisher,
             new NoOpUnitOfWork(),
             new NoOpNotificationDispatchMetrics(),
-            NullLogger<NotificationDispatcher>.Instance
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
         );
 
     private sealed class FakeResolver(Result<IReadOnlyList<Guid>> result) : IRecipientResolver
@@ -228,6 +230,15 @@ public sealed class T44ConsumersTests
 
     private sealed class NoOpNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public Task AddAsync(NotificationLog log, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task<(IReadOnlyList<NotificationLog> Items, int TotalCount)> GetPagedAsync(
@@ -271,6 +282,9 @@ public sealed class T44ConsumersTests
 
     private sealed class NoOpPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task<PushDeviceToken?> FindByTokenAsync(Guid tenantId, string token, CancellationToken ct = default) =>

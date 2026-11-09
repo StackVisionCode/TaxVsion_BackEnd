@@ -30,9 +30,13 @@ public static class FormSignatureDocumentSealedConsumer
             if (request is null)
                 return;
             if (
-                request
-                    .MarkSignatureSealed(revision, evt.SealedFileId, evt.DocumentHashPost, evt.CertificateFileId)
-                    .IsFailure
+                FormSignatureResultSupport.Failed(
+                    request.Summary.MarkSignatureSealed(revision, evt.SealedFileId, evt.DocumentHashPost, evt.CertificateFileId),
+                    "Sealed",
+                    requestId,
+                    revision,
+                    logger
+                )
             )
                 return;
             // Sellado implica completada: el alta que esperaba la firma corre aquí si no corrió antes.

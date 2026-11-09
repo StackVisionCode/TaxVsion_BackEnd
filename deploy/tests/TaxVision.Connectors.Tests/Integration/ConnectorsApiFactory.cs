@@ -1,7 +1,11 @@
+using JasperFx;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.Connectors.Tests.Integration;
 
@@ -34,5 +38,27 @@ public sealed class ConnectorsApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Sin transportes y sin jobs: el host de prueba no le roba mensajes a la flota local ni sincroniza o refresca
+        // tokens de los buzones reales. La persistencia queda: sin ella, todo handler con transacción EF lanza.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            // Sin los sobres de la flota: MediatorOnly conserva el almacén sin migrarlo ni leerlo (BB-10).
+            services.ConfigureWolverine(options =>
+            {
+                options.Durability.Mode = DurabilityMode.MediatorOnly;
+                options.AutoBuildMessageStorageOnStartup = AutoCreate.None;
+            });
+            foreach (
+                var hosted in services
+                    .Where(d =>
+                        d.ServiceType == typeof(IHostedService)
+                        && d.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal) == true
+                    )
+                    .ToList()
+            )
+                services.Remove(hosted);
+        });
     }
 }

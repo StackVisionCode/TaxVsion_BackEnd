@@ -1,6 +1,4 @@
-using System.Globalization;
 using System.Security.Cryptography;
-using System.Text;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.DocumentsIntegrationEvents;
@@ -91,13 +89,14 @@ public static class ProcessClientFormSummaryGenerationHandler
                 logger,
                 ct
             );
-            var fileName = BuildFileName(payload.Snapshot);
+            var fileName = ClientFormSummaryRenderModelBuilder.FileName(payload.Snapshot);
 
             var pdf = await RenderAsync(
                 payload.Snapshot,
                 branding,
                 platform.Current.BrandName,
                 command.SignatureCopy is not null,
+                now,
                 renderer,
                 pdfConverter,
                 ct
@@ -135,47 +134,29 @@ public static class ProcessClientFormSummaryGenerationHandler
                 }
             );
 
-            var save = await storageClient.RequestSaveAsync(
-                tenantId: command.TenantId,
-                fileId: fileId,
-                content: pdf.Value,
-                fileName: fileName,
-                contentType: PdfContentType,
-                ownerType: generation.Owner.OwnerType,
-                ownerId: generation.Owner.OwnerId,
-                folderType: FolderTypeClientForms,
-                taxYear: command.TaxYear,
-                actorId: command.TenantId,
-                correlationId: correlationId,
-                ct: ct
-            );
-
-            if (save.IsFailure)
+            var upload = await storageClient.UploadAsync(fileId, pdf.Value, fileName, PdfContentType, ct);
+            if (upload.IsFailure)
             {
-                await FailAsync(generation, save.Error, unitOfWork, bus, correlationId, now, logger, ct);
+                await FailAsync(generation, upload.Error, unitOfWork, bus, correlationId, now, logger, ct);
                 return;
             }
+
+            StorageUploadResult? signatureCopyUpload = null;
+            GeneratedFileDestination? signatureCopyDestination = null;
 
             // P-18: segunda copia del mismo PDF para Signature (owner/carpeta de firma), con su propio FileId.
             if (command.SignatureCopy is { } signatureCopy)
             {
                 var signatureFileId = Guid.NewGuid();
-                var copySave = await storageClient.RequestSaveAsync(
-                    tenantId: command.TenantId,
-                    fileId: signatureFileId,
-                    content: pdf.Value,
-                    fileName: fileName,
-                    contentType: PdfContentType,
-                    ownerType: signatureCopy.OwnerType,
-                    ownerId: generation.Owner.OwnerId,
-                    folderType: signatureCopy.FolderType,
-                    taxYear: signatureCopy.TaxYear ?? command.TaxYear,
-                    actorId: command.TenantId,
-                    correlationId: correlationId,
-                    ct: ct
+                var copyUpload = await storageClient.UploadAsync(
+                    signatureFileId,
+                    pdf.Value,
+                    fileName,
+                    PdfContentType,
+                    ct
                 );
 
-                if (copySave.IsSuccess)
+                if (copyUpload.IsSuccess)
                 {
                     // Sólo se anuncia la copia si quedó subida: así Tasks nunca pide firmar un archivo inexistente.
                     var anchorPage = ResolveAnchorPage(pageCounter, pdf.Value, logger);
@@ -186,16 +167,45 @@ public static class ProcessClientFormSummaryGenerationHandler
                         signatureCopy.FolderType
                     );
                     await unitOfWork.SaveChangesAsync(ct);
+                    signatureCopyUpload = copyUpload.Value;
+                    signatureCopyDestination = new GeneratedFileDestination(
+                        command.TenantId,
+                        fileName,
+                        signatureCopy.OwnerType,
+                        generation.Owner.OwnerId,
+                        signatureCopy.FolderType,
+                        signatureCopy.TaxYear ?? command.TaxYear,
+                        command.TenantId,
+                        correlationId
+                    );
                 }
                 else
                 {
                     logger.LogWarning(
                         "Client form summary {GenerationId}: signature copy could not be saved: {Code}.",
                         generation.Id,
-                        copySave.Error.Code
+                        copyUpload.Error.Code
                     );
                 }
             }
+
+            // Después del último guardado: la copia también guarda (BB-16).
+            await bus.RequestSaveAsync(
+                upload.Value,
+                new GeneratedFileDestination(
+                    command.TenantId,
+                    fileName,
+                    generation.Owner.OwnerType,
+                    generation.Owner.OwnerId,
+                    FolderTypeClientForms,
+                    command.TaxYear,
+                    command.TenantId,
+                    correlationId
+                )
+            );
+
+            if (signatureCopyUpload is not null && signatureCopyDestination is not null)
+                await bus.RequestSaveAsync(signatureCopyUpload, signatureCopyDestination);
 
             logger.LogInformation(
                 "Client form summary {GenerationId} rendered ({Bytes} bytes) and handed to CloudStorage as file {FileId}.",
@@ -259,12 +269,19 @@ public static class ProcessClientFormSummaryGenerationHandler
         BrandingPayload? branding,
         string platformBrand,
         bool includeSignatureBox,
+        DateTime nowUtc,
         IDocumentTemplateRenderer renderer,
         IHtmlToPdfConverter pdfConverter,
         CancellationToken ct
     )
     {
-        var data = BuildRenderData(snapshot, branding, platformBrand, includeSignatureBox);
+        var data = ClientFormSummaryRenderModelBuilder.Build(
+            snapshot,
+            branding,
+            platformBrand,
+            includeSignatureBox,
+            nowUtc
+        );
         var html = await renderer.RenderHtmlAsync(
             ClientFormSubmissionSummaryRequestedConsumer.TemplateKey,
             1,
@@ -274,86 +291,6 @@ public static class ProcessClientFormSummaryGenerationHandler
         );
         return html.IsFailure ? Result.Failure<byte[]>(html.Error) : await pdfConverter.ConvertAsync(html.Value, ct);
     }
-
-    private static IReadOnlyDictionary<string, object?> BuildRenderData(
-        SubmissionSummarySnapshot snapshot,
-        BrandingPayload? branding,
-        string platformBrand,
-        bool includeSignatureBox
-    )
-    {
-        var culture = CultureInfo.InvariantCulture;
-        var logo =
-            branding?.LogoDataUri is { Length: > 0 } l && l.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
-                ? l
-                : string.Empty;
-        var brandColor = IsHexColor(branding?.BrandColorHex) ? branding!.BrandColorHex! : "#0074d4";
-        var displayName = string.IsNullOrWhiteSpace(branding?.DisplayName) ? platformBrand : branding!.DisplayName!;
-
-        var pages = snapshot
-            .Pages.Select(
-                object (page) =>
-                    new Dictionary<string, object>
-                    {
-                        ["title"] = page.Title ?? string.Empty,
-                        ["sections"] = page
-                            .Sections.Select(
-                                object (section) =>
-                                    new Dictionary<string, object>
-                                    {
-                                        ["title"] = section.Title ?? string.Empty,
-                                        ["items"] = ItemsToList(section.Items),
-                                        ["rows"] = section
-                                            .Rows.Select(
-                                                object (row) =>
-                                                    new Dictionary<string, object>
-                                                    {
-                                                        ["label"] = row.Label,
-                                                        ["items"] = ItemsToList(row.Items),
-                                                    }
-                                            )
-                                            .ToList(),
-                                    }
-                            )
-                            .ToList(),
-                    }
-            )
-            .ToList();
-
-        var attachments = snapshot
-            .Attachments.Select(
-                object (a) => new Dictionary<string, object> { ["label"] = a.Label, ["fileName"] = a.FileName }
-            )
-            .ToList();
-
-        var generatedOn = (snapshot.CompletedAtUtc ?? DateTime.UtcNow).ToString("yyyy-MM-dd HH:mm 'UTC'", culture);
-
-        return new Dictionary<string, object?>
-        {
-            ["summary"] = new Dictionary<string, object>
-            {
-                ["title"] = snapshot.Title,
-                ["customerName"] = snapshot.CustomerDisplayName ?? string.Empty,
-                ["versionNumber"] = snapshot.VersionNumber,
-                ["revisionNumber"] = snapshot.RevisionNumber,
-                ["submittedAt"] = snapshot.SubmittedAtUtc?.ToString("yyyy-MM-dd HH:mm 'UTC'", culture) ?? string.Empty,
-                ["completedAt"] = snapshot.CompletedAtUtc?.ToString("yyyy-MM-dd HH:mm 'UTC'", culture) ?? string.Empty,
-                ["generatedOn"] = generatedOn,
-                ["pages"] = pages,
-                ["attachments"] = attachments,
-                ["hasAttachments"] = attachments.Count > 0,
-                ["logo"] = logo,
-                ["brandColor"] = brandColor,
-                ["displayName"] = displayName,
-                ["showSignatureBox"] = includeSignatureBox,
-            },
-        };
-    }
-
-    private static List<object> ItemsToList(IReadOnlyList<SubmissionSummaryItem> items) =>
-        items
-            .Select(object (i) => new Dictionary<string, object> { ["label"] = i.Label, ["value"] = i.Value })
-            .ToList();
 
     private static async Task<BrandingPayload?> ResolveBrandingAsync(
         Guid tenantId,
@@ -403,19 +340,6 @@ public static class ProcessClientFormSummaryGenerationHandler
         return branding;
     }
 
-    // "{Title} - Submission summary (rev {N}).pdf", saneado para nombre de archivo.
-    private static string BuildFileName(SubmissionSummarySnapshot snapshot)
-    {
-        var title = string.IsNullOrWhiteSpace(snapshot.Title) ? "Form" : snapshot.Title.Trim();
-        var sb = new StringBuilder(title.Length);
-        foreach (var c in title)
-            sb.Append(Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c);
-        var safe = sb.ToString().Trim();
-        if (safe.Length > 120)
-            safe = safe[..120].Trim();
-        return $"{safe} - Submission summary (rev {snapshot.RevisionNumber}).pdf";
-    }
-
     private static async Task FailAsync(
         DocumentGeneration generation,
         Error error,
@@ -451,10 +375,4 @@ public static class ProcessClientFormSummaryGenerationHandler
             error.Message
         );
     }
-
-    private static bool IsHexColor(string? value) =>
-        !string.IsNullOrWhiteSpace(value)
-        && value.Length is 4 or 7
-        && value[0] == '#'
-        && value.AsSpan(1).ToArray().All(Uri.IsHexDigit);
 }

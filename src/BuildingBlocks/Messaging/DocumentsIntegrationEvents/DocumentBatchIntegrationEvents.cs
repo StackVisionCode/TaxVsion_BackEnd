@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.DocumentsIntegrationEvents;
 
 /// <summary>Solicitud de generación por lote.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.DocumentsIntegrationEvents.DocumentBatchRequestedIntegrationEvent")]
 public sealed record DocumentBatchRequestedIntegrationEvent : DocumentsIntegrationEvent
 {
     public override string EventType => "documents.batch.requested";
@@ -11,6 +14,7 @@ public sealed record DocumentBatchRequestedIntegrationEvent : DocumentsIntegrati
 }
 
 /// <summary>Lote completado (todos los ítems OK).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.DocumentsIntegrationEvents.DocumentBatchCompletedIntegrationEvent")]
 public sealed record DocumentBatchCompletedIntegrationEvent : DocumentsIntegrationEvent
 {
     public override string EventType => "documents.batch.completed";
@@ -21,6 +25,7 @@ public sealed record DocumentBatchCompletedIntegrationEvent : DocumentsIntegrati
 
 /// <summary>Lote parcialmente completado (algunos ítems fallaron). Documents publica completados +
 /// fallidos; la decisión de qué hacer con los completados es del servicio dueño (p.ej. Billing).</summary>
+[MessageIdentity("BuildingBlocks.Messaging.DocumentsIntegrationEvents.DocumentBatchPartiallyCompletedIntegrationEvent")]
 public sealed record DocumentBatchPartiallyCompletedIntegrationEvent : DocumentsIntegrationEvent
 {
     public override string EventType => "documents.batch.partially_completed";

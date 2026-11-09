@@ -446,7 +446,9 @@ public static class ErrorHttpMapping
             or "File.ExclusiveToClientForms"
             or "File.ClientFormsDestinationNotAllowed"
             or "SendCorrespondenceMessageHandler.AllRecipientsSuppressed"
-            or "SendCorrespondenceMessageHandler.SendInProgress" => StatusCodes.Status409Conflict,
+            or "SendCorrespondenceMessageHandler.SendInProgress"
+            // CON-02: el grant venció o se revocó; hay que pasar otra vez por el flujo de conectar.
+            or "Connectors.ReconnectRequired" => StatusCodes.Status409Conflict,
             var code
                 when (
                     code.StartsWith("Codes.", StringComparison.Ordinal)
@@ -465,6 +467,8 @@ public static class ErrorHttpMapping
             or "Signature.Request.Scheduled"
             or "Signature.Request.NotSchedulable"
             or "Signature.Request.NotScheduled"
+            or "Signature.Template.NotDraft"
+            or "Signature.Signer.Terminal"
             or "Signature.Document.NotAvailable" => StatusCodes.Status409Conflict,
             var code
                 when (

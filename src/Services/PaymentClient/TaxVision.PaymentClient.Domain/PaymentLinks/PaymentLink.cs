@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.PaymentClient.Domain.TenantPayments;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 
 namespace TaxVision.PaymentClient.Domain.PaymentLinks;
@@ -29,6 +30,10 @@ public sealed class PaymentLink : TenantEntity
     [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedBy { get; private set; }
     public int FailedRedemptionAttempts { get; private set; }
+
+    /// <summary>Número del intento de canje vigente; fija la clave de idempotencia del cobro.</summary>
+    public int AttemptSequence { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     private PaymentLink() { }
 
@@ -76,16 +81,53 @@ public sealed class PaymentLink : TenantEntity
     /// de verdad, no solo el status persistido.</summary>
     public bool IsRedeemable(DateTime nowUtc) => Status == PaymentLinkStatus.Active && nowUtc < ExpiresAtUtc;
 
-    public Result AttachPaymentAttempt(Guid tenantPaymentId, DateTime nowUtc)
+    public static readonly Error RedemptionThrottledError = new(
+        "PaymentLink.RedemptionThrottled",
+        "Too many failed redemption attempts; this link has been blocked."
+    );
+
+    public static readonly Error NotRedeemableError = new(
+        "PaymentLink.NotRedeemable",
+        "This link cannot be redeemed."
+    );
+
+    /// <summary>El token es la única prueba de posesión (§32.2): un link bloqueado por intentos fallidos lo dice, para
+    /// que no se sigan probando tarjetas (§41.4/K.1).</summary>
+    public Result EnsureRedeemable(DateTime nowUtc)
+    {
+        if (
+            Status != PaymentLinkStatus.Active
+            && FailedRedemptionAttempts >= PaymentLinkAttemptPolicy.MaxRedemptionAttemptsPerLink
+        )
+            return Result.Failure(RedemptionThrottledError);
+
+        return IsRedeemable(nowUtc) ? Result.Success() : Result.Failure(NotRedeemableError);
+    }
+
+    /// <summary>Un intento vivo o ya cobrado bloquea uno nuevo (evita el doble cobro).
+    /// <paramref name="currentAttemptStatus"/> es el estado del pago en <see cref="RelatedTenantPaymentId"/>.</summary>
+    public Result AttachPaymentAttempt(Guid tenantPaymentId, PaymentStatus? currentAttemptStatus, DateTime nowUtc)
     {
         if (!IsRedeemable(nowUtc))
             return Result.Failure(
                 new Error("PaymentLink.NotRedeemable", $"Cannot attach a payment attempt while link is {Status}.")
             );
 
+        if (currentAttemptStatus is PaymentStatus.Pending or PaymentStatus.Processing or PaymentStatus.RequiresAction)
+            return Result.Failure(AttemptInProgressError);
+
+        if (currentAttemptStatus is PaymentStatus.Succeeded or PaymentStatus.PartiallyRefunded)
+            return Result.Failure(new Error("PaymentLink.AlreadyPaid", "This link has already been paid."));
+
+        AttemptSequence++;
         RelatedTenantPaymentId = tenantPaymentId;
         return Result.Success();
     }
+
+    public static readonly Error AttemptInProgressError = new(
+        "PaymentLink.AttemptInProgress",
+        "Your payment is already being processed. Refresh the page."
+    );
 
     public Result MarkAsUsed(DateTime nowUtc)
     {
@@ -96,6 +138,31 @@ public sealed class PaymentLink : TenantEntity
             return Result.Failure(
                 new Error("PaymentLink.NoPaymentAttempt", "No payment attempt is attached to this link.")
             );
+
+        Status = PaymentLinkStatus.Used;
+        UsedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    public static readonly Error ClosedBeforePaymentError = new(
+        "PaymentLink.ClosedBeforePayment",
+        "The link was revoked before its payment was confirmed."
+    );
+
+    /// <summary>Cierra el link con el pago confirmado más tarde (webhook o reconciliación). Un link vencido
+    /// también se marca usado; uno revocado queda revocado (lo decide Billing).</summary>
+    public Result CompleteWithAttempt(Guid tenantPaymentId, DateTime nowUtc)
+    {
+        if (RelatedTenantPaymentId != tenantPaymentId)
+            return Result.Failure(
+                new Error("PaymentLink.NoPaymentAttempt", "The payment is not the current attempt of this link.")
+            );
+
+        if (Status == PaymentLinkStatus.Revoked)
+            return Result.Failure(ClosedBeforePaymentError);
+
+        if (Status is not (PaymentLinkStatus.Active or PaymentLinkStatus.Expired))
+            return Result.Failure(new Error("PaymentLink.InvalidTransition", $"Cannot complete from {Status}."));
 
         Status = PaymentLinkStatus.Used;
         UsedAtUtc = nowUtc;

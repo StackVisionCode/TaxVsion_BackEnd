@@ -17,5 +17,18 @@ public interface IReservationRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Reservas <c>Open</c> creadas antes de <paramref name="cutoffUtc"/>, las más viejas primero y de todos los
+    /// tenants (lo usa el job de vencimiento). Filtra por <paramref name="referenceType"/> si viene, y deja
+    /// fuera <paramref name="excludedTypes"/>.
+    /// </summary>
+    Task<IReadOnlyList<WalletReservation>> ListOpenOlderThanAsync(
+        DateTime cutoffUtc,
+        int take,
+        string? referenceType,
+        IReadOnlyCollection<string>? excludedTypes,
+        CancellationToken ct = default
+    );
+
     Task AddAsync(WalletReservation reservation, CancellationToken ct = default);
 }

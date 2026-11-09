@@ -1,4 +1,3 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
@@ -68,7 +67,7 @@ public sealed class CalendarUserOffboardedConsumerTests
                 .IsSuccess
         );
 
-    private static Task Run(
+    private static async Task Run(
         FakeAppointments appointments,
         FakeFeedTokens feedTokens,
         RecordingCache cache,
@@ -76,8 +75,9 @@ public sealed class CalendarUserOffboardedConsumerTests
         Guid leaver,
         Guid? successor,
         FakeAvailability? availability = null
-    ) =>
-        CalendarUserOffboardedConsumer.Handle(
+    )
+    {
+        await CalendarUserOffboardedConsumer.Handle(
             new UserOffboardedIntegrationEvent
             {
                 TenantId = Tenant,
@@ -92,11 +92,11 @@ public sealed class CalendarUserOffboardedConsumerTests
             cache,
             availability ?? new FakeAvailability(),
             new NoOpUnitOfWork(),
-            bus,
-            new NoOpCorrelationContext(),
             NullLogger<Appointment>.Instance,
             CancellationToken.None
         );
+        await CalendarDomainEventReplay.DispatchIntoAsync(bus, appointments, appointments.All);
+    }
 
     [Fact]
     public async Task With_successor_reassigns_future_appointments_and_revokes_the_feed_token()
@@ -220,7 +220,10 @@ public sealed class CalendarUserOffboardedConsumerTests
         var request = Assert.Single(bus.Published.OfType<ReminderRequestedIntegrationEvent>());
         Assert.Equal(successor, request.UserId);
         Assert.Equal(AppointmentReminderRequests.Category, request.Category);
-        Assert.Equal(AppointmentReminderRequests.RequestKey(request.TargetId!.Value), request.RequestKey);
+        Assert.Equal(
+            AppointmentReminderRequests.RequestKey(request.TargetId!.Value, withReminder.ReminderGeneration),
+            request.RequestKey
+        );
         Assert.Equal(30, request.LeadMinutes);
     }
 
@@ -306,6 +309,53 @@ public sealed class CalendarUserOffboardedConsumerTests
         Assert.Contains(appt.Attendees, a => a.UserId == leaver); // cancelada = historial
     }
 
+    [Fact]
+    public async Task CancelledSeriesOfLeaver_ClosesEveryOccurrence()
+    {
+        var leaver = Guid.NewGuid();
+        var monday = ReminderTargetsTestData.Next(DayOfWeek.Monday);
+        var series = ReminderTargetsTestData.Weekly(Tenant, leaver, monday, leadMinutes: 30);
+        var expected = ReminderTargetsTestData.WeeklyTargets(series.Id, monday);
+        var bus = new FakeMessageBus();
+
+        await Run(
+            new FakeAppointments(series),
+            new FakeFeedTokens(),
+            new RecordingCache(),
+            bus,
+            leaver,
+            successor: null
+        );
+
+        Assert.Equal(AppointmentStatus.Cancelled, series.Status);
+        var closed = bus.Published.OfType<ReminderTargetClosedIntegrationEvent>().Select(c => c.TargetId).ToList();
+        Assert.Equal(expected.Count, closed.Count);
+        Assert.Equal(expected, closed.ToHashSet());
+    }
+
+    [Fact]
+    public async Task TwoActiveFeedTokens_BothRevoked()
+    {
+        var leaver = Guid.NewGuid();
+        var (first, _) = CalendarFeedToken.Issue(Tenant, leaver, Now);
+        var (second, _) = CalendarFeedToken.Issue(Tenant, leaver, Now.AddMinutes(1));
+        var cache = new RecordingCache();
+
+        await Run(
+            new FakeAppointments(),
+            new FakeFeedTokens(first, second),
+            cache,
+            new FakeMessageBus(),
+            leaver,
+            successor: null
+        );
+
+        Assert.False(first.IsActive);
+        Assert.False(second.IsActive);
+        Assert.Contains(Convert.ToHexString(first.TokenHash), cache.Removed);
+        Assert.Contains(Convert.ToHexString(second.TokenHash), cache.Removed);
+    }
+
     private sealed class FakeAvailability(
         IEnumerable<AvailabilityRule>? rules = null,
         IEnumerable<BlockedTime>? blocks = null
@@ -373,9 +423,19 @@ public sealed class CalendarUserOffboardedConsumerTests
         Assert.Equal(2, result.FutureAppointments);
     }
 
-    private sealed class FakeAppointments(params Appointment[] seed) : IAppointmentRepository
+    private sealed class FakeAppointments : IAppointmentRepository
     {
-        private readonly List<Appointment> _all = [.. seed];
+        private readonly List<Appointment> _all;
+
+        public FakeAppointments(params Appointment[] seed)
+        {
+            // Lo sembrado ya está guardado: sus eventos ya salieron.
+            foreach (var appointment in seed)
+                appointment.ClearDomainEvents();
+            _all = [.. seed];
+        }
+
+        public IReadOnlyList<Appointment> All => _all;
 
         public Task<IReadOnlyList<Appointment>> ListFutureByOrganizerAsync(
             Guid tenantId,
@@ -413,7 +473,12 @@ public sealed class CalendarUserOffboardedConsumerTests
             Guid tenantId,
             Guid appointmentId,
             CancellationToken ct = default
-        ) => throw new NotSupportedException();
+        ) =>
+            Task.FromResult(
+                _all.Find(a => a.TenantId == tenantId && a.Id == appointmentId) is { } found
+                    ? Result.Success(found)
+                    : Result.Failure<Appointment>(AppointmentErrors.NotFound)
+            );
 
         public Task<IReadOnlyList<Appointment>> ListForRangeAsync(
             Guid tenantId,
@@ -445,20 +510,46 @@ public sealed class CalendarUserOffboardedConsumerTests
                 )
             );
 
+        public Task<Result<Appointment>> GetByIdForReadAsync(
+            Guid tenantId,
+            Guid appointmentId,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
+            Guid tenantId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public void Add(Appointment appointment) => _all.Add(appointment);
 
         public void Remove(Appointment appointment) => _all.Remove(appointment);
+
+        public void DiscardPendingChanges() { }
     }
 
-    private sealed class FakeFeedTokens(CalendarFeedToken? seed = null) : ICalendarFeedTokenRepository
+    private sealed class FakeFeedTokens(params CalendarFeedToken[] seed) : ICalendarFeedTokenRepository
     {
-        private readonly List<CalendarFeedToken> _all = seed is null ? [] : [seed];
+        private readonly List<CalendarFeedToken> _all = [.. seed];
 
         public Task<CalendarFeedToken?> FindActiveForUserAsync(
             Guid tenantId,
             Guid userId,
             CancellationToken ct = default
         ) => Task.FromResult(_all.Find(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive));
+
+        public Task<IReadOnlyList<CalendarFeedToken>> ListActiveForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyList<CalendarFeedToken>>(
+                _all.FindAll(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive)
+            );
 
         public Task<CalendarFeedToken?> FindByHashAsync(byte[] tokenHash, CancellationToken ct = default) =>
             Task.FromResult(_all.Find(t => t.TokenHash.AsSpan().SequenceEqual(tokenHash)));
@@ -485,19 +576,5 @@ public sealed class CalendarUserOffboardedConsumerTests
     private sealed class NoOpUnitOfWork : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
-    }
-
-    private sealed class NoOpCorrelationContext : ICorrelationContext
-    {
-        public string CorrelationId { get; private set; } = "test";
-
-        public void Set(string correlationId) => CorrelationId = correlationId;
-
-        public IDisposable Push(string correlationId) => new NoOpScope();
-
-        private sealed class NoOpScope : IDisposable
-        {
-            public void Dispose() { }
-        }
     }
 }

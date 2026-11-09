@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
 /// Un firmante rechazó firmar. La solicitud completa transiciona a <c>Rejected</c> y
 /// los tokens vigentes quedan invalidados por incremento de RevocationEpoch.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerRejectedIntegrationEvent")]
 public sealed record SignerRejectedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

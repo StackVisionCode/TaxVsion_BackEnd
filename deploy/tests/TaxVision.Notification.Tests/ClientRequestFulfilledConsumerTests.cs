@@ -68,6 +68,9 @@ public sealed class ClientRequestFulfilledConsumerTests
     /// <summary>Un dispositivo por usuario cuyo token es el id del usuario: así se ve a quién salió el push.</summary>
     internal sealed class DevicePerUser : IPushSender, IPushDeviceTokenRepository
     {
+        public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public List<Guid> Recipients { get; } = [];
 
         public Task<Result> SendAsync(PushMessage message, CancellationToken ct = default)

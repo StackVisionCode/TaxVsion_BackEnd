@@ -44,8 +44,8 @@ public sealed class SuppressionListEntry
                 new Error("SuppressionListEntry.Tenant", "Tenant is required.")
             );
 
-        var normalized = NormalizeAddress(emailAddress);
-        if (normalized is null)
+        var address = ValueObjects.EmailAddress.Create(emailAddress);
+        if (address.IsFailure)
             return Result.Failure<SuppressionListEntry>(
                 new Error("SuppressionListEntry.EmailAddress", $"'{emailAddress}' is not a valid email address.")
             );
@@ -59,7 +59,7 @@ public sealed class SuppressionListEntry
             new SuppressionListEntry
             {
                 TenantId = tenantId,
-                EmailAddress = normalized,
+                EmailAddress = address.Value.Value,
                 Reason = reason,
                 AddedByUserId = addedByUserId,
                 Notes = notes,
@@ -104,13 +104,7 @@ public sealed class SuppressionListEntry
 
     public static string? NormalizeAddress(string address)
     {
-        if (string.IsNullOrWhiteSpace(address))
-            return null;
-
-        var trimmed = address.Trim();
-        if (trimmed.Length > 320 || !trimmed.Contains('@') || trimmed.StartsWith('@') || trimmed.EndsWith('@'))
-            return null;
-
-        return trimmed.ToLowerInvariant();
+        var parsed = ValueObjects.EmailAddress.Create(address);
+        return parsed.IsSuccess ? parsed.Value.Value : null;
     }
 }

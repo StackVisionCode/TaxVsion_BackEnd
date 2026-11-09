@@ -1,11 +1,9 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
-using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Domain.Wallet;
-using Wolverine;
 
 namespace TaxVision.Wallet.Application.Wallet.Consumers;
 
@@ -26,7 +24,6 @@ public static class WalletTopUpResultConsumer
         WalletTopUpPaymentSucceededIntegrationEvent evt,
         IWalletRepository wallets,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<WalletTopUp> logger,
         CancellationToken ct
@@ -39,60 +36,71 @@ public static class WalletTopUpResultConsumer
                 return;
 
             var topUp = await wallets.GetTopUpAsync(evt.TenantId, evt.TopUpId, ct);
+            // Dinero cobrado sin orden: nunca se da por procesado (la política lo manda a la DLQ).
             if (topUp is null)
+                throw new WalletTopUpNotFoundException(evt.TenantId, evt.TopUpId, evt.SaaSPaymentId);
+
+            // Solo se acredita si la orden es USD y el cobro coincide en moneda y monto; si no, revisión humana.
+            var evtCurrency = evt.Currency?.Trim().ToUpperInvariant();
+            var amount = topUp.CreditAmount();
+            if (
+                amount.IsFailure
+                || topUp.Currency != Domain.Wallet.Wallet.DefaultCurrency
+                || evtCurrency != topUp.Currency
+                || evt.AmountCents != topUp.AmountCents
+            )
             {
-                logger.LogWarning(
-                    "WalletTopUp {TopUpId} not found for succeeded payment {SaaSPaymentId}.",
+                topUp.MarkNeedsReview($"currency_or_amount_mismatch:{evt.Currency}/{evt.AmountCents}");
+                logger.LogError(
+                    "Top-up {TopUpId} of tenant {TenantId} not credited: payment {SaaSPaymentId} is {EvtCurrency}/{EvtAmountCents}, order is {OrderCurrency}/{OrderAmountCents}.",
                     evt.TopUpId,
-                    evt.SaaSPaymentId
+                    evt.TenantId,
+                    evt.SaaSPaymentId,
+                    evt.Currency,
+                    evt.AmountCents,
+                    topUp.Currency,
+                    topUp.AmountCents
                 );
+                await unitOfWork.SaveChangesAsync(ct);
                 return;
             }
 
-            var amountMicros = evt.AmountCents * 10_000;
-
-            var wallet = await wallets.GetByTenantAsync(evt.TenantId, ct);
+            var wallet = await wallets.GetByTenantAsync(evt.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
             if (wallet is null)
             {
-                var createdWallet = Domain.Wallet.Wallet.Create(evt.TenantId, evt.Currency);
+                var createdWallet = Domain.Wallet.Wallet.Create(evt.TenantId, Domain.Wallet.Wallet.DefaultCurrency);
                 if (createdWallet.IsFailure)
-                {
-                    logger.LogError(
-                        "Could not create wallet for tenant {TenantId}: {Error}",
-                        evt.TenantId,
-                        createdWallet.Error.Code
+                    throw new InvalidOperationException(
+                        $"Could not create wallet for tenant {evt.TenantId}: {createdWallet.Error.Code}"
                     );
-                    return;
-                }
                 wallet = createdWallet.Value;
                 await wallets.AddAsync(wallet, ct);
             }
 
-            var credited = wallet.Credit(amountMicros, opKey: $"topup:{evt.TopUpId:N}", referenceId: evt.TopUpId);
+            var credited = wallet.Credit(amount.Value, opKey: $"topup:{evt.TopUpId:N}", referenceId: evt.TopUpId);
             if (credited.IsFailure)
             {
-                logger.LogError("Credit failed for top-up {TopUpId}: {Error}", evt.TopUpId, credited.Error.Code);
+                topUp.MarkNeedsReview($"credit_rejected:{credited.Error.Code}");
+                logger.LogError(
+                    "Credit rejected for top-up {TopUpId} of tenant {TenantId}, payment {SaaSPaymentId}: {Error}",
+                    evt.TopUpId,
+                    evt.TenantId,
+                    evt.SaaSPaymentId,
+                    credited.Error.Code
+                );
+                await unitOfWork.SaveChangesAsync(ct);
                 return;
             }
 
             await wallets.AddLedgerEntryAsync(credited.Value, ct);
             await wallets.AddFundingCreditAsync(
-                FundingCredit.Create(evt.TenantId, Source, evt.SaaSPaymentId, amountMicros),
+                FundingCredit.Create(evt.TenantId, Source, evt.SaaSPaymentId, amount.Value.Micros),
                 ct
             );
             topUp.MarkCredited(evt.SaaSPaymentId);
 
+            // El aviso de saldo sale del evento de dominio del monedero (BB-1).
             await unitOfWork.SaveChangesAsync(ct);
-
-            // Tiempo real: la recarga acreditó → avisa para que el front refresque saldo/historial.
-            await bus.PublishAsync(
-                new WalletBalanceChangedIntegrationEvent
-                {
-                    TenantId = evt.TenantId,
-                    Reason = "topup",
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
         }
     }
 
@@ -101,6 +109,7 @@ public static class WalletTopUpResultConsumer
         IWalletRepository wallets,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        ILogger<WalletTopUp> logger,
         CancellationToken ct
     )
     {
@@ -108,7 +117,16 @@ public static class WalletTopUpResultConsumer
         {
             var topUp = await wallets.GetTopUpAsync(evt.TenantId, evt.TopUpId, ct);
             if (topUp is null)
+            {
+                // Sin dinero de por medio: basta con dejar rastro.
+                logger.LogWarning(
+                    "WalletTopUp {TopUpId} of tenant {TenantId} not found for failed payment {SaaSPaymentId}.",
+                    evt.TopUpId,
+                    evt.TenantId,
+                    evt.SaaSPaymentId
+                );
                 return;
+            }
             topUp.MarkFailed(evt.Reason);
             await unitOfWork.SaveChangesAsync(ct);
         }

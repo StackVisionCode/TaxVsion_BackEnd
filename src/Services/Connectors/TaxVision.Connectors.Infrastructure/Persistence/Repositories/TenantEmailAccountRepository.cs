@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Accounts;
+using TaxVision.Connectors.Domain.Shared;
 
 namespace TaxVision.Connectors.Infrastructure.Persistence.Repositories;
 
@@ -9,6 +10,10 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
 {
     public async Task AddAsync(TenantEmailAccount account, CancellationToken ct = default) =>
         await dbContext.TenantEmailAccounts.AddAsync(account, ct);
+
+    // CON-14: la forma guardada sale del value object; lo que no es una dirección no coincide con ninguna cuenta.
+    private static string? StoredForm(string emailAddress) =>
+        MailboxAddress.Create(emailAddress) is { IsSuccess: true } address ? address.Value.Value : null;
 
     // RBAC Fase 5 — deliberadamente cross-tenant (ver doc de la interfaz): background
     // jobs/webhooks system-level no tienen tenant en contexto. IgnoreQueryFilters() explícito;
@@ -31,15 +36,34 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
         CancellationToken ct = default
     )
     {
-        var normalized = emailAddress.Trim().ToLowerInvariant();
-        var account = await dbContext
-            .TenantEmailAccounts.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(a => a.EmailAddress == normalized, ct);
+        var stored = StoredForm(emailAddress);
+        var account = stored is null
+            ? null
+            : await dbContext.TenantEmailAccounts.IgnoreQueryFilters().FirstOrDefaultAsync(a => a.EmailAddress == stored, ct);
         return account is null
             ? Result.Failure<TenantEmailAccount>(
                 new Error("TenantEmailAccount.NotFound", $"TenantEmailAccount with email '{emailAddress}' not found.")
             )
             : Result.Success(account);
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListSyncableGmailByEmailAddressAsync(
+        string emailAddress,
+        CancellationToken ct = default
+    )
+    {
+        var stored = StoredForm(emailAddress);
+        if (stored is null)
+            return [];
+        return await dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .Where(a =>
+                a.EmailAddress == stored
+                && a.ProviderCode == ProviderCode.Gmail
+                && (a.Status == TenantEmailAccountStatus.Active || a.Status == TenantEmailAccountStatus.Connected)
+            )
+            .Select(a => a.Id)
+            .ToListAsync(ct);
     }
 
     public async Task<Result<TenantEmailAccount>> GetByTenantAndEmailAsync(
@@ -48,10 +72,12 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
         CancellationToken ct = default
     )
     {
-        var normalized = emailAddress.Trim().ToLowerInvariant();
-        var account = await dbContext
-            .TenantEmailAccounts.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.EmailAddress == normalized, ct);
+        var stored = StoredForm(emailAddress);
+        var account = stored is null
+            ? null
+            : await dbContext
+                .TenantEmailAccounts.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.EmailAddress == stored, ct);
         return account is null
             ? Result.Failure<TenantEmailAccount>(
                 new Error("TenantEmailAccount.NotFound", $"No account with email '{emailAddress}' in this tenant.")

@@ -1,11 +1,8 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
 
@@ -28,8 +25,6 @@ public static class AddAttendeeHandler
         AddAttendeeCommand command,
         IAppointmentRepository appointments,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -57,24 +52,6 @@ public static class AddAttendeeHandler
             return Result.Failure<AppointmentResponse>(added.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-
-        await bus.PublishAsync(
-            new AppointmentAttendeeAddedIntegrationEvent
-            {
-                TenantId = appointment.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                AppointmentId = appointment.Id,
-                AttendeeKind = command.Kind.ToString(),
-                UserId = command.UserId,
-                CustomerId = command.CustomerId,
-                Email = snapshot.Value.Email,
-                Title = appointment.Title.Value,
-                StartUtc = appointment.Timing.StartUtc,
-                TimeZoneId = appointment.Timing.TimeZone.Id,
-                IsRecurring = appointment.IsRecurring,
-                IsVirtual = appointment.IsVirtual,
-            }
-        );
 
         return Result.Success(AppointmentResponse.From(appointment));
     }

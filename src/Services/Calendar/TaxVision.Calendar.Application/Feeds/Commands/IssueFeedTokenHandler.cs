@@ -22,10 +22,9 @@ public static class IssueFeedTokenHandler
     {
         var nowUtc = DateTime.UtcNow;
 
-        // Emitir uno nuevo revoca el anterior: es lo que hace útil el botón de regenerar cuando la URL
-        // vieja se compartió de más.
-        var existing = await tokens.FindActiveForUserAsync(command.TenantId, command.UserId, ct);
-        if (existing is not null)
+        // Emitir uno nuevo revoca los anteriores: es lo que hace útil el botón de regenerar cuando la
+        // URL vieja se compartió de más.
+        foreach (var existing in await tokens.ListActiveForUserAsync(command.TenantId, command.UserId, ct))
         {
             existing.Revoke(nowUtc);
             await cache.RemoveAsync(Convert.ToHexString(existing.TokenHash), ct);
@@ -34,6 +33,7 @@ public static class IssueFeedTokenHandler
         var (token, plainValue) = CalendarFeedToken.Issue(command.TenantId, command.UserId, nowUtc);
         tokens.Add(token);
 
+        // Con el doble clic, el índice único de activos hace fallar al segundo con 409.
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(

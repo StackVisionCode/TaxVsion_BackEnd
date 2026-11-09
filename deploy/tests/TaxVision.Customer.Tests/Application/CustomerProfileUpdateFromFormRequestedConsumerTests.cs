@@ -3,10 +3,12 @@ using System.Text;
 using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers.Consumers;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using TaxVision.Customer.Domain.Audit;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
@@ -31,9 +33,15 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
 
         Assert.Equal("+18095559999", customer.PrimaryPhone!.E164Value);
         Assert.Single(customer.Addresses);
-        var applied = Assert.IsType<CustomerProfileUpdateFromFormAppliedIntegrationEvent>(
-            Assert.Single(harness.Bus.Published)
+        var applied = Assert.Single(
+            harness.Bus.Published.OfType<CustomerProfileUpdateFromFormAppliedIntegrationEvent>()
         );
+        // CUS-BB1: el teléfono cambió, así que las proyecciones reciben un CustomerUpdated (antes no salía).
+        Assert.Equal(
+            "+18095559999",
+            Assert.Single(harness.Bus.Published.OfType<CustomerUpdatedIntegrationEvent>()).PrimaryPhone
+        );
+        Assert.Equal(2, harness.Bus.Published.Count);
         Assert.Empty(applied.Failures);
         Assert.Contains("customer.primary_phone", applied.AppliedTargets);
         Assert.Contains("customer.address.home", applied.AppliedTargets);
@@ -50,6 +58,28 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
 
         Assert.IsType<CustomerProfileUpdateFromFormRejectedIntegrationEvent>(Assert.Single(harness.Bus.Published));
         Assert.Equal("+18095551234", customer.PrimaryPhone!.E164Value); // sin cambios
+    }
+
+    // CUS-3: antes lanzaba y acababa en la cola de errores; un dependiente salía además como "aplicado".
+    [Fact]
+    public async Task Archived_customer_is_rejected_with_its_own_reason_and_nothing_changes()
+    {
+        var harness = new Harness();
+        var customer = harness.SeedCustomer();
+        customer.Archive(Staff);
+        customer.ClearDomainEvents();
+
+        await harness.SendAsync(customer.Id, Values(Phone("+18095559999"), Dependents()));
+
+        var rejected = Assert.IsType<CustomerProfileUpdateFromFormRejectedIntegrationEvent>(
+            Assert.Single(harness.Bus.Published)
+        );
+        Assert.All(
+            rejected.Failures,
+            failure => Assert.Equal(CustomerProfileUpdateFromFormOutcomes.CustomerArchived, failure.Code)
+        );
+        Assert.Equal("+18095551234", customer.PrimaryPhone!.E164Value);
+        Assert.Empty(customer.Relations);
     }
 
     [Fact]
@@ -197,11 +227,13 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
                     refundBankRoutingCipher: null,
                     byUserId: Staff
                 );
+            customer.ClearDomainEvents(); // ya guardado
             Repository.All.Add(customer);
             return customer;
         }
 
-        public Task SendAsync(Guid customerId, IReadOnlyList<ClientFormTargetValue> values)
+        // Lo emitido por el consumer (también lo de los eventos de dominio) sale por el bus como en Wolverine.
+        public async Task SendAsync(Guid customerId, IReadOnlyList<ClientFormTargetValue> values)
         {
             var sourceReferenceId = Guid.NewGuid();
             var idempotencyKey = sourceReferenceId.ToString("N");
@@ -230,7 +262,7 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
                     new CustomerProfileUpdateFromFormPayload(Staff, actorType, values)
                 ),
             };
-            return CustomerProfileUpdateFromFormRequestedConsumer.Handle(
+            await CustomerProfileUpdateFromFormRequestedConsumer.Handle(
                 command,
                 Codec,
                 Repository,
@@ -244,6 +276,7 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
                 NullLogger<CustomerProfileUpdateFromFormRequestedIntegrationEvent>.Instance,
                 CancellationToken.None
             );
+            await DomainEventReplay.DispatchIntoAsync(Bus, Repository, Repository.All);
         }
     }
 
@@ -255,6 +288,11 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
         public string Unprotect(byte[] cipher) => Encoding.UTF8.GetString(cipher);
 
         public string ComputeBlindIndex(string plainText, Guid tenantId) => $"bi:{plainText}";
+
+        public IReadOnlyCollection<string> ComputeBlindIndexCandidates(string plainText, Guid tenantId) =>
+            [ComputeBlindIndex(plainText, tenantId)];
+
+        public short CurrentKeyVersion => 1;
     }
 
     internal sealed class AuditWriter : ICustomerAuditWriter
@@ -273,8 +311,11 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
         public List<DomainCustomer> All { get; } = [];
         public string? ConflictBlindIndex { get; set; }
 
-        public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct) =>
-            Task.FromResult(All.Find(c => c.Id == id));
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
+            Task.FromResult(All.Find(c => c.TenantId == tenantId && c.Id == id));
+
+        public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+            Task.FromResult(All.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));
 
         public Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
             Guid tenantId,
@@ -305,6 +346,63 @@ public sealed class CustomerProfileUpdateFromFormRequestedConsumerTests
             Guid p,
             int b,
             Guid a,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeCustomerId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindCustomerIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeCustomerId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeRelationId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindRelationIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeRelationId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public Task<IReadOnlyList<DomainCustomer>> ListNonPrimaryAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<int> CountActiveByAssignedPreparerAsync(Guid tenantId, Guid preparerUserId, CancellationToken ct) =>
+            Task.FromResult(0);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListArchivedAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct
+        ) => Task.FromResult(OffboardingClientCounts.None);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> ids,
             CancellationToken ct
         ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
     }

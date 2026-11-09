@@ -1,4 +1,5 @@
 using TaxVision.Correspondence.Application.Abstractions;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Tests.Projections;
 
@@ -12,7 +13,7 @@ internal sealed class FakeTenantCustomerBackfillService : ITenantCustomerBackfil
 
     public IReadOnlyList<Guid> Calls => _calls;
 
-    public Task EnsureBackfilledAsync(Guid tenantId, CancellationToken ct = default)
+    public Task EnsureBackfilledAsync(Guid tenantId, IMessageBus bus, CancellationToken ct = default)
     {
         _calls.Add(tenantId);
         return Task.CompletedTask;

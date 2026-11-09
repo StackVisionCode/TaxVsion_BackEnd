@@ -6,12 +6,14 @@ public sealed class CorrespondenceIngestOptions
     public const string SectionName = "Correspondence:Ingest";
 
     /// <summary>
-    /// Si <c>true</c>, un <c>From</c> que no matchea ningún customer se guarda en
-    /// <c>UnmatchedIncomingEmails</c> (TTL 24h) para debug. <c>false</c> por default — nunca en
-    /// prod, per plan §14. No afecta el registro de <c>AuthenticationFailed</c> (ese siempre se
-    /// escribe, es un caso de seguridad, no de debug).
+    /// Inicio del buzón de los sistemas de correo. Sin ser clientes no entran a "Not a client": sus avisos de no
+    /// entrega ya los procesa Connectors. Misma lista que <c>DeliveryReportCandidate</c>.
     /// </summary>
-    public bool EnableUnmatchedDebug { get; set; }
+    public string[] SystemSenderPrefixes { get; set; } =
+    ["mailer-daemon", "postmaster", "microsoftexchange", "mail-daemon"];
+
+    public bool IsSystemSender(string address) =>
+        SystemSenderPrefixes.Any(prefix => address.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Si <c>true</c>, habilita la capa 4 (opcional) de <see cref="ThreadResolver"/>: cuando

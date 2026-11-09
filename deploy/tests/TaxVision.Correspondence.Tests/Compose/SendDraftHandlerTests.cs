@@ -166,18 +166,19 @@ public sealed class SendDraftHandlerTests
         Assert.Equal(2, unitOfWork.SaveChangesCallCount); // MarkSending persist + MarkFailed persist.
     }
 
-    /// <summary>A transport-level failure from the client (timeout/network exception, already caught and turned into a Result by PostmasterClient itself) is handled exactly like any other Postmaster failure — no unhandled exception bubbles up.</summary>
-    [Fact]
-    public async Task Handle_OnAClientTransportFailure_MarksDraftFailed_WithoutThrowing()
+    /// <summary>Sin respuesta de Postmaster el correo pudo salir: queda en Sending para el job, sin pasar a Failed.</summary>
+    [Theory]
+    [InlineData("PostmasterClient.RequestFailed")]
+    [InlineData("PostmasterClient.EmptyResponse")]
+    [InlineData("PostmasterClient.UnexpectedStatus")]
+    public async Task Handle_OnAnUnknownOutcome_StaysSendingAndAnswersInProgress(string errorCode)
     {
         var tenantId = Guid.NewGuid();
         var drafts = new FakeDraftRepository();
         var draft = SeedSendableDraft(drafts, tenantId);
         var postmaster = new FakePostmasterClient
         {
-            Response = Result.Failure<SendDraftPostmasterResult>(
-                new Error("PostmasterClient.RequestFailed", "The request timed out.")
-            ),
+            Response = Result.Failure<SendDraftPostmasterResult>(new Error(errorCode, "The request timed out.")),
         };
         var auditLogs = new FakeCorrespondenceAuditLogRepository();
         var correlation = new FakeCorrelationContext();
@@ -193,10 +194,10 @@ public sealed class SendDraftHandlerTests
             unitOfWork
         );
 
-        Assert.True(result.IsFailure);
-        Assert.Equal("PostmasterClient.RequestFailed", result.Error.Code);
-        Assert.Equal(DraftStatus.Failed, draft.Status);
-        Assert.NotNull(draft.FailureReason);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.InProgress);
+        Assert.Equal(DraftStatus.Sending, draft.Status);
+        Assert.Null(draft.FailureReason);
     }
 
     [Fact]

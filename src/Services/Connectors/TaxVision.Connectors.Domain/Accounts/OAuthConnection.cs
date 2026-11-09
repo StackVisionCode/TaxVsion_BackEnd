@@ -28,6 +28,7 @@ public sealed class OAuthConnection : BaseEntity
     public DateTime AuthorizedAtUtc { get; private set; }
     public OAuthConnectionStatus Status { get; private set; }
     public DateTime? RevokedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     private OAuthToken? _token;
     public OAuthToken? Token => _token;
@@ -92,7 +93,13 @@ public sealed class OAuthConnection : BaseEntity
     }
 
     /// <summary>Scopes de <paramref name="requiredScope"/> que este grant no tiene; vacío = permisos al día.</summary>
-    public IReadOnlyList<string> MissingScopes(string requiredScope) => OAuthScopes.Missing(Scope, requiredScope);
+    public IReadOnlyList<string> MissingScopes(string requiredScope) =>
+        OAuthScopeSet.Parse(Scope).Missing(OAuthScopeSet.Parse(requiredScope));
+
+    /// <summary>Un grant nuevo la reemplaza si ya no sirve o si le faltan permisos; una Active completa o Pending, no.</summary>
+    public bool CanReconnect(string requiredScope) =>
+        Status is OAuthConnectionStatus.Expired or OAuthConnectionStatus.Revoked
+        || (Status == OAuthConnectionStatus.Active && MissingScopes(requiredScope).Count > 0);
 
     /// <summary>
     /// Revoked|Expired → Active (o Active → Active para ampliar permisos). El usuario volvió a pasar por el flujo de conectar cuenta (D3

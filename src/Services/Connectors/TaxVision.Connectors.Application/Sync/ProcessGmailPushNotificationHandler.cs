@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Abstractions;
@@ -7,7 +6,7 @@ using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
-using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Sync;
 
@@ -21,6 +20,7 @@ public static class ProcessGmailPushNotificationHandler
     /// </summary>
     private static readonly TimeSpan WebhookSyncLockTtl = TimeSpan.FromMinutes(2);
 
+    [NonTransactional]
     public static async Task<Result> Handle(
         ProcessGmailPushNotificationCommand cmd,
         ITenantEmailAccountRepository accountRepository,
@@ -29,14 +29,14 @@ public static class ProcessGmailPushNotificationHandler
         IEmailProviderClientFactory emailClientFactory,
         IDistributedLock distributedLock,
         ISyncPendingFlag pendingFlag,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IOutboxUnit unit,
         ICorrelationContext correlation,
         ILogger logger,
+        MessageFetchFailureTracker fetchFailures,
         CancellationToken ct
     )
     {
-        var accountResult = await accountRepository.GetByEmailAddressAsync(cmd.EmailAddress, ct);
+        var accountResult = await accountRepository.GetByIdAsync(cmd.AccountId, ct);
         if (accountResult.IsFailure)
             return Result.Failure(accountResult.Error);
 
@@ -105,10 +105,10 @@ public static class ProcessGmailPushNotificationHandler
                     account,
                     clientResult.Value,
                     cursor,
-                    unitOfWork,
-                    bus,
+                    unit,
                     correlation,
                     logger,
+                    fetchFailures,
                     ct
                 ),
             ct

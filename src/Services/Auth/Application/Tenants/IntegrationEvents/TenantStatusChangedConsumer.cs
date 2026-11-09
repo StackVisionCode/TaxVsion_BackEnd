@@ -11,9 +11,7 @@ public static class TenantStatusChangedConsumer
     public static async Task Handle(
         TenantStatusChangedIntegrationEvent evt,
         ITenantRegistry tenants,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocations,
+        SessionAccessCutoff accessCutoff,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -25,6 +23,11 @@ public static class TenantStatusChangedConsumer
 
         using (correlation.Push(correlationId))
         {
+            // TEN-4: suspender y reactivar pueden llegar al revés.
+            var tenant = await tenants.GetByIdAsync(evt.ChangedTenantId, ct);
+            if (tenant is not null && !tenant.AcceptStatusVersion(evt.TenantVersion))
+                return;
+
             await tenants.SetActiveAsync(evt.ChangedTenantId, evt.IsActive, ct);
 
             // Tenant suspendido/cerrado: se cortan todas las sesiones activas. A5 (G10) — antes esto
@@ -32,14 +35,7 @@ public static class TenantStatusChangedConsumer
             // hasta 15 minutos después de suspender el tenant. Ahora denylistea el sid y lo anuncia.
             if (!evt.IsActive)
             {
-                await SessionAccessCutoff.ForTenantAsync(
-                    evt.ChangedTenantId,
-                    "tenant_suspended",
-                    sessions,
-                    denylist,
-                    revocations,
-                    ct
-                );
+                await accessCutoff.ForTenantAsync(evt.ChangedTenantId, "tenant_suspended", ct);
             }
 
             await unitOfWork.SaveChangesAsync(ct);

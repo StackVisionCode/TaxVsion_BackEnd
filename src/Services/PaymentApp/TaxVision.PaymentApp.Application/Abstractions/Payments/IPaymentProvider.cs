@@ -33,10 +33,14 @@ public interface IPaymentProvider
 
     Task<Result<CaptureResult>> CaptureAsync(string providerChargeReference, Money amount, CancellationToken ct);
 
+    /// <summary><paramref name="idempotencyKey"/> es estable por solicitud: un reintento con la misma clave
+    /// no crea un segundo reembolso en el proveedor. Un fallo pasajero (sin respuesta, 5xx, 429) lleva un código que
+    /// termina en <c>Unavailable</c> (<see cref="ProviderRefundFailures"/>); cualquier otro es un rechazo.</summary>
     Task<Result<RefundResult>> RefundAsync(
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     );
 
@@ -55,6 +59,11 @@ public interface IPaymentProvider
     /// <c>PendingChargeReconciliationJob</c> para resolver pagos atascados en Processing
     /// tras una caída a mitad de cobro (§1714 del diseño).</summary>
     Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(string providerChargeReference, CancellationToken ct);
+
+    /// <summary>Busca el cargo de un pago sin referencia guardada, por la metadata <c>saaSPaymentId</c>. Solo cuentan
+    /// los creados desde <paramref name="createdAfterUtc"/>, salvo uno ya cobrado. La usa la reconciliación de pagos
+    /// <c>Pending</c>; un provider que no puede buscar responde <see cref="ChargeLookupOutcome.NotSupported"/>.</summary>
+    Task<Result<ChargeLookup>> FindChargeAsync(Guid saaSPaymentId, DateTime createdAfterUtc, CancellationToken ct);
 
     /// <summary>Finaliza un checkout hosteado luego del redirect del provider. Para providers
     /// donde el checkout ya captura automaticamente, equivale a leer estado. Para PayPal, este

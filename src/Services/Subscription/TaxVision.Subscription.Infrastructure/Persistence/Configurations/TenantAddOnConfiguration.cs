@@ -12,6 +12,7 @@ public sealed class TenantAddOnConfiguration : IEntityTypeConfiguration<TenantAd
         builder.HasKey(addOn => addOn.Id);
 
         builder.Property(addOn => addOn.TenantId).IsRequired();
+        builder.Property(addOn => addOn.RowVersion).IsRowVersion();
         builder.Property(addOn => addOn.AddOnDefinitionId).IsRequired();
         builder.Property(addOn => addOn.AddOnCode).HasMaxLength(50).IsRequired();
         builder.Property(addOn => addOn.Status).HasConversion<string>().HasMaxLength(30).IsRequired();

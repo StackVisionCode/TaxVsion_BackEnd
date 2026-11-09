@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Documents.Application.Abstractions;
+using TaxVision.Documents.Application.Generations;
 using TaxVision.Documents.Application.RateLimiting.Abstractions;
 using TaxVision.Documents.Infrastructure.Branding;
 using TaxVision.Documents.Infrastructure.Observability;
@@ -98,6 +99,9 @@ public static class DependencyInjection
         services.AddOptions<DocumentsPdfOptions>().Bind(configuration.GetSection(DocumentsPdfOptions.SectionName));
         services.AddOptions<DocumentsMinioOptions>().Bind(configuration.GetSection(DocumentsMinioOptions.SectionName));
         services.AddOptions<PlatformIssuerOptions>().Bind(configuration.GetSection(PlatformIssuerOptions.SectionName));
+        services
+            .AddOptions<GenerationRetryOptions>()
+            .Bind(configuration.GetSection(GenerationRetryOptions.SectionName));
 
         // Cliente MinIO propio de Documents — credenciales scoped (IAM documents-source), nunca las root
         // de CloudStorage. Solo para el PUT del archivo generado al bucket temporal.

@@ -45,10 +45,12 @@ public sealed class CorrespondenceDbContext(
 ) : DbContext(options), IUnitOfWork
 {
     public DbSet<CustomerEmailAddress> CustomerEmailAddresses => Set<CustomerEmailAddress>();
+    public DbSet<MailboxOwnership> MailboxOwnerships => Set<MailboxOwnership>();
     public DbSet<TenantBackfillState> TenantBackfillStates => Set<TenantBackfillState>();
     public DbSet<IncomingEmail> IncomingEmails => Set<IncomingEmail>();
     public DbSet<IncomingEmailRecipient> IncomingEmailRecipients => Set<IncomingEmailRecipient>();
     public DbSet<IncomingEmailAttachment> IncomingEmailAttachments => Set<IncomingEmailAttachment>();
+    public DbSet<IncomingEmailMailbox> IncomingEmailMailboxes => Set<IncomingEmailMailbox>();
     public DbSet<EmailThread> EmailThreads => Set<EmailThread>();
     public DbSet<UnmatchedIncomingEmail> UnmatchedIncomingEmails => Set<UnmatchedIncomingEmail>();
     public DbSet<Draft> Drafts => Set<Draft>();
@@ -86,7 +88,7 @@ public sealed class CorrespondenceDbContext(
     /// el tenant del actor autenticado. Fail-closed — sin tenant en contexto, compara contra
     /// <see cref="Guid.Empty"/> (0 filas). <c>DraftRepository.ListAbandonedAsync</c>
     /// (DraftCleanupJob) y <c>TenantBackfillStateRepository.ListAllTenantIdsAsync</c>
-    /// (CustomerEmailReconciliationJob) son los únicos 2 accesos cross-tenant genuinos — usan
+    /// (MailboxOwnershipReconciliationJob) son los únicos 2 accesos cross-tenant genuinos — usan
     /// <c>IgnoreQueryFilters()</c> explícito. Ningún job de este servicio despacha vía
     /// <c>bus.InvokeAsync</c>, así que no hace falta sellar <c>bus.TenantId</c> en ninguno.
     /// </summary>
@@ -113,6 +115,14 @@ public sealed class CorrespondenceDbContext(
         try
         {
             return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The record changed while the operation was in progress.",
+                ex
+            );
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {

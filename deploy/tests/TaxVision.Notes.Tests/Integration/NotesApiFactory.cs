@@ -1,7 +1,12 @@
 using System.Security.Cryptography;
+using BuildingBlocks.CustomerVisibility;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using TaxVision.Notes.Infrastructure.Jobs;
+using Wolverine;
 
 namespace TaxVision.Notes.Tests.Integration;
 
@@ -23,6 +28,8 @@ public sealed class NotesApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        // BB-10: base temporal; con la local compartiría los sobres de la flota.
+        builder.UseSetting("ConnectionStrings:Default", NotesIntegrationDatabase.ConnectionString);
         builder.ConfigureAppConfiguration(
             (_, config) =>
                 config.AddInMemoryCollection(
@@ -34,5 +41,26 @@ public sealed class NotesApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Los jobs llaman a Customer y CloudStorage reales con datos de la base local: no en pruebas.
+        builder.ConfigureTestServices(services =>
+        {
+            // Sin Rabbit: la cola notes-events es la de la flota y este host le quitaría mensajes.
+            services.DisableAllExternalWolverineTransports();
+
+            Type[] jobs =
+            [
+                typeof(CustomerDirectoryReconciliationJob),
+                typeof(TenantCustomerFullReconciliationJob),
+                typeof(PendingAttachmentReconciliationJob),
+                typeof(CustomerAssignmentReconciliationJob),
+            ];
+            foreach (
+                var descriptor in services
+                    .Where(d => d.ServiceType == typeof(IHostedService) && jobs.Contains(d.ImplementationType))
+                    .ToList()
+            )
+                services.Remove(descriptor);
+        });
     }
 }

@@ -56,6 +56,9 @@ public sealed class TenantStorageLimit : TenantEntity
 
     /// <summary>Tope de descargas de un enlace externo (null = sin tope); también es el valor si no se elige uno.</summary>
     public int? MaxShareDownloads { get; private set; }
+
+    /// <summary>Última revisión de entitlements aplicada; una igual o anterior llega tarde y se ignora.</summary>
+    public long? LastEntitlementsRevision { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
     public static TenantStorageLimit Create(
@@ -113,6 +116,16 @@ public sealed class TenantStorageLimit : TenantEntity
     /// </summary>
     public void ReleaseUsed(long bytes) => UsedBytes = Math.Max(0, UsedBytes - bytes);
 
+    /// <summary>Reposición de CST-5: fija valores absolutos calculados desde Files (idempotente).</summary>
+    public Result Recalculate(long usedBytes, long reservedBytes)
+    {
+        if (usedBytes < 0 || reservedBytes < 0)
+            return Result.Failure(QuotaErrors.InvalidRecalculation);
+        UsedBytes = usedBytes;
+        ReservedBytes = reservedBytes;
+        return Result.Success();
+    }
+
     public void ApplyPlan(string planCode, long maxBytes, long maxFileSizeBytes, string? fileTypeGroups = null)
     {
         PlanCode = planCode;
@@ -120,6 +133,24 @@ public sealed class TenantStorageLimit : TenantEntity
         MaxFileSizeBytes = maxFileSizeBytes;
         PlanFileTypeGroups = fileTypeGroups ?? PlanFileAllowanceDefaults.FileTypeGroups;
         IsSuspended = false;
+    }
+
+    public void ApplyEntitlements(
+        long revision,
+        string planCode,
+        long maxBytes,
+        long maxFileSizeBytes,
+        string? fileTypeGroups,
+        bool isSuspended
+    )
+    {
+        if (revision <= LastEntitlementsRevision)
+            return;
+
+        ApplyPlan(planCode, maxBytes, maxFileSizeBytes, fileTypeGroups);
+        if (isSuspended)
+            Suspend();
+        LastEntitlementsRevision = revision;
     }
 
     public PlanFileAllowance PlanAllowance() =>
@@ -237,6 +268,9 @@ public sealed class TenantStorageLimit : TenantEntity
 
 public static class QuotaErrors
 {
+    /// <summary>Código del conflicto cuando dos reservas pasan el chequeo a la vez y juntas superan el tope.</summary>
+    public const string ConcurrentExceededCode = "Storage.QuotaExceeded";
+
     public static readonly Error NotProvisioned = new(
         "StorageQuota.NotProvisioned",
         "Storage limits have not been provisioned for this tenant."
@@ -247,6 +281,10 @@ public static class QuotaErrors
         "The file exceeds the plan's per-file limit."
     );
     public static readonly Error Exceeded = new("StorageQuota.Exceeded", "The tenant storage quota would be exceeded.");
+    public static readonly Error InvalidRecalculation = new(
+        "StorageQuota.InvalidRecalculation",
+        "Recalculated storage counters cannot be negative."
+    );
     public static readonly Error InvalidSharingPolicy = new(
         "StorageQuota.InvalidSharingPolicy",
         "Link lifetime must be 1–3650 days (default not above the maximum), passwords 4–64 characters, 3–50 attempts and downloads 1–100000."

@@ -23,12 +23,20 @@ internal sealed class EmailThreadConfiguration : IEntityTypeConfiguration<EmailT
         builder.Property(x => x.MessageCount).IsRequired();
         builder.Property(x => x.Status).IsRequired().HasConversion<string>().HasMaxLength(16);
         builder.Property(x => x.ArchivedAtUtc);
+        builder.Property(x => x.RowVersion).IsRowVersion();
+        builder.Ignore(x => x.DomainEvents);
 
+        // Un hilo por cliente (COR-02): el mismo ProviderThreadId puede tener un hilo por cliente.
         builder
-            .HasIndex(x => new { x.TenantId, x.ProviderThreadId })
+            .HasIndex(x => new
+            {
+                x.TenantId,
+                x.CustomerId,
+                x.ProviderThreadId,
+            })
             .IsUnique()
             .HasFilter("[ProviderThreadId] IS NOT NULL")
-            .HasDatabaseName("IX_EmailThreads_TenantId_ProviderThreadId_Unique");
+            .HasDatabaseName("IX_EmailThreads_TenantId_CustomerId_ProviderThreadId_Unique");
 
         // LastMessageAtUtc DESC per plan §24: hilos con actividad más reciente primero.
         builder

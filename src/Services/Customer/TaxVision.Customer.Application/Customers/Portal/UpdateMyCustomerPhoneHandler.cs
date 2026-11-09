@@ -1,30 +1,26 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.Customer.Application.Customers.Portal;
 
 /// <summary>
 /// El cliente cambia (o quita, si viene vacío) el teléfono principal de su ficha desde el portal, sin OTP.
-/// Se publica CustomerUpdated igual que una edición del preparador, así las proyecciones se enteran.
+/// Sale CustomerUpdated (evento de dominio) igual que una edición del preparador, así las proyecciones se enteran.
 /// </summary>
 public static class UpdateMyCustomerPhoneHandler
 {
     public static async Task<Result> Handle(
         UpdateMyCustomerPhoneCommand command,
         ICustomerRepository repository,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(command.CustomerId, ct);
-        if (customer is null || customer.TenantId != command.TenantId || customer.Status == CustomerStatus.Archived)
+        var customer = await repository.GetByIdAsync(command.TenantId, command.CustomerId, ct);
+        if (customer is null || customer.Status == CustomerStatus.Archived)
             return Result.Failure(new Error("Customer.NotFound", "Customer not found."));
 
         PhoneNumber? phone = null;
@@ -44,7 +40,6 @@ public static class UpdateMyCustomerPhoneHandler
             return changed;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(CustomerUpdatedEvents.From(customer, command.UserId, correlation.CorrelationId));
         return Result.Success();
     }
 }

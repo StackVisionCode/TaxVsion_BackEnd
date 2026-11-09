@@ -40,22 +40,39 @@ public sealed class MessagesController(
 
     public sealed record SendMessagesRequest(IReadOnlyList<MessageItemRequest> Messages);
 
+    private const string IdempotencyKeyHeader = "Idempotency-Key";
+
+    // La clave por ítem ("crm:{clave}:{n}") cabe en la columna IdempotencyKey (200).
+    private const int MaxRequestKeyLength = 100;
+
     [HttpPost("messages")]
     [HasPermission(SmsPermissions.Send)]
     [RateLimit("sms.h.send")]
     [ProducesResponseType<SendSmsBatchResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Send([FromBody] SendMessagesRequest request, CancellationToken ct)
     {
+        // Clave de la petición: la del CRM (Idempotency-Key) o una nueva. Un reintento reusa lote y reserva;
+        // un reenvío legítimo es otra petición y otra clave.
+        var requestKey =
+            Request.Headers.TryGetValue(IdempotencyKeyHeader, out var header) && !string.IsNullOrWhiteSpace(header)
+                ? header.ToString().Trim()
+                : Guid.NewGuid().ToString("N");
+        if (requestKey.Length > MaxRequestKeyLength)
+            return BadRequest(new Error("sms.invalidIdempotencyKey", "The Idempotency-Key header is too long."));
+
         var items = (request.Messages ?? [])
-            .Select(m => new SmsSendItemDto(
-                m.CustomerId,
-                m.To,
-                m.Message,
-                m.Media?.Select(x => new SmsMediaDto(x.Url, x.ContentType, x.FileName, x.SizeBytes)).ToList(),
-                m.IdempotencyKey,
-                m.SourceContext,
-                m.RecipientName
-            ))
+            .Select(
+                (m, index) =>
+                    new SmsSendItemDto(
+                        m.CustomerId,
+                        m.To,
+                        m.Message,
+                        m.Media?.Select(x => new SmsMediaDto(x.Url, x.ContentType, x.FileName, x.SizeBytes)).ToList(),
+                        string.IsNullOrWhiteSpace(m.IdempotencyKey) ? $"crm:{requestKey}:{index}" : m.IdempotencyKey,
+                        m.SourceContext,
+                        m.RecipientName
+                    )
+            )
             .ToList();
 
         // El endpoint lo comparten los servicios (M2M) y las personas. Solo a una persona se le mide el
@@ -76,7 +93,9 @@ public sealed class MessagesController(
                 actorUserId,
                 canViewAll,
                 ChargeWallet: true,
-                CallerBearerToken: ExtractBearerToken()
+                CallerBearerToken: ExtractBearerToken(),
+                BatchKey: requestKey,
+                EnforceContactPolicy: true
             ),
             ct
         );

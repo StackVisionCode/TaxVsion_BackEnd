@@ -47,6 +47,12 @@ public interface IFileObjectRepository
     );
     Task<IReadOnlyList<FileObject>> ListExpiredUploadsAsync(DateTime nowUtc, int take, CancellationToken ct);
 
+    /// <summary>Cross-tenant: PendingScan/Scanning encolados (o creados) antes de <paramref name="olderThanUtc"/>.</summary>
+    Task<IReadOnlyList<FileObject>> ListStuckScansAsync(DateTime olderThanUtc, int take, CancellationToken ct);
+
+    /// <summary>CST-5: lo mínimo para calcular la cuota de un tenant (incluye la papelera).</summary>
+    Task<IReadOnlyList<QuotaFootprintInput>> ListQuotaInputsAsync(Guid tenantId, CancellationToken ct);
+
     /// <summary>
     /// Backfill (barrido de plataforma): tenants distintos que TIENEN al menos un archivo sin
     /// carpeta de tipo navegable — la lista exacta a migrar (ni mas ni menos). Cross-tenant.
@@ -166,6 +172,15 @@ public interface IFileObjectRepository
     );
 }
 
+/// <summary>
+/// Turno exclusivo para escanear un archivo, sin transacción ni candado sobre su fila: un duplicado sale sin
+/// descargar y un borrado no espera al antivirus. Null si otro escaneo lo tiene; se suelta al liberar el turno.
+/// </summary>
+public interface IScanClaims
+{
+    Task<IAsyncDisposable?> TryClaimAsync(Guid fileId, CancellationToken ct);
+}
+
 /// <summary>Fase C2 — carpetas navegables (arbol logico, ver Domain/Folders/Folder.cs).</summary>
 public interface IFolderRepository
 {
@@ -174,6 +189,9 @@ public interface IFolderRepository
     /// <summary>Usado por DeleteFolderHandler. El llamador ya validó que la carpeta está vacía (sin subfolders ni archivos directos) antes de llegar acá.</summary>
     void Remove(Folder folder);
     Task<Folder?> GetAsync(Guid tenantId, Guid folderId, CancellationToken ct);
+
+    /// <summary>Lee la carpeta bloqueando la fila hasta el commit. Exige una transacción abierta.</summary>
+    Task<Folder?> GetForUpdateAsync(Guid tenantId, Guid folderId, CancellationToken ct);
 
     /// <summary>
     /// Subcarpetas directas de parentFolderId (null = raiz del owner). Ver nota de
@@ -227,6 +245,16 @@ public interface IFolderRepository
         OwnerType ownerType,
         Guid? ownerId,
         Guid? excludeFolderId,
+        CancellationToken ct
+    );
+
+    /// <summary>La carpeta viva con ese nombre bajo ese padre y dueño: la ganadora de una carrera de alta.</summary>
+    Task<Folder?> GetByNameUnderParentAsync(
+        Guid tenantId,
+        Guid? parentFolderId,
+        string name,
+        OwnerType ownerType,
+        Guid? ownerId,
         CancellationToken ct
     );
 
@@ -285,6 +313,21 @@ public interface IStorageLimitRepository
 {
     void Add(TenantStorageLimit limit);
     Task<TenantStorageLimit?> GetAsync(Guid tenantId, CancellationToken ct);
+
+    /// <summary>Lee la fila con UPDLOCK/HOLDLOCK (exige transacción): frena Reserve/Commit del tenant mientras tanto.</summary>
+    Task<TenantStorageLimit?> GetForUpdateAsync(Guid tenantId, CancellationToken ct);
+}
+
+/// <summary>Estado y tamaño de un archivo para recalcular la cuota (ScanReport solo si está bloqueado).</summary>
+public sealed record QuotaFootprintInput(
+    FileStatus Status,
+    FileStatus? StatusBeforeSoftDelete,
+    string? ScanReport,
+    long SizeBytes
+)
+{
+    public QuotaFootprint Footprint =>
+        FileObject.FootprintOf(FileObject.EffectiveStatusOf(Status, StatusBeforeSoftDelete), ScanReport);
 }
 
 public interface IStoragePolicyRepository
@@ -368,10 +411,8 @@ public interface IShareLinkRepository
     Task<IReadOnlyList<ShareLink>> ListActiveWithUserRecipientAsync(Guid tenantId, Guid userId, CancellationToken ct);
 
     /// <summary>Cuántos links ACTIVOS creó el empleado (mismo filtro que ListActiveByCreatorAsync, sin
-    /// materializar) — pre-flight de impacto al retirarlo. Default 0 para no romper los fakes; el repo
-    /// real lo implementa con COUNT.</summary>
-    Task<int> CountActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct) =>
-        Task.FromResult(0);
+    /// materializar) — pre-flight de impacto al retirarlo.</summary>
+    Task<int> CountActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct);
 }
 
 /// <summary>Fase C3 — hash de la contrasena opcional de un link publico. Mismo esquema PBKDF2 que Auth.IPasswordHasher.</summary>
@@ -468,6 +509,17 @@ public static class StorageObjectTags
 }
 
 /// <summary>
+/// CST-18: evidencia de cuarentena cuya fila ya se purgó. Se copia bajo este prefijo (objeto nuevo) para que
+/// la regla de lifecycle cuente los días desde la purga.
+/// </summary>
+public static class QuarantinePurgedObjects
+{
+    public const string Prefix = "purged/";
+
+    public static string KeyFor(string objectKey) => Prefix + objectKey;
+}
+
+/// <summary>
 /// Fase U — presigned multipart upload (initiate/complete/abort). Puerto separado
 /// de <see cref="IObjectStorage"/> a proposito: usa un SDK distinto (AWSSDK.S3,
 /// no el SDK "Minio" que respalda IObjectStorage) porque el SDK "Minio" no expone
@@ -527,6 +579,9 @@ public enum VirusScanVerdict
     Infected,
     Error,
 }
+
+/// <summary>El antivirus no dio veredicto: fallo transitorio, Wolverine reintenta (no es ArgumentException, que iría a la DLQ).</summary>
+public sealed class VirusScanUnavailableException(string message) : Exception(message);
 
 public interface IFileContentInspector
 {

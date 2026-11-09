@@ -21,6 +21,10 @@ public interface IInvoiceRepository
     /// idempotencia del alta pre-tenant y para el backfill del tenant real. IgnoreQueryFilters interno.</summary>
     Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default);
 
+    /// <summary>BIL-12: factura de onboarding por su Id, con el dueño que tenga hoy. Solo para lo que se pidió bajo
+    /// la plataforma y llega después del re-hospedaje; una factura normal no se alcanza por aquí.</summary>
+    Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default);
+
     /// <summary>Facturas del tenant, más recientes primero (para la tabla del frontend).
     /// <paramref name="assignedToUserId"/> no null → solo las de clientes asignados a ese usuario.
     /// <paramref name="customerId"/> no null → solo las de ese cliente (se compone con la asignación).</summary>
@@ -60,6 +64,13 @@ public interface ITenantBillingSettingsRepository
 public interface IInvoiceNumberSequenceRepository
 {
     Task<InvoiceNumberSequence> GetOrCreateAsync(Guid tenantId, string periodKey, CancellationToken ct = default);
+}
+
+/// <summary>BIL-5: tenant creado por cada onboarding.</summary>
+public interface IOnboardingTenantMapRepository
+{
+    Task UpsertAsync(Guid onboardingId, Guid tenantId, DateTime nowUtc, CancellationToken ct = default);
+    Task<Guid?> FindTenantIdAsync(Guid onboardingId, CancellationToken ct = default);
 }
 
 /// <summary>Acceso a comprobantes de pago. SCAFFOLD B1: se implementa en B3.</summary>

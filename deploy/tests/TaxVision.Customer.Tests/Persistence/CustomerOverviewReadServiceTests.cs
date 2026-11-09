@@ -31,6 +31,11 @@ public sealed class CustomerOverviewReadServiceTests
         public string Unprotect(byte[] cipher) => System.Text.Encoding.UTF8.GetString(cipher);
 
         public string ComputeBlindIndex(string plainText, Guid tenantId) => plainText;
+
+        public IReadOnlyCollection<string> ComputeBlindIndexCandidates(string plainText, Guid tenantId) =>
+            [ComputeBlindIndex(plainText, tenantId)];
+
+        public short CurrentKeyVersion => 1;
     }
 
     private static CustomerDbContext CreateContext(string databaseName, FakeTenantContext tenantContext) =>

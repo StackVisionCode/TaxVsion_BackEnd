@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// antes solo lo consumía Communication (Node), que lo referenciaba por CLR type name completo,
 /// no por este tipo compartido.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.UserRegisteredIntegrationEvent")]
 public sealed record UserRegisteredIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

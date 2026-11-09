@@ -212,9 +212,33 @@ public sealed class CalendarFeedTokenTests
             CancellationToken ct = default
         ) => throw new InvalidOperationException("la base no responde");
 
+        public Task<BuildingBlocks.Results.Result<Appointment>> GetByIdForReadAsync(
+            Guid tenantId,
+            Guid appointmentId,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("la base no responde");
+
+        public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
+            Guid tenantId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("la base no responde");
+
+        public Task<int> CountFutureByOrganizerAsync(
+            Guid tenantId,
+            Guid organizerUserId,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("la base no responde");
+
         public void Add(Appointment appointment) { }
 
         public void Remove(Appointment appointment) { }
+
+        public void DiscardPendingChanges() { }
     }
 
     public enum Reason
@@ -252,6 +276,15 @@ public sealed class CalendarFeedTokenTests
             Guid userId,
             CancellationToken ct = default
         ) => Task.FromResult(All.Find(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive));
+
+        public Task<IReadOnlyList<CalendarFeedToken>> ListActiveForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyList<CalendarFeedToken>>(
+                All.FindAll(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive)
+            );
 
         public Task<CalendarFeedToken?> FindByHashAsync(byte[] tokenHash, CancellationToken ct = default) =>
             Task.FromResult(All.Find(t => t.TokenHash.AsSpan().SequenceEqual(tokenHash)));
@@ -296,9 +329,34 @@ public sealed class CalendarFeedTokenTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
 
+        // En memoria no hay proyección de asignación: lectura sin filtro.
+        public Task<BuildingBlocks.Results.Result<Appointment>> GetByIdForReadAsync(
+            Guid tenantId,
+            Guid appointmentId,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        ) => GetByIdAsync(tenantId, appointmentId, ct);
+
+        public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
+            Guid tenantId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        ) => ListForRangeAsync(tenantId, rangeStartUtc, rangeEndUtc, ct);
+
+        public Task<int> CountFutureByOrganizerAsync(
+            Guid tenantId,
+            Guid organizerUserId,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public void Add(Appointment appointment) { }
 
         public void Remove(Appointment appointment) { }
+
+        public void DiscardPendingChanges() { }
     }
 
     private sealed class RecordingCache : ICalendarFeedCache

@@ -6,6 +6,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Invitations.Commands;
+using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Roles;
@@ -29,6 +30,12 @@ public sealed class AcceptInvitationHandlerTests
 
     private sealed class FakeInvitationRepository(Invitation invitation) : IInvitationRepository
     {
+        public Task<IReadOnlyList<Invitation>> ListPendingStaffSentByAsync(
+            Guid tenantId,
+            Guid invitedByUserId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<Invitation>>([]);
+
         public Task<Invitation?> GetByIdAsync(Guid invitationId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
@@ -116,6 +123,44 @@ public sealed class AcceptInvitationHandlerTests
 
     private sealed class FakeUserRepository : IUserRepository
     {
+        public Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<IReadOnlyList<User>> GetActiveByRoleAsync(
+            Guid tenantId,
+            Guid roleId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<TenantOwnerReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<CustomerPortalAccountReconciliationResponse>> ListPortalAccountsForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<StaffUserReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<UserDirectoryReconciliationResponse>> ListUsersForDirectoryReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<UserDirectoryReconciliationResponse>([], page, size, 0));
+
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public User? Added { get; private set; }
 
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<User?>(null);
@@ -207,6 +252,36 @@ public sealed class AcceptInvitationHandlerTests
 
     private sealed class FakeRoleRepository : IRoleRepository
     {
+        public Task<IReadOnlyList<UserPermissionDeny>> GetActiveDeniesAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserPermissionDeny>>([]);
+
+        public Task<IReadOnlyList<(Guid UserId, Guid TenantId)>> GetUsersWithExpiredDeniesAsync(
+            DateTime nowUtc,
+            int take,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<(Guid UserId, Guid TenantId)>>([]);
+
+        public Task<int> RemoveExpiredDeniesAsync(Guid userId, DateTime nowUtc, CancellationToken ct = default) =>
+            Task.FromResult(0);
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>> GetRolesByUsersAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>>(
+                new Dictionary<Guid, IReadOnlyList<Role>>()
+            );
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetDeniedPermissionIdsByUsersAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(
+                new Dictionary<Guid, IReadOnlyList<Guid>>()
+            );
+
         private readonly List<Role> _roles = [];
         public IReadOnlyList<Permission> Catalog { get; init; } = [];
 
@@ -695,7 +770,7 @@ public sealed class AcceptInvitationHandlerTests
             "hashed:old",
             UserActorType.TenantEmployee
         ).Value;
-        former.Offboard(DateTime.UtcNow);
+        former.Offboard(Guid.NewGuid(), DateTime.UtcNow);
         var users = new InMemoryUserRepository();
         users.Add(former);
 

@@ -12,6 +12,7 @@ using TaxVision.Scribe.Application.EventMappings;
 using TaxVision.Scribe.Application.Layouts;
 using TaxVision.Scribe.Application.RateLimiting.Abstractions;
 using TaxVision.Scribe.Application.Rendering;
+using TaxVision.Scribe.Application.Storage;
 using TaxVision.Scribe.Application.Templates;
 using TaxVision.Scribe.Application.Templates.Storage;
 using TaxVision.Scribe.Infrastructure.Persistence;
@@ -35,6 +36,7 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
         services.AddDbContext<ScribeDbContext>(options => options.UseSqlServer(connectionString));
+        services.AddSingleton<Seed.ISeedLock>(new Seed.SqlSeedLock(connectionString));
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<ScribeDbContext>());
 
         services.AddScoped<IEventTemplateMappingRepository, EventTemplateMappingRepository>();
@@ -42,6 +44,7 @@ public static class DependencyInjection
 
         services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
         services.AddScoped<IEmailLayoutRepository, EmailLayoutRepository>();
+        services.AddScoped<IPublishedTemplateReader, PublishedTemplateReader>();
         services.AddScoped<IEmailRenderer, FluidTemplateRenderer>();
 
         services.AddScoped<ITenantLogoRefRepository, TenantLogoRefRepository>();
@@ -163,10 +166,14 @@ public static class DependencyInjection
             {
                 var opt = sp.GetRequiredService<IOptions<CloudStorageClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = opt.Timeout;
             }
         );
 
         services.AddScoped<ITemplateStorageService, TemplateStorageService>();
+        services
+            .AddOptions<FileSaveRejectedOptions>()
+            .Bind(configuration.GetSection(FileSaveRejectedOptions.SectionName));
 
         // Solo lo usa el backfill de arranque; el render lee la proyeccion local.
         services.Configure<TenantClientOptions>(configuration.GetSection(TenantClientOptions.SectionName));

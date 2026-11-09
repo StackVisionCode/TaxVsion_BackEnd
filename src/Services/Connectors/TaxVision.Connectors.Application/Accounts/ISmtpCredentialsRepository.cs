@@ -9,6 +9,6 @@ public interface ISmtpCredentialsRepository
 
     Task<Result<SmtpCredentials>> GetByAccountIdAsync(Guid accountId, CancellationToken ct = default);
 
-    /// <summary>Purga las credenciales SMTP al retirar al dueño del buzón. Default no-op para los fakes.</summary>
-    void Remove(SmtpCredentials credentials) { }
+    /// <summary>Purga las credenciales SMTP al retirar al dueño del buzón.</summary>
+    void Remove(SmtpCredentials credentials);
 }

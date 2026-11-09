@@ -4,7 +4,7 @@ using Wolverine.Transports.Sending;
 
 namespace TaxVision.Sms.Tests.Fakes;
 
-/// <summary>Fake mínimo de IMessageBus — solo captura lo publicado vía PublishAsync.</summary>
+/// <summary>Fake mínimo de IMessageBus: captura lo publicado y, si se configura, rutea InvokeAsync.</summary>
 internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
@@ -58,8 +58,15 @@ internal sealed class FakeMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotImplementedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    /// <summary>Rutea InvokeAsync a los handlers reales con los fakes del test (en producción lo hace Wolverine).</summary>
+    public Func<object, Task<object?>>? OnInvoke { get; set; }
+
+    public async Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        if (OnInvoke is null)
+            throw new NotImplementedException();
+        return (T)(await OnInvoke(message))!;
+    }
 
     public Task<T> InvokeAsync<T>(
         object message,

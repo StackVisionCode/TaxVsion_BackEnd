@@ -6,6 +6,17 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Repositories;
 
 public sealed class SeatPurchaseIntentRepository(SubscriptionDbContext db) : ISeatPurchaseIntentRepository
 {
+    public Task<SeatPurchaseIntent?> GetUnattachedByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
+        db
+            .SeatPurchaseIntents.IgnoreQueryFilters()
+            .Where(intent =>
+                intent.TenantId == tenantId
+                && intent.Status == SeatPurchaseIntentStatus.Pending
+                && intent.CheckoutUrl == null
+            )
+            .OrderByDescending(intent => intent.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
     public async Task AddAsync(SeatPurchaseIntent intent, CancellationToken ct = default) =>
         await db.SeatPurchaseIntents.AddAsync(intent, ct);
 

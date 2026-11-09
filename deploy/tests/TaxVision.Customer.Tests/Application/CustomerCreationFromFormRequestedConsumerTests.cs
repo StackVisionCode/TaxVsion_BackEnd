@@ -129,8 +129,8 @@ public sealed class CustomerCreationFromFormRequestedConsumerTests
             harness.Command(values: CustomerFormCreationHarness.IndividualValues("Ada@Example.com"))
         );
 
-        Assert.Equal(["lock", "detect", "detect", "create"], harness.Steps);
-        var resource = Assert.Single(harness.Lock.Resources);
+        Assert.Equal(["lock", "detect", "lock", "detect", "create"], harness.Steps);
+        var resource = Assert.Single(harness.Lock.Resources.Distinct());
         Assert.DoesNotContain("example", resource, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(CustomerFormCreationHarness.Tenant.ToString("N"), resource.Split(':')[1]);
     }

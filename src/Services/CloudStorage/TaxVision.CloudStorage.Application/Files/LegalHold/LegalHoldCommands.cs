@@ -55,6 +55,7 @@ public static class SetLegalHoldHandler
                 clock.UtcNow
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new LegalHoldPlacedIntegrationEvent
             {
@@ -66,7 +67,6 @@ public static class SetLegalHoldHandler
                 CorrelationId = command.Audit.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }
@@ -113,6 +113,7 @@ public static class LiftLegalHoldHandler
                 clock.UtcNow
             )
         );
+        await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new LegalHoldLiftedIntegrationEvent
             {
@@ -123,7 +124,6 @@ public static class LiftLegalHoldHandler
                 CorrelationId = command.Audit.CorrelationId,
             }
         );
-        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }

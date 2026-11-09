@@ -1,13 +1,13 @@
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
-using Wolverine;
+using TaxVision.Signature.Infrastructure.Persistence;
 
 namespace TaxVision.Signature.Infrastructure.Scheduling;
 
@@ -16,14 +16,14 @@ namespace TaxVision.Signature.Infrastructure.Scheduling;
 /// ya pasó. Fases explícitas por método privado:
 /// <list type="number">
 ///   <item>Consultar candidatos (usa <c>IgnoreQueryFilters</c> — es un scan cross-tenant).</item>
-///   <item>Para cada uno: aplicar <see cref="SignatureRequest.MarkExpired"/> y publicar
-///     el evento correspondiente.</item>
-///   <item>Persistir en un único SaveChanges por lote.</item>
+///   <item>Para cada uno, en su propia unidad (BB-3): aplicar <see cref="SignatureRequest.MarkExpired"/>,
+///     publicar el evento y confirmar los dos juntos.</item>
 /// </list>
 /// </summary>
 public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogger<ExpirationScheduler> logger)
     : BackgroundService
 {
+    private const string LockKey = "signature:expiration-scheduler";
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -61,67 +61,104 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
         }
     }
 
-    private async Task RunOnceAsync(CancellationToken ct)
+    internal async Task RunOnceAsync(CancellationToken ct)
     {
-        using var scope = serviceProvider.CreateScope();
-        var repository = scope.ServiceProvider.GetRequiredService<ISignatureRequestRepository>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+        // SIG-15: una sola réplica por pasada; la otra sale y retoma en su próximo tick.
+        await using var handle = await serviceProvider
+            .GetRequiredService<IDistributedLock>()
+            .AcquireAsync(LockKey, Interval, ct);
+        if (!handle.IsAcquired)
+            return;
 
         var now = DateTime.UtcNow;
-        var candidates = await repository.ListExpiredCandidatesAsync(now, ct);
+        IReadOnlyList<ExpirationCandidate> candidates;
+        using (var scope = serviceProvider.CreateScope())
+            candidates = (
+                await scope
+                    .ServiceProvider.GetRequiredService<ISignatureRequestRepository>()
+                    .ListExpiredCandidatesAsync(now, ct)
+            )
+                .Select(r => new ExpirationCandidate(r.TenantId, r.Id))
+                .ToList();
         if (candidates.Count == 0)
             return;
 
-        var eventsToPublish = new List<SignatureRequestExpiredIntegrationEvent>(candidates.Count);
-        foreach (var request in candidates)
-        {
-            var pending = request
-                .Signers.Where(s => s.Status is SignerStatus.Pending or SignerStatus.InProgress)
-                .ToList();
-
-            var result = request.MarkExpired(now);
-            if (result.IsFailure)
-            {
-                logger.LogWarning(
-                    "ExpirationScheduler could not expire request {RequestId}: {Error}",
-                    request.Id,
-                    result.Error.Message
-                );
-                continue;
-            }
-
-            eventsToPublish.Add(
-                new SignatureRequestExpiredIntegrationEvent
-                {
-                    TenantId = request.TenantId,
-                    CorrelationId = Guid.NewGuid().ToString("N"),
-                    SignatureRequestId = request.Id,
-                    CreatedByUserId = request.CreatedByUserId,
-                    ExpiredAtUtc = now,
-                    RevocationEpoch = request.RevocationEpoch,
-                    PendingSignerIds = pending.Select(s => s.Id).ToList(),
-                    PendingSigners = pending
-                        .Select(s => new SignerContactSnapshot(
-                            s.Id,
-                            s.Email.Value,
-                            s.FullName.Value,
-                            s.Language,
-                            s.Order,
-                            s.MappedCustomerId,
-                            s.PhoneNumber?.Value,
-                            SignerChannelResolver.PreferredChannelFor(s)
-                        ))
-                        .ToList(),
-                    ExternalReference = request.ExternalReference.ToMessaging(),
-                }
-            );
-        }
-
-        await unitOfWork.SaveChangesAsync(ct);
-        foreach (var evt in eventsToPublish)
-            await bus.PublishAsync(evt);
-
-        logger.LogInformation("ExpirationScheduler expired {Count} requests.", eventsToPublish.Count);
+        var summary = await ExpireAsync(candidates, now, ct);
+        logger.LogInformation(
+            "ExpirationScheduler expired {Committed} requests ({Conflicts} modified concurrently, {Failed} failed).",
+            summary.Committed,
+            summary.Conflicts,
+            summary.Failed
+        );
     }
+
+    internal sealed record ExpirationCandidate(Guid TenantId, Guid SignatureRequestId);
+
+    // SIG-BB3: una unidad por solicitud; la marca y el aviso se confirman juntos. Un conflicto (alguien firmó
+    // o rechazó mientras tanto) no arrastra a las demás y la vuelta siguiente lo reevalúa.
+    internal Task<JobBatchSummary> ExpireAsync(
+        IReadOnlyList<ExpirationCandidate> candidates,
+        DateTime now,
+        CancellationToken ct
+    ) =>
+        TransactionalJobUnit.RunEachAsync<ExpirationCandidate, SignatureDbContext>(
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            candidates,
+            async (candidate, unit, token) =>
+            {
+                var request = await unit
+                    .Services.GetRequiredService<ISignatureRequestRepository>()
+                    .GetByIdAsync(candidate.TenantId, candidate.SignatureRequestId, token);
+                if (request is null || request.Status != SignatureRequestStatus.InProgress || request.ExpiresAtUtc > now)
+                    return false;
+
+                var pending = request
+                    .Signers.Where(s => s.Status is SignerStatus.Pending or SignerStatus.InProgress)
+                    .ToList();
+                var result = request.MarkExpired(now);
+                if (result.IsFailure)
+                {
+                    logger.LogWarning(
+                        "ExpirationScheduler could not expire request {RequestId}: {Error}",
+                        request.Id,
+                        result.Error.Message
+                    );
+                    return false;
+                }
+
+                await unit.PublishAsync(BuildExpiredEvent(request, pending, now));
+                return true;
+            },
+            logger,
+            ct
+        );
+
+    private static SignatureRequestExpiredIntegrationEvent BuildExpiredEvent(
+        SignatureRequest request,
+        IReadOnlyList<Signer> pending,
+        DateTime now
+    ) =>
+        new()
+        {
+            TenantId = request.TenantId,
+            CorrelationId = Guid.NewGuid().ToString("N"),
+            SignatureRequestId = request.Id,
+            CreatedByUserId = request.CreatedByUserId,
+            ExpiredAtUtc = now,
+            RevocationEpoch = request.RevocationEpoch,
+            PendingSignerIds = pending.Select(s => s.Id).ToList(),
+            PendingSigners = pending
+                .Select(s => new SignerContactSnapshot(
+                    s.Id,
+                    s.Email.Value,
+                    s.FullName.Value,
+                    s.Language,
+                    s.Order,
+                    s.MappedCustomerId,
+                    s.PhoneNumber?.Value,
+                    SignerChannelResolver.PreferredChannelFor(s)
+                ))
+                .ToList(),
+            ExternalReference = request.ExternalReference.ToMessaging(),
+        };
 }

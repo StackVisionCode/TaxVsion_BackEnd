@@ -44,6 +44,13 @@ public sealed class PayableReference : TenantEntity
     /// </summary>
     public bool IsSettled => SettledAtUtc is not null;
 
+    /// <summary>Último link acuñado por el resolver. Toca la fila para que dos acuñaciones choquen por RowVersion.</summary>
+    public DateTime? LastLinkMintedAtUtc { get; private set; }
+
+    /// <summary>Último cambio de monto. null = no hubo cambio registrado (o fue antes de guardarlo).</summary>
+    public DateTime? AmountUpdatedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
+
     private PayableReference() { }
 
     public static Result<PayableReference> Create(
@@ -88,11 +95,12 @@ public sealed class PayableReference : TenantEntity
     /// <summary>Actualiza el monto cobrable (p. ej. la factura emitida se editó y cambió el total). No
     /// cambia el <see cref="Reference"/> ni la identidad: la URL estable sigue siendo la misma. Rechaza
     /// montos no positivos.</summary>
-    public Result UpdateAmount(Money amount)
+    public Result UpdateAmount(Money amount, DateTime nowUtc)
     {
         if (amount.AmountCents <= 0)
             return Result.Failure(new Error("PayableReference.InvalidAmount", "Amount must be greater than zero."));
         Amount = amount;
+        AmountUpdatedAtUtc = nowUtc;
         return Result.Success();
     }
 
@@ -108,6 +116,27 @@ public sealed class PayableReference : TenantEntity
     public void Revoke(DateTime nowUtc)
     {
         RevokedAtUtc ??= nowUtc;
+    }
+
+    /// <summary>Registra que se acuñó un link: el segundo que acuñe a la vez falla al guardar.</summary>
+    public void RecordLinkMinted(DateTime nowUtc)
+    {
+        LastLinkMintedAtUtc = nowUtc;
+    }
+
+    /// <summary>Billing volvió a mandar saldo para un payable liquidado (la factura dejó de estar pagada):
+    /// vuelve a ser cobrable con ese monto. Sobre uno revocado no hace nada.</summary>
+    public Result Reopen(Money amount, DateTime nowUtc)
+    {
+        if (IsRevoked)
+            return Result.Success();
+        if (amount.AmountCents <= 0)
+            return Result.Failure(new Error("PayableReference.InvalidAmount", "Amount must be greater than zero."));
+        SettledAtUtc = null;
+        Amount = amount;
+        // Siempre, aunque el monto sea el mismo: marca el saldo vigente frente a links usados y avisos viejos.
+        AmountUpdatedAtUtc = nowUtc;
+        return Result.Success();
     }
 
     /// <summary>Marca el payable como cobrado. Idempotente: el evento puede reentregarse.</summary>

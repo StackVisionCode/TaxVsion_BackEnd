@@ -3,6 +3,7 @@ using BuildingBlocks.Platform;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Preferences;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Notification.Application.Push.Consumers;
 
@@ -19,6 +20,8 @@ public static class CampaignPushDispatchConsumer
 {
     private const string TemplateKey = "campaign.push";
 
+    // Comparte handler generado con el canal Email, que no lleva transacción. El dispatcher guarda por su cuenta.
+    [NonTransactional]
     public static async Task<CampaignDispatchResultIntegrationEvent?> Handle(
         CampaignDispatchRequestedIntegrationEvent evt,
         NotificationDispatcher dispatcher,

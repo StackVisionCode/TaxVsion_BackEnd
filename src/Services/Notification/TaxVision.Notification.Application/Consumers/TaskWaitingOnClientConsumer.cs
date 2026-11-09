@@ -5,6 +5,7 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -97,7 +98,7 @@ public static class TaskWaitingOnClientConsumer
                 var title = $"Tu oficina espera algo: {evt.Title}";
                 await dispatcher.RecordInAppAsync(
                     evt.TenantId,
-                    $"user:{userId:N}",
+                    NotificationRecipient.ForUser(userId),
                     title,
                     NotificationCategory.DocumentsAndSignatures,
                     "tasks.waiting_on_client",

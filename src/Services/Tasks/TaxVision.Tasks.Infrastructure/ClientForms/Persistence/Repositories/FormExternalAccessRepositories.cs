@@ -47,6 +47,31 @@ internal sealed class FormParticipantRepository(TasksDbContext context) : IFormP
 
 internal sealed class FormIntakeLinkRepository(TasksDbContext context) : IFormIntakeLinkRepository
 {
+    // UPDLOCK + HOLDLOCK ordenan a quienes crean la fila del día; el UPDATE con tope no deja pasar de maxPerDay.
+    public async Task<bool> TryConsumeDailyIntakeAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        int maxPerDay,
+        CancellationToken ct = default
+    )
+    {
+        var day = nowUtc.Date;
+        var consumed = await context
+            .Database.SqlQuery<int>(
+                $"""
+                SET NOCOUNT ON;
+                IF NOT EXISTS (SELECT 1 FROM dbo.FormIntakeDailyCounters WITH (UPDLOCK, HOLDLOCK)
+                               WHERE TenantId = {tenantId} AND DayUtc = {day})
+                    INSERT INTO dbo.FormIntakeDailyCounters (TenantId, DayUtc, [Count]) VALUES ({tenantId}, {day}, 0);
+                UPDATE dbo.FormIntakeDailyCounters SET [Count] = [Count] + 1
+                WHERE TenantId = {tenantId} AND DayUtc = {day} AND [Count] < {maxPerDay};
+                SELECT @@ROWCOUNT AS [Value];
+                """
+            )
+            .ToListAsync(ct);
+        return consumed.Single() == 1;
+    }
+
     public Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default) =>
         context
             .FormIntakeLinks.IgnoreQueryFilters()

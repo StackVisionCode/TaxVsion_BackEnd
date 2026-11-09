@@ -51,6 +51,17 @@ public sealed class FluidTemplateRendererPushTests
         Assert.Equal("Override text", overriddenAgain.Value.Text);
     }
 
+    // SCR-10: el push informa su versión y no tiene layout.
+    [Fact]
+    public async Task Push_reports_its_version_and_no_layout()
+    {
+        var result = await Renderer().RenderAsync(Request(_otherTenant));
+
+        Assert.Equal(PushTemplateKey.Value, result.Value.TemplateKey);
+        Assert.Equal(1, result.Value.VersionNumber);
+        Assert.Null(result.Value.LayoutVersionNumber);
+    }
+
     [Fact]
     public async Task The_override_text_is_downloaded_with_the_owner_tenant_token()
     {
@@ -108,23 +119,27 @@ public sealed class FluidTemplateRendererPushTests
         return template;
     }
 
-    private FluidTemplateRenderer Renderer(EmailTemplate? tenantOverride = null) =>
-        new(
+    private FluidTemplateRenderer Renderer(EmailTemplate? tenantOverride = null)
+    {
+        var templates = new TenantAwareTemplates(_system, tenantOverride ?? _override);
+        var layouts = new FakeEmailLayoutRepository(
+            EmailLayout
+                .CreateNew(
+                    TemplateScope.System,
+                    null,
+                    LayoutKey.Create("system-base").Value,
+                    "Base",
+                    null,
+                    Guid.NewGuid(),
+                    DateTime.UtcNow
+                )
+                .Value
+        );
+        return new(
             new EventTemplateResolver(new SingleMapping()),
-            new TenantAwareTemplates(_system, tenantOverride ?? _override),
-            new FakeEmailLayoutRepository(
-                EmailLayout
-                    .CreateNew(
-                        TemplateScope.System,
-                        null,
-                        LayoutKey.Create("system-base").Value,
-                        "Base",
-                        null,
-                        Guid.NewGuid(),
-                        DateTime.UtcNow
-                    )
-                    .Value
-            ),
+            templates,
+            layouts,
+            new FakePublishedTemplateReader(templates, layouts),
             _storage,
             new FakeLogoResolver(new LogoAsset(Guid.NewGuid(), "image/png", 1, IsFallback: false)),
             new FakeTenantProfileRefRepository(),
@@ -133,6 +148,7 @@ public sealed class FluidTemplateRendererPushTests
             _l2,
             NullLogger<FluidTemplateRenderer>.Instance
         );
+    }
 
     private static RenderRequest Request(Guid tenantId) =>
         new(

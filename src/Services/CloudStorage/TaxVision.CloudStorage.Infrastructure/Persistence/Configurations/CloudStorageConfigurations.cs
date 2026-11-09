@@ -14,6 +14,7 @@ public sealed class FileObjectConfiguration : IEntityTypeConfiguration<FileObjec
 {
     public void Configure(EntityTypeBuilder<FileObject> builder)
     {
+        builder.Ignore(file => file.DomainEvents);
         builder.ToTable("Files");
         builder.HasKey(file => file.Id);
         builder.Property(file => file.TenantId).IsRequired();
@@ -28,6 +29,7 @@ public sealed class FileObjectConfiguration : IEntityTypeConfiguration<FileObjec
         builder.Property(file => file.StatusBeforeSoftDelete).HasConversion<string>().HasMaxLength(32);
         builder.Property(file => file.ScanReport).HasMaxLength(2048);
         builder.Property(file => file.MultipartUploadId).HasMaxLength(1024);
+        builder.Property(file => file.RowVersion).IsRowVersion();
         builder.HasIndex(file => new { file.TenantId, file.Id });
         builder.HasIndex(file => new { file.TenantId, file.ObjectKey }).IsUnique();
         builder.HasIndex(file => new
@@ -56,6 +58,7 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.Property(folder => folder.Name).HasMaxLength(255).IsRequired();
         builder.Property(folder => folder.RelativePath).HasMaxLength(2048).IsRequired();
         builder.Property(folder => folder.Category).HasMaxLength(100);
+        builder.Property(folder => folder.RowVersion).IsRowVersion();
 
         // Listar subcarpetas de un padre (raiz = ParentFolderId null).
         builder.HasIndex(folder => new
@@ -83,6 +86,20 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
             .IsUnique()
             .HasFilter("[Category] IS NOT NULL")
             .HasDatabaseName("IX_Folders_Owner_Category");
+        // Nombre único bajo el mismo padre y dueño. Las anclas (Category) quedan fuera: el provisioner
+        // las crea sin mirar el nombre y una carpeta del usuario llamada igual no debe trabar el guardado.
+        builder
+            .HasIndex(folder => new
+            {
+                folder.TenantId,
+                folder.OwnerType,
+                folder.OwnerId,
+                folder.ParentFolderId,
+                folder.Name,
+            })
+            .IsUnique()
+            .HasFilter("[SoftDeletedAtUtc] IS NULL AND [Category] IS NULL")
+            .HasDatabaseName("UX_Folders_Owner_Parent_Name");
     }
 }
 

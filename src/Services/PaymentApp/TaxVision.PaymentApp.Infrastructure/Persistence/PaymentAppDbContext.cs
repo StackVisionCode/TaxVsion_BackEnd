@@ -86,7 +86,15 @@ public sealed class PaymentAppDbContext(DbContextOptions<PaymentAppDbContext> op
     {
         try
         {
-            return await base.SaveChangesAsync(cancellationToken);
+            return await SaveReleasingDefaultMethodsFirstAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The record changed while the operation was in progress.",
+                ex
+            );
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {
@@ -96,5 +104,50 @@ public sealed class PaymentAppDbContext(DbContextOptions<PaymentAppDbContext> op
                 ex
             );
         }
+    }
+
+    /// <summary>
+    /// EF no ordena los UPDATE por un índice único filtrado: mover el default podía escribir primero el nuevo y chocar
+    /// con UX_TenantSavedPaymentMethods_OneDefault. Las filas que dejan de ser default activo se escriben antes, en la
+    /// misma transacción.
+    /// </summary>
+    private async Task<int> SaveReleasingDefaultMethodsFirstAsync(CancellationToken ct)
+    {
+        var leaving = Database.IsRelational() ? MethodsLeavingDefault() : [];
+        if (leaving.Count == 0)
+            return await base.SaveChangesAsync(ct);
+
+        if (Database.CurrentTransaction is not null)
+        {
+            await ReleaseAsync(leaving, ct);
+            return await base.SaveChangesAsync(ct);
+        }
+
+        await using var transaction = await Database.BeginTransactionAsync(ct);
+        await ReleaseAsync(leaving, ct);
+        var saved = await base.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return saved;
+    }
+
+    private List<TenantSavedPaymentMethod> MethodsLeavingDefault() =>
+        ChangeTracker
+            .Entries<TenantSavedPaymentMethod>()
+            .Where(entry =>
+                entry.State == EntityState.Modified
+                && entry.Property(method => method.IsDefault).OriginalValue
+                && !entry.Property(method => method.IsDetached).OriginalValue
+                && (!entry.Entity.IsDefault || entry.Entity.IsDetached)
+            )
+            .Select(entry => entry.Entity)
+            .ToList();
+
+    private async Task ReleaseAsync(List<TenantSavedPaymentMethod> methods, CancellationToken ct)
+    {
+        foreach (var method in methods)
+            await Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.TenantSavedPaymentMethods SET IsDefault = {method.IsDefault}, IsDetached = {method.IsDetached} WHERE Id = {method.Id}",
+                ct
+            );
     }
 }

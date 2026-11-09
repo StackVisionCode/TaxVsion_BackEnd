@@ -42,6 +42,9 @@ public static class CommitInvoiceSaleHandler
             .GroupBy(l => l.CatalogItemId)
             .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
 
+        // Una sola venta por factura a la vez: el segundo espera y lee lo que descontó el primero.
+        await stock.AcquireInvoiceSaleLockAsync(command.TenantId, command.InvoiceId, ct);
+
         // Estado ACTUAL descontado por esta factura, del ledger: Sale suma, Return resta.
         var priorMovements = await stock.GetMovementsByReferenceAsync(command.TenantId, reference, ct);
         var current = new Dictionary<Guid, int>();
@@ -59,7 +62,8 @@ public static class CommitInvoiceSaleHandler
         if (itemIds.Count == 0)
             return Result.Success();
 
-        var levels = (await stock.GetByCatalogItemsAsync(command.TenantId, itemIds, ct)).ToDictionary(l =>
+        // Niveles con candado: la verificación de faltantes ve el stock confirmado, no uno que otro está cambiando.
+        var levels = (await stock.GetByCatalogItemsForUpdateAsync(command.TenantId, itemIds, ct)).ToDictionary(l =>
             l.CatalogItemId
         );
 

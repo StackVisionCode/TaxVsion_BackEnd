@@ -20,6 +20,19 @@ public sealed class ImportOfficeProfilesFromBillingHandlerTests
     private readonly RecordingMessageBus _bus = new();
     private readonly ListLogger _logger = new();
 
+    public ImportOfficeProfilesFromBillingHandlerTests() =>
+        _bus.InvokeHandler = async message =>
+            await ImportOfficeProfilesPageHandler.Handle(
+                (ImportOfficeProfilesPageCommand)message,
+                _profiles,
+                _unitOfWork,
+                _bus,
+                new NoopCorrelationContext(),
+                _logger,
+                TimeProvider.System,
+                CancellationToken.None
+            );
+
     [Fact]
     public async Task Imports_offices_without_a_profile_maps_the_fields_and_publishes_each_one()
     {
@@ -163,15 +176,14 @@ public sealed class ImportOfficeProfilesFromBillingHandlerTests
         ImportOfficeProfilesFromBillingHandler.Handle(
             new ImportOfficeProfilesFromBillingCommand(Guid.NewGuid()),
             _billing,
-            _profiles,
-            _unitOfWork,
             _bus,
-            new NoopCorrelationContext(),
             _logger,
             CancellationToken.None
         );
 
-    private sealed class ListLogger : ILogger<ImportOfficeProfilesFromBillingCommand>
+    private sealed class ListLogger
+        : ILogger<ImportOfficeProfilesFromBillingCommand>,
+            ILogger<ImportOfficeProfilesPageCommand>
     {
         public List<string> Messages { get; } = [];
 

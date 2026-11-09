@@ -5,7 +5,7 @@ namespace TaxVision.Tenant.Tests.Domain;
 
 public sealed class TenantBrandTests
 {
-    private static TenantBrand NewBrand() => TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm);
+    private static TenantBrand NewBrand() => TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm, DateTime.UtcNow);
 
     // ----- Creación -----
 
@@ -14,12 +14,29 @@ public sealed class TenantBrandTests
     {
         var tenantId = Guid.NewGuid();
 
-        var brand = TenantBrand.Create(tenantId, BrandSurface.Portal);
+        var brand = TenantBrand.Create(tenantId, BrandSurface.Portal, DateTime.UtcNow);
 
         Assert.Equal(tenantId, brand.TenantId);
         Assert.Equal(BrandSurface.Portal, brand.Surface);
         Assert.Empty(brand.Colors);
         Assert.Empty(brand.Assets);
+    }
+
+    // ----- Tiempo -----
+
+    [Fact]
+    public void SetAsset_UsesProvidedTimestamp()
+    {
+        var created = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var uploaded = created.AddHours(1);
+        var brand = TenantBrand.Create(Guid.NewGuid(), BrandSurface.Crm, created);
+
+        var result = brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, 10, 10, uploaded);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(created, brand.CreatedAtUtc);
+        Assert.Equal(uploaded, brand.UpdatedAtUtc);
+        Assert.Equal(uploaded, Assert.Single(brand.Assets).UpdatedAtUtc);
     }
 
     // ----- Colores -----
@@ -29,7 +46,7 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
 
-        var result = brand.SetColor(BrandColorToken.Primary, "#1E466B");
+        var result = brand.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow);
 
         Assert.True(result.IsSuccess);
         var color = Assert.Single(brand.Colors);
@@ -42,8 +59,8 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
 
-        brand.SetColor(BrandColorToken.Primary, "#1E466B");
-        brand.SetColor(BrandColorToken.Primary, "#0F5132");
+        brand.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow);
+        brand.SetColor(BrandColorToken.Primary, "#0F5132", DateTime.UtcNow);
 
         var color = Assert.Single(brand.Colors);
         Assert.Equal("#0F5132", color.Color.Value);
@@ -54,8 +71,8 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
 
-        brand.SetColor(BrandColorToken.Primary, "#1E466B");
-        brand.SetColor(BrandColorToken.Accent, "#67BAF4");
+        brand.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow);
+        brand.SetColor(BrandColorToken.Accent, "#67BAF4", DateTime.UtcNow);
 
         Assert.Equal(2, brand.Colors.Count);
     }
@@ -65,7 +82,7 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
 
-        var result = brand.SetColor(BrandColorToken.Primary, "not-a-color");
+        var result = brand.SetColor(BrandColorToken.Primary, "not-a-color", DateTime.UtcNow);
 
         Assert.True(result.IsFailure);
         Assert.Empty(brand.Colors);
@@ -75,10 +92,10 @@ public sealed class TenantBrandTests
     public void RemoveColor_removes_when_present_and_is_idempotent_when_absent()
     {
         var brand = NewBrand();
-        brand.SetColor(BrandColorToken.Primary, "#1E466B");
+        brand.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow);
 
-        brand.RemoveColor(BrandColorToken.Primary);
-        brand.RemoveColor(BrandColorToken.Primary); // no debe lanzar
+        brand.RemoveColor(BrandColorToken.Primary, DateTime.UtcNow);
+        brand.RemoveColor(BrandColorToken.Primary, DateTime.UtcNow); // no debe lanzar
 
         Assert.Empty(brand.Colors);
     }
@@ -87,10 +104,10 @@ public sealed class TenantBrandTests
     public void ResetColors_clears_everything()
     {
         var brand = NewBrand();
-        brand.SetColor(BrandColorToken.Primary, "#1E466B");
-        brand.SetColor(BrandColorToken.Accent, "#67BAF4");
+        brand.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow);
+        brand.SetColor(BrandColorToken.Accent, "#67BAF4", DateTime.UtcNow);
 
-        brand.ResetColors();
+        brand.ResetColors(DateTime.UtcNow);
 
         Assert.Empty(brand.Colors);
     }
@@ -103,7 +120,7 @@ public sealed class TenantBrandTests
         var brand = NewBrand();
         var fileId = Guid.NewGuid();
 
-        var result = brand.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100_000, 200, 60);
+        var result = brand.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100_000, 200, 60, DateTime.UtcNow);
 
         Assert.True(result.IsSuccess);
         var asset = Assert.Single(brand.Assets);
@@ -121,7 +138,7 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
 
-        var result = brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), contentType, 100_000, null, null);
+        var result = brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), contentType, 100_000, null, null, DateTime.UtcNow);
 
         Assert.True(result.IsFailure);
         Assert.Empty(brand.Assets);
@@ -138,7 +155,8 @@ public sealed class TenantBrandTests
             "image/png",
             TenantBrand.MaxAssetSizeBytes + 1,
             null,
-            null
+            null,
+            DateTime.UtcNow
         );
 
         Assert.True(result.IsFailure);
@@ -150,8 +168,8 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
 
-        Assert.True(brand.SetAssetPending(BrandAssetKey.Logo, Guid.Empty, "image/png", 100, null, null).IsFailure);
-        Assert.True(brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 0, null, null).IsFailure);
+        Assert.True(brand.SetAssetPending(BrandAssetKey.Logo, Guid.Empty, "image/png", 100, null, null, DateTime.UtcNow).IsFailure);
+        Assert.True(brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 0, null, null, DateTime.UtcNow).IsFailure);
         Assert.Empty(brand.Assets);
     }
 
@@ -160,8 +178,8 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
 
-        brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null);
-        brand.SetAssetPending(BrandAssetKey.Favicon, Guid.NewGuid(), "image/svg+xml", 100, null, null);
+        brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow);
+        brand.SetAssetPending(BrandAssetKey.Favicon, Guid.NewGuid(), "image/svg+xml", 100, null, null, DateTime.UtcNow);
 
         Assert.Equal(2, brand.Assets.Count);
     }
@@ -174,7 +192,7 @@ public sealed class TenantBrandTests
         var brand = NewBrand();
         var fileId = Guid.NewGuid();
         var confirmedAt = DateTime.UtcNow;
-        brand.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100_000, 200, 60);
+        brand.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100_000, 200, 60, DateTime.UtcNow);
 
         var result = brand.ConfirmAsset(BrandAssetKey.Logo, fileId, "image/png", 98_000, 200, 60, confirmedAt);
 
@@ -191,8 +209,8 @@ public sealed class TenantBrandTests
         var brand = NewBrand();
         var replacedFileId = Guid.NewGuid();
         var currentFileId = Guid.NewGuid();
-        brand.SetAssetPending(BrandAssetKey.Logo, replacedFileId, "image/png", 100, null, null);
-        brand.SetAssetPending(BrandAssetKey.Logo, currentFileId, "image/png", 200, null, null); // reemplazo
+        brand.SetAssetPending(BrandAssetKey.Logo, replacedFileId, "image/png", 100, null, null, DateTime.UtcNow);
+        brand.SetAssetPending(BrandAssetKey.Logo, currentFileId, "image/png", 200, null, null, DateTime.UtcNow); // reemplazo
 
         // El escaneo del archivo VIEJO llega tarde: no debe confirmar el nuevo.
         var result = brand.ConfirmAsset(
@@ -235,17 +253,17 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
         var fileId = Guid.NewGuid();
-        brand.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null);
+        brand.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow);
 
         // Descarta el pendiente (rechazado por antivirus).
-        brand.DiscardPendingAsset(BrandAssetKey.Logo, fileId);
+        brand.DiscardPendingAsset(BrandAssetKey.Logo, fileId, DateTime.UtcNow);
         Assert.Empty(brand.Assets);
 
         // Uno ya confirmado no se descarta por un rechazo tardío.
         var confirmedFileId = Guid.NewGuid();
-        brand.SetAssetPending(BrandAssetKey.Favicon, confirmedFileId, "image/png", 100, null, null);
+        brand.SetAssetPending(BrandAssetKey.Favicon, confirmedFileId, "image/png", 100, null, null, DateTime.UtcNow);
         brand.ConfirmAsset(BrandAssetKey.Favicon, confirmedFileId, "image/png", 100, null, null, DateTime.UtcNow);
-        brand.DiscardPendingAsset(BrandAssetKey.Favicon, confirmedFileId);
+        brand.DiscardPendingAsset(BrandAssetKey.Favicon, confirmedFileId, DateTime.UtcNow);
         Assert.Single(brand.Assets);
     }
 
@@ -253,11 +271,33 @@ public sealed class TenantBrandTests
     public void RemoveAsset_removes_when_present_and_is_idempotent_when_absent()
     {
         var brand = NewBrand();
-        brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null);
+        brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow);
 
-        brand.RemoveAsset(BrandAssetKey.Logo);
-        brand.RemoveAsset(BrandAssetKey.Logo); // no debe lanzar
+        brand.RemoveAsset(BrandAssetKey.Logo, DateTime.UtcNow);
+        brand.RemoveAsset(BrandAssetKey.Logo, DateTime.UtcNow); // no debe lanzar
 
         Assert.Empty(brand.Assets);
+    }
+
+    [Fact]
+    public void RevokeAsset_ConfirmedWithSameFileId_RemovesAsset()
+    {
+        var brand = NewBrand();
+        var fileId = Guid.NewGuid();
+        brand.SetAssetPending(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow);
+        brand.ConfirmAsset(BrandAssetKey.Logo, fileId, "image/png", 100, null, null, DateTime.UtcNow);
+
+        Assert.True(brand.RevokeAsset(BrandAssetKey.Logo, fileId, DateTime.UtcNow));
+        Assert.Empty(brand.Assets);
+    }
+
+    [Fact]
+    public void RevokeAsset_WithDifferentFileId_KeepsAsset()
+    {
+        var brand = NewBrand();
+        brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow);
+
+        Assert.False(brand.RevokeAsset(BrandAssetKey.Logo, Guid.NewGuid(), DateTime.UtcNow));
+        Assert.Single(brand.Assets);
     }
 }

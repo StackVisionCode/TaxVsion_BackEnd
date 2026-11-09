@@ -52,11 +52,12 @@ export interface UserDirectoryRepository {
    */
   findByUserIds?(userIds: readonly string[]): Promise<UserDirectoryEntrySnapshot[]>;
 
-  markInactive(userId: string): Promise<void>;
+  /** `statusChangedAtUtc` (occurredOn del aviso): si viene, solo aplica si es mas nuevo que el ultimo aplicado. */
+  markInactive(userId: string, statusChangedAtUtc?: Date): Promise<void>;
 
   /** Contraparte de `markInactive` para `auth.user.reactivated.v1`: restaura el entry al reactivar
    * al usuario (el nombre/email siguen en la fila; solo se re-activa). */
-  markActive(userId: string): Promise<void>;
+  markActive(userId: string, statusChangedAtUtc?: Date): Promise<void>;
 
   /**
    * Fase Frontend 5 — autocomplete de employees al armar invitaciones de

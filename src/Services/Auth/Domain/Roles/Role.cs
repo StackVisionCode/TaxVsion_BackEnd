@@ -45,6 +45,9 @@ public sealed class Role : TenantEntity
     /// </summary>
     public UserActorType? TargetActorType { get; private set; }
 
+    /// <summary>Token de concurrencia. Cambiar los permisos mueve esta fila por <see cref="PermissionsVersion"/>.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public static Result<Role> Create(
         Guid tenantId,
         string name,

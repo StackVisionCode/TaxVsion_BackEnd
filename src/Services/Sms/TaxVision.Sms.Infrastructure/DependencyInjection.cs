@@ -9,9 +9,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TaxVision.Sms.Application;
 using TaxVision.Sms.Application.Abstractions;
+using TaxVision.Sms.Application.Customers.Abstractions;
 using TaxVision.Sms.Application.Permissions.Abstractions;
 using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Application.RateLimiting.Abstractions;
+using TaxVision.Sms.Infrastructure.Customers;
 using TaxVision.Sms.Infrastructure.Permissions;
 using TaxVision.Sms.Infrastructure.Persistence;
 using TaxVision.Sms.Infrastructure.Persistence.Repositories;
@@ -37,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<ISmsMessageRepository, SmsMessageRepository>();
         services.AddScoped<ISmsOptOutRepository, SmsOptOutRepository>();
         services.AddScoped<IProcessedWebhookRepository, ProcessedWebhookRepository>();
+        services.AddScoped<IPendingDeliveryReceiptRepository, PendingDeliveryReceiptRepository>();
 
         // Read model del CRM (solo lectura sobre las tablas ya persistidas).
         services.AddScoped<ISmsReadService, SmsReadService>();
@@ -48,6 +51,9 @@ public static class DependencyInjection
         services.AddScoped<ISmsCustomerAssignmentReader, Customers.SmsCustomerAssignmentReader>();
         services.AddCustomerVisibilityReconciliation<Reconciliation.SmsPlatformTokenProvider>(configuration);
         services.AddOptions<SmsVisibilityOptions>().Bind(configuration.GetSection(SmsVisibilityOptions.SectionName));
+
+        // SMS-16 — política de contacto del cliente: proyección (eventos de Customer) + reconciliación inicial.
+        AddCustomerContactPolicy(services, configuration);
 
         // RBAC Fase 7 — proyección local de permisos consultada por ProjectionPermissionsSource
         // cuando Authorization:PermissionsSource="Projection". La misma instancia scoped satisface
@@ -81,7 +87,7 @@ public static class DependencyInjection
         services.AddOptions<SmsProvidersOptions>().Bind(configuration.GetSection(SmsProvidersOptions.SectionName));
 
         // Adapters agnósticos (keyed DI por atributo) + factory + secretos de webhook.
-        services.AddSmsProviders();
+        services.AddSmsProviders(configuration);
 
         // Router de plataforma: decide el orden de proveedores (primario + failover) desde la config
         // del servicio. No lo decide el tenant.
@@ -110,6 +116,7 @@ public static class DependencyInjection
 
         // Job de fondo: reconciliación de estado por pull (backstop de los DLR por webhook). Se auto-desactiva
         // en tiempo de ejecución si Sms:Reconciliation:Enabled=false; el endpoint manual funciona igual.
+        services.AddSingleton<Locking.IJobLeaderLock, Locking.JobLeaderLock>();
         services.AddHostedService<Jobs.SmsStatusReconciliationService>();
 
         return services;
@@ -180,6 +187,26 @@ public static class DependencyInjection
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );
+    }
+
+    private static void AddCustomerContactPolicy(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddScoped<ICustomerContactPolicyRepository, CustomerContactPolicyRepository>();
+        services
+            .AddOptions<SmsContactPolicyOptions>()
+            .Bind(configuration.GetSection(SmsContactPolicyOptions.SectionName));
+        services.AddHttpClient<ISmsCustomerPolicyClient, SmsCustomerPolicyClient>(
+            (sp, http) =>
+            {
+                var own = sp.GetRequiredService<IOptions<SmsContactPolicyOptions>>().Value.CustomerBaseUrl;
+                var baseUrl = string.IsNullOrWhiteSpace(own)
+                    ? sp.GetRequiredService<IOptions<CustomerVisibilityReconciliationOptions>>().Value.CustomerBaseUrl
+                    : own;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(baseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddHostedService<CustomerContactPolicyReconciliationJob>();
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

@@ -17,8 +17,10 @@ using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Sms.Api.RateLimiting;
 using TaxVision.Sms.Application;
 using TaxVision.Sms.Infrastructure;
+using TaxVision.Sms.Infrastructure.Messaging;
 using TaxVision.Sms.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
@@ -57,7 +59,7 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // AddTieredRateLimiting auto-registra el contador Redis desde IConnectionMultiplexer, que hay que
 // registrar explícito (AddRedisCache solo aporta IDistributedCache). La escala por plan (tier-aware,
 // TenantPlanCodeProjection) llega en la Fase 2; hoy hace fail-open a la cuota base. Los webhooks
-// (WebhooksController) quedan fuera: son anónimos y los cubre el gate por-IP del Gateway.
+// (WebhooksController) son anónimos: los limita el limiter nativo por IP de abajo (SMS-07).
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     ConnectionMultiplexer.Connect(
         builder.Configuration.GetConnectionString("Redis")
@@ -81,6 +83,18 @@ if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
     >();
 }
 builder.Services.AddTieredRateLimiting();
+
+var webhookRateLimit =
+    builder.Configuration.GetSection(SmsWebhookRateLimitOptions.SectionName).Get<SmsWebhookRateLimitOptions>()
+    ?? new SmsWebhookRateLimitOptions();
+builder.Services.AddRateLimiter(options =>
+{
+    options.UseTaxVisionRejectionResponse();
+    options.AddPolicy(
+        SmsWebhookRateLimiting.PolicyName,
+        context => SmsWebhookRateLimiting.Partition(context, webhookRateLimit)
+    );
+});
 
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "sms-service");
 
@@ -123,6 +137,9 @@ builder.Host.UseWolverine(options =>
     // snapshot CustomerAssignmentsChanged de Customer. Registro explícito por el mismo motivo (static class).
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
 
+    // SMS-16 — política de contacto del cliente desde CustomerCreated/Updated (mismo motivo: static class).
+    options.Discovery.IncludeType(typeof(TaxVision.Sms.Application.Customers.Consumers.CustomerContactPolicyConsumer));
+
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =
@@ -134,7 +151,17 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, SmsDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // La liquidación de un SMS que ya salió espera al Wallet con reintentos largos, en una cola durable (BB-2).
+    options.Policies.Add(
+        new WalletSettleRetryPolicy(
+            builder.Configuration.GetSection(WalletSettleRetryOptions.SectionName).Get<WalletSettleRetryOptions>()
+                ?? new WalletSettleRetryOptions()
+        )
+    );
+    options.UseTaxVisionDurableLocalQueues();
 
     // Eventos de resultado publicados (agnósticos). Sin esto, bus.PublishAsync los descarta en silencio.
     options.PublishMessage<SmsMessageAcceptedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -181,6 +208,7 @@ app.UseAuthentication();
 app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

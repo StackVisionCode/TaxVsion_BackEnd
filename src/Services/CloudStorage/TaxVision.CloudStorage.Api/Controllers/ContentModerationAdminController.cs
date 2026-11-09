@@ -8,7 +8,9 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Application.Moderation;
+using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Moderation;
 using Wolverine;
@@ -178,6 +180,34 @@ public sealed class ContentModerationAdminController(IMessageBus bus, ICorrelati
         return ToActionResult(
             await bus.InvokeAsync<Result<ReportContentReviewFileResponse>>(
                 new ReportContentReviewFileCommand(tenantId, fileId, actorId, request.Notes, AuditContext()),
+                ct
+            )
+        );
+    }
+
+    /// <summary>CST-2: vuelve a escanear un archivo ScanFailed cuyo objeto sigue guardado (reserva cuota de nuevo).</summary>
+    [HttpPost("scan/{tenantId:guid}/{fileId:guid}/rescan")]
+    [RateLimit("cloudstorage.g.legal_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Rescan(Guid tenantId, Guid fileId, CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var actorId))
+            return Unauthorized();
+        var result = await bus.InvokeAsync<Result>(new RescanFileCommand(tenantId, fileId, actorId), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>CST-5: reposición por tenant; fija Used/Reserved desde Files (idempotente). Solo tras revisar Q-CST-5.</summary>
+    [HttpPost("quota/{tenantId:guid}/recalculate")]
+    [RateLimit("cloudstorage.g.legal_manage")]
+    [ProducesResponseType<RecalculateTenantQuotaResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RecalculateQuota(Guid tenantId, CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var actorId))
+            return Unauthorized();
+        return ToActionResult(
+            await bus.InvokeAsync<Result<RecalculateTenantQuotaResponse>>(
+                new RecalculateTenantQuotaCommand(tenantId, actorId),
                 ct
             )
         );

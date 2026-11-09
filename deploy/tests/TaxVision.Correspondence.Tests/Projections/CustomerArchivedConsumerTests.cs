@@ -32,6 +32,7 @@ public sealed class CustomerArchivedConsumerTests
             evt,
             repository,
             new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
             unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<CustomerEmailAddress>.Instance,

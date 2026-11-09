@@ -37,7 +37,7 @@ internal static class InMemoryPaymentClient
             .GetRequiredService<IPaymentAdapterFactory>();
 
     /// <summary>Fábrica real con adaptadores falsos que registran cada cobro.</summary>
-    public static IPaymentAdapterFactory FakeAdapters(params RecordingPaymentProvider[] providers)
+    public static IPaymentAdapterFactory FakeAdapters(params IPaymentProvider[] providers)
     {
         var services = new ServiceCollection();
         foreach (var provider in providers)
@@ -102,6 +102,12 @@ internal sealed class RecordingPaymentProvider(PaymentProviderDescriptor descrip
     /// <summary>Estado con el que responde el cobro.</summary>
     public PaymentStatus Status { get; set; } = PaymentStatus.Succeeded;
 
+    /// <summary>URL de verificación (3DS) que devuelve el cobro cuando queda en RequiresAction.</summary>
+    public string? NextActionUrl { get; set; }
+
+    /// <summary>clientSecret del 3DS con Stripe.js (use_stripe_sdk) cuando queda en RequiresAction.</summary>
+    public string? ClientSecret { get; set; }
+
     public Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
         TenantProviderCredentials credentials,
         ChargeAuthorizationRequest request,
@@ -111,17 +117,191 @@ internal sealed class RecordingPaymentProvider(PaymentProviderDescriptor descrip
         Charges.Add(credentials);
         Requests.Add(request);
         var failed = Status == PaymentStatus.Failed;
+        var requiresAction = Status == PaymentStatus.RequiresAction && (NextActionUrl ?? ClientSecret) is not null;
         return Task.FromResult(
             Result.Success(
                 new ChargeAuthorizationResult(
                     $"{Code}-charge-{Charges.Count}",
                     Status,
+                    NextActionType: requiresAction
+                        ? (NextActionUrl is null ? "use_stripe_sdk" : "redirect_to_url")
+                        : null,
+                    NextActionUrl: requiresAction ? NextActionUrl : null,
                     FailureCode: failed ? "card_declined" : null,
                     FailureMessage: failed ? "Declined." : null,
-                    Payer: Payer
+                    Payer: Payer,
+                    NextActionClientSecret: requiresAction ? ClientSecret : null
                 )
             )
         );
+    }
+
+    public Task<Result<RefundResult>> RefundAsync(
+        TenantProviderCredentials credentials,
+        string providerChargeReference,
+        Money amount,
+        string reason,
+        CancellationToken ct
+    ) => throw new NotSupportedException();
+
+    /// <summary>Webhook ya verificado y su payload; sin configurar, lanza (el test no lo esperaba).</summary>
+    public (WebhookVerificationResult Verification, WebhookEventPayload Payload)? Webhook { get; set; }
+
+    public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
+        string rawPayload,
+        IReadOnlyDictionary<string, string> headers,
+        TenantProviderCredentials credentials,
+        CancellationToken ct
+    ) => Task.FromResult(Result.Success((Webhook ?? throw new NotSupportedException()).Verification));
+
+    public Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(
+        string rawPayload,
+        string eventType,
+        CancellationToken ct
+    ) => Task.FromResult(Result.Success((Webhook ?? throw new NotSupportedException()).Payload));
+
+    /// <summary>Consultas de estado recibidas (credenciales + cargo).</summary>
+    public List<(TenantProviderCredentials Credentials, ChargeStatusLookup Lookup)> StatusLookups { get; } = [];
+
+    /// <summary>Respuesta de la consulta de estado; sin configurar, lanza (el test no la esperaba).</summary>
+    public Func<ChargeStatusLookup, Result<WebhookEventPayload>>? ChargeStatus { get; set; }
+
+    public Task<Result<WebhookEventPayload>> GetChargeStatusAsync(
+        TenantProviderCredentials credentials,
+        ChargeStatusLookup lookup,
+        CancellationToken ct
+    )
+    {
+        StatusLookups.Add((credentials, lookup));
+        return Task.FromResult(
+            (ChargeStatus ?? throw new InvalidOperationException("Unexpected charge status lookup."))(lookup)
+        );
+    }
+
+    /// <summary>Búsquedas recibidas de pagos sin resultado.</summary>
+    public List<ChargeSearch> Searches { get; } = [];
+
+    /// <summary>Respuesta de la búsqueda; sin configurar, lanza (el test no la esperaba).</summary>
+    public Func<ChargeSearch, Result<ChargeAuthorizationResult?>>? FoundCharge { get; set; }
+
+    public Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeSearch search,
+        CancellationToken ct
+    )
+    {
+        Searches.Add(search);
+        return Task.FromResult(
+            (FoundCharge ?? throw new InvalidOperationException("Unexpected charge search."))(search)
+        );
+    }
+
+    /// <summary>Cancelaciones pedidas al proveedor (credenciales + cargo).</summary>
+    public List<(TenantProviderCredentials Credentials, ChargeStatusLookup Lookup)> Cancellations { get; } = [];
+
+    /// <summary>Respuesta de la cancelación; sin configurar, lanza (el test no la esperaba).</summary>
+    public Func<ChargeStatusLookup, Result<WebhookEventPayload>>? CancelCharge { get; set; }
+
+    public Task<Result<WebhookEventPayload>> CancelChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeStatusLookup lookup,
+        CancellationToken ct
+    )
+    {
+        Cancellations.Add((credentials, lookup));
+        return Task.FromResult(
+            (CancelCharge ?? throw new InvalidOperationException("Unexpected charge cancellation."))(lookup)
+        );
+    }
+}
+
+/// <summary>Adaptador falso idempotente como Stripe: la misma clave devuelve el mismo cargo y no cobra
+/// de nuevo. Seguro para canjes en paralelo.</summary>
+internal sealed class IdempotentRecordingPaymentProvider(PaymentProviderDescriptor descriptor) : IPaymentProvider
+{
+    private readonly Dictionary<string, ChargeAuthorizationResult> _byKey = [];
+    private readonly Lock _gate = new();
+
+    public PaymentProviderCode Code => descriptor.Code;
+
+    public PaymentProviderDescriptor Descriptor => descriptor;
+
+    public PaymentStatus Status { get; set; } = PaymentStatus.Succeeded;
+
+    /// <summary>Claves distintas que llegaron a cobrarse.</summary>
+    public int DistinctChargedKeys
+    {
+        get
+        {
+            lock (_gate)
+                return _byKey.Count;
+        }
+    }
+
+    /// <summary>Si es mayor que 1, cada cobro espera a que lleguen esos llamados (fuerza la carrera).</summary>
+    public int WaitForCallers { get; set; }
+
+    /// <summary>Corre al recibir cada cobro: sirve para mirar la base desde otro contexto en ese momento.</summary>
+    public Func<ChargeAuthorizationRequest, Task>? OnCharge { get; set; }
+
+    /// <summary>Llamadas que llegaron al proveedor.</summary>
+    public int Calls => _totalCalls;
+
+    /// <summary>Si es true, la búsqueda responde que no se pudo saber.</summary>
+    public bool SearchUnavailable { get; set; }
+
+    private int _calls;
+    private int _totalCalls;
+    private readonly Dictionary<string, ChargeAuthorizationResult> _byPaymentId = [];
+    private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeAuthorizationRequest request,
+        CancellationToken ct
+    )
+    {
+        Interlocked.Increment(ref _totalCalls);
+        if (OnCharge is not null)
+            await OnCharge(request);
+
+        if (WaitForCallers > 1)
+        {
+            if (Interlocked.Increment(ref _calls) >= WaitForCallers)
+                _allArrived.TrySetResult();
+            await _allArrived.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+        }
+
+        lock (_gate)
+        {
+            if (!_byKey.TryGetValue(request.IdempotencyKey.Value, out var result))
+            {
+                result = new ChargeAuthorizationResult($"{Code}-charge-{Guid.NewGuid():N}", Status);
+                _byKey[request.IdempotencyKey.Value] = result;
+                _byPaymentId[request.Metadata["tenantPaymentId"]] = result;
+            }
+
+            return Result.Success(result);
+        }
+    }
+
+    public Task<Result<ChargeAuthorizationResult?>> FindChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeSearch search,
+        CancellationToken ct
+    )
+    {
+        if (SearchUnavailable)
+            return Task.FromResult(
+                Result.Failure<ChargeAuthorizationResult?>(new Error("Fake.ChargeSearch.Failed", "Search unavailable."))
+            );
+
+        lock (_gate)
+            return Task.FromResult(
+                Result.Success<ChargeAuthorizationResult?>(
+                    _byPaymentId.GetValueOrDefault(search.TenantPaymentId.ToString("N"))
+                )
+            );
     }
 
     public Task<Result<RefundResult>> RefundAsync(
@@ -145,23 +325,17 @@ internal sealed class RecordingPaymentProvider(PaymentProviderDescriptor descrip
         CancellationToken ct
     ) => throw new NotSupportedException();
 
-    /// <summary>Consultas de estado recibidas (credenciales + cargo).</summary>
-    public List<(TenantProviderCredentials Credentials, ChargeStatusLookup Lookup)> StatusLookups { get; } = [];
-
-    /// <summary>Respuesta de la consulta de estado; sin configurar, lanza (el test no la esperaba).</summary>
-    public Func<ChargeStatusLookup, Result<WebhookEventPayload>>? ChargeStatus { get; set; }
-
     public Task<Result<WebhookEventPayload>> GetChargeStatusAsync(
         TenantProviderCredentials credentials,
         ChargeStatusLookup lookup,
         CancellationToken ct
-    )
-    {
-        StatusLookups.Add((credentials, lookup));
-        return Task.FromResult(
-            (ChargeStatus ?? throw new InvalidOperationException("Unexpected charge status lookup."))(lookup)
-        );
-    }
+    ) => throw new NotSupportedException();
+
+    public Task<Result<WebhookEventPayload>> CancelChargeAsync(
+        TenantProviderCredentials credentials,
+        ChargeStatusLookup lookup,
+        CancellationToken ct
+    ) => throw new NotSupportedException();
 }
 
 /// <summary>"Cifra" con un prefijo reversible: suficiente para probar el recorrido sin claves reales.</summary>
@@ -215,4 +389,6 @@ internal sealed class NoOpPaymentClientMetrics : IPaymentClientMetrics
     public void RecordWebhookDuplicate(string provider) { }
 
     public void RecordWebhookSignatureFailed(string provider) { }
+
+    public void RecordWebhookNeedsReview(string provider, string reason) { }
 }

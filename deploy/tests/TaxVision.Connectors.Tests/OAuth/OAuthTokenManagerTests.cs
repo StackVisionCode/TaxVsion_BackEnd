@@ -8,6 +8,7 @@ using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Domain.Watch;
 using TaxVision.Connectors.Infrastructure.OAuth;
+using TaxVision.Connectors.Tests.Accounts;
 using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.OAuth;
@@ -68,15 +69,13 @@ public class OAuthTokenManagerTests
         correlation.Set("test-correlation");
 
         var manager = new OAuthTokenManager(
-            accountRepository,
             connectionRepository,
-            subscriptionRepository,
             new FakeOAuthProviderClientFactory(providerClient),
             new HttpResiliencePipelineRegistry(),
             protector,
             sharedLock ?? new InMemoryDistributedLock(),
-            unitOfWork,
-            bus,
+            new InlineOAuthTokenStore(connectionRepository, unitOfWork),
+            new InlineMailboxFailureUnit(accountRepository, subscriptionRepository, connectionRepository, unitOfWork),
             correlation,
             NullLogger<OAuthTokenManager>.Instance
         );
@@ -188,7 +187,7 @@ public class OAuthTokenManagerTests
         Assert.True(result.IsFailure);
         Assert.Equal(TenantEmailAccountStatus.Error, fixture.Account.Status);
 
-        var published = Assert.Single(fixture.Bus.Published);
+        var published = Assert.Single(DomainEventReplay.Emitted(fixture.Bus, fixture.Account));
         var failedEvent = Assert.IsType<ConnectorsOAuthRefreshFailedIntegrationEvent>(published);
         Assert.Equal(fixture.Account.Id, failedEvent.AccountId);
         Assert.Equal("invalid_grant", failedEvent.Reason);
@@ -209,6 +208,25 @@ public class OAuthTokenManagerTests
         Assert.Equal(ProviderWatchStatus.Failed, fixture.Watch.Status);
     }
 
+    // CON-11: cuenta lo emitido por el comando (cascada + bus). Con los dos caminos daría 2.
+    [Fact]
+    public async Task RefreshRejected_EmitsExactlyOneRefreshFailed()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("invalid_grant", requiresReconnect: true);
+
+        await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        var notice = Assert.IsType<ConnectorsOAuthRefreshFailedIntegrationEvent>(
+            Assert.Single(DomainEventReplay.Emitted(fixture.Bus, fixture.Account))
+        );
+        Assert.Equal(fixture.Account.TenantId, notice.TenantId);
+        Assert.Equal("test-correlation", notice.CorrelationId);
+        Assert.Equal("Gmail", notice.ProviderCode);
+        Assert.Equal(OAuthTokenErrorCodes.RefreshFailed, notice.ErrorCode);
+        DomainEventReplay.AssertNoDomainEventOnBus(fixture.Bus);
+    }
+
     [Fact]
     public async Task GetValidAccessTokenAsync_WhenRefreshKeepsFailing_PublishesOnlyOnTransitionToError()
     {
@@ -219,9 +237,13 @@ public class OAuthTokenManagerTests
         for (var attempt = 0; attempt < 5; attempt++)
             await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
 
-        // El rechazo de la cuenta no abre el breaker del proveedor: los 5 intentos llegan a Google.
-        Assert.Equal(5, fixture.ProviderClient.CallCount);
-        Assert.Single(fixture.Bus.Published.OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>());
+        // Tras el rechazo la conexión queda Expired: los intentos siguientes ya no llegan a Google.
+        Assert.Equal(1, fixture.ProviderClient.CallCount);
+        Assert.Single(
+            DomainEventReplay
+                .Emitted(fixture.Bus, fixture.Account)
+                .OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>()
+        );
         Assert.Equal(TenantEmailAccountStatus.Error, fixture.Account.Status);
     }
 
@@ -288,6 +310,68 @@ public class OAuthTokenManagerTests
         Assert.Equal(3, fixture.ProviderClient.CallCount);
         Assert.Equal(OAuthTokenErrorCodes.CircuitOpen, last!.Error.Code);
         Assert.Equal(TenantEmailAccountStatus.Active, fixture.Account.Status);
+    }
+
+    [Fact]
+    public async Task RefreshRejected_MarksAccountErrorAndConnectionExpired()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("invalid_grant", requiresReconnect: true);
+
+        await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.Equal(TenantEmailAccountStatus.Error, fixture.Account.Status);
+        Assert.Equal(OAuthConnectionStatus.Expired, fixture.ConnectionRepository.Connections[0].Status);
+        Assert.Single(
+            DomainEventReplay
+                .Emitted(fixture.Bus, fixture.Account)
+                .OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>()
+        );
+    }
+
+    // La cuenta ya estaba en Error por el watch: el grant muerto igual se marca, sin un segundo aviso.
+    [Fact]
+    public async Task RefreshRejected_AccountAlreadyError_ExpiresConnectionWithoutNotice()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.Account.MarkError(
+            new TenantEmailAccountErrorCause(TenantEmailAccountErrorSource.WatchRenewal, "x", "y", "c"),
+            Now
+        );
+        var before = DomainEventReplay.Emitted(fixture.Bus, fixture.Account).Count;
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("invalid_grant", requiresReconnect: true);
+
+        await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.Equal(OAuthConnectionStatus.Expired, fixture.ConnectionRepository.Connections[0].Status);
+        Assert.Equal(before, DomainEventReplay.Emitted(fixture.Bus, fixture.Account).Count);
+    }
+
+    [Fact]
+    public async Task GetValidAccessToken_ConnectionExpired_FailsWithoutRefreshOrEvent()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ConnectionRepository.Connections[0].MarkExpired();
+
+        var result = await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("OAuthTokenManager.ConnectionNotActive", result.Error.Code);
+        Assert.True(OAuthTokenErrorCodes.RequiresReconnect(result.Error.Code));
+        Assert.Equal(0, fixture.ProviderClient.CallCount);
+        Assert.Empty(DomainEventReplay.Emitted(fixture.Bus, fixture.Account));
+    }
+
+    [Fact]
+    public async Task RefreshFailure_AccountNotFound_PublishesNothing()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.AccountRepository.Accounts.Clear();
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("invalid_grant", requiresReconnect: true);
+
+        await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.Empty(DomainEventReplay.Emitted(fixture.Bus, fixture.Account));
     }
 
     [Fact]

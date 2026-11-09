@@ -1,9 +1,11 @@
 using BuildingBlocks.Infrastructure.Hosting;
-using BuildingBlocks.Persistence;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Tasks.Application.Series.Abstractions;
+using TaxVision.Tasks.Domain.Series;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Jobs;
 
@@ -54,28 +56,61 @@ public sealed class SeriesMaterializationJob(IServiceProvider serviceProvider, I
 
     private async Task RunOnceAsync(CancellationToken ct)
     {
-        using var scope = serviceProvider.CreateScope();
-        var repository = scope.ServiceProvider.GetRequiredService<ITaskSeriesRepository>();
-        var materializer = scope.ServiceProvider.GetRequiredService<ITaskSeriesMaterializer>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        IReadOnlyList<(Guid TenantId, Guid SeriesId)> pending;
+        using (var scope = serviceProvider.CreateScope())
+        {
+            var repository = scope.ServiceProvider.GetRequiredService<ITaskSeriesRepository>();
+            pending = (await repository.ListPendingMaterializationAsync(BatchSize, ct))
+                .Select(s => (s.TenantId, s.Id))
+                .ToList();
+        }
 
-        var pending = await repository.ListPendingMaterializationAsync(BatchSize, ct);
         if (pending.Count == 0)
             return;
 
         var materialized = 0;
-        foreach (var series in pending)
-        {
-            var created = await materializer.MaterializeNextAsync(series, null, null, ct);
-            if (created.IsSuccess)
-                materialized++;
-        }
-
-        await unitOfWork.SaveChangesAsync(ct);
-        logger.LogInformation(
-            "Series sweep materialized {Materialized} of {Pending} series without an open instance.",
-            materialized,
-            pending.Count
+        var summary = await TransactionalJobUnit.RunEachAsync<(Guid TenantId, Guid SeriesId), TasksDbContext>(
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            pending,
+            async (item, unit, token) =>
+            {
+                var created = await MaterializeSeriesAsync(unit, item.TenantId, item.SeriesId, token);
+                materialized += created is true ? 1 : 0;
+                return created is not null;
+            },
+            logger,
+            ct
         );
+
+        logger.LogInformation(
+            "Series sweep materialized {Materialized} of {Pending} series without an open instance ({Conflicts} conflicts, {Failed} failed).",
+            materialized,
+            pending.Count,
+            summary.Conflicts,
+            summary.Failed
+        );
+    }
+
+    /// <summary>
+    /// Una unidad por serie (TransactionalJobUnit): la instancia y su evento de alta se guardan juntos, y el
+    /// handler del evento la anuncia. Devuelve null si no había nada que hacer; false si la regla se agotó
+    /// (se guarda el fin de la serie). Un conflicto en una serie no arrastra a las demás.
+    /// </summary>
+    private static async Task<bool?> MaterializeSeriesAsync(
+        JobUnitContext<TasksDbContext> unit,
+        Guid tenantId,
+        Guid seriesId,
+        CancellationToken ct
+    )
+    {
+        var repository = unit.Services.GetRequiredService<ITaskSeriesRepository>();
+        var materializer = unit.Services.GetRequiredService<ITaskSeriesMaterializer>();
+
+        var found = await repository.GetByIdAsync(tenantId, seriesId, ct);
+        if (found.IsFailure || found.Value is not { Status: SeriesStatus.Active, OpenInstanceId: null })
+            return null;
+
+        var created = await materializer.MaterializeNextAsync(found.Value, null, null, ct);
+        return created.IsSuccess;
     }
 }

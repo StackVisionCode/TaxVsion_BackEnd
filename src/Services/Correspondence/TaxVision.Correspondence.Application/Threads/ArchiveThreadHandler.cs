@@ -1,7 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
-using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Threads;
 
@@ -20,7 +19,6 @@ public static class ArchiveThreadHandler
         IIncomingEmailRepository incomingEmails,
         IDeliveryNoticeRepository notices,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -37,7 +35,7 @@ public static class ArchiveThreadHandler
         )
             return Result.Failure(ThreadAccess.NotFound);
 
-        thread.Archive();
+        thread.Archive(command.ActorUserId, command.CorrelationId);
 
         // Archivar marca el hilo leído (quita la burbuja de no-leído).
         var now = DateTime.UtcNow;
@@ -48,14 +46,6 @@ public static class ArchiveThreadHandler
             notice.MarkRead(now);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await ThreadStateNotifier.PublishAsync(
-            bus,
-            incomingEmails,
-            thread,
-            command.ActorUserId,
-            command.CorrelationId,
-            ct
-        );
         return Result.Success();
     }
 }

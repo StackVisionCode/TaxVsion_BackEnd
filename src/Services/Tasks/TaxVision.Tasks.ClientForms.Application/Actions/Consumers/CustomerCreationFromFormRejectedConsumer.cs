@@ -50,7 +50,7 @@ public static class CustomerCreationFromFormRejectedConsumer
     // Solo un run Requested pasa a Rejected: un Completed previo del mismo comando gana.
     private static bool Reject(FormRequest request, CustomerCreationFromFormRejectedIntegrationEvent evt)
     {
-        var rejected = request.RejectAction(
+        var rejected = request.Actions.Reject(
             evt.RequestId,
             evt.ErrorCode,
             evt.ExistingCustomerId,

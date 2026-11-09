@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>CAT-F5.2 — Publicado por Subscription cuando el admin edita el catálogo (planes o
@@ -14,6 +16,7 @@ namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 /// reaccionar distinto según el kind — todos refetchean el listado completo. Si en el futuro hace
 /// falta reaccionar diferente, se agrega sin romper (el consumer puede ignorar valores desconocidos).</para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.CatalogChangedIntegrationEvent")]
 public sealed record CatalogChangedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Qué parte del catálogo cambió: <c>plan.created</c>, <c>plan.metadata</c>,

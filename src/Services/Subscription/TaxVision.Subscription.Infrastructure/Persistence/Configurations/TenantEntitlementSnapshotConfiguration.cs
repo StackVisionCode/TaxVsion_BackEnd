@@ -15,7 +15,7 @@ public sealed class TenantEntitlementSnapshotConfiguration : IEntityTypeConfigur
         builder.ToTable("TenantEntitlementSnapshots");
         builder.HasKey(snapshot => snapshot.TenantId);
 
-        builder.Property(snapshot => snapshot.RevisionNumber).IsRequired();
+        builder.Property(snapshot => snapshot.RevisionNumber).IsRequired().IsConcurrencyToken();
         builder.Property(snapshot => snapshot.ComputedAtUtc).IsRequired();
         builder.Property(snapshot => snapshot.PlanCode).HasMaxLength(50).IsRequired();
         builder.Property(snapshot => snapshot.PlanVersionId).IsRequired();

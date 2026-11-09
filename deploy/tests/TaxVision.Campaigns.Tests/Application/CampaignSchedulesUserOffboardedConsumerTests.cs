@@ -198,8 +198,7 @@ public sealed class CampaignSchedulesUserOffboardedConsumerTests
         CampaignSchedulesUserOffboardedConsumer.Handle(
             evt,
             _schedules,
-            _campaigns,
-            _permissions,
+            new ScheduleOffboardingResolver(_campaigns, _permissions),
             _unitOfWork,
             _bus,
             new FakeCorrelationContext(),

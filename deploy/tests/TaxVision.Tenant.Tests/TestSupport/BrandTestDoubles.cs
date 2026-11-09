@@ -26,6 +26,7 @@ internal sealed class FakeBrandingCloudStorageClient : ITenantBrandingCloudStora
         Guid tenantId,
         TenantLogoUpload upload,
         TenantBrandStoredFile stored,
+        Wolverine.IMessageBus bus,
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
@@ -46,6 +47,9 @@ internal sealed class FakeBrandingCloudStorageClient : ITenantBrandingCloudStora
 internal sealed class RecordingMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
+
+    /// <summary>Lo que corre un <c>InvokeAsync&lt;T&gt;</c>; sin asignar, no se usa en esa prueba.</summary>
+    public Func<object, Task<object?>>? InvokeHandler { get; set; }
 
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
@@ -98,8 +102,11 @@ internal sealed class RecordingMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotImplementedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public async Task<T> InvokeAsync<T>(
+        object message,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => InvokeHandler is null ? throw new NotImplementedException() : (T)(await InvokeHandler(message))!;
 
     public Task<T> InvokeAsync<T>(
         object message,
@@ -187,7 +194,7 @@ internal sealed class InMemoryBrandRepository : ITenantBrandRepository
 
     public TenantBrand Seed(Guid tenantId, BrandSurface surface, Action<TenantBrand> configure)
     {
-        var brand = TenantBrand.Create(tenantId, surface);
+        var brand = TenantBrand.Create(tenantId, surface, DateTime.UtcNow);
         configure(brand);
         All.Add(brand);
         return brand;

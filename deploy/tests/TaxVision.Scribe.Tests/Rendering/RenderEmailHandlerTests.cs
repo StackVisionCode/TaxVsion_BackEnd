@@ -1,4 +1,6 @@
 ﻿using BuildingBlocks.Results;
+using BuildingBlocks.Web.Results;
+using Microsoft.AspNetCore.Http;
 using TaxVision.Scribe.Application.Rendering;
 using TaxVision.Scribe.Domain;
 
@@ -105,5 +107,23 @@ public sealed class RenderEmailHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("EmailRenderer.NoMapping", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Missing_mapping_returns_not_found_error()
+    {
+        var renderer = new FakeEmailRenderer(
+            Result.Failure<RenderedContent>(new Error("EmailRenderer.NoMapping", "No mapping."))
+        );
+        var query = new RenderEmailQuery(
+            "auth.password_reset_requested.v1",
+            null,
+            null,
+            new Dictionary<string, object?>()
+        );
+
+        var result = await RenderEmailHandler.Handle(query, renderer, default);
+
+        Assert.Equal(StatusCodes.Status404NotFound, result.Error.ToHttpStatusCode());
     }
 }

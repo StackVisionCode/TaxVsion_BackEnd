@@ -27,12 +27,17 @@ public sealed record RenderRequest(
 /// que sale por su buzon. Viaja como string, no como enum: el enum real vive en Notification y una
 /// diferencia de serializacion aca se pierde en silencio, que es como se perdio InlineAssets entero.
 /// </param>
+/// <param name="VersionNumber">SCR-10: versión de la plantilla usada, para saber qué contenido salió.</param>
+/// <param name="LayoutVersionNumber">Versión del layout usada. Null en push, que no tiene layout.</param>
 public sealed record RenderedContent(
     string Subject,
     string Html,
     string? Text,
     IReadOnlyList<InlineAsset> InlineAssets,
-    string DispatchScope
+    string DispatchScope,
+    string? TemplateKey = null,
+    int? VersionNumber = null,
+    int? LayoutVersionNumber = null
 )
 {
     /// <summary>Preserva a los callers y tests anteriores al carril por layout.</summary>

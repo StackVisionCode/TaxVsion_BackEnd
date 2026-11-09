@@ -6,6 +6,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using TaxVision.Notes.Application.Backfill;
 using TaxVision.Notes.Application.Backfill.Abstractions;
@@ -14,6 +15,7 @@ using TaxVision.Notes.Application.Notes.Abstractions;
 using TaxVision.Notes.Application.Permissions.Abstractions;
 using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Application.RateLimiting.Abstractions;
+using TaxVision.Notes.Infrastructure.CloudStorage;
 using TaxVision.Notes.Infrastructure.Customers;
 using TaxVision.Notes.Infrastructure.Jobs;
 using TaxVision.Notes.Infrastructure.Notes;
@@ -43,6 +45,7 @@ public static class DependencyInjection
 
         services.AddDbContext<NotesDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<NotesDbContext>());
+        services.TryAddSingleton(TimeProvider.System);
 
         services.AddScoped<INoteRepository, NoteRepository>();
         // Fase 5 — un solo HtmlSanitizer reusado (thread-safe, caro de reconstruir), ver comentario de la clase.
@@ -76,7 +79,30 @@ public static class DependencyInjection
         AddRateLimitTierQuotas(services, configuration);
         AddCustomerDirectory(services, configuration);
         AddPermissionsPullRecovery(services);
+        AddPendingAttachmentReconciliation(services, configuration);
         return services;
+    }
+
+    // NTS-1: el veredicto del escaneo sale una vez; si llegó antes que el adjunto se pregunta a
+    // CloudStorage (al adjuntar y con un job). Reusa el IServiceTokenAcquirer de AddRateLimitTierQuotas.
+    private static void AddPendingAttachmentReconciliation(IServiceCollection services, IConfiguration configuration)
+    {
+        services
+            .AddOptions<NotesCloudStorageClientOptions>()
+            .Bind(configuration.GetSection(NotesCloudStorageClientOptions.SectionName));
+        services.AddHttpClient<INoteFileScanStatusClient, NotesFileScanStatusClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<NotesCloudStorageClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+
+        services
+            .AddOptions<PendingAttachmentReconciliationOptions>()
+            .Bind(configuration.GetSection(PendingAttachmentReconciliationOptions.SectionName));
+        services.AddHostedService<PendingAttachmentReconciliationJob>();
     }
 
     // Opción B (de este plan) — recuperación pull bajo demanda cuando ProjectionPermissionsSource
@@ -106,7 +132,6 @@ public static class DependencyInjection
     {
         services.AddScoped<ICustomerDirectoryRepository, CustomerDirectoryRepository>();
         services.AddScoped<ITenantBackfillStateRepository, TenantBackfillStateRepository>();
-        services.AddScoped<ITenantCustomerBackfillService, TenantCustomerBackfillService>();
 
         services.AddOptions<CustomerClientOptions>().Bind(configuration.GetSection(CustomerClientOptions.SectionName));
         services.AddHttpClient<INotesCustomerClient, NotesCustomerClient>(

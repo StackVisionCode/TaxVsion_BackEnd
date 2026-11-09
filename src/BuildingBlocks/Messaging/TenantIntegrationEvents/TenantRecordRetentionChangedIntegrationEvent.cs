@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 /// el borrado sigue siendo opt-in en cada uno. Null = la oficina no lo fijó (cada servicio usa su default).
 /// Ordenado por <see cref="UpdatedAtUtc"/>: un consumidor ignora uno más viejo que el aplicado.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TenantIntegrationEvents.TenantRecordRetentionChangedIntegrationEvent")]
 public sealed record TenantRecordRetentionChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid OfficeTenantId { get; init; }

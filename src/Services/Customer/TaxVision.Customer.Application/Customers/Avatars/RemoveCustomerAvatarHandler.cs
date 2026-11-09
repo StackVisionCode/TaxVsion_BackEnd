@@ -21,7 +21,7 @@ public static class RemoveCustomerAvatarHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
+        var customer = await repository.GetByIdAsync(cmd.TenantId, cmd.CustomerId, ct);
         var access = CustomerAvatarAccess.Check(
             customer,
             cmd.TenantId,
@@ -41,7 +41,8 @@ public static class RemoveCustomerAvatarHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        // Solo cambió lo visible si había foto vigente; una pendiente quitada llegará huérfana y se borra sola.
+        // Solo cambió lo visible si había foto vigente (CustomerUpdated sale del evento de dominio); una pendiente
+        // quitada llegará huérfana y se borra sola.
         if (removed.Value is { } removedFileId)
         {
             await bus.PublishAsync(
@@ -53,7 +54,6 @@ public static class RemoveCustomerAvatarHandler
                     correlation.CorrelationId
                 )
             );
-            await bus.PublishAsync(CustomerUpdatedEvents.From(customer, cmd.ActorUserId, correlation.CorrelationId));
         }
 
         return Result.Success();

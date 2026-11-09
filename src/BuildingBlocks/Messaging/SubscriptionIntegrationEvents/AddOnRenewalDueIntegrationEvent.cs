@@ -1,7 +1,10 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>Intent publicado por Subscription cuando un add-on necesita cobrarse para
 /// renovarse. Independiente de SubscriptionRenewalDue y de SeatRenewalDue.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.AddOnRenewalDueIntegrationEvent")]
 public sealed record AddOnRenewalDueIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantAddOnId { get; init; }

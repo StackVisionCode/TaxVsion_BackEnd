@@ -3,6 +3,7 @@
     <ProjectReference Include="..\TaxVision.Correspondence.Application\TaxVision.Correspondence.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\CustomerVisibility\BuildingBlocks.CustomerVisibility.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Jobs\BuildingBlocks.Jobs.csproj" />
   </ItemGroup>
 
   <ItemGroup>

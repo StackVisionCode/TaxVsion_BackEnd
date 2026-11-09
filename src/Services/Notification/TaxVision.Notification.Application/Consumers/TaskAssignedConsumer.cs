@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -31,7 +32,7 @@ public static class TaskAssignedConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.AssigneeUserId:N}",
+                NotificationRecipient.ForUser(evt.AssigneeUserId),
                 title,
                 NotificationCategory.Collaboration,
                 "tasks.task_assigned",

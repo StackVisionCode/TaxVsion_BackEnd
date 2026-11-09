@@ -8,12 +8,9 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Repositories;
 
 public sealed class CustomerRepository(CustomerDbContext db) : ICustomerRepository
 {
-    // IgnoreQueryFilters(): mismo bug que UserRepository.GetByIdAsync (Auth) — corre en handlers
-    // de Wolverine (bus.InvokeAsync) donde el ITenantContext ambiente puede llegar vacío al scope
-    // de DI del handler, y este método toma solo Id puro (sin tenantId explícito). Es seguro:
-    // todos los ~24 llamadores validan post-fetch (customer.TenantId != cmd.TenantId) —
-    // Update/Deactivate/Archive/AssignPreparer/AddAddress/AddRelation/etc.
-    public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+    // IgnoreQueryFilters(): corre en handlers de Wolverine, donde el ITenantContext ambiente puede llegar vacío
+    // al scope de DI. El tenant va explícito en la consulta. AsSplitQuery: 4 colecciones en un solo SELECT se multiplican.
+    public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         db
             .Customers.IgnoreQueryFilters()
             .Include(c => c.Addresses)
@@ -21,8 +18,16 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
             .Include(c => c.Relations)
             .Include(c => c.Assignments)
             .Include(c => c.FiscalProfile)
-            .Where(c => c.Id == id)
+            .AsSplitQuery()
+            .Where(c => c.TenantId == tenantId && c.Id == id)
             .FirstOrDefaultAsync(ct);
+
+    public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+        db
+            .Customers.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(c => c.Assignments)
+            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == customerId, ct);
 
     // Tracked (sin AsNoTracking): el consumer de offboard reasigna el preparador y persiste. Include(Assignments):
     // el handover/unassign mutan la colección de asignaciones — sin cargarla operarían sobre una vacía y

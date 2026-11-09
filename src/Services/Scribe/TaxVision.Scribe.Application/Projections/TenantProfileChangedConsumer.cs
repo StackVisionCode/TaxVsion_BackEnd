@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -9,8 +10,8 @@ namespace TaxVision.Scribe.Application.Projections;
 
 /// <summary>
 /// La oficina guardó su perfil: los correos que firma pasan a llevar el nombre comercial y la dirección
-/// postal en el pie. Ordenado por <c>Version</c> (una igual o menor se ignora) e idempotente. Sin fila
-/// se ignora: la crea <c>TenantCreated</c> o el backfill, y el perfil vuelve a llegar al republicarlo.
+/// postal en el pie. Ordenado por <c>Version</c> (una igual o menor se ignora) e idempotente. Sin fila aún
+/// (llegó antes que <c>TenantCreated</c> o el backfill) se reintenta: el perfil se aplica cuando la fila exista.
 /// </summary>
 public static class TenantProfileChangedConsumer
 {
@@ -31,13 +32,7 @@ public static class TenantProfileChangedConsumer
         {
             var existing = await repository.GetByTenantIdAsync(evt.ProfileTenantId, ct);
             if (existing is null)
-            {
-                logger.LogInformation(
-                    "Tenant {TenantId} is not in the Scribe directory yet; profile skipped.",
-                    evt.ProfileTenantId
-                );
-                return;
-            }
+                throw new DependencyNotReadyException("Tenant", $"profile v{evt.Version} of {evt.ProfileTenantId}");
 
             var postalAddress = evt.ResolvePostalAddress()?.ToSingleLine();
             if (!existing.ApplyProfile(evt.Version, evt.DisplayName, postalAddress, DateTime.UtcNow))

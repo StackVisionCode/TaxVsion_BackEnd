@@ -1,42 +1,29 @@
-using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Minio;
 using Minio.DataModel.Args;
 using TaxVision.Documents.Application.Abstractions;
-using Wolverine;
 
 namespace TaxVision.Documents.Infrastructure.Storage;
 
 /// <summary>
 /// Sube el archivo generado al bucket temporal con IAM MinIO PROPIA (scoped a
-/// taxvision-temp/documents/*, nunca las root de CloudStorage) y publica SaveFileRequestedIntegrationEvent
-/// para que CloudStorage lo registre + escanee y lo almacene de forma permanente. Documents nunca guarda
-/// bytes. El FileId lo genera Documents (lo fija en la generación antes de subir) y sirve de idempotencia:
-/// un redelivery con el mismo FileId choca contra la unique constraint de CloudStorage y es no-op.
-///
-/// Mismo patrón (Fase D0/D1) que SignatureCloudStorageClient.UploadAsync.
+/// taxvision-temp/documents/*, nunca las root de CloudStorage). Documents nunca guarda bytes. El FileId lo
+/// genera Documents (lo fija en la generación antes de subir). SaveFileRequestedIntegrationEvent lo publica
+/// el handler: un bus inyectado aquí sale del contenedor y no espera el commit (DOC-3).
 /// </summary>
 public sealed class DocumentStorageClient(
     IMinioClient minioClient,
     IOptions<DocumentsMinioOptions> options,
-    IMessageBus bus,
     ILogger<DocumentStorageClient> logger
 ) : IDocumentStorageClient
 {
-    public async Task<Result> RequestSaveAsync(
-        Guid tenantId,
+    public async Task<Result<StorageUploadResult>> UploadAsync(
         Guid fileId,
         byte[] content,
         string fileName,
         string contentType,
-        string ownerType,
-        Guid ownerId,
-        string folderType,
-        int? taxYear,
-        Guid actorId,
-        string correlationId,
         CancellationToken ct = default
     )
     {
@@ -59,30 +46,12 @@ public sealed class DocumentStorageClient(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "MinIO PUT failed for generated document {FileName} ({FileId}).", fileName, fileId);
-            return Result.Failure(new Error("Documents.Storage.Upload", "MinIO PUT failed."));
+            return Result.Failure<StorageUploadResult>(new Error("Documents.Storage.Upload", "MinIO PUT failed."));
         }
 
-        await bus.PublishAsync(
-            new SaveFileRequestedIntegrationEvent
-            {
-                TenantId = tenantId,
-                CorrelationId = correlationId,
-                FileId = fileId,
-                RequestingService = IDocumentStorageClient.RequestingService,
-                SourceBucket = opt.TempBucket,
-                SourceObjectKey = sourceObjectKey,
-                ActorId = actorId,
-                OwnerType = ownerType,
-                OwnerId = ownerId,
-                FolderType = folderType,
-                TaxYear = taxYear,
-                OriginalName = fileName,
-                ContentType = contentType,
-                SizeBytes = content.LongLength,
-            }
+        return Result.Success(
+            new StorageUploadResult(fileId, opt.TempBucket, sourceObjectKey, content.LongLength, contentType)
         );
-
-        return Result.Success();
     }
 }
 

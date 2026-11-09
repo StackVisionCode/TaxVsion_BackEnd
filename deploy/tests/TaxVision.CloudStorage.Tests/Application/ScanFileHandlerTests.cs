@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -41,6 +42,108 @@ public sealed class ScanFileHandlerTests
         Assert.Equal("form.pdf", available.OriginalName);
         Assert.Equal(2026, available.TaxYear);
         Assert.Single(fixture.Bus.Published.OfType<CustomerDocumentUploadedIntegrationEvent>());
+    }
+
+    // CST-9: la red contra el aviso doble. Si vuelve la publicación a mano, aquí salen dos.
+    [Fact]
+    public async Task Handle_Clean_EmitsExactlyOneFileAvailable()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+
+        await ScanAsync(fixture);
+
+        var available = Assert.Single(fixture.Bus.Published.OfType<FileAvailableIntegrationEvent>());
+        Assert.Equal(fixture.TenantId, available.TenantId);
+        Assert.Equal(fixture.File.Id, available.FileId);
+        Assert.Equal(fixture.File.ObjectKey, available.ObjectKey);
+        Assert.Equal("application/pdf", available.ContentType);
+        Assert.Equal(Sha256, available.ChecksumSha256);
+        Assert.Equal(fixture.File.SizeBytes, available.SizeBytes);
+        Assert.Equal(fixture.File.CreatedBy, available.CreatedBy);
+        Assert.Equal(fixture.File.FolderId, available.FolderId);
+        Assert.Equal("corr-scan", available.CorrelationId);
+
+        var uploaded = Assert.Single(fixture.Bus.Published.OfType<CustomerDocumentUploadedIntegrationEvent>());
+        Assert.Equal(fixture.CustomerId, uploaded.CustomerId);
+        Assert.Equal(fixture.File.Id, uploaded.FileId);
+        Assert.Equal("corr-scan", uploaded.CorrelationId);
+    }
+
+    [Theory]
+    [InlineData("infected", "infected", typeof(FileInfectedDetectedIntegrationEvent))]
+    [InlineData("policy", "blocked-by-policy", typeof(FileBlockedByPolicyIntegrationEvent))]
+    [InlineData("uncertain", "pending-review", typeof(FilePendingReviewIntegrationEvent))]
+    [InlineData("rejected", "rejected", typeof(FileScanFailedIntegrationEvent))]
+    public async Task Each_verdict_emits_exactly_one_notice_and_audits_its_outcome(
+        string verdict,
+        string auditOutcome,
+        Type notice
+    )
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        switch (verdict)
+        {
+            case "infected":
+                fixture.VirusScanner.Result = VirusScanResult.Infected("Eicar");
+                break;
+            case "policy":
+                fixture.ContentScanner.Result = ContentScanResult.PolicyViolation("Blocked");
+                break;
+            case "uncertain":
+                fixture.ContentScanner.Result = ContentScanResult.Uncertain("Doubt");
+                break;
+            default:
+                fixture.Inspector.Result = new InspectedContent("application/octet-stream", Sha256, false, "Mismatch");
+                break;
+        }
+
+        await ScanAsync(fixture);
+
+        Assert.Single(fixture.Bus.Published, notice.IsInstanceOfType);
+        Assert.Empty(fixture.Bus.Published.OfType<FileAvailableIntegrationEvent>());
+        Assert.Single(fixture.Audit.Logs, log => log.Action == "scan" && log.Outcome == auditOutcome);
+    }
+
+    [Fact]
+    public async Task Rejected_content_asks_to_delete_the_object_and_frees_the_reservation()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.Inspector.Result = new InspectedContent("application/octet-stream", Sha256, false, "Mismatch");
+        var reserved = (await fixture.Limits.GetAsync(fixture.TenantId, default))!.ReservedBytes;
+
+        await ScanAsync(fixture);
+
+        var relocation = Assert.Single(fixture.Bus.Published.OfType<RelocateScannedBlobCommand>());
+        Assert.Null(relocation.TargetBucket);
+        Assert.Equal(
+            reserved - fixture.File.SizeBytes,
+            (await fixture.Limits.GetAsync(fixture.TenantId, default))!.ReservedBytes
+        );
+    }
+
+    [Fact]
+    public async Task A_save_that_fails_lets_nothing_out()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.VirusScanner.Result = VirusScanResult.Infected("Eicar");
+        fixture.UnitOfWork.FailSaveWhen = () => true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ScanAsync(fixture));
+
+        Assert.Empty(fixture.Bus.Published);
+    }
+
+    [Fact]
+    public async Task A_file_already_being_scanned_is_left_to_that_scan()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.Claims.ScansInProgress.Add(fixture.File.Id);
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.PendingScan, fixture.File.Status);
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
@@ -92,15 +195,11 @@ public sealed class ScanFileHandlerTests
         Assert.Equal(FileStatus.PendingReview, fixture.File.Status);
         Assert.Equal(Sha256, fixture.File.ChecksumSha256);
         Assert.False(fixture.File.IsLegalHeld);
-        Assert.Contains(
-            (
-                fixture.Options.TempBucket,
-                fixture.File.ObjectKey,
-                fixture.Options.QuarantineBucket,
-                fixture.File.ObjectKey
-            ),
-            fixture.Storage.Copied
-        );
+        // CST-3: el paso a cuarentena viaja en un comando que sale después de guardar.
+        Assert.Empty(fixture.Storage.Copied);
+        var relocation = Assert.Single(fixture.Bus.Published.OfType<RelocateScannedBlobCommand>());
+        Assert.Equal(fixture.Options.TempBucket, relocation.SourceBucket);
+        Assert.Equal(fixture.Options.QuarantineBucket, relocation.TargetBucket);
         var pending = Assert.Single(fixture.Bus.Published.OfType<FilePendingReviewIntegrationEvent>());
         Assert.Equal(fixture.File.CreatedBy, pending.CreatedBy);
         Assert.Equal("Customer", pending.OwnerType);
@@ -194,6 +293,146 @@ public sealed class ScanFileHandlerTests
         Assert.Empty(fixture.Storage.Tagged);
     }
 
+    [Fact]
+    public async Task Handle_VirusScannerThrowsSocketException_RethrowsAndKeepsScanning()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.VirusScanner.Throws = new SocketException((int)SocketError.ConnectionRefused);
+        var reservedBefore = (await fixture.Limits.GetAsync(fixture.TenantId, CancellationToken.None))!.ReservedBytes;
+
+        await Assert.ThrowsAsync<SocketException>(() => ScanAsync(fixture));
+
+        Assert.Equal(FileStatus.Scanning, fixture.File.Status);
+        Assert.Empty(fixture.Bus.Published.OfType<FileScanFailedIntegrationEvent>());
+        Assert.Equal(
+            reservedBefore,
+            (await fixture.Limits.GetAsync(fixture.TenantId, CancellationToken.None))!.ReservedBytes
+        );
+    }
+
+    [Fact]
+    public async Task Handle_ClamAvWithoutVerdict_ThrowsVirusScanUnavailable()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.VirusScanner.Result = VirusScanResult.Error("UNKNOWN COMMAND");
+
+        await Assert.ThrowsAsync<VirusScanUnavailableException>(() => ScanAsync(fixture));
+
+        Assert.NotEqual(FileStatus.ScanFailed, fixture.File.Status);
+        Assert.Empty(fixture.Bus.Published.OfType<FileScanFailedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Handle_DetectedTypeNotAllowed_MarksScanFailed()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.Inspector.Result = new InspectedContent("application/x-msdownload", Sha256, false, "Executable.");
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.ScanFailed, fixture.File.Status);
+        Assert.Equal("Executable.", fixture.File.ScanReport);
+        Assert.Equal(0, (await fixture.Limits.GetAsync(fixture.TenantId, CancellationToken.None))!.ReservedBytes);
+        Assert.Equal(
+            "content_type_mismatch",
+            Assert.Single(fixture.Bus.Published.OfType<FileScanFailedIntegrationEvent>()).Reason
+        );
+    }
+
+    [Fact]
+    public async Task Handle_FileSoftDeletedWhileQueued_ReturnsWithoutThrowing()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        Assert.True(fixture.File.SoftDelete(fixture.Now, TimeSpan.FromDays(30)).IsSuccess);
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.SoftDeleted, fixture.File.Status);
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
+        Assert.Empty(fixture.Storage.Downloads);
+    }
+
+    [Fact]
+    public async Task Handle_FileMissing_ReturnsWithoutThrowing()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.Files.Remove(fixture.File);
+
+        await ScanAsync(fixture);
+
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Handle_FileAlreadyScanFailed_ReturnsWithoutChanges()
+    {
+        // Un ScanFileCommand tardío no reabre un ScanFailed definitivo (su reserva ya se liberó).
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        Assert.True(fixture.File.MarkScanning().IsSuccess);
+        Assert.True(
+            fixture
+                .File.MarkScanFailed("Detected content type is not allowed.", fixture.Now, "content_type_mismatch")
+                .IsSuccess
+        );
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.ScanFailed, fixture.File.Status);
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Handle_InfectedAndFinalSaveFails_SourceBlobIsNotDeleted()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.VirusScanner.Result = VirusScanResult.Infected("Eicar");
+        fixture.UnitOfWork.FailSaveWhen = () => fixture.File.Status == FileStatus.Infected;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ScanAsync(fixture));
+
+        Assert.DoesNotContain((fixture.Options.TempBucket, fixture.File.ObjectKey), fixture.Storage.Deleted);
+        Assert.Empty(fixture.Storage.Copied);
+    }
+
+    [Fact]
+    public async Task Handle_RetryAfterQuarantineMove_FindsObjectInQuarantine()
+    {
+        // Un intento anterior movió el objeto a cuarentena y perdió la transacción.
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        Assert.True(fixture.File.MarkScanning().IsSuccess);
+        fixture.Storage.Existing.Clear();
+        fixture.Storage.Existing.Add((fixture.Options.QuarantineBucket, fixture.File.ObjectKey));
+        fixture.VirusScanner.Result = VirusScanResult.Infected("Eicar");
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.Infected, fixture.File.Status);
+        Assert.Equal(
+            (fixture.Options.QuarantineBucket, fixture.File.ObjectKey),
+            Assert.Single(fixture.Storage.Downloads)
+        );
+    }
+
+    [Fact]
+    public async Task Handle_BlobMissingEverywhere_MarksBlobMissingWithoutThrowing()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.Storage.Existing.Clear();
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.ScanFailed, fixture.File.Status);
+        Assert.StartsWith("blob_missing", fixture.File.ScanReport);
+        Assert.Equal(0, (await fixture.Limits.GetAsync(fixture.TenantId, CancellationToken.None))!.ReservedBytes);
+        Assert.Equal(
+            "blob_missing",
+            Assert.Single(fixture.Bus.Published.OfType<FileScanFailedIntegrationEvent>()).Reason
+        );
+    }
+
     private static ScanFixture CreateFixture(
         FolderType folderType,
         int? taxYear,
@@ -228,7 +467,7 @@ public sealed class ScanFileHandlerTests
                 now.AddHours(1)
             )
             .Value;
-        Assert.True(file.MarkPendingScan().IsSuccess);
+        Assert.True(file.MarkPendingScan(DateTime.UtcNow).IsSuccess);
 
         var files = new FakeFileObjectRepository();
         files.Seed(file);
@@ -252,28 +491,47 @@ public sealed class ScanFileHandlerTests
             new StubInspector(new InspectedContent("application/pdf", Sha256)),
             options,
             new FakeMessageBus(),
-            now
+            now,
+            new FakeUnitOfWork()
         );
     }
 
-    private static Task ScanAsync(ScanFixture fixture) =>
-        ScanFileHandler.Handle(
+    // Lo publicado a mano más lo que sale de los eventos de dominio tras el commit. El veredicto va por el
+    // handler real, como el InvokeAsync en línea de Wolverine.
+    private static async Task ScanAsync(ScanFixture fixture)
+    {
+        fixture.File.ClearDomainEvents();
+        fixture.Bus.OnInvoke = message =>
+            RecordScanVerdictHandler.Handle(
+                (RecordScanVerdictCommand)message,
+                fixture.Files,
+                fixture.Limits,
+                fixture.Audit,
+                fixture.Storage,
+                Options.Create(fixture.Options),
+                new FakeSystemClock(fixture.Now),
+                fixture.UnitOfWork,
+                fixture.Bus,
+                CancellationToken.None
+            );
+        await ScanFileHandler.Handle(
             new ScanFileCommand(fixture.TenantId, fixture.File.Id, "corr-scan", fixture.CustomerId),
+            fixture.Claims,
             fixture.Files,
             fixture.Limits,
-            new FakeStorageAuditRepository(),
             fixture.Storage,
             fixture.VirusScanner,
             fixture.ContentScanner,
             fixture.Inspector,
             Options.Create(fixture.Options),
             new FakeUploadPolicyResolver(),
-            new FakeSystemClock(fixture.Now),
-            new FakeUnitOfWork(),
+            fixture.UnitOfWork,
             fixture.Bus,
             NullLogger<ScanFileCommand>.Instance,
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(fixture.Bus, fixture.File);
+    }
 
     private sealed record ScanFixture(
         Guid TenantId,
@@ -287,14 +545,21 @@ public sealed class ScanFileHandlerTests
         StubInspector Inspector,
         CloudStorageOptions Options,
         FakeMessageBus Bus,
-        DateTime Now
-    );
+        DateTime Now,
+        FakeUnitOfWork UnitOfWork
+    )
+    {
+        public FakeStorageAuditRepository Audit { get; } = new();
+        public FakeScanClaims Claims { get; } = new();
+    }
 
     private sealed class StubVirusScanner(VirusScanResult result) : IVirusScanner
     {
         public VirusScanResult Result { get; set; } = result;
+        public Exception? Throws { get; set; }
 
-        public Task<VirusScanResult> ScanAsync(Stream content, CancellationToken ct) => Task.FromResult(Result);
+        public Task<VirusScanResult> ScanAsync(Stream content, CancellationToken ct) =>
+            Throws is null ? Task.FromResult(Result) : Task.FromException<VirusScanResult>(Throws);
     }
 
     private sealed class StubContentScanner(ContentScanResult result) : IContentScanner

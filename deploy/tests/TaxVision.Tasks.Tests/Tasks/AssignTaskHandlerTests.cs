@@ -51,19 +51,23 @@ public sealed class AssignTaskHandlerTests
         Assert.Empty(bus.Published.OfType<ReminderRequestedIntegrationEvent>());
     }
 
-    private static Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> AssignAsync(
+    // El aviso y el recordatorio salen del handler del evento de dominio (el replay los deja en el bus).
+    private static async Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> AssignAsync(
         TaskItem task,
         Guid assignee,
         FakeMessageBus bus
-    ) =>
-        AssignTaskHandler.Handle(
+    )
+    {
+        var tasks = new InMemoryTaskRepository(task);
+        var result = await AssignTaskHandler.Handle(
             new AssignTaskCommand(TenantId, task.Id, assignee, Owner, HasManageAll: false),
-            new InMemoryTaskRepository(task),
+            tasks,
             new RecordingUnitOfWork(),
-            bus,
-            new NoOpCorrelationContext(),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, tasks);
+        return result;
+    }
 
     private static TaskItem NewTask(DueDate? due) =>
         TaskItem

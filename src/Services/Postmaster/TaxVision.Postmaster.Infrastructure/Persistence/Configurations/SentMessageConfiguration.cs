@@ -41,8 +41,10 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.Property(m => m.ProviderCode).HasMaxLength(50).IsRequired();
         builder.Property(m => m.Status).HasConversion<string>().HasMaxLength(25).IsRequired();
         builder.Property(m => m.Activity).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(m => m.RowVersion).IsRowVersion();
         builder.Property(m => m.QueuedAtUtc).IsRequired();
         builder.Property(m => m.SentAtUtc);
+        builder.Property(m => m.SendAttemptedAtUtc);
         builder.Property(m => m.LastEventAtUtc);
         builder.Property(m => m.ErrorReason).HasMaxLength(500);
         builder.Property(m => m.TemplateKey).HasMaxLength(200);
@@ -69,6 +71,7 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.Ignore(m => m.Attachments);
         builder.Ignore(m => m.References);
         builder.Ignore(m => m.DeliverySummary);
+        builder.Ignore(m => m.DomainEvents);
 
         var inlineAssetsConverter = new ValueConverter<List<InlineAsset>, string>(
             assets => JsonSerializer.Serialize(assets.Select(ToDto), (JsonSerializerOptions?)null),

@@ -4,6 +4,7 @@ using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Documents.Application.Abstractions;
 using TaxVision.Documents.Domain.Generations;
 using TaxVision.Documents.Domain.ValueObjects;
@@ -13,7 +14,7 @@ namespace TaxVision.Documents.Application.Generations.OnboardingReceipt;
 
 /// <summary>
 /// Camino de request (202), mismo patrón que GenerateInvoiceDocumentHandler: registra la generación
-/// como Requested de forma idempotente y encola ProcessOnboardingReceiptGenerationCommand (outbox
+/// como Requested de forma idempotente y encola ProcessOnboardingReceiptGenerationCommand (cola local
 /// durable — si la inserción choca contra la unique constraint de idempotencia, no se encola nada).
 ///
 /// La generación se registra bajo <see cref="PlatformTenant.Id"/>, NUNCA bajo un tenant real: el
@@ -34,6 +35,7 @@ public static class GenerateOnboardingReceiptDocumentHandler
         ICorrelationContext correlation,
         IPlatformSettings platform,
         TimeProvider clock,
+        IOptions<GenerationRetryOptions> retryOptions,
         ILogger<GenerateOnboardingReceiptDocumentResult> logger,
         CancellationToken ct
     )
@@ -48,15 +50,24 @@ public static class GenerateOnboardingReceiptDocumentHandler
             if (validation.IsFailure)
                 return Result.Failure<GenerateOnboardingReceiptDocumentResult>(validation.Error);
 
-            var existing = await repository.GetByIdempotencyKeyAsync(PlatformTenant.Id, command.IdempotencyKey, ct);
-            if (existing is not null && existing.Status != DocumentGenerationStatus.Failed)
+            var nowUtc = clock.GetUtcNow().UtcDateTime;
+            var existing = await repository.GetByIdempotencyKeyAsync(
+                PlatformTenant.Id,
+                command.SourceService,
+                command.IdempotencyKey,
+                ct
+            );
+            if (
+                existing is not null
+                && !GenerationRetryPolicy.IsRetryable(existing, nowUtc, retryOptions.Value.StalledAfter)
+            )
                 return Result.Success(
                     new GenerateOnboardingReceiptDocumentResult(existing.Id, existing.Status.ToString())
                 );
 
             if (existing is not null)
             {
-                var retry = existing.RetryFromFailure(clock.GetUtcNow().UtcDateTime);
+                var retry = GenerationRetryPolicy.Requeue(existing, nowUtc);
                 if (retry.IsFailure)
                     return Result.Failure<GenerateOnboardingReceiptDocumentResult>(retry.Error);
 
@@ -76,7 +87,7 @@ public static class GenerateOnboardingReceiptDocumentHandler
                 );
             }
 
-            var buildResult = BuildGeneration(command, clock.GetUtcNow().UtcDateTime);
+            var buildResult = BuildGeneration(command, nowUtc);
             if (buildResult.IsFailure)
                 return Result.Failure<GenerateOnboardingReceiptDocumentResult>(buildResult.Error);
 
@@ -89,7 +100,12 @@ public static class GenerateOnboardingReceiptDocumentHandler
             }
             catch (ConflictException)
             {
-                var winner = await repository.GetByIdempotencyKeyAsync(PlatformTenant.Id, command.IdempotencyKey, ct);
+                var winner = await repository.GetByIdempotencyKeyAsync(
+                    PlatformTenant.Id,
+                    command.SourceService,
+                    command.IdempotencyKey,
+                    ct
+                );
                 if (winner is not null)
                     return Result.Success(
                         new GenerateOnboardingReceiptDocumentResult(winner.Id, winner.Status.ToString())

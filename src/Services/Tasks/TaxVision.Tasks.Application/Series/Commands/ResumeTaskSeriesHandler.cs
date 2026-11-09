@@ -1,7 +1,10 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Series.Abstractions;
+using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Domain.Tasks;
+using Wolverine;
 
 namespace TaxVision.Tasks.Application.Series.Commands;
 
@@ -40,6 +43,7 @@ public static class ResumeTaskSeriesHandler
         if (resumed.IsFailure)
             return Result.Failure<TaskSeriesResponse>(resumed.Error);
 
+        // La instancia nueva se anuncia por su evento de alta.
         if (series.OpenInstanceId is null)
             await materializer.MaterializeNextAsync(series, null, null, ct);
 

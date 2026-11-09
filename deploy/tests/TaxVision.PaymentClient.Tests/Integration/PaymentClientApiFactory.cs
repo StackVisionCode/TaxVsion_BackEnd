@@ -1,7 +1,12 @@
 using System.Security.Cryptography;
+using JasperFx;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.PaymentClient.Tests.Integration;
 
@@ -37,5 +42,22 @@ public sealed class PaymentClientApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+        // Sin Rabbit, sin los sobres de la instancia real y sin jobs: solo HTTP contra SQL y Redis locales.
+        // DisableAllWolverineMessagePersistence() no sirve: sin almacén, la transacción EF de cada handler lanza y
+        // los reintentos cuelgan la petición. MediatorOnly lo conserva sin migrarlo ni leer sus sobres.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            services.ConfigureWolverine(options =>
+            {
+                options.Durability.Mode = DurabilityMode.MediatorOnly;
+                options.AutoBuildMessageStorageOnStartup = AutoCreate.None;
+            });
+            foreach (var hosted in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
+            {
+                if (hosted.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal) == true)
+                    services.Remove(hosted);
+            }
+        });
     }
 }

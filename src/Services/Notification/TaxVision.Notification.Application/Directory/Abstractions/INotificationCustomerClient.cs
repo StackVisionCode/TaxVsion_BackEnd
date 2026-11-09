@@ -29,4 +29,7 @@ public interface INotificationCustomerClient
 {
     /// <summary>Cross-tenant: pide el token de la PlatformTenant. Devuelve <c>null</c> ante cualquier fallo.</summary>
     Task<RemoteCustomerPage?> ListAllForReconciliationAsync(int page, int size, CancellationToken ct = default);
+
+    /// <summary>Clientes de un tenant, con su token. Devuelve <c>null</c> ante cualquier fallo.</summary>
+    Task<RemoteCustomerPage?> ListTenantCustomersAsync(Guid tenantId, int page, CancellationToken ct = default);
 }

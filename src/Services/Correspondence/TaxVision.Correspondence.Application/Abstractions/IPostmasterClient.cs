@@ -41,4 +41,11 @@ public interface IPostmasterClient
 }
 
 /// <summary>Mirror 1:1 de <c>SendCorrespondenceMessageResult</c> (Postmaster) — <c>ProviderMessageId</c> es null en el replay de idempotencia, igual que del lado de Postmaster.</summary>
-public sealed record SendDraftPostmasterResult(Guid SentMessageId, string? ProviderMessageId);
+/// <param name="InternetMessageId">Message-ID con el que salió, si Postmaster lo devuelve (COR-16).</param>
+/// <param name="InProgress">Postmaster respondió 202: el envío sigue en curso y no está confirmado (COR-17).</param>
+public sealed record SendDraftPostmasterResult(
+    Guid SentMessageId,
+    string? ProviderMessageId,
+    string? InternetMessageId = null,
+    bool InProgress = false
+);

@@ -23,6 +23,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using StackExchange.Redis;
 using TaxVision.Documents.Api.Common;
+using TaxVision.Documents.Api.Messaging;
 using TaxVision.Documents.Infrastructure;
 using TaxVision.Documents.Infrastructure.Observability;
 using TaxVision.Documents.Infrastructure.Persistence;
@@ -137,6 +138,7 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, DocumentsDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionDurableLocalQueues();
 
     options
         .ListenToRabbitQueue("documents-events", queue => queue.BindExchange("taxvision-events", string.Empty))
@@ -144,6 +146,9 @@ builder.Host.UseWolverine(options =>
 
     // P-11 — comando punto a punto de Tasks: el Submission Summary de un formulario completado.
     options.ListenToRabbitQueue("documents-client-form-summary").UseDurableInbox();
+
+    // Comandos Process*Generation: cola local durable, sobreviven a un reinicio (DOC-1).
+    options.ConfigureGenerationQueue();
 
     // Eventos que Documents publica al bus compartido (guardrail #13: routing explícito por tipo).
     options.PublishMessage<DocumentGenerationStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -162,6 +167,7 @@ builder.Host.UseWolverine(options =>
     // Borrado de la copia de firma huérfana cuando CloudStorage rechaza el archivo principal (mismo canal que Tasks).
     options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 });
 

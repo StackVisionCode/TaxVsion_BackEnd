@@ -86,20 +86,6 @@ public static class SetUserPermissionOverridesHandler
         await roles.ReplaceUserDeniesAsync(target.Id, denies, command.RequestedByUserId, ct);
         target.BumpPermissionsVersion();
 
-        await bus.PublishAsync(
-            new UserRolesChangedIntegrationEvent
-            {
-                TenantId = target.TenantId,
-                UserId = target.Id,
-                PermissionsVersion = target.PermissionsVersion,
-                RoleNames = activeRoles.Select(role => role.Name).ToArray(),
-                RoleIds = activeRoles.Select(role => role.Id).ToArray(),
-                PermissionCodes = UserAccessResolver.ResolveEffectivePermissionCodes(activeRoles, catalog, deniedIds),
-                ActorType = target.ActorType.ToString(),
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
         await audit.AddAsync(
             AuthAuditLog.Record(
                 command.TenantId,
@@ -133,6 +119,19 @@ public static class SetUserPermissionOverridesHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new UserRolesChangedIntegrationEvent
+            {
+                TenantId = target.TenantId,
+                UserId = target.Id,
+                PermissionsVersion = target.PermissionsVersion,
+                RoleNames = activeRoles.Select(role => role.Name).ToArray(),
+                RoleIds = activeRoles.Select(role => role.Id).ToArray(),
+                PermissionCodes = UserAccessResolver.ResolveEffectivePermissionCodes(activeRoles, catalog, deniedIds),
+                ActorType = target.ActorType.ToString(),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         return Result.Success();
     }
 }

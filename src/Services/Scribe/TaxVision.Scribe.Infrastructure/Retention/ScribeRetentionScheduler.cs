@@ -76,7 +76,7 @@ public sealed class ScribeRetentionScheduler(
 
         var purgedCount = 0;
         foreach (var template in candidates)
-            purgedCount += template.PurgeArchivedVersionsOlderThan(cutoff).Count;
+            purgedCount += template.PurgeArchivedVersionsOlderThan(cutoff, DateTime.UtcNow).Count;
 
         await unitOfWork.SaveChangesAsync(ct);
 

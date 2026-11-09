@@ -1,5 +1,8 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentClientIntegrationEvents;
 
+[MessageIdentity("BuildingBlocks.Messaging.PaymentClientIntegrationEvents.PayoutCompletedIntegrationEvent")]
 public sealed record PayoutCompletedIntegrationEvent : IntegrationEvent
 {
     public required Guid PayoutScheduleId { get; init; }
@@ -9,6 +12,7 @@ public sealed record PayoutCompletedIntegrationEvent : IntegrationEvent
     public required DateTime PaidAtUtc { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.PaymentClientIntegrationEvents.PayoutFailedIntegrationEvent")]
 public sealed record PayoutFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid PayoutScheduleId { get; init; }

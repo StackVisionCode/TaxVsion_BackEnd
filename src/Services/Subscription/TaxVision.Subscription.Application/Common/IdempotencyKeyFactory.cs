@@ -9,6 +9,8 @@ namespace TaxVision.Subscription.Application.Common;
 /// </summary>
 public static class IdempotencyKeyFactory
 {
+    private const string SeatReactivationPrefix = "seat-reactivation-";
+
     public static string SubscriptionRenewal(Guid tenantSubscriptionId, DateTime periodEndUtc) =>
         $"subscription-renewal-{tenantSubscriptionId:N}-{periodEndUtc:yyyyMMdd}";
 
@@ -55,7 +57,10 @@ public static class IdempotencyKeyFactory
     /// si el seat vuelve a caer tras reactivarse, un nuevo <c>SuspendedAtUtc</c> genera key nueva y permite otro
     /// pago; dentro de la misma ventana el mismo click (o reintento) replaya el checkout existente.</summary>
     public static string SeatReactivation(Guid seatId, DateTime bucketUtc) =>
-        $"seat-reactivation-{seatId:N}-{bucketUtc.Ticks}";
+        $"{SeatReactivationPrefix}{seatId:N}-{bucketUtc.Ticks}";
+
+    public static bool IsSeatReactivation(string idempotencyKey) =>
+        idempotencyKey.StartsWith(SeatReactivationPrefix, StringComparison.Ordinal);
 
     /// <summary>Cargo por hosted-checkout de la compra de un add-on. Único por intención — el re-submit de la
     /// misma intención replaya su sesión.</summary>

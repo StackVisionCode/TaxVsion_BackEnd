@@ -48,6 +48,7 @@ public sealed class TenantPaymentConfig : TenantEntity
 
     [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedBy { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     public IReadOnlyCollection<TenantWebhookEndpoint> WebhookEndpoints => _webhookEndpoints;
 
@@ -268,16 +269,19 @@ public sealed class TenantPaymentConfig : TenantEntity
 
         var endpoint = TenantWebhookEndpoint.Create(Id, TenantId, url.Trim(), signingSecret, nowUtc);
         _webhookEndpoints.Add(endpoint);
+        // El cambio en el hijo toca la raíz: así la RowVersion lo detecta.
+        UpdatedAtUtc = nowUtc;
         return Result.Success(endpoint.Id);
     }
 
-    public Result DeactivateWebhookEndpoint(Guid webhookEndpointId)
+    public Result DeactivateWebhookEndpoint(Guid webhookEndpointId, DateTime nowUtc)
     {
         foreach (var endpoint in _webhookEndpoints)
         {
             if (endpoint.Id == webhookEndpointId)
             {
                 endpoint.Deactivate();
+                UpdatedAtUtc = nowUtc;
                 return Result.Success();
             }
         }

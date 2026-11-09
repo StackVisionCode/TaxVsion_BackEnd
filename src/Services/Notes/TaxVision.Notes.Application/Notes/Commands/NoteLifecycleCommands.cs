@@ -22,6 +22,7 @@ public static class ArchiveNoteHandler
         ArchiveNoteCommand command,
         INoteRepository notes,
         IUnitOfWork unitOfWork,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -31,7 +32,7 @@ public static class ArchiveNoteHandler
         if (!NoteVisibilityPolicy.CanManage(note, command.ActorUserId, command.ActorHasViewAll))
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
-        var result = note.Archive(command.ActorUserId);
+        var result = note.Archive(command.ActorUserId, clock.GetUtcNow().UtcDateTime);
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
 
@@ -48,6 +49,7 @@ public static class RestoreNoteHandler
         RestoreNoteCommand command,
         INoteRepository notes,
         IUnitOfWork unitOfWork,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -57,7 +59,7 @@ public static class RestoreNoteHandler
         if (!NoteVisibilityPolicy.CanManage(note, command.ActorUserId, command.ActorHasViewAll))
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
-        var result = note.Restore(command.ActorUserId);
+        var result = note.Restore(command.ActorUserId, clock.GetUtcNow().UtcDateTime);
         if (result.IsFailure)
             return Result.Failure<NoteResponse>(result.Error);
 
@@ -76,6 +78,7 @@ public static class DeleteNoteHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -85,7 +88,7 @@ public static class DeleteNoteHandler
         if (!NoteVisibilityPolicy.CanManage(note, command.ActorUserId, command.ActorHasViewAll))
             return Result.Failure(NoteErrors.Forbidden);
 
-        var result = note.SoftDelete(command.ActorUserId);
+        var result = note.SoftDelete(command.ActorUserId, clock.GetUtcNow().UtcDateTime);
         if (result.IsFailure)
             return result;
 

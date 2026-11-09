@@ -139,6 +139,7 @@ public sealed class ReauthenticateHandlerTests
         ReauthenticateHandler.Handle(
             new ReauthenticateCommand(world.Admin.Id, sessionId, surface, password, code),
             world.Users,
+            new NoUserLoginLock(),
             world.Tenants,
             world.Sessions,
             world.Roles,

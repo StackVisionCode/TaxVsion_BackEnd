@@ -26,5 +26,6 @@
     <!-- ActorType Fase 6: agregado para probar la fitness function AllowActorTypes vía reflexión
          sobre los controllers reales del Api. -->
     <ProjectReference Include="..\..\..\src\Services\Signature\TaxVision.Signature.Api\TaxVision.Signature.Api.csproj" />
+    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" Aliases="BbTesting" />
   </ItemGroup>
 </Project>

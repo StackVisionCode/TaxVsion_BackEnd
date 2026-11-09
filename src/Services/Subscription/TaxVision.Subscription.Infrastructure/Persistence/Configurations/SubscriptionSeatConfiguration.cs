@@ -12,6 +12,7 @@ public sealed class SubscriptionSeatConfiguration : IEntityTypeConfiguration<Sub
         builder.HasKey(seat => seat.Id);
 
         builder.Property(seat => seat.TenantId).IsRequired();
+        builder.Property(seat => seat.RowVersion).IsRowVersion();
         builder.Property(seat => seat.Type).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(seat => seat.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(seat => seat.SourceType).HasConversion<string>().HasMaxLength(30).IsRequired();

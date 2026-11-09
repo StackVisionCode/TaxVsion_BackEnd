@@ -52,6 +52,7 @@ internal sealed class ClientRequestRepository(TasksDbContext context) : IClientR
             .OrderBy(r => r.CreatedAtUtc)
             .ToListAsync(ct);
 
+    // Cross-tenant: el evento de escaneo trae el archivo; quien llama compara su tenant con el dueño real.
     public async Task<ClientRequest?> GetByDocumentFileIdAsync(Guid fileId, CancellationToken ct = default) =>
         await context
             .ClientRequests.IgnoreQueryFilters()

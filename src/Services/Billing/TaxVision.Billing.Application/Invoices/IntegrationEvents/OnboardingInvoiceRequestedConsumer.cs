@@ -28,6 +28,7 @@ public static class OnboardingInvoiceRequestedConsumer
         OnboardingInvoiceRequestedIntegrationEvent evt,
         IInvoiceRepository invoices,
         IInvoiceNumberSequenceRepository sequences,
+        IOnboardingTenantMapRepository tenantMaps,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         IOptions<PlatformIssuerOptions> platformIssuer,
@@ -74,22 +75,57 @@ public static class OnboardingInvoiceRequestedConsumer
 
         var nowUtc = clock.GetUtcNow().UtcDateTime;
         var periodKey = nowUtc.Year.ToString(CultureInfo.InvariantCulture);
+        var customer = new CustomerSnapshot(evt.OnboardingId, evt.PayerName, evt.PayerEmail, null, null, null);
+        var issuer = platformIssuer.Value.ToSnapshot(platform.Current);
+
+        // BIL-17: se valida antes de reservar el número; uno gastado deja un hueco en la serie ONB-.
+        var creatable = Invoice.EnsureCreatableForOnboarding(
+            PlatformTenant.Id,
+            evt.OnboardingId,
+            evt.PaymentId,
+            customer,
+            issuer,
+            evt.PlanDescription,
+            evt.GrossAmountCents,
+            evt.DiscountAmountCents,
+            evt.NetAmountCents,
+            evt.Currency,
+            adjustments
+        );
+        if (creatable.IsFailure)
+        {
+            logger.LogWarning(
+                "Could not create onboarding invoice for {OnboardingId}: {Code} - {Message}",
+                evt.OnboardingId,
+                creatable.Error.Code,
+                creatable.Error.Message
+            );
+            return;
+        }
 
         // Secuencia de onboarding propia, bajo PlatformTenant.Id (distinta del INV por tenant).
         var sequence = await sequences.GetOrCreateAsync(PlatformTenant.Id, $"ONB-{periodKey}", ct);
         var number = sequence.Allocate();
-        var invoiceNumber = $"ONB-{periodKey}-{number:D5}";
-
-        var customer = new CustomerSnapshot(evt.OnboardingId, evt.PayerName, evt.PayerEmail, null, null, null);
+        var invoiceNumber = InvoiceNumber.Create($"ONB-{periodKey}-{number:D5}");
+        if (invoiceNumber.IsFailure)
+        {
+            logger.LogWarning(
+                "Could not number onboarding invoice for {OnboardingId}: {Code} - {Message}",
+                evt.OnboardingId,
+                invoiceNumber.Error.Code,
+                invoiceNumber.Error.Message
+            );
+            return;
+        }
 
         var result = Invoice.CreateForOnboarding(
             PlatformTenant.Id,
             evt.OnboardingId,
             evt.PlanId,
             evt.PaymentId,
-            invoiceNumber,
+            invoiceNumber.Value,
             customer,
-            platformIssuer.Value.ToSnapshot(platform.Current),
+            issuer,
             evt.PlanDescription,
             evt.GrossAmountCents,
             evt.DiscountAmountCents,
@@ -114,9 +150,25 @@ public static class OnboardingInvoiceRequestedConsumer
         await invoices.AddAsync(result.Value, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        // Pipeline de PDF existente (bajo PlatformTenant.Id; el contenido no depende del tenant dueño).
-        bus.TenantId = PlatformTenant.Id.ToString();
-        await bus.PublishAsync(new GenerateInvoicePdfCommand(PlatformTenant.Id, result.Value.Id));
+        // BIL-5: el alta pudo llegar antes. Se lee después de guardar, igual que el backfill al revés.
+        if (await tenantMaps.FindTenantIdAsync(evt.OnboardingId, ct) is { } tenantId)
+        {
+            var rehomed = result.Value.RehomeToTenant(tenantId, nowUtc);
+            if (rehomed.IsFailure)
+                logger.LogWarning(
+                    "Could not re-home onboarding invoice {InvoiceId} to tenant {TenantId}: {Code} - {Message}",
+                    result.Value.Id,
+                    tenantId,
+                    rehomed.Error.Code,
+                    rehomed.Error.Message
+                );
+            else
+                await unitOfWork.SaveChangesAsync(ct);
+        }
+
+        // Pipeline de PDF existente, con el dueño actual: el handler busca la factura por tenant.
+        bus.TenantId = result.Value.TenantId.ToString();
+        await bus.PublishAsync(new GenerateInvoicePdfCommand(result.Value.TenantId, result.Value.Id));
 
         logger.LogInformation(
             "Onboarding invoice {Number} created for {OnboardingId} ({Settlement}, net {Net} {Currency}).",

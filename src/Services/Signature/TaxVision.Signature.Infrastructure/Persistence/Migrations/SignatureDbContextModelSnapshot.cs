@@ -538,6 +538,10 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "OwnerUserId");
 
+                    b.HasIndex(new[] { "TenantId", "OwnerUserId" }, "UX_SignatureProfiles_OneDefault")
+                        .IsUnique()
+                        .HasFilter("[IsDefault] = 1");
+
                     b.ToTable("SignatureProfiles", (string)null);
                 });
 
@@ -565,6 +569,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTime?>("SourceOccurredOnUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -1039,7 +1046,16 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<int>("RevocationEpoch")
                         .HasColumnType("int");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<DateTime?>("ScheduledSendAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("SealingFailedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<bool>("SendCertificateToSigners")
@@ -1436,6 +1452,12 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<bool>("SendCertificateToSignersDefault")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -1536,6 +1558,12 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("RequiresSequentialSigning")
                         .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<bool>("SendCertificateToSigners")
                         .HasColumnType("bit");

@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
+using TaxVision.Campaigns.Domain.Runs;
 using TaxVision.Campaigns.Domain.Scheduling;
 
 namespace TaxVision.Campaigns.Infrastructure.Persistence.Repositories;
@@ -32,7 +33,7 @@ public sealed class CampaignScheduleRepository(CampaignsDbContext db) : ICampaig
             .CampaignSchedules.IgnoreQueryFilters()
             .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.ActiveRunId == runId, ct);
 
-    public async Task<IReadOnlyList<CampaignSchedule>> ClaimDueAsync(
+    public async Task<IReadOnlyList<ClaimedSchedule>> ClaimDueAsync(
         DateTime nowUtc,
         int leaseSeconds,
         int batchSize,
@@ -74,11 +75,56 @@ public sealed class CampaignScheduleRepository(CampaignsDbContext db) : ICampaig
                 ct
             );
 
-        return await db.CampaignSchedules.IgnoreQueryFilters().Where(s => s.LeaseToken == token).ToListAsync(ct);
+        return await db
+            .CampaignSchedules.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.LeaseToken == token && s.NextFireAtUtc != null)
+            .Select(s => new ClaimedSchedule(s.Id, s.TenantId, token, s.NextFireAtUtc!.Value, until))
+            .ToListAsync(ct);
     }
 
     public async Task AddAsync(CampaignSchedule schedule, CancellationToken ct = default) =>
         await db.CampaignSchedules.AddAsync(schedule, ct);
+
+    public async Task<StuckScheduleRelease> ReleaseStuckAsync(
+        DateTime nowUtc,
+        TimeSpan grace,
+        CancellationToken ct = default
+    )
+    {
+        var closedBefore = nowUtc - grace;
+        var stuck = db
+            .CampaignSchedules.IgnoreQueryFilters()
+            .Where(s =>
+                s.Status == ScheduleStatus.Active
+                && s.ActiveRunId != null
+                && db.CampaignRuns.IgnoreQueryFilters()
+                    .Any(r =>
+                        r.Id == s.ActiveRunId
+                        && r.Status != CampaignRunStatus.Created
+                        && r.Status != CampaignRunStatus.Dispatching
+                        && r.FinishedAtUtc != null
+                        && r.FinishedAtUtc < closedBefore
+                    )
+            );
+
+        // D-CMP-1: el horario ya pasó → se pausa (la oficina lo reanuda), no se dispara tarde.
+        var paused = await stuck
+            .Where(s => s.NextFireAtUtc != null && s.NextFireAtUtc <= nowUtc)
+            .ExecuteUpdateAsync(
+                set =>
+                    set.SetProperty(s => s.ActiveRunId, (Guid?)null)
+                        .SetProperty(s => s.Status, ScheduleStatus.Paused)
+                        .SetProperty(s => s.PauseReason, SchedulePauseReason.MissedSlot)
+                        .SetProperty(s => s.UpdatedAtUtc, nowUtc),
+                ct
+            );
+        var released = await stuck.ExecuteUpdateAsync(
+            set => set.SetProperty(s => s.ActiveRunId, (Guid?)null).SetProperty(s => s.UpdatedAtUtc, nowUtc),
+            ct
+        );
+        return new StuckScheduleRelease(released, paused);
+    }
 
     // Consumer sin tenant ambiental: IgnoreQueryFilters + tenant explícito (viene del evento).
     public async Task<IReadOnlyList<CampaignSchedule>> ListOpenRunAsUserAsync(

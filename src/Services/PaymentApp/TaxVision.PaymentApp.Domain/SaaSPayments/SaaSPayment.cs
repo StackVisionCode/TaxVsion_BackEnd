@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
 namespace TaxVision.PaymentApp.Domain.SaaSPayments;
@@ -15,10 +16,11 @@ namespace TaxVision.PaymentApp.Domain.SaaSPayments;
 /// ChangeStatus(...) genérico. El aggregate nunca importa un SDK de provider (guardrail
 /// §39.9): solo conoce <see cref="PaymentProviderCode"/> y VOs de intercambio.
 /// </summary>
-public sealed class SaaSPayment : TenantEntity
+public sealed class SaaSPayment : AggregateRoot
 {
     private readonly List<SaaSPaymentAttempt> _attempts = [];
     private readonly List<RefundLine> _refunds = [];
+    private readonly List<RefundRequest> _refundRequests = [];
 
     public IdempotencyKey IdempotencyKey { get; private set; } = null!;
     public Money Amount { get; private set; } = null!;
@@ -76,12 +78,39 @@ public sealed class SaaSPayment : TenantEntity
     // Opcional. Null para pagos legacy; el consumer de recibos cae al mapping por PaymentType cuando falta.
     public ChargeConcept? Concept { get; private set; }
 
+    // Revisión manual: éxito del proveedor que no se pudo aplicar. No cambia Status.
+    public DateTime? ReviewRequiredAtUtc { get; private set; }
+    public string? ReviewReasonCode { get; private set; }
+    public string? ReviewProviderReference { get; private set; }
+    public long? ReviewPaidAmountCents { get; private set; }
+    public string? ReviewPaidCurrency { get; private set; }
+    public DateTime? ReviewResolvedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "Admin de plataforma que resolvió la revisión: historia.")]
+    public Guid? ReviewResolvedByUserId { get; private set; }
+    public string? ReviewResolution { get; private set; }
+
+    /// <summary>Cuándo se llamó por primera vez al provider en este intento. Con valor y sin resultado, el cargo pudo
+    /// existir: no se reenvía a ciegas (BB-8). Lo limpia <see cref="PrepareForRetry"/>.</summary>
+    public DateTime? ChargeAttemptedAtUtc { get; private set; }
+
     public IReadOnlyCollection<SaaSPaymentAttempt> Attempts => _attempts;
     public IReadOnlyCollection<RefundLine> Refunds => _refunds;
+    public IReadOnlyCollection<RefundRequest> RefundRequests => _refundRequests;
 
     private SaaSPayment() { }
 
-    public void AttachConcept(ChargeConcept concept) => Concept = concept;
+    /// <summary>Etiqueta del recibo. Se fija una sola vez, antes de cobrar.</summary>
+    public Result AttachConcept(ChargeConcept concept)
+    {
+        if (Status != PaymentStatus.Pending || Concept is not null)
+            return Result.Failure(
+                new Error("SaaSPayment.ConceptAlreadySet", "The concept can only be set once, before the charge.")
+            );
+
+        Concept = concept;
+        return Result.Success();
+    }
 
     public static Result<SaaSPayment> Create(
         Guid tenantId,
@@ -349,14 +378,15 @@ public sealed class SaaSPayment : TenantEntity
         NextActionType = null;
         NextActionUrl = null;
         Touch(actorUserId, paidAtUtc);
+        AddDomainEvent(new SaaSPaymentSucceeded(Snapshot()));
         return Result.Success();
     }
 
+    /// <summary><paramref name="retry"/> es lo que decidió <see cref="DunningPolicy"/>.</summary>
     public Result MarkFailed(
         string failureCode,
         string failureReason,
-        bool willRetry,
-        DateTime? nextRetryAtUtc,
+        DunningDecision retry,
         Guid actorUserId,
         DateTime nowUtc
     )
@@ -382,10 +412,86 @@ public sealed class SaaSPayment : TenantEntity
         Status = PaymentStatus.Failed;
         FailureCode = failureCode;
         FailureReason = failureReason;
-        NextRetryAtUtc = willRetry ? nextRetryAtUtc : null;
+        NextRetryAtUtc = retry.NextRetryAtUtc;
         NextActionType = null;
         NextActionUrl = null;
         Touch(actorUserId, nowUtc);
+        AddDomainEvent(new SaaSPaymentFailed(Snapshot()));
+        return Result.Success();
+    }
+
+    /// <summary>Traduce la respuesta de un cobro off-session a transiciones. El provider ya respondió: una transición
+    /// inválida no se reporta y el pago queda como está.</summary>
+    public OffSessionChargeApplied ApplyOffSessionOutcome(OffSessionChargeResponse response, DateTime nowUtc)
+    {
+        // El provider devuelve una referencia útil solo cuando pudo crear el intent: no se exige para los fallos
+        // sin referencia (red caída, auth fallida antes de hablar con el banco).
+        if (response.Reference is { } reference)
+            MarkProcessing(reference, response.ResponseCode, providerResponseBody: null, Guid.Empty, nowUtc);
+
+        switch (response.Result)
+        {
+            case OffSessionChargeResult.Succeeded:
+                // Sin referencia no se puede marcar Processing, y el evento de éxito la lleva: queda Failed y el
+                // flow manual lo retoma.
+                if (Status == PaymentStatus.Pending)
+                    return FailOffSession(
+                        "OffSession.MissingReference",
+                        "Provider returned Succeeded with no reference.",
+                        DunningPolicy.Decide(this, nowUtc),
+                        nowUtc
+                    );
+                MarkSucceeded(nowUtc, Guid.Empty);
+                return new OffSessionChargeApplied(ProviderConfirmed: true);
+
+            case OffSessionChargeResult.RequiresUserAction:
+                // SCA/3DS: no cierra el intent; el banner "Pay now" arranca el on-session cuando el usuario vuelve.
+                var actionCode = response.FailureCode ?? "authentication_required";
+                if (Status == PaymentStatus.Pending)
+                    return FailOffSession(
+                        actionCode,
+                        response.FailureMessage ?? "Issuing bank requires customer authentication.",
+                        DunningPolicy.Decide(this, nowUtc),
+                        nowUtc
+                    ) with
+                    {
+                        NeedsUserAction = true,
+                    };
+                MarkRequiresAction(actionCode, nextActionUrl: string.Empty, actorUserId: Guid.Empty, nowUtc);
+                return new OffSessionChargeApplied(NeedsUserAction: true);
+
+            case OffSessionChargeResult.NoFinalOutcome:
+                // Con referencia lo consulta el job de Processing; sin ella sigue Pending y lo busca la reconciliación.
+                return new OffSessionChargeApplied(NoFinalOutcome: true);
+
+            default:
+                return FailOffSession(
+                    response.FailureCode ?? "Provider.Failed",
+                    response.FailureMessage ?? "Off-session charge was declined.",
+                    // Con referencia, el intento ya quedó registrado en MarkProcessing: no contarlo dos veces.
+                    DunningPolicy.Decide(this, nowUtc, failedAttemptRecorded: Status == PaymentStatus.Processing),
+                    nowUtc
+                );
+        }
+    }
+
+    private OffSessionChargeApplied FailOffSession(string code, string message, DunningDecision retry, DateTime nowUtc)
+    {
+        MarkFailed(code, message, DunningPolicy.ForFailure(code, retry), Guid.Empty, nowUtc);
+        return new OffSessionChargeApplied(FailureCode: code);
+    }
+
+    /// <summary>Graba el intento antes de llamar al provider. Un reintento conserva la primera fecha: de ahí corre el
+    /// plazo en que el provider recuerda la clave.</summary>
+    public Result MarkChargeAttempted(DateTime nowUtc)
+    {
+        if (Status != PaymentStatus.Pending)
+            return Result.Failure(
+                new Error("SaaSPayment.InvalidTransition", $"Cannot start a charge attempt from {Status}.")
+            );
+
+        ChargeAttemptedAtUtc ??= nowUtc;
+        UpdatedAtUtc = nowUtc;
         return Result.Success();
     }
 
@@ -425,6 +531,7 @@ public sealed class SaaSPayment : TenantEntity
         FailureCode = null;
         FailureReason = null;
         NextRetryAtUtc = null;
+        ChargeAttemptedAtUtc = null;
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -493,6 +600,7 @@ public sealed class SaaSPayment : TenantEntity
         NextActionUrl = null;
         NextRetryAtUtc = null;
         Touch(Guid.Empty, cancelledAtUtc);
+        AddDomainEvent(new SaaSPaymentCancelled(Snapshot(), PropagatedFromOwner: true));
         return Result.Success();
     }
 
@@ -520,10 +628,70 @@ public sealed class SaaSPayment : TenantEntity
         Status = PaymentStatus.Cancelled;
         FailureReason = reason;
         Touch(actorUserId, nowUtc);
+        AddDomainEvent(new SaaSPaymentCancelled(Snapshot(), PropagatedFromOwner: false));
         return Result.Success();
     }
 
-    public Result RefundPartial(Money refundAmount, string reason, Guid actorUserId, DateTime nowUtc)
+    /// <summary>El provider confirmó el cobro. Si reporta monto, tiene que coincidir con el esperado (y la moneda, si
+    /// viene): así el pago no queda Succeeded por otro importe (captura parcial, mala configuración). Sin monto no hay
+    /// nada que verificar y se aplica igual.</summary>
+    public Result ApplyProviderSuccess(long? paidAmountCents, string? paidCurrency, DateTime nowUtc)
+    {
+        if (paidAmountCents is { } paidCents)
+        {
+            var currencyMatches =
+                paidCurrency is null
+                || string.Equals(paidCurrency, Amount.Currency, StringComparison.OrdinalIgnoreCase);
+            if (paidCents != Amount.AmountCents || !currencyMatches)
+                return Result.Failure(
+                    new Error(
+                        AmountMismatchCode,
+                        $"Provider reported {paidCents} {paidCurrency ?? "?"} paid but the charge expects "
+                            + $"{Amount.AmountCents} {Amount.Currency}; not applying."
+                    )
+                );
+        }
+
+        return MarkSucceeded(nowUtc, Guid.Empty);
+    }
+
+    /// <summary>El provider avisó un fallo tardío: sigue el mismo dunning que el cobro síncrono. Si ya estaba Failed,
+    /// reaplicarlo reprogramaría el dunning y publicaría el resultado dos veces.</summary>
+    public Result ApplyProviderFailure(string? failureCode, string? failureMessage, DateTime nowUtc)
+    {
+        if (Status == PaymentStatus.Failed)
+            return Result.Failure(new Error("SaaSPayment.AlreadyFailed", "The payment is already marked as failed."));
+
+        return MarkFailed(
+            failureCode ?? "Provider.Unknown",
+            failureMessage ?? "The provider declined the charge.",
+            DunningPolicy.Decide(this, nowUtc, failedAttemptRecorded: true),
+            Guid.Empty,
+            nowUtc
+        );
+    }
+
+    /// <summary>El provider reporta el total reembolsado: se aplica solo lo que falta registrar. Devuelve true si
+    /// agregó un reembolso.</summary>
+    public Result<bool> ApplyProviderRefundTotal(long totalRefundedCents, DateTime nowUtc)
+    {
+        var deltaCents = totalRefundedCents - SumOfRefunds();
+        if (deltaCents <= 0)
+            return Result.Success(false);
+
+        var delta = Money.Create(deltaCents, Amount.Currency);
+        if (delta.IsFailure)
+            return Result.Failure<bool>(delta.Error);
+
+        var refunded = RefundPartial(delta.Value, "Refunded via provider webhook.", Guid.Empty, nowUtc);
+        return refunded.IsFailure ? Result.Failure<bool>(refunded.Error) : Result.Success(true);
+    }
+
+    /// <summary>Total ya reembolsado, en centavos.</summary>
+    public long RefundedAmountCents => SumOfRefunds();
+
+    /// <summary>Valida un reembolso sin mutar nada; se llama antes de pedirle el dinero al proveedor.</summary>
+    public Result CanRefund(Money refundAmount, string reason)
     {
         if (IsLegalHeld)
             return Result.Failure(
@@ -541,12 +709,32 @@ public sealed class SaaSPayment : TenantEntity
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("SaaSPayment.InvalidReason", "Reason is required."));
 
-        var totalRefunded = SumOfRefunds();
-        if (totalRefunded + refundAmount.AmountCents > Amount.AmountCents)
+        if (SumOfRefunds() + refundAmount.AmountCents > Amount.AmountCents)
             return Result.Failure(
                 new Error("SaaSPayment.RefundExceedsPrincipal", "Refund amount exceeds the original payment amount.")
             );
 
+        return Result.Success();
+    }
+
+    /// <summary>Saldo que un reembolso total devolvería, validado con las mismas reglas de <see cref="CanRefund"/>.</summary>
+    public Result<Money> CanRefundFull(string reason)
+    {
+        var remaining = Amount.Subtract(Money.Create(SumOfRefunds(), Amount.Currency).Value);
+        if (remaining.IsFailure)
+            return remaining;
+
+        var check = CanRefund(remaining.Value, reason);
+        return check.IsFailure ? Result.Failure<Money>(check.Error) : remaining;
+    }
+
+    public Result RefundPartial(Money refundAmount, string reason, Guid actorUserId, DateTime nowUtc)
+    {
+        var check = CanRefund(refundAmount, reason);
+        if (check.IsFailure)
+            return check;
+
+        var totalRefunded = SumOfRefunds();
         _refunds.Add(RefundLine.Create(Id, TenantId, refundAmount, reason, actorUserId, nowUtc));
 
         Status =
@@ -559,11 +747,149 @@ public sealed class SaaSPayment : TenantEntity
 
     public Result RefundFull(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        var remaining = Amount.Subtract(Money.Create(SumOfRefunds(), Amount.Currency).Value);
+        var remaining = CanRefundFull(reason);
         if (remaining.IsFailure)
             return Result.Failure(remaining.Error);
 
         return RefundPartial(remaining.Value, reason, actorUserId, nowUtc);
+    }
+
+    /// <summary>La última solicitud de reembolso con esa clave de petición, o null.</summary>
+    public RefundRequest? FindRefundRequest(string requestKey) =>
+        _refundRequests
+            .Where(request => request.RequestKey == requestKey)
+            .OrderByDescending(request => request.CreatedAtUtc)
+            .FirstOrDefault();
+
+    /// <summary>Guarda la intención antes de llamar al proveedor (BB-8). Mismas reglas que <see cref="CanRefund"/> y
+    /// una sola solicitud sin resultado a la vez: otra en curso podría pasar el tope sin que nadie lo vea.</summary>
+    public Result<RefundRequest> OpenRefundRequest(
+        Money refundAmount,
+        string reason,
+        Guid actorUserId,
+        string requestKey,
+        string? providerIdempotencyKey,
+        DateTime nowUtc
+    )
+    {
+        var check = CanRefund(refundAmount, reason);
+        if (check.IsFailure)
+            return Result.Failure<RefundRequest>(check.Error);
+
+        if (string.IsNullOrWhiteSpace(requestKey))
+            return Result.Failure<RefundRequest>(
+                new Error("SaaSPayment.InvalidRefundRequest", "A refund request key is required.")
+            );
+
+        if (_refundRequests.Any(request => request.Status == RefundRequestStatus.Pending))
+            return Result.Failure<RefundRequest>(
+                new Error(
+                    "SaaSPayment.RefundInProgress",
+                    "Another refund of this payment has no result yet; retry that request first."
+                )
+            );
+
+        var request = RefundRequest.Open(
+            Id,
+            TenantId,
+            requestKey,
+            providerIdempotencyKey,
+            refundAmount,
+            reason,
+            actorUserId,
+            SumOfRefunds(),
+            nowUtc
+        );
+        _refundRequests.Add(request);
+        Touch(actorUserId, nowUtc);
+        return Result.Success(request);
+    }
+
+    /// <summary>El proveedor reembolsó: se registra una vez. Si la sincronización del proveedor ya lo registró, solo
+    /// cierra la solicitud. Devuelve false si no agregó línea.</summary>
+    public Result<bool> CompleteRefundRequest(Guid requestId, string? providerRefundReference, DateTime nowUtc)
+    {
+        var request = PendingRefundRequest(requestId);
+        if (request.IsFailure)
+            return Result.Failure<bool>(request.Error);
+
+        var pending = request.Value;
+        if (SumOfRefunds() >= pending.RefundedCentsBefore + pending.Amount.AmountCents)
+        {
+            pending.Resolve(RefundRequestStatus.Completed, providerRefundReference, null, nowUtc);
+            Touch(pending.RequestedByUserId, nowUtc);
+            return Result.Success(false);
+        }
+
+        var refunded = RefundPartial(pending.Amount, pending.Reason, pending.RequestedByUserId, nowUtc);
+        if (refunded.IsFailure)
+            return Result.Failure<bool>(refunded.Error);
+
+        if (!string.IsNullOrWhiteSpace(providerRefundReference))
+            _refunds[^1].AttachExternalReference(providerRefundReference);
+        pending.Resolve(RefundRequestStatus.Completed, providerRefundReference, null, nowUtc);
+        return Result.Success(true);
+    }
+
+    /// <summary>El proveedor rechazó el reembolso: no se movió dinero.</summary>
+    public Result RejectRefundRequest(Guid requestId, string failureCode, DateTime nowUtc)
+    {
+        var request = PendingRefundRequest(requestId);
+        if (request.IsFailure)
+            return request;
+
+        request.Value.Resolve(RefundRequestStatus.Rejected, null, failureCode, nowUtc);
+        Touch(request.Value.RequestedByUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>El proveedor reembolsó (o pudo hacerlo) y no se puede registrar: la solicitud no se vuelve a enviar y el
+    /// pago queda para revisión. Devuelve true si el pago quedó marcado ahora (false si ya tenía otra marca).</summary>
+    public Result<bool> MarkRefundNeedsReconciliation(
+        Guid requestId,
+        string? providerRefundReference,
+        string failureCode,
+        DateTime nowUtc
+    )
+    {
+        var request = PendingRefundRequest(requestId);
+        if (request.IsFailure)
+            return Result.Failure<bool>(request.Error);
+
+        var pending = request.Value;
+        pending.Resolve(RefundRequestStatus.NeedsReconciliation, providerRefundReference, failureCode, nowUtc);
+        Touch(pending.RequestedByUserId, nowUtc);
+        return FlagRefundForReview(
+            ReviewReasonRefundNeedsReconciliation,
+            providerRefundReference,
+            pending.Amount,
+            nowUtc
+        );
+    }
+
+    /// <summary>Marca el pago para revisión por un reembolso. False si ya tenía una marca (no se pisa).</summary>
+    public Result<bool> FlagRefundForReview(string reasonCode, string? providerReference, Money amount, DateTime nowUtc)
+    {
+        if (ReviewRequiredAtUtc is not null)
+            return Result.Success(false);
+
+        var flagged = FlagForReview(reasonCode, providerReference, amount.AmountCents, amount.Currency, nowUtc);
+        return flagged.IsFailure ? Result.Failure<bool>(flagged.Error) : Result.Success(true);
+    }
+
+    private Result<RefundRequest> PendingRefundRequest(Guid requestId)
+    {
+        var request = _refundRequests.FirstOrDefault(candidate => candidate.Id == requestId);
+        if (request is null)
+            return Result.Failure<RefundRequest>(
+                new Error("SaaSPayment.RefundRequestNotFound", "The refund request does not exist.")
+            );
+
+        return request.Status == RefundRequestStatus.Pending
+            ? Result.Success(request)
+            : Result.Failure<RefundRequest>(
+                new Error("SaaSPayment.RefundRequestResolved", $"The refund request is already {request.Status}.")
+            );
     }
 
     public Result MarkChargedBack(DateTime chargedBackAtUtc, string reason, Guid actorUserId)
@@ -583,12 +909,108 @@ public sealed class SaaSPayment : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>Coloca o levanta el legal hold. Reservado para <c>PlatformAdmin</c> con el
-    /// permiso <c>payment_app.legal_hold.manage</c> (verificado en el handler, no aquí).</summary>
+    /// <summary>Coloca o levanta el legal hold. Es una acción humana: exige actor y, si el valor no cambia, no hace nada.
+    /// Todavía no hay handler ni endpoint que la llame.</summary>
     public Result SetLegalHold(bool isLegalHeld, Guid actorUserId, DateTime nowUtc)
     {
+        if (actorUserId == Guid.Empty)
+            return Result.Failure(
+                new Error("SaaSPayment.ActorRequired", "An actor is required to change a legal hold.")
+            );
+
+        if (IsLegalHeld == isLegalHeld)
+            return Result.Success();
+
         IsLegalHeld = isLegalHeld;
         Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>El monto o la moneda que confirmó el provider no son los del cobro.</summary>
+    public const string AmountMismatchCode = "WebhookEvent.AmountMismatch";
+
+    public const string ReviewReasonLateProviderSuccess = "LateProviderSuccess";
+    public const string ReviewReasonAmountMismatch = "AmountMismatch";
+
+    /// <summary>Se llamó al provider, no quedó resultado y el provider no permite buscar el cargo.</summary>
+    public const string ReviewReasonChargeOutcomeUnknown = "ChargeOutcomeUnknown";
+
+    /// <summary>El proveedor rechazó el reembolso de onboarding: el dinero sigue cobrado.</summary>
+    public const string ReviewReasonRefundRejected = "RefundRejected";
+
+    /// <summary>El proveedor reembolsó (o pudo hacerlo) y no quedó registrado: se concilia, no se reembolsa otra vez.</summary>
+    public const string ReviewReasonRefundNeedsReconciliation = "RefundNeedsReconciliation";
+
+    private static readonly HashSet<string> ReviewReasons =
+    [
+        ReviewReasonLateProviderSuccess,
+        ReviewReasonAmountMismatch,
+        ReviewReasonChargeOutcomeUnknown,
+        ReviewReasonRefundRejected,
+        ReviewReasonRefundNeedsReconciliation,
+    ];
+    private static readonly HashSet<string> ReviewResolutions = ["Refunded", "BenefitApplied", "NoActionNeeded"];
+
+    /// <summary>Marca el pago para revisión manual: el proveedor confirmó un cobro que no se pudo aplicar.
+    /// No toca <see cref="Status"/> y es idempotente: si ya está marcado, conserva la primera marca.</summary>
+    public Result FlagForReview(
+        string reasonCode,
+        string? providerReference,
+        long? paidAmountCents,
+        string? paidCurrency,
+        DateTime nowUtc
+    )
+    {
+        if (!ReviewReasons.Contains(reasonCode))
+            return Result.Failure(
+                new Error("SaaSPayment.InvalidReviewReason", $"Unknown review reason '{reasonCode}'.")
+            );
+
+        if (ReviewRequiredAtUtc is not null)
+            return Result.Success();
+
+        var currency = paidCurrency?.Trim().ToUpperInvariant();
+        ReviewRequiredAtUtc = nowUtc;
+        ReviewReasonCode = reasonCode;
+        ReviewProviderReference = string.IsNullOrWhiteSpace(providerReference) ? null : providerReference.Trim();
+        ReviewPaidAmountCents = paidAmountCents;
+        ReviewPaidCurrency = currency is { Length: 3 } ? currency : null;
+        AddDomainEvent(
+            new SaaSPaymentReviewRequired(
+                Id,
+                TenantId,
+                reasonCode,
+                ReviewProviderReference,
+                paidAmountCents,
+                ReviewPaidCurrency,
+                nowUtc
+            )
+        );
+        return Result.Success();
+    }
+
+    /// <summary>Registra la decisión que el admin tomó a mano (reembolso, beneficio o nada). No mueve dinero.</summary>
+    public Result ResolveReview(string resolution, Guid actorUserId, DateTime nowUtc)
+    {
+        if (ReviewRequiredAtUtc is null)
+            return Result.Failure(
+                new Error("SaaSPayment.ReviewNotRequired", "This payment is not flagged for review.")
+            );
+
+        if (ReviewResolvedAtUtc is not null)
+            return Result.Failure(new Error("SaaSPayment.ReviewAlreadyResolved", "This review was already resolved."));
+
+        if (!ReviewResolutions.Contains(resolution))
+            return Result.Failure(
+                new Error(
+                    "SaaSPayment.InvalidReviewResolution",
+                    "Resolution must be Refunded, BenefitApplied or NoActionNeeded."
+                )
+            );
+
+        ReviewResolvedAtUtc = nowUtc;
+        ReviewResolvedByUserId = actorUserId;
+        ReviewResolution = resolution;
         return Result.Success();
     }
 
@@ -599,6 +1021,37 @@ public sealed class SaaSPayment : TenantEntity
             total += line.Amount.AmountCents;
         return total;
     }
+
+    /// <summary>Foto del pago tal como está ahora; la llevan los eventos de dominio de resultado.</summary>
+    public SaaSPaymentSnapshot Snapshot() =>
+        new(
+            Id,
+            TenantId,
+            Type,
+            Status,
+            TargetAggregateId,
+            IdempotencyKey.Value,
+            Amount.AmountCents,
+            Amount.Currency,
+            ProviderCode,
+            ExternalChargeReference?.Value,
+            PaidAtUtc,
+            FailureCode,
+            FailureReason,
+            NextRetryAtUtc,
+            _attempts.Count,
+            ProviderCheckoutSessionId is not null,
+            CreatedBy,
+            OnboardingId,
+            CodeReservationId,
+            CodeReservationPaymentId,
+            DiscountAmountCents,
+            PromotionSnapshotHash,
+            Breakdown?.Quantity,
+            Breakdown?.UnitAmountCents,
+            Concept?.Code,
+            Concept?.DisplayName
+        );
 
     private void Touch(Guid actorUserId, DateTime nowUtc)
     {

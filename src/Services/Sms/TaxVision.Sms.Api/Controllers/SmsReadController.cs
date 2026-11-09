@@ -151,7 +151,8 @@ public sealed class SmsReadController(IMessageBus bus, IUserPermissionsSource pe
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<ReconcileSmsStatusesResponse>>(
+        var result = await SmsReconciliation.RunAsync(
+            bus,
             new ReconcileSmsStatusesCommand(tenantId, max, minAgeSeconds),
             ct
         );

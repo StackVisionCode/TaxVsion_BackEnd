@@ -53,6 +53,17 @@ public sealed class TenantLogoRef : ITenantOwned
             UpdatedAtUtc = updatedAtUtc,
         };
 
+    /// <summary>Lápida: un retiro que llega sin fila frena al `Updated` más viejo que venga después.</summary>
+    public static TenantLogoRef Tombstone(Guid tenantId, TenantLogoSurface surface, DateTime removedAtUtc) =>
+        new()
+        {
+            TenantId = tenantId,
+            Surface = surface,
+            ContentType = string.Empty,
+            UpdatedAtUtc = removedAtUtc,
+            DeletedAtUtc = removedAtUtc,
+        };
+
     /// <summary>Aplica el logo confirmado. Devuelve false si el evento es más viejo que lo proyectado.</summary>
     public bool Update(
         Guid cloudStorageFileId,

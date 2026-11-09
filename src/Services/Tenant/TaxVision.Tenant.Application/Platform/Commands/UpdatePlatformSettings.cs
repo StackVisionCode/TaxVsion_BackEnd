@@ -28,6 +28,7 @@ public static class UpdatePlatformSettingsHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -43,7 +44,7 @@ public static class UpdatePlatformSettingsHandler
             cmd.SupportEmail,
             cmd.BillingEmail,
             cmd.ActorId,
-            DateTime.UtcNow
+            clock.GetUtcNow().UtcDateTime
         );
         if (changed.IsFailure)
             return Result.Failure<PlatformSettingsResponse>(changed.Error);

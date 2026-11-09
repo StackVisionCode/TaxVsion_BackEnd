@@ -164,6 +164,7 @@ builder.Host.UseWolverine(options =>
     // no envia SaveFileRequestedIntegrationEvent y el archivo nunca existe en Files.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine

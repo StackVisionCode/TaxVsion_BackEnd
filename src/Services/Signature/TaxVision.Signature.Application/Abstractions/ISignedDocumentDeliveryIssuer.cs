@@ -1,6 +1,7 @@
 using BuildingBlocks.Results;
 using TaxVision.Signature.Domain.Delivery;
 using TaxVision.Signature.Domain.Requests;
+using Wolverine;
 
 namespace TaxVision.Signature.Application.Abstractions;
 
@@ -31,5 +32,6 @@ public interface ISignedDocumentDeliveryIssuer
         CancellationToken ct
     );
 
-    Task PublishAsync(IssuedDelivery issued, SignatureRequest request, CancellationToken ct);
+    /// <param name="bus">El del handler: el aviso sale con su outbox (BB-17).</param>
+    Task PublishAsync(IssuedDelivery issued, SignatureRequest request, IMessageBus bus, CancellationToken ct);
 }

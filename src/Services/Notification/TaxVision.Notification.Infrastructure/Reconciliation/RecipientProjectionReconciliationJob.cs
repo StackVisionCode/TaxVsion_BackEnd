@@ -54,6 +54,7 @@ internal sealed class RecipientProjectionReconciliationJob(
         {
             await ReconcileOwnersAsync(pageSize, ct);
             await ReconcilePortalAccountsAsync(pageSize, ct);
+            await ReconcileUserEmailDirectoryAsync(pageSize, ct);
         }
         catch (Exception ex)
         {
@@ -128,6 +129,90 @@ internal sealed class RecipientProjectionReconciliationJob(
             if (!result.HasMore)
                 break;
             page++;
+        }
+    }
+
+    // Repasa las filas inactivas u obsoletas del directorio de correos y las corrige con lo que dice
+    // Auth. Una unidad por usuario: un fallo (Auth caído, choque) no corta el lote.
+    internal async Task<int> ReconcileUserEmailDirectoryAsync(int pageSize, CancellationToken ct)
+    {
+        var repaired = 0;
+        var lastId = Guid.Empty;
+        var started = false;
+        while (!ct.IsCancellationRequested)
+        {
+            List<(Guid Id, Guid TenantId, Guid UserId)> page;
+            using (var scope = serviceProvider.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
+                var rows = await db
+                    .UserEmailDirectoryEntries.IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Where(e => !e.IsActive || e.IsStale)
+                    .Where(e => !started || e.Id.CompareTo(lastId) > 0)
+                    .OrderBy(e => e.Id)
+                    .Take(pageSize)
+                    .Select(e => new
+                    {
+                        e.Id,
+                        e.TenantId,
+                        e.UserId,
+                    })
+                    .ToListAsync(ct);
+                page = rows.Select(r => (r.Id, r.TenantId, r.UserId)).ToList();
+            }
+
+            foreach (var row in page)
+                repaired += await ReconcileUserEmailAsync(row.TenantId, row.UserId, ct) ? 1 : 0;
+
+            if (page.Count < pageSize)
+                break;
+            lastId = page[^1].Id;
+            started = true;
+        }
+
+        if (repaired > 0)
+            logger.LogInformation(
+                "RecipientProjectionReconciliationJob repaired {Count} email directory row(s).",
+                repaired
+            );
+        return repaired;
+    }
+
+    private async Task<bool> ReconcileUserEmailAsync(Guid tenantId, Guid userId, CancellationToken ct)
+    {
+        using var scope = serviceProvider.CreateScope();
+        var services = scope.ServiceProvider;
+        try
+        {
+            var remote = await services
+                .GetRequiredService<IUserContactSnapshotClient>()
+                .FetchContactAsync(tenantId, userId, ct);
+            if (remote is null)
+                return false;
+
+            var entry = await services
+                .GetRequiredService<IUserEmailDirectoryRepository>()
+                .FindAsync(tenantId, userId, ct);
+            if (
+                entry is null
+                || (entry.IsActive == remote.IsActive && !entry.IsStale && entry.Email == remote.Email.Trim())
+            )
+                return false;
+
+            entry.UpdateEmail(remote.Email, remote.IsActive, DateTime.UtcNow);
+            await services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                ex,
+                "RecipientProjectionReconciliationJob skipped email directory user {UserId} of tenant {TenantId}.",
+                userId,
+                tenantId
+            );
+            return false;
         }
     }
 

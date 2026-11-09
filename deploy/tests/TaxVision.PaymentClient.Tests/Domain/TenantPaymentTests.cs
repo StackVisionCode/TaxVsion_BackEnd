@@ -1,3 +1,4 @@
+using TaxVision.PaymentClient.Domain.PaymentLinks;
 using TaxVision.PaymentClient.Domain.TenantPayments;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 
@@ -193,7 +194,7 @@ public sealed class TenantPaymentTests
     public void RefundPartial_on_a_legally_held_payment_is_rejected()
     {
         var payment = CreateSucceededPayment();
-        payment.SetLegalHold(true, Guid.Empty, DateTime.UtcNow);
+        payment.SetLegalHold(true, Guid.NewGuid(), DateTime.UtcNow);
 
         var result = payment.RefundPartial(Money.Create(100, "USD").Value, "reason", Guid.Empty, DateTime.UtcNow);
 
@@ -252,6 +253,109 @@ public sealed class TenantPaymentTests
         Assert.Equal(PaymentStatus.Pending, payment.Status);
         Assert.Null(payment.NextRetryAtUtc);
         Assert.Null(payment.FailureCode);
+    }
+
+    [Fact]
+    public void AbandonedRequiresAction_AfterTtl_IsCancelledAndLinkRedeemableAgain()
+    {
+        var startedAtUtc = DateTime.UtcNow.AddHours(-1);
+        var payment = CreateRequiresActionPayment(startedAtUtc);
+        var link = PaymentLink
+            .Create(
+                payment.TenantId,
+                null,
+                Money.Create(1999, "USD").Value,
+                Purpose(),
+                PaymentLinkToken.Generate(),
+                TimeSpan.FromDays(7),
+                Guid.Empty,
+                startedAtUtc
+            )
+            .Value;
+        link.AttachPaymentAttempt(payment.Id, null, startedAtUtc);
+        var nowUtc = startedAtUtc.AddMinutes(31);
+
+        var result = payment.CancelAbandoned(TimeSpan.FromMinutes(30), nowUtc);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+        Assert.Equal(TenantPayment.AbandonedAttemptReason, payment.FailureReason);
+        Assert.Equal("abandoned-3ds-ttl", TenantPayment.AbandonedAttemptReason);
+        var nextAttempt = Guid.NewGuid();
+        Assert.True(link.AttachPaymentAttempt(nextAttempt, payment.Status, nowUtc).IsSuccess);
+        Assert.Equal(nextAttempt, link.RelatedTenantPaymentId);
+    }
+
+    [Fact]
+    public void AbandonedRequiresAction_BeforeTtl_IsNotCancelled()
+    {
+        var startedAtUtc = DateTime.UtcNow.AddMinutes(-10);
+        var payment = CreateRequiresActionPayment(startedAtUtc);
+
+        var result = payment.CancelAbandoned(TimeSpan.FromMinutes(30), startedAtUtc.AddMinutes(10));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("TenantPayment.AttemptNotAbandoned", result.Error.Code);
+        Assert.Equal(PaymentStatus.RequiresAction, payment.Status);
+    }
+
+    [Fact]
+    public void CancelAbandoned_on_a_Processing_payment_is_rejected()
+    {
+        var startedAtUtc = DateTime.UtcNow.AddHours(-1);
+        var payment = CreatePendingPayment();
+        payment.MarkProcessing(
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_123").Value,
+            null,
+            null,
+            Guid.Empty,
+            startedAtUtc
+        );
+
+        var result = payment.CancelAbandoned(TimeSpan.FromMinutes(30), startedAtUtc.AddMinutes(31));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("TenantPayment.InvalidTransition", result.Error.Code);
+        Assert.Equal(PaymentStatus.Processing, payment.Status);
+    }
+
+    private static TenantPayment CreateRequiresActionPayment(DateTime atUtc)
+    {
+        var payment = CreatePendingPayment();
+        payment.MarkProcessing(
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_123").Value,
+            null,
+            null,
+            Guid.Empty,
+            atUtc
+        );
+        payment.MarkRequiresAction("redirect_to_url", "https://3ds.test", Guid.Empty, atUtc);
+        return payment;
+    }
+
+    [Fact]
+    public void SetLegalHold_WithEmptyActor_Fails()
+    {
+        var payment = CreatePendingPayment();
+
+        var result = payment.SetLegalHold(true, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("TenantPayment.ActorRequired", result.Error.Code);
+        Assert.False(payment.IsLegalHeld);
+    }
+
+    [Fact]
+    public void SetLegalHold_SameValue_DoesNotTouchUpdatedAt()
+    {
+        var payment = CreatePendingPayment();
+        var updatedAt = payment.UpdatedAtUtc;
+
+        var result = payment.SetLegalHold(false, Guid.NewGuid(), updatedAt.AddHours(1));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(updatedAt, payment.UpdatedAtUtc);
+        Assert.Equal(Guid.Empty, payment.UpdatedBy);
     }
 
     private static PaymentPurpose Purpose() =>

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// de "empleados activos" (ej. TenantEmployeeDirectory en Customer) queda desactualizada para
 /// siempre tras una reactivacion.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.UserReactivatedIntegrationEvent")]
 public sealed record UserReactivatedIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

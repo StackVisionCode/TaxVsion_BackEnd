@@ -1,4 +1,4 @@
-﻿using BuildingBlocks.CustomerVisibility;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -161,7 +161,26 @@ public static class DependencyInjection
             services.AddScoped<IPushSender, LoggingPushSender>();
         }
         services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
+        services.AddScoped<NotificationDeliveryGate>();
+        services.AddScoped<DispatchChannelGate>();
+        services.AddScoped<SmsDispatch>();
+        services.AddScoped<PushDispatch>();
+        services.AddScoped<InAppDispatch>();
         services.AddScoped<NotificationDispatcher>();
+        services.AddScoped<TaxVision.Notification.Application.Consumers.Signature.SignedDeliveryLinkResolver>();
+        services.AddSingleton<TaxVision.Notification.Application.Consumers.AuthAccountTokenReader>();
+        services.AddScoped<IPushAttemptRecorder, Notifications.PushAttemptRecorder>();
+        services.AddScoped<
+            TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignDispatchSendRepository,
+            Persistence.Repositories.CampaignDispatchSendRepository
+        >();
+        services
+            .AddOptions<TaxVision.Notification.Application.Email.Sending.Campaign.CampaignDispatchOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.Notification.Application.Email.Sending.Campaign.CampaignDispatchOptions.SectionName
+                )
+            );
         services.AddScoped<ClientFormNotificationSender>();
         services.AddScoped<OffboardingNoticeSender>();
 
@@ -174,6 +193,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailDispatchGateway, EventBasedEmailDispatchGateway>();
         services.AddScoped<IEmailDeliveryService, PostmasterEmailDeliveryService>();
         services.AddScoped<INotificationLogQueryRepository, NotificationLogQueryRepository>();
+        services.AddScoped<Messaging.HandlerBus>();
         services.AddScoped<IIntegrationEventPublisher, Messaging.WolverineIntegrationEventPublisher>();
 
         // Cifrado compartido de secretos (Encryption:MasterKey) para configuraciones y tokens.

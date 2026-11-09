@@ -43,7 +43,8 @@ public static class CustomerUpdatedConsumer
                     evt.TenantId,
                     evt.CustomerId,
                     normalizedEmail,
-                    evt.DisplayName
+                    evt.DisplayName,
+                    evt.OccurredOn
                 );
                 await repository.AddAsync(projection, ct);
                 logger.LogInformation(
@@ -53,7 +54,7 @@ public static class CustomerUpdatedConsumer
             }
             else
             {
-                ApplyChanges(existing, normalizedEmail, evt.DisplayName);
+                existing.ApplyIfNewer(normalizedEmail, evt.DisplayName, evt.OccurredOn);
             }
 
             await unitOfWork.SaveChangesAsync(ct);
@@ -65,12 +66,4 @@ public static class CustomerUpdatedConsumer
 
     private static string NormalizeEmail(string email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
-
-    private static void ApplyChanges(CustomerEmailProjection existing, string normalizedEmail, string displayName)
-    {
-        if (existing.NormalizedEmail != normalizedEmail)
-            existing.ChangeEmail(normalizedEmail);
-        if (existing.DisplayName != displayName)
-            existing.UpdateDisplayName(displayName);
-    }
 }

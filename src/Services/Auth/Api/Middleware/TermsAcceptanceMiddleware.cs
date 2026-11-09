@@ -1,7 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Domain.Onboarding.TermsVersions;
+using TaxVision.Auth.Domain.Terms;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
 
 namespace TaxVision.Auth.Api.Middleware;
 
@@ -12,7 +12,7 @@ namespace TaxVision.Auth.Api.Middleware;
 /// clasicos no lo tienen, asi que el trafico entre microservicios nunca se ve afectado). PayFlow
 /// (bug real encontrado en verificacion E2E): esa premisa dejo de ser cierta cuando
 /// <c>OnboardingTokenClient</c>/<c>ReceiptDocumentClient</c> empezaron a pedir tokens M2M con
-/// <see cref="TaxVision.Auth.Application.Onboarding.Abstractions.PlatformTenant.Id"/> como
+/// <see cref="TaxVision.Auth.Onboarding.Application.Abstractions.PlatformTenant.Id"/> como
 /// sentinel de tenant (mismo patron que Documents Fase 10) — ese GUID no vacio hacia que
 /// <c>TryGetTenantId</c> devolviera true para un token de servicio, y el middleware bloqueaba con
 /// 409 "Terms.NotAccepted" cualquier llamada M2M que usara ese sentinel (PlatformTenant nunca

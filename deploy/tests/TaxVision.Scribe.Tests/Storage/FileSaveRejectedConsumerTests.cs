@@ -1,8 +1,10 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using TaxVision.Scribe.Application.Storage;
 using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.Layouts;
@@ -56,7 +58,7 @@ public sealed class FileSaveRejectedConsumerTests
         var newerFileId = Guid.NewGuid();
         await SeedHeaderLogoAsync(newerFileId);
 
-        await HandleAsync(Rejected(Guid.NewGuid()));
+        await HandleAsync(OldRejected(Guid.NewGuid()));
 
         var stored = await new SystemAssetRefRepository(_dbContext).GetByKeyAsync(SystemAssetKeys.HeaderLogo);
         Assert.Equal(newerFileId, stored!.CloudStorageFileId);
@@ -202,17 +204,63 @@ public sealed class FileSaveRejectedConsumerTests
         var draft = AddEmailDraft(template, htmlFileId: Guid.NewGuid(), textFileId: rejectedFileId, designFileId: null);
         await SaveAsync(template);
 
-        await HandleAsync(Rejected(Guid.NewGuid()));
+        await HandleAsync(OldRejected(Guid.NewGuid()));
         Assert.Equal(rejectedFileId, draft.TextFileId);
 
-        await HandleAsync(Rejected(rejectedFileId));
-        var redelivery = await Record.ExceptionAsync(() => HandleAsync(Rejected(rejectedFileId)));
+        await HandleAsync(OldRejected(rejectedFileId));
+        var redelivery = await Record.ExceptionAsync(() => HandleAsync(OldRejected(rejectedFileId)));
 
         Assert.Null(redelivery);
         Assert.Null(draft.TextFileId);
     }
 
-    private Task HandleAsync(FileSaveRejectedIntegrationEvent evt) =>
+    [Fact]
+    public async Task Early_rejection_throws_dependency_not_ready()
+    {
+        var earlyFileId = Guid.NewGuid();
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() => HandleAsync(Rejected(earlyFileId)));
+
+        // El reintento encuentra la versión ya guardada y la suelta.
+        var template = NewEmailTemplate();
+        var draft = AddEmailDraft(template, htmlFileId: Guid.NewGuid(), textFileId: earlyFileId, designFileId: null);
+        await SaveAsync(template);
+
+        await HandleAsync(Rejected(earlyFileId));
+
+        Assert.Null(draft.TextFileId);
+    }
+
+    [Fact]
+    public async Task Old_orphan_rejection_is_dropped()
+    {
+        var failure = await Record.ExceptionAsync(() => HandleAsync(OldRejected(Guid.NewGuid())));
+
+        Assert.Null(failure);
+    }
+
+    // El último reintento de BB-7 cae a los 12 min 35 s: la ventana cierra antes para que el huérfano acabe en Warning.
+    [Fact]
+    public async Task Orphan_rejection_at_the_last_retry_is_dropped_instead_of_going_to_the_dlq()
+    {
+        var lastRetry = Rejected(Guid.NewGuid()) with { OccurredOn = DateTime.UtcNow.AddMinutes(-12).AddSeconds(-35) };
+
+        var failure = await Record.ExceptionAsync(() => HandleAsync(lastRetry));
+
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public async Task Early_rejection_window_comes_from_the_options()
+    {
+        var rejection = Rejected(Guid.NewGuid()) with { OccurredOn = DateTime.UtcNow.AddMinutes(-20) };
+
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            HandleAsync(rejection, new FileSaveRejectedOptions { EarlyRejectionWindow = TimeSpan.FromMinutes(30) })
+        );
+    }
+
+    private Task HandleAsync(FileSaveRejectedIntegrationEvent evt, FileSaveRejectedOptions? options = null) =>
         FileSaveRejectedConsumer.Handle(
             evt,
             new EmailTemplateRepository(_dbContext),
@@ -220,6 +268,7 @@ public sealed class FileSaveRejectedConsumerTests
             new SystemAssetRefRepository(_dbContext),
             _dbContext,
             _l1Cache,
+            Options.Create(options ?? new FileSaveRejectedOptions()),
             new FakeCorrelationContext(),
             NullLogger<FileSaveRejectedIntegrationEvent>.Instance,
             CancellationToken.None
@@ -235,6 +284,10 @@ public sealed class FileSaveRejectedConsumerTests
             FolderType = "Templates",
             Reason = "UploadPolicy",
         };
+
+    // Fuera de la ventana de "todavía no": nadie va a referenciarlo.
+    private static FileSaveRejectedIntegrationEvent OldRejected(Guid fileId) =>
+        Rejected(fileId) with { OccurredOn = DateTime.UtcNow.AddHours(-1) };
 
     private async Task SeedHeaderLogoAsync(Guid fileId)
     {

@@ -5,6 +5,7 @@ using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using TaxVision.Auth.Domain.Common;
 using TaxVision.Auth.Domain.Users;
 using TaxVision.Auth.Infrastructure.Persistence;
 
@@ -86,7 +87,7 @@ public sealed class PlatformAdminEmergencyAccessService(
         var alreadyExists = await db.Users.AnyAsync(
             user =>
                 user.TenantId == PlatformTenant.Id
-                && user.Email == email
+                && user.Email == EmailAddress.FromTrusted(email)
                 && user.ActorType == UserActorType.PlatformAdmin,
             cancellationToken
         );

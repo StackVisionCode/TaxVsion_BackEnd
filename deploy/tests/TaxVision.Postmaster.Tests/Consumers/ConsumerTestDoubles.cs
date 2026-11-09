@@ -65,8 +65,20 @@ internal sealed class FakeMessageBus : IMessageBus
         set { }
     }
 
-    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    /// <summary>Ejecuta un comando local en línea (como InvokeAsync de Wolverine); sin configurar, lanza.</summary>
+    public Func<object, Task<object?>>? OnInvoke { get; set; }
+
+    /// <summary>Corre antes del comando; lanzar acá simula un conflicto al guardarlo.</summary>
+    public Action<object>? BeforeInvoke { get; set; }
+
+    public List<object> Invoked { get; } = [];
+
+    public async Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        Invoked.Add(message);
+        BeforeInvoke?.Invoke(message);
+        _ = await (OnInvoke ?? throw new NotImplementedException()).Invoke(message);
+    }
 
     public Task InvokeAsync(
         object message,
@@ -75,8 +87,16 @@ internal sealed class FakeMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotImplementedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public async Task<T> InvokeAsync<T>(
+        object message,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    )
+    {
+        Invoked.Add(message);
+        BeforeInvoke?.Invoke(message);
+        return (T)(await (OnInvoke ?? throw new NotImplementedException()).Invoke(message))!;
+    }
 
     public Task<T> InvokeAsync<T>(
         object message,
@@ -109,6 +129,9 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
     /// </summary>
     public int? ThrowConflictOnSaveChangesCall { get; set; }
 
+    /// <summary>Hace fallar una sola vez la primera confirmación en que la condición se cumple.</summary>
+    public Func<bool>? FailOnceWhen { get; set; }
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         SaveChangesCallCount++;
@@ -117,6 +140,11 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
                 "Persistence.UniqueConstraint",
                 "A record with the same unique values already exists."
             );
+        if (FailOnceWhen?.Invoke() == true)
+        {
+            FailOnceWhen = null;
+            throw new InvalidOperationException("Simulated commit failure.");
+        }
         return Task.FromResult(0);
     }
 }
@@ -145,24 +173,56 @@ internal sealed class FakeIdempotencyGuard : IIdempotencyGuard
     public IdempotencyReservationResult ReserveReturnValue { get; set; } = IdempotencyReservationResult.Reserved();
     public List<(Guid TenantId, string Key, Guid SentMessageId)> Completed { get; } = [];
     public List<(Guid TenantId, string Key)> Released { get; } = [];
+    public int ReserveCount { get; private set; }
+
+    /// <summary>
+    /// Con estado: recuerda las reservas como la tabla real (nueva → Reserved, abierta → InProgress,
+    /// completada → AlreadyCompleted). <see cref="Snapshot"/>/<see cref="Restore"/> simulan el rollback.
+    /// </summary>
+    public bool Stateful { get; set; }
+
+    private Dictionary<(Guid, string), Guid?> _reservations = [];
 
     public Task<IdempotencyReservationResult> TryReserveAsync(
         Guid tenantId,
         string idempotencyKey,
         CancellationToken ct
-    ) => Task.FromResult(ReserveReturnValue);
+    )
+    {
+        ReserveCount++;
+        if (!Stateful)
+            return Task.FromResult(ReserveReturnValue);
+
+        if (!_reservations.TryGetValue((tenantId, idempotencyKey), out var sentMessageId))
+        {
+            _reservations[(tenantId, idempotencyKey)] = null;
+            return Task.FromResult(IdempotencyReservationResult.Reserved());
+        }
+        return Task.FromResult(
+            sentMessageId is { } id
+                ? IdempotencyReservationResult.AlreadyCompleted(id)
+                : IdempotencyReservationResult.InProgress()
+        );
+    }
 
     public Task CompleteAsync(Guid tenantId, string idempotencyKey, Guid sentMessageId, CancellationToken ct)
     {
         Completed.Add((tenantId, idempotencyKey, sentMessageId));
+        if (Stateful)
+            _reservations[(tenantId, idempotencyKey)] = sentMessageId;
         return Task.CompletedTask;
     }
 
     public Task ReleaseAsync(Guid tenantId, string idempotencyKey, CancellationToken ct)
     {
         Released.Add((tenantId, idempotencyKey));
+        _reservations.Remove((tenantId, idempotencyKey));
         return Task.CompletedTask;
     }
+
+    public object Snapshot() => new Dictionary<(Guid, string), Guid?>(_reservations);
+
+    public void Restore(object snapshot) => _reservations = new((Dictionary<(Guid, string), Guid?>)snapshot);
 }
 
 internal sealed class FakeProviderResolver : IProviderResolver
@@ -202,6 +262,7 @@ internal sealed class FakeEmailSender : IEmailSender
     /// referencias del evento efectivamente llegan como bytes hasta acá.</summary>
     public IReadOnlyList<InlineAssetBytes>? LastInlineAssets { get; private set; }
     public IReadOnlyList<OutboundAttachmentBytes> LastAttachments { get; private set; } = [];
+    public int SendCount { get; private set; }
 
     public Task<SendResult> SendAsync(
         SentMessage message,
@@ -212,6 +273,7 @@ internal sealed class FakeEmailSender : IEmailSender
         CancellationToken ct
     )
     {
+        SendCount++;
         LastMessage = message;
         LastContent = content;
         LastInlineAssets = inlineAssets;
@@ -236,6 +298,15 @@ internal sealed class FakeSentMessageRepository : ISentMessageRepository
         Removed.Add(message);
         Added.Remove(message);
     }
+
+    public Task<SentMessage?> GetForDispatchAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(Added.Find(m => m.Id == id));
+
+    public Task<SentMessage?> FindByIdempotencyKeyAsync(
+        Guid tenantId,
+        string idempotencyKey,
+        CancellationToken ct = default
+    ) => Task.FromResult(Added.Find(m => m.TenantId == tenantId && m.IdempotencyKey == idempotencyKey));
 
     public Task<Result<SentMessage>> GetByIdWithEventsAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
@@ -361,6 +432,7 @@ internal sealed class FakeConnectedMailboxSender : IConnectedMailboxSender
     public RenderedContent? LastContent { get; private set; }
     public IReadOnlyList<InlineAssetBytes> LastInlineAssets { get; private set; } = [];
     public IReadOnlyList<OutboundAttachmentBytes> LastAttachments { get; private set; } = [];
+    public int SendCount { get; private set; }
 
     public Task<SendResult> SendAsync(
         SentMessage message,
@@ -374,6 +446,7 @@ internal sealed class FakeConnectedMailboxSender : IConnectedMailboxSender
         CancellationToken ct
     )
     {
+        SendCount++;
         LastMessage = message;
         LastContent = content;
         LastInlineAssets = inlineAssets;

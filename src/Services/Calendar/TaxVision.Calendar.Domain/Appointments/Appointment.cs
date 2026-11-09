@@ -40,6 +40,34 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
     public bool IsRecurring => Recurrence is not null;
 
+    /// <summary>Cuándo ocurre, con sus excepciones. Cambia al reprogramar; un RSVP no la mueve.</summary>
+    public string ScheduleStamp
+    {
+        get
+        {
+            var exceptions = new List<string>(_exceptions.Count);
+            foreach (var e in _exceptions)
+                exceptions.Add($"{e.OriginalStartUtc:O}={e.Kind}:{e.NewStartUtc:O}:{e.NewEndUtc:O}");
+
+            exceptions.Sort(StringComparer.Ordinal);
+
+            return string.Join(
+                '|',
+                Timing.Kind,
+                Timing.TimeZone.Id,
+                $"{Timing.StartUtc:O}",
+                $"{Timing.EndUtc:O}",
+                $"{Timing.StartDate:O}",
+                $"{Timing.EndDate:O}",
+                $"{Timing.SeriesStartDate:O}",
+                $"{Timing.LocalStartTime:O}",
+                Timing.Duration,
+                Recurrence?.Value,
+                string.Join(',', exceptions)
+            );
+        }
+    }
+
     /// <summary>
     /// De que serie salio esta al partirse. Sin el rastro, nadie entiende por que hay dos series casi
     /// iguales y alguien «arregla» borrando una.
@@ -63,6 +91,15 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     /// </summary>
     public int? ReminderLeadMinutes { get; private set; }
 
+    /// <summary>Tope del aviso: una semana antes.</summary>
+    public const int MaxReminderLeadMinutes = 7 * 24 * 60;
+
+    /// <summary>
+    /// Entra en la clave de los pedidos a Reminder. Sube cuando ningún aviso pedido sigue vigente,
+    /// para que volver a pedir un objetivo ya cerrado no choque con su clave vieja.
+    /// </summary>
+    public int ReminderGeneration { get; private set; }
+
     public string? CancellationReason { get; private set; }
 
     public DateTime CreatedAtUtc { get; private set; }
@@ -70,6 +107,12 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     public DateTime? CancelledAtUtc { get; private set; }
 
     public byte[] RowVersion { get; private set; } = default!;
+
+    /// <summary>
+    /// Sube con cada cambio en asistentes o excepciones. Esos cambios no tocan la fila de la cita, y sin
+    /// <c>UPDATE</c> en la raíz <see cref="RowVersion"/> no detecta dos ediciones a la vez.
+    /// </summary>
+    public int ChildrenRevision { get; private set; }
 
     private readonly List<AppointmentAttendee> _attendees = [];
     public IReadOnlyList<AppointmentAttendee> Attendees => _attendees;
@@ -146,13 +189,31 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             attendee.ResetResponse();
 
         AddDomainEvent(
-            new AppointmentRescheduledDomainEvent(Id, TenantId, previousStartUtc, timing.StartUtc, actingUserId, nowUtc)
+            new AppointmentRescheduledDomainEvent(
+                Id,
+                TenantId,
+                previousStartUtc,
+                timing.StartUtc,
+                timing.EndUtc,
+                timing.TimeZone.Id,
+                actingUserId,
+                nowUtc
+            )
         );
 
         return Result.Success();
     }
 
-    public Result Cancel(Guid actingUserId, bool canManageAll, string? reason, DateTime nowUtc)
+    /// <param name="scope">Alcance que se anuncia; null es la cita entera.</param>
+    /// <param name="originalStartUtc">Ocurrencia que venía en el pedido, si la hubo.</param>
+    public Result Cancel(
+        Guid actingUserId,
+        bool canManageAll,
+        string? reason,
+        DateTime nowUtc,
+        EditScope? scope = null,
+        DateTime? originalStartUtc = null
+    )
     {
         if (Status == AppointmentStatus.Cancelled)
             return Result.Failure(AppointmentErrors.AlreadyCancelled);
@@ -164,7 +225,17 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         CancellationReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         CancelledAtUtc = nowUtc;
 
-        AddDomainEvent(new AppointmentCancelledDomainEvent(Id, TenantId, actingUserId, CancellationReason, nowUtc));
+        AddDomainEvent(
+            new AppointmentCancelledDomainEvent(
+                Id,
+                TenantId,
+                actingUserId,
+                CancellationReason,
+                nowUtc,
+                scope,
+                originalStartUtc
+            )
+        );
 
         return Result.Success();
     }
@@ -204,9 +275,11 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (userId == OrganizerUserId)
             return Result.Failure(AppointmentErrors.OrganizerCannotBeRemoved);
 
-        return _attendees.RemoveAll(a => a.UserId == userId) > 0
-            ? Result.Success()
-            : Result.Failure(AppointmentErrors.AttendeeNotFound);
+        if (_attendees.RemoveAll(a => a.UserId == userId) == 0)
+            return Result.Failure(AppointmentErrors.AttendeeNotFound);
+
+        ChildrenRevision++;
+        return Result.Success();
     }
 
     public Result ChangeTitle(AppointmentTitle title, Guid actingUserId, bool canManageAll)
@@ -252,8 +325,20 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
         var attendee = AppointmentAttendee.Invite(Id, kind, userId, customerId, snapshot, isRequired);
         _attendees.Add(attendee);
+        ChildrenRevision++;
 
-        AddDomainEvent(new AppointmentAttendeeInvitedDomainEvent(Id, TenantId, attendee.Id, kind, nowUtc));
+        AddDomainEvent(
+            new AppointmentAttendeeInvitedDomainEvent(
+                Id,
+                TenantId,
+                attendee.Id,
+                kind,
+                nowUtc,
+                userId,
+                customerId,
+                snapshot.Email
+            )
+        );
 
         return Result.Success(attendee);
     }
@@ -272,6 +357,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             return Result.Failure(AppointmentErrors.OrganizerCannotBeRemoved);
 
         _attendees.Remove(attendee);
+        ChildrenRevision++;
         return Result.Success();
     }
 
@@ -295,13 +381,45 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             return Result.Failure(AppointmentErrors.AttendeeNotFound);
 
         attendee.Respond(response, nowUtc);
+        ChildrenRevision++;
 
-        AddDomainEvent(new AppointmentAttendeeRespondedDomainEvent(Id, TenantId, attendee.Id, response, nowUtc));
+        AddDomainEvent(
+            new AppointmentAttendeeRespondedDomainEvent(
+                Id,
+                TenantId,
+                attendee.Id,
+                response,
+                nowUtc,
+                OrganizerUserId,
+                userId
+            )
+        );
 
         return Result.Success();
     }
 
-    public void RequestReminder(int? leadMinutes) => ReminderLeadMinutes = leadMinutes is > 0 ? leadMinutes : null;
+    /// <summary>Cero o null quita el aviso.</summary>
+    public Result RequestReminder(int? leadMinutes)
+    {
+        if (leadMinutes > MaxReminderLeadMinutes)
+            return Result.Failure(AppointmentErrors.ReminderLeadTooLong);
+
+        ReminderLeadMinutes = leadMinutes is > 0 ? leadMinutes : null;
+        return Result.Success();
+    }
+
+    public void StartNewReminderGeneration() => ReminderGeneration++;
+
+    /// <summary>Estos objetivos ya no valen. Se calculan antes del cambio: después la cita no los produce.</summary>
+    public void CloseReminderTargets(IReadOnlyList<Guid> targetIds, string? reason, DateTime nowUtc)
+    {
+        if (targetIds.Count > 0)
+            AddDomainEvent(new AppointmentReminderTargetsClosedDomainEvent(Id, TenantId, targetIds, reason, nowUtc));
+    }
+
+    /// <summary>Hay que volver a pedir los avisos, salvo los de <paramref name="keptTargetIds"/>, que siguen vivos.</summary>
+    public void RefreshReminders(IReadOnlyList<Guid> keptTargetIds, bool leadChanged, DateTime nowUtc) =>
+        AddDomainEvent(new AppointmentRemindersRefreshedDomainEvent(Id, TenantId, keptTargetIds, leadChanged, nowUtc));
 
     /// <summary>La sala llega por evento desde Communication; si divergen, manda la cita.</summary>
     public void LinkMeeting(Guid meetingId, string shortCode)
@@ -329,16 +447,23 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     }
 
     /// <summary>Cancela una ocurrencia sin tocar el resto de la serie.</summary>
-    public Result CancelOccurrence(DateTime originalStartUtc, Guid actingUserId, bool canManageAll, DateTime nowUtc)
+    public Result CancelOccurrence(
+        DateTime originalStartUtc,
+        Guid actingUserId,
+        bool canManageAll,
+        DateTime nowUtc,
+        string? reason = null
+    )
     {
         var allowed = EnsureCanEditOccurrence(originalStartUtc, actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
         _exceptions.Add(AppointmentException.Cancel(Id, TenantId, originalStartUtc, actingUserId, nowUtc));
+        ChildrenRevision++;
 
         AddDomainEvent(
-            new AppointmentOccurrenceCancelledDomainEvent(Id, TenantId, originalStartUtc, actingUserId, nowUtc)
+            new AppointmentOccurrenceCancelledDomainEvent(Id, TenantId, originalStartUtc, actingUserId, nowUtc, reason)
         );
 
         return Result.Success();
@@ -376,6 +501,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             return Result.Failure(exception.Error);
 
         _exceptions.Add(exception.Value);
+        ChildrenRevision++;
 
         AddDomainEvent(
             new AppointmentOccurrenceOverriddenDomainEvent(
@@ -384,7 +510,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 originalStartUtc,
                 newStartUtc,
                 actingUserId,
-                nowUtc
+                nowUtc,
+                newEndUtc
             )
         );
 
@@ -392,8 +519,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     }
 
     /// <summary>
-    /// Edita la serie entera. Las excepciones existentes <b>se conservan</b>: siguen apuntando a las
-    /// mismas ocurrencias por su <c>OriginalStartUtc</c>, que no cambia.
+    /// Edita la serie entera. Las excepciones existentes <b>se conservan</b>: cada una sigue a su
+    /// ocurrencia aunque cambie de instante. Las que la regla nueva ya no alcanza se van.
     /// </summary>
     public Result EditEntireSeries(
         EventTiming timing,
@@ -410,15 +537,29 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (!IsRecurring)
             return Result.Failure(RecurrenceErrors.NotASeries);
 
-        var previousStartUtc = Timing.StartUtc;
+        // Una serie no tiene StartUtc: lo que se anuncia es su primera ocurrencia.
+        var previousFirstUtc = OccurrenceExpander.FirstStart(this);
+        // Antes de cambiar la regla: después ya no se sabe a qué ocurrencia apuntaba cada excepción.
+        var positions = OccurrenceExpander.ExceptionPositions(this);
         Timing = timing;
         Recurrence = recurrence;
+        ReanchorExceptions(positions);
 
         foreach (var attendee in _attendees)
             attendee.ResetResponse();
 
+        var newFirstUtc = OccurrenceExpander.FirstStart(this) ?? nowUtc;
         AddDomainEvent(
-            new AppointmentRescheduledDomainEvent(Id, TenantId, previousStartUtc, timing.StartUtc, actingUserId, nowUtc)
+            new AppointmentRescheduledDomainEvent(
+                Id,
+                TenantId,
+                previousFirstUtc,
+                newFirstUtc,
+                newFirstUtc.Add(timing.Duration ?? TimeSpan.FromHours(1)),
+                timing.TimeZone.Id,
+                actingUserId,
+                nowUtc
+            )
         );
 
         return Result.Success();
@@ -484,6 +625,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             CustomerId = CustomerId,
             TaxYear = TaxYear,
             IsVirtual = IsVirtual,
+            ReminderLeadMinutes = ReminderLeadMinutes,
             // No hereda MeetingId ni ShortCode: es otra serie y necesita su propia sala.
             CreatedAtUtc = nowUtc,
         };
@@ -529,6 +671,45 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return OccurrenceExpander.IsOccurrence(this, originalStartUtc)
             ? Result.Success()
             : Result.Failure(RecurrenceErrors.NotAnOccurrence);
+    }
+
+    /// <summary>
+    /// La ocurrencia N de la regla vieja es la N de la nueva. Sin esto, mover la serie deja la excepción en un
+    /// instante que ya no existe: la ocurrencia cancelada revive y la que ahora cae ahí queda cancelada.
+    /// </summary>
+    private void ReanchorExceptions(Dictionary<DateTime, int> positions)
+    {
+        if (positions.Count == 0)
+            return;
+
+        var lastPosition = 0;
+        foreach (var position in positions.Values)
+            lastPosition = Math.Max(lastPosition, position);
+
+        var starts = OccurrenceExpander.StartsThrough(this, lastPosition);
+        var targets = new HashSet<DateTime>();
+        foreach (var position in positions.Values)
+        {
+            if (position < starts.Count)
+                targets.Add(starts[position]);
+        }
+
+        var changed =
+            _exceptions.RemoveAll(e =>
+                positions.TryGetValue(e.OriginalStartUtc, out var position)
+                    ? position >= starts.Count
+                    // Huérfana de una edición anterior: no puede ocupar el lugar de una viva, el índice único lo rechaza.
+                    : targets.Contains(e.OriginalStartUtc)
+            ) > 0;
+
+        foreach (var exception in _exceptions)
+        {
+            if (positions.TryGetValue(exception.OriginalStartUtc, out var position))
+                changed |= exception.FollowOccurrenceTo(starts[position]);
+        }
+
+        if (changed)
+            ChildrenRevision++;
     }
 
     private void DiscardExceptionsFrom(DateTime cutUtc)

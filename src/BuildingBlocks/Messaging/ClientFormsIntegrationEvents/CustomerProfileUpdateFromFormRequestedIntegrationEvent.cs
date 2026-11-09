@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
 /// <summary>task.customer_profile_update_from_form_requested.v1</summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerProfileUpdateFromFormRequestedIntegrationEvent")]
 public sealed record CustomerProfileUpdateFromFormRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid CommandId { get; init; }

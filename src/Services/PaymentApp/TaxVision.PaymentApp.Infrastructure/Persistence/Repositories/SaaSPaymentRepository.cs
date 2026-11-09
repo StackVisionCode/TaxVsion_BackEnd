@@ -61,19 +61,50 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
 
     // IgnoreQueryFilters: job cross-tenant (RBAC Fase 5) — recorre pagos de todos los tenants
     // buscando reintentos/atascos vencidos, nunca sirve una request autenticada.
-    public async Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+    public async Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
         DateTime cutoffUtc,
         int batchSize,
         CancellationToken ct = default
-    ) =>
-        await WithChildren(db.SaaSPayments)
+    )
+    {
+        var rows = await db
+            .SaaSPayments.AsNoTracking()
             .IgnoreQueryFilters()
             .Where(payment => payment.Status == PaymentStatus.Processing && payment.UpdatedAtUtc < cutoffUtc)
             .OrderBy(payment => payment.UpdatedAtUtc)
             .Take(batchSize)
+            .Select(payment => new { payment.Id, payment.TenantId })
             .ToListAsync(ct);
 
-    // Mismo criterio cross-tenant que GetStuckProcessingAsync. El pago del onboarding queda fuera solo,
+        return rows.Select(row => (row.Id, row.TenantId)).ToList();
+    }
+
+    // Mismo criterio cross-tenant. Los de checkout hosteado y onboarding se cierran por su propio camino.
+    public async Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    )
+    {
+        var rows = await db
+            .SaaSPayments.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(payment =>
+                payment.Status == PaymentStatus.Pending
+                && payment.UpdatedAtUtc < cutoffUtc
+                && payment.ReviewRequiredAtUtc == null
+                && payment.OnboardingId == null
+                && payment.ProviderCheckoutSessionId == null
+            )
+            .OrderBy(payment => payment.UpdatedAtUtc)
+            .Take(batchSize)
+            .Select(payment => new { payment.Id, payment.TenantId })
+            .ToListAsync(ct);
+
+        return rows.Select(row => (row.Id, row.TenantId)).ToList();
+    }
+
+    // Mismo criterio cross-tenant que GetStuckProcessingIdsAsync. El pago del onboarding queda fuera solo,
     // porque nace sin tenant: su recibo lo pide Auth.
     public async Task<IReadOnlyList<SaaSPayment>> GetSucceededWithoutReceiptAsync(
         DateTime cutoffUtc,
@@ -100,10 +131,12 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
     ) =>
         await WithChildren(db.SaaSPayments)
             .IgnoreQueryFilters()
+            // Un pago en revisión no se reintenta: podría cobrarse dos veces.
             .Where(payment =>
                 payment.Status == PaymentStatus.Failed
                 && payment.NextRetryAtUtc != null
                 && payment.NextRetryAtUtc <= nowUtc
+                && payment.ReviewRequiredAtUtc == null
             )
             .OrderBy(payment => payment.NextRetryAtUtc)
             .Take(batchSize)
@@ -118,7 +151,8 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
                 payment =>
                     payment.Status == PaymentStatus.Failed
                     && payment.NextRetryAtUtc != null
-                    && payment.NextRetryAtUtc <= nowUtc,
+                    && payment.NextRetryAtUtc <= nowUtc
+                    && payment.ReviewRequiredAtUtc == null,
                 ct
             );
 
@@ -280,5 +314,8 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
         await db.SaaSPayments.AddAsync(payment, ct);
 
     private static IQueryable<SaaSPayment> WithChildren(IQueryable<SaaSPayment> query) =>
-        query.Include(payment => payment.Attempts).Include(payment => payment.Refunds);
+        query
+            .Include(payment => payment.Attempts)
+            .Include(payment => payment.Refunds)
+            .Include(payment => payment.RefundRequests);
 }

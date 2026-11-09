@@ -27,6 +27,7 @@ public static class TenantCreatedConsumer
         ITenantSubdomainReservationRepository reservations,
         IPlatformSettings platform,
         ITokenReferenceStore tokenReferences,
+        IAccountTokenProtector tokenProtector,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -44,6 +45,8 @@ public static class TenantCreatedConsumer
 
             await tenants.UpsertCreatedAsync(evt.NewTenantId, evt.Name, evt.SubDomain, kind, evt.DefaultTimeZoneId, ct);
 
+            InvitationCreatedIntegrationEvent? adminInvitation = null;
+
             if (kind == TenantKind.Customer)
             {
                 // Roles de sistema y política MFA por defecto (idempotente).
@@ -56,7 +59,7 @@ public static class TenantCreatedConsumer
                 await EnsurePrimaryDomainAsync(evt, domains, reservations, platform.Current.BaseDomain, logger, ct);
 
                 // PayFlow (Fase 16) — un tenant creado vía onboarding pago-primero ya tiene su
-                // TenantAdmin creado directo por la Saga (internal/tenants/{id}/owners, Fase 16),
+                // TenantAdmin creado directo por la Saga (CreateTenantOwnerFromOnboardingCommand),
                 // no por invitación: crear una Invitation acá sería redundante (y el AdminEmail/
                 // AdminInvitationTokenHash de ese evento son placeholders vacíos, ver
                 // CreateTenantFromOnboardingHandler en Tenant).
@@ -92,21 +95,25 @@ public static class TenantCreatedConsumer
                         if (!string.IsNullOrWhiteSpace(rawToken))
                         {
                             invitationResult.Value.MarkSent();
-                            await bus.PublishAsync(
-                                new InvitationCreatedIntegrationEvent
-                                {
-                                    TenantId = evt.NewTenantId,
-                                    InvitationId = invitationResult.Value.Id,
-                                    Email = evt.AdminEmail,
-                                    ActorType = UserActorType.TenantAdmin.ToString(),
-                                    RawToken = rawToken,
-                                    ExpiresAtUtc = expiresAtUtc,
-                                    TenantName = evt.Name,
-                                    TenantSubdomain = evt.SubDomain,
-                                    InviterName = platform.Current.BrandName,
-                                    CorrelationId = correlationId,
-                                }
+                            var tokenFields = tokenProtector.Seal(
+                                AuthTokenPayloadSchemas.Invitation,
+                                AuthTokenPayloadSchemas.InvitationBinding(evt.NewTenantId, invitationResult.Value.Id),
+                                rawToken
                             );
+                            adminInvitation = new InvitationCreatedIntegrationEvent
+                            {
+                                TenantId = evt.NewTenantId,
+                                InvitationId = invitationResult.Value.Id,
+                                Email = evt.AdminEmail,
+                                ActorType = UserActorType.TenantAdmin.ToString(),
+                                RawToken = tokenFields.RawToken,
+                                ProtectedToken = tokenFields.ProtectedToken,
+                                ExpiresAtUtc = expiresAtUtc,
+                                TenantName = evt.Name,
+                                TenantSubdomain = evt.SubDomain,
+                                InviterName = platform.Current.BrandName,
+                                CorrelationId = correlationId,
+                            };
                         }
 
                         await invitations.AddAsync(invitationResult.Value, ct);
@@ -115,6 +122,8 @@ public static class TenantCreatedConsumer
             }
 
             await unitOfWork.SaveChangesAsync(ct);
+            if (adminInvitation is not null)
+                await bus.PublishAsync(adminInvitation);
         }
     }
 

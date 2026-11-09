@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
 /// Publicado por Auth cuando se genera un OTP por email o SMS
 /// (login MFA, verificación de email/teléfono). Notification entrega el código.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.MfaChallengeRequestedIntegrationEvent")]
 public sealed record MfaChallengeRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

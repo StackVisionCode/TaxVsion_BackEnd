@@ -1,6 +1,7 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Campaigns.Domain.Campaigns;
+using TaxVision.Campaigns.Domain.Runs.Events;
 
 namespace TaxVision.Campaigns.Domain.Runs;
 
@@ -21,7 +22,7 @@ public sealed record RunRecipientDraft(
 /// <c>CampaignRun</c> como fuente única de contadores-caché y la reconciliación tardía son fases
 /// posteriores.
 /// </summary>
-public sealed class CampaignRun : TenantEntity
+public sealed class CampaignRun : AggregateRoot
 {
     private readonly List<CampaignRecipient> _recipients = [];
 
@@ -37,6 +38,10 @@ public sealed class CampaignRun : TenantEntity
     public CampaignRunStatus Status { get; private set; }
     public string? RejectionReason { get; private set; }
     public int RecipientCount { get; private set; }
+
+    /// <summary>Agendado y slot que dispararon este run (null en el envío manual).</summary>
+    public Guid? ScheduleId { get; private set; }
+    public DateTime? ScheduledSlotUtc { get; private set; }
 
     public int CounterDispatched { get; private set; }
     public int CounterAccepted { get; private set; }
@@ -60,6 +65,41 @@ public sealed class CampaignRun : TenantEntity
         Guid triggeredByUserId,
         string triggerKind,
         IReadOnlyCollection<RunRecipientDraft> units
+    ) => Create(Guid.NewGuid(), tenantId, campaignId, triggeredByUserId, triggerKind, units);
+
+    /// <summary>Run de un agendado: Id determinista por (agendado, slot), ver <see cref="ScheduledRunId"/>.</summary>
+    public static Result<CampaignRun> StartScheduled(
+        Guid tenantId,
+        Guid campaignId,
+        Guid triggeredByUserId,
+        Guid scheduleId,
+        DateTime scheduledSlotUtc,
+        IReadOnlyCollection<RunRecipientDraft> units
+    )
+    {
+        var result = Create(
+            ScheduledRunId.For(scheduleId, scheduledSlotUtc),
+            tenantId,
+            campaignId,
+            triggeredByUserId,
+            "Scheduled",
+            units
+        );
+        if (result.IsSuccess)
+        {
+            result.Value.ScheduleId = scheduleId;
+            result.Value.ScheduledSlotUtc = DateTime.SpecifyKind(scheduledSlotUtc, DateTimeKind.Utc);
+        }
+        return result;
+    }
+
+    private static Result<CampaignRun> Create(
+        Guid id,
+        Guid tenantId,
+        Guid campaignId,
+        Guid triggeredByUserId,
+        string triggerKind,
+        IReadOnlyCollection<RunRecipientDraft> units
     )
     {
         if (tenantId == Guid.Empty)
@@ -71,12 +111,12 @@ public sealed class CampaignRun : TenantEntity
 
         var run = new CampaignRun
         {
-            Id = Guid.NewGuid(),
+            Id = id,
             CampaignId = campaignId,
             TriggeredByUserId = triggeredByUserId,
             TriggerKind = triggerKind,
             CreatedAtUtc = DateTime.UtcNow,
-            Status = CampaignRunStatus.Dispatching,
+            Status = CampaignRunStatus.Created,
         };
         run.SetTenant(tenantId);
 
@@ -101,15 +141,24 @@ public sealed class CampaignRun : TenantEntity
         return Result.Success(run);
     }
 
+    /// <summary>El Wallet autorizó el cobro (o no había nada que cobrar): el run puede despachar.</summary>
+    public Result MarkFundsReserved()
+    {
+        if (Status != CampaignRunStatus.Created)
+            return Result.Failure(CampaignRunErrors.NotCreated);
+
+        Status = CampaignRunStatus.Dispatching;
+        return Result.Success();
+    }
+
     /// <summary>
     /// Rechaza el run ANTES de despachar nada (PEP money-OUT, F4): el gate del Wallet no autorizó el cobro
-    /// (saldo insuficiente o Wallet no disponible). Solo válido mientras está <see cref="CampaignRunStatus.Dispatching"/>
-    /// y no se emitió ningún dispatch — así no se cobra ni se envía nada. Terminal: no publica run.completed
-    /// (no hubo envío que liquidar).
+    /// (saldo insuficiente o Wallet no disponible). Solo válido mientras no se emitió ningún dispatch — así no se
+    /// cobra ni se envía nada. Terminal: no publica run.completed (no hubo envío que liquidar).
     /// </summary>
     public Result Reject(string reason)
     {
-        if (Status != CampaignRunStatus.Dispatching)
+        if (Status is not (CampaignRunStatus.Created or CampaignRunStatus.Dispatching))
             return Result.Failure(CampaignRunErrors.NotDispatching);
         if (CounterDispatched > 0)
             return Result.Failure(CampaignRunErrors.AlreadyDispatched);
@@ -120,7 +169,18 @@ public sealed class CampaignRun : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>Marca una unidad como despachada (tras emitir su evento de dispatch).</summary>
+    /// <summary>
+    /// El envío arranca: el gate del Wallet ya autorizó. Un run rechazado no pasa por acá, así que no se anuncia.
+    /// Si ya cerró al materializar (todo Skipped), su cierre sale después del arranque.
+    /// </summary>
+    public void AnnounceStart()
+    {
+        AddDomainEvent(new CampaignRunStartedDomainEvent(Id, TenantId, CampaignId, RecipientCount, TriggerKind));
+        if (Status is CampaignRunStatus.Completed or CampaignRunStatus.PartiallyFailed or CampaignRunStatus.Failed)
+            AnnounceClosure();
+    }
+
+    /// <summary>Marca una unidad como despachada. Su evento de dispatch sale después de guardar.</summary>
     public Result MarkDispatched(Guid recipientId)
     {
         var recipient = _recipients.Find(r => r.Id == recipientId);
@@ -151,6 +211,24 @@ public sealed class CampaignRun : TenantEntity
         string? reason
     ) => Apply(_recipients.Find(r => r.Id == recipientId), outcome, providerRef, reason);
 
+    /// <summary>
+    /// Barrido de runs que no cierran: cada unidad sin asentar pasa a <c>Unknown</c> (<c>stale_timeout</c>) y
+    /// se evalúa el cierre. Devuelve <c>true</c> solo si esta llamada cerró el run. Un run cerrado no cambia.
+    /// </summary>
+    public bool ExpireStaleUnits(DateTime nowUtc)
+    {
+        if (Status != CampaignRunStatus.Dispatching)
+            return false;
+
+        foreach (var recipient in _recipients.Where(r => !r.IsSettled))
+            recipient.ExpireAsUnknown("stale_timeout", nowUtc);
+        RecomputeCounters();
+        var closedNow = EvaluateClosure();
+        if (closedNow)
+            AnnounceClosure();
+        return closedNow;
+    }
+
     private Result<bool> Apply(
         CampaignRecipient? recipient,
         DispatchOutcome outcome,
@@ -161,12 +239,63 @@ public sealed class CampaignRun : TenantEntity
         if (recipient is null)
             return Result.Failure<bool>(CampaignRunErrors.RecipientNotFound);
 
-        recipient.ApplyOutcome(outcome, providerRef, reason);
-        RecomputeCounters();
+        // CMP-04: solo la unidad del resultado está cargada; los contadores se mueven, no se recuentan.
+        var previous = recipient.State;
+        if (recipient.ApplyOutcome(outcome, providerRef, reason))
+        {
+            AddToCounter(previous, -1);
+            AddToCounter(recipient.State, 1);
+        }
+
         var closedNow = EvaluateClosure();
+        if (closedNow)
+            AnnounceClosure();
         return Result.Success(closedNow);
     }
 
+    private void AddToCounter(DispatchState state, int delta)
+    {
+        switch (state)
+        {
+            case DispatchState.Dispatched:
+                CounterDispatched += delta;
+                break;
+            case DispatchState.Accepted:
+                CounterAccepted += delta;
+                break;
+            case DispatchState.Delivered:
+                CounterDelivered += delta;
+                break;
+            case DispatchState.Failed:
+                CounterFailed += delta;
+                break;
+            case DispatchState.Skipped:
+                CounterSkipped += delta;
+                break;
+            case DispatchState.Unknown:
+                CounterUnknown += delta;
+                break;
+        }
+    }
+
+    // Foto del cierre: una unidad resuelta después (D-CMP-4) no cambia lo que se anunció.
+    private void AnnounceClosure() =>
+        AddDomainEvent(
+            new CampaignRunClosedDomainEvent(
+                Id,
+                TenantId,
+                CampaignId,
+                Status,
+                RecipientCount,
+                CounterDelivered,
+                CounterAccepted,
+                CounterFailed,
+                CounterSkipped,
+                CounterUnknown
+            )
+        );
+
+    /// <summary>Recuento desde las unidades. Solo donde están todas cargadas: arranque, despacho y barrido.</summary>
     private void RecomputeCounters()
     {
         CounterDispatched = _recipients.Count(r => r.State == DispatchState.Dispatched);
@@ -180,19 +309,29 @@ public sealed class CampaignRun : TenantEntity
     /// <summary>Cierra el run si todas las unidades están settled. Devuelve <c>true</c> solo en la transición.</summary>
     private bool EvaluateClosure()
     {
-        if (Status != CampaignRunStatus.Dispatching)
+        // D-CMP-4: una unidad resuelta después del cierre (Unknown → Accepted/Delivered/Failed) recalcula el
+        // estado. No es un cierre nuevo: no vuelve a publicar run.completed y conserva FinishedAtUtc.
+        if (Status is CampaignRunStatus.Completed or CampaignRunStatus.PartiallyFailed or CampaignRunStatus.Failed)
+        {
+            Status = TerminalStatus();
             return false;
-        if (_recipients.Any(r => !r.IsSettled))
+        }
+
+        if (Status is not (CampaignRunStatus.Created or CampaignRunStatus.Dispatching))
+            return false;
+        if (CounterAccepted + CounterDelivered + CounterFailed + CounterSkipped + CounterUnknown < RecipientCount)
             return false;
 
-        // Sin fallos ni desconocidos → Completed (cubre todo entregado/aceptado y también el caso
-        // "todo Skipped" legítimo: opt-out/sin destino no es un fallo del run). Solo si NO hubo
-        // ningún entregado/aceptado y sí hubo fallos/desconocidos → Failed; el resto → PartiallyFailed.
-        Status =
-            CounterFailed + CounterUnknown == 0 ? CampaignRunStatus.Completed
-            : CounterDelivered + CounterAccepted == 0 ? CampaignRunStatus.Failed
-            : CampaignRunStatus.PartiallyFailed;
+        Status = TerminalStatus();
         FinishedAtUtc = DateTime.UtcNow;
         return true;
     }
+
+    // Sin fallos ni desconocidos → Completed (cubre todo entregado/aceptado y también el caso
+    // "todo Skipped" legítimo: opt-out/sin destino no es un fallo del run). Solo si NO hubo
+    // ningún entregado/aceptado y sí hubo fallos/desconocidos → Failed; el resto → PartiallyFailed.
+    private CampaignRunStatus TerminalStatus() =>
+        CounterFailed + CounterUnknown == 0 ? CampaignRunStatus.Completed
+        : CounterDelivered + CounterAccepted == 0 ? CampaignRunStatus.Failed
+        : CampaignRunStatus.PartiallyFailed;
 }

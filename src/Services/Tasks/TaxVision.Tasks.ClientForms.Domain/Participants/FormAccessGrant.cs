@@ -16,6 +16,9 @@ public sealed class FormAccessGrant : AggregateRoot
     public string TokenLast4 { get; private set; } = string.Empty;
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime? RevokedAtUtc { get; private set; }
+
+    // TSK-5: dos reenvíos desde la misma lectura perdían una emisión de IssueCount y saltaban el tope.
+    public byte[] RowVersion { get; private set; } = [];
     public DateTime? LastUsedAtUtc { get; private set; }
     public int IssueCount { get; private set; }
     public DateTime IssuedAtUtc { get; private set; }

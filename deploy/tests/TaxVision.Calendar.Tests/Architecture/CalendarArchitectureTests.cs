@@ -21,11 +21,10 @@ public sealed class CalendarArchitectureTests
         result.FailingTypeNames is null ? "(sin detalle)" : string.Join(", ", result.FailingTypeNames);
 
     /// <summary>
-    /// Si Domain referenciara EF, las decisiones del agregado quedarian imposibles de probar sin base
-    /// de datos. <c>Ical.Net</c> si esta permitido: es una libreria de dominio puro, sin IO.
+    /// Domain sin Infrastructure ni Application; EF, ASP.NET y Wolverine los vigila
+    /// <see cref="CalendarLayeringTests"/> (BB-6). <c>Ical.Net</c> si esta permitido: es dominio puro, sin IO.
     /// </summary>
     [Theory]
-    [InlineData("Microsoft.EntityFrameworkCore")]
     [InlineData("TaxVision.Calendar.Infrastructure")]
     [InlineData("TaxVision.Calendar.Application")]
     public void Domain_should_not_depend_on_infrastructure_concerns(string forbiddenNamespace)

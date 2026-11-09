@@ -1,11 +1,11 @@
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Infrastructure.Persistence;
-using Wolverine;
 
 namespace TaxVision.Auth.Api.Bootstrap;
 
@@ -46,93 +46,115 @@ public sealed class SystemRolePermissionsSyncService(
 {
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-        var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-        var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
+        // Lectura sin cambios: qué roles de sistema difieren del catálogo.
+        List<Guid> outdatedRoleIds;
+        int totalSystemRoles;
+        await using (var scope = scopeFactory.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
 
-        // RBAC Fase 5 — resync cross-tenant deliberado (recomputa el rol de sistema de CADA
-        // tenant contra el catálogo actual), no un olvido de filtrar por tenant.
-        var systemRoles = await db
-            .Roles.IgnoreQueryFilters()
-            .Include(role => role.Permissions)
-            .Where(role => role.IsSystem)
-            .ToListAsync(cancellationToken);
+            // RBAC Fase 5 — resync cross-tenant deliberado (recomputa el rol de sistema de CADA
+            // tenant contra el catálogo actual), no un olvido de filtrar por tenant.
+            var systemRoles = await db
+                .Roles.IgnoreQueryFilters()
+                .AsNoTracking()
+                .Include(role => role.Permissions)
+                .Where(role => role.IsSystem)
+                .ToListAsync(cancellationToken);
 
-        if (systemRoles.Count == 0)
+            totalSystemRoles = systemRoles.Count;
+            outdatedRoleIds = systemRoles.Where(IsOutdated).Select(role => role.Id).ToList();
+        }
+
+        if (outdatedRoleIds.Count == 0)
             return;
 
-        var codeById = PermissionCatalog.All.ToDictionary(definition => definition.Id, definition => definition.Code);
-        var changedRoles = new List<Role>();
-        foreach (var role in systemRoles)
-        {
-            var currentIds = role.Permissions.Select(link => link.PermissionId).ToHashSet();
-            // 2026-08-06: TenantAdmin usa el set que SÍ incluye IsDangerous (ver doc-comment de
-            // PermissionCatalog.SystemTenantAdminRootPermissions) — este resync es también el
-            // mecanismo que cierra el gap retroactivamente para TODOS los tenants ya existentes,
-            // no solo los que se creen de acá en adelante.
-            var expectedCodes =
-                role.Name == Role.SystemTenantAdmin
-                    ? PermissionCatalog.SystemTenantAdminRootPermissions()
-                    : PermissionCatalog.SystemRoleDefaults(role.Name);
-            var expectedIds = expectedCodes.Select(PermissionCatalog.IdOf).ToList();
+        // Una unidad por rol: el rol, la versión de sus titulares y sus avisos se confirman juntos.
+        var summary = await TransactionalJobUnit.RunEachAsync<Guid, AuthDbContext>(
+            scopeFactory,
+            outdatedRoleIds,
+            ResyncRoleAsync,
+            logger,
+            cancellationToken
+        );
 
-            if (currentIds.SetEquals(expectedIds))
-                continue;
-
-            role.SetPermissions(expectedIds, seeding: true);
-            changedRoles.Add(role);
-        }
-
-        if (changedRoles.Count > 0)
-        {
-            await db.SaveChangesAsync(cancellationToken);
-
-            var catalog = await roles.GetPermissionsCatalogAsync(cancellationToken);
-            foreach (var role in changedRoles)
-            {
-                var permissionCodes = role
-                    .Permissions.Select(link => link.PermissionId)
-                    .Where(codeById.ContainsKey)
-                    .Select(id => codeById[id])
-                    .ToArray();
-                var correlationId = Guid.NewGuid().ToString("N");
-
-                await bus.PublishAsync(
-                    new RolePermissionsChangedIntegrationEvent
-                    {
-                        TenantId = role.TenantId,
-                        RoleId = role.Id,
-                        RoleName = role.Name,
-                        PermissionCodes = permissionCodes,
-                        PermissionsVersion = role.PermissionsVersion,
-                        CorrelationId = correlationId,
-                    }
-                );
-
-                // Y por titular, con sus códigos efectivos: los denies por usuario viven solo en
-                // Auth, así que ninguna proyección puede resolverlos por su cuenta.
-                await RolePermissionsFanOut.PublishForRoleHoldersAsync(
-                    role.TenantId,
-                    role.Id,
-                    catalog,
-                    users,
-                    roles,
-                    bus,
-                    correlationId,
-                    cancellationToken
-                );
-            }
-
-            // El fan-out sube PermissionsVersion de cada titular; hay que persistirlo.
-            await db.SaveChangesAsync(cancellationToken);
-
-            logger.LogInformation(
-                "SystemRolePermissionsSync: resynced {Updated} of {Total} system role(s) against the current PermissionCatalog.",
-                changedRoles.Count,
-                systemRoles.Count
-            );
-        }
+        logger.LogInformation(
+            "SystemRolePermissionsSync: resynced {Updated} of {Total} system role(s) against the current PermissionCatalog ({Failed} failed).",
+            summary.Committed,
+            totalSystemRoles,
+            summary.Failed + summary.Conflicts
+        );
     }
+
+    private static async Task<bool> ResyncRoleAsync(
+        Guid roleId,
+        JobUnitContext<AuthDbContext> unit,
+        CancellationToken ct
+    )
+    {
+        var role = await unit
+            .DbContext.Roles.IgnoreQueryFilters()
+            .Include(r => r.Permissions)
+            .SingleOrDefaultAsync(r => r.Id == roleId, ct);
+        if (role is null || !IsOutdated(role))
+            return false;
+
+        role.SetPermissions(ExpectedIds(role), seeding: true);
+        // El fan-out lee los titulares y sus roles de la base: el rol tiene que estar guardado (misma transacción).
+        await unit.DbContext.SaveChangesAsync(ct);
+
+        var users = unit.Services.GetRequiredService<IUserRepository>();
+        var roles = unit.Services.GetRequiredService<IRoleRepository>();
+        var catalog = await roles.GetPermissionsCatalogAsync(ct);
+        var codeById = PermissionCatalog.All.ToDictionary(definition => definition.Id, definition => definition.Code);
+        var permissionCodes = role
+            .Permissions.Select(link => link.PermissionId)
+            .Where(codeById.ContainsKey)
+            .Select(id => codeById[id])
+            .ToArray();
+        var correlationId = Guid.NewGuid().ToString("N");
+
+        await unit.PublishAsync(
+            new RolePermissionsChangedIntegrationEvent
+            {
+                TenantId = role.TenantId,
+                RoleId = role.Id,
+                RoleName = role.Name,
+                PermissionCodes = permissionCodes,
+                PermissionsVersion = role.PermissionsVersion,
+                CorrelationId = correlationId,
+            }
+        );
+
+        // Y por titular, con sus códigos efectivos: los denies por usuario viven solo en
+        // Auth, así que ninguna proyección puede resolverlos por su cuenta. El fan-out sube
+        // PermissionsVersion de cada titular; la unidad lo guarda al confirmar.
+        await RolePermissionsFanOut.PublishForRoleHoldersAsync(
+            role.TenantId,
+            role.Id,
+            catalog,
+            users,
+            roles,
+            unit.Outbox,
+            correlationId,
+            ct
+        );
+        return true;
+    }
+
+    private static bool IsOutdated(Role role) =>
+        !role.Permissions.Select(link => link.PermissionId).ToHashSet().SetEquals(ExpectedIds(role));
+
+    // 2026-08-06: TenantAdmin usa el set que SÍ incluye IsDangerous (ver doc-comment de
+    // PermissionCatalog.SystemTenantAdminRootPermissions) — este resync es también el
+    // mecanismo que cierra el gap retroactivamente para TODOS los tenants ya existentes,
+    // no solo los que se creen de acá en adelante.
+    private static List<Guid> ExpectedIds(Role role) =>
+        (
+            role.Name == Role.SystemTenantAdmin
+                ? PermissionCatalog.SystemTenantAdminRootPermissions()
+                : PermissionCatalog.SystemRoleDefaults(role.Name)
+        )
+            .Select(PermissionCatalog.IdOf)
+            .ToList();
 }

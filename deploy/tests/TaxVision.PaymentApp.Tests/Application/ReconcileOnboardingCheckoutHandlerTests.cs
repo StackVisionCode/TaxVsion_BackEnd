@@ -8,6 +8,7 @@ using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.OnboardingCheckouts.Commands;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
+using TaxVision.PaymentApp.Tests.TestDoubles;
 using Wolverine;
 using Wolverine.Runtime;
 using Wolverine.Transports.Sending;
@@ -25,26 +26,24 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
             new ChargeAuthorizationResult("CAPTURE-123", PaymentStatus.Succeeded)
         );
         var unitOfWork = new FakeUnitOfWork();
-        var bus = new FakeMessageBus();
 
         var result = await ReconcileOnboardingCheckoutHandler.Handle(
             new ReconcileOnboardingCheckoutCommand(payment.Id),
             new FakeSaaSPaymentRepository(payment),
             new FakePaymentAdapterFactory(provider),
             unitOfWork,
-            new FakeCorrelationContext(),
-            bus,
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(OnboardingPaymentStatus.Succeeded, result.Value.Status);
         Assert.Equal(PaymentStatus.Succeeded, payment.Status);
         Assert.Equal("CAPTURE-123", payment.ExternalChargeReference!.Value);
         Assert.Equal(1, unitOfWork.SaveChangesCount);
 
-        var published = Assert.IsType<OnboardingPaymentSucceededIntegrationEvent>(Assert.Single(bus.Published));
+        var published = Assert.IsType<OnboardingPaymentSucceededIntegrationEvent>(Assert.Single(emitted));
         Assert.Equal(payment.Id, published.SaaSPaymentId);
         Assert.Equal("CAPTURE-123", published.ProviderPaymentReference);
     }
@@ -58,24 +57,22 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
             new ChargeAuthorizationResult("ORDER-123", PaymentStatus.Processing)
         );
         var unitOfWork = new FakeUnitOfWork();
-        var bus = new FakeMessageBus();
 
         var result = await ReconcileOnboardingCheckoutHandler.Handle(
             new ReconcileOnboardingCheckoutCommand(payment.Id),
             new FakeSaaSPaymentRepository(payment),
             new FakePaymentAdapterFactory(provider),
             unitOfWork,
-            new FakeCorrelationContext(),
-            bus,
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
 
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
         Assert.True(result.IsSuccess);
         Assert.Equal(OnboardingPaymentStatus.Processing, result.Value.Status);
         Assert.Equal(PaymentStatus.Processing, payment.Status);
         Assert.Equal(0, unitOfWork.SaveChangesCount);
-        Assert.Empty(bus.Published);
+        Assert.Empty(emitted);
     }
 
     [Fact]
@@ -90,14 +87,13 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
             new FakeSaaSPaymentRepository(payment),
             new FakePaymentAdapterFactory(provider),
             new FakeUnitOfWork(),
-            new FakeCorrelationContext(),
-            new FakeMessageBus(),
             NullLogger<SaaSPayment>.Instance,
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(OnboardingPaymentStatus.Succeeded, result.Value.Status);
+        Assert.Equal(0, provider.Calls);
     }
 
     private static SaaSPayment CreateProcessingOnboardingPayment()
@@ -126,6 +122,15 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
 
     private sealed class FakeSaaSPaymentRepository(SaaSPayment payment) : ISaaSPaymentRepository
     {
+        private readonly bool _seeded = Seed(payment);
+
+        // Lo sembrado se considera ya guardado: sus eventos no cuentan para el comando.
+        private static bool Seed(SaaSPayment seeded)
+        {
+            seeded.ClearDomainEvents();
+            return true;
+        }
+
         public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, CancellationToken ct = default) =>
             Task.FromResult(payment.Id == saaSPaymentId ? payment : null);
 
@@ -141,7 +146,13 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<(Guid Id, Guid TenantId)>>([]);
+
+        public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
             DateTime cutoffUtc,
             int batchSize,
             CancellationToken ct = default
@@ -253,6 +264,12 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
                 SuggestedRetryCount = 0,
             };
 
+        public Task<Result<ChargeLookup>> FindChargeAsync(
+            Guid saaSPaymentId,
+            DateTime createdAfterUtc,
+            CancellationToken ct
+        ) => throw new NotSupportedException();
+
         public Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
             string providerChargeReference,
             CancellationToken ct
@@ -286,6 +303,7 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
             string providerChargeReference,
             Money amount,
             string reason,
+            string idempotencyKey,
             CancellationToken ct
         ) => throw new NotSupportedException();
 
@@ -320,19 +338,29 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
         ) => throw new NotSupportedException();
     }
 
+    // Reimplementa IPaymentProvider: sin eso el handler, que llama por la interfaz, llegaría al método base.
     private sealed class ThrowingPaymentProvider(PaymentProviderCode code)
-        : FakePaymentProvider(code, new ChargeAuthorizationResult("unused", PaymentStatus.Processing))
+        : FakePaymentProvider(code, new ChargeAuthorizationResult("unused", PaymentStatus.Processing)),
+            IPaymentProvider
     {
+        public int Calls { get; private set; }
+
         public new Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
             string providerChargeReference,
             CancellationToken ct
-        ) => throw new InvalidOperationException("Provider should not be called for terminal payments.");
+        ) => Fail();
 
         public new Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
             string providerChargeReference,
             Money amount,
             CancellationToken ct
-        ) => throw new InvalidOperationException("Provider should not be called for terminal payments.");
+        ) => Fail();
+
+        private Task<Result<ChargeAuthorizationResult>> Fail()
+        {
+            Calls++;
+            throw new InvalidOperationException("Provider should not be called for terminal payments.");
+        }
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

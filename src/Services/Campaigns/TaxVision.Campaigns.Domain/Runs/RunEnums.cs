@@ -1,9 +1,8 @@
 namespace TaxVision.Campaigns.Domain.Runs;
 
 /// <summary>
-/// Estado de una ejecución (<c>State_Machines.md §2</c>). Slice 2: materialización síncrona
-/// (Created→Dispatching directo; <c>Materializing</c>/paginado y <c>Cancelling</c> son fases
-/// posteriores).
+/// Estado de una ejecución (<c>State_Machines.md §2</c>). <c>Created</c>: persistido, esperando la reserva del Wallet
+/// (CMP-05). <c>Materializing</c>/paginado y <c>Cancelling</c> son fases posteriores.
 /// </summary>
 public enum CampaignRunStatus
 {

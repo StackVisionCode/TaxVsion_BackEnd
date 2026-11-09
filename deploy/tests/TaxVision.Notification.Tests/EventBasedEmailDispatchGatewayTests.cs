@@ -5,7 +5,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers.Postmaster;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -27,6 +30,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
             publisher,
             logRepo,
             uow,
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
 
@@ -63,6 +67,39 @@ public sealed class EventBasedEmailDispatchGatewayTests
         Assert.Equal(1, uow.SaveCount);
     }
 
+    // SCR-10: del render al log, por el mismo camino que usan los consumers.
+    [Fact]
+    public async Task Log_stores_rendered_versions()
+    {
+        var logRepo = new RecordingNotificationLogRepository();
+        var gateway = new EventBasedEmailDispatchGateway(
+            new RecordingIntegrationEventPublisher(),
+            logRepo,
+            new NoOpUnitOfWork(),
+            TestDeliveryGates.Open(),
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+        var render = new ScribeRenderedEmail(
+            "Welcome",
+            "<p>Hi</p>",
+            "Hi",
+            [],
+            EmailDispatchScope.System,
+            "auth.welcome",
+            TemplateVersion: 7,
+            LayoutVersion: 3
+        );
+
+        await gateway.QueueEmailAsync(
+            render.ToDispatchRequest(Guid.NewGuid(), "customer@test.com", "auth.welcome", Guid.NewGuid(), "corr-1"),
+            CancellationToken.None
+        );
+
+        var log = Assert.Single(logRepo.Logs);
+        Assert.Equal(7, log.RenderedTemplateVersion);
+        Assert.Equal(3, log.RenderedLayoutVersion);
+    }
+
     [Fact]
     public async Task QueueEmailAsync_sends_confidential_email_only_to_the_postmaster_queue()
     {
@@ -72,6 +109,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
             publisher,
             new RecordingNotificationLogRepository(),
             uow,
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var request = new EmailDispatchRequest(
@@ -106,6 +144,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
             publisher,
             logRepo,
             new NoOpUnitOfWork(),
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var request = new EmailDispatchRequest(
@@ -144,6 +183,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
             publisher,
             logRepo,
             uow,
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
 
@@ -182,6 +222,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
             publisher,
             new RecordingNotificationLogRepository(),
             new NoOpUnitOfWork(),
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var ics = new EmailInlineAttachment(
@@ -213,6 +254,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
             publisher,
             logRepo,
             new NoOpUnitOfWork(),
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var tooBig = new EmailInlineAttachment(
@@ -269,6 +311,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
                 publisher,
                 new RecordingNotificationLogRepository(),
                 new NoOpUnitOfWork(),
+                TestDeliveryGates.Open(),
                 NullLogger<EventBasedEmailDispatchGateway>.Instance
             );
             var request = new EmailDispatchRequest(
@@ -315,6 +358,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
             publisher,
             logRepo,
             new NoOpUnitOfWork(),
+            TestDeliveryGates.Open(),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
 
@@ -482,7 +526,7 @@ public sealed class EventBasedEmailDispatchGatewayTests
             .Create(
                 tenantId: Guid.NewGuid(),
                 channel: NotificationChannel.Email,
-                recipient: "test@customer.com",
+                recipient: NotificationRecipient.ForEmail("test@customer.com").Value,
                 subject: "Test",
                 templateKey: "test.key",
                 relatedEventId: null,
@@ -495,12 +539,109 @@ public sealed class EventBasedEmailDispatchGatewayTests
 
     private sealed class StubQueryRepository(NotificationLog? log) : INotificationLogQueryRepository
     {
-        public Task<NotificationLog?> FindWithAttemptsAsync(Guid notificationLogId, CancellationToken ct) =>
-            Task.FromResult(log);
+        public Task<NotificationLog?> FindWithAttemptsAsync(
+            Guid tenantId,
+            Guid notificationLogId,
+            CancellationToken ct
+        ) => Task.FromResult(log);
+
+        public Task<bool> ExistsAsync(Guid notificationLogId, CancellationToken ct) => Task.FromResult(log is not null);
+    }
+
+    [Fact]
+    public async Task Mandatory_template_ignores_email_preference()
+    {
+        var publisher = new RecordingIntegrationEventPublisher();
+        var gateway = new EventBasedEmailDispatchGateway(
+            publisher,
+            new RecordingNotificationLogRepository(),
+            new NoOpUnitOfWork(),
+            TestDeliveryGates.For(new DisabledPreferences(), new InMemoryUserEmailDirectoryRepository()),
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+
+        var result = await gateway.QueueEmailAsync(
+            StaffRequest(NotificationKinds.TasksFormParticipantAttachmentRejected),
+            CancellationToken.None
+        );
+
+        Assert.Equal(NotificationDispatchAttemptStatus.Queued, result.Status);
+        Assert.Single(publisher.Published.OfType<NotificationsEmailSendRequestedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Disabled_email_preference_suppresses_the_staff_email()
+    {
+        var publisher = new RecordingIntegrationEventPublisher();
+        var logs = new RecordingNotificationLogRepository();
+        var gateway = new EventBasedEmailDispatchGateway(
+            publisher,
+            logs,
+            new NoOpUnitOfWork(),
+            TestDeliveryGates.For(new DisabledPreferences(), new InMemoryUserEmailDirectoryRepository()),
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+
+        var result = await gateway.QueueEmailAsync(StaffRequest("reminder.due"), CancellationToken.None);
+
+        Assert.Equal(NotificationDispatchAttemptStatus.Suppressed, result.Status);
+        Assert.Empty(publisher.Published);
+        Assert.Empty(logs.Logs);
+    }
+
+    private static EmailDispatchRequest StaffRequest(string templateKey) =>
+        new(
+            TenantId: Guid.NewGuid(),
+            To: "staff@test.com",
+            Subject: "s",
+            HtmlBody: "<p>h</p>",
+            TextBody: "h",
+            TemplateKey: templateKey,
+            RelatedEventId: Guid.NewGuid(),
+            CorrelationId: "corr",
+            RecipientUserId: Guid.NewGuid(),
+            Category: NotificationCategory.Reminders
+        );
+
+    private sealed class DisabledPreferences : IUserNotificationPreferenceRepository
+    {
+        public Task<bool> IsEnabledAsync(
+            Guid tenantId,
+            Guid userId,
+            NotificationCategory category,
+            NotificationChannel channel,
+            CancellationToken ct = default
+        ) => Task.FromResult(false);
+
+        public Task<UserNotificationPreference?> GetAsync(
+            Guid tenantId,
+            Guid userId,
+            NotificationCategory category,
+            NotificationChannel channel,
+            CancellationToken ct = default
+        ) => Task.FromResult<UserNotificationPreference?>(null);
+
+        public Task<IReadOnlyList<UserNotificationPreference>> ListForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserNotificationPreference>>([]);
+
+        public Task AddAsync(UserNotificationPreference preference, CancellationToken ct = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class RecordingNotificationLogRepository : INotificationLogRepository
     {
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
         public List<NotificationLog> Logs { get; } = new();
 
         public Task AddAsync(NotificationLog log, CancellationToken ct = default)

@@ -46,6 +46,7 @@ public static class TenantEntitlementsChangedQuotaConsumer
 
         await ApplyAsync(
             message.TenantId,
+            message.RevisionNumber,
             message.PlanCode,
             storageQuotaBytes,
             maxFileBytes,
@@ -60,6 +61,7 @@ public static class TenantEntitlementsChangedQuotaConsumer
 
     private static async Task ApplyAsync(
         Guid tenantId,
+        long revision,
         string planCode,
         long storageQuotaBytes,
         long maxFileBytes,
@@ -79,13 +81,8 @@ public static class TenantEntitlementsChangedQuotaConsumer
             existing = TenantStorageLimit.Create(tenantId, planCode, maxBytes, maxFileBytes, fileTypeGroups);
             repository.Add(existing);
         }
-        else
-        {
-            existing.ApplyPlan(planCode, maxBytes, maxFileBytes, fileTypeGroups);
-        }
 
-        if (isSuspended)
-            existing.Suspend();
+        existing.ApplyEntitlements(revision, planCode, maxBytes, maxFileBytes, fileTypeGroups, isSuspended);
 
         await unitOfWork.SaveChangesAsync(ct);
     }

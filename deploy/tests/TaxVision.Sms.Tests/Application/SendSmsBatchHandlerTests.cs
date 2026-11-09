@@ -14,11 +14,12 @@ using TaxVision.Sms.Tests.Fakes;
 
 namespace TaxVision.Sms.Tests.Application;
 
-public sealed class SendSmsBatchHandlerTests
+public sealed partial class SendSmsBatchHandlerTests
 {
     private static readonly Guid Tenant = Guid.NewGuid();
     private static readonly Guid Customer = Guid.NewGuid();
     private const string Phone = "+18095551234";
+    private const string BatchKey = "req-1";
 
     private sealed class Harness
     {
@@ -38,19 +39,48 @@ public sealed class SendSmsBatchHandlerTests
         /// <summary>Clientes asignados al remitente; solo se consulta cuando el alcance aplica.</summary>
         public FakeSmsCustomerAssignmentReader Assignments { get; } = new();
 
+        public FakeCustomerContactPolicyRepository ContactPolicies { get; } = new();
+
+        public Harness()
+        {
+            // Fases 1 y 3: los handlers reales con los mismos fakes (Wolverine los invoca en producción).
+            Bus.OnInvoke = async message =>
+                message switch
+                {
+                    ReserveSmsMessageCommand reserve => await ReserveSmsMessageHandler.Handle(
+                        reserve,
+                        Messages,
+                        OptOuts,
+                        UnitOfWork,
+                        Bus,
+                        CancellationToken.None
+                    ),
+                    RecordSmsSendResultCommand record => await RecordSmsSendResultHandler.Handle(
+                        record,
+                        Messages,
+                        OptOuts,
+                        new FakePendingDeliveryReceiptRepository(),
+                        new FakeProcessedWebhookRepository(),
+                        UnitOfWork,
+                        Bus,
+                        CancellationToken.None
+                    ),
+                    _ => throw new NotSupportedException(message.GetType().Name),
+                };
+        }
+
         public Task<BuildingBlocks.Results.Result<SendSmsBatchResponse>> Run(SendSmsBatchCommand command)
         {
             IReadOnlyList<ISmsProvider> order = Order.Count > 0 ? Order : [Provider];
             return SendSmsBatchHandler.Handle(
                 command,
                 Messages,
-                OptOuts,
                 new FakeSmsProviderRouter(order),
                 Microsoft.Extensions.Options.Options.Create(Options),
                 Microsoft.Extensions.Options.Options.Create(Visibility),
                 Assignments,
+                ContactPolicies,
                 Wallet,
-                UnitOfWork,
                 Bus,
                 NullLogger<SendSmsBatchCommand>.Instance,
                 CancellationToken.None
@@ -76,12 +106,42 @@ public sealed class SendSmsBatchHandlerTests
             ActorUserId: Guid.NewGuid(),
             CanViewAll: true,
             ChargeWallet: true,
-            CallerBearerToken: "bearer-token"
+            CallerBearerToken: "bearer-token",
+            BatchKey: BatchKey
         );
 
     /// <summary>Lote enviado por una persona: es el único caso al que se le mide el alcance.</summary>
     private static SendSmsBatchCommand BatchFrom(Guid sender, bool canViewAll, params SmsSendItemDto[] items) =>
         new(Tenant, "corr-1", items, sender, canViewAll);
+
+    // El SMS ya salió: un choque con la conciliación al registrar no puede cortar el lote.
+    [Fact]
+    public async Task Record_that_loses_a_concurrency_conflict_is_retried_and_the_batch_goes_on()
+    {
+        var h = new Harness();
+        var route = h.Bus.OnInvoke!;
+        var conflicts = 0;
+        h.Bus.OnInvoke = message =>
+            message is RecordSmsSendResultCommand && conflicts++ == 0
+                ? throw new BuildingBlocks.Results.ConflictException("Persistence.ConcurrencyConflict", "Simulated.")
+                : route(message);
+
+        var result = await h.Run(
+            new SendSmsBatchCommand(
+                Tenant,
+                "corr",
+                [
+                    new SmsSendItemDto(Guid.NewGuid(), "+18095551234", "uno", null, "key-1", "docs"),
+                    new SmsSendItemDto(Guid.NewGuid(), "+18095551235", "dos", null, "key-2", "docs"),
+                ],
+                ActorUserId: null,
+                CanViewAll: false
+            )
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.All(result.Value.Results, item => Assert.Equal(nameof(SmsMessageStatus.Accepted), item.Status));
+    }
 
     [Fact]
     public async Task Empty_batch_fails()
@@ -119,7 +179,7 @@ public sealed class SendSmsBatchHandlerTests
         Assert.Equal(SmsMessageStatus.Accepted, h.Messages.Added[0].Status);
         Assert.Equal(1, h.Provider.SendAsyncCallCount);
         Assert.NotNull(h.Bus.LastOfType<SmsMessageAcceptedIntegrationEvent>());
-        Assert.Equal(1, h.UnitOfWork.SaveChangesCallCount);
+        Assert.Equal(2, h.UnitOfWork.SaveChangesCallCount); // fase 1 (reserva) y fase 3 (resultado)
     }
 
     [Fact]
@@ -172,6 +232,47 @@ public sealed class SendSmsBatchHandlerTests
     }
 
     [Fact]
+    public async Task Wallet_settle_failure_keeps_the_send_and_queues_the_settlement()
+    {
+        var h = new Harness();
+        h.Wallet.SettleFailures.Enqueue(new InvalidOperationException("Wallet settle failed (503)."));
+
+        var result = await h.Run(ChargedBatch(Item()));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(nameof(SmsMessageStatus.Accepted), Assert.Single(result.Value.Results).Status);
+        Assert.Equal(1, h.Provider.SendAsyncCallCount);
+        // Sin el bearer: la sesión vence y un token no se guarda en la cola.
+        Assert.Equal(
+            new SettleSmsBatchCommand(Tenant, result.Value.BatchId),
+            Assert.Single(h.Bus.Published.OfType<SettleSmsBatchCommand>())
+        );
+    }
+
+    [Fact]
+    public async Task Cancelled_settle_queues_the_settlement()
+    {
+        var h = new Harness();
+        h.Wallet.SettleFailures.Enqueue(new OperationCanceledException());
+
+        var result = await h.Run(ChargedBatch(Item()));
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(h.Bus.Published.OfType<SettleSmsBatchCommand>());
+    }
+
+    [Fact]
+    public async Task Settled_batch_queues_nothing()
+    {
+        var h = new Harness();
+
+        await h.Run(ChargedBatch(Item()));
+
+        Assert.Single(h.Wallet.Settlements);
+        Assert.Empty(h.Bus.Published.OfType<SettleSmsBatchCommand>());
+    }
+
+    [Fact]
     public async Task Insufficient_wallet_balance_rejects_the_batch_without_sending()
     {
         var h = new Harness();
@@ -212,6 +313,50 @@ public sealed class SendSmsBatchHandlerTests
     }
 
     [Fact]
+    public async Task Opted_out_number_under_another_customer_is_suppressed()
+    {
+        var h = new Harness();
+        var otherCustomer = Guid.NewGuid();
+        var optOut = SmsOptOut.CreateSubscribed(Tenant, otherCustomer, PhoneE164.Create(Phone).Value, DateTime.UtcNow);
+        optOut.OptOut("STOP", DateTime.UtcNow);
+        h.OptOuts.Seed(optOut);
+
+        var result = await h.Run(Batch(Item()));
+
+        var item = Assert.Single(result.Value.Results);
+        Assert.Equal("Suppressed", item.Status);
+        Assert.Equal(0, h.Provider.SendAsyncCallCount);
+        Assert.NotNull(h.Bus.LastOfType<SmsMessageSuppressedIntegrationEvent>());
+        Assert.Equal(Customer, Assert.Single(h.Messages.Added).CustomerId); // auditoría con el cliente del envío
+    }
+
+    [Fact]
+    public async Task ProviderReportsRecipientOptedOut_SuppressesAndRecordsOptOut()
+    {
+        var h = new Harness();
+        var primary = new FakeSmsProvider
+        {
+            Code = "p1",
+            SendImpl = _ => new SmsSendResult(false, null, SmsSendFailure.RecipientOptedOut, "unsubscribed"),
+        };
+        var secondary = new FakeSmsProvider { Code = "p2" };
+        h.Order.Add(primary);
+        h.Order.Add(secondary);
+
+        var result = await h.Run(ChargedBatch(Item()));
+
+        var item = Assert.Single(result.Value.Results);
+        Assert.Equal("Suppressed", item.Status);
+        Assert.Equal(0, secondary.SendAsyncCallCount); // sin failover a un número dado de baja
+        Assert.Equal(0, Assert.Single(h.Wallet.Settlements).ConsumedUnits);
+        Assert.NotNull(h.Bus.LastOfType<SmsMessageSuppressedIntegrationEvent>());
+        var optOut = Assert.Single(h.OptOuts.Added);
+        Assert.True(optOut.IsOptedOut);
+        Assert.Equal("carrier", optOut.LastKeyword);
+        Assert.Equal(Phone, optOut.PhoneE164);
+    }
+
+    [Fact]
     public async Task Existing_idempotency_key_returns_existing_without_resending()
     {
         var h = new Harness();
@@ -238,6 +383,7 @@ public sealed class SendSmsBatchHandlerTests
         Assert.Equal(existing.Id, item.MessageId);
         Assert.Equal(0, h.Provider.SendAsyncCallCount); // not resent
         Assert.Empty(h.Messages.Added); // nothing new persisted
+        Assert.True(item.Reused);
     }
 
     [Fact]
@@ -391,6 +537,120 @@ public sealed class SendSmsBatchHandlerTests
         Assert.Equal("p2", h.Messages.Added[0].ProviderCode);
     }
 
+    // ─────────── Resultado desconocido y reintentos (SMS-02 / SMS-03) ───────────
+
+    private const string OutcomeUnknownCode = "sms.providerOutcomeUnknown";
+
+    [Fact]
+    public async Task Timeout_after_request_does_not_fail_over_to_secondary()
+    {
+        var h = new Harness();
+        var primary = new FakeSmsProvider
+        {
+            Code = "p1",
+            SendImpl = _ => new SmsSendResult(false, null, OutcomeUnknownCode, "timeout"),
+        };
+        var secondary = new FakeSmsProvider { Code = "p2" };
+        h.Order.Add(primary);
+        h.Order.Add(secondary);
+
+        var result = await h.Run(Batch(Item()));
+
+        var item = Assert.Single(result.Value.Results);
+        Assert.Equal(0, secondary.SendAsyncCallCount); // sin failover: podría haber salido
+        Assert.Equal("OutcomeUnknown", item.Status);
+        Assert.Equal(OutcomeUnknownCode, item.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ProviderTimeout_LeavesOutcomeUnknownAndKeepsUnitReserved()
+    {
+        var h = new Harness();
+        h.Provider.SendImpl = _ => new SmsSendResult(false, null, OutcomeUnknownCode, "timeout");
+
+        var result = await h.Run(ChargedBatch(Item()));
+
+        Assert.Equal("OutcomeUnknown", Assert.Single(result.Value.Results).Status);
+        Assert.Equal("OutcomeUnknown", Assert.Single(h.Messages.Added).Status.ToString());
+        Assert.Single(h.Wallet.Reservations);
+        Assert.Empty(h.Wallet.Settlements); // la reserva sigue abierta hasta que el proveedor confirme
+        Assert.Null(h.Bus.LastOfType<SmsMessageFailedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Retry_with_pending_reservation_does_not_resend()
+    {
+        var h = new Harness();
+        var pending = SmsMessage
+            .Create(
+                Tenant,
+                Customer,
+                PhoneE164.Create(Phone).Value,
+                SmsBody.Create("hi").Value,
+                "idem-1",
+                "corr-1",
+                SendSmsBatchHandler.BatchIdFor(Tenant, BatchKey),
+                "fake",
+                "docs",
+                [],
+                DateTime.UtcNow,
+                walletCharged: true
+            )
+            .Value;
+        pending.MarkSendAttempted(DateTime.UtcNow);
+        h.Messages.SeedForIdempotency(pending);
+
+        var result = await h.Run(ChargedBatch(Item(idempotencyKey: "idem-1")));
+
+        var item = Assert.Single(result.Value.Results);
+        Assert.Equal("Pending", item.Status); // en curso en el primer intento
+        Assert.Equal(0, h.Provider.SendAsyncCallCount);
+        Assert.Empty(h.Wallet.Settlements); // liquida el primer intento; este no libera la reserva compartida
+    }
+
+    [Fact]
+    public async Task Charged_batch_retry_reuses_the_same_wallet_reference()
+    {
+        var h = new Harness();
+        var command = ChargedBatch(Item());
+
+        await h.Run(command);
+        await h.Run(command);
+
+        Assert.Equal(2, h.Wallet.Reservations.Count);
+        Assert.Equal(h.Wallet.Reservations[0].ReferenceId, h.Wallet.Reservations[1].ReferenceId);
+        Assert.Equal(1, h.Provider.SendAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task Existing_message_is_not_counted_when_settling_the_wallet()
+    {
+        var h = new Harness();
+        var existing = SmsMessage
+            .Create(
+                Tenant,
+                Customer,
+                PhoneE164.Create(Phone).Value,
+                SmsBody.Create("hi").Value,
+                "idem-1",
+                "corr-old",
+                Guid.NewGuid(),
+                "fake",
+                "docs",
+                [],
+                DateTime.UtcNow
+            )
+            .Value;
+        existing.MarkAccepted("prov-old", DateTime.UtcNow);
+        h.Messages.SeedForIdempotency(existing);
+
+        var result = await h.Run(ChargedBatch(Item(idempotencyKey: "idem-1")));
+
+        Assert.Equal("Accepted", Assert.Single(result.Value.Results).Status);
+        Assert.Equal(0, h.Provider.SendAsyncCallCount);
+        Assert.Equal(0, Assert.Single(h.Wallet.Settlements).ConsumedUnits);
+    }
+
     // ---------- A1: visibilidad por asignación ----------
 
     [Fact]
@@ -460,61 +720,73 @@ public sealed class SendSmsBatchHandlerTests
         Assert.False(h.Assignments.WasAsked);
     }
 
-    private sealed class FakeWalletSpendClient : IWalletSpendClient
+    // Política de contacto del cliente (SMS-16): se filtra antes de reservar en el Wallet.
+    private static readonly Guid OtherCustomer = Guid.NewGuid();
+    private const string OtherPhone = "+18095559876";
+
+    private static SendSmsBatchCommand PolicyBatch(bool charged, params SmsSendItemDto[] items) =>
+        new(
+            Tenant,
+            "corr-1",
+            items,
+            ActorUserId: Guid.NewGuid(),
+            CanViewAll: true,
+            ChargeWallet: charged,
+            CallerBearerToken: charged ? "bearer-token" : null,
+            BatchKey: charged ? BatchKey : null,
+            EnforceContactPolicy: true
+        );
+
+    [Fact]
+    public async Task Customer_with_sms_disabled_is_suppressed_and_not_charged()
     {
-        public WalletReserveResult ReserveResult { get; set; } =
-            new(
-                Reachable: true,
-                Authorized: true,
-                CostMicros: 0,
-                AvailableMicros: 1_000_000,
-                DeficitMicros: 0,
-                Currency: "USD"
-            );
+        var h = new Harness();
+        h.ContactPolicies.SmsDisabled(Tenant, Customer);
 
-        public List<ReservationCall> Reservations { get; } = [];
-        public List<SettlementCall> Settlements { get; } = [];
-
-        public Task<WalletReserveResult> ReserveAsync(
-            Guid tenantId,
-            string referenceType,
-            Guid referenceId,
-            WalletUnitCounts units,
-            string? callerBearerToken,
-            CancellationToken ct = default
-        )
-        {
-            Reservations.Add(new ReservationCall(tenantId, referenceType, referenceId, units, callerBearerToken));
-            return Task.FromResult(ReserveResult);
-        }
-
-        public Task SettleAsync(
-            Guid tenantId,
-            string referenceType,
-            Guid referenceId,
-            int consumedUnits,
-            string? callerBearerToken,
-            CancellationToken ct = default
-        )
-        {
-            Settlements.Add(new SettlementCall(tenantId, referenceType, referenceId, consumedUnits, callerBearerToken));
-            return Task.CompletedTask;
-        }
-
-        public sealed record ReservationCall(
-            Guid TenantId,
-            string ReferenceType,
-            Guid ReferenceId,
-            WalletUnitCounts Units,
-            string? CallerBearerToken
+        var result = await h.Run(
+            PolicyBatch(
+                charged: true,
+                Item(idempotencyKey: "blocked"),
+                new SmsSendItemDto(OtherCustomer, OtherPhone, "hi", null, "allowed", "docs")
+            )
         );
 
-        public sealed record SettlementCall(
-            Guid TenantId,
-            string ReferenceType,
-            Guid ReferenceId,
-            int ConsumedUnits,
-            string? CallerBearerToken
-        );
+        Assert.True(result.IsSuccess);
+        var blocked = result.Value.Results.Single(r => r.CustomerId == Customer);
+        Assert.Equal("Suppressed", blocked.Status);
+        Assert.Equal(SmsMessage.ContactPolicySuppressionCode, blocked.ErrorCode);
+        Assert.NotNull(blocked.MessageId);
+        Assert.Equal(1, h.Provider.SendAsyncCallCount);
+        Assert.Equal(1, Assert.Single(h.Wallet.Reservations).Units.Sms);
+        Assert.Equal(1, Assert.Single(h.Wallet.Settlements).ConsumedUnits);
+        Assert.Single(h.Bus.Published.OfType<SmsMessageSuppressedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Batch_with_every_customer_disabled_reserves_nothing()
+    {
+        var h = new Harness();
+        h.ContactPolicies.SmsDisabled(Tenant, Customer);
+
+        var result = await h.Run(PolicyBatch(charged: true, Item()));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Suppressed", Assert.Single(result.Value.Results).Status);
+        Assert.Empty(h.Wallet.Reservations);
+        Assert.Empty(h.Wallet.Settlements);
+        Assert.Equal(0, h.Provider.SendAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task Transactional_send_ignores_the_contact_policy()
+    {
+        // OTP y avisos de firma: Notification ya decidió; Sms no los vuelve a filtrar.
+        var h = new Harness();
+        h.ContactPolicies.SmsDisabled(Tenant, Customer);
+
+        var result = await h.Run(Batch(Item()));
+
+        Assert.Equal("Accepted", Assert.Single(result.Value.Results).Status);
+        Assert.Equal(1, h.Provider.SendAsyncCallCount);
     }
 }

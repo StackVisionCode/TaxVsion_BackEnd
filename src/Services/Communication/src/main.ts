@@ -433,6 +433,10 @@ async function main(): Promise<void> {
     meetingMediaPolicy: container.meetingMediaPolicy,
     effectiveSettings: container.effectiveSettings,
     emitter,
+    // Cancelar la sala por la cita: mismo aviso que la cancelación del host (nombre, zona y bitácora).
+    meetingEvents: container.meetingEvents,
+    userDirectory: container.userDirectory,
+    tenantHostResolver: container.tenantHostResolver,
   });
   bindSupportConsumers(consumers.register.bind(consumers), {
     supportTickets: container.supportTickets,

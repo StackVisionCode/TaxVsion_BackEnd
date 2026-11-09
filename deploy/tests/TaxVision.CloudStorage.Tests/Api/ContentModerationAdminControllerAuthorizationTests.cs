@@ -45,7 +45,7 @@ public sealed class ContentModerationAdminControllerAuthorizationTests
     public void No_action_widens_the_actor_types_or_the_permission()
     {
         var actions = Actions().ToList();
-        Assert.Equal(8, actions.Count);
+        Assert.Equal(10, actions.Count); // CST-2 sumó Rescan; CST-5, RecalculateQuota
 
         foreach (var action in actions)
         {

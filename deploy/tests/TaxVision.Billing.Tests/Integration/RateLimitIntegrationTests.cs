@@ -2,6 +2,10 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using TaxVision.Billing.Infrastructure.Persistence;
 using Xunit;
 
 namespace TaxVision.Billing.Tests.Integration;
@@ -16,11 +20,24 @@ namespace TaxVision.Billing.Tests.Integration;
 /// (<see cref="Guid.NewGuid"/>) para no compartir contador de <c>IRateCounter</c> con otra corrida
 /// — el contador vive en Redis y sobrevive al proceso de test.
 /// </summary>
+[Collection(BillingTestDatabase.Collection)]
 public sealed class RateLimitIntegrationTests : IClassFixture<BillingApiFactory>
 {
     private readonly BillingApiFactory factory;
 
     public RateLimitIntegrationTests(BillingApiFactory factory) => this.factory = factory;
+
+    // BIL-14: en Development los user-secrets podrían ganarle al valor del factory.
+    [Fact]
+    public void ApiHost_UsesTheTemporaryDatabase()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BillingDbContext>();
+
+        var catalog = new SqlConnectionStringBuilder(db.Database.GetConnectionString()).InitialCatalog;
+
+        Assert.Equal(BillingTestDatabase.DefaultName, catalog);
+    }
 
     [Fact]
     public async Task ListInvoices_trips_with_user_layer_and_limit_300()

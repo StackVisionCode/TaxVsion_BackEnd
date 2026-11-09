@@ -111,6 +111,10 @@ public sealed class ScribeTelemetryTests
             new EventTemplateResolver(new FakeEventTemplateMappingRepository(uniqueTemplateKey)),
             new FakeEmailTemplateRepository(template),
             new FakeEmailLayoutRepository(layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(template),
+                new FakeEmailLayoutRepository(layout)
+            ),
             cloudStorage,
             new FakeLogoResolver(logo),
             new FakeTenantProfileRefRepository(),

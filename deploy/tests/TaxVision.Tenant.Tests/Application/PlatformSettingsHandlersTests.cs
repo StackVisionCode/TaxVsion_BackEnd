@@ -37,6 +37,7 @@ public sealed class PlatformSettingsHandlersTests
             uow,
             bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -60,6 +61,7 @@ public sealed class PlatformSettingsHandlersTests
             new CountingUnitOfWork(),
             bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
         repo.Current!.Update(
@@ -80,6 +82,7 @@ public sealed class PlatformSettingsHandlersTests
             new CountingUnitOfWork(),
             bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -101,6 +104,7 @@ public sealed class PlatformSettingsHandlersTests
             uow,
             bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -128,6 +132,7 @@ public sealed class PlatformSettingsHandlersTests
             uow,
             bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -149,6 +154,7 @@ public sealed class PlatformSettingsHandlersTests
             new CountingUnitOfWork(),
             bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -168,6 +174,7 @@ public sealed class PlatformSettingsHandlersTests
             new CountingUnitOfWork(),
             new RecordingMessageBus(),
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
         var get = await GetPlatformSettingsHandler.Handle(new GetPlatformSettingsQuery(), repo, CancellationToken.None);

@@ -1,5 +1,6 @@
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,8 @@ namespace TaxVision.Tenant.Application.Tenants.Consumers;
 /// <summary>
 /// Auth renombró el subdominio primario de una oficina: el registro de oficinas refleja el slug nuevo.
 /// Sin esto el slug viejo seguía acá (y en el listado de PlatformAdmin) aunque la oficina ya entrara
-/// por el nuevo. Idempotente: si el slug ya es el nuevo, no hace nada.
+/// por el nuevo. Idempotente: si el slug ya es el nuevo, no hace nada. Si no parte del slug actual, falta un
+/// renombre anterior: se reintenta y, al agotarse, va a la cola de errores.
 /// </summary>
 public static class TenantSubdomainChangedConsumer
 {
@@ -34,6 +36,12 @@ public static class TenantSubdomainChangedConsumer
         var tenant = await tenants.GetByIdAsync(evt.TenantId, ct);
         if (tenant is null || tenant.SubDomain == evt.NewSlug)
             return;
+
+        if (tenant.SubDomain != evt.OldSlug)
+            throw new DependencyNotReadyException(
+                "TenantSubdomainChanged",
+                $"Tenant {evt.TenantId} is on '{tenant.SubDomain}', the rename starts from '{evt.OldSlug}'."
+            );
 
         var result = tenant.ChangeSubDomain(evt.NewSlug);
         if (result.IsFailure)

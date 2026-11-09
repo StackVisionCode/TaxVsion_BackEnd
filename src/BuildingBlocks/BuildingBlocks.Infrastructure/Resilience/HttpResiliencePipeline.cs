@@ -67,6 +67,36 @@ public sealed class HttpResiliencePipeline
         return new HttpResiliencePipeline(pipeline);
     }
 
+    /// <summary>
+    /// Solo circuit breaker, sin reintentos: para POST no idempotentes (un reintento tras un corte
+    /// puede repetir el efecto en el proveedor). Mismo breaker que <see cref="Create"/>.
+    /// </summary>
+    public static HttpResiliencePipeline CreateWithoutRetry(
+        string boundaryName,
+        int minimumThroughput = 3,
+        TimeSpan? breakDuration = null,
+        Action<string>? onOpened = null
+    )
+    {
+        var pipeline = new ResiliencePipelineBuilder()
+            .AddCircuitBreaker(
+                new CircuitBreakerStrategyOptions
+                {
+                    FailureRatio = 1.0,
+                    MinimumThroughput = minimumThroughput,
+                    SamplingDuration = TimeSpan.FromMinutes(2),
+                    BreakDuration = breakDuration ?? TimeSpan.FromSeconds(60),
+                    OnOpened = _ =>
+                    {
+                        onOpened?.Invoke(boundaryName);
+                        return default;
+                    },
+                }
+            )
+            .Build();
+        return new HttpResiliencePipeline(pipeline);
+    }
+
     /// <summary>Lanza <see cref="BrokenCircuitException"/> sin invocar <paramref name="operation"/> si el circuito está abierto.</summary>
     public Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken ct = default) =>
         _pipeline.ExecuteAsync(async token => await operation(token), ct).AsTask();

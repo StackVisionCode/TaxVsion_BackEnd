@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
@@ -27,7 +28,7 @@ public static class MeetingRecordingReadyConsumer
             var title = $"Grabación de meeting lista ({evt.DurationSeconds:F0}s, {evt.ParticipantCount} participantes)";
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.HostUserId:N}",
+                NotificationRecipient.ForUser(evt.HostUserId),
                 title,
                 NotificationCategory.Collaboration,
                 "communication.meeting.recording_ready",

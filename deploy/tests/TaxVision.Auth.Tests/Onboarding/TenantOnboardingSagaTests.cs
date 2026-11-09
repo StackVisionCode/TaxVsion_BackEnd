@@ -1,10 +1,12 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
-using TaxVision.Auth.Application.Onboarding.Sagas;
-using TaxVision.Auth.Application.Onboarding.Sagas.Commands;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
-using TaxVision.Auth.Domain.Onboarding.ValueObjects;
+using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Auth.Onboarding.Application.Internal.Commands;
+using TaxVision.Auth.Onboarding.Application.Sagas;
+using TaxVision.Auth.Onboarding.Application.Sagas.Commands;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Domain.ValueObjects;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
@@ -421,12 +423,19 @@ public sealed class TenantOnboardingSagaTests
             "Lovelace",
             Guid.NewGuid()
         );
-        var client = new FakeAuthInternalOwnerCreationClient(
-            Result.Failure(new Error("AuthInternalOwnerCreationClient.RequestFailed", "boom"))
-        );
+        var bus = new FakeMessageBus
+        {
+            InvokeHandler = _ => Result.Failure(new Error("Onboarding.PasswordReferenceExpired", "boom")),
+        };
         var correlation = new FakeCorrelationContext();
 
-        var result = await CreateTenantOwnerHandler.Handle(command, client, correlation, CancellationToken.None);
+        var result = await CreateTenantOwnerHandler.Handle(
+            command,
+            bus,
+            correlation,
+            NullLogger<CreateTenantOwnerCommand>.Instance,
+            CancellationToken.None
+        );
 
         Assert.NotNull(result);
         Assert.Equal(TenantProvisioningStep.TenantAdmin.ToString(), result!.FailedStep);
@@ -446,14 +455,28 @@ public sealed class TenantOnboardingSagaTests
             "Lovelace",
             Guid.NewGuid()
         );
-        var client = new FakeAuthInternalOwnerCreationClient(Result.Success());
+        CreateTenantOwnerFromOnboardingCommand? invoked = null;
+        var bus = new FakeMessageBus
+        {
+            InvokeHandler = message =>
+            {
+                invoked = (CreateTenantOwnerFromOnboardingCommand)message;
+                return Result.Success();
+            },
+        };
         var correlation = new FakeCorrelationContext();
 
-        var result = await CreateTenantOwnerHandler.Handle(command, client, correlation, CancellationToken.None);
+        var result = await CreateTenantOwnerHandler.Handle(
+            command,
+            bus,
+            correlation,
+            NullLogger<CreateTenantOwnerCommand>.Instance,
+            CancellationToken.None
+        );
 
         Assert.Null(result);
-        Assert.Equal(command.OnboardingId, client.LastRequest!.OnboardingId);
-        Assert.Equal(command.PasswordHashReference, client.LastRequest.PasswordHashReference);
+        Assert.Equal(command.OnboardingId, invoked!.OnboardingId);
+        Assert.Equal(command.PasswordHashReference, invoked.PasswordHashReference);
     }
 
     [Fact]

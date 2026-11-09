@@ -24,6 +24,7 @@ public static class ResolvePayableHandler
         ResolvePayableCommand command,
         IPayableReferenceRepository payables,
         IPaymentLinkRepository links,
+        ITenantPaymentRepository payments,
         ITenantRegistry tenants,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -50,7 +51,30 @@ public static class ResolvePayableHandler
         // Segunda guarda, y la que cubre lo que la primera no puede: las facturas cobradas ANTES de
         // que existiera el consumer no tienen evento que reemitir, así que su payable sigue sin
         // liquidar. Un link en Used es prueba de cobro consumado — MarkAsUsed exige un pago asociado.
-        if (await links.AnyUsedForExternalReferenceAsync(payable.TenantId, payable.ExternalReferenceId, ct))
+        // Solo cuenta si se usó después del último saldo de Billing: uno anterior ya está descontado (PCL-14).
+        if (
+            await links.AnyUsedForExternalReferenceAsync(
+                payable.TenantId,
+                payable.ExternalReferenceId,
+                payable.AmountUpdatedAtUtc,
+                ct
+            )
+        )
+            return Result.Failure<ResolvePayableResponse>(
+                new Error("Payable.AlreadyPaid", "This invoice has already been paid.")
+            );
+
+        // Mientras llega InvoicePaid: un pago confirmado después del último cambio de monto ya cubrió el
+        // saldo vigente. Sin cambio registrado (null) no se aplica: se cobra el saldo que mandó Billing.
+        if (
+            payable.AmountUpdatedAtUtc is { } amountUpdatedAtUtc
+            && await payments.AnySucceededForReferenceSinceAsync(
+                payable.TenantId,
+                payable.ExternalReferenceId,
+                amountUpdatedAtUtc,
+                ct
+            )
+        )
             return Result.Failure<ResolvePayableResponse>(
                 new Error("Payable.AlreadyPaid", "This invoice has already been paid.")
             );
@@ -61,9 +85,16 @@ public static class ResolvePayableHandler
 
         var nowUtc = DateTime.UtcNow;
 
+        // Se reusa solo si sigue vigente y cobra el monto actual (con BIL-1 baja tras cada pago parcial).
         var existing = await links.GetActiveByExternalReferenceAsync(payable.TenantId, payable.ExternalReferenceId, ct);
-        if (existing is not null && existing.IsRedeemable(nowUtc))
+        if (existing is not null && existing.IsRedeemable(nowUtc) && existing.Amount == payable.Amount)
             return Result.Success(new ResolvePayableResponse(existing.Token.Value, subDomain));
+
+        // Un cobro sin terminar (p. ej. 3DS) sobre un link anterior: acuñar otro haría pagar dos veces.
+        if (await payments.AnyInProgressForReferenceAsync(payable.TenantId, payable.ExternalReferenceId, ct))
+            return Result.Failure<ResolvePayableResponse>(
+                new Error("Payable.PaymentInProgress", "A payment for this invoice is already being processed.")
+            );
 
         var purposeResult = PaymentPurpose.Create(payable.PurposeKind, payable.ExternalReferenceId);
         if (purposeResult.IsFailure)
@@ -83,6 +114,8 @@ public static class ResolvePayableHandler
             return Result.Failure<ResolvePayableResponse>(created.Error);
 
         var link = created.Value;
+        existing?.Expire(nowUtc);
+        payable.RecordLinkMinted(nowUtc);
         await links.AddAsync(link, ct);
         await unitOfWork.SaveChangesAsync(ct);
 

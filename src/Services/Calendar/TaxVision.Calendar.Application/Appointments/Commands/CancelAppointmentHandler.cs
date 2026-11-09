@@ -1,13 +1,9 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CalendarIntegrationEvents;
-using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Observability;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
-using Wolverine;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
 
@@ -27,8 +23,6 @@ public static class CancelAppointmentHandler
         CancelAppointmentCommand command,
         IAppointmentRepository appointments,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         ICalendarMetrics metrics,
         CancellationToken ct
     )
@@ -43,81 +37,63 @@ public static class CancelAppointmentHandler
         if (appointment.IsRecurring && command.Scope is null)
             return Result.Failure(AppointmentErrors.ScopeRequired);
 
+        // Los objetivos se calculan antes de cancelar: después la cita ya no los produce.
+        var now = DateTime.UtcNow;
+        var targets = ReminderTargetsToClose(appointment, command, onlyOne, now);
+
         var cancelled = onlyOne
-            ? CancelOccurrence(appointment, command)
-            : appointment.Cancel(command.ActingUserId, command.CanManageAll, command.Reason, DateTime.UtcNow);
+            ? CancelOccurrence(appointment, command, now)
+            : appointment.Cancel(
+                command.ActingUserId,
+                command.CanManageAll,
+                command.Reason,
+                now,
+                command.Scope,
+                command.OriginalStartUtc
+            );
 
         if (cancelled.IsFailure)
             return cancelled;
 
+        // Cancelar sin avisar a Reminder deja el aviso vivo: al cliente le llega un recordatorio de una
+        // cita que ya no existe.
+        appointment.CloseReminderTargets(targets, command.Reason, now);
+
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishAsync(appointment, command, onlyOne, bus, correlation);
         metrics.RecordCancelled(appointment.IsRecurring);
 
         return Result.Success();
     }
 
-    private static Result CancelOccurrence(Appointment appointment, CancelAppointmentCommand command) =>
+    private static Result CancelOccurrence(
+        Appointment appointment,
+        CancelAppointmentCommand command,
+        DateTime nowUtc
+    ) =>
         command.OriginalStartUtc is not { } original
             ? Result.Failure(RecurrenceErrors.NotAnOccurrence)
-            : appointment.CancelOccurrence(original, command.ActingUserId, command.CanManageAll, DateTime.UtcNow);
+            : appointment.CancelOccurrence(
+                original,
+                command.ActingUserId,
+                command.CanManageAll,
+                nowUtc,
+                command.Reason
+            );
 
-    /// <summary>
-    /// Cancelar sin avisar a Reminder deja el aviso vivo: al cliente le llega un recordatorio de una
-    /// cita que ya no existe.
-    /// </summary>
-    private static async Task PublishAsync(
+    /// <summary>Sin aviso pedido no hay nada que cerrar en Reminder.</summary>
+    private static IReadOnlyList<Guid> ReminderTargetsToClose(
         Appointment appointment,
         CancelAppointmentCommand command,
         bool onlyOneOccurrence,
-        IMessageBus bus,
-        ICorrelationContext correlation
+        DateTime nowUtc
     )
     {
-        var scope = command.Scope?.ToString() ?? nameof(EditScope.EntireSeries);
+        if (appointment.ReminderLeadMinutes is null)
+            return [];
 
-        // El aviso a los asistentes sale SIEMPRE, tambien al cancelar una sola ocurrencia. Antes solo
-        // salia al cancelar la cita entera, asi que a quien se le caia una reunion de una serie no se
-        // le decia nada: se presentaba a algo que ya no existia.
-        await bus.PublishAsync(
-            new AppointmentCancelledIntegrationEvent
-            {
-                TenantId = appointment.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                AppointmentId = appointment.Id,
-                Scope = scope,
-                OriginalStartUtc = command.OriginalStartUtc,
-                Reason = command.Reason,
-                Recipients = AppointmentEvents.RecipientsOf(appointment),
-            }
-        );
-
-        // Y ademas el hecho preciso, que dice cual de las N ocurrencias se cayo.
         if (onlyOneOccurrence)
-        {
-            await bus.PublishAsync(
-                new OccurrenceCancelledIntegrationEvent
-                {
-                    TenantId = appointment.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    AppointmentId = appointment.Id,
-                    OriginalStartUtc = command.OriginalStartUtc!.Value,
-                }
-            );
-        }
+            return command.OriginalStartUtc is { } original ? [OccurrenceTargetId.For(appointment.Id, original)] : [];
 
-        await bus.PublishAsync(
-            new ReminderTargetClosedIntegrationEvent
-            {
-                TenantId = appointment.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                Category = "Calendar",
-                TargetId = OccurrenceTargetId.For(
-                    appointment.Id,
-                    command.OriginalStartUtc ?? appointment.Timing.StartUtc ?? DateTime.UtcNow
-                ),
-                Reason = command.Reason,
-            }
-        );
+        return [.. AppointmentReminderTargets.Snapshot(appointment, nowUtc)];
     }
 }

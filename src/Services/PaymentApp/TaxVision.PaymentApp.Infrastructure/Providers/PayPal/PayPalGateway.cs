@@ -211,7 +211,10 @@ public sealed class PayPalGateway(
         {
             logger.LogWarning("PayPal capture order returned HTTP {StatusCode}", (int)response.StatusCode);
             return Result.Failure<PayPalOrderStatusResult>(
-                new Error("PayPal.Capture.Failed", $"PayPal returned HTTP {(int)response.StatusCode}.")
+                new Error(
+                    IsServerError(response) ? "PayPal.Capture.Unavailable" : "PayPal.Capture.Failed",
+                    $"PayPal returned HTTP {(int)response.StatusCode}."
+                )
             );
         }
 
@@ -250,7 +253,10 @@ public sealed class PayPalGateway(
                 TrimForLog(errorBody)
             );
             return Result.Failure<PayPalRefundCaptureResult>(
-                new Error("PayPal.Refund.Failed", $"PayPal returned HTTP {(int)response.StatusCode}.")
+                new Error(
+                    IsServerError(response) ? "PayPal.Refund.Unavailable" : "PayPal.Refund.Failed",
+                    $"PayPal returned HTTP {(int)response.StatusCode}."
+                )
             );
         }
 
@@ -349,6 +355,10 @@ public sealed class PayPalGateway(
             return Result.Failure<HttpResponseMessage>(new Error(errorCode, $"PayPal {operation} request failed."));
         }
     }
+
+    // Un 5xx no dice si PayPal hizo la operación: igual que un timeout.
+    private static bool IsServerError(HttpResponseMessage response) =>
+        response.StatusCode >= HttpStatusCode.InternalServerError;
 
     private static bool IsTransportFailure(Exception ex, CancellationToken ct) =>
         !ct.IsCancellationRequested && ex is OperationCanceledException or HttpRequestException or TimeoutException;
@@ -469,7 +479,10 @@ public sealed class PayPalGateway(
                     TrimForLog(body)
                 );
                 return Result.Failure<PayPalChargeWithTokenResult>(
-                    new Error("PayPal.OffSession.CreateFailed", $"PayPal returned HTTP {(int)response.StatusCode}.")
+                    new Error(
+                        IsServerError(response) ? "PayPal.OffSession.Unavailable" : "PayPal.OffSession.CreateFailed",
+                        $"PayPal returned HTTP {(int)response.StatusCode}."
+                    )
                 );
             }
 

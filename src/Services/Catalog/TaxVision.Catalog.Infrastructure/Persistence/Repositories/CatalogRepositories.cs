@@ -75,6 +75,32 @@ public sealed class CategoryRepository(CatalogDbContext db) : ICategoryRepositor
             .Categories.IgnoreQueryFilters()
             .AnyAsync(c => c.TenantId == tenantId && !c.IsDeleted && c.Id == categoryId, ct);
 
+    public async Task<IReadOnlyList<Guid>> GetAncestorIdsAsync(
+        Guid tenantId,
+        Guid categoryId,
+        int maxDepth,
+        CancellationToken ct = default
+    )
+    {
+        var ancestors = new List<Guid>();
+        var current = categoryId;
+        while (ancestors.Count < maxDepth)
+        {
+            var id = current;
+            var parent = await db
+                .Categories.IgnoreQueryFilters()
+                .Where(c => c.TenantId == tenantId && c.Id == id)
+                .Select(c => c.ParentCategoryId)
+                .FirstOrDefaultAsync(ct);
+            if (parent is not { } parentId)
+                break;
+
+            ancestors.Add(parentId);
+            current = parentId;
+        }
+        return ancestors;
+    }
+
     public async Task<bool> HasChildrenAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default) =>
         await db
             .Categories.IgnoreQueryFilters()

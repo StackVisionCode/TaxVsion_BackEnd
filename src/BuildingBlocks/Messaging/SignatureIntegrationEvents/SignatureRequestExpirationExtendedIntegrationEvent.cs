@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
 /// El staff extendió el vencimiento de una solicitud vigente. Los tokens públicos
 /// existentes quedaron revocados y se emiten tokens nuevos con el nuevo <c>exp</c>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestExpirationExtendedIntegrationEvent")]
 public sealed record SignatureRequestExpirationExtendedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

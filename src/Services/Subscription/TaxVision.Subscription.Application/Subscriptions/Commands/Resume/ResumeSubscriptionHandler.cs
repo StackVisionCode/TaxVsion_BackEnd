@@ -34,7 +34,6 @@ public static class ResumeSubscriptionHandler
             return Result.Failure(new Error("Subscription.NotFound", "Subscription does not exist."));
 
         var nowUtc = DateTime.UtcNow;
-        var previousStatus = subscription.Status;
 
         var result = subscription.ResumeCancellation(command.RequestedByUserId, nowUtc);
         if (result.IsFailure)
@@ -55,14 +54,6 @@ public static class ResumeSubscriptionHandler
             reason: null,
             nowUtc,
             ct
-        );
-
-        await bus.PublishStatusChangedAsync(
-            subscription,
-            previousStatus,
-            SubscriptionChangeReason.CancellationResumed,
-            command.RequestedByUserId,
-            correlationId: correlation.CorrelationId
         );
 
         logger.LogInformation(

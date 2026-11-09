@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Infrastructure.Scribe;
@@ -31,6 +33,68 @@ public sealed class ScribeRenderClientTests
     {
         public Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<string?>("fake-m2m-token");
+    }
+
+    [Fact]
+    public void Http_client_has_a_short_timeout()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IServiceTokenAcquirer, FakeTokenAcquirer>();
+        services.AddLogging();
+        services.AddScribeRenderClient(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IScribeRenderClient));
+
+        Assert.Equal(TimeSpan.FromSeconds(10), client.Timeout);
+    }
+
+    // SCR-10: mismos nombres que serializa RenderedContent de Scribe.
+    [Fact]
+    public async Task Versions_are_read_from_scribe_response()
+    {
+        const string json = """
+            {
+              "subject": "Welcome",
+              "html": "<p>Hi</p>",
+              "text": "Hi",
+              "inlineAssets": [],
+              "dispatchScope": "System",
+              "templateKey": "auth.welcome",
+              "versionNumber": 7,
+              "layoutVersionNumber": 3
+            }
+            """;
+        var client = new ScribeRenderClient(
+            new HttpClient(new StubHandler(HttpStatusCode.OK, json)) { BaseAddress = new Uri("http://localhost:5205/") },
+            new FakeTokenAcquirer(),
+            NullLogger<ScribeRenderClient>.Instance
+        );
+
+        var result = await client.RenderAsync("auth.welcome", Guid.NewGuid(), new Dictionary<string, object?>());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("auth.welcome", result.Value.TemplateKey);
+        Assert.Equal(7, result.Value.TemplateVersion);
+        Assert.Equal(3, result.Value.LayoutVersion);
+    }
+
+    // Un Scribe sin desplegar no manda los campos: el correo sale igual, sin versión.
+    [Fact]
+    public async Task Versions_stay_null_when_scribe_does_not_send_them()
+    {
+        const string json = """{ "subject": "Welcome", "html": "<p>Hi</p>", "text": "Hi" }""";
+        var client = new ScribeRenderClient(
+            new HttpClient(new StubHandler(HttpStatusCode.OK, json)) { BaseAddress = new Uri("http://localhost:5205/") },
+            new FakeTokenAcquirer(),
+            NullLogger<ScribeRenderClient>.Instance
+        );
+
+        var result = await client.RenderAsync("auth.welcome", Guid.NewGuid(), new Dictionary<string, object?>());
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value.TemplateVersion);
+        Assert.Null(result.Value.LayoutVersion);
     }
 
     [Fact]

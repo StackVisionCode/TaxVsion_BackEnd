@@ -59,7 +59,6 @@ public sealed class OffboardingNoticeSender(
     NotificationDispatcher dispatcher,
     IRecipientResolver resolver,
     IUserEmailResolver emails,
-    IUserNotificationPreferenceRepository preferences,
     IEmailDispatchGateway gateway,
     IScribeRenderClient scribe,
     ITenantHostResolver hosts,
@@ -151,27 +150,16 @@ public sealed class OffboardingNoticeSender(
 
     private async Task SendEmailsAsync(OffboardingNoticeContext context, OffboardingNotice notice, CancellationToken ct)
     {
-        // El gate de preferencias del dispatcher no cubre el correo: se filtra acá (lo obligatorio no se filtra).
-        var skipPreference =
-            NotificationCategoryRules.IsLocked(context.Category)
-            || NotificationCatalog.GetRequired(context.Kind).IsMandatoryFor(NotificationChannel.Email);
-        var addresses = new List<string>();
+        // Un correo por dirección, con su usuario: el gate del gateway aplica inactivo, preferencia y catálogo.
+        var addresses = new List<(Guid UserId, string Address)>();
         foreach (var userId in notice.Recipients)
         {
-            if (
-                !skipPreference
-                && !await preferences.IsEnabledAsync(
-                    context.TenantId,
-                    userId,
-                    context.Category,
-                    NotificationChannel.Email,
-                    ct
-                )
-            )
-                continue;
             var address = await emails.ResolveAsync(context.TenantId, userId, ct);
-            if (!string.IsNullOrWhiteSpace(address) && !addresses.Contains(address, StringComparer.OrdinalIgnoreCase))
-                addresses.Add(address);
+            if (
+                !string.IsNullOrWhiteSpace(address)
+                && !addresses.Any(known => string.Equals(known.Address, address, StringComparison.OrdinalIgnoreCase))
+            )
+                addresses.Add((userId, address));
         }
         if (addresses.Count == 0)
             return;
@@ -180,7 +168,7 @@ public sealed class OffboardingNoticeSender(
             await scribe.RenderAsync(context.EmailEventKey, context.TenantId, notice.EmailVariables, ct)
         ).EnsureRendered(context.EmailEventKey);
 
-        foreach (var address in addresses)
+        foreach (var (userId, address) in addresses)
             await gateway.QueueEmailAsync(
                 render.ToDispatchRequest(
                     context.TenantId,
@@ -188,7 +176,12 @@ public sealed class OffboardingNoticeSender(
                     context.EmailEventKey,
                     context.DeliveryId,
                     correlation.CorrelationId
-                ),
+                ) with
+                {
+                    RecipientUserId = userId,
+                    Category = context.Category,
+                    NotificationKind = context.Kind,
+                },
                 ct
             );
     }
@@ -201,7 +194,7 @@ public sealed class OffboardingNoticeSender(
     ) =>
         dispatcher.RecordInAppAsync(
             context.TenantId,
-            $"user:{userId:N}",
+            NotificationRecipient.ForUser(userId),
             notice.Title,
             context.Category,
             context.Kind,

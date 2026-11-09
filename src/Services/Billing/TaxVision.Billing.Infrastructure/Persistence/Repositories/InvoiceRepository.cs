@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.Numbering;
-using TaxVision.Billing.Domain.Receipts;
 
 namespace TaxVision.Billing.Infrastructure.Persistence.Repositories;
 
@@ -23,12 +22,26 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
         Guid invoiceId,
         CancellationToken ct = default,
         Guid? assignedToUserId = null
-    ) =>
-        _dbContext
+    )
+    {
+        var query = _dbContext
             .Invoices.IgnoreQueryFilters()
             .Include(i => i.PaymentLinks)
             .Include(i => i.StatusChanges)
-            .FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Id == invoiceId, ct);
+            // Payments: sin ellos ApplyPayment no ve los pagos ya aplicados y pierde la idempotencia.
+            .Include(i => i.Payments)
+            .Where(i => i.TenantId == tenantId && i.Id == invoiceId);
+
+        // Visibilidad por asignación, igual que en ListByTenantAsync. null = sin restricción (sistema o view_all).
+        if (assignedToUserId is { } assignee)
+            query = query.Where(i =>
+                _dbContext
+                    .CustomerAssignmentProjections.IgnoreQueryFilters()
+                    .Any(a => a.TenantId == tenantId && a.CustomerId == i.CustomerId && a.UserId == assignee)
+            );
+
+        return query.FirstOrDefaultAsync(ct);
+    }
 
     // Onboarding: la factura vive bajo PlatformTenant.Id hasta el backfill; se localiza por OnboardingId
     // (índice único filtrado), no por tenant → IgnoreQueryFilters obligatorio.
@@ -37,6 +50,14 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
             .Invoices.IgnoreQueryFilters()
             .Include(i => i.PaymentLinks)
             .FirstOrDefaultAsync(i => i.OnboardingId == onboardingId, ct);
+
+    public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
+        _dbContext
+            .Invoices.IgnoreQueryFilters()
+            .Include(i => i.PaymentLinks)
+            .Include(i => i.StatusChanges)
+            .Include(i => i.Payments)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.OnboardingId != null, ct);
 
     public async Task<IReadOnlyList<Invoice>> ListByTenantAsync(
         Guid tenantId,
@@ -96,15 +117,4 @@ public sealed class InvoiceNumberSequenceRepository(BillingDbContext dbContext) 
 
         return sequence;
     }
-}
-
-/// <summary>SCAFFOLD B1: stub. La implementación EF real llega en B3 (comprobantes de pago).</summary>
-public sealed class PaymentReceiptRepository(BillingDbContext dbContext) : IPaymentReceiptRepository
-{
-    private readonly BillingDbContext _dbContext = dbContext;
-
-    public Task<PaymentReceipt?> GetByIdAsync(Guid tenantId, Guid receiptId, CancellationToken ct = default) =>
-        Task.FromResult<PaymentReceipt?>(null);
-
-    public Task AddAsync(PaymentReceipt receipt, CancellationToken ct = default) => Task.CompletedTask;
 }

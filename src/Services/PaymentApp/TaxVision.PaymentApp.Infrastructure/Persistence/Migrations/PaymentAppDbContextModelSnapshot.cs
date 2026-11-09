@@ -257,6 +257,12 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -320,6 +326,11 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantProviderCustomerId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantSavedPaymentMethods_OneDefault")
+                        .HasFilter("[IsDefault] = 1 AND [IsDetached] = 0");
 
                     b.HasIndex("ExpYear", "ExpMonth")
                         .HasDatabaseName("IX_TenantSavedPaymentMethods_Expiration")
@@ -401,11 +412,73 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.ToTable("RefundLines", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.PaymentApp.Domain.SaaSPayments.RefundRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ProviderIdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ProviderRefundReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<long>("RefundedCentsBefore")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RequestKey")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SaaSPaymentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SaaSPaymentId", "RequestKey")
+                        .HasDatabaseName("IX_RefundRequests_SaaSPaymentId_RequestKey");
+
+                    b.ToTable("RefundRequests", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ChargeAttemptedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("ChargedBackAtUtc")
                         .HasColumnType("datetime2");
@@ -475,6 +548,34 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ReceiptFileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<long?>("ReviewPaidAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ReviewPaidCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("ReviewProviderReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ReviewReasonCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ReviewRequiredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReviewResolution")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ReviewResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReviewResolvedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -523,6 +624,15 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("UX_SaaSPayments_OnboardingId")
                         .HasFilter("[OnboardingId] IS NOT NULL");
+
+                    b.HasIndex("ProviderCheckoutSessionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SaaSPayments_ProviderCheckoutSessionId")
+                        .HasFilter("[ProviderCheckoutSessionId] IS NOT NULL");
+
+                    b.HasIndex("ReviewRequiredAtUtc")
+                        .HasDatabaseName("IX_SaaSPayments_ReviewPending")
+                        .HasFilter("[ReviewRequiredAtUtc] IS NOT NULL AND [ReviewResolvedAtUtc] IS NULL");
 
                     b.HasIndex("TenantId", "CreatedAtUtc")
                         .HasDatabaseName("IX_SaaSPayments_TenantId_CreatedAtUtc");
@@ -597,6 +707,12 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<long?>("LastProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("LastStatusVersion")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -762,6 +878,41 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.PaymentApp.Domain.SaaSPayments.RefundRequest", b =>
+                {
+                    b.HasOne("TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment", null)
+                        .WithMany("RefundRequests")
+                        .HasForeignKey("SaaSPaymentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("TaxVision.PaymentApp.Domain.ValueObjects.Money", "Amount", b1 =>
+                        {
+                            b1.Property<Guid>("RefundRequestId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<long>("AmountCents")
+                                .HasColumnType("bigint")
+                                .HasColumnName("AmountCents");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("nvarchar(3)")
+                                .HasColumnName("Currency");
+
+                            b1.HasKey("RefundRequestId");
+
+                            b1.ToTable("RefundRequests");
+
+                            b1.WithOwner()
+                                .HasForeignKey("RefundRequestId");
+                        });
+
+                    b.Navigation("Amount")
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment", b =>
                 {
                     b.OwnsOne("TaxVision.PaymentApp.Domain.SaaSPayments.ChargeConcept", "Concept", b1 =>
@@ -852,6 +1003,11 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
 
                             b1.HasKey("SaaSPaymentId");
 
+                            b1.HasIndex("Provider", "Value")
+                                .IsUnique()
+                                .HasDatabaseName("UX_SaaSPayments_ExternalChargeProvider_Reference")
+                                .HasFilter("[ExternalChargeReference] IS NOT NULL");
+
                             b1.ToTable("SaaSPayments");
 
                             b1.WithOwner()
@@ -885,6 +1041,8 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment", b =>
                 {
                     b.Navigation("Attempts");
+
+                    b.Navigation("RefundRequests");
 
                     b.Navigation("Refunds");
                 });

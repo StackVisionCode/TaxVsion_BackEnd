@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
 /// El firmante falló un intento de verificación en el método indicado. Contadores y
 /// eventual lockout se propagan para audit y para pintar el estado en el dashboard.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerVerificationFailedIntegrationEvent")]
 public sealed record SignerVerificationFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

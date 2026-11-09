@@ -34,6 +34,7 @@ public sealed class CreateNoteHandlerTests
             bus,
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -65,6 +66,7 @@ public sealed class CreateNoteHandlerTests
             new FakeMessageBus(),
             new NoOpCorrelationContext(),
             NullLogger<Note>.Instance,
+            TimeProvider.System,
             CancellationToken.None
         );
 

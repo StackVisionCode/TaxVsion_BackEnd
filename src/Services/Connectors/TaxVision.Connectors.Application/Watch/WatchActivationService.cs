@@ -1,7 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
@@ -12,13 +12,9 @@ namespace TaxVision.Connectors.Application.Watch;
 
 /// <summary>
 /// Lógica de activación de watch/subscription extraída de <see cref="SetupWatchHandler"/> para que los
-/// flujos de connect (manual y OAuth) la llamen EN PROCESO — compartiendo la misma transacción/DbContext
-/// que acaban de usar para persistir la cuenta — en vez de despachar <see cref="SetupWatchCommand"/> como
-/// un mensaje nuevo de Wolverine. Un <c>bus.InvokeAsync</c> anidado abriría su propio scope/transacción,
-/// y no vería la cuenta recién insertada en la transacción externa todavía sin commitear. El endpoint
-/// standalone de reauth (<c>AccountsController.Reauth</c> → <see cref="SetupWatchHandler"/>) no tiene
-/// este problema porque ahí SÍ es la operación de nivel superior — sigue yendo por
-/// <c>SetupWatchCommand</c> vía Wolverine sin ningún cambio.
+/// flujos de connect (manual y OAuth) la llamen EN PROCESO, sobre el mismo DbContext que acaban de usar para
+/// persistir la cuenta. La llamada al proveedor va sin transacción (CON-03) y el resultado se confirma en una
+/// unidad corta junto con el aviso. El conectar manual es IMAP, no llama a nadie, y usa la unidad de su handler.
 /// </summary>
 public static class WatchActivationService
 {
@@ -28,8 +24,7 @@ public static class WatchActivationService
         ITenantEmailAccountRepository accountRepository,
         IProviderWatchSubscriptionRepository subscriptionRepository,
         IWatchProviderClientFactory watchClientFactory,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IOutboxUnit unit,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -48,30 +43,25 @@ public static class WatchActivationService
             );
 
         var now = DateTime.UtcNow;
-
-        if (
-            account.Status
-            is TenantEmailAccountStatus.Draft
-                or TenantEmailAccountStatus.Error
-                or TenantEmailAccountStatus.Disconnected
-        )
-        {
-            var connectResult = account.MarkConnected(now);
-            if (connectResult.IsFailure)
-                return connectResult;
-        }
+        var outcome = Result.Success();
 
         // IMAP no tiene mecanismo de push genérico — sin ProviderWatchSubscription que crear,
         // la cuenta pasa a Active directo (ver WatchProviderClientFactory).
         if (account.ProviderCode == ProviderCode.Imap)
         {
-            var activateImapResult = account.Activate(now);
-            if (activateImapResult.IsFailure)
-                return activateImapResult;
+            await unit.RunAsync(
+                async (outbox, _) =>
+                {
+                    outcome = ConnectAndActivate(account, now);
+                    if (outcome.IsFailure)
+                        return false;
 
-            await PublishConnectedAsync(account, now, bus, correlation);
-            await unitOfWork.SaveChangesAsync(ct);
-            return Result.Success();
+                    await PublishConnectedAsync(account, now, outbox, correlation);
+                    return true;
+                },
+                ct
+            );
+            return outcome;
         }
 
         var clientResult = watchClientFactory.Resolve(account.ProviderCode);
@@ -90,34 +80,60 @@ public static class WatchActivationService
             return Result.Failure(new Error("SetupWatchHandler.ProviderFailed", ex.Message));
         }
 
-        var subscriptionResult = await subscriptionRepository.GetByAccountIdAsync(accountId, ct);
-        if (subscriptionResult.IsSuccess)
+        await unit.RunAsync(
+            async (outbox, token) =>
+            {
+                var subscriptionResult = await subscriptionRepository.GetByAccountIdAsync(accountId, token);
+                if (subscriptionResult.IsSuccess)
+                {
+                    subscriptionResult.Value.Renew(setup.SubscriptionRef, setup.ExpiresAtUtc, now);
+                }
+                else
+                {
+                    var createResult = ProviderWatchSubscription.Create(
+                        accountId,
+                        account.ProviderCode,
+                        setup.SubscriptionRef,
+                        setup.TopicName,
+                        setup.ExpiresAtUtc,
+                        now
+                    );
+                    if (createResult.IsFailure)
+                    {
+                        outcome = Result.Failure(createResult.Error);
+                        return false;
+                    }
+
+                    await subscriptionRepository.AddAsync(createResult.Value, token);
+                }
+
+                outcome = ConnectAndActivate(account, now);
+                if (outcome.IsFailure)
+                    return false;
+
+                await PublishConnectedAsync(account, now, outbox, correlation);
+                return true;
+            },
+            ct
+        );
+        return outcome;
+    }
+
+    private static Result ConnectAndActivate(TenantEmailAccount account, DateTime now)
+    {
+        if (
+            account.Status
+            is TenantEmailAccountStatus.Draft
+                or TenantEmailAccountStatus.Error
+                or TenantEmailAccountStatus.Disconnected
+        )
         {
-            subscriptionResult.Value.Renew(setup.SubscriptionRef, setup.ExpiresAtUtc, now);
-        }
-        else
-        {
-            var createResult = ProviderWatchSubscription.Create(
-                accountId,
-                account.ProviderCode,
-                setup.SubscriptionRef,
-                setup.TopicName,
-                setup.ExpiresAtUtc,
-                now
-            );
-            if (createResult.IsFailure)
-                return Result.Failure(createResult.Error);
-
-            await subscriptionRepository.AddAsync(createResult.Value, ct);
+            var connectResult = account.MarkConnected(now);
+            if (connectResult.IsFailure)
+                return connectResult;
         }
 
-        var activateResult = account.Activate(now);
-        if (activateResult.IsFailure)
-            return activateResult;
-
-        await PublishConnectedAsync(account, now, bus, correlation);
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success();
+        return account.Activate(now);
     }
 
     /// <summary>
@@ -142,6 +158,8 @@ public static class WatchActivationService
                 EmailAddress = account.EmailAddress,
                 ProviderCode = account.ProviderCode.ToString(),
                 ConnectedAtUtc = now,
+                OwnerUserId = account.OwnerUserId,
+                IsOffice = account.IsOffice,
             }
         );
 }

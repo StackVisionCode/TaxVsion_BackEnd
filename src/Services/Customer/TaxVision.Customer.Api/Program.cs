@@ -153,7 +153,16 @@ builder.Host.UseWolverine(options =>
         .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // Eventos de dominio del cliente: se guardan con el commit del handler y sus handlers devuelven los eventos
+    // de integración. En serie, para que los avisos de un mismo cliente salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // Toda cola local durable: lo publicado a un handler propio (p. ej. RunCustomerImportMessage) sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 
     // Consume File* de CloudStorage (resultado del escaneo del archivo de import subido
     // directo a MinIO, ver ImportFileScanResultConsumer — Fase D para Customer) y FileSaveRejected

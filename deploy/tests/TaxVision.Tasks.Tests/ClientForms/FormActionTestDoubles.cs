@@ -136,7 +136,7 @@ internal static class FormActionTestDoubles
     internal static Guid AddAttachment(FormRequest request)
     {
         var fileId = Guid.NewGuid();
-        request.RegisterAttachment(
+        request.Files.Register(
             new FormAnswerAddress("fd_first0001", null),
             fileId,
             "id.pdf",
@@ -225,6 +225,52 @@ internal sealed class ActionRequestRepository(FormRequest request) : IFormReques
 
     public Task<IReadOnlyList<FormRequest>> ListByAttachmentFileIdAsync(Guid fileId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<FormRequest>>([]);
+
+    public Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
+        Task.FromResult(0);
+
+    public Task<int> CountOpenByEffectiveResponsibleAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(0);
+
+    public Task<FormRequest?> GetByPdfGenerationIdAsync(Guid generationId, CancellationToken ct = default) =>
+        Task.FromResult<FormRequest?>(null);
+
+    public Task<FormRequest?> GetForReminderAsync(Guid requestId, CancellationToken ct = default) =>
+        Task.FromResult<FormRequest?>(null);
+
+    public Task<FormRequest?> GetLatestIntakeRequestAsync(
+        Guid tenantId,
+        Guid intakeLinkId,
+        IReadOnlyCollection<Guid> participantIds,
+        CancellationToken ct = default
+    ) => Task.FromResult<FormRequest?>(null);
+
+    public Task<FormRequest?> GetOpenExternalRequestAsync(
+        Guid tenantId,
+        Guid participantId,
+        Guid templateId,
+        CancellationToken ct = default
+    ) => Task.FromResult<FormRequest?>(null);
+
+    public Task<IReadOnlyList<FormRequest>> ListOpenByEffectiveResponsibleAsync(
+        Guid tenantId,
+        Guid userId,
+        int take,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+
+    public Task<IReadOnlyList<FormRequest>> ListOpenByParticipantAsync(
+        Guid tenantId,
+        Guid participantId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
+
+    public Task<IReadOnlyList<FormRequest>> ListReminderCandidatesAsync(
+        DateTime dueThresholdUtc,
+        int maxReminders,
+        int take,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
 }
 
 internal sealed class ActionParticipantRepository(FormParticipant participant) : IFormParticipantRepository
@@ -241,6 +287,12 @@ internal sealed class ActionParticipantRepository(FormParticipant participant) :
     public void Add(FormParticipant item) { }
 
     public void Untrack(FormParticipant item) { }
+
+    public async Task<IReadOnlyList<Guid>> ListIdsByEmailAsync(
+        Guid tenantId,
+        string email,
+        CancellationToken ct = default
+    ) => await GetUnlinkedByEmailAsync(tenantId, email, ct) is { } participant ? [participant.Id] : [];
 }
 
 internal sealed class GrantedResponsibleUsers(params string[] granted) : IFormResponsibleUserValidator

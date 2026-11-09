@@ -69,10 +69,20 @@ public sealed class ConnectorsSendClient(
             using var response = await PostSendAsync(provider.AccountId, token, request, ct);
             return await ParseResponseAsync(response, message, ct);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (HttpRequestException ex)
         {
             logger.LogWarning(ex, "Connectors send call failed for SentMessage {SentMessageId}.", message.Id);
             return Failed(message, ex.Message, MailboxSendFailure.ProviderUnavailable);
+        }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            // Timeout: Connectors pudo haberlo enviado. La cancelación del host sigue de largo.
+            logger.LogWarning(ex, "Connectors send call timed out for SentMessage {SentMessageId}.", message.Id);
+            return Failed(
+                message,
+                $"{SendOutcomeReasons.MailboxOutcomeUnknown}: Connectors did not answer in time.",
+                MailboxSendFailure.OutcomeUnknown
+            );
         }
     }
 

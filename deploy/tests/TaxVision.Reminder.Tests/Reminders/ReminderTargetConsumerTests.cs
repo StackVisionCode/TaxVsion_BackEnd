@@ -34,6 +34,24 @@ public sealed class ReminderTargetConsumerTests
         Assert.Single(scheduler.Scheduled);
     }
 
+    /// <summary>CAL-7: misma ancla y minutos nuevos; el aviso se recalcula con el ancla vigente.</summary>
+    [Fact]
+    public async Task TargetMoved_WithLeadMinutes_RecalculatesFireAtFromCurrentAnchor()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var nowUtc = DateTime.UtcNow;
+        var anchor = nowUtc.AddHours(5);
+        var reminder = Seed(reminders, ReminderSchedule.Anchored(anchor, 30, nowUtc).Value);
+
+        await MoveTarget(reminders, scheduler, anchor, leadMinutes: 60);
+
+        Assert.Equal(anchor.AddMinutes(-60), reminder.Schedule.FireAtUtc);
+        Assert.Equal(60, reminder.Schedule.LeadMinutes);
+        Assert.Equal(anchor, reminder.Schedule.AnchorAtUtc);
+        Assert.Single(scheduler.Scheduled);
+    }
+
     /// <summary>«El jueves a las 9 pase lo que pase»: el evento se ignora, y eso es éxito, no error.</summary>
     [Fact]
     public async Task TargetMoved_SobreUnAbsoluto_NoCambiaNadaNiTocaElScheduler()
@@ -173,19 +191,180 @@ public sealed class ReminderTargetConsumerTests
         Assert.Empty(scheduler.Unscheduled);
     }
 
+    /// <summary>REM-5: el move se pierde sin pendientes; lo corrige el siguiente pedido de Calendar.</summary>
+    [Fact]
+    public async Task MovedBeforeRequested_NextRequestCorrectsTheAnchor()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var nowUtc = DateTime.UtcNow;
+        var latestAnchor = nowUtc.AddHours(5);
+
+        await MoveTarget(reminders, scheduler, latestAnchor);
+        await RequestTarget(reminders, scheduler, nowUtc.AddHours(2));
+        await RequestTarget(reminders, scheduler, latestAnchor, nowUtc.AddMinutes(1));
+
+        var reminder = Assert.Single(reminders.Stored);
+        Assert.Equal(latestAnchor, reminder.Schedule.AnchorAtUtc);
+        Assert.Equal(2, scheduler.Scheduled.Count);
+    }
+
+    [Fact]
+    public async Task RequestedAgainFromBeforeAMove_DoesNotUndoIt()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var nowUtc = DateTime.UtcNow;
+        var firstAnchor = nowUtc.AddHours(2);
+        var movedAnchor = nowUtc.AddHours(5);
+
+        await RequestTarget(reminders, scheduler, firstAnchor);
+        await MoveTarget(reminders, scheduler, movedAnchor, occurredOnUtc: nowUtc.AddMinutes(2));
+        await RequestTarget(reminders, scheduler, firstAnchor, nowUtc.AddMinutes(1));
+
+        Assert.Equal(movedAnchor, Assert.Single(reminders.Stored).Schedule.AnchorAtUtc);
+    }
+
+    [Fact]
+    public async Task RequestedAgainWithTheSameAnchor_DoesNotTouchTheReminder()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var nowUtc = DateTime.UtcNow;
+        var anchor = nowUtc.AddHours(2);
+
+        await RequestTarget(reminders, scheduler, anchor);
+        await RequestTarget(reminders, scheduler, anchor, nowUtc.AddMinutes(1));
+
+        Assert.Single(reminders.Stored);
+        Assert.Single(scheduler.Scheduled);
+    }
+
+    [Fact]
+    public async Task RequestedAgainAfterItFired_DoesNotRearmIt()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var nowUtc = DateTime.UtcNow;
+        var anchor = nowUtc.AddHours(2);
+
+        await RequestTarget(reminders, scheduler, anchor);
+        var reminder = Assert.Single(reminders.Stored);
+        Assert.True(reminder.MarkFired(nowUtc).IsSuccess);
+
+        await RequestTarget(reminders, scheduler, nowUtc.AddHours(5), nowUtc.AddMinutes(1));
+
+        Assert.Equal(ReminderStatus.Fired, reminder.Status);
+        Assert.Equal(anchor, reminder.Schedule.AnchorAtUtc);
+        Assert.Single(scheduler.Scheduled);
+    }
+
+    // Revisión de cierre: un pospuesto conserva su hora; el pedido repetido no lo devuelve al ancla.
+    [Fact]
+    public async Task RequestedAgainWhileSnoozed_KeepsTheSnoozedTime()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var nowUtc = DateTime.UtcNow;
+
+        await RequestTarget(reminders, scheduler, nowUtc.AddHours(2));
+        var reminder = Assert.Single(reminders.Stored);
+        Assert.True(reminder.MarkFired(nowUtc).IsSuccess);
+        Assert.True(reminder.Snooze(TimeSpan.FromMinutes(10), nowUtc).IsSuccess);
+        var snoozedUntil = reminder.Schedule.FireAtUtc;
+
+        await RequestTarget(reminders, scheduler, nowUtc.AddHours(5), nowUtc.AddMinutes(1));
+
+        Assert.Equal(ReminderStatus.Snoozed, reminder.Status);
+        Assert.Equal(snoozedUntil, reminder.Schedule.FireAtUtc);
+        Assert.Single(scheduler.Scheduled);
+        Assert.Empty(scheduler.Unscheduled);
+    }
+
+    [Fact]
+    public async Task TargetMovedWhileSnoozed_KeepsTheSnoozedTime()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var nowUtc = DateTime.UtcNow;
+
+        await RequestTarget(reminders, scheduler, nowUtc.AddHours(2));
+        var reminder = Assert.Single(reminders.Stored);
+        Assert.True(reminder.MarkFired(nowUtc).IsSuccess);
+        Assert.True(reminder.Snooze(TimeSpan.FromMinutes(10), nowUtc).IsSuccess);
+        var snoozedUntil = reminder.Schedule.FireAtUtc;
+
+        await MoveTarget(reminders, scheduler, nowUtc.AddHours(5));
+
+        Assert.Equal(ReminderStatus.Snoozed, reminder.Status);
+        Assert.Equal(snoozedUntil, reminder.Schedule.FireAtUtc);
+        Assert.Single(scheduler.Scheduled);
+        Assert.Empty(scheduler.Unscheduled);
+    }
+
+    // Un pedido repetido con ancla no crea otro recordatorio: cuenta como duplicado suprimido.
+    [Fact]
+    public async Task RequestedAgainWithAnAnchor_CountsTheSuppressedDuplicate()
+    {
+        var reminders = new FakeReminderRepository();
+        var scheduler = new RecordingScheduler();
+        var metrics = new RecordingReminderMetrics();
+        var anchor = DateTime.UtcNow.AddHours(2);
+
+        await RequestTarget(reminders, scheduler, anchor, metrics: metrics);
+        await RequestTarget(reminders, scheduler, anchor, DateTime.UtcNow.AddMinutes(1), metrics);
+
+        Assert.Single(reminders.Stored);
+        Assert.Equal(["lookup"], metrics.DuplicatesSuppressed);
+    }
+
+    private static Task RequestTarget(
+        FakeReminderRepository reminders,
+        RecordingScheduler scheduler,
+        DateTime anchorAtUtc,
+        DateTime? occurredOnUtc = null,
+        RecordingReminderMetrics? metrics = null
+    ) =>
+        ReminderRequestedConsumer.Handle(
+            new ReminderRequestedIntegrationEvent
+            {
+                TenantId = TenantId,
+                UserId = UserId,
+                Category = nameof(ReminderCategory.Task),
+                TargetId = TargetId,
+                Title = "Client review",
+                TimeZoneId = "America/New_York",
+                AnchorAtUtc = anchorAtUtc,
+                LeadMinutes = 30,
+                RequestKey = $"task-created:{TargetId:N}",
+                OccurredOn = occurredOnUtc ?? DateTime.UtcNow,
+            },
+            reminders,
+            scheduler,
+            reminders.AsUnitOfWork(),
+            new FixedCorrelationContext(),
+            metrics ?? new RecordingReminderMetrics(),
+            NullLogger<ReminderAggregate>.Instance,
+            CancellationToken.None
+        );
+
     private static Task MoveTarget(
         FakeReminderRepository reminders,
         RecordingScheduler scheduler,
         DateTime newAnchorAtUtc,
-        RecordingReminderMetrics? metrics = null
+        RecordingReminderMetrics? metrics = null,
+        int? leadMinutes = null,
+        DateTime? occurredOnUtc = null
     ) =>
         ReminderTargetMovedConsumer.Handle(
             new ReminderTargetMovedIntegrationEvent
             {
+                OccurredOn = occurredOnUtc ?? DateTime.UtcNow,
                 TenantId = TenantId,
                 Category = nameof(ReminderCategory.Task),
                 TargetId = TargetId,
                 NewAnchorAtUtc = newAnchorAtUtc,
+                LeadMinutes = leadMinutes,
             },
             reminders,
             scheduler,

@@ -50,6 +50,34 @@ public static class DependencyInjection
             Persistence.Repositories.ReservationRepository
         >();
 
+        // WAL-4 — vencimiento de reservas abiertas (TTL por tipo, apagado por defecto).
+        services
+            .AddOptions<Scheduling.ReservationExpiryOptions>()
+            .Bind(configuration.GetSection(Scheduling.ReservationExpiryOptions.SectionName))
+            .Validate(o => o.IsValid(), "Wallet:Reservations TTLs, interval and batch size must be positive.")
+            .ValidateOnStart();
+        services.AddSingleton<Scheduling.IDistributedLockFactory, Scheduling.RedisDistributedLockFactory>();
+        services.AddHostedService<Scheduling.ExpireStaleReservationsJob>();
+
+        // WAL-8 — conciliación periódica saldo vs ledger (solo lectura).
+        services
+            .AddOptions<Scheduling.WalletLedgerReconciliationOptions>()
+            .Bind(configuration.GetSection(Scheduling.WalletLedgerReconciliationOptions.SectionName))
+            .Validate(o => o.IsValid(), "Wallet:LedgerReconciliation interval and lock TTL must be positive.")
+            .ValidateOnStart();
+        services.AddHostedService<Scheduling.WalletLedgerReconciliationJob>();
+
+        // WAL-6 — intentos de una reserva o liquidación que choca con otra del mismo monedero.
+        services
+            .AddOptions<TaxVision.Wallet.Application.Reservations.ReservationConflictRetryOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.Wallet.Application.Reservations.ReservationConflictRetryOptions.SectionName
+                )
+            )
+            .Validate(o => o.MaxAttempts > 0, "Wallet:ReservationConflictRetry:MaxAttempts must be positive.")
+            .ValidateOnStart();
+
         // SEC-M1.C — signer HMAC compartido con PaymentApp. Secret vive en env var
         // PurchaseIntentAmountSignature__Secret (misma en Wallet y PaymentApp).
         services.AddPurchaseIntentAmountSigning(configuration);

@@ -43,7 +43,19 @@ public sealed class UserEmailDirectoryEntry : TenantEntity
 
     public DateTime UpdatedAtUtc { get; private set; }
 
-    public static UserEmailDirectoryEntry Create(Guid tenantId, Guid userId, string email, bool isActive = true)
+    /// <summary>
+    /// <c>OccurredOn</c> del último evento de Auth aplicado. Un evento más viejo se ignora: Auth no
+    /// garantiza orden y una desactivación atrasada silenciaba a un usuario ya reactivado.
+    /// </summary>
+    public DateTime? LastSourceEventAtUtc { get; private set; }
+
+    public static UserEmailDirectoryEntry Create(
+        Guid tenantId,
+        Guid userId,
+        string email,
+        bool isActive = true,
+        DateTime? sourceEventAtUtc = null
+    )
     {
         var entry = new UserEmailDirectoryEntry
         {
@@ -53,29 +65,47 @@ public sealed class UserEmailDirectoryEntry : TenantEntity
             IsActive = isActive,
             IsStale = false,
             UpdatedAtUtc = DateTime.UtcNow,
+            LastSourceEventAtUtc = sourceEventAtUtc,
         };
         entry.SetTenant(tenantId);
         return entry;
     }
 
-    public void UpdateEmail(string email, bool isActive)
+    /// <returns><c>false</c> si el evento es más viejo que el último aplicado (no cambia nada).</returns>
+    public bool UpdateEmail(string email, bool isActive, DateTime sourceEventAtUtc)
     {
+        if (!Accepts(sourceEventAtUtc))
+            return false;
         Email = email.Trim();
         IsActive = isActive;
         IsStale = false;
-        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
     }
 
-    public void MarkStale()
+    public bool MarkStale(DateTime sourceEventAtUtc)
     {
+        if (!Accepts(sourceEventAtUtc))
+            return false;
         IsStale = true;
-        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
     }
 
-    public void SetActive(bool isActive)
+    public bool SetActive(bool isActive, DateTime sourceEventAtUtc)
     {
+        if (!Accepts(sourceEventAtUtc))
+            return false;
         IsActive = isActive;
+        return true;
+    }
+
+    // Igual que ApplyIfNewer de permisos: el empate se aplica (reentrega idempotente).
+    private bool Accepts(DateTime sourceEventAtUtc)
+    {
+        if (LastSourceEventAtUtc is { } last && sourceEventAtUtc < last)
+            return false;
+        LastSourceEventAtUtc = sourceEventAtUtc;
         UpdatedAtUtc = DateTime.UtcNow;
+        return true;
     }
 
     /// <summary>Solo una fila vigente y de un usuario activo sirve para enviarle un correo.</summary>

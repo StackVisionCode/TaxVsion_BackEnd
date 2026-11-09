@@ -80,7 +80,7 @@ public sealed record ReminderSchedule
     /// reagendar). La validación de futuro es sólo del alta.
     /// </para>
     /// </summary>
-    public Result<ReminderSchedule> WithNewAnchor(DateTime newAnchorAtUtc, DateTime nowUtc)
+    public Result<ReminderSchedule> WithNewAnchor(DateTime newAnchorAtUtc, DateTime nowUtc, int? newLeadMinutes = null)
     {
         if (!IsAnchored)
             return Result.Failure<ReminderSchedule>(ReminderErrors.Schedule.NotAnchored);
@@ -88,7 +88,11 @@ public sealed record ReminderSchedule
         if (newAnchorAtUtc.Kind != DateTimeKind.Utc)
             return Result.Failure<ReminderSchedule>(ReminderErrors.Schedule.NotUtc);
 
-        var lead = LeadMinutes!.Value;
+        // CAL-7: minutos nuevos del publicador; sin ellos se conservan los actuales.
+        if (newLeadMinutes is < 0 or > MaxLeadMinutes)
+            return Result.Failure<ReminderSchedule>(ReminderErrors.Schedule.LeadOutOfRange);
+
+        var lead = newLeadMinutes ?? LeadMinutes!.Value;
         return Result.Success(new ReminderSchedule(newAnchorAtUtc.AddMinutes(-lead), newAnchorAtUtc, lead));
     }
 

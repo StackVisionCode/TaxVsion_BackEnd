@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// email/SMS según canal preferido del firmante. Signature no re-emite tokens — el
 /// mismo token público sigue vigente; Notification arma la URL con el subdominio de la oficina.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestReminderDueIntegrationEvent")]
 public sealed record SignatureRequestReminderDueIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

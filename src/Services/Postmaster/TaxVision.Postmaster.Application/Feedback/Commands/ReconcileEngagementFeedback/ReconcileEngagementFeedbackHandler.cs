@@ -1,26 +1,24 @@
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Postmaster.Application.Feedback.Commands.ApplyPolledDeliveryFeedback;
 using TaxVision.Postmaster.Application.Sending;
-using TaxVision.Postmaster.Application.Suppression;
 using TaxVision.Postmaster.Domain.ValueObjects;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Postmaster.Application.Feedback.Commands.ReconcileEngagementFeedback;
 
 /// <summary>
 /// Trae entregas, aperturas y clics por rango y aplica solo los de correos nuestros. La cuenta de SMTP2GO puede ser
-/// compartida con otros entornos: sus eventos se descartan antes de aplicar y no van a "unmatched".
+/// compartida con otros entornos: sus eventos se descartan antes de aplicar y no van a "unmatched". La consulta
+/// corre sin transacción (PMS-06); aplicar es otro comando.
 /// </summary>
 public static class ReconcileEngagementFeedbackHandler
 {
+    [NonTransactional]
     public static async Task<DeliveryFeedbackTally> Handle(
         ReconcileEngagementFeedbackCommand cmd,
         IDeliveryFeedbackCapabilities capabilities,
         ISentMessageRepository sentMessages,
-        IDeliveryFeedbackReceiptRepository receipts,
-        IUnmatchedDeliveryFeedbackRepository unmatched,
-        ISuppressionListRepository suppressionList,
-        IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger logger,
         CancellationToken ct
@@ -35,8 +33,7 @@ public static class ReconcileEngagementFeedbackHandler
             return DeliveryFeedbackTally.Empty;
 
         var ours = await KeepOnlyOurMessagesAsync(polled, sentMessages, ct);
-        var stores = new DeliveryFeedbackStores(sentMessages, receipts, unmatched, suppressionList, unitOfWork, bus);
-        var tally = await DeliveryFeedbackApplier.ApplyAllAsync(ours, cmd.NowUtc, stores, logger, ct);
+        var tally = await PolledFeedbackBatches.ApplyAsync(ours, cmd.NowUtc, cmd.ApplyBatchSize, bus, logger, ct);
 
         logger.LogInformation(
             "Recent activity reconciliation (delivered/opened/clicked) read {Read} event(s), {Foreign} from other senders: {Applied} applied, {Duplicates} already known.",

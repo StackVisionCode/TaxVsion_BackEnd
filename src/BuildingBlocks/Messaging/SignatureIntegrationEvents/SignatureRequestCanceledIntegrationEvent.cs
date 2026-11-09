@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// quedan revocados (RevocationEpoch incrementado). Notification, Planner y el
 /// dashboard deben reaccionar cerrando tareas y notificando a los firmantes pendientes.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestCanceledIntegrationEvent")]
 public sealed record SignatureRequestCanceledIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

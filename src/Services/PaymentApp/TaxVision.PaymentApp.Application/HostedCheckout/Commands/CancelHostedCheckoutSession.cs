@@ -40,13 +40,11 @@ public static class CancelHostedCheckoutSessionHandler
 
             providerCode = payment.ProviderCode;
 
-            // Si el pago local ya está en estado terminal, no es necesario llamar al provider: el guard local ya
-            // ganó y la sesión expiró o se completó. Devolvemos alreadyExpired=true para que el caller lo trate
-            // como idempotente.
+            // Pago ya cobrado: la sesión se completó, no hay nada que expirar. Un Cancelled local SÍ llama al
+            // provider: la sesión puede seguir viva tras "Cancel and Start Over" (el cancel es idempotente).
             if (
                 payment.Status
                 is PaymentStatus.Succeeded
-                    or PaymentStatus.Cancelled
                     or PaymentStatus.Refunded
                     or PaymentStatus.PartiallyRefunded
                     or PaymentStatus.ChargedBack

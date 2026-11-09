@@ -10,7 +10,7 @@ namespace TaxVision.Tenant.Tests.Application;
 
 public sealed class GetClientOfficeProfileHandlerTests
 {
-    private readonly TenantEntity _tenant = TenantEntity.Create("Acme Office", "acme-office", "America/Chicago").Value;
+    private readonly TenantEntity _tenant = TenantEntity.Create("Acme Office", "acme-office", "America/Chicago", DateTime.UtcNow).Value;
     private readonly InMemoryOfficeProfileRepository _profiles = new();
 
     [Fact]

@@ -1,6 +1,6 @@
 using BuildingBlocks.Infrastructure.Hosting;
-using TaxVision.Auth.Application.Onboarding.Failures;
-using TaxVision.Auth.Application.Onboarding.Sagas.Services;
+using TaxVision.Auth.Onboarding.Application.Failures;
+using TaxVision.Auth.Onboarding.Application.Sagas.Services;
 
 namespace TaxVision.Auth.Api.Jobs;
 

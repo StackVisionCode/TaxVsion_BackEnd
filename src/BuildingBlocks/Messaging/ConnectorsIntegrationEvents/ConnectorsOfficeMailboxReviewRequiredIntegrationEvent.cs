@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 /// Connectors NO lo desconecta: lo marca para revisión y deja el canal al consumidor, que avisa a quienes
 /// tengan <see cref="AudiencePermission"/>. Resolverlo = desconectarlo o volver a autorizarlo.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsOfficeMailboxReviewRequiredIntegrationEvent")]
 public sealed record ConnectorsOfficeMailboxReviewRequiredIntegrationEvent : IntegrationEvent
 {
     public required Guid AccountId { get; init; }

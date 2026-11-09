@@ -1,9 +1,12 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
 /// Publicado por Auth cuando el retiro de un usuario no recibió todos sus acuses en el plazo configurado.
 /// Notification avisa a quienes gestionan usuarios con las partes pendientes en palabras de la oficina.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardingIncompleteIntegrationEvent")]
 public sealed record UserOffboardingIncompleteIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }

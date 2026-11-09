@@ -29,6 +29,12 @@ public interface IReminderRepository
 {
     void Add(ReminderAggregate reminder);
 
+    /// <summary>
+    /// Suelta una entidad que no se pudo insertar. Si sigue <c>Added</c>, el <c>SaveChanges</c> del middleware de
+    /// Wolverine vuelve a intentar el INSERT al terminar el handler.
+    /// </summary>
+    void Detach(ReminderAggregate reminder);
+
     Task<Result<ReminderAggregate>> GetByIdAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>
@@ -116,11 +122,11 @@ public interface IReminderRepository
     );
 
     /// <summary>
-    /// <b>Cross-tenant.</b> Red de seguridad de la Fase 5: recordatorios agendados que disparan
-    /// dentro del horizonte y que podrían haber quedado sin trigger vivo en Quartz (EF y Quartz no
-    /// comparten transacción).
+    /// <b>Cross-tenant.</b> Red de seguridad de la Fase 5: recordatorios por sonar (<c>Scheduled</c> o
+    /// <c>Snoozed</c>) dentro del horizonte que podrían haber quedado sin trigger vivo en Quartz (EF y
+    /// Quartz no comparten transacción).
     /// </summary>
-    Task<IReadOnlyList<ReminderAggregate>> ListScheduledWithinHorizonAsync(
+    Task<IReadOnlyList<ReminderAggregate>> ListPendingWithinHorizonAsync(
         DateTime horizonUtc,
         CancellationToken ct = default
     );

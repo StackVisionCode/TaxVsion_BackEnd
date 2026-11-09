@@ -1,7 +1,12 @@
+using JasperFx;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Wolverine;
 
 namespace TaxVision.Subscription.Tests.Integration;
 
@@ -34,5 +39,21 @@ public sealed class SubscriptionApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+
+        // Sin Rabbit, sin los sobres de la flota y sin jobs: no compite con el Subscription en marcha (BB-10).
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            services.ConfigureWolverine(options =>
+            {
+                options.Durability.Mode = DurabilityMode.MediatorOnly;
+                options.AutoBuildMessageStorageOnStartup = AutoCreate.None;
+            });
+            foreach (var hosted in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
+            {
+                if (hosted.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal) == true)
+                    services.Remove(hosted);
+            }
+        });
     }
 }

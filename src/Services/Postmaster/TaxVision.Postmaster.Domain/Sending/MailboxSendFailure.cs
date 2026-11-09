@@ -6,7 +6,7 @@ public enum MailboxSendFailure
     /// <summary>El buzón no puede enviar: desconectado, token vencido, sin permiso para enviar, cupo diario agotado.</summary>
     MailboxUnavailable,
 
-    /// <summary>El proveedor o Connectors no respondió bien: caído, 5xx, timeout, error de red.</summary>
+    /// <summary>El proveedor o Connectors dijo que no salió: caído, 5xx, error de red.</summary>
     ProviderUnavailable,
 
     /// <summary>Cupo por minuto: se difiere y se reintenta, no se cambia de vía.</summary>
@@ -16,4 +16,7 @@ public enum MailboxSendFailure
     InvalidMessage,
 
     Unknown,
+
+    /// <summary>Connectors no contestó a tiempo: el correo pudo haber salido. Nunca se cambia de vía.</summary>
+    OutcomeUnknown,
 }

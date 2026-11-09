@@ -13,6 +13,23 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
 
     public void Remove(SentMessage message) => dbContext.SentMessages.Remove(message);
 
+    public Task<SentMessage?> GetForDispatchAsync(Guid id, CancellationToken ct = default) =>
+        dbContext
+            .SentMessages.IgnoreQueryFilters()
+            .Include(m => m.Recipients)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == id, ct);
+
+    public Task<SentMessage?> FindByIdempotencyKeyAsync(
+        Guid tenantId,
+        string idempotencyKey,
+        CancellationToken ct = default
+    ) =>
+        dbContext
+            .SentMessages.IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.TenantId == tenantId && m.IdempotencyKey == idempotencyKey, ct);
+
     public async Task<Result<SentMessage>> GetByIdWithEventsAsync(
         Guid tenantId,
         Guid id,

@@ -16,14 +16,34 @@ public sealed class FakeSaaSPaymentRepository(SaaSPayment? existing = null) : IS
 {
     public SaaSPayment? Added { get; private set; }
 
-    /// <summary>Lo que devuelve la búsqueda por clave de idempotencia: null fuerza el camino de creación.</summary>
-    public SaaSPayment? Existing { get; set; } = existing;
+    /// <summary>Lo que devuelve la búsqueda por clave de idempotencia: null fuerza el camino de creación. Lo
+    /// sembrado se considera ya guardado: sus eventos de dominio no cuentan para el comando.</summary>
+    public SaaSPayment? Existing
+    {
+        get => _existing;
+        set
+        {
+            value?.ClearDomainEvents();
+            _existing = value;
+        }
+    }
+
+    private SaaSPayment? _existing = Seeded(existing);
+
+    private static SaaSPayment? Seeded(SaaSPayment? payment)
+    {
+        payment?.ClearDomainEvents();
+        return payment;
+    }
 
     public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(ById);
 
+    /// <summary>Lo que devuelve la búsqueda por Id sin tenant (admin, onboarding).</summary>
+    public SaaSPayment? ByIdAnyTenant { get; set; }
+
     public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, CancellationToken ct = default) =>
-        Task.FromResult<SaaSPayment?>(null);
+        Task.FromResult(ByIdAnyTenant);
 
     public Task<SaaSPayment?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default) =>
         Task.FromResult(Existing);
@@ -34,7 +54,13 @@ public sealed class FakeSaaSPaymentRepository(SaaSPayment? existing = null) : IS
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+    public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStalePendingChargeIdsAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<(Guid Id, Guid TenantId)>>([]);
+
+    public Task<IReadOnlyList<(Guid Id, Guid TenantId)>> GetStuckProcessingIdsAsync(
         DateTime cutoffUtc,
         int batchSize,
         CancellationToken ct = default
@@ -75,8 +101,19 @@ public sealed class FakeSaaSPaymentRepository(SaaSPayment? existing = null) : IS
     /// <summary>El pago del onboarding, cuando el test lo necesita.</summary>
     public SaaSPayment? Onboarding { get; set; }
 
-    /// <summary>Lo que devuelve la búsqueda por Id.</summary>
-    public SaaSPayment? ById { get; set; }
+    /// <summary>Lo que devuelve la búsqueda por Id. Lo sembrado se considera ya guardado: sus eventos de dominio
+    /// no cuentan para el comando.</summary>
+    public SaaSPayment? ById
+    {
+        get => _byId;
+        set
+        {
+            value?.ClearDomainEvents();
+            _byId = value;
+        }
+    }
+
+    private SaaSPayment? _byId;
 
     public Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
         Task.FromResult(Onboarding);
@@ -191,6 +228,7 @@ public sealed class FakePaymentProvider(
         string providerChargeReference,
         Money amount,
         string reason,
+        string idempotencyKey,
         CancellationToken ct
     ) => throw new NotSupportedException();
 
@@ -209,6 +247,21 @@ public sealed class FakePaymentProvider(
         string providerChargeReference,
         CancellationToken ct
     ) => throw new NotSupportedException();
+
+    /// <summary>Respuesta de la búsqueda de un cargo sin referencia.</summary>
+    public ChargeLookup Lookup { get; set; } = new(ChargeLookupOutcome.NotSupported);
+
+    public int Lookups { get; private set; }
+
+    public Task<Result<ChargeLookup>> FindChargeAsync(
+        Guid saaSPaymentId,
+        DateTime createdAfterUtc,
+        CancellationToken ct
+    )
+    {
+        Lookups++;
+        return Task.FromResult(Result.Success(Lookup));
+    }
 
     public Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
         string providerChargeReference,
@@ -278,6 +331,10 @@ public sealed class FakePaymentAppMetrics : IPaymentAppMetrics
     public void RecordWebhookSignatureFailed(string provider) { }
 
     public void RecordProviderLatency(double milliseconds, string provider, string method) { }
+
+    public List<(string Provider, string Reason)> ReviewRequired { get; } = [];
+
+    public void RecordPaymentReviewRequired(string provider, string reason) => ReviewRequired.Add((provider, reason));
 }
 
 public sealed class FakeCorrelationContext : ICorrelationContext

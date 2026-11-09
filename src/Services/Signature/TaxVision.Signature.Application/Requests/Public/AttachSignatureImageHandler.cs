@@ -3,6 +3,7 @@ using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
+using Wolverine;
 
 namespace TaxVision.Signature.Application.Requests.Public;
 
@@ -21,6 +22,7 @@ public static class AttachSignatureImageHandler
         IJtiDenylist denylist,
         ISignatureCloudStorageClient storage,
         ISignaturePlatformSettingsProvider platform,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -56,6 +58,11 @@ public static class AttachSignatureImageHandler
             ActorId: request.CreatedByUserId
         );
 
-        return await storage.UploadAsync(request.TenantId, upload, ct);
+        var staged = await storage.StageAsync(request.TenantId, upload, ct);
+        if (staged.IsFailure)
+            return Result.Failure<Guid>(staged.Error);
+
+        await bus.PublishAsync(staged.Value);
+        return Result.Success(staged.Value.FileId);
     }
 }

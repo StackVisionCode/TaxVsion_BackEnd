@@ -29,6 +29,7 @@ public static class UpdateNoteContentHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
@@ -51,7 +52,7 @@ public static class UpdateNoteContentHandler
         if (contentResult.IsFailure)
             return Result.Failure<NoteResponse>(contentResult.Error);
 
-        var updateResult = note.UpdateContent(contentResult.Value, command.ActorUserId);
+        var updateResult = note.UpdateContent(contentResult.Value, command.ActorUserId, clock.GetUtcNow().UtcDateTime);
         if (updateResult.IsFailure)
             return Result.Failure<NoteResponse>(updateResult.Error);
 

@@ -37,6 +37,15 @@ public sealed record CreateReminderCommand(
 /// </para>
 ///
 /// <para>
+/// <b>Contrato con publicadores:</b> una clave existente se devuelve tal cual en cualquier estado
+/// (también <c>Cancelled</c>, <c>Fired</c>, <c>Dismissed</c> o <c>Missed</c>); no se rearma. Quien
+/// necesite un aviso nuevo cambia la clave por ciclo de vida: Tasks <c>task-created:{t}:{u}[:r{n}]</c>,
+/// Calendar <c>calendar:{occurrenceTargetId}</c>. Lo fijan
+/// <c>ReminderCommandHandlerTests.Create_ExistingKeyInTerminalState_ReturnsExistingWithoutRearming</c>
+/// y <c>Create_NewLifecycleKey_CreatesNewReminder</c>.
+/// </para>
+///
+/// <para>
 /// <b>La clave es por destinatario.</b> Si el emisor reasigna el objetivo a otra persona (p. ej. el
 /// organizador de una cita al retirar al anterior) y vuelve a pedir con la misma clave, nace el aviso
 /// del nuevo; el del anterior sigue su propio ciclo (lo cancela su retiro).
@@ -50,9 +59,10 @@ public sealed record CreateReminderCommand(
 /// </para>
 ///
 /// <para>
-/// <b>EF primero, Quartz después</b> (ADR-R-04): si agendar falla, queda un recordatorio sin trigger
-/// que <c>ReminderScheduleReconciliationJob</c> repara en ≤5 min. Al revés quedaría un trigger
-/// apuntando a una fila inexistente, que no repara nadie.
+/// <b>EF primero, Quartz después</b> (ADR-R-04), pero Wolverine confirma <b>después</b> del handler: el
+/// trigger existe unos milisegundos antes que la fila confirmada. Si agendar falla, la fila se revierte
+/// y no queda nada. Si falla el commit, queda un trigger huérfano, inofensivo:
+/// <c>FireReminderHandler</c> lo descarta.
 /// </para>
 /// </summary>
 public static class CreateReminderHandler
@@ -146,6 +156,8 @@ public static class CreateReminderHandler
         }
         catch (ConflictException)
         {
+            reminders.Detach(built.Reminder!);
+
             var winner = await reminders.FindByRequestKeyAsync(command.TenantId, command.UserId, built.RequestKey, ct);
             if (winner is null)
                 return Result.Failure<PersistOutcome>(ReminderErrors.DuplicateRequest);

@@ -29,7 +29,7 @@ public sealed class AddOnPurchaseIntentCancelExpireTests
                 autoRenew: true,
                 Money.Create(10m, "USD").Value,
                 BillingCycle.Monthly,
-                proratedTotalCents: 1000,
+                proratedTotal: Money.FromCents(1000, "USD"),
                 Guid.NewGuid(),
                 DateTime.UtcNow
             )

@@ -19,11 +19,29 @@ public interface IIncomingEmailRepository
     );
 
     /// <summary>
+    /// Dedup de un mensaje sin <c>InternetMessageId</c>: busca por <c>(TenantId, AccountId, ProviderMessageId)</c>
+    /// entre los que tampoco lo tienen (mismo alcance que el índice único filtrado).
+    /// </summary>
+    Task<IncomingEmail?> FindByProviderMessageIdAsync(
+        Guid tenantId,
+        Guid accountId,
+        string providerMessageId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
     /// Busca por <c>(TenantId, Id)</c>. Devuelve <c>null</c> si no existe o pertenece a otro
     /// tenant — usado por <c>GetMessageBodyHandler</c> (Fase 5), nunca confía en el TenantId de
     /// la ruta/query, siempre en el del JWT.
     /// </summary>
     Task<IncomingEmail?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>Correos de esa dirección que todavía no tienen cliente. Tracked: el caller los enlaza (COR-05).</summary>
+    Task<IReadOnlyList<IncomingEmail>> ListUnlinkedByAddressAsync(
+        Guid tenantId,
+        string fromAddress,
+        CancellationToken ct = default
+    );
 
     Task AddAsync(IncomingEmail entity, CancellationToken ct = default);
 
@@ -117,4 +135,7 @@ public interface IIncomingEmailRepository
         Guid cloudStorageFileId,
         CancellationToken ct = default
     );
+
+    /// <summary>Reposición (COR-02): correos tracked cuyo cliente no es el de su hilo.</summary>
+    Task<IReadOnlyList<IncomingEmail>> ListInForeignThreadsAsync(Guid tenantId, CancellationToken ct = default);
 }

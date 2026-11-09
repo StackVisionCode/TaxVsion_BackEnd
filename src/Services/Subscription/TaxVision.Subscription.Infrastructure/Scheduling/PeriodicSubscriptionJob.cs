@@ -1,7 +1,9 @@
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TaxVision.Subscription.Infrastructure.Persistence;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -21,6 +23,28 @@ public abstract class PeriodicSubscriptionJob(
 ) : BackgroundService
 {
     protected abstract string JobName { get; }
+
+    // Para abrir un scope por ítem dentro de la pasada.
+    protected IServiceScopeFactory ScopeFactory => scopeFactory;
+
+    protected ILogger Logger => logger;
+
+    /// <summary>
+    /// BB-3: una unidad transaccional por ítem. La fila, sus eventos de dominio y lo publicado por
+    /// <see cref="JobUnitContext{TDbContext}.PublishAsync"/> se confirman juntos; un fallo o un conflicto no
+    /// arrastra a los demás ítems.
+    /// </summary>
+    protected Task<JobBatchSummary> RunUnitsAsync<TItem>(
+        IEnumerable<TItem> items,
+        Func<TItem, JobUnitContext<SubscriptionDbContext>, CancellationToken, Task<bool>> work,
+        CancellationToken ct
+    ) => TransactionalJobUnit.RunEachAsync(scopeFactory, items, work, logger, ct);
+
+    /// <summary>Una sola unidad transaccional (BB-3), para los jobs que preparan cada ítem fuera de la transacción.</summary>
+    protected Task<JobUnitResult> RunUnitAsync(
+        Func<JobUnitContext<SubscriptionDbContext>, CancellationToken, Task<bool>> work,
+        CancellationToken ct
+    ) => TransactionalJobUnit.RunAsync(scopeFactory, work, logger, ct);
 
     protected abstract Task RunOnceAsync(IServiceProvider services, CancellationToken ct);
 

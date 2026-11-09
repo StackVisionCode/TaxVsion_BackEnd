@@ -65,6 +65,9 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CancelledAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("ChildrenRevision")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -96,6 +99,9 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)")
                         .HasColumnName("RecurrenceRule");
+
+                    b.Property<int>("ReminderGeneration")
+                        .HasColumnType("int");
 
                     b.Property<int?>("ReminderLeadMinutes")
                         .HasColumnType("int");
@@ -211,6 +217,31 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_AppointmentExceptions_AppointmentId_OriginalStartUtc");
 
                     b.ToTable("AppointmentExceptions", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.Appointments.StartingSoonNotice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OccurrenceTargetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("PublishedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex(new[] { "TenantId", "OccurrenceTargetId", "StartUtc" }, "UX_AppointmentStartingSoonNotices_Occurrence")
+                        .IsUnique();
+
+                    b.ToTable("AppointmentStartingSoonNotices", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Calendar.Domain.Availability.AvailabilityRule", b =>
@@ -331,6 +362,10 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("TenantId", "UserId");
+
+                    b.HasIndex(new[] { "TenantId", "UserId" }, "UX_CalendarFeedTokens_ActivePerUser")
+                        .IsUnique()
+                        .HasFilter("[RevokedAtUtc] IS NULL");
 
                     b.ToTable("CalendarFeedTokens", (string)null);
                 });

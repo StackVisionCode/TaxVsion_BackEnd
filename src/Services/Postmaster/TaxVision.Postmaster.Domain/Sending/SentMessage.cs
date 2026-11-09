@@ -26,7 +26,7 @@ public enum SentMessageStatus
 /// Nunca persiste el HTML/text del cuerpo — solo <see cref="RenderedHtmlChecksum"/> para audit;
 /// el contenido material vive en Scribe/CloudStorage. Ver Postmaster_Baseline_Audit.md §3.
 /// </summary>
-public sealed class SentMessage : TenantEntity
+public sealed class SentMessage : AggregateRoot
 {
     private readonly List<SentMessageRecipient> _recipients = [];
     private readonly List<SentMessageEvent> _events = [];
@@ -58,8 +58,12 @@ public sealed class SentMessage : TenantEntity
     /// cada transición que cambia <see cref="Status"/> o el outcome de un destinatario.
     /// </summary>
     public SentMessageActivity Activity { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
     public DateTime QueuedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
+
+    /// <summary>Cuándo se llamó al proveedor. Con valor y sin resultado, el correo pudo haber salido: no se reenvía.</summary>
+    public DateTime? SendAttemptedAtUtc { get; private set; }
     public DateTime? LastEventAtUtc { get; private set; }
     public string? ErrorReason { get; private set; }
     public string? TemplateKey { get; private set; }
@@ -131,17 +135,17 @@ public sealed class SentMessage : TenantEntity
         if (string.IsNullOrWhiteSpace(subject))
             return Result.Failure<SentMessage>(new Error("SentMessage.Subject", "Subject is required."));
 
-        var fromValidation = ValidateEmailAddress(fromAddress, "SentMessage.FromAddress");
-        if (fromValidation.IsFailure)
-            return Result.Failure<SentMessage>(fromValidation.Error);
+        var from = ParseAddress(fromAddress, "SentMessage.FromAddress");
+        if (from.IsFailure)
+            return Result.Failure<SentMessage>(from.Error);
 
         string? normalizedReplyTo = null;
         if (replyTo is not null)
         {
-            var replyToValidation = ValidateEmailAddress(replyTo, "SentMessage.ReplyTo");
-            if (replyToValidation.IsFailure)
-                return Result.Failure<SentMessage>(replyToValidation.Error);
-            normalizedReplyTo = replyToValidation.Value;
+            var parsedReplyTo = ParseAddress(replyTo, "SentMessage.ReplyTo");
+            if (parsedReplyTo.IsFailure)
+                return Result.Failure<SentMessage>(parsedReplyTo.Error);
+            normalizedReplyTo = parsedReplyTo.Value.Value;
         }
 
         if (string.IsNullOrWhiteSpace(providerCode) || providerCode.Length > 50)
@@ -157,7 +161,7 @@ public sealed class SentMessage : TenantEntity
             CorrelationId = correlationId,
             IdempotencyKey = idempotencyKey,
             Subject = Truncate(subject, 500),
-            FromAddress = fromValidation.Value,
+            FromAddress = from.Value.Value,
             FromDisplayName = fromDisplayName is { Length: > 100 } ? fromDisplayName[..100] : fromDisplayName,
             ReplyTo = normalizedReplyTo,
             Stream = stream,
@@ -186,11 +190,11 @@ public sealed class SentMessage : TenantEntity
     /// <summary>Agrega un destinatario. Rechaza duplicados (misma Address+Type dentro del mensaje).</summary>
     public Result<SentMessageRecipient> AddRecipient(string address, RecipientType type, string? displayName)
     {
-        var validation = ValidateEmailAddress(address, "SentMessage.Recipient.Address");
-        if (validation.IsFailure)
-            return Result.Failure<SentMessageRecipient>(validation.Error);
+        var parsed = ParseAddress(address, "SentMessage.Recipient.Address");
+        if (parsed.IsFailure)
+            return Result.Failure<SentMessageRecipient>(parsed.Error);
 
-        var normalized = validation.Value;
+        var normalized = parsed.Value.Value;
         if (_recipients.Exists(r => r.Address == normalized && r.Type == type))
             return Result.Failure<SentMessageRecipient>(
                 new Error("SentMessage.DuplicateRecipient", $"Recipient {normalized} ({type}) already added.")
@@ -212,6 +216,34 @@ public sealed class SentMessage : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Se graba (y confirma) justo antes de llamar al proveedor. Solo un intento por mensaje.</summary>
+    public Result MarkSendAttempted(DateTime attemptedAtUtc)
+    {
+        if (Status != SentMessageStatus.Sending)
+            return Result.Failure(
+                new Error("SentMessage.NotSending", "Only a message being sent can record a send attempt.")
+            );
+        if (SendAttemptedAtUtc is not null)
+            return Result.Failure(
+                new Error("SentMessage.SendAlreadyAttempted", "The provider was already called for this message.")
+            );
+
+        SendAttemptedAtUtc = attemptedAtUtc;
+        return Result.Success();
+    }
+
+    /// <summary>El proveedor contestó que no salió y conviene reintentar (cupo): se libera el intento.</summary>
+    public Result ReleaseSendAttempt()
+    {
+        if (Status != SentMessageStatus.Sending)
+            return Result.Failure(
+                new Error("SentMessage.NotSending", "Only a message being sent can release its send attempt.")
+            );
+
+        SendAttemptedAtUtc = null;
+        return Result.Success();
+    }
+
     /// <summary>
     /// Sending → Sent. Marca también como Sent a los recipients que seguían Pending — el MTA
     /// aceptó el envelope completo (los bounces individuales llegan después via webhook).
@@ -219,7 +251,12 @@ public sealed class SentMessage : TenantEntity
     /// conversationId, D3 Compose §11.3/§13) — null en el canal de notificaciones automáticas, que
     /// nunca continúa un hilo.
     /// </summary>
-    public Result MarkAsSent(string? providerMessageId, DateTime sentAtUtc, string? providerThreadId = null)
+    public Result MarkAsSent(
+        string? providerMessageId,
+        DateTime sentAtUtc,
+        string? providerThreadId = null,
+        string? reportedMessageId = null
+    )
     {
         if (Status != SentMessageStatus.Sending)
             return Result.Failure(InvalidTransition(SentMessageStatus.Sent));
@@ -239,11 +276,12 @@ public sealed class SentMessage : TenantEntity
         RefreshActivity();
 
         _events.Add(SentMessageEvent.Create(TenantId, Id, null, SentMessageEventType.Sent, sentAtUtc, null, null));
+        AddDomainEvent(new SentMessageSentDomainEvent(TenantId, Id, Callback, reportedMessageId, sentAtUtc));
         return Result.Success();
     }
 
     /// <summary>{Queued, Sending} → Failed. Cubre tanto fallo de resolución de provider como fallo de envío.</summary>
-    public Result MarkAsFailed(string reason, DateTime eventAtUtc)
+    public Result MarkAsFailed(string reason, DateTime eventAtUtc, string? reportedMessageId = null)
     {
         if (Status is not (SentMessageStatus.Queued or SentMessageStatus.Sending))
             return Result.Failure(InvalidTransition(SentMessageStatus.Failed));
@@ -258,6 +296,7 @@ public sealed class SentMessage : TenantEntity
         _events.Add(
             SentMessageEvent.Create(TenantId, Id, null, SentMessageEventType.Failed, eventAtUtc, null, ErrorReason)
         );
+        AddDomainEvent(new SentMessageFailedDomainEvent(TenantId, Id, Callback, reportedMessageId, reason, eventAtUtc));
         return Result.Success();
     }
 
@@ -283,10 +322,10 @@ public sealed class SentMessage : TenantEntity
                 )
             );
 
-        var from = ValidateEmailAddress(systemFromAddress, "SentMessage.FromAddress");
+        var from = ParseAddress(systemFromAddress, "SentMessage.FromAddress");
         if (from.IsFailure)
             return Result.Failure(from.Error);
-        var reply = ValidateEmailAddress(replyTo, "SentMessage.ReplyTo");
+        var reply = ParseAddress(replyTo, "SentMessage.ReplyTo");
         if (reply.IsFailure)
             return Result.Failure(reply.Error);
         if (string.IsNullOrWhiteSpace(systemProviderCode) || systemProviderCode.Length > 50)
@@ -298,9 +337,9 @@ public sealed class SentMessage : TenantEntity
         DeliveryLane = DeliveryLane.SystemProvider;
         RequiredProviderScope = ProviderScope.System;
         ProviderCode = systemProviderCode;
-        FromAddress = from.Value;
+        FromAddress = from.Value.Value;
         FromDisplayName = fromDisplayName is { Length: > 100 } ? fromDisplayName[..100] : fromDisplayName;
-        ReplyTo = reply.Value;
+        ReplyTo = reply.Value.Value;
         InternetMessageId = null;
         LastEventAtUtc = nowUtc;
         _events.Add(
@@ -316,6 +355,12 @@ public sealed class SentMessage : TenantEntity
         );
         return Result.Success();
     }
+
+    // Solo los correos que pidió Notification tienen a quién avisar.
+    private SentMessageCallback? Callback =>
+        NotificationLogId is { } logId && DispatchAttemptId is { } attemptId
+            ? new SentMessageCallback(logId, attemptId, CampaignId, CorrelationId)
+            : null;
 
     private void RecordAttempt(bool succeeded, string? failureReason, DateTime attemptedAtUtc) =>
         _deliveryAttempts.Add(
@@ -335,7 +380,27 @@ public sealed class SentMessage : TenantEntity
         _events.Add(
             SentMessageEvent.Create(TenantId, Id, null, SentMessageEventType.Suppressed, eventAtUtc, null, ErrorReason)
         );
+        AddDomainEvent(new SentMessageSuppressedDomainEvent(TenantId, Id, Callback, reason, eventAtUtc));
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Marca los destinatarios que están en la lista de supresión. Si no queda ninguno, el mensaje entero pasa
+    /// a Suppressed sin intentar el envío y devuelve true: no hay a quién mandarle.
+    /// </summary>
+    public Result<bool> ApplySuppression(IReadOnlySet<string> suppressedAddresses, DateTime suppressedAtUtc)
+    {
+        if (Status != SentMessageStatus.Queued)
+            return Result.Failure<bool>(InvalidTransition(SentMessageStatus.Suppressed));
+
+        foreach (var recipient in _recipients.Where(r => suppressedAddresses.Contains(r.Address)))
+            MarkRecipientSuppressed(recipient.Id, "Address in suppression list.", suppressedAtUtc);
+
+        if (_recipients.Count == 0 || _recipients.Exists(r => r.Status != RecipientStatus.Suppressed))
+            return Result.Success(false);
+
+        var suppressed = MarkAsSuppressed("All recipients are in the suppression list.", suppressedAtUtc);
+        return suppressed.IsSuccess ? Result.Success(true) : Result.Failure<bool>(suppressed.Error);
     }
 
     /// <summary>
@@ -415,8 +480,8 @@ public sealed class SentMessage : TenantEntity
 
     public SentMessageRecipient? FindRecipientByAddress(string address)
     {
-        var normalized = address.Trim().ToLowerInvariant();
-        return _recipients.Find(r => r.Address == normalized);
+        var parsed = EmailAddress.Create(address);
+        return parsed.IsFailure ? null : _recipients.Find(r => r.Address == parsed.Value.Value);
     }
 
     /// <summary>
@@ -527,6 +592,14 @@ public sealed class SentMessage : TenantEntity
                 _ => SentMessageEventType.Bounced,
             };
 
+    /// <summary>Vuelve a derivar <see cref="Activity"/> de los destinatarios. Devuelve true si cambió.</summary>
+    public bool RecalculateActivity()
+    {
+        var before = Activity;
+        RefreshActivity();
+        return Activity != before;
+    }
+
     /// <summary>Única regla de "Email activity": el estado del envío y, si salió, el peor outcome.</summary>
     private void RefreshActivity() =>
         Activity = Status switch
@@ -611,16 +684,12 @@ public sealed class SentMessage : TenantEntity
         _attachments.AddRange(attachments);
     }
 
-    private static Result<string> ValidateEmailAddress(string address, string errorCode)
+    private static Result<EmailAddress> ParseAddress(string address, string errorCode)
     {
-        if (string.IsNullOrWhiteSpace(address))
-            return Result.Failure<string>(new Error(errorCode, "Email address is required."));
-
-        var trimmed = address.Trim();
-        if (trimmed.Length > 320 || !trimmed.Contains('@') || trimmed.StartsWith('@') || trimmed.EndsWith('@'))
-            return Result.Failure<string>(new Error(errorCode, $"'{address}' is not a valid email address."));
-
-        return Result.Success(trimmed.ToLowerInvariant());
+        var parsed = EmailAddress.Create(address);
+        return parsed.IsSuccess
+            ? parsed
+            : Result.Failure<EmailAddress>(new Error(errorCode, parsed.Error.Message));
     }
 
     private Error InvalidTransition(SentMessageStatus target) =>

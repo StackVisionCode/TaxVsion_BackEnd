@@ -129,7 +129,14 @@ public sealed class CampaignRecipient
                 SettledAtUtc ??= now;
                 break;
             case DispatchOutcome.Unknown:
-                if (State is DispatchState.Delivered or DispatchState.Failed)
+                // Un Unknown tardío no baja de estado una unidad ya resuelta.
+                if (
+                    State
+                    is DispatchState.Delivered
+                        or DispatchState.Failed
+                        or DispatchState.Accepted
+                        or DispatchState.Skipped
+                )
                     return false;
                 State = DispatchState.Unknown;
                 SettledAtUtc ??= now;
@@ -141,6 +148,16 @@ public sealed class CampaignRecipient
         ProviderRef = providerRef ?? ProviderRef;
         Reason = reason ?? Reason;
         return true;
+    }
+
+    /// <summary>Sin resultado del ejecutor a tiempo: queda <c>Unknown</c> (reconciliable, no <c>Failed</c>).</summary>
+    internal void ExpireAsUnknown(string reason, DateTime nowUtc)
+    {
+        if (IsSettled)
+            return;
+        State = DispatchState.Unknown;
+        Reason = reason;
+        SettledAtUtc = nowUtc;
     }
 
     /// <summary>Una unidad es "settled" (cuenta para el cierre) si no está Pending ni en vuelo.</summary>

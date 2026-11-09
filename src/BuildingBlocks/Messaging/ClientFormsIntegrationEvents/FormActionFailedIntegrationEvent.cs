@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 
 /// <summary>task.form_action_failed.v1</summary>
+[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormActionFailedIntegrationEvent")]
 public sealed record FormActionFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid FormRequestId { get; init; }

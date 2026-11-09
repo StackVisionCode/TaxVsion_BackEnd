@@ -6,7 +6,7 @@ namespace TaxVision.Notes.Application.Notes.Abstractions;
 /// <summary>
 /// Repositorio del aggregate root <see cref="Note"/>. Todas las lecturas por tenant filtran por
 /// <c>TenantId</c> explícito (el aislamiento multitenant se hace a nivel de repo, nunca se acepta
-/// una query sin tenant) — la única excepción es <see cref="GetByAttachmentFileIdAsync"/>, que la
+/// una query sin tenant) — la única excepción es <see cref="ListByAttachmentFileIdAsync"/>, que la
 /// invoca el consumer de CloudStorage sin tenant ambiental (ver comentario del método).
 /// </summary>
 public interface INoteRepository
@@ -15,12 +15,12 @@ public interface INoteRepository
     Task<Note?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     /// <summary>
-    /// Busca la nota dueña de un adjunto por <c>CloudStorageFileId</c>, sin filtro de tenant — la
-    /// invocan los consumers de <c>FileAvailable</c>/<c>FileInfectedDetected</c>/<c>FileBlockedByPolicy</c>,
-    /// que no corren dentro de un scope con tenant ambiental (Wolverine consumer). El caller debe
-    /// validar <c>note.TenantId == evt.TenantId</c> después del fetch (guardrail 8).
+    /// Busca las notas con un adjunto por <c>CloudStorageFileId</c> (el mismo archivo puede estar en
+    /// varias), sin filtro de tenant — la invocan los consumers de <c>FileAvailable</c>/<c>FileInfectedDetected</c>/
+    /// <c>FileBlockedByPolicy</c>, que no corren dentro de un scope con tenant ambiental (Wolverine consumer).
+    /// El caller debe validar <c>note.TenantId == evt.TenantId</c> en cada una (guardrail 8).
     /// </summary>
-    Task<Note?> GetByAttachmentFileIdAsync(Guid cloudStorageFileId, CancellationToken ct = default);
+    Task<IReadOnlyList<Note>> ListByAttachmentFileIdAsync(Guid cloudStorageFileId, CancellationToken ct = default);
 
     /// <summary>
     /// Notas de un target polimórfico (p.ej. todas las notas de un Customer), más recientes
@@ -69,14 +69,13 @@ public interface INoteRepository
     /// <summary>
     /// ¿El cliente <paramref name="customerId"/> está asignado a <paramref name="actorUserId"/> en la
     /// proyección local de asignaciones (P2)? Gate del detalle de una nota cuyo target es un Customer.
-    /// Default true (sin restricción) para no romper fakes; el repo real consulta la proyección.
     /// </summary>
     Task<bool> IsCustomerAssignedAsync(
         Guid tenantId,
         Guid customerId,
         Guid actorUserId,
         CancellationToken ct = default
-    ) => Task.FromResult(true);
+    );
 
     /// <summary>
     /// CustomerPortal (<c>ListClientVisibleNotesQuery</c>): solo <see cref="NoteVisibility.ClientVisible"/>,

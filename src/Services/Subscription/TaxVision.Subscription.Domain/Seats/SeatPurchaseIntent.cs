@@ -40,8 +40,11 @@ public sealed class SeatPurchaseIntent : TenantEntity
     public bool AutoRenew { get; private set; }
     public Money UnitPrice { get; private set; } = null!;
     public BillingCycle BillingCycle { get; private set; }
-    public long ProratedTotalCents { get; private set; }
-    public string Currency { get; private set; } = default!;
+    private long ProratedTotalCents { get; set; }
+    private string Currency { get; set; } = default!;
+
+    /// <summary>Total prorrateado a cobrar. Vive en las columnas ProratedTotalCents y Currency.</summary>
+    public Money ProratedTotal => Money.FromCents(ProratedTotalCents, Currency);
     public SeatPurchaseIntentStatus Status { get; private set; }
     public Guid? SaaSPaymentId { get; private set; }
     public string? CheckoutUrl { get; private set; }
@@ -66,6 +69,9 @@ public sealed class SeatPurchaseIntent : TenantEntity
     public string? CancelReason { get; private set; }
     public string? FailureReason { get; private set; }
 
+    /// <summary>Token de concurrencia: el consumidor del pago y el job de reconciliación no aprovisionan dos veces.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     private SeatPurchaseIntent() { }
 
     public static Result<SeatPurchaseIntent> Create(
@@ -75,7 +81,7 @@ public sealed class SeatPurchaseIntent : TenantEntity
         bool autoRenew,
         Money unitPrice,
         BillingCycle billingCycle,
-        long proratedTotalCents,
+        Money proratedTotal,
         Guid requestedByUserId,
         DateTime nowUtc
     )
@@ -91,7 +97,7 @@ public sealed class SeatPurchaseIntent : TenantEntity
             );
 
         // El hosted-checkout es para cobrar: un total 0 (tipo gratis) no debe llegar acá — va por compra directa.
-        if (proratedTotalCents <= 0)
+        if (proratedTotal.Cents <= 0)
             return Result.Failure<SeatPurchaseIntent>(
                 new Error("SeatPurchaseIntent.NothingToCharge", "Checkout requires a positive prorated total.")
             );
@@ -103,8 +109,8 @@ public sealed class SeatPurchaseIntent : TenantEntity
             AutoRenew = autoRenew,
             UnitPrice = unitPrice,
             BillingCycle = billingCycle,
-            ProratedTotalCents = proratedTotalCents,
-            Currency = unitPrice.Currency,
+            ProratedTotalCents = proratedTotal.Cents,
+            Currency = proratedTotal.Currency,
             Status = SeatPurchaseIntentStatus.Pending,
             RequestedByUserId = requestedByUserId,
             CreatedAtUtc = nowUtc,

@@ -31,6 +31,32 @@ internal static class ConflictProbe
         if (occurrences.IsFailure)
             return Result.Failure<IReadOnlyList<string>>(occurrences.Error);
 
+        var slots = occurrences.Value.Select(o => (o.StartUtc, o.EndUtc)).ToList();
+        return await CheckSlotsAsync(appointment, slots, fromUtc, toUtc, type, appointments, availability, ct);
+    }
+
+    /// <summary>Solo esta franja: mover una ocurrencia no responde por el resto de la serie.</summary>
+    public static Task<Result<IReadOnlyList<string>>> CheckSlotAsync(
+        Appointment appointment,
+        DateTime startUtc,
+        DateTime endUtc,
+        AppointmentType type,
+        IAppointmentRepository appointments,
+        IAvailabilityRepository availability,
+        CancellationToken ct
+    ) => CheckSlotsAsync(appointment, [(startUtc, endUtc)], startUtc, endUtc, type, appointments, availability, ct);
+
+    private static async Task<Result<IReadOnlyList<string>>> CheckSlotsAsync(
+        Appointment appointment,
+        IReadOnlyList<(DateTime StartUtc, DateTime EndUtc)> slots,
+        DateTime fromUtc,
+        DateTime toUtc,
+        AppointmentType type,
+        IAppointmentRepository appointments,
+        IAvailabilityRepository availability,
+        CancellationToken ct
+    )
+    {
         var existing = await appointments.ListForRangeAsync(appointment.TenantId, fromUtc, toUtc, ct);
         var busy = Busy(existing, appointment, fromUtc, toUtc);
         var blocks = await availability.ListBlocksAsync(
@@ -42,16 +68,16 @@ internal static class ConflictProbe
         );
 
         var warnings = new List<string>();
-        foreach (var occurrence in occurrences.Value)
+        foreach (var (startUtc, endUtc) in slots)
         {
-            var result = ConflictDetector.Check(occurrence.StartUtc, occurrence.EndUtc, type, busy, blocks);
+            var result = ConflictDetector.Check(startUtc, endUtc, type, busy, blocks);
             if (!result.HasConflict)
                 continue;
 
             if (result.Blocks)
                 return Result.Failure<IReadOnlyList<string>>(AppointmentErrors.Conflict);
 
-            warnings.Add($"Se solapa con otra cita el {occurrence.StartUtc:yyyy-MM-dd HH:mm} UTC.");
+            warnings.Add($"Se solapa con otra cita el {startUtc:yyyy-MM-dd HH:mm} UTC.");
         }
 
         return Result.Success<IReadOnlyList<string>>(warnings);
@@ -84,7 +110,12 @@ internal static class ConflictProbe
         var busy = new List<Occurrence>();
         foreach (var other in existing)
         {
-            if (other.Id == self.Id || other.Status == AppointmentStatus.Cancelled)
+            // La serie de la que sale una partida es la misma cita: tampoco choca con ella.
+            if (
+                other.Id == self.Id
+                || other.Id == self.SplitFromSeriesId
+                || other.Status == AppointmentStatus.Cancelled
+            )
                 continue;
 
             if (other.OrganizerUserId != self.OrganizerUserId)

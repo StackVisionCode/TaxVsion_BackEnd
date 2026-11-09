@@ -242,31 +242,57 @@ public sealed class MinioBucketBootstrapper(IMinioClient client, IOptions<CloudS
         );
 
         await EnsureMainBucketAvatarRuleAsync(options.MainBucket, cancellationToken);
+        await EnsureQuarantinePurgedRuleAsync(
+            options.QuarantineBucket,
+            options.QuarantinePurgedRetentionDays,
+            cancellationToken
+        );
     }
 
     // Se mezcla con las reglas que ya tenga el bucket principal (un Set reemplaza la config entera).
     private async Task EnsureMainBucketAvatarRuleAsync(string mainBucket, CancellationToken cancellationToken)
     {
-        LifecycleConfiguration? current;
-        try
-        {
-            current = await client.GetBucketLifecycleAsync(
-                new GetBucketLifecycleArgs().WithBucket(mainBucket),
-                cancellationToken
-            );
-        }
-        catch (MinioException ex) when (MainBucketLifecycle.IsMissingConfiguration(ex))
-        {
-            current = null;
-        }
-
-        var merged = MainBucketLifecycle.MergeAvatarRule(current);
+        var merged = MainBucketLifecycle.MergeAvatarRule(await ReadLifecycleAsync(mainBucket, cancellationToken));
         if (merged is null)
             return;
         await client.SetBucketLifecycleAsync(
             new SetBucketLifecycleArgs().WithBucket(mainBucket).WithLifecycleConfiguration(merged),
             cancellationToken
         );
+    }
+
+    // CST-18: vence purged/ en cuarentena; mezcla con las reglas existentes.
+    private async Task EnsureQuarantinePurgedRuleAsync(
+        string quarantineBucket,
+        int retentionDays,
+        CancellationToken cancellationToken
+    )
+    {
+        var merged = QuarantineBucketLifecycle.MergePurgedRule(
+            await ReadLifecycleAsync(quarantineBucket, cancellationToken),
+            retentionDays
+        );
+        if (merged is null)
+            return;
+        await client.SetBucketLifecycleAsync(
+            new SetBucketLifecycleArgs().WithBucket(quarantineBucket).WithLifecycleConfiguration(merged),
+            cancellationToken
+        );
+    }
+
+    private async Task<LifecycleConfiguration?> ReadLifecycleAsync(string bucket, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await client.GetBucketLifecycleAsync(
+                new GetBucketLifecycleArgs().WithBucket(bucket),
+                cancellationToken
+            );
+        }
+        catch (MinioException ex) when (MainBucketLifecycle.IsMissingConfiguration(ex))
+        {
+            return null;
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -335,4 +361,45 @@ public static class MainBucketLifecycle
         && rule.Filter?.TheAndOperator?.Tags?.Any(t =>
             t.Key == StorageObjectTags.KindKey && t.Value == StorageObjectTags.AvatarKind
         ) == true;
+}
+
+/// <summary>
+/// CST-18: la purga copia la evidencia de cuarentena a purged/ (objeto nuevo) y esta regla vence ese prefijo a
+/// los N días. S3 cuenta desde la creación del objeto, que es la fecha de la purga.
+/// </summary>
+public static class QuarantineBucketLifecycle
+{
+    public const string PurgedRuleId = "taxvision-quarantine-purged";
+
+    public static LifecycleRule PurgedRule(int retentionDays) =>
+        new(
+            abortIncompleteMultipartUpload: null,
+            id: PurgedRuleId,
+            expiration: new Expiration { Days = retentionDays },
+            transition: null,
+            filter: new RuleFilter { Prefix = QuarantinePurgedObjects.Prefix },
+            noncurrentVersionExpiration: null,
+            noncurrentVersionTransition: null,
+            status: LifecycleRule.LifecycleRuleStatusEnabled
+        );
+
+    /// <summary>Null si la regla ya está con esos días; si no, la config con la regla agregada o reemplazada.</summary>
+    public static LifecycleConfiguration? MergePurgedRule(LifecycleConfiguration? current, int retentionDays)
+    {
+        var rules = current?.Rules?.ToList() ?? [];
+        var existing = rules.FirstOrDefault(r => r.ID == PurgedRuleId);
+        if (existing is not null && IsUpToDate(existing, retentionDays))
+            return null;
+
+        rules.RemoveAll(r => r.ID == PurgedRuleId);
+        rules.Add(PurgedRule(retentionDays));
+        return new LifecycleConfiguration(rules);
+    }
+
+    private static bool IsUpToDate(LifecycleRule rule, int retentionDays) =>
+        rule.Status == LifecycleRule.LifecycleRuleStatusEnabled
+        && rule.Expiration?.Days == retentionDays
+        && rule.Filter?.Prefix == QuarantinePurgedObjects.Prefix
+        && rule.Filter.TheAndOperator is null
+        && rule.Filter.Tag is null;
 }

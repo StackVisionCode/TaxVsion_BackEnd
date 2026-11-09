@@ -48,6 +48,7 @@ public sealed class TenantSignatureSettingsConfiguration : IEntityTypeConfigurat
 
         builder.Property(settings => settings.CreatedAtUtc).IsRequired();
         builder.Property(settings => settings.UpdatedAtUtc).IsRequired();
+        builder.Property(settings => settings.RowVersion).IsRowVersion();
 
         // DocumentLimits: owned value object (columnas propias sin tabla separada).
         builder.OwnsOne(

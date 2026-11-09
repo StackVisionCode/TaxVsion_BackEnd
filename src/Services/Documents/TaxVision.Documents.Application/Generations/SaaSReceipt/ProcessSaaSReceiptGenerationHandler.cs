@@ -107,26 +107,26 @@ public static class ProcessSaaSReceiptGenerationHandler
                 }
             );
 
-            var save = await storageClient.RequestSaveAsync(
-                tenantId: command.TenantId,
-                fileId: fileId,
-                content: pdf.Value,
-                fileName: command.FileName,
-                contentType: PdfContentType,
-                ownerType: GenerateSaaSReceiptDocumentHandler.OwnerTypeSaaSPayment,
-                ownerId: command.SaaSPaymentId,
-                folderType: FolderTypeSaaSReceipts,
-                taxYear: command.Receipt.PaidAtUtc.Year,
-                actorId: command.TenantId,
-                correlationId: correlation.CorrelationId,
-                ct: ct
-            );
-
-            if (save.IsFailure)
+            var upload = await storageClient.UploadAsync(fileId, pdf.Value, command.FileName, PdfContentType, ct);
+            if (upload.IsFailure)
             {
-                await FailAsync(generation, command, save.Error, unitOfWork, bus, now, logger, ct);
+                await FailAsync(generation, command, upload.Error, unitOfWork, bus, now, logger, ct);
                 return;
             }
+
+            await bus.RequestSaveAsync(
+                upload.Value,
+                new GeneratedFileDestination(
+                    command.TenantId,
+                    command.FileName,
+                    GenerateSaaSReceiptDocumentHandler.OwnerTypeSaaSPayment,
+                    command.SaaSPaymentId,
+                    FolderTypeSaaSReceipts,
+                    command.Receipt.PaidAtUtc.Year,
+                    command.TenantId,
+                    correlation.CorrelationId
+                )
+            );
 
             logger.LogInformation(
                 "SaaS receipt {GenerationId} rendered ({Bytes} bytes) and handed to CloudStorage as file {FileId}.",

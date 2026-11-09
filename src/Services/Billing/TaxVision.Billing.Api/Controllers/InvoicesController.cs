@@ -19,6 +19,8 @@ using TaxVision.Billing.Application.Invoices.RecordManualPayment;
 using TaxVision.Billing.Application.Invoices.ReissueInvoice;
 using TaxVision.Billing.Application.Invoices.SendInvoiceToCustomer;
 using TaxVision.Billing.Application.Invoices.VoidInvoice;
+using TaxVision.Billing.Application.Payments.ListUnappliedPayments;
+using TaxVision.Billing.Application.Payments.ResolveUnappliedPayment;
 using Wolverine;
 
 namespace TaxVision.Billing.Api.Controllers;
@@ -138,6 +140,7 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
     public async Task<IActionResult> RecordManualPayment(
         Guid invoiceId,
         RecordManualPaymentRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         CancellationToken ct
     )
     {
@@ -154,7 +157,8 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
                 request.AmountCents,
                 request.PaidAtUtc,
                 actorId,
-                canViewAll
+                canViewAll,
+                idempotencyKey
             ),
             ct
         );
@@ -273,8 +277,10 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var result = await bus.InvokeAsync<Result<ChangeInvoiceStatusResult>>(
-            new ChangeInvoiceStatusCommand(tenantId, invoiceId, request.ToStatus, request.Reason, actorId),
+            new ChangeInvoiceStatusCommand(tenantId, invoiceId, request.ToStatus, request.Reason, actorId, canViewAll),
             ct
         );
 
@@ -317,11 +323,59 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var result = await bus.InvokeAsync<Result<ReissueInvoiceResult>>(
-            new ReissueInvoiceCommand(tenantId, invoiceId, actorId, request.Reason),
+            new ReissueInvoiceCommand(tenantId, invoiceId, actorId, request.Reason, canViewAll),
             ct
         );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Cobros confirmados que no se pudieron aplicar (factura anulada, desconocida, otra moneda).</summary>
+    [HttpGet("unapplied-payments")]
+    [RateLimit("billing.f.invoice_read")]
+    [HasPermission(InvoicingPermissions.Manage)]
+    [ProducesResponseType<IReadOnlyList<UnappliedPaymentResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListUnappliedPayments(
+        [FromQuery] bool includeResolved,
+        [FromQuery] int take,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<UnappliedPaymentResponse>>>(
+            new ListUnappliedPaymentsQuery(tenantId, includeResolved, take),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record ResolveUnappliedPaymentRequest(string Resolution, string? Note);
+
+    /// <summary>Marca el cobro como resuelto (Refunded | AppliedAsCredit) con una nota. No mueve dinero.</summary>
+    [HttpPost("unapplied-payments/{unappliedPaymentId:guid}/resolve")]
+    [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(InvoicingPermissions.Manage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> ResolveUnappliedPayment(
+        Guid unappliedPaymentId,
+        ResolveUnappliedPaymentRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new ResolveUnappliedPaymentCommand(tenantId, unappliedPaymentId, request.Resolution, request.Note, actorId),
+            ct
+        );
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

@@ -26,7 +26,8 @@ namespace TaxVision.Signature.Infrastructure.Audit;
 public sealed class HmacAuditChainAppender(
     ISignatureAuditRepository repository,
     ITenantSignatureSettingsRepository settingsRepository,
-    ISecretProtector secretProtector
+    ISecretProtector secretProtector,
+    SqlAuditChainLock chainLock
 ) : IAuditChainAppender
 {
     private static readonly JsonSerializerOptions CanonicalJson = new()
@@ -48,6 +49,8 @@ public sealed class HmacAuditChainAppender(
         if (secretResult.IsFailure)
             return Result.Failure<SignatureAuditEvent>(secretResult.Error);
 
+        // Serializa los appends de la misma solicitud: cada uno lee el tail que confirmó el anterior.
+        await chainLock.AcquireAsync(signatureRequestId, ct);
         var tail = await repository.GetTailAsync(tenantId, signatureRequestId, ct);
         var sequence = (tail?.LastSequence ?? 0) + 1;
         var previousHash = tail?.LastChainHash ?? SignatureAuditEvent.GenesisMarker;

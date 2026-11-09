@@ -27,6 +27,24 @@ internal static class HandlerSourceLocator
         return fullPath;
     }
 
+    public static string FindRepoDirectory(string repoRelativePath)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "TaxVision.slnx")))
+            dir = dir.Parent;
+
+        if (dir is null)
+            throw new InvalidOperationException(
+                "Could not locate the repo root (TaxVision.slnx) from the test output directory."
+            );
+
+        var fullPath = Path.Combine(dir.FullName, repoRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!Directory.Exists(fullPath))
+            throw new DirectoryNotFoundException($"Expected source directory not found: {fullPath}");
+
+        return fullPath;
+    }
+
     /// <summary>
     /// Cuenta las líneas físicas entre el <c>{</c> de apertura y el <c>}</c> de cierre del método
     /// <c>Handle</c> (primera ocurrencia de " Handle(" en el archivo), usando conteo de llaves para

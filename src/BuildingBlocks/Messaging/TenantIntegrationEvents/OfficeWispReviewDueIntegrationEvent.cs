@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.TenantIntegrationEvents;
 /// vencer o venció. Lo publica el job diario de Tenant, una vez por etapa; Notification avisa al
 /// responsable de seguridad y a quienes administran la oficina.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.TenantIntegrationEvents.OfficeWispReviewDueIntegrationEvent")]
 public sealed record OfficeWispReviewDueIntegrationEvent : IntegrationEvent
 {
     public required Guid OfficeTenantId { get; init; }

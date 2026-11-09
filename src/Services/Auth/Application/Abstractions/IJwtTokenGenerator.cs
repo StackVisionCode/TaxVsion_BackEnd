@@ -38,8 +38,7 @@ public interface IJwtTokenGenerator
     );
 
     /// <summary>
-    /// Variante M2M con audience y scopes explícitos. La implementación por defecto
-    /// conserva compatibilidad con generadores de prueba y clientes legacy.
+    /// Variante M2M con audience y scopes explícitos.
     /// </summary>
     AccessToken GenerateScopedServiceToken(
         Guid tenantId,
@@ -48,7 +47,7 @@ public interface IJwtTokenGenerator
         IReadOnlyCollection<string> scopes,
         string audience,
         int lifetimeMinutes
-    ) => GenerateServiceToken(tenantId, clientId, permissions, lifetimeMinutes);
+    );
 
     /// <summary>
     /// Emite un ticket de un solo propósito: prueba criptográfica de que <paramref name="email"/>

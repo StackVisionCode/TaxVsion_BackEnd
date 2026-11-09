@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Reminder.Application.Reminders.Abstractions;
 using TaxVision.Reminder.Application.Reminders.Commands;
 using TaxVision.Reminder.Domain.Reminders;
+using TaxVision.Reminder.Domain.ValueObjects;
 
 namespace TaxVision.Reminder.Application.Reminders.Consumers;
 
@@ -39,6 +40,9 @@ public static class ReminderRequestedConsumer
                 ReminderInboundEvent.LogUnknownCategory(logger, evt.Category, evt.EventId, "reminder.requested.v1");
                 return;
             }
+
+            if (await CorrectExistingAnchorAsync(evt, reminders, scheduler, unitOfWork, metrics, logger, ct))
+                return;
 
             var result = await CreateReminderHandler.Handle(
                 new CreateReminderCommand(
@@ -75,5 +79,47 @@ public static class ReminderRequestedConsumer
                 );
             }
         }
+    }
+
+    // REM-5: un pedido repetido corrige el ancla del pendiente. Devuelve false si todavía no existe.
+    private static async Task<bool> CorrectExistingAnchorAsync(
+        ReminderRequestedIntegrationEvent evt,
+        IReminderRepository reminders,
+        IReminderScheduler scheduler,
+        IUnitOfWork unitOfWork,
+        IReminderMetrics metrics,
+        ILogger<ReminderAggregate> logger,
+        CancellationToken ct
+    )
+    {
+        var requestKey = RequestKey.Create(evt.RequestKey);
+        if (evt.AnchorAtUtc is not { } anchorAtUtc || requestKey.IsFailure)
+            return false;
+
+        var reminder = await reminders.FindByRequestKeyAsync(evt.TenantId, evt.UserId, requestKey.Value, ct);
+        if (reminder is null)
+            return false;
+
+        // Mismo criterio que el alta: el pedido repetido no crea otro recordatorio.
+        metrics.RecordDuplicateSuppressed(ReminderDuplicateResolutions.Lookup);
+        var previousFireAtUtc = reminder.Schedule.FireAtUtc;
+        var result = reminder.CorrectAnchorFromRequest(anchorAtUtc, evt.OccurredOn, DateTime.UtcNow);
+        if (result.IsFailure || reminder.Schedule.FireAtUtc == previousFireAtUtc)
+            return true;
+
+        await unitOfWork.SaveChangesAsync(ct);
+
+        if (reminder.Status == ReminderStatus.Scheduled)
+        {
+            await scheduler.RescheduleAsync(reminder.TenantId, reminder.Id, reminder.Schedule.FireAtUtc, ct);
+        }
+        else
+        {
+            await scheduler.UnscheduleAsync(reminder.TenantId, reminder.Id, ct);
+            metrics.RecordMisfired(ReminderMisfirePolicies.AnchorMovedToPast);
+        }
+
+        logger.LogInformation("Reminder {ReminderId} anchor corrected from a repeated request.", reminder.Id);
+        return true;
     }
 }

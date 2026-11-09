@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>Publicado por Auth cuando Cloudflare confirma DNS/TLS validados para un custom hostname — Fase A6.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantDomainVerifiedIntegrationEvent")]
 public sealed record TenantDomainVerifiedIntegrationEvent : IntegrationEvent
 {
     public required Guid DomainId { get; init; }

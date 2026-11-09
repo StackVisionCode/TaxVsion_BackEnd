@@ -1,5 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
+using System.Globalization;
 using Microsoft.Extensions.Options;
 using TaxVision.ContentScanner;
 using TaxVision.ContentScanner.Scanning;
@@ -16,6 +15,8 @@ builder
 builder.Services.AddSingleton<INsfwClassifier, OnnxNsfwClassifier>();
 builder.Services.AddSingleton<IFrameExtractor, FfmpegFrameExtractor>();
 builder.Services.AddSingleton<ScanService>();
+builder.Services.AddSingleton<ScannerApiKey>();
+builder.Services.AddSingleton<ITempDiskSpace, DriveTempDiskSpace>();
 
 var maxUploadBytes = builder.Configuration.GetValue<long>($"{ContentScannerOptions.SectionName}:MaxUploadBytes");
 builder.WebHost.ConfigureKestrel(kestrel => kestrel.Limits.MaxRequestBodySize = maxUploadBytes);
@@ -39,33 +40,33 @@ app.Run();
 internal static class ScanEndpoint
 {
     public const string ApiKeyHeader = "X-Scanner-Key";
+    public const string ModelUnavailableReason = "model_unavailable";
 
     public static async ValueTask<object?> RequireApiKey(
         EndpointFilterInvocationContext context,
         EndpointFilterDelegate next
     )
     {
-        var expected = context
-            .HttpContext.RequestServices.GetRequiredService<IOptions<ContentScannerOptions>>()
-            .Value.ApiKey;
+        var key = context.HttpContext.RequestServices.GetRequiredService<ScannerApiKey>();
         var provided = context.HttpContext.Request.Headers[ApiKeyHeader].ToString();
-        // Comparación en tiempo constante: el tiempo de respuesta no revela cuánto de la clave coincide.
-        var ok = CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(provided),
-            Encoding.UTF8.GetBytes(expected)
-        );
-        return ok ? await next(context) : Results.Unauthorized();
+        return key.Matches(provided) ? await next(context) : Results.Unauthorized();
     }
 
     public static async Task<IResult> HandleAsync(
         HttpRequest request,
+        INsfwClassifier classifier,
         ScanService scanner,
+        ITempDiskSpace disk,
         IOptions<ContentScannerOptions> options,
         int? frameIntervalSeconds,
         int? maxFrames,
         CancellationToken ct
     )
     {
+        // Sin modelo no hay escaneo posible: se avisa antes de tocar el cuerpo.
+        if (!classifier.IsReady)
+            return ModelUnavailable(request.HttpContext.Response, options.Value.ModelUnavailableRetryAfterSeconds);
+
         var mediaType = request.ContentType?.Split(';')[0].Trim().ToLowerInvariant() ?? string.Empty;
         MediaKind? kind =
             mediaType.StartsWith("image/", StringComparison.Ordinal) ? MediaKind.Image
@@ -77,10 +78,23 @@ internal static class ScanEndpoint
                 title: "Only images and videos are scanned."
             );
 
-        Directory.CreateDirectory(options.Value.TempDirectory);
-        var path = Path.Combine(options.Value.TempDirectory, $"{Guid.NewGuid():N}.bin");
+        if (request.ContentLength > options.Value.MaxUploadBytes)
+            return Results.Problem(
+                statusCode: StatusCodes.Status413PayloadTooLarge,
+                title: "The file exceeds the upload limit."
+            );
+
+        string? path = null;
         try
         {
+            // El turno va antes del disco: con todos ocupados no se escribe nada.
+            await using var turn = await scanner.AcquireSlotAsync(ct);
+
+            Directory.CreateDirectory(options.Value.TempDirectory);
+            if (request.ContentLength > disk.AvailableBytes(options.Value.TempDirectory))
+                return Busy();
+
+            path = Path.Combine(options.Value.TempDirectory, $"{Guid.NewGuid():N}.bin");
             await using (var file = File.Create(path))
                 await request.Body.CopyToAsync(file, ct);
 
@@ -89,10 +103,7 @@ internal static class ScanEndpoint
         }
         catch (ScannerBusyException)
         {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "Content scanner is busy."
-            );
+            return Busy();
         }
         catch (UndecodableMediaException)
         {
@@ -103,9 +114,22 @@ internal static class ScanEndpoint
         }
         finally
         {
-            File.Delete(path);
+            if (path is not null)
+                File.Delete(path);
         }
     }
+
+    private static IResult ModelUnavailable(HttpResponse response, int retryAfterSeconds)
+    {
+        response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+        return Results.Json(
+            new { reason = ModelUnavailableReason },
+            statusCode: StatusCodes.Status503ServiceUnavailable
+        );
+    }
+
+    private static IResult Busy() =>
+        Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Content scanner is busy.");
 }
 
 public partial class Program;

@@ -37,7 +37,7 @@ public static class CustomerProfileUpdateFromFormAppliedConsumer
             foreach (var failure in evt.Failures)
                 outcomes.Add(new FormProfileUpdateOutcome(failure.Target, false, failure.Code));
 
-            var marked = request.MarkProfileUpdateApplied(evt.CommandId, outcomes, evt.OccurredOn);
+            var marked = request.ProfileUpdate.MarkApplied(evt.CommandId, outcomes, evt.OccurredOn);
             if (marked.IsFailure)
                 return;
             await unitOfWork.SaveChangesAsync(ct);

@@ -147,7 +147,16 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, TasksDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // Eventos de dominio de los agregados: se guardan con el commit del handler y sus handlers devuelven los
+    // eventos de integración. En serie, para que los avisos de una misma tarea salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // Toda cola local durable: lo publicado a un handler propio sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
 
     // Restaura el TenantContext dentro del scope que Wolverine crea para cada handler.
     options

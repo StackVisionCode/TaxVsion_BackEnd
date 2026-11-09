@@ -110,7 +110,7 @@ public sealed class SendInvoiceToCustomerHandlerTests
     private static Invoice Issued(string? email)
     {
         var invoice = Draft(email);
-        Assert.True(invoice.Issue("INV-2026-00005", Now, Now.AddDays(30), Actor).IsSuccess);
+        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00005").Value, Now, Now.AddDays(30), Actor).IsSuccess);
         return invoice;
     }
 
@@ -131,6 +131,9 @@ public sealed class SendInvoiceToCustomerHandlerTests
 
         public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
+            Task.FromResult<Invoice?>(null);
 
         public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
             Guid tenantId,

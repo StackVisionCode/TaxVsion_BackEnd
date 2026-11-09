@@ -27,6 +27,6 @@ public interface IProviderWatchSubscriptionRepository
         CancellationToken ct = default
     );
 
-    /// <summary>Purga la subscription al switch de proveedor (OAuth → IMAP). Default no-op para los fakes.</summary>
-    void Remove(ProviderWatchSubscription subscription) { }
+    /// <summary>Purga la subscription al switch de proveedor (OAuth → IMAP).</summary>
+    void Remove(ProviderWatchSubscription subscription);
 }

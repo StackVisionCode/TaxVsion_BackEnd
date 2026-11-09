@@ -87,7 +87,8 @@ public sealed class MultipleActiveProvidersTests
 
         var payment = await _db.TenantPayments.IgnoreQueryFilters().SingleAsync();
         Assert.Equal(PaymentProviderCode.PayPal, payment.ProviderCode);
-        Assert.Equal("PayPal", Assert.Single(_published.OfType<TenantPaymentSucceededIntegrationEvent>()).ProviderCode);
+        var emitted = await DomainEventReplay.EmittedAsync(_published, _db);
+        Assert.Equal("PayPal", Assert.Single(emitted.OfType<TenantPaymentSucceededIntegrationEvent>()).ProviderCode);
         Assert.Equal(PaymentLinkStatus.Used, (await ReloadAsync(link)).Status);
     }
 
@@ -131,7 +132,7 @@ public sealed class MultipleActiveProvidersTests
     {
         await SeedOfficeWithStripeAndPayPalAsync();
 
-        var result = await ChargeTenantPaymentHandler.Handle(
+        var result = await TestChargeFlow.ChargeAsync(
             new ChargeTenantPaymentCommand(
                 _tenantId,
                 PaymentProviderCode.PayPal,
@@ -177,7 +178,7 @@ public sealed class MultipleActiveProvidersTests
         PaymentLink link,
         PaymentProviderCode provider
     ) =>
-        RedeemPaymentLinkHandler.Handle(
+        TestChargeFlow.RedeemAsync(
             new RedeemPaymentLinkCommand(link.Token.Value, provider, "client-payment-token", ReceiptEmail: null),
             new PaymentLinkRepository(_db),
             new TenantPaymentRepository(_db),

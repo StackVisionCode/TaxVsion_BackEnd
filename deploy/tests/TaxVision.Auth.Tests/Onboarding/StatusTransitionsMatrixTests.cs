@@ -1,6 +1,6 @@
 using BuildingBlocks.Results;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
-using TaxVision.Auth.Domain.Onboarding.ValueObjects;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Domain.ValueObjects;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -11,6 +13,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// <c>Debug</c>.
 /// </para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerInvitedIntegrationEvent")]
 public sealed record SignerInvitedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

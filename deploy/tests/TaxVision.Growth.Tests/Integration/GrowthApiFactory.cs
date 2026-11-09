@@ -1,7 +1,11 @@
+using JasperFx;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.Growth.Tests.Integration;
 
@@ -33,5 +37,27 @@ public sealed class GrowthApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+        // Sin transportes externos el host de prueba no le roba mensajes a la cola del Growth local; el barrido de
+        // reservas tampoco corre contra la base de desarrollo.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            // Sin los sobres de la flota: MediatorOnly conserva el almacén sin migrarlo ni leerlo (BB-10).
+            services.ConfigureWolverine(options =>
+            {
+                options.Durability.Mode = DurabilityMode.MediatorOnly;
+                options.AutoBuildMessageStorageOnStartup = AutoCreate.None;
+            });
+            foreach (
+                var job in services
+                    .Where(descriptor =>
+                        descriptor.ServiceType == typeof(IHostedService)
+                        && descriptor.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal)
+                            == true
+                    )
+                    .ToList()
+            )
+                services.Remove(job);
+        });
     }
 }

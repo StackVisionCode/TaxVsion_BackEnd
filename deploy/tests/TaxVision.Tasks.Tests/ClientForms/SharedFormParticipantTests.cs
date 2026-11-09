@@ -118,7 +118,7 @@ public sealed class SharedFormParticipantTests
     {
         var participant = Participant();
         var request = SubmittedWithCreation(participant, out var command);
-        Assert.True(request.TryAttachCustomer(ClientY, false, null, Now).IsSuccess);
+        Assert.True(request.CustomerLinking.TryAttach(ClientY, false, null, Now).IsSuccess);
         Assert.True(participant.LinkToCustomer(ClientY, Responsible, Now).IsSuccess);
         var audit = new ExtAuditLog();
 
@@ -222,7 +222,7 @@ public sealed class SharedFormParticipantTests
         var request = ExternalRequest(Version(), participant);
         Submit(request, participant);
         command = Guid.NewGuid();
-        Assert.True(request.RequestAction("create_client", FormActionNames.CreateCustomer, command, Now).IsSuccess);
+        Assert.True(request.Actions.Request("create_client", FormActionNames.CreateCustomer, command, Now).IsSuccess);
         return request;
     }
 

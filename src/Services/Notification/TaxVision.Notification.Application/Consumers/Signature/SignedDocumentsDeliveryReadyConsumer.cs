@@ -1,12 +1,8 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Platform;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
-using TaxVision.Notification.Application.Directory.Abstractions;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
@@ -22,17 +18,12 @@ public static class SignedDocumentsDeliveryReadyConsumer
 
     public static async Task Handle(
         SignedDocumentsDeliveryReadyIntegrationEvent evt,
-        IProtectedPayloadCodec codec,
+        SignedDeliveryLinkResolver deliveryLinks,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         ISmsSender smsSender,
-        ICustomerContactPolicyRepository contactPolicies,
-        IRecipientResolver recipientResolver,
-        IOptions<PortalOptions> portal,
         IPlatformSettings platform,
-        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
-        ILogger<SignedDocumentsDeliveryReadyIntegrationEvent> logger,
         CancellationToken ct
     )
     {
@@ -41,46 +32,14 @@ public static class SignedDocumentsDeliveryReadyConsumer
             : evt.CorrelationId;
         using (correlation.Push(correlationId))
         {
-            string token;
-            try
-            {
-                token = codec
-                    .Unprotect<SignatureDeliveryLinkPayload>(
-                        evt.ProtectedToken,
-                        SignatureDeliveryPayloadSchemas.DeliveryLink,
-                        SignatureDeliveryPayloadSchemas.BindingFor(evt.TenantId, evt.DeliveryId)
-                    )
-                    .Token;
-            }
-            catch (Exception ex)
-            {
-                // Payload adulterado o de otra entrega: reintentar no lo arregla.
-                logger.LogError(ex, "Delivery {DeliveryId}: the link token could not be decrypted.", evt.DeliveryId);
+            if (await deliveryLinks.ResolveAsync(evt, ct) is not { } target)
                 return;
-            }
 
             var signer = evt.Signer;
-            var prefersSms =
-                string.Equals(signer.PreferredChannel, "Sms", StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(signer.PhoneE164);
-
-            // T7.3: un firmante que es cliente con ContactPolicy decide su canal; los externos no se filtran.
-            if (
-                !await CustomerContactPolicyFilter.AllowsForOptionalCustomerAsync(
-                    evt.TenantId,
-                    signer.MappedCustomerId,
-                    prefersSms ? CustomerContactChannel.Sms : CustomerContactChannel.Email,
-                    contactPolicies,
-                    ct
-                )
-            )
-                return;
-
-            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
-            var pageUrl = TenantEmailLinks.SignatureDeliveryPage(tenantHost, portal.Value, token);
+            var pageUrl = target.PageUrl;
             var isPartialCopy = string.Equals(evt.Purpose, PartialCopyPurpose, StringComparison.OrdinalIgnoreCase);
 
-            if (prefersSms)
+            if (target.PrefersSms)
             {
                 await smsSender.SendAsync(
                     signer.PhoneE164!,
@@ -92,12 +51,12 @@ public static class SignedDocumentsDeliveryReadyConsumer
                 return;
             }
 
-            var portalUrl = await PortalUrlAsync(evt, tenantHost, portal.Value, recipientResolver, ct);
+            var portalUrl = await deliveryLinks.PortalUrlAsync(evt, target, ct);
             var links = evt
                 .Items.Select(item => new Dictionary<string, object?>
                 {
                     ["title"] = item.Title,
-                    ["url"] = TenantEmailLinks.SignatureDeliveryPage(tenantHost, portal.Value, token, item.ItemId),
+                    ["url"] = deliveryLinks.ItemUrl(target, item.ItemId),
                     ["kind"] = item.Kind,
                 })
                 .ToList();
@@ -152,26 +111,6 @@ public static class SignedDocumentsDeliveryReadyConsumer
                 ct
             );
         }
-    }
-
-    // Solo si los archivos quedaron en su carpeta y el cliente tiene una cuenta de portal activa.
-    private static async Task<string?> PortalUrlAsync(
-        SignedDocumentsDeliveryReadyIntegrationEvent evt,
-        string? tenantHost,
-        PortalOptions portal,
-        IRecipientResolver recipientResolver,
-        CancellationToken ct
-    )
-    {
-        if (!evt.AvailableInClientPortal || evt.Signer.MappedCustomerId is not { } customerId)
-            return null;
-        var portalUser = await CustomerPortalRecipients.ResolveActivePortalUserAsync(
-            evt.TenantId,
-            customerId,
-            recipientResolver,
-            ct
-        );
-        return portalUser is null ? null : TenantEmailLinks.ClientDocuments(tenantHost, portal);
     }
 
     private static string BuildSms(SignerContactSnapshot signer, string pageUrl, bool isPartialCopy, string product) =>

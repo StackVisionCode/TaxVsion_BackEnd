@@ -30,6 +30,52 @@ public sealed class StockRepository(InventoryDbContext db) : IStockRepository
             .ToListAsync(ct);
     }
 
+    public async Task<StockLevel?> GetByCatalogItemForUpdateAsync(
+        Guid tenantId,
+        Guid catalogItemId,
+        CancellationToken ct = default
+    ) => (await GetByCatalogItemsForUpdateAsync(tenantId, [catalogItemId], ct)).SingleOrDefault();
+
+    // Change-tracked: el caller aplica movimientos y persiste dentro de la misma transacción.
+    public async Task<IReadOnlyList<StockLevel>> GetByCatalogItemsForUpdateAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> catalogItemIds,
+        CancellationToken ct = default
+    )
+    {
+        RequireTransaction();
+        if (catalogItemIds.Count == 0)
+            return [];
+
+        var csv = string.Join(',', catalogItemIds.Distinct());
+        return await db
+            .StockLevels.FromSqlInterpolated(
+                $"SELECT * FROM [StockLevels] WITH (UPDLOCK, HOLDLOCK, ROWLOCK) WHERE [TenantId] = {tenantId} AND [CatalogItemId] IN (SELECT CAST([value] AS uniqueidentifier) FROM STRING_SPLIT({csv}, ','))"
+            )
+            .IgnoreQueryFilters()
+            .ToListAsync(ct);
+    }
+
+    public async Task AcquireInvoiceSaleLockAsync(Guid tenantId, Guid invoiceId, CancellationToken ct = default)
+    {
+        RequireTransaction();
+        var resource = $"inventory:commit-sale:{tenantId:N}:{invoiceId:N}";
+        var code = await db
+            .Database.SqlQuery<int>(
+                $"DECLARE @r int; EXEC @r = sp_getapplock @Resource = {resource}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000; SELECT @r AS [Value]"
+            )
+            .ToListAsync(ct);
+        if (code.Single() < 0)
+            throw new TimeoutException($"Could not lock the invoice sale {invoiceId} (sp_getapplock {code.Single()}).");
+    }
+
+    // Sin transacción el candado se suelta al terminar la sentencia y no protege nada.
+    private void RequireTransaction()
+    {
+        if (db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("StockLevel lock requires the ambient Wolverine transaction");
+    }
+
     public async Task<IReadOnlyList<StockMovement>> GetMovementsByReferenceAsync(
         Guid tenantId,
         string reference,
@@ -38,7 +84,8 @@ public sealed class StockRepository(InventoryDbContext db) : IStockRepository
         await db
             .StockMovements.IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(m => m.TenantId == tenantId && m.Reference == reference)
+            // Solo los del canal M2M: uno manual con el id de la factura en la referencia no es parte de la venta.
+            .Where(m => m.TenantId == tenantId && m.Reference == reference && m.MovedByUserId == Guid.Empty)
             .ToListAsync(ct);
 
     public async Task AddStockLevelAsync(StockLevel level, CancellationToken ct = default) =>

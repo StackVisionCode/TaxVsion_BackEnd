@@ -1,7 +1,7 @@
-using BuildingBlocks.Caching;
 using TaxVision.Tenant.Application.Brands.Abstractions;
 using TaxVision.Tenant.Domain.Brands;
 using TaxVision.Tenant.Domain.Enums;
+using Wolverine;
 
 namespace TaxVision.Tenant.Application.Brands.Commands;
 
@@ -14,6 +14,7 @@ internal static class BrandCommandSupport
         ITenantBrandRepository repo,
         Guid tenantId,
         BrandSurface surface,
+        DateTime nowUtc,
         CancellationToken ct
     )
     {
@@ -21,15 +22,12 @@ internal static class BrandCommandSupport
         if (brand is not null)
             return brand;
 
-        brand = TenantBrand.Create(tenantId, surface);
+        brand = TenantBrand.Create(tenantId, surface, nowUtc);
         await repo.AddAsync(brand, ct);
         return brand;
     }
 
-    public static Task InvalidateAsync(
-        ICacheService cache,
-        Guid tenantId,
-        BrandSurface surface,
-        CancellationToken ct
-    ) => cache.RemoveAsync(BrandCacheKeys.Brand(tenantId, surface), ct);
+    /// <summary>Se llama después de guardar: el comando sale con el commit y recién ahí se borra la caché.</summary>
+    public static ValueTask RequestInvalidationAsync(IMessageBus bus, Guid tenantId, BrandSurface surface) =>
+        bus.PublishAsync(new InvalidateTenantBrandCacheCommand(tenantId, surface));
 }

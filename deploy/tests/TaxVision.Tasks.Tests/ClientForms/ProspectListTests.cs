@@ -387,8 +387,8 @@ public sealed class ProspectListTests
         if (duplicate)
         {
             var command = Guid.NewGuid();
-            request.RequestAction("create_client", FormActionNames.CreateCustomer, command, Now);
-            request.RejectAction(command, FormActionRunErrors.DuplicateFoundCode, ExistingCustomer, "Email", Now);
+            request.Actions.Request("create_client", FormActionNames.CreateCustomer, command, Now);
+            request.Actions.Reject(command, FormActionRunErrors.DuplicateFoundCode, ExistingCustomer, "Email", Now);
         }
         db.FormParticipants.Add(participant);
         db.FormRequests.Add(request);

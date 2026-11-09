@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using Wolverine;
@@ -36,6 +37,7 @@ public sealed class CreateTenantFromOnboardingHandlerTests
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -79,6 +81,7 @@ public sealed class CreateTenantFromOnboardingHandlerTests
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -93,7 +96,7 @@ public sealed class CreateTenantFromOnboardingHandlerTests
     [Fact]
     public async Task Is_idempotent_when_a_tenant_already_exists_for_the_onboarding()
     {
-        var existing = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", Guid.NewGuid()).Value;
+        var existing = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow, Guid.NewGuid()).Value;
         var repo = new FakeTenantRepository { Existing = existing };
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
@@ -110,6 +113,7 @@ public sealed class CreateTenantFromOnboardingHandlerTests
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -117,6 +121,44 @@ public sealed class CreateTenantFromOnboardingHandlerTests
         Assert.Null(repo.Added);
         Assert.Empty(bus.Published);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Losing_the_unique_index_race_publishes_nothing_with_the_reverted_id()
+    {
+        var onboardingId = Guid.NewGuid();
+        var winner = TenantEntity.Create("Acme Tax Office", "acme-tax", "UTC", DateTime.UtcNow, onboardingId).Value;
+        var repo = new FakeTenantRepository();
+        // Como el MessageContext: lo publicado sobrevive al reintento en línea.
+        var bus = new FakeMessageBus();
+        var unitOfWork = new FakeUnitOfWork
+        {
+            BeforeSave = () =>
+            {
+                repo.Existing = winner;
+                throw new ConflictException("Persistence.UniqueConstraint", "Duplicate onboarding.");
+            },
+        };
+        var command = new CreateTenantFromOnboardingCommand(
+            onboardingId,
+            "Acme Tax Office",
+            "acme-tax",
+            "owner@acme.com",
+            DateTime.UtcNow
+        );
+
+        await Assert.ThrowsAsync<ConflictException>(() => HandleAsync(command, repo, unitOfWork, bus));
+        var retry = await HandleAsync(command, repo, unitOfWork, bus);
+
+        Assert.True(retry.IsSuccess);
+        Assert.DoesNotContain(
+            bus.Published.OfType<TenantCreatedForOnboardingIntegrationEvent>(),
+            evt => evt.CreatedTenantId != winner.Id
+        );
+        Assert.DoesNotContain(
+            bus.Published.OfType<TenantCreatedIntegrationEvent>(),
+            evt => evt.NewTenantId != winner.Id
+        );
     }
 
     [Fact]
@@ -138,6 +180,7 @@ public sealed class CreateTenantFromOnboardingHandlerTests
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 
@@ -147,6 +190,22 @@ public sealed class CreateTenantFromOnboardingHandlerTests
         Assert.Empty(bus.Published);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
+
+    private static Task<Result> HandleAsync(
+        CreateTenantFromOnboardingCommand command,
+        FakeTenantRepository repo,
+        FakeUnitOfWork unitOfWork,
+        FakeMessageBus bus
+    ) =>
+        CreateTenantFromOnboardingHandler.Handle(
+            command,
+            repo,
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            TimeProvider.System,
+            CancellationToken.None
+        );
 
     private sealed class FakeTenantRepository : ITenantRepository
     {
@@ -177,9 +236,11 @@ public sealed class CreateTenantFromOnboardingHandlerTests
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         public int SaveChangesCallCount { get; private set; }
+        public Action? BeforeSave { get; init; }
 
         public Task<int> SaveChangesAsync(CancellationToken ct = default)
         {
+            BeforeSave?.Invoke();
             SaveChangesCallCount++;
             return Task.FromResult(1);
         }

@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Projections;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
 
@@ -17,6 +18,7 @@ public static class CustomerDeactivatedConsumer
         CustomerDeactivatedIntegrationEvent evt,
         ICustomerEmailAddressRepository repository,
         ITenantCustomerBackfillService backfill,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerEmailAddress> logger,
@@ -25,7 +27,7 @@ public static class CustomerDeactivatedConsumer
     {
         using (correlation.Push(evt.CorrelationId))
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            await backfill.EnsureBackfilledAsync(evt.TenantId, bus, ct);
 
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (existing is null)
@@ -37,7 +39,16 @@ public static class CustomerDeactivatedConsumer
                 return;
             }
 
-            existing.SoftDelete();
+            if (!existing.SoftDelete(evt.OccurredOn))
+            {
+                logger.LogDebug(
+                    "{Event} {EventId} for customer {CustomerId} is older than the projection; ignored.",
+                    "CustomerDeactivated",
+                    evt.EventId,
+                    evt.CustomerId
+                );
+                return;
+            }
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

@@ -18,8 +18,8 @@ public sealed class CustomerServiceOptions
 /// Cliente M2M del directorio de Customer. Adquiere un token de servicio del tenant
 /// (<see cref="IServiceTokenAcquirer"/>) y pagina <c>GET /internal/customers/list?status=Active</c>
 /// (endpoint ServiceOnly, tenant tomado del token — NO expuesto en el Gateway público, se llama directo).
-/// Fail-open: si Customer no responde o no hay token, devuelve lista vacía (la campaña simplemente no
-/// suma clientes; no rompe el envío). SIN dinero.
+/// Fail-closed: si Customer no responde, no hay token o se llega al tope de páginas, el resultado sale
+/// marcado como incompleto y el envío no usa la lista parcial (CMP-06). SIN dinero.
 /// </summary>
 public sealed class CustomerAudienceClient(
     HttpClient http,
@@ -30,16 +30,13 @@ public sealed class CustomerAudienceClient(
     private const int PageSize = 200;
     private const int MaxPages = 100; // tope de seguridad (20k clientes)
 
-    public async Task<IReadOnlyList<CustomerAudienceMember>> GetActiveCustomersAsync(
-        Guid tenantId,
-        CancellationToken ct = default
-    )
+    public async Task<CustomerAudienceResult> GetActiveCustomersAsync(Guid tenantId, CancellationToken ct = default)
     {
         var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
         if (string.IsNullOrWhiteSpace(token))
         {
-            logger.LogWarning("No service token for tenant {TenantId}; skipping Customer audience.", tenantId);
-            return [];
+            logger.LogWarning("No service token for tenant {TenantId}; Customer audience unavailable.", tenantId);
+            return new CustomerAudienceResult([], false, "no_service_token");
         }
 
         var members = new List<CustomerAudienceMember>();
@@ -57,17 +54,17 @@ public sealed class CustomerAudienceClient(
                 if (!response.IsSuccessStatusCode)
                 {
                     logger.LogWarning(
-                        "Customer list returned {StatusCode} for tenant {TenantId} (page {Page}); using what we have.",
+                        "Customer list returned {StatusCode} for tenant {TenantId} (page {Page}); audience incomplete.",
                         (int)response.StatusCode,
                         tenantId,
                         page
                     );
-                    break;
+                    return new CustomerAudienceResult(members, false, $"http_{(int)response.StatusCode}");
                 }
 
                 var body = await response.Content.ReadFromJsonAsync<CustomerListPage>(ct);
                 if (body?.Items is null || body.Items.Count == 0)
-                    break;
+                    return new CustomerAudienceResult(members, true);
 
                 members.AddRange(
                     body.Items.Select(i => new CustomerAudienceMember(
@@ -79,19 +76,22 @@ public sealed class CustomerAudienceClient(
                 );
 
                 if (page >= body.TotalPagesSafe(PageSize))
-                    break;
+                    return new CustomerAudienceResult(members, true);
             }
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            logger.LogWarning(
-                ex,
-                "Could not reach Customer for tenant {TenantId}; skipping Customer audience.",
-                tenantId
-            );
+            logger.LogWarning(ex, "Could not reach Customer for tenant {TenantId}; audience incomplete.", tenantId);
+            return new CustomerAudienceResult(members, false, "unreachable");
         }
 
-        return members;
+        // Tope de páginas con páginas pendientes: antes truncaba en silencio.
+        logger.LogWarning(
+            "Customer list for tenant {TenantId} exceeds {MaxPages} pages; audience incomplete.",
+            tenantId,
+            MaxPages
+        );
+        return new CustomerAudienceResult(members, false, "max_pages");
     }
 
     // Shape parcial de PagedResult<CustomerSummaryResponse> (solo lo que necesitamos).

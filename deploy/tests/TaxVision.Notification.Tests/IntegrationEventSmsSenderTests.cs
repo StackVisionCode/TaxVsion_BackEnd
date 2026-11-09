@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Infrastructure.Messaging;
 using TaxVision.Notification.Infrastructure.Sms;
 using Wolverine;
 using Wolverine.Runtime;
@@ -22,7 +23,7 @@ public sealed class IntegrationEventSmsSenderTests
         var tenantId = Guid.NewGuid();
         var bus = new CapturingBus();
         ISmsSender sender = new IntegrationEventSmsSender(
-            bus,
+            new HandlerBus(bus),
             new StubTenant(tenantId),
             new NoOpCorrelation(),
             NullLogger<IntegrationEventSmsSender>.Instance
@@ -47,7 +48,7 @@ public sealed class IntegrationEventSmsSenderTests
         {
             var bus = new CapturingBus();
             ISmsSender sender = new IntegrationEventSmsSender(
-                bus,
+                new HandlerBus(bus),
                 new StubTenant(tenantId),
                 new NoOpCorrelation(),
                 NullLogger<IntegrationEventSmsSender>.Instance
@@ -70,7 +71,7 @@ public sealed class IntegrationEventSmsSenderTests
         {
             var bus = new CapturingBus();
             ISmsSender sender = new IntegrationEventSmsSender(
-                bus,
+                new HandlerBus(bus),
                 new StubTenant(tenantId),
                 new NoOpCorrelation(),
                 NullLogger<IntegrationEventSmsSender>.Instance
@@ -95,7 +96,7 @@ public sealed class IntegrationEventSmsSenderTests
     public async Task Fails_when_no_destination()
     {
         ISmsSender sender = new IntegrationEventSmsSender(
-            new CapturingBus(),
+            new HandlerBus(new CapturingBus()),
             new StubTenant(Guid.NewGuid()),
             new NoOpCorrelation(),
             NullLogger<IntegrationEventSmsSender>.Instance
@@ -112,7 +113,7 @@ public sealed class IntegrationEventSmsSenderTests
     {
         var bus = new CapturingBus();
         ISmsSender sender = new IntegrationEventSmsSender(
-            bus,
+            new HandlerBus(bus),
             new StubTenant(hasTenant: false),
             new NoOpCorrelation(),
             NullLogger<IntegrationEventSmsSender>.Instance

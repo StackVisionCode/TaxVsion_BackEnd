@@ -1,5 +1,6 @@
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Subscriptions;
+using TaxVision.Subscription.Domain.Subscriptions.Events;
 using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Tests.Domain;
@@ -63,6 +64,24 @@ public sealed class TenantSubscriptionTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("Subscription.InvalidTransition", result.Error.Code);
+    }
+
+    [Fact]
+    public void CancelImmediately_AnnouncesCancellationRequested()
+    {
+        var (plan, version) = CreatePublishedPlan("starter");
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
+        subscription.ClearDomainEvents();
+
+        var result = subscription.CancelImmediately("support", Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        var raised = Assert.Single(subscription.DomainEvents.OfType<SubscriptionStatusChangedDomainEvent>());
+        Assert.Equal(SubscriptionStatus.Trialing, raised.PreviousStatus);
+        Assert.Equal(SubscriptionStatus.Cancelled, raised.Status);
+        Assert.Equal("CancellationRequested", raised.Reason.ToString());
     }
 
     [Fact]
@@ -658,6 +677,129 @@ public sealed class TenantSubscriptionTests
         Assert.True(result.IsSuccess);
         Assert.Equal(SubscriptionStatus.Active, subscription.Status);
         Assert.Null(subscription.TrialEndsAtUtc);
+    }
+
+    [Fact]
+    public void RecordPurchase_WhenActive_UpdatesUpdatedAtUtc()
+    {
+        var subscription = ActiveSubscription();
+        var actor = Guid.NewGuid();
+        var t1 = DateTime.UtcNow.AddMinutes(5);
+
+        var result = subscription.RecordPurchase(actor, t1);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(t1, subscription.UpdatedAtUtc);
+        Assert.Equal(actor, subscription.UpdatedBy);
+    }
+
+    [Fact]
+    public void RecordPurchase_WhenSuspended_Fails()
+    {
+        var subscription = ActiveSubscription();
+        subscription.SuspendForPolicyViolation("abuse", Guid.Empty, DateTime.UtcNow);
+        var updatedAt = subscription.UpdatedAtUtc;
+
+        var result = subscription.RecordPurchase(Guid.NewGuid(), DateTime.UtcNow.AddMinutes(5));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(updatedAt, subscription.UpdatedAtUtc);
+    }
+
+    // SUB-BB1: cada transición anunciada registra su evento de dominio; el caso de uso emite uno solo.
+    [Fact]
+    public void SuspendAfterRetriesExhausted_RaisesStatusChanged()
+    {
+        var subscription = ActiveSubscription();
+        subscription.BeginRenewal("k1", Guid.Empty, DateTime.UtcNow);
+        var renewalId = subscription.Renewals.Single().Id;
+
+        subscription.FailRenewal(
+            renewalId,
+            "card_declined",
+            "declined",
+            false,
+            null,
+            Guid.Empty,
+            DateTime.UtcNow,
+            true
+        );
+        var result = subscription.SuspendAfterRetriesExhausted(Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        var raised = Assert.Single(subscription.DomainEvents.OfType<SubscriptionStatusChangedDomainEvent>());
+        Assert.Equal(SubscriptionStatus.Active, raised.PreviousStatus);
+        Assert.Equal(SubscriptionStatus.Suspended, raised.Status);
+        Assert.Equal(SubscriptionStatusChangeReason.RenewalPaymentFailed, raised.Reason);
+        Assert.Equal("card_declined", raised.FailureCode);
+        Assert.True(raised.NotifiedByChargeFailedEmail);
+        Assert.Null(raised.ActorUserId);
+        Assert.Equal(subscription.Id, raised.TenantSubscriptionId);
+        Assert.Equal(subscription.TenantId, raised.TenantId);
+    }
+
+    [Fact]
+    public void ScheduleCancellation_RaisesStatusChanged_WithAccessEnd_AndOnlyOnce()
+    {
+        var subscription = ActiveSubscription();
+        var actor = Guid.NewGuid();
+
+        subscription.ScheduleCancellation("too expensive", actor, DateTime.UtcNow);
+        subscription.ScheduleCancellation("too expensive", actor, DateTime.UtcNow);
+
+        var raised = Assert.Single(subscription.DomainEvents.OfType<SubscriptionStatusChangedDomainEvent>());
+        Assert.Equal(SubscriptionStatusChangeReason.CancellationScheduled, raised.Reason);
+        Assert.Equal(SubscriptionStatus.Active, raised.Status);
+        Assert.Equal(subscription.CurrentPeriodEndUtc, raised.AccessEndsAtUtc);
+        Assert.Equal(actor, raised.ActorUserId);
+    }
+
+    [Fact]
+    public void FailedTransition_RaisesNothing()
+    {
+        var subscription = ActiveSubscription();
+
+        Assert.True(subscription.RecoverFromPastDue(Guid.Empty, DateTime.UtcNow).IsFailure);
+        Assert.True(subscription.ExpireAfterSuspensionTimeout(Guid.Empty, DateTime.UtcNow).IsFailure);
+
+        Assert.Empty(subscription.DomainEvents);
+    }
+
+    // Decisión del dueño (2026-11-05): trial→activo no se anuncia (Auth auditaría un "acceso restaurado" falso).
+    [Fact]
+    public void UnannouncedTransitions_RaiseNothing()
+    {
+        var (plan, version) = CreatePublishedPlan("starter");
+        var trial = TenantSubscription.StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow).Value;
+        trial.ConvertTrialToActive(DateTime.UtcNow, DateTime.UtcNow.AddDays(30), null, Guid.Empty, DateTime.UtcNow);
+
+        Assert.Empty(trial.DomainEvents);
+    }
+
+    // Los motivos viajan como texto en el contrato: cada nombre del dominio existe en el enum de integración.
+    [Fact]
+    public void Reasons_MatchIntegrationContractNames()
+    {
+        var contract = Enum.GetNames<BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionChangeReason>();
+        Assert.All(Enum.GetNames<SubscriptionStatusChangeReason>(), name => Assert.Contains(name, contract));
+    }
+
+    private static TenantSubscription ActiveSubscription()
+    {
+        var (plan, version) = CreatePublishedPlan("starter");
+        var nowUtc = DateTime.UtcNow;
+        return TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                plan,
+                version,
+                BillingCycle.Monthly,
+                nowUtc,
+                nowUtc.AddDays(30),
+                Guid.Empty,
+                nowUtc
+            )
+            .Value;
     }
 
     private static (SubscriptionPlan Plan, SubscriptionPlanVersion Version) CreatePublishedPlan(string code) =>

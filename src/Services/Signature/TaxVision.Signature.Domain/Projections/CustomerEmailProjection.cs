@@ -24,6 +24,9 @@ public sealed class CustomerEmailProjection
     public string NormalizedEmail { get; private set; } = default!;
     public string DisplayName { get; private set; } = default!;
     public bool IsArchived { get; private set; }
+
+    /// <summary>Cuándo ocurrió lo último aplicado. Nulo en las filas anteriores a este control de orden.</summary>
+    public DateTime? SourceOccurredOnUtc { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -31,7 +34,8 @@ public sealed class CustomerEmailProjection
         Guid tenantId,
         Guid customerId,
         string normalizedEmail,
-        string displayName
+        string displayName,
+        DateTime? sourceOccurredOnUtc = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -50,9 +54,27 @@ public sealed class CustomerEmailProjection
             NormalizedEmail = normalizedEmail,
             DisplayName = displayName,
             IsArchived = false,
+            SourceOccurredOnUtc = sourceOccurredOnUtc,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
+    }
+
+    /// <summary>
+    /// Aplica el evento solo si no es más viejo que lo ya aplicado: los de Customer no traen número de revisión,
+    /// así que el orden lo da su tiempo de ocurrencia. Devuelve si lo aplicó.
+    /// </summary>
+    public bool ApplyIfNewer(string normalizedEmail, string displayName, DateTime occurredOnUtc)
+    {
+        if (occurredOnUtc < SourceOccurredOnUtc)
+            return false;
+
+        SourceOccurredOnUtc = occurredOnUtc;
+        if (NormalizedEmail != normalizedEmail)
+            ChangeEmail(normalizedEmail);
+        if (DisplayName != displayName)
+            UpdateDisplayName(displayName);
+        return true;
     }
 
     public void UpdateDisplayName(string displayName)

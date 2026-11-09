@@ -15,8 +15,10 @@ internal static class CustomerAvatarTestDoubles
     public static readonly Guid TenantId = Guid.Parse("6d1c2a8e-0f6b-4b1e-9d2a-1c0e7f3a5b11");
     public static readonly DateTime Now = new(2026, 10, 28, 12, 0, 0, DateTimeKind.Utc);
 
-    public static DomainCustomer NewCustomer(Guid? createdBy = null) =>
-        DomainCustomer
+    /// <summary>Cliente ya guardado: sin eventos de dominio pendientes.</summary>
+    public static DomainCustomer NewCustomer(Guid? createdBy = null)
+    {
+        var customer = DomainCustomer
             .Register(
                 TenantId,
                 CustomerKind.Individual,
@@ -28,6 +30,9 @@ internal static class CustomerAvatarTestDoubles
                 createdBy ?? Guid.NewGuid()
             )
             .Value;
+        customer.ClearDomainEvents();
+        return customer;
+    }
 
     /// <summary>Cliente con una foto vigente ya confirmada.</summary>
     public static DomainCustomer WithPicture(out Guid fileId)
@@ -35,7 +40,8 @@ internal static class CustomerAvatarTestDoubles
         var customer = NewCustomer();
         fileId = Guid.NewGuid();
         customer.BeginProfilePictureChange(fileId, Guid.NewGuid(), Now);
-        customer.ConfirmProfilePicture(fileId);
+        customer.ConfirmProfilePicture(fileId, Guid.Empty);
+        customer.ClearDomainEvents();
         return customer;
     }
 

@@ -38,18 +38,20 @@ public sealed class TenantBrand : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    // Token de concurrencia: Touch() modifica la raíz, así que todo cambio de un hijo lo verifica.
+    public byte[] RowVersion { get; private set; } = [];
+
     public IReadOnlyCollection<TenantBrandColor> Colors => _colors.AsReadOnly();
     public IReadOnlyCollection<TenantBrandAsset> Assets => _assets.AsReadOnly();
 
-    public static TenantBrand Create(Guid tenantId, BrandSurface surface)
+    public static TenantBrand Create(Guid tenantId, BrandSurface surface, DateTime nowUtc)
     {
-        var now = DateTime.UtcNow;
         var brand = new TenantBrand
         {
             Id = Guid.NewGuid(),
             Surface = surface,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
         };
         brand.SetTenant(tenantId);
         return brand;
@@ -58,7 +60,7 @@ public sealed class TenantBrand : TenantEntity
     // ----- Colores -----
 
     /// <summary>Fija (crea o actualiza) el color de un token. Valida el hex antes de tocar nada.</summary>
-    public Result SetColor(BrandColorToken token, string hex)
+    public Result SetColor(BrandColorToken token, string hex, DateTime nowUtc)
     {
         var color = HexColor.Create(hex);
         if (color.IsFailure)
@@ -66,33 +68,33 @@ public sealed class TenantBrand : TenantEntity
 
         var existing = FindColor(token);
         if (existing is null)
-            _colors.Add(TenantBrandColor.Create(TenantId, Id, token, color.Value));
+            _colors.Add(TenantBrandColor.Create(TenantId, Id, token, color.Value, nowUtc));
         else
-            existing.Update(color.Value);
+            existing.Update(color.Value, nowUtc);
 
-        Touch();
+        Touch(nowUtc);
         return Result.Success();
     }
 
     /// <summary>Quita un color para que vuelva al default. Idempotente: no falla si no estaba.</summary>
-    public void RemoveColor(BrandColorToken token)
+    public void RemoveColor(BrandColorToken token, DateTime nowUtc)
     {
         var existing = FindColor(token);
         if (existing is null)
             return;
 
         _colors.Remove(existing);
-        Touch();
+        Touch(nowUtc);
     }
 
     /// <summary>Vuelve la superficie entera al default del sistema (quita todos los colores).</summary>
-    public void ResetColors()
+    public void ResetColors(DateTime nowUtc)
     {
         if (_colors.Count == 0)
             return;
 
         _colors.Clear();
-        Touch();
+        Touch(nowUtc);
     }
 
     // ----- Assets (logo / favicon) -----
@@ -105,7 +107,8 @@ public sealed class TenantBrand : TenantEntity
         string contentType,
         long sizeBytes,
         int? width,
-        int? height
+        int? height,
+        DateTime nowUtc
     )
     {
         var validation = ValidateAsset(fileId, contentType, sizeBytes);
@@ -115,12 +118,12 @@ public sealed class TenantBrand : TenantEntity
         var existing = FindAsset(key);
         if (existing is null)
             _assets.Add(
-                TenantBrandAsset.CreatePending(TenantId, Id, key, fileId, contentType, sizeBytes, width, height)
+                TenantBrandAsset.CreatePending(TenantId, Id, key, fileId, contentType, sizeBytes, width, height, nowUtc)
             );
         else
-            existing.MarkPending(fileId, contentType, sizeBytes, width, height);
+            existing.MarkPending(fileId, contentType, sizeBytes, width, height, nowUtc);
 
-        Touch();
+        Touch(nowUtc);
         return Result.Success();
     }
 
@@ -146,33 +149,46 @@ public sealed class TenantBrand : TenantEntity
             return Result.Success();
 
         existing.Confirm(contentType, sizeBytes, width, height, confirmedAtUtc);
-        Touch();
+        Touch(confirmedAtUtc);
         return Result.Success();
     }
 
     /// <summary>Descarta un upload que CloudStorage rechazó (infectado / bloqueado), solo si el
     /// fileId pendiente coincide (si ya se reemplazó, no pisa el asset nuevo). Idempotente: devuelve
     /// true solo si de verdad lo quitó.</summary>
-    public bool DiscardPendingAsset(BrandAssetKey key, Guid fileId)
+    public bool DiscardPendingAsset(BrandAssetKey key, Guid fileId, DateTime nowUtc)
     {
         var existing = FindAsset(key);
         if (existing is null || existing.FileId != fileId || existing.Status != BrandAssetStatus.Pending)
             return false;
 
         _assets.Remove(existing);
-        Touch();
+        Touch(nowUtc);
+        return true;
+    }
+
+    /// <summary>Quita el asset si su fileId coincide, en cualquier estado: un archivo rechazado por el
+    /// escaneo no se sirve aunque ya figure confirmado. Devuelve true solo si lo quitó.</summary>
+    public bool RevokeAsset(BrandAssetKey key, Guid fileId, DateTime nowUtc)
+    {
+        var existing = FindAsset(key);
+        if (existing is null || existing.FileId != fileId)
+            return false;
+
+        _assets.Remove(existing);
+        Touch(nowUtc);
         return true;
     }
 
     /// <summary>Elimina un asset. Idempotente: no falla si no estaba.</summary>
-    public void RemoveAsset(BrandAssetKey key)
+    public void RemoveAsset(BrandAssetKey key, DateTime nowUtc)
     {
         var existing = FindAsset(key);
         if (existing is null)
             return;
 
         _assets.Remove(existing);
-        Touch();
+        Touch(nowUtc);
     }
 
     // ----- Internos (sin LINQ: guardrail #4) -----
@@ -224,5 +240,5 @@ public sealed class TenantBrand : TenantEntity
         return Result.Success();
     }
 
-    private void Touch() => UpdatedAtUtc = DateTime.UtcNow;
+    private void Touch(DateTime nowUtc) => UpdatedAtUtc = nowUtc;
 }

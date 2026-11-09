@@ -45,16 +45,59 @@ public sealed class UpdateCustomerHandlerTests
             ),
             Repo(customer),
             new NoDuplicates(),
-            bus,
-            new FixedCorrelationContext(),
             new RecordingUnitOfWork(bus),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, Repo(customer), customer);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(photo, customer.ProfilePictureFileId);
         Assert.Equal(photo, result.Value.AvatarFileId);
         Assert.Equal(photo, Assert.Single(bus.Published.OfType<CustomerUpdatedIntegrationEvent>()).AvatarFileId);
+    }
+
+    /// <summary>CUS-7: el evento lleva la política nueva; el canal que no viene en el PATCH se conserva.</summary>
+    [Fact]
+    public async Task Turning_sms_back_on_publishes_the_new_policy()
+    {
+        var customer = NewCustomer();
+        customer.ChangeContactPolicy(emailEnabled: false, smsEnabled: false, Editor);
+        var bus = new FakeMessageBus();
+
+        var result = await UpdateCustomerHandler.Handle(
+            new UpdateCustomerCommand(
+                TenantId: TenantId,
+                CustomerId: customer.Id,
+                ModifiedByUserId: Editor,
+                Language: customer.Language,
+                OccupationId: null,
+                PrimaryEmail: customer.PrimaryEmail.Value,
+                PrimaryPhone: null,
+                FirstName: null,
+                MiddleName: null,
+                LastName: null,
+                Prefix: null,
+                Suffix: null,
+                DateOfBirth: null,
+                LegalName: null,
+                Dba: null,
+                BusinessStructure: null,
+                FormationDate: null,
+                PrincipalBusinessActivityId: null,
+                CallerCanViewAllCustomers: true,
+                SmsEnabled: true
+            ),
+            Repo(customer),
+            new NoDuplicates(),
+            new RecordingUnitOfWork(bus),
+            CancellationToken.None
+        );
+        await DomainEventReplay.DispatchIntoAsync(bus, Repo(customer), customer);
+
+        Assert.True(result.IsSuccess);
+        var published = Assert.Single(bus.Published.OfType<CustomerUpdatedIntegrationEvent>());
+        Assert.True(published.SmsEnabled);
+        Assert.False(published.EmailEnabled);
     }
 
     /// <summary>El CRM manda propiedades que el contrato ya no tiene (preferredChannel, profilePictureFileId).</summary>

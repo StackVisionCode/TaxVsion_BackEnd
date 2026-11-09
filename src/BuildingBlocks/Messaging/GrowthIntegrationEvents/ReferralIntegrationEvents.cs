@@ -1,5 +1,8 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.GrowthIntegrationEvents;
 
+[MessageIdentity("BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralQualifiedIntegrationEvent")]
 public sealed record ReferralQualifiedIntegrationEvent : GrowthIntegrationEvent
 {
     public override string EventType => "growth.referrals.qualified";
@@ -9,6 +12,7 @@ public sealed record ReferralQualifiedIntegrationEvent : GrowthIntegrationEvent
     public required Guid QualifyingPaymentId { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralRewardGrantedIntegrationEvent")]
 public sealed record ReferralRewardGrantedIntegrationEvent : GrowthIntegrationEvent
 {
     public override string EventType => "growth.referrals.reward_granted";
@@ -19,6 +23,7 @@ public sealed record ReferralRewardGrantedIntegrationEvent : GrowthIntegrationEv
     public required Guid MaterializedReferenceId { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralRewardRejectedIntegrationEvent")]
 public sealed record ReferralRewardRejectedIntegrationEvent : GrowthIntegrationEvent
 {
     public override string EventType => "growth.referrals.reward_rejected";
@@ -27,6 +32,7 @@ public sealed record ReferralRewardRejectedIntegrationEvent : GrowthIntegrationE
     public required string ReasonCode { get; init; }
 }
 
+[MessageIdentity("BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralRewardReversedIntegrationEvent")]
 public sealed record ReferralRewardReversedIntegrationEvent : GrowthIntegrationEvent
 {
     public override string EventType => "growth.referrals.reward_reversed";

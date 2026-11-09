@@ -1,5 +1,5 @@
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
-using TaxVision.Auth.Domain.Onboarding.EmailVerification;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
+using TaxVision.Auth.Onboarding.Domain.EmailVerification;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;

@@ -27,5 +27,6 @@
     <ProjectReference Include="..\..\..\src\Services\Reminder\TaxVision.Reminder.Infrastructure\TaxVision.Reminder.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Reminder\TaxVision.Reminder.Api\TaxVision.Reminder.Api.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" Aliases="BbTesting" />
   </ItemGroup>
 </Project>

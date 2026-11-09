@@ -1,10 +1,9 @@
-using BuildingBlocks.Persistence;
-using BuildingBlocks.Results;
+using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
-using Wolverine;
+using TaxVision.Subscription.Infrastructure.Persistence;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -29,69 +28,52 @@ public sealed class AddOnExpirationJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var tenantAddOns = services.GetRequiredService<ITenantAddOnRepository>();
-        var bus = services.GetRequiredService<IMessageBus>();
-        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
-        var metrics = services.GetRequiredService<ISubscriptionMetrics>();
         var logger = services.GetRequiredService<ILogger<AddOnExpirationJob>>();
 
         var nowUtc = DateTime.UtcNow;
-        var expiredCount = 0;
-
         var suspendedTimedOut = await tenantAddOns.GetSuspendedBeforeAsync(nowUtc - SuspensionTimeout, BatchSize, ct);
-        foreach (var addOn in suspendedTimedOut)
-        {
-            var expired = await TryExpireAsync(
-                addOn.ExpireAfterSuspensionTimeout(Guid.Empty, nowUtc),
-                addOn.TenantId,
-                unitOfWork,
-                bus,
-                logger,
-                ct
-            );
-            if (expired > 0)
-                metrics.RecordAddOnExpired(addOn.AddOnCode);
-            expiredCount += expired;
-        }
-
         var cancelledPastPeriod = await tenantAddOns.GetCancelledPastPeriodEndAsync(nowUtc, BatchSize, ct);
-        foreach (var addOn in cancelledPastPeriod)
-        {
-            var expired = await TryExpireAsync(
-                addOn.ExpireAfterCancellationPeriodEnded(Guid.Empty, nowUtc),
-                addOn.TenantId,
-                unitOfWork,
-                bus,
-                logger,
-                ct
-            );
-            if (expired > 0)
-                metrics.RecordAddOnExpired(addOn.AddOnCode);
-            expiredCount += expired;
-        }
 
-        if (expiredCount > 0)
-            logger.LogInformation("AddOnExpirationJob expired {Count} add-on(s).", expiredCount);
+        List<(Guid TenantAddOnId, Guid TenantId, bool SuspensionTimedOut)> candidates =
+        [
+            .. suspendedTimedOut.Select(a => (a.Id, a.TenantId, true)),
+            .. cancelledPastPeriod.Select(a => (a.Id, a.TenantId, false)),
+        ];
+        if (candidates.Count == 0)
+            return;
+
+        var summary = await RunUnitsAsync(
+            candidates,
+            (candidate, unit, token) => ExpireOneAsync(unit, candidate, nowUtc, token),
+            ct
+        );
+        if (summary.Committed > 0)
+            logger.LogInformation("AddOnExpirationJob expired {Count} add-on(s).", summary.Committed);
     }
 
-    private static async Task<int> TryExpireAsync(
-        Result result,
-        Guid tenantId,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
-        ILogger logger,
+    // Expiración y recálculo (cola local durable) en la misma unidad.
+    private static async Task<bool> ExpireOneAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
+        (Guid TenantAddOnId, Guid TenantId, bool SuspensionTimedOut) candidate,
+        DateTime nowUtc,
         CancellationToken ct
     )
     {
+        unit.UseTenant(candidate.TenantId);
+        var addOn = await unit
+            .Services.GetRequiredService<ITenantAddOnRepository>()
+            .GetByIdAsync(candidate.TenantAddOnId, candidate.TenantId, ct);
+        if (addOn is null)
+            return false;
+
+        var result = candidate.SuspensionTimedOut
+            ? addOn.ExpireAfterSuspensionTimeout(Guid.Empty, nowUtc)
+            : addOn.ExpireAfterCancellationPeriodEnded(Guid.Empty, nowUtc);
         if (result.IsFailure)
-            return 0;
+            return false;
 
-        await unitOfWork.SaveChangesAsync(ct);
-
-        // RBAC Fase 5 — RecalculateEntitlementsSafelyAsync despacha vía bus.InvokeAsync a un
-        // scope Wolverine nuevo; sin este stamp LocalCommandTenantMiddleware no tiene tenant
-        // que restaurar y el filtro fail-closed de SubscriptionDbContext bloquearía el handler.
-        bus.TenantId = tenantId.ToString();
-        await bus.RecalculateEntitlementsSafelyAsync(tenantId, logger, ct);
-        return 1;
+        await unit.PublishAsync(new RecalculateEntitlementsCommand(candidate.TenantId));
+        unit.Services.GetRequiredService<ISubscriptionMetrics>().RecordAddOnExpired(addOn.AddOnCode);
+        return true;
     }
 }

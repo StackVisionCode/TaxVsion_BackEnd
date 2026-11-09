@@ -31,7 +31,7 @@ public static class SubscriptionRenewalPaymentFailedConsumer
 
         using (correlation.Push(correlationId))
         {
-            var subscription = await subscriptions.GetByTenantIdAsync(evt.TenantId, ct);
+            var subscription = await subscriptions.GetWithFullHistoryAsync(evt.TenantId, ct);
             if (subscription is null || subscription.Id != evt.TenantSubscriptionId)
             {
                 logger.LogWarning(
@@ -65,7 +65,9 @@ public static class SubscriptionRenewalPaymentFailedConsumer
                 evt.WillRetry,
                 evt.NextRetryAtUtc,
                 actorUserId: Guid.Empty,
-                DateTime.UtcNow
+                DateTime.UtcNow,
+                // El correo del último intento ya dice que se suspendió: no se manda otro "suspended".
+                notifiedByChargeFailedEmail: evt.IsAutomaticCharge
             );
             if (result.IsFailure)
             {
@@ -90,23 +92,8 @@ public static class SubscriptionRenewalPaymentFailedConsumer
                     );
             }
 
+            // El aviso Active → Suspended sale del evento de dominio (uno solo por las dos transiciones).
             await unitOfWork.SaveChangesAsync(ct);
-
-            // Solo cuando el fallo efectivamente movió el estado (Active→PastDue→Suspended) — un fallo con
-            // reintento pendiente no transiciona y no debe emitir el evento de ciclo de vida.
-            if (subscription.Status != previousStatus)
-            {
-                bus.TenantId = evt.TenantId.ToString();
-                await bus.PublishStatusChangedAsync(
-                    subscription,
-                    previousStatus,
-                    SubscriptionChangeReason.RenewalPaymentFailed,
-                    failureCode: evt.FailureCode,
-                    correlationId: correlationId,
-                    // El correo del último intento ya dice que se suspendió: no se manda otro "suspended".
-                    notifiedByChargeFailedEmail: evt.IsAutomaticCharge
-                );
-            }
 
             var suspended =
                 subscription.Status == SubscriptionStatus.Suspended && previousStatus != SubscriptionStatus.Suspended;

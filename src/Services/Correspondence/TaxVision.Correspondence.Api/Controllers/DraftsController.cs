@@ -388,9 +388,14 @@ public sealed class DraftsController(
             new SendDraftCommand(tenantId, id, userId, correlation.CorrelationId),
             ct
         );
-        return result.IsSuccess
-            ? Ok(new { sentMessageId = result.Value.SentMessageId, providerMessageId = result.Value.ProviderMessageId })
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        // COR-17: Postmaster todavía está enviando; el borrador queda en Sending.
+        if (result.Value.InProgress)
+            return Accepted(new { sentMessageId = result.Value.SentMessageId, inProgress = true });
+        return Ok(
+            new { sentMessageId = result.Value.SentMessageId, providerMessageId = result.Value.ProviderMessageId }
+        );
     }
 
     private static AutoSaveDraftCommand ToCommand(Guid tenantId, Guid draftId, AutoSaveDraftBody body) =>

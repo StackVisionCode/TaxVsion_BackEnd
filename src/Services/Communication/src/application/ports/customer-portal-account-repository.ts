@@ -14,12 +14,12 @@ export interface CustomerPortalAccountRepository {
   upsert(snapshot: { customerId: string; tenantId: string; userId: string }): Promise<void>;
 
   /** UserDeactivatedIntegrationEvent solo trae UserId, no CustomerId — de ahi este método en vez de markInactive(customerId). */
-  markInactiveByUserId(userId: string): Promise<void>;
+  markInactiveByUserId(userId: string, statusChangedAtUtc?: Date): Promise<void>;
 
   /** Contraparte de `markInactiveByUserId` para `auth.user.reactivated.v1` (que tampoco trae CustomerId):
    * reactiva la cuenta de portal para que el cliente vuelva a ser chateable. Sin esto, un portal
    * reactivado en Auth quedaba `IsActive=false` aquí para siempre (portal activo ≠ chateable). */
-  markActiveByUserId(userId: string): Promise<void>;
+  markActiveByUserId(userId: string, statusChangedAtUtc?: Date): Promise<void>;
 
   /** null si el customer no tiene cuenta de portal (nunca se creo) o si esta inactiva. */
   findActiveByCustomerId(customerId: string): Promise<CustomerPortalAccountSnapshot | null>;

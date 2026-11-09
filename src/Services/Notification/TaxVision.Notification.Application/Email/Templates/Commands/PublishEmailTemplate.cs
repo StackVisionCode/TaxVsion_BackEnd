@@ -30,15 +30,12 @@ public static class PublishEmailTemplateHandler
         if (target is null)
             return Result.Failure(new Error("EmailTemplate.NotFound", "Template version not found."));
 
-        // Supersede la versión publicada anterior (si existe y es distinta).
-        if (template.CurrentVersionId is { } currentId && currentId != target.Id)
-        {
-            var current = await repository.GetVersionAsync(template.Id, currentId, ct);
-            current?.MarkSuperseded();
-        }
+        var current = template.CurrentVersionId is { } currentId
+            ? await repository.GetVersionAsync(template.Id, currentId, ct)
+            : null;
 
-        target.MarkPublished();
-        var published = template.MarkPublished(target.Id);
+        // Wolverine guarda al salir del handler aunque devuelva error: nada se muta antes de la regla.
+        var published = template.Publish(target, current);
         if (published.IsFailure)
             return published;
 

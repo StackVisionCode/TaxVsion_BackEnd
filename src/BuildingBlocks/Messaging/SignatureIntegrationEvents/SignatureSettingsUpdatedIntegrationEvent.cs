@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -16,6 +18,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 ///      activas, para que quede constancia y detecte cambios accidentales.
 ///      Template sugerido: "signature.settings.updated.v1"
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureSettingsUpdatedIntegrationEvent")]
 public sealed record SignatureSettingsUpdatedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Tenant cuya configuración fue actualizada.</summary>

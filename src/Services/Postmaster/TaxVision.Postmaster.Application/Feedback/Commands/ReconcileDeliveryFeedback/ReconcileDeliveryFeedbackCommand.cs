@@ -5,9 +5,11 @@ namespace TaxVision.Postmaster.Application.Feedback.Commands.ReconcileDeliveryFe
 /// <see cref="SentToUtc"/> y siguen sin resultado final. Respaldo del webhook, no su reemplazo.
 /// </summary>
 /// <param name="MaxRecipients">Tope por corrida: cada uno es una consulta al proveedor, con cupo por minuto.</param>
+/// <param name="ApplyBatchSize">Avisos por transacción: un choque solo deja para la próxima vuelta su lote.</param>
 public sealed record ReconcileDeliveryFeedbackCommand(
     DateTime SentFromUtc,
     DateTime SentToUtc,
     int MaxRecipients,
-    DateTime NowUtc
+    DateTime NowUtc,
+    int ApplyBatchSize
 );

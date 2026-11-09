@@ -76,7 +76,20 @@ public sealed class FileMetadataRef
     public static FileMetadataRef ForRejected(Guid tenantId, Guid fileId, string reason) =>
         ForOutcome(tenantId, fileId, FileScanStatus.Rejected, reason);
 
+    /// <summary>Evento de CloudStorage. <c>Deleted</c> es terminal: un <c>FileAvailable</c> tardío no lo revive.</summary>
     public void MarkAvailable(string objectKey, string contentType, long sizeBytes, string checksumSha256)
+    {
+        if (Status == FileScanStatus.Deleted)
+            return;
+
+        ConfirmAvailable(objectKey, contentType, sizeBytes, checksumSha256);
+    }
+
+    /// <summary>
+    /// CloudStorage lo confirmó al consultarlo: vale también sobre <c>Deleted</c>, porque un archivo restaurado de
+    /// la papelera vuelve a existir y Signature no escucha esa restauración.
+    /// </summary>
+    public void ConfirmAvailable(string objectKey, string contentType, long sizeBytes, string checksumSha256)
     {
         ObjectKey = objectKey;
         ContentType = contentType;

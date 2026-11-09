@@ -21,4 +21,6 @@ public static class CatalogErrors
     public static Error DuplicateSku => new("catalog.duplicateSku", "An item with the same SKU already exists.");
     public static Error CategoryHasChildren =>
         new("catalog.categoryHasChildren", "The category has subcategories or items.");
+    public static Error CategoryCycle =>
+        new("catalog.categoryCycle", "A category cannot be moved under itself or one of its subcategories.");
 }

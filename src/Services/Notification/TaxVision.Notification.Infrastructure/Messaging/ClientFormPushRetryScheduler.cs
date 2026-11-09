@@ -4,8 +4,8 @@ using Wolverine;
 
 namespace TaxVision.Notification.Infrastructure.Messaging;
 
-internal sealed class ClientFormPushRetryScheduler(IMessageBus bus) : IClientFormPushRetryScheduler
+internal sealed class ClientFormPushRetryScheduler(HandlerBus bus) : IClientFormPushRetryScheduler
 {
     public async Task ScheduleAsync(RetryClientFormPushRequested request, TimeSpan delay) =>
-        await bus.ScheduleAsync(request, delay);
+        await bus.Current.ScheduleAsync(request, delay);
 }

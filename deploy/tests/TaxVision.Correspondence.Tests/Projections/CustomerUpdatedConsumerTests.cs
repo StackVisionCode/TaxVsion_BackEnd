@@ -31,6 +31,7 @@ public sealed class CustomerUpdatedConsumerTests
             evt,
             repository,
             new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
             unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<CustomerEmailAddress>.Instance,
@@ -64,6 +65,7 @@ public sealed class CustomerUpdatedConsumerTests
             evt,
             repository,
             new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
             unitOfWork,
             new FakeCorrelationContext(),
             NullLogger<CustomerEmailAddress>.Instance,
@@ -73,5 +75,50 @@ public sealed class CustomerUpdatedConsumerTests
         var stored = await repository.GetByCustomerIdAsync(tenantId, customerId);
         Assert.NotNull(stored);
         Assert.Equal("jane.doe@example.com", stored!.EmailAddress);
+    }
+
+    private static Task HandleUpdatedAsync(
+        Guid tenantId,
+        Guid customerId,
+        string email,
+        DateTime occurredOn,
+        FakeCustomerEmailAddressRepository repository
+    ) =>
+        CustomerUpdatedConsumer.Handle(
+            new CustomerUpdatedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                DisplayName = "Jane Doe",
+                PrimaryEmail = email,
+                Language = "en",
+                ModifiedByUserId = Guid.NewGuid(),
+                OccurredOn = occurredOn,
+            },
+            repository,
+            new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            NullLogger<CustomerEmailAddress>.Instance,
+            CancellationToken.None
+        );
+
+    [Fact]
+    public async Task Handle_EventsOutOfOrder_ProjectionKeepsNewestEmail()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var repository = new FakeCustomerEmailAddressRepository();
+        var t1 = DateTime.UtcNow.AddMinutes(-30);
+        repository.Seed(
+            CustomerEmailAddress.Create(tenantId, customerId, EmailAddress.Create("x@example.com").Value)
+        );
+
+        await HandleUpdatedAsync(tenantId, customerId, "z@example.com", t1.AddMinutes(20), repository);
+        await HandleUpdatedAsync(tenantId, customerId, "y@example.com", t1.AddMinutes(10), repository);
+
+        var stored = await repository.GetByCustomerIdAsync(tenantId, customerId);
+        Assert.Equal("z@example.com", stored!.EmailAddress);
     }
 }

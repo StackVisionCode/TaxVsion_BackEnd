@@ -23,6 +23,12 @@ public sealed class ReminderSchedulingOptions
     public int ReconciliationHorizonHours { get; set; } = 24;
 
     /// <summary>
+    /// Cuántas veces se vuelve a ejecutar un disparo que chocó con otra edición del recordatorio. Por
+    /// <c>InvokeAsync</c> el conflicto ya no se reintenta solo (BB-11): el job relee en una ejecución nueva.
+    /// </summary>
+    public int FireConflictRefires { get; set; } = 3;
+
+    /// <summary>
     /// Fase 10 — cuántos meses se conservan los recordatorios ya terminados
     /// (<c>Dismissed</c>/<c>Cancelled</c>/<c>Missed</c>). Un recordatorio terminal no vuelve a
     /// dispararse ni se muestra en ningún listado: lo único que hace al quedarse es engordar la

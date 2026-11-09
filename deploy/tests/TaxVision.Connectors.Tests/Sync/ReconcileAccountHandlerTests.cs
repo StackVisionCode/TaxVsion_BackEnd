@@ -7,6 +7,7 @@ using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Domain.Watch;
+using TaxVision.Connectors.Tests.Accounts;
 using TaxVision.Connectors.Tests.OAuth;
 using TaxVision.Connectors.Tests.Watch;
 
@@ -36,10 +37,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Gmail)),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -74,10 +75,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -120,10 +121,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -167,10 +168,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -205,10 +206,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -256,10 +257,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Gmail)),
             sharedLock,
             sharedPendingFlag,
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -291,10 +292,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Graph)),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            new FakeMessageBus(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), new FakeMessageBus()),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -333,10 +334,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(client),
             distributedLock,
             pendingFlag,
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
         return (result, client, bus);
@@ -395,10 +396,10 @@ public class ReconcileAccountHandlerTests
                 new FakeEmailProviderClientFactory(client),
                 new InMemoryDistributedLock(),
                 new InMemorySyncPendingFlag(),
-                new FakeUnitOfWork(),
-                bus,
+                new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
                 new FakeCorrelationContext(),
                 NullLogger.Instance,
+                FetchFailures.None(),
                 CancellationToken.None
             );
 
@@ -409,7 +410,9 @@ public class ReconcileAccountHandlerTests
         Assert.True(second.IsFailure);
         Assert.Equal(TenantEmailAccountStatus.Error, account.Status);
         // La segunda corrida ya encuentra la cuenta en Error: no se avisa otra vez.
-        var notified = Assert.Single(bus.Published.OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>());
+        var notified = Assert.Single(
+            DomainEventReplay.Emitted(bus, account).OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>()
+        );
         Assert.Equal("Imap.AuthenticationFailed", notified.ErrorCode);
         Assert.Equal(Guid.Empty, notified.ConnectionId);
     }
@@ -439,10 +442,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 
@@ -496,10 +499,10 @@ public class ReconcileAccountHandlerTests
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
             new InMemorySyncPendingFlag(),
-            new FakeUnitOfWork(),
-            bus,
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
             new FakeCorrelationContext(),
             NullLogger.Instance,
+            FetchFailures.None(),
             CancellationToken.None
         );
 

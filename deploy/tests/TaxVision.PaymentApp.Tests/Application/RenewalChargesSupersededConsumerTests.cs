@@ -23,6 +23,8 @@ public sealed class RenewalChargesSupersededConsumerTests
         Assert.Equal(PaymentStatus.Cancelled, payment.Status);
         Assert.Null(payment.NextRetryAtUtc);
         Assert.Equal(1, unitOfWork.SaveCalls);
+        // PAY-BB1: Subscription ya lo sabe; la cancelación que pidió no se le anuncia.
+        Assert.Empty(await SaaSPaymentEventReplay.DispatchAsync(payment));
     }
 
     [Fact]
@@ -84,8 +86,7 @@ public sealed class RenewalChargesSupersededConsumerTests
         payment.MarkFailed(
             "card_declined",
             "Declined.",
-            willRetry,
-            willRetry ? DateTime.UtcNow.AddHours(1) : null,
+            willRetry ? DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)) : DunningDecision.NoRetry,
             Guid.Empty,
             DateTime.UtcNow
         );

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PlatformIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.PlatformIntegrationEvents;
 /// solo si <see cref="Version"/> es mayor que la que ya tiene, así que reordenar o repetir el mensaje
 /// no hace daño. <c>TenantId</c> es siempre el tenant Platform.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PlatformIntegrationEvents.PlatformSettingsChangedIntegrationEvent")]
 public sealed record PlatformSettingsChangedIntegrationEvent : IntegrationEvent
 {
     public required long Version { get; init; }

@@ -32,7 +32,7 @@ public static class GetCustomerPortalMfaHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(query.CustomerId, ct);
+        var customer = await repository.GetByIdAsync(query.TenantId, query.CustomerId, ct);
         if (!PortalMfaAccess.CanUse(customer, query.TenantId, query.ActorUserId, query.CanViewAll))
             return Result.Failure<PortalMfaStatus>(PortalMfaAccess.NotFound);
 
@@ -49,7 +49,7 @@ public static class ResetCustomerPortalMfaHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(command.CustomerId, ct);
+        var customer = await repository.GetByIdAsync(command.TenantId, command.CustomerId, ct);
         if (!PortalMfaAccess.CanUse(customer, command.TenantId, command.ActorUserId, command.CanViewAll))
             return Result.Failure<PortalMfaResetOutcome>(PortalMfaAccess.NotFound);
 

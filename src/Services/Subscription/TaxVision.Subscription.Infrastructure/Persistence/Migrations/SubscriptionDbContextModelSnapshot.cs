@@ -239,6 +239,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid?>("SaaSPaymentId")
                         .HasColumnType("uniqueidentifier");
 
@@ -317,6 +323,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -658,6 +670,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<long>("RevisionNumber")
+                        .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
                     b.Property<int>("SeatCount")
@@ -1318,6 +1331,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid?>("SaaSPaymentId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1387,6 +1406,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("PurchasedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<Guid?>("SourceReferenceId")
                         .HasColumnType("uniqueidentifier");
@@ -1705,6 +1730,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<DateTime?>("ReplacedCancellationAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReplacedCancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid?>("ReplacedDowngradeId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("RequestedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -1739,6 +1774,9 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ToPlanVersionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("UsesHostedCheckout")
+                        .HasColumnType("bit");
 
                     b.HasKey("Id");
 
@@ -1799,6 +1837,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<Guid?>("SaaSPaymentId")
                         .HasColumnType("uniqueidentifier");

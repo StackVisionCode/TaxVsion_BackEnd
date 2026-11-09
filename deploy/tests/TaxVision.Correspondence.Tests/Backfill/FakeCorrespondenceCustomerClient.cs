@@ -14,6 +14,7 @@ internal sealed class FakeCorrespondenceCustomerClient : ICorrespondenceCustomer
     public FakeCorrespondenceCustomerClient(int pageSize = 100) => _pageSize = pageSize;
 
     public List<Guid> RequestedPages { get; } = [];
+    public List<int> RequestedPageNumbers { get; } = [];
 
     public void Seed(Guid tenantId, params RemoteCustomerSummary[] customers)
     {
@@ -32,6 +33,7 @@ internal sealed class FakeCorrespondenceCustomerClient : ICorrespondenceCustomer
     )
     {
         RequestedPages.Add(tenantId);
+        RequestedPageNumbers.Add(page);
 
         if (_failNextCall)
         {

@@ -79,14 +79,14 @@ public static class CopyFileHandler
             copy.ObjectKey,
             ct
         );
-        var pendingScan = copy.MarkPendingScan();
+        var pendingScan = copy.MarkPendingScan(clock.UtcNow);
         if (pendingScan.IsFailure)
             return Result.Failure<CopiedFileResponse>(pendingScan.Error);
 
         files.Add(copy);
         audit.Add(CreateAudit(command, source, copy, clock.UtcNow));
-        await bus.PublishAsync(new ScanFileCommand(command.TenantId, copy.Id, command.Audit.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(new ScanFileCommand(command.TenantId, copy.Id, command.Audit.CorrelationId));
 
         return Result.Success(new CopiedFileResponse(copy.Id, copy.Status));
     }

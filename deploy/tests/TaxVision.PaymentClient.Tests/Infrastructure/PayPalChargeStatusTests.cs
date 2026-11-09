@@ -121,6 +121,40 @@ public sealed class PayPalChargeStatusTests
         Assert.Equal(PaymentStatus.Processing, result.Value.Status);
     }
 
+    // D-PAY-13: una captura en curso es un cargo. "Sin cargo" abriría otro intento en el link.
+    [Fact]
+    public async Task Search_of_an_order_with_a_pending_capture_finds_the_charge()
+    {
+        var handler = new UrlHandler
+        {
+            ["/v2/checkout/orders/ORDER-1"] = Json(
+                """
+                { "id": "ORDER-1", "status": "COMPLETED", "purchase_units": [
+                  { "payments": { "captures": [ { "id": "CAP-1", "status": "PENDING" } ] } } ] }
+                """
+            ),
+        };
+
+        var result = await SearchAsync(handler, "ORDER-1");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Processing, result.Value!.Status);
+    }
+
+    [Fact]
+    public async Task Search_of_an_order_without_capture_finds_no_charge()
+    {
+        var handler = new UrlHandler
+        {
+            ["/v2/checkout/orders/ORDER-1"] = Json("""{ "id": "ORDER-1", "status": "APPROVED" }"""),
+        };
+
+        var result = await SearchAsync(handler, "ORDER-1");
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value);
+    }
+
     [Fact]
     public async Task A_PayPal_server_error_is_a_failure_to_retry_later()
     {
@@ -146,6 +180,15 @@ public sealed class PayPalChargeStatusTests
             new StubHttpClientFactory(handler),
             NullLogger<PayPalPaymentAdapter>.Instance
         ).GetChargeStatusAsync(Credentials, new ChargeStatusLookup(reference), CancellationToken.None);
+
+    private static Task<BuildingBlocks.Results.Result<ChargeAuthorizationResult?>> SearchAsync(
+        UrlHandler handler,
+        string orderId
+    ) =>
+        new PayPalPaymentAdapter(
+            new StubHttpClientFactory(handler),
+            NullLogger<PayPalPaymentAdapter>.Instance
+        ).FindChargeAsync(Credentials, new ChargeSearch(Guid.NewGuid(), orderId), CancellationToken.None);
 
     private static (HttpStatusCode, string) Json(string body) => (HttpStatusCode.OK, body);
 

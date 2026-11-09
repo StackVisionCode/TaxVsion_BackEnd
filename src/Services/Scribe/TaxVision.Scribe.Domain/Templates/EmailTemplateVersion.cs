@@ -35,9 +35,11 @@ public sealed class EmailTemplateVersion : BaseEntity
     public Guid? PublishedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 
-    // Versión del contenido sembrado que produjo esta versión. Null = publicada a mano (API) o
-    // anterior a la columna. El seeder republica cuando su ContentVersion supera al guardado.
+    // Etiqueta legible del contenido sembrado. Null = publicada a mano (API) o anterior a la columna.
     public int? SeedContentVersion { get; private set; }
+
+    // SCR-01: huella del contenido sembrado. El seeder republica cuando difiere de la definición.
+    public string? SeedContentHash { get; private set; }
 
     public IReadOnlyList<TemplateVariableDefinition> VariableDefinitions => _variableDefinitions.AsReadOnly();
 
@@ -64,7 +66,8 @@ public sealed class EmailTemplateVersion : BaseEntity
             string? Description
         )> variableDefinitions,
         DateTime nowUtc,
-        int? seedContentVersion = null
+        int? seedContentVersion = null,
+        string? seedContentHash = null
     )
     {
         var subjectLimit = channel == TemplateChannel.Push && !HasLiquid(subject) ? 65 : 500;
@@ -127,6 +130,7 @@ public sealed class EmailTemplateVersion : BaseEntity
             LayoutVersionNumber = layoutVersionNumber,
             CreatedAtUtc = nowUtc,
             SeedContentVersion = seedContentVersion,
+            SeedContentHash = seedContentHash,
         };
 
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

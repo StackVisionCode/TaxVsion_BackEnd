@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Api.Controllers;
-using TaxVision.Auth.Application.Onboarding;
-using TaxVision.Auth.Application.Onboarding.EmailVerification.Commands;
-using TaxVision.Auth.Application.Onboarding.PaymentOptions;
-using TaxVision.Auth.Application.Onboarding.Sessions;
-using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
+using TaxVision.Auth.Onboarding.Application;
+using TaxVision.Auth.Onboarding.Application.EmailVerification.Commands;
+using TaxVision.Auth.Onboarding.Application.PaymentOptions;
+using TaxVision.Auth.Onboarding.Application.Sessions;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 

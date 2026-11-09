@@ -20,7 +20,8 @@ public sealed record CampaignScheduleResponse(
     string? Frequency,
     DateTime? EndsAtUtc,
     int? MaxOccurrences,
-    int OccurrenceCount
+    int OccurrenceCount,
+    string? PauseReason
 )
 {
     public static CampaignScheduleResponse From(CampaignSchedule s) =>
@@ -41,6 +42,7 @@ public sealed record CampaignScheduleResponse(
             s.Frequency?.ToString(),
             s.EndsAtUtc,
             s.MaxOccurrences,
-            s.OccurrenceCount
+            s.OccurrenceCount,
+            s.Status == ScheduleStatus.Paused ? s.PauseReason?.ToString() : null
         );
 }

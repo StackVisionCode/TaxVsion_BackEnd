@@ -2,12 +2,15 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Application.Onboarding.Internal.Commands;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Auth.Onboarding.Application.Internal.Commands;
+using TaxVision.Auth.Onboarding.Application.Sagas.Commands;
+using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Audit;
-using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
-using TaxVision.Auth.Domain.Onboarding.TermsVersions;
-using TaxVision.Auth.Domain.Onboarding.ValueObjects;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
+using TaxVision.Auth.Domain.Terms;
+using TaxVision.Auth.Onboarding.Domain.ValueObjects;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Terms;
 using TaxVision.Auth.Domain.Users;
@@ -101,6 +104,70 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
         // intentar escribir nada — no hay TermsVersionId/TermsContentHash que leer.
         Assert.Null(termsAcceptances.Added);
     }
+
+    // AUTH-8: la Saga repite el paso en proceso. El segundo intento no canjea ni anuncia nada.
+    [Fact]
+    public async Task CreateOwner_RetryAfterSuccess_IsNoOp()
+    {
+        var tenantId = Guid.NewGuid();
+        var systemRole = Role.Create(tenantId, Role.SystemTenantAdmin, null, isSystem: true).Value;
+        var users = new FakeUserRepository();
+        var roles = new FakeRoleRepository();
+        roles.Seed(systemRole);
+        var tokenStore = new FakeTokenReferenceStore { ToConsume = "pbkdf2-hash" };
+        var published = new FakeMessageBus();
+        var bus = new FakeMessageBus
+        {
+            InvokeHandler = message =>
+            {
+                users.Existing = users.Added ?? users.Existing;
+                return CreateTenantOwnerFromOnboardingHandler
+                    .Handle(
+                        (CreateTenantOwnerFromOnboardingCommand)message,
+                        users,
+                        roles,
+                        tokenStore,
+                        new FakeTenantOnboardingRepository(),
+                        new FakeTenantTermsAcceptanceRepository(),
+                        new FakeTermsVersionRepository(),
+                        new FakeAuthAuditWriter(),
+                        new FakeUnitOfWork(),
+                        published,
+                        new FakeCorrelationContext(),
+                        CancellationToken.None
+                    )
+                    .GetAwaiter()
+                    .GetResult();
+            },
+        };
+        var command = new CreateTenantOwnerCommand(
+            Guid.NewGuid(),
+            tenantId,
+            "owner@acme.com",
+            "Ada",
+            "Lovelace",
+            tokenStore.Reference
+        );
+
+        var first = await RunStepAsync(command, bus);
+        var second = await RunStepAsync(command, bus);
+
+        Assert.Null(first);
+        Assert.Null(second);
+        Assert.Single(published.Published.OfType<TenantOwnerCreatedIntegrationEvent>());
+    }
+
+    private static Task<OnboardingProvisioningStepFailedIntegrationEvent?> RunStepAsync(
+        CreateTenantOwnerCommand command,
+        FakeMessageBus bus
+    ) =>
+        CreateTenantOwnerHandler.Handle(
+            command,
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger<CreateTenantOwnerCommand>.Instance,
+            CancellationToken.None
+        );
 
     [Fact]
     public async Task Is_idempotent_when_an_owner_already_exists_for_the_onboarding()
@@ -324,6 +391,44 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
 
     private sealed class FakeUserRepository : IUserRepository
     {
+        public Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<IReadOnlyList<User>> GetActiveByRoleAsync(
+            Guid tenantId,
+            Guid roleId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>([]);
+
+        public Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<TenantOwnerReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<CustomerPortalAccountReconciliationResponse>> ListPortalAccountsForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<StaffUserReconciliationResponse>([], page, size, 0));
+
+        public Task<PagedResult<UserDirectoryReconciliationResponse>> ListUsersForDirectoryReconciliationAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PagedResult<UserDirectoryReconciliationResponse>([], page, size, 0));
+
+        public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public User? Existing { get; set; }
         public User? Added { get; private set; }
 
@@ -384,6 +489,36 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
 
     private sealed class FakeRoleRepository : IRoleRepository
     {
+        public Task<IReadOnlyList<UserPermissionDeny>> GetActiveDeniesAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserPermissionDeny>>([]);
+
+        public Task<IReadOnlyList<(Guid UserId, Guid TenantId)>> GetUsersWithExpiredDeniesAsync(
+            DateTime nowUtc,
+            int take,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<(Guid UserId, Guid TenantId)>>([]);
+
+        public Task<int> RemoveExpiredDeniesAsync(Guid userId, DateTime nowUtc, CancellationToken ct = default) =>
+            Task.FromResult(0);
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>> GetRolesByUsersAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>>(
+                new Dictionary<Guid, IReadOnlyList<Role>>()
+            );
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetDeniedPermissionIdsByUsersAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(
+                new Dictionary<Guid, IReadOnlyList<Guid>>()
+            );
+
         private readonly List<Role> _roles = [];
         public IReadOnlyList<Permission> Catalog { get; init; } = [];
 

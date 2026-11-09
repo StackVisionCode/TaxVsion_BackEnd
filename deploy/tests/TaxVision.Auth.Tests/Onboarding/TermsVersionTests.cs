@@ -1,4 +1,4 @@
-using TaxVision.Auth.Domain.Onboarding.TermsVersions;
+using TaxVision.Auth.Domain.Terms;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 

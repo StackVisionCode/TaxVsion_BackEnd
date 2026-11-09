@@ -37,20 +37,26 @@ public static class SetSmsConsentHandler
             return Result.Failure<SmsOptOutSummaryResponse>(phoneResult.Error);
         var phone = phoneResult.Value;
 
+        // D-SMS-2: la acción manual cambia todas las filas del número en la oficina (el gate es por número).
         var nowUtc = DateTime.UtcNow;
-        var optOut = await optOuts.GetAsync(command.TenantId, command.CustomerId, phone.Value, ct);
+        var rows = (await optOuts.ListByTenantAndPhoneAsync(command.TenantId, phone.Value, ct)).ToList();
+        var optOut = rows.FirstOrDefault(o => o.CustomerId == command.CustomerId);
         if (optOut is null)
         {
             optOut = SmsOptOut.CreateSubscribed(command.TenantId, command.CustomerId, phone, nowUtc);
             await optOuts.AddAsync(optOut, ct);
+            rows.Add(optOut);
         }
 
-        var applied =
-            command.Action == SmsConsentAction.OptOut
-                ? optOut.OptOut(ManualKeyword, nowUtc)
-                : optOut.OptIn(ManualKeyword, nowUtc);
-        if (applied.IsFailure)
-            return Result.Failure<SmsOptOutSummaryResponse>(applied.Error);
+        foreach (var row in rows)
+        {
+            var applied =
+                command.Action == SmsConsentAction.OptOut
+                    ? row.OptOut(ManualKeyword, nowUtc)
+                    : row.OptIn(ManualKeyword, nowUtc);
+            if (applied.IsFailure)
+                return Result.Failure<SmsOptOutSummaryResponse>(applied.Error);
+        }
 
         await unitOfWork.SaveChangesAsync(ct);
 

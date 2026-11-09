@@ -86,6 +86,9 @@ public sealed class TemplateWarmupServiceTests
         var services = new ServiceCollection();
         services.AddSingleton<IEmailTemplateRepository>(new FakeEmailTemplateRepository(template));
         services.AddSingleton<IEmailLayoutRepository>(new FakeEmailLayoutRepository(layout));
+        services.AddSingleton<IPublishedTemplateReader>(
+            new FakePublishedTemplateReader(new FakeEmailTemplateRepository(template), new FakeEmailLayoutRepository(layout))
+        );
         services.AddSingleton<TaxVision.Scribe.Application.Abstractions.ICloudStorageClient>(cloudStorage);
         services.AddSingleton<ILogoResolver>(
             new FakeLogoResolver(new LogoAsset(Guid.NewGuid(), "image/png", 1024, false))

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.CustomerIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.CustomerIntegrationEvents;
 /// Sin PII. Permite a consumidores (Auth read-model, Campaign, etc.) reactivar
 /// sus proyecciones locales.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerReactivatedIntegrationEvent")]
 public sealed record CustomerReactivatedIntegrationEvent : IntegrationEvent
 {
     public required Guid CustomerId { get; init; }

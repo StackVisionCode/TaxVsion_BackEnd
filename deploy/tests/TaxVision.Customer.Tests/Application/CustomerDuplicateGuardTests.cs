@@ -11,6 +11,7 @@ using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Domain.Employees;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -123,15 +124,18 @@ public sealed class CustomerDuplicateGuardTests
         Assert.Equal(ada.Value.Id, detector.LastExcluded);
     }
 
-    private static Task<Result<CustomerResponse>> CreateAsync(
+    // Cada alta se confirma: sus eventos de dominio salen por el bus antes de la siguiente.
+    private static async Task<Result<CustomerResponse>> CreateAsync(
         InMemoryCustomers repo,
         ICustomerDuplicateDetector detector,
         string email,
         string firstName = "Ada",
         bool overwrite = false,
         FakeMessageBus? bus = null
-    ) =>
-        CreateCustomerHandler.Handle(
+    )
+    {
+        bus ??= new FakeMessageBus();
+        var result = await CreateCustomerHandler.Handle(
             new CreateCustomerCommand(
                 Tenant,
                 User,
@@ -156,11 +160,15 @@ public sealed class CustomerDuplicateGuardTests
             repo,
             detector,
             new NoDirectory(),
+            new CustomerFormCreationHarness.CreationLock([]),
             new NoOpUnitOfWork(),
-            bus ?? new FakeMessageBus(),
+            bus,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
+        await DomainEventReplay.DispatchIntoAsync(bus, repo, repo.All);
+        return result;
+    }
 
     private static Task<Result<CustomerResponse>> UpdateAsync(
         InMemoryCustomers repo,
@@ -192,8 +200,6 @@ public sealed class CustomerDuplicateGuardTests
             ),
             repo,
             detector,
-            new FakeMessageBus(),
-            new NoOpCorrelationContext(),
             new NoOpUnitOfWork(),
             CancellationToken.None
         );
@@ -235,8 +241,11 @@ public sealed class CustomerDuplicateGuardTests
             return Task.CompletedTask;
         }
 
-        public Task<DomainCustomer?> GetByIdAsync(Guid customerId, CancellationToken ct) =>
-            Task.FromResult(All.Find(c => c.Id == customerId));
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+            Task.FromResult(All.Find(c => c.TenantId == tenantId && c.Id == customerId));
+
+        public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
+            Task.FromResult(All.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));
 
         public Task<IReadOnlyList<DomainCustomer>> GetByIdsAsync(
             Guid tenantId,
@@ -271,6 +280,67 @@ public sealed class CustomerDuplicateGuardTests
                     .Take(batchSize)
                     .ToList()
             );
+
+        public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeCustomerId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindCustomerIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeCustomerId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+            Guid tenantId,
+            IReadOnlyCollection<string> blindIndexes,
+            Guid? excludeRelationId,
+            CancellationToken ct
+        )
+        {
+            foreach (var blindIndex in blindIndexes)
+                if (await FindRelationIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeRelationId, ct) is { } hit)
+                    return hit;
+            return null;
+        }
+
+        public Task<IReadOnlyList<DomainCustomer>> ListNonPrimaryAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<int> CountActiveByAssignedPreparerAsync(Guid tenantId, Guid preparerUserId, CancellationToken ct) =>
+            Task.FromResult(0);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListArchivedAssignedAsync(
+            Guid tenantId,
+            Guid userId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
+            Task.FromResult(OffboardingClientCounts.None);
+
+        public Task<Guid?> FindIdByOriginAsync(
+            Guid tenantId,
+            string sourceService,
+            Guid sourceReferenceId,
+            CancellationToken ct
+        ) => Task.FromResult<Guid?>(null);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
     }
 
     // El creador no está en el directorio → se trata como no-admin → el alta lo auto-asigna (camino real).

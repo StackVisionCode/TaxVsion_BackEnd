@@ -52,6 +52,57 @@ public sealed class StripeChargeStatusMappingTests
         Assert.Equal("Your card was declined.", payload.FailureMessage);
     }
 
+    [Fact]
+    public void RequiresAction_carries_the_client_secret_for_StripeJs()
+    {
+        var payload = StripePaymentAdapter.MapIntentStatus(
+            new PaymentIntent
+            {
+                Id = "pi_1",
+                Status = "requires_action",
+                ClientSecret = "pi_1_secret_abc",
+            }
+        );
+
+        Assert.Equal(PaymentStatus.RequiresAction, payload.Status);
+        Assert.Equal("pi_1_secret_abc", payload.NextActionClientSecret);
+    }
+
+    [Fact]
+    public void Only_RequiresAction_exposes_the_client_secret()
+    {
+        var payload = StripePaymentAdapter.MapIntentStatus(
+            new PaymentIntent
+            {
+                Id = "pi_1",
+                Status = "succeeded",
+                ClientSecret = "pi_1_secret_abc",
+                AmountReceived = 2500,
+                Currency = "usd",
+            }
+        );
+
+        Assert.Null(payload.NextActionClientSecret);
+    }
+
+    [Fact]
+    public void A_charge_that_requires_action_returns_the_client_secret()
+    {
+        var result = StripePaymentAdapter.MapChargeStatus(
+            new PaymentIntent
+            {
+                Id = "pi_1",
+                Status = "requires_action",
+                ClientSecret = "pi_1_secret_abc",
+                NextAction = new PaymentIntentNextAction { Type = "use_stripe_sdk" },
+            }
+        );
+
+        Assert.Equal(PaymentStatus.RequiresAction, result.Status);
+        Assert.Equal("use_stripe_sdk", result.NextActionType);
+        Assert.Equal("pi_1_secret_abc", result.NextActionClientSecret);
+    }
+
     [Theory]
     [InlineData("requires_payment_method", PaymentStatus.Processing)]
     [InlineData("processing", PaymentStatus.Processing)]

@@ -14,8 +14,8 @@ public static class GetMyCustomerContactHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(query.CustomerId, ct);
-        if (customer is null || customer.TenantId != query.TenantId)
+        var customer = await repository.GetByIdAsync(query.TenantId, query.CustomerId, ct);
+        if (customer is null)
             return Result.Failure<MyCustomerContactResponse>(new Error("Customer.NotFound", "Customer not found."));
 
         var upload = CustomerAvatarStatus.Of(

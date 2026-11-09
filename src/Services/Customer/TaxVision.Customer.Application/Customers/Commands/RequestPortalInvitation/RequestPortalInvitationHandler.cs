@@ -17,8 +17,8 @@ public static class RequestPortalInvitationHandler
         CancellationToken ct
     )
     {
-        var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null || customer.TenantId != cmd.TenantId)
+        var customer = await repository.GetByIdAsync(cmd.TenantId, cmd.CustomerId, ct);
+        if (customer is null)
             return Result.Failure<RequestPortalInvitationResponse>(
                 new Error("Customer.NotFound", "Customer not found.") // mismo error — no revelar que existe en otro tenant
             );

@@ -27,6 +27,8 @@ public static class SignatureRequestExpiredConsumer
         var correlationId = ResolveCorrelationId(evt);
         using (correlation.Push(correlationId))
         {
+            // Se renderiza todo antes de escribir: Scribe no corre con filas ya bloqueadas (NOT-07).
+            var rendered = new List<(string Email, ScribeRenderedEmail Render)>();
             // Hardening Fase 7: ver el mismo comentario en SignerRejectedConsumer — EnsureRendered
             // reemplaza el log+continue que dejaba firmantes sin notificar en silencio.
             foreach (var signer in evt.PendingSigners)
@@ -59,17 +61,20 @@ public static class SignatureRequestExpiredConsumer
                     )
                 ).EnsureRendered("sig.request_expired.v1");
 
+                rendered.Add((signer.Email, render));
+            }
+
+            foreach (var (email, render) in rendered)
                 await gateway.QueueEmailAsync(
                     render.ToDispatchRequest(
                         tenantId: evt.TenantId,
-                        to: signer.Email,
+                        to: email,
                         templateKey: TemplateKey,
                         relatedEventId: evt.EventId,
                         correlationId: correlationId
                     ),
                     ct
                 );
-            }
         }
     }
 

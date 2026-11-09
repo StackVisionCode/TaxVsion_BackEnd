@@ -6,8 +6,13 @@ namespace TaxVision.Auth.Tests.Application;
 
 /// <summary>Repositorio de sesiones sin sesiones activas: el gate de sesión única emite normal (no
 /// exige takeover). Para los tests que solo materializan una sesión y no ejercen la revocación.</summary>
-internal sealed class EmptyUserSessionRepository : ISessionRepository
+internal class EmptyUserSessionRepository : ISessionRepository
 {
+    public Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<UserSession>>([]);
+
     public Task<IReadOnlyList<UserSession>> GetActiveSessionsByUserAsync(Guid userId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<UserSession>>([]);
 
@@ -41,7 +46,7 @@ internal sealed class EmptyUserSessionRepository : ISessionRepository
     public Task<bool> HasActiveChainAsync(Guid sessionId, SessionSurface surface, CancellationToken ct = default) =>
         Task.FromResult(false);
 
-    public Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default) =>
+    public virtual Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default) =>
         Task.FromResult(0);
 }
 

@@ -108,6 +108,7 @@ public sealed class UpdateOfficeProfileHandlerTests
             _unitOfWork,
             _bus,
             new NoopCorrelationContext(),
+            TimeProvider.System,
             CancellationToken.None
         );
 }

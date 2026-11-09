@@ -350,6 +350,8 @@ model UserPermissionsProjection {
   RoleIds      String   @default("[]") @db.NVarChar(Max)
   ActorType    String   @db.NVarChar(64)
   IsActive     Boolean  @default(true)
+  // Fecha (occurredOn) del ultimo aviso de estado aplicado; los mas viejos se descartan (prefetch + reintentos).
+  StatusChangedAtUtc DateTime? @db.DateTime2
   UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])
@@ -396,6 +398,8 @@ model UserDirectoryEntry {
   // Foto vigente del staff (Auth User.AvatarFileId; se sirve en /storage/avatars/{id}). Null = sin foto.
   // Los portal users la leen de CustomerDirectoryEntry via CustomerPortalAccount.
   AvatarFileId String?  @db.UniqueIdentifier
+  // Fecha (occurredOn) del ultimo aviso de estado aplicado; los mas viejos se descartan (prefetch + reintentos).
+  StatusChangedAtUtc DateTime? @db.DateTime2
   UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])
@@ -421,6 +425,8 @@ model CustomerDirectoryEntry {
   IsActive     Boolean  @default(true)
   // Foto vigente de la ficha del cliente (Customer.ProfilePictureFileId). Null = sin foto o archivado.
   AvatarFileId String?  @db.UniqueIdentifier
+  // Fecha (occurredOn) del ultimo aviso de estado aplicado; los mas viejos se descartan (prefetch + reintentos).
+  StatusChangedAtUtc DateTime? @db.DateTime2
   UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])
@@ -1348,6 +1354,8 @@ model CustomerPortalAccount {
   /// @userReference(Projection, handledBy: offboarding-consumers, note: "Usuario de portal (cliente), no staff; tambien la inactiva auth-consumers")
   UserId       String   @db.UniqueIdentifier
   IsActive     Boolean  @default(true)
+  // Fecha (occurredOn) del ultimo aviso de estado aplicado; los mas viejos se descartan (prefetch + reintentos).
+  StatusChangedAtUtc DateTime? @db.DateTime2
   UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])

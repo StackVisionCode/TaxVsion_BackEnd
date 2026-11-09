@@ -2,6 +2,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Profiles.Authorization;
+using TaxVision.Signature.Domain.Profiles;
 
 namespace TaxVision.Signature.Application.Profiles.Commands.SetDefault;
 
@@ -22,15 +23,8 @@ public static class SetDefaultSignatureProfileHandler
         if (authorize.IsFailure)
             return authorize;
 
-        // Desmarca la default actual del MISMO ámbito antes de marcar la nueva (una sola por ámbito).
         var scope = await repository.ListByOwnerAsync(cmd.TenantId, profile.OwnerUserId, includeArchived: true, ct);
-        foreach (var other in scope)
-        {
-            if (other.Id != profile.Id)
-                other.UnsetDefault();
-        }
-
-        var marked = profile.MarkDefault();
+        var marked = DefaultSignatureProfilePolicy.SetDefault(scope, profile);
         if (marked.IsFailure)
             return marked;
 

@@ -325,13 +325,13 @@ public sealed class FormSubmissionRevision : BaseEntity
         SignatureRequestId = null;
     }
 
-    internal void LinkSignatureRequest(Guid signatureRequestId)
+    internal bool LinkSignatureRequest(Guid signatureRequestId)
     {
-        if (SignatureStatus is FormRevisionSignatureStatus.Requesting or FormRevisionSignatureStatus.Sent)
-        {
-            SignatureRequestId = signatureRequestId;
-            SignatureStatus = FormRevisionSignatureStatus.Sent;
-        }
+        if (SignatureStatus is not (FormRevisionSignatureStatus.Requesting or FormRevisionSignatureStatus.Sent))
+            return false;
+        SignatureRequestId = signatureRequestId;
+        SignatureStatus = FormRevisionSignatureStatus.Sent;
+        return true;
     }
 
     /// <summary>Solo desde una firma en curso; un fallo repetido no cambia nada (devuelve false).</summary>
@@ -343,56 +343,70 @@ public sealed class FormSubmissionRevision : BaseEntity
         return true;
     }
 
-    internal void MarkSignatureSigned()
+    internal bool MarkSignatureSigned()
     {
-        if (SignatureStatus is FormRevisionSignatureStatus.Sent or FormRevisionSignatureStatus.Signed)
-            SignatureStatus = FormRevisionSignatureStatus.Signed;
+        if (SignatureStatus is not (FormRevisionSignatureStatus.Sent or FormRevisionSignatureStatus.Signed))
+            return false;
+        SignatureStatus = FormRevisionSignatureStatus.Signed;
+        return true;
     }
 
-    internal void MarkSignatureCompleted()
+    internal bool MarkSignatureCompleted()
     {
         if (
             SignatureStatus
-            is FormRevisionSignatureStatus.Sent
+            is not (
+                FormRevisionSignatureStatus.Sent
                 or FormRevisionSignatureStatus.Signed
                 or FormRevisionSignatureStatus.Completed
+            )
         )
-            SignatureStatus = FormRevisionSignatureStatus.Completed;
+            return false;
+        SignatureStatus = FormRevisionSignatureStatus.Completed;
+        return true;
     }
 
-    internal void MarkSignatureSealed(Guid sealedFileId, string documentHashPost, Guid? certificateFileId)
+    internal bool MarkSignatureSealed(Guid sealedFileId, string documentHashPost, Guid? certificateFileId)
     {
         if (
             SignatureStatus
-            is FormRevisionSignatureStatus.Sent
+            is not (
+                FormRevisionSignatureStatus.Sent
                 or FormRevisionSignatureStatus.Signed
                 or FormRevisionSignatureStatus.Completed
                 or FormRevisionSignatureStatus.Sealed
+            )
         )
-        {
-            SealedFileId = sealedFileId;
-            DocumentHashPost = documentHashPost;
-            SignatureCertificateFileId = certificateFileId;
-            SignatureStatus = FormRevisionSignatureStatus.Sealed;
-        }
+            return false;
+        SealedFileId = sealedFileId;
+        DocumentHashPost = documentHashPost;
+        SignatureCertificateFileId = certificateFileId;
+        SignatureStatus = FormRevisionSignatureStatus.Sealed;
+        return true;
     }
 
-    internal void MarkSignatureDeclined()
+    internal bool MarkSignatureDeclined()
     {
-        if (!IsSignatureTerminal)
-            SignatureStatus = FormRevisionSignatureStatus.Declined;
+        if (IsSignatureTerminal)
+            return false;
+        SignatureStatus = FormRevisionSignatureStatus.Declined;
+        return true;
     }
 
-    internal void MarkSignatureCanceled()
+    internal bool MarkSignatureCanceled()
     {
-        if (!IsSignatureTerminal)
-            SignatureStatus = FormRevisionSignatureStatus.Canceled;
+        if (IsSignatureTerminal)
+            return false;
+        SignatureStatus = FormRevisionSignatureStatus.Canceled;
+        return true;
     }
 
-    internal void MarkSignatureExpired()
+    internal bool MarkSignatureExpired()
     {
-        if (!IsSignatureTerminal)
-            SignatureStatus = FormRevisionSignatureStatus.Expired;
+        if (IsSignatureTerminal)
+            return false;
+        SignatureStatus = FormRevisionSignatureStatus.Expired;
+        return true;
     }
 }
 

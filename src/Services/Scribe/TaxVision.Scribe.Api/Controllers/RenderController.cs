@@ -53,6 +53,10 @@ public sealed class RenderController(IMessageBus bus) : ControllerBase
             request.Audience
         );
         var result = await bus.InvokeAsync<Result<RenderedContent>>(query, ct);
-        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(ToRenderStatusCode(result.Error), result.Error);
     }
+
+    // SCR-11: pasarse del tiempo depende de la carga, no del pedido; Notification reintenta los 5xx.
+    private static int ToRenderStatusCode(Error error) =>
+        error.Code == "EmailRenderer.Timeout" ? StatusCodes.Status503ServiceUnavailable : error.ToHttpStatusCode();
 }

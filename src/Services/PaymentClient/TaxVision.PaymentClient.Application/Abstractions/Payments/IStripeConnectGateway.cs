@@ -18,7 +18,8 @@ public sealed record ConnectAccountStatusSnapshot(
 /// para <c>account.updated</c>/<c>capability.updated</c>; los de payout
 /// (<see cref="PayoutReference"/>, <see cref="PayoutAmountCents"/>, etc.) solo para
 /// <c>payout.paid</c>/<c>payout.failed</c> — el handler decide cuál rama leer según
-/// <see cref="EventType"/>.
+/// <see cref="EventType"/>. <see cref="ChargeUpdate"/> solo para <c>payment_intent.succeeded</c>/
+/// <c>payment_intent.payment_failed</c> de un cobro en la cuenta conectada (PCL-9).
 /// </summary>
 public sealed record ConnectWebhookEvent(
     string ProviderEventId,
@@ -30,7 +31,9 @@ public sealed record ConnectWebhookEvent(
     string? PayoutReference,
     long? PayoutAmountCents,
     string? PayoutCurrency,
-    string? PayoutFailureReason
+    string? PayoutFailureReason,
+    DateTime? OccurredAtUtc = null,
+    WebhookEventPayload? ChargeUpdate = null
 );
 
 /// <summary>

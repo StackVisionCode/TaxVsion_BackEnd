@@ -1,9 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Application.Abstractions;
-using TaxVision.Correspondence.Application.Threads;
 using TaxVision.Correspondence.Domain.Inbox;
-using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Messages;
 
@@ -21,7 +19,6 @@ public static class GetMessageBodyHandler
         IEmailThreadRepository emailThreads,
         IConnectorsClient connectorsClient,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -56,14 +53,7 @@ public static class GetMessageBodyHandler
         {
             var thread = await emailThreads.GetByIdAsync(query.TenantId, email.EmailThreadId, ct);
             if (thread is not null)
-                await ThreadStateNotifier.PublishAsync(
-                    bus,
-                    incomingEmails,
-                    thread,
-                    query.ActorUserId,
-                    query.CorrelationId,
-                    ct
-                );
+                thread.NotifyStateChanged(query.ActorUserId, query.CorrelationId);
         }
 
         var body = bodyResult.Value;

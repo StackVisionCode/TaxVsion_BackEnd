@@ -42,7 +42,7 @@ public sealed class OnboardingInvoiceFactoryTests
             onboardingId: Guid.NewGuid(),
             planId: Guid.NewGuid(),
             paymentId,
-            invoiceNumber: "ONB-2026-00001",
+            invoiceNumber: InvoiceNumber.Create("ONB-2026-00001").Value,
             Customer(),
             Issuer(),
             planDescription: "Enterprise (Monthly)",

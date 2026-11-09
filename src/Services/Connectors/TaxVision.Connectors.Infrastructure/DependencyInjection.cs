@@ -17,6 +17,7 @@ using TaxVision.Connectors.Application.RateLimiting.Abstractions;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Shared;
+using TaxVision.Connectors.Infrastructure.Accounts;
 using TaxVision.Connectors.Infrastructure.Jobs;
 using TaxVision.Connectors.Infrastructure.Locking;
 using TaxVision.Connectors.Infrastructure.OAuth;
@@ -136,7 +137,11 @@ public static class DependencyInjection
         // Admin-consent fallback (D3 §12.6) — solo Graph, mismo cliente HTTP tipado ya registrado arriba.
         services.AddScoped<IMicrosoftAdminConsentClient>(sp => sp.GetRequiredService<MicrosoftOAuthClient>());
 
+        services.AddScoped<IMailboxFailureUnit, MailboxFailureUnit>();
         services.AddScoped<IOAuthTokenManager, OAuthTokenManager>();
+        services.AddScoped<IOAuthTokenStore, OAuthTokenStore>();
+        services.AddScoped<IOutboxUnit, OutboxUnit>();
+        services.AddAccountConnectionFlow();
         services.AddHostedService<ProactiveTokenRefreshJob>();
 
         services.AddHttpClient<GmailApiClient>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(30));
@@ -161,9 +166,29 @@ public static class DependencyInjection
         services.AddHttpClient<GraphWatchClient>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<IWatchProviderClientFactory, WatchProviderClientFactory>();
         services.AddScoped<IWatchRenewalService, WatchRenewalService>();
+        services.Configure<WatchRenewalOptions>(configuration.GetSection(WatchRenewalOptions.SectionName));
         services.AddHostedService<WatchRenewalJob>();
 
         services.AddScoped<IProviderSyncCursorRepository, ProviderSyncCursorRepository>();
+
+        // Tope contra un mensaje veneno (CON-01): un fallo transitorio frena el cursor hasta el tope.
+        services.AddScoped<IProviderMessageFetchFailureRepository, ProviderMessageFetchFailureRepository>();
+        services.AddSingleton<ISyncMetrics, ConnectorsSyncMetrics>();
+        services.AddSingleton(
+            MessageFetchFailureLimits.Default with
+            {
+                MaxAttempts = configuration.GetValue(
+                    MessageFetchFailureLimits.MaxAttemptsKey,
+                    MessageFetchFailureLimits.Default.MaxAttempts
+                ),
+            }
+        );
+        services.AddScoped<MessageFetchFailureTracker>();
+        services.AddSingleton(
+            new MailboxResyncLimits(
+                configuration.GetValue(MailboxResyncLimits.MaxWindowDaysKey, MailboxResyncLimits.Default.MaxWindowDays)
+            )
+        );
 
         // Reconciliación (safety net Gmail/Graph detrás del push, único mecanismo de sync IMAP) —
         // README §37.8. Reusa ITenantEmailAccountRepository/IProviderWatchSubscriptionRepository/

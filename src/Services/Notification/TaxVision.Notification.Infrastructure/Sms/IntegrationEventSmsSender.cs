@@ -6,6 +6,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Infrastructure.Messaging;
 using Wolverine;
 
 namespace TaxVision.Notification.Infrastructure.Sms;
@@ -24,7 +25,7 @@ namespace TaxVision.Notification.Infrastructure.Sms;
 /// </para>
 /// </summary>
 public sealed class IntegrationEventSmsSender(
-    IMessageBus bus,
+    HandlerBus bus,
     ITenantContext tenant,
     ICorrelationContext correlation,
     ILogger<IntegrationEventSmsSender> logger
@@ -49,7 +50,7 @@ public sealed class IntegrationEventSmsSender(
 
         var tenantId = tenant.TenantId;
         var trimmedPhone = phoneNumber.Trim();
-        await bus.PublishAsync(
+        await bus.Current.PublishAsync(
             new SmsSendRequestedIntegrationEvent
             {
                 TenantId = tenantId,

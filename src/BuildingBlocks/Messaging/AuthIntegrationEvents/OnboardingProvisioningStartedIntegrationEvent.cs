@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -22,6 +24,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// <c>IPasswordHasher</c>. La Saga (Fase 15) debe canjearlo de inmediato al crear el TenantAdmin.
 /// </para>
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.OnboardingProvisioningStartedIntegrationEvent")]
 public sealed record OnboardingProvisioningStartedIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }

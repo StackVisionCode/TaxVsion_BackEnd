@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// El cambio ya quedó en la cadena de auditoría de la solicitud. Sirve para avisar al nuevo preparador de
 /// que tiene una firma pendiente.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignaturePreparerChangedIntegrationEvent")]
 public sealed record SignaturePreparerChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

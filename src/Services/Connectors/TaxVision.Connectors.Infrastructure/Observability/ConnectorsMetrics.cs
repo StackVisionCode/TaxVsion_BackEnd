@@ -43,4 +43,9 @@ public static class ConnectorsMetrics
     public static readonly Counter<long> ReconciliationErrors = Meter.CreateCounter<long>(
         "connectors_reconciliation_errors_total"
     );
+
+    /// <summary>Mensajes que fallaron más allá del tope y dejaron de frenar el cursor (CON-07 los recupera), tag "provider".</summary>
+    public static readonly Counter<long> SyncMessagesAbandoned = Meter.CreateCounter<long>(
+        "connectors_sync_message_abandoned_total"
+    );
 }

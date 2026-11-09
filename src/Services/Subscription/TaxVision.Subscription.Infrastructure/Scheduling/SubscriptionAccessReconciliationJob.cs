@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.Subscriptions;
-using Wolverine;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -35,7 +34,8 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 /// </para>
 ///
 /// El primer tick de <see cref="PeriodicSubscriptionJob"/> es inmediato, así que además de correr a
-/// diario reconcilia al arrancar, que es cuando más falta hace tras un despliegue.
+/// diario reconcilia al arrancar, que es cuando más falta hace tras un despliegue. Cada re-anuncio sale por
+/// el outbox en su propia unidad (BB-3): no guarda estado, pero no se pierde si el proceso cae.
 /// </summary>
 public sealed class SubscriptionAccessReconciliationJob(
     IServiceScopeFactory scopeFactory,
@@ -58,7 +58,6 @@ public sealed class SubscriptionAccessReconciliationJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
-        var bus = services.GetRequiredService<IMessageBus>();
         var log = services.GetRequiredService<ILogger<SubscriptionAccessReconciliationJob>>();
 
         var announced = 0;
@@ -70,17 +69,21 @@ public sealed class SubscriptionAccessReconciliationJob(
             if (batch.Count == 0)
                 break;
 
-            foreach (var subscription in batch)
-            {
-                // `previousStatus` = el actual: no hubo transición, se está re-anunciando lo que ya
-                // es. Los consumidores miran `Status`, no la diferencia.
-                await bus.PublishStatusChangedAsync(
-                    subscription,
-                    subscription.Status,
-                    SubscriptionChangeReason.Reconciliation
-                );
-                announced++;
-            }
+            var summary = await RunUnitsAsync(
+                batch.Select(subscription =>
+                    SubscriptionStatusChangedPublishing.Reannouncement(
+                        subscription,
+                        SubscriptionChangeReason.Reconciliation
+                    )
+                ),
+                async (announcement, unit, _) =>
+                {
+                    await unit.PublishAsync(announcement);
+                    return true;
+                },
+                ct
+            );
+            announced += summary.Committed;
 
             afterTenantId = batch[^1].TenantId;
             if (batch.Count < BatchSize)

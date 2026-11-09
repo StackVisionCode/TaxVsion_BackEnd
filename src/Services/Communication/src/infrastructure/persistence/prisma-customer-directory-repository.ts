@@ -4,6 +4,7 @@ import type {
   CustomerDirectoryRepository,
   CustomerDirectoryEntrySnapshot,
 } from '../../application/ports/customer-directory-repository.js';
+import { newerStatus, stamp } from './status-order.js';
 
 export class PrismaCustomerDirectoryRepository implements CustomerDirectoryRepository, CustomerDirectoryPager {
   constructor(private readonly prisma: PrismaClient) {}
@@ -53,10 +54,18 @@ export class PrismaCustomerDirectoryRepository implements CustomerDirectoryRepos
     return rows.map(toSnapshot);
   }
 
-  async markInactive(customerId: string): Promise<void> {
-    await this.prisma.customerDirectoryEntry
-      .update({ where: { CustomerId: customerId }, data: { IsActive: false } })
-      .catch(() => undefined);
+  async markInactive(customerId: string, statusChangedAtUtc?: Date): Promise<void> {
+    await this.prisma.customerDirectoryEntry.updateMany({
+      where: { CustomerId: customerId, ...newerStatus(statusChangedAtUtc) },
+      data: { IsActive: false, ...stamp(statusChangedAtUtc) },
+    });
+  }
+
+  async markActive(customerId: string, statusChangedAtUtc?: Date): Promise<void> {
+    await this.prisma.customerDirectoryEntry.updateMany({
+      where: { CustomerId: customerId, ...newerStatus(statusChangedAtUtc) },
+      data: { IsActive: true, ...stamp(statusChangedAtUtc) },
+    });
   }
 
   async clearAvatar(customerId: string): Promise<void> {

@@ -28,10 +28,9 @@ public static class SignerRejectedConsumer
             // Hardening Fase 7: antes, un render fallido se logueaba y el loop hacía "continue" —
             // ese firmante pendiente se quedaba sin notificar para siempre (Wolverine veía el
             // handler como exitoso). EnsureRendered lanza ScribeRenderFailedException en el primer
-            // fallo para que el mensaje completo se reintente; los firmantes ya notificados en el
-            // intento fallido pueden recibir el email duplicado en el reintento — trade-off aceptado
-            // de at-least-once, igual que el resto del monorepo (ver IdempotencyReservationInProgressException
-            // de Postmaster para el mismo patrón).
+            // fallo para que el mensaje completo se reintente.
+            // Se renderiza todo antes de escribir: Scribe no corre con filas ya bloqueadas (NOT-07).
+            var rendered = new List<(string Email, ScribeRenderedEmail Render)>();
             foreach (var signer in evt.PendingSigners)
             {
                 var render = (
@@ -48,17 +47,20 @@ public static class SignerRejectedConsumer
                     )
                 ).EnsureRendered("sig.signer_rejected.v1");
 
+                rendered.Add((signer.Email, render));
+            }
+
+            foreach (var (email, render) in rendered)
                 await gateway.QueueEmailAsync(
                     render.ToDispatchRequest(
                         tenantId: evt.TenantId,
-                        to: signer.Email,
+                        to: email,
                         templateKey: TemplateKey,
                         relatedEventId: evt.EventId,
                         correlationId: correlationId
                     ),
                     ct
                 );
-            }
         }
     }
 

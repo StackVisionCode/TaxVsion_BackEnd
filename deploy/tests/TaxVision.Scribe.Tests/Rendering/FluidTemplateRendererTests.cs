@@ -91,6 +91,10 @@ public sealed class FluidTemplateRendererTests
             new EventTemplateResolver(new FakeEventTemplateMappingRepository(TestTemplateKey)),
             new FakeEmailTemplateRepository(_template),
             new FakeEmailLayoutRepository(_layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(_template),
+                new FakeEmailLayoutRepository(_layout)
+            ),
             _cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
@@ -134,6 +138,20 @@ public sealed class FluidTemplateRendererTests
         Assert.True(result.IsSuccess);
         Assert.Contains("TaxOffix | TaxOffix LLC | https://taxoffix.io | support@taxoffix.io", result.Value.Html);
         Assert.DoesNotContain("OldBrand", result.Value.Html);
+    }
+
+    // SCR-10: sin esto no se puede saber qué contenido llevó un correo ya enviado.
+    [Fact]
+    public async Task RenderAsync_reports_the_template_and_layout_versions_it_used()
+    {
+        var renderer = BuildRenderer(new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }));
+
+        var result = await renderer.RenderAsync(BuildRequest());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TestTemplateKey.Value, result.Value.TemplateKey);
+        Assert.Equal(1, result.Value.VersionNumber);
+        Assert.Equal(1, result.Value.LayoutVersionNumber);
     }
 
     [Fact]
@@ -223,6 +241,10 @@ public sealed class FluidTemplateRendererTests
             new EventTemplateResolver(new FakeEventTemplateMappingRepository(TestTemplateKey)),
             new FakeEmailTemplateRepository(template),
             new FakeEmailLayoutRepository(layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(template),
+                new FakeEmailLayoutRepository(layout)
+            ),
             cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
@@ -372,6 +394,10 @@ public sealed class FluidTemplateRendererTests
             new EventTemplateResolver(new FakeEventTemplateMappingRepository(TestTemplateKey)),
             new FakeEmailTemplateRepository(template),
             new FakeEmailLayoutRepository(layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(template),
+                new FakeEmailLayoutRepository(layout)
+            ),
             cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
@@ -484,6 +510,10 @@ public sealed class FluidTemplateRendererTests
             new EventTemplateResolver(new FakeEventTemplateMappingRepository(templateKey: null)),
             new FakeEmailTemplateRepository(_template),
             new FakeEmailLayoutRepository(_layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(_template),
+                new FakeEmailLayoutRepository(_layout)
+            ),
             _cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
@@ -506,6 +536,10 @@ public sealed class FluidTemplateRendererTests
             new EventTemplateResolver(new FakeEventTemplateMappingRepository(TestTemplateKey)),
             new FakeEmailTemplateRepository(_template),
             new FakeEmailLayoutRepository(_layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(_template),
+                new FakeEmailLayoutRepository(_layout)
+            ),
             _cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
@@ -535,6 +569,10 @@ public sealed class FluidTemplateRendererTests
             new EventTemplateResolver(new FakeEventTemplateMappingRepository(TestTemplateKey)),
             new FakeEmailTemplateRepository(_template),
             new FakeEmailLayoutRepository(_layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(_template),
+                new FakeEmailLayoutRepository(_layout)
+            ),
             _cloudStorage,
             new FakeLogoResolver(fallbackLogo),
             new FakeTenantProfileRefRepository(),
@@ -562,6 +600,10 @@ public sealed class FluidTemplateRendererTests
             new EventTemplateResolver(new FakeEventTemplateMappingRepository(TestTemplateKey)),
             new FakeEmailTemplateRepository(_template),
             new FakeEmailLayoutRepository(_layout),
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(_template),
+                new FakeEmailLayoutRepository(_layout)
+            ),
             _cloudStorage,
             new FakeLogoResolver(ownLogo),
             new FakeTenantProfileRefRepository(),

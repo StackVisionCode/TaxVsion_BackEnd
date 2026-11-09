@@ -20,6 +20,7 @@ public sealed class NoteConfiguration : IEntityTypeConfiguration<Note>
         builder.Property(n => n.Status).HasConversion<int>().IsRequired();
         builder.Property(n => n.CreatedAtUtc).IsRequired();
         builder.Property(n => n.UpdatedAtUtc).IsRequired();
+        builder.Property(n => n.RowVersion).IsRowVersion();
 
         // NoteContent — owned VO requerido, columnas propias (01_Modelo_De_Dominio.md §6).
         builder.OwnsOne(

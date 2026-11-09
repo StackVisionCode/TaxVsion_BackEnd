@@ -26,12 +26,7 @@ public sealed class WispReminderPersistenceTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var connectionString =
-            new ConfigurationBuilder()
-                .AddUserSecrets<Program>()
-                .AddEnvironmentVariables()
-                .Build()
-                .GetConnectionString("Default")
-            ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured for Tenant.Api.");
+            TenantIntegrationDatabase.ConnectionString;
         _connection = new SqlConnection(connectionString);
         await _connection.OpenAsync();
         _transaction = await _connection.BeginTransactionAsync();
@@ -118,7 +113,7 @@ public sealed class WispReminderPersistenceTests : IAsyncLifetime
 
     private async Task<Guid> SeedOfficeAsync(string timeZoneId, string? adopted, string? reviewed, bool suspend = false)
     {
-        var tenant = DomainTenant.Create("Wisp Tax", $"wr-{Guid.NewGuid():N}"[..20], timeZoneId).Value;
+        var tenant = DomainTenant.Create("Wisp Tax", $"wr-{Guid.NewGuid():N}"[..20], timeZoneId, DateTime.UtcNow).Value;
         if (suspend)
             tenant.Suspend();
 

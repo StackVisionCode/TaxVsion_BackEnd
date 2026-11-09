@@ -121,13 +121,17 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CatalogDbContext>();
     options.Policies.AutoApplyTransactions();
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
 
     // Eventos de resultado publicados. Sin esto, bus.PublishAsync los descarta en silencio.
     options.PublishMessage<CatalogItemCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<CatalogItemUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<CatalogItemPriceChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CatalogItemDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CatalogItemTrackingChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    // Sin consumidor hoy: en el fanout solo dejaban "No known handler". Este exchange no tiene colas ligadas.
+    options.PublishMessage<CatalogItemUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-catalog-items");
+    options.PublishMessage<CatalogItemPriceChangedIntegrationEvent>().ToRabbitExchange("taxvision-catalog-items");
 
     options
         .Policies.ForMessagesOfType<IIntegrationEvent>()

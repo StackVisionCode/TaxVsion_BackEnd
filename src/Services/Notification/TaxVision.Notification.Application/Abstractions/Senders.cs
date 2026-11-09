@@ -15,12 +15,25 @@ public interface ISmsSender
         string? templateKey,
         string? idempotencyToken
     );
+}
 
-    Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default) =>
-        SendAsync(phoneNumber, text, ct, templateKey: null, idempotencyToken: null);
+// Atajos sobre el único miembro del puerto: fuera de la interfaz para que ningún adaptador los herede.
+public static class SmsSenderExtensions
+{
+    public static Task<Result> SendAsync(
+        this ISmsSender sender,
+        string phoneNumber,
+        string text,
+        CancellationToken ct = default
+    ) => sender.SendAsync(phoneNumber, text, ct, templateKey: null, idempotencyToken: null);
 
-    Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct, string? templateKey) =>
-        SendAsync(phoneNumber, text, ct, templateKey, idempotencyToken: null);
+    public static Task<Result> SendAsync(
+        this ISmsSender sender,
+        string phoneNumber,
+        string text,
+        CancellationToken ct,
+        string? templateKey
+    ) => sender.SendAsync(phoneNumber, text, ct, templateKey, idempotencyToken: null);
 }
 
 public sealed record PushMessage(
@@ -33,6 +46,19 @@ public sealed record PushMessage(
     string? Tag = null,
     string? Link = null
 );
+
+/// <summary>
+/// Rastro del push fuera de la transacción del consumer (NOT-07): el log se confirma antes de llamar a FCM y el
+/// resultado en otra unidad. Un rollback posterior no lo borra, y el reintento encuentra lo ya enviado.
+/// </summary>
+public interface IPushAttemptRecorder
+{
+    Task RecordAttemptAsync(NotificationLog log, CancellationToken ct = default);
+
+    Task RecordSentAsync(Guid tenantId, Guid logId, CancellationToken ct = default);
+
+    Task RecordFailedAsync(Guid tenantId, Guid logId, string error, CancellationToken ct = default);
+}
 
 public interface IPushSender
 {
@@ -87,11 +113,9 @@ public interface IPushDeviceTokenRepository
 
     /// <summary>
     /// Revoca todos los tokens activos del usuario (suspensión o retiro) y devuelve cuántos. No
-    /// persiste: el caller guarda. Por defecto falla cerrado para que una implementación que no lo
-    /// soporte no aparente haber revocado.
+    /// persiste: el caller guarda.
     /// </summary>
-    Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
-        throw new NotSupportedException($"{GetType().Name} does not support revoking a user's push devices.");
+    Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
 }
 
 public interface INotificationLogRepository
@@ -127,5 +151,5 @@ public interface INotificationLogRepository
         NotificationChannel channel,
         string recipient,
         CancellationToken ct = default
-    ) => Task.FromResult<NotificationLog?>(null);
+    );
 }

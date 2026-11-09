@@ -1,8 +1,10 @@
 ﻿using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
 using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.Sending;
+using TaxVision.Postmaster.Application.Sending.Commands.RecordSendResult;
 using TaxVision.Postmaster.Application.Sending.Commands.SendCorrespondenceMessage;
 using TaxVision.Postmaster.Domain.Providers;
 using TaxVision.Postmaster.Domain.Sending;
@@ -62,19 +64,30 @@ public sealed class SendCorrespondenceMessageHandlerTests
 
     private static Task<Result<SendCorrespondenceMessageResult>> HandleAsync(
         Fixture fixture,
-        SendCorrespondenceMessageCommand command
-    ) =>
-        SendCorrespondenceMessageHandler.Handle(
-            command,
+        SendCorrespondenceMessageCommand command,
+        Action<object>? beforeInvoke = null,
+        ILogger? logger = null
+    )
+    {
+        var bus = new FakeMessageBus { BeforeInvoke = beforeInvoke };
+        EmailSendPipeline.RouteSendCommands(
+            bus,
+            fixture.IdempotencyGuard,
+            fixture.SentMessages,
+            fixture.UnitOfWork,
             fixture.ProviderResolver,
             fixture.SuppressionList,
+            logger
+        );
+        return SendCorrespondenceMessageHandler.Handle(
+            command,
             fixture.AttachmentFetcher,
             fixture.EmailSender,
-            fixture.SentMessages,
-            fixture.IdempotencyGuard,
-            fixture.UnitOfWork,
+            bus,
+            new RecordSendResultRetryOptions(),
             CancellationToken.None
         );
+    }
 
     [Fact]
     public async Task Handle_ValidCommand_SendsAndReturnsProviderMessageId()
@@ -162,6 +175,27 @@ public sealed class SendCorrespondenceMessageHandlerTests
         Assert.Null(fixture.EmailSender.LastMessage);
     }
 
+    // PMS-10: sin el Message-ID en el replay, el borrador que cierra el job no enlaza la respuesta del cliente (COR-16).
+    [Fact]
+    public async Task Replay_returns_the_internet_message_id_of_the_send()
+    {
+        var fixture = CreateFixture();
+        fixture.IdempotencyGuard.Stateful = true;
+        fixture.EmailSender.SendReturnValue = new SendResult(true, "gmail-msg-1", null, [])
+        {
+            InternetMessageId = "<sent-1@mail.test>",
+        };
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        await HandleAsync(fixture, command);
+        var replay = await HandleAsync(fixture, command);
+
+        Assert.True(replay.IsSuccess);
+        Assert.False(replay.Value.InProgress);
+        Assert.Equal("sent-1@mail.test", replay.Value.InternetMessageId);
+        Assert.Equal(1, fixture.EmailSender.SendCount);
+    }
+
     /// <summary>
     /// El bug real del plan §Fase 11: antes de este fix, InProgress se conflaba con "reserva nueva" y
     /// el handler creaba un segundo <c>SentMessage</c> para el mismo draft en una carrera real
@@ -204,6 +238,75 @@ public sealed class SendCorrespondenceMessageHandlerTests
         Assert.Null(fixture.EmailSender.LastMessage);
     }
 
+    // Dos envíos del mismo draft a la vez: quien pierde al marcar el intento responde "en curso" y no envía.
+    [Fact]
+    public async Task Conflict_marking_the_attempt_answers_in_progress_without_sending()
+    {
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        var result = await HandleAsync(
+            fixture,
+            command,
+            message =>
+            {
+                if (
+                    message
+                    is TaxVision.Postmaster.Application.Sending.Commands.MarkSendAttempted.MarkSendAttemptedCommand
+                )
+                    throw new ConflictException("Persistence.ConcurrencyConflict", "Modified.");
+            }
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.InProgress);
+        Assert.Equal(0, fixture.EmailSender.SendCount);
+    }
+
+    /// <summary>
+    /// El buzón aceptó el correo y la primera confirmación posterior falla; el mismo draft se reintenta en
+    /// línea. La reserva tiene que haber quedado confirmada antes del envío para que no salga dos veces.
+    /// </summary>
+    [Fact]
+    public async Task Retry_after_mailbox_accepted_does_not_resend()
+    {
+        var fixture = CreateFixture();
+        fixture.IdempotencyGuard.Stateful = true;
+        fixture.UnitOfWork.FailOnceWhen = () => fixture.EmailSender.SendCount > 0;
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        await Assert.ThrowsAnyAsync<Exception>(() => InvokeLikeWolverineAsync(fixture, command));
+        await InvokeLikeWolverineAsync(fixture, command);
+
+        Assert.Equal(1, fixture.EmailSender.SendCount);
+    }
+
+    /// <summary>
+    /// Como Wolverine: un handler sin <c>[NonTransactional]</c> corre en una transacción y, si lanza, se
+    /// revierte lo que confirmó (acá, las reservas del guard).
+    /// </summary>
+    private static async Task<Result<SendCorrespondenceMessageResult>> InvokeLikeWolverineAsync(
+        Fixture fixture,
+        SendCorrespondenceMessageCommand command
+    )
+    {
+        var transactional =
+            typeof(SendCorrespondenceMessageHandler)
+                .GetMethod(nameof(SendCorrespondenceMessageHandler.Handle))!
+                .GetCustomAttributes(typeof(Wolverine.Attributes.NonTransactionalAttribute), false)
+                .Length == 0;
+        var snapshot = fixture.IdempotencyGuard.Snapshot();
+        try
+        {
+            return await HandleAsync(fixture, command);
+        }
+        catch when (transactional)
+        {
+            fixture.IdempotencyGuard.Restore(snapshot);
+            throw;
+        }
+    }
+
     [Fact]
     public async Task Handle_WithAttachmentFetchFailure_RollsBackAttemptSoTheSameDraftCanRetry()
     {
@@ -225,5 +328,116 @@ public sealed class SendCorrespondenceMessageHandlerTests
         Assert.Empty(fixture.IdempotencyGuard.Completed);
         Assert.Single(fixture.SentMessages.Removed);
         Assert.Empty(fixture.SentMessages.Added);
+    }
+
+    // COR-19: sin esto, el mensaje se guarda sin destinatarios y llega al envío.
+    [Theory]
+    [InlineData("no-es-un-correo")]
+    [InlineData("customer@example.com", "no-es-un-correo")]
+    public async Task Invalid_to_fails_and_leaves_nothing_saved(params string[] to)
+    {
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with { To = to };
+
+        var result = await HandleAsync(fixture, command);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SendCorrespondenceMessageHandler.InvalidRecipient", result.Error.Code);
+        Assert.Contains("no-es-un-correo", result.Error.Message);
+        Assert.Empty(fixture.SentMessages.Added);
+        Assert.Equal(0, fixture.IdempotencyGuard.ReserveCount);
+        Assert.Equal(0, fixture.UnitOfWork.SaveChangesCallCount);
+        Assert.Equal(0, fixture.EmailSender.SendCount);
+    }
+
+    [Fact]
+    public async Task No_to_fails_and_leaves_nothing_saved()
+    {
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with { To = [] };
+
+        var result = await HandleAsync(fixture, command);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SendCorrespondenceMessageHandler.InvalidRecipient", result.Error.Code);
+        Assert.Empty(fixture.SentMessages.Added);
+        Assert.Equal(0, fixture.EmailSender.SendCount);
+    }
+
+    // Igual que Postmaster en PMS-10: el correo sale al To y queda el aviso en el log.
+    [Fact]
+    public async Task Invalid_cc_and_bcc_are_dropped_with_a_warning_and_the_mail_goes_out()
+    {
+        var fixture = CreateFixture();
+        var logger = new RecordingLogger();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with
+        {
+            Cc = ["no-es-un-correo", "copy@example.com"],
+            Bcc = ["tampoco"],
+        };
+
+        var result = await HandleAsync(fixture, command, logger: logger);
+
+        Assert.True(result.IsSuccess);
+        var message = Assert.Single(fixture.SentMessages.Added);
+        Assert.Equal(
+            ["customer@example.com", "copy@example.com"],
+            message.Recipients.Select(recipient => recipient.Address)
+        );
+        Assert.Equal(1, fixture.EmailSender.SendCount);
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains("2", warning);
+        Assert.DoesNotContain("no-es-un-correo", warning);
+    }
+
+    [Fact]
+    public async Task A_repeated_to_still_sends_once_to_that_address()
+    {
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with
+        {
+            To = ["customer@example.com", "Customer@Example.com"],
+        };
+
+        var result = await HandleAsync(fixture, command);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(Assert.Single(fixture.SentMessages.Added).Recipients);
+    }
+
+    private sealed class RecordingLogger : ILogger
+    {
+        public List<string> Warnings { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        )
+        {
+            if (logLevel == LogLevel.Warning)
+                Warnings.Add(formatter(state, exception));
+        }
+    }
+
+    [Fact]
+    public async Task Handle_MalformedCommand_ThrowsArgumentExceptionWithoutPersisting()
+    {
+        // Con la regla general, InvokeAsync lo reintentaría en línea 21 s dentro del pedido HTTP.
+        var fixture = CreateFixture();
+        var command = ValidCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with { Subject = " " };
+
+        var thrown = await Record.ExceptionAsync(() => HandleAsync(fixture, command));
+
+        Assert.IsAssignableFrom<ArgumentException>(thrown);
+        Assert.Empty(fixture.SentMessages.Added);
+        Assert.Null(fixture.EmailSender.LastMessage);
     }
 }

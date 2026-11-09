@@ -27,6 +27,8 @@ public sealed class GmailPushWebhookController(
     IMessageBus bus,
     ICorrelationContext correlation,
     IOptions<GmailPushWebhookOptions> options,
+    IGmailPushTokenVerifier tokenVerifier,
+    IHostEnvironment environment,
     ILogger<GmailPushWebhookController> logger
 ) : ControllerBase
 {
@@ -43,13 +45,19 @@ public sealed class GmailPushWebhookController(
         if (!authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             return Unauthorized();
 
+        var audience = options.Value.ExpectedAudience;
+        var hasAudience = !string.IsNullOrWhiteSpace(audience);
+
+        // CON-12: solo la firma dejaría pasar cualquier token de Google.
+        if (!hasAudience && !environment.IsDevelopment())
+        {
+            logger.LogError("Gmail push webhook rejected — ExpectedAudience is not configured.");
+            return Unauthorized();
+        }
+
         try
         {
-            var settings = new GoogleJsonWebSignature.ValidationSettings();
-            if (!string.IsNullOrWhiteSpace(options.Value.ExpectedAudience))
-                settings.Audience = [options.Value.ExpectedAudience];
-
-            await GoogleJsonWebSignature.ValidateAsync(authHeader["Bearer ".Length..], settings);
+            await tokenVerifier.VerifyAsync(authHeader["Bearer ".Length..], hasAudience ? audience : null);
         }
         catch (InvalidJwtException ex)
         {

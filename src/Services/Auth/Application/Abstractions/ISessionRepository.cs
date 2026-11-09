@@ -47,6 +47,5 @@ public interface ISessionRepository
     /// anunciarlo (A5, G10 del plan — hasta ahora la suspensión y el bloqueo por facturación revocaban
     /// solo en la base, así que el access token seguía sirviendo hasta 15 minutos).
     /// </summary>
-    Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<UserSession>>([]);
+    Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(Guid tenantId, CancellationToken ct = default);
 }

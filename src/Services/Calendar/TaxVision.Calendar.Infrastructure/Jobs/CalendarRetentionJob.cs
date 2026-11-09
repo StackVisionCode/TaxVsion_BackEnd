@@ -1,8 +1,10 @@
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
 using TaxVision.Calendar.Infrastructure.Persistence;
@@ -25,8 +27,11 @@ namespace TaxVision.Calendar.Infrastructure.Jobs;
 /// transacción, y a la siguiente pasada volvería a tumbarlo.
 /// </para>
 /// </summary>
-internal sealed class CalendarRetentionJob(IServiceScopeFactory scopeFactory, ILogger<CalendarRetentionJob> logger)
-    : BackgroundService
+internal sealed class CalendarRetentionJob(
+    IServiceScopeFactory scopeFactory,
+    IOptions<StartingSoonOptions> startingSoon,
+    ILogger<CalendarRetentionJob> logger
+) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
 
@@ -64,10 +69,12 @@ internal sealed class CalendarRetentionJob(IServiceScopeFactory scopeFactory, IL
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private async Task PurgeAsync(CancellationToken ct)
+    internal async Task PurgeAsync(CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<CalendarDbContext>();
+
+        await PurgeNoticesAsync(context, ct);
 
         var cutoff = DateTime.UtcNow - Retention;
 
@@ -110,12 +117,12 @@ internal sealed class CalendarRetentionJob(IServiceScopeFactory scopeFactory, IL
                 await context.SaveChangesAsync(ct);
                 removed += chunk.Count;
             }
-            catch (DbUpdateException ex)
+            catch (Exception ex) when (ex is DbUpdateException or ConflictException)
             {
-                // Un lote perdido no puede llevarse los demás: se registra y se sigue con el siguiente.
+                // Un lote perdido no puede llevarse los demás: se registra y se sigue con el siguiente. Se limpia
+                // todo el tracker: el Timing de la cita queda borrado aparte y envenenaría el guardado siguiente.
                 logger.LogWarning(ex, "CalendarRetentionJob could not remove a chunk of {Count}.", chunk.Count);
-                foreach (var entry in chunk)
-                    context.Entry(entry).State = EntityState.Unchanged;
+                context.ChangeTracker.Clear();
             }
         }
 
@@ -123,6 +130,19 @@ internal sealed class CalendarRetentionJob(IServiceScopeFactory scopeFactory, IL
             "CalendarRetentionJob removed {Count} appointment(s) older than the retention window.",
             removed
         );
+    }
+
+    /// <summary>Marcas técnicas de "empieza pronto": no son datos de negocio y su ocurrencia ya pasó.</summary>
+    internal async Task PurgeNoticesAsync(CalendarDbContext context, CancellationToken ct)
+    {
+        var cutoff = DateTime.UtcNow - startingSoon.Value.NoticeRetention;
+        var removed = await context
+            .StartingSoonNotices.IgnoreQueryFilters()
+            .Where(n => n.PublishedAtUtc < cutoff)
+            .ExecuteDeleteAsync(ct);
+
+        if (removed > 0)
+            logger.LogInformation("CalendarRetentionJob removed {Count} starting-soon notice(s).", removed);
     }
 
     private static bool IsExpired(Appointment appointment, DateTime cutoff)

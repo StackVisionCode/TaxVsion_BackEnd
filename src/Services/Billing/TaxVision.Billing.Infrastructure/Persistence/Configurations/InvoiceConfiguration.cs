@@ -65,6 +65,10 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.Property(i => i.AmountPaid).HasConversion(money).HasMaxLength(32).IsRequired();
         b.Property(i => i.AmountDue).HasConversion(money).HasMaxLength(32).IsRequired();
 
+        // Marcas de sincronización (BIL-3b): las lee el job de reconciliación.
+        b.Property(i => i.PaymentLinkSyncedDue).HasConversion(money).HasMaxLength(32);
+        b.Property(i => i.StockSyncedAtUtc);
+
         // Snapshots (records) como JSON string — STJ los materializa por su ctor posicional.
         b.Property(i => i.Customer)
             .HasConversion(new JsonValueConverter<Domain.ValueObjects.CustomerSnapshot>())
@@ -76,6 +80,7 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
 
         // Descuento a nivel factura: Fase posterior (no se usa en Fase 1).
         b.Ignore(i => i.Discount);
+        b.Ignore(i => i.DomainEvents);
 
         // Líneas en tabla propia; cada Money como "cents|CUR".
         b.OwnsMany(
@@ -119,6 +124,32 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         // campo (_statusChanges) desde los métodos de transición del agregado.
         b.HasMany(i => i.StatusChanges).WithOne().HasForeignKey(s => s.InvoiceId).OnDelete(DeleteBehavior.Cascade);
         b.Metadata.FindNavigation(nameof(Invoice.StatusChanges))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        // Pagos aplicados (BIL-1): entidad hija append-only, se llena por campo (_payments).
+        b.HasMany(i => i.Payments).WithOne().HasForeignKey(p => p.InvoiceId).OnDelete(DeleteBehavior.Cascade);
+        b.Metadata.FindNavigation(nameof(Invoice.Payments))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+/// <summary>Mapeo de los pagos aplicados a la factura. (InvoiceId, Source, SourceReference) único: un
+/// mismo pago no se aplica dos veces.</summary>
+public sealed class InvoicePaymentConfiguration : IEntityTypeConfiguration<InvoicePayment>
+{
+    public void Configure(EntityTypeBuilder<InvoicePayment> b)
+    {
+        b.ToTable("InvoicePayments");
+        b.HasKey(p => p.Id);
+        // Id asignado por el dominio: sin esto EF marca la fila nueva como Modified (ver InvoiceStatusChange).
+        b.Property(p => p.Id).ValueGeneratedNever();
+        b.Property(p => p.InvoiceId).IsRequired();
+        b.Property(p => p.Source).HasConversion<string>().HasMaxLength(32).IsRequired();
+        b.Property(p => p.SourceReference).HasMaxLength(InvoicePayment.ReferenceMaxLength).IsRequired();
+        b.Property(p => p.Amount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32).IsRequired();
+        b.Property(p => p.Method).HasConversion<string>().HasMaxLength(32).IsRequired();
+        b.Property(p => p.PaidAtUtc).IsRequired();
+        b.Property(p => p.RecordedByUserId);
+        b.Property(p => p.ExceedsDueCents).IsRequired();
+        b.HasIndex(p => new { p.InvoiceId, p.Source, p.SourceReference }).IsUnique();
     }
 }
 
@@ -130,7 +161,7 @@ public sealed class InvoiceStatusChangeConfiguration : IEntityTypeConfiguration<
         b.ToTable("InvoiceStatusChanges");
         b.HasKey(s => s.Id);
         // Id lo asigna el dominio (BaseEntity, client-side). Sin ValueGeneratedNever, EF trata un Guid PK
-        // como ValueGeneratedOnAdd → al anexar una fila nueva a una factura YA rastreada (Issue/MarkPaid/
+        // como ValueGeneratedOnAdd → al anexar una fila nueva a una factura YA rastreada (Issue/ApplyPayment/
         // Void/ChangeStatus/Reissue) la marca Modified en vez de Added → emite UPDATE (0 filas) → conflicto
         // de concurrencia falso. Igual que InvoiceAdjustmentLine.
         b.Property(s => s.Id).ValueGeneratedNever();

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// parcial, justo después de que firme. El consumer rendea el PDF decorado, lo sube a CloudStorage
 /// y lo entrega por el canal del firmante.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerPartialCopyRequestedIntegrationEvent")]
 public sealed record SignerPartialCopyRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

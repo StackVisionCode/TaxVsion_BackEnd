@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -132,6 +133,104 @@ public sealed class ScheduledCancellationTests
         Assert.False(subscription.CancelAtPeriodEnd);
         Assert.Null(subscription.CancellationScheduledAtUtc);
         Assert.Null(subscription.CancellationReason);
+    }
+
+    // SUB-15: el upgrade no se pagó, así que lo agendado sigue en pie.
+    [Theory]
+    [InlineData("no-session")]
+    [InlineData("cancelled")]
+    [InlineData("payment-failed")]
+    public void An_upgrade_that_does_not_go_through_keeps_the_scheduled_cancellation(string outcome)
+    {
+        var subscription = ActiveSubscription(out _, out var plan, out var version);
+        subscription.ScheduleCancellation("too expensive", Guid.Empty, DateTime.UtcNow);
+        var scheduledAt = subscription.CancellationScheduledAtUtc;
+
+        var request = RequestHostedUpgrade(subscription, plan, version);
+        Close(subscription, request, outcome);
+
+        Assert.True(subscription.CancelAtPeriodEnd);
+        Assert.Equal(scheduledAt, subscription.CancellationScheduledAtUtc);
+        Assert.Equal("too expensive", subscription.CancellationReason);
+    }
+
+    [Theory]
+    [InlineData("no-session")]
+    [InlineData("cancelled")]
+    [InlineData("payment-failed")]
+    public void An_upgrade_that_does_not_go_through_keeps_the_scheduled_downgrade(string outcome)
+    {
+        var subscription = ActiveSubscription(out _, out var plan, out var version);
+        subscription.RequestDowngrade(plan, version, BillingCycle.Yearly, Guid.Empty, DateTime.UtcNow);
+        var downgrade = Assert.Single(subscription.PendingDowngrades);
+
+        var request = RequestHostedUpgrade(subscription, plan, version);
+        Assert.Equal(PendingDowngradeStatus.Cancelled, downgrade.Status);
+        Close(subscription, request, outcome);
+
+        Assert.Equal(PendingDowngradeStatus.Scheduled, downgrade.Status);
+        Assert.Null(downgrade.CancelledAtUtc);
+    }
+
+    [Fact]
+    public void A_paid_upgrade_does_not_bring_back_what_it_replaced()
+    {
+        var subscription = ActiveSubscription(out _, out var plan, out var version);
+        subscription.ScheduleCancellation("too expensive", Guid.Empty, DateTime.UtcNow);
+
+        var request = RequestHostedUpgrade(subscription, plan, version);
+        subscription.CompleteUpgradeCharge(request.Id, plan, version, Guid.NewGuid(), Guid.Empty, DateTime.UtcNow);
+
+        Assert.Equal(PlanChangeRequestStatus.Applied, request.Status);
+        Assert.False(subscription.CancelAtPeriodEnd);
+    }
+
+    [Fact]
+    public void A_subscription_that_already_ended_does_not_get_its_schedule_back()
+    {
+        var subscription = ActiveSubscription(out _, out var plan, out var version);
+        subscription.ScheduleCancellation("too expensive", Guid.Empty, DateTime.UtcNow);
+        var request = RequestHostedUpgrade(subscription, plan, version);
+        subscription.CancelImmediately("support", Guid.Empty, DateTime.UtcNow);
+
+        subscription.ExpireUpgradeWithoutCheckout(request.Id, Guid.Empty, DateTime.UtcNow);
+
+        Assert.Equal(PlanChangeRequestStatus.Expired, request.Status);
+        Assert.False(subscription.CancelAtPeriodEnd);
+    }
+
+    private static PlanChangeRequest RequestHostedUpgrade(
+        TenantSubscription subscription,
+        SubscriptionPlan plan,
+        SubscriptionPlanVersion version
+    )
+    {
+        var upgraded = subscription.RequestUpgrade(
+            plan,
+            version,
+            BillingCycle.Yearly,
+            chargeAmountCents: 10000,
+            chargeCurrency: "USD",
+            paymentIdempotencyKey: Guid.NewGuid().ToString("N"),
+            Guid.Empty,
+            DateTime.UtcNow,
+            usesHostedCheckout: true
+        );
+        Assert.True(upgraded.IsSuccess);
+        return Assert.Single(subscription.PlanChangeRequests);
+    }
+
+    private static void Close(TenantSubscription subscription, PlanChangeRequest request, string outcome)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var closed = outcome switch
+        {
+            "no-session" => subscription.ExpireUpgradeWithoutCheckout(request.Id, Guid.Empty, nowUtc),
+            "cancelled" => (Result)subscription.CancelPendingUpgrade(Guid.Empty, nowUtc, "changed my mind"),
+            _ => subscription.FailUpgradeCharge(request.Id, Guid.NewGuid(), nowUtc),
+        };
+        Assert.True(closed.IsSuccess);
+        Assert.NotEqual(PlanChangeRequestStatus.AwaitingPayment, request.Status);
     }
 
     private static TenantSubscription ActiveSubscription(out DateTime periodEndUtc)

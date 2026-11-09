@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
@@ -34,7 +35,7 @@ public static class AppointmentAttendeeRespondedConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"user:{evt.OrganizerUserId:N}",
+                NotificationRecipient.ForUser(evt.OrganizerUserId),
                 title,
                 NotificationCategory.Calendar,
                 "calendar.attendee_responded",

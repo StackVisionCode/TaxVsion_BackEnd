@@ -42,7 +42,11 @@ public sealed class SubscriptionRenewalCheckoutPaidConsumerTests
         Assert.Single(bus.Published.OfType<RecalculateEntitlementsCommand>());
         Assert.Equal("succeeded", Assert.Single(metrics.SelfServiceRenewals));
 
-        var statusChanged = Assert.Single(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>());
+        var statusChanged = Assert.Single(
+            SubscriptionDomainEventReplay
+                .Emitted(bus, subscription)
+                .OfType<TenantSubscriptionStatusChangedIntegrationEvent>()
+        );
         Assert.Equal("Active", statusChanged.Status);
         Assert.Equal(nameof(SubscriptionChangeReason.SelfServiceRenewed), statusChanged.Reason);
     }
@@ -134,7 +138,7 @@ public sealed class SubscriptionRenewalCheckoutPaidConsumerTests
     private static SubscriptionRenewalIntent PendingIntent(Guid tenantId)
     {
         var intent = SubscriptionRenewalIntent
-            .Create(tenantId, 4900, "USD", BillingCycle.Monthly, Guid.NewGuid(), DateTime.UtcNow)
+            .Create(tenantId, Money.FromCents(4900, "USD"), BillingCycle.Monthly, Guid.NewGuid(), DateTime.UtcNow)
             .Value;
         intent.AttachCheckout(Guid.NewGuid(), "https://pay/x", DateTime.UtcNow.AddHours(24), DateTime.UtcNow);
         return intent;

@@ -136,8 +136,8 @@ public sealed class WalletSpendClient(
         if (response.IsSuccessStatusCode)
             return;
 
-        // 4xx (p.ej. referencia sin reserva): terminal, no reintentar.
-        if ((int)response.StatusCode is >= 400 and < 500 && response.StatusCode != HttpStatusCode.TooManyRequests)
+        // 4xx (p.ej. referencia sin reserva): terminal, salvo los transitorios.
+        if ((int)response.StatusCode is >= 400 and < 500 && !IsTransient(response.StatusCode))
         {
             logger.LogWarning(
                 "Wallet settle returned {Status} for {RefType}:{RefId} (tenant {TenantId}); treating as no-op.",
@@ -149,11 +149,21 @@ public sealed class WalletSpendClient(
             return;
         }
 
-        // 5xx / 429 / transporte: transitorio.
+        // 5xx / transitorios / transporte: se reintenta.
         throw new InvalidOperationException(
             $"Wallet settle failed ({(int)response.StatusCode}) for {referenceType}:{referenceId} (tenant {tenantId})."
         );
     }
+
+    // 401/403: credencial vencida o mal rotada. 408: timeout. 409: choque de concurrencia en el Wallet.
+    // Tomarlos por terminales pierde el cobro en silencio.
+    private static bool IsTransient(HttpStatusCode status) =>
+        status
+            is HttpStatusCode.Unauthorized
+                or HttpStatusCode.Forbidden
+                or HttpStatusCode.RequestTimeout
+                or HttpStatusCode.Conflict
+                or HttpStatusCode.TooManyRequests;
 
     private sealed record ReservePayload(
         string ReferenceType,

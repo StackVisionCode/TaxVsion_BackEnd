@@ -77,24 +77,7 @@ public sealed class PostmasterArchitectureTests
         Assert.True(result.IsSuccessful, Describe(result));
     }
 
-    [Fact]
-    public void Domain_should_not_depend_on_entity_framework()
-    {
-        var result = Types
-            .InAssembly(DomainAssembly)
-            .Should()
-            .NotHaveDependencyOn("Microsoft.EntityFrameworkCore")
-            .GetResult();
-        Assert.True(result.IsSuccessful, Describe(result));
-    }
-
-    [Fact]
-    public void Domain_should_not_depend_on_wolverine()
-    {
-        var result = Types.InAssembly(DomainAssembly).Should().NotHaveDependencyOn("Wolverine").GetResult();
-        Assert.True(result.IsSuccessful, Describe(result));
-    }
-
+    // Domain sin EF ni Wolverine y Application sin Infrastructure: PostmasterLayeringTests (BB-6).
     [Fact]
     public void Domain_should_not_depend_on_http_client()
     {
@@ -112,17 +95,6 @@ public sealed class PostmasterArchitectureTests
     public void Domain_should_not_depend_on_mailkit()
     {
         var result = Types.InAssembly(DomainAssembly).Should().NotHaveDependencyOn("MailKit").GetResult();
-        Assert.True(result.IsSuccessful, Describe(result));
-    }
-
-    [Fact]
-    public void Application_should_not_depend_on_infrastructure()
-    {
-        var result = Types
-            .InAssembly(ApplicationAssembly)
-            .Should()
-            .NotHaveDependencyOn("TaxVision.Postmaster.Infrastructure")
-            .GetResult();
         Assert.True(result.IsSuccessful, Describe(result));
     }
 
@@ -358,6 +330,75 @@ public sealed class PostmasterArchitectureTests
         }
 
         return violations;
+    }
+
+    /// <summary>
+    /// El envío al proveedor nunca va dentro de la transacción: un fallo al confirmar después de enviar
+    /// revertiría la reserva y el reintento duplicaría el correo (PMS-01).
+    /// </summary>
+    [Fact]
+    public void Senders_are_only_called_from_non_transactional_handlers()
+    {
+        Type[] senders =
+        [
+            typeof(TaxVision.Postmaster.Application.Abstractions.IEmailSender),
+            typeof(TaxVision.Postmaster.Application.Abstractions.IConnectedMailboxSender),
+        ];
+        var violations = new List<string>();
+        foreach (var type in ApplicationAssembly.GetTypes())
+        {
+            if (!type.Name.EndsWith("Handler") && !type.Name.EndsWith("Consumer"))
+                continue;
+
+            var handlers = type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance)
+                .Where(m => m.Name is "Handle" or "HandleAsync" or "Consume" or "ConsumeAsync");
+            foreach (var method in handlers)
+            {
+                var parameters = method.GetParameters().Select(p => p.ParameterType).ToList();
+                if (!parameters.Any(senders.Contains))
+                    continue;
+
+                var transactional =
+                    method.GetCustomAttribute<Wolverine.Attributes.NonTransactionalAttribute>() is null
+                    || parameters.Contains(typeof(BuildingBlocks.Persistence.IUnitOfWork));
+                if (transactional)
+                    violations.Add($"{type.Name}.{method.Name}");
+            }
+        }
+
+        Assert.True(violations.Count == 0, "Handlers that send inside a transaction: " + string.Join(", ", violations));
+    }
+
+    // PMS-06: el poll a SMTP2GO no puede correr con la transacción abierta. Se busca en el fuente porque el poller
+    // llega por IDeliveryFeedbackCapabilities, que los handlers de push también usan para traducir.
+    [Fact]
+    public void Pollers_are_not_used_by_transactional_handlers()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "TaxVision.slnx")))
+            root = root.Parent;
+        Assert.NotNull(root);
+
+        var application = Path.Combine(
+            root.FullName,
+            "src",
+            "Services",
+            "Postmaster",
+            "TaxVision.Postmaster.Application"
+        );
+        string[] pollerCalls = ["FindPoller(", "FindEngagementPoller(", ".PollAsync(", ".PollEngagementAsync("];
+        var violations = Directory
+            .EnumerateFiles(application, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .Where(path =>
+            {
+                var source = File.ReadAllText(path);
+                return source.Contains("IUnitOfWork") && pollerCalls.Any(source.Contains);
+            })
+            .Select(Path.GetFileName)
+            .ToList();
+
+        Assert.True(violations.Count == 0, "Transactional handlers that poll: " + string.Join(", ", violations));
     }
 
     private static string Describe(TestResult result) =>

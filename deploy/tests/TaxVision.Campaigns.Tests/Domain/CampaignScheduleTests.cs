@@ -1,4 +1,5 @@
 using TaxVision.Campaigns.Domain.Scheduling;
+using TaxVision.Campaigns.Tests.Fakes;
 
 namespace TaxVision.Campaigns.Tests.Domain;
 
@@ -20,6 +21,44 @@ public sealed class CampaignScheduleTests
         );
         Assert.True(result.IsFailure);
         Assert.Equal(CampaignScheduleErrors.IntervalInvalid, result.Error);
+    }
+
+    // CMP-19
+    [Fact]
+    public void Pausing_by_hand_records_it_and_resuming_clears_it()
+    {
+        var schedule = CampaignSchedule.CreateOneTime(Tenant, Campaign, DateTime.UtcNow, []).Value;
+
+        schedule.Pause();
+        Assert.Equal(SchedulePauseReason.ByUser, schedule.PauseReason);
+
+        schedule.Resume();
+        Assert.Null(schedule.PauseReason);
+    }
+
+    [Fact]
+    public void Offboarding_records_why_and_does_not_overwrite_an_earlier_reason()
+    {
+        var active = CampaignSchedule.CreateOneTime(Tenant, Campaign, DateTime.UtcNow, []).Value;
+        var alreadyPaused = CampaignSchedule.CreateOneTime(Tenant, Campaign, DateTime.UtcNow, []).Value;
+        alreadyPaused.Pause(SchedulePauseReason.WalletUnavailable);
+
+        active.PauseOnOffboarding();
+        alreadyPaused.PauseOnOffboarding();
+
+        Assert.Equal(SchedulePauseReason.OwnerOffboarded, active.PauseReason);
+        Assert.Equal(SchedulePauseReason.WalletUnavailable, alreadyPaused.PauseReason);
+    }
+
+    [Fact]
+    public void Taking_over_clears_the_reason()
+    {
+        var schedule = CampaignSchedule.CreateOneTime(Tenant, Campaign, DateTime.UtcNow, []).Value;
+        schedule.PauseOnOffboarding();
+
+        schedule.ResumeTakingOver(Guid.NewGuid(), actorCanViewAllCustomers: true);
+
+        Assert.Null(schedule.PauseReason);
     }
 
     [Fact]
@@ -370,5 +409,35 @@ public sealed class CampaignScheduleTests
         Assert.Equal(CampaignScheduleErrors.SuccessorRequired, schedule.ResumeTakingOver(Guid.Empty, true).Error);
         Assert.Equal(ScheduleStatus.Paused, schedule.Status);
         Assert.Equal(creator, schedule.EffectiveRunAsUserId);
+    }
+
+    [Fact]
+    public void HoldsLease_DifferentTokenOrSlot_ReturnsFalse()
+    {
+        var slot = DateTime.UtcNow.AddMinutes(-1);
+        var schedule = CampaignSchedule
+            .CreateRecurring(Tenant, Campaign, slot, RecurrenceFrequency.Hourly, null, [])
+            .Value;
+        var tokenA = ScheduleLease.Take(schedule, DateTime.UtcNow.AddMinutes(2));
+
+        Assert.True(schedule.HoldsLease(tokenA, slot));
+        Assert.False(schedule.HoldsLease(Guid.NewGuid(), slot));
+        Assert.False(schedule.HoldsLease(tokenA, slot.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void MarkFired_RunAlreadyTerminal_DoesNotHoldActiveRun()
+    {
+        var slot = DateTime.UtcNow.AddMinutes(-1);
+        var schedule = CampaignSchedule
+            .CreateRecurring(Tenant, Campaign, slot, RecurrenceFrequency.Hourly, null, [])
+            .Value;
+        var now = DateTime.UtcNow;
+
+        schedule.MarkFired(Guid.NewGuid(), now, runIsTerminal: true);
+
+        Assert.Null(schedule.ActiveRunId);
+        Assert.True(schedule.NextFireAtUtc > now);
+        Assert.True(schedule.IsClaimable(schedule.NextFireAtUtc!.Value));
     }
 }

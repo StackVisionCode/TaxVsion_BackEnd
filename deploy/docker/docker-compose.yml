@@ -456,6 +456,9 @@ services:
       # al fallback derivado de Jwt:Secret, pero ese ya no existe con RS256 —
       # sin esta var explicita, el primer uso de MFA tira InvalidOperationException.
       Mfa__EncryptionKey: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY in .env}
+      # NOT-04: protege el token de reset, invitación y cambio de correo; misma clave que Notification.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
       # PayFlow + Gift/Referral — URLs internas que el onboarding pago-primero llama M2M. Los defaults de
       # appsettings son localhost host-mapped (no resuelven container-a-container), así que se fijan acá.
       Auth__Growth__BaseUrl: http://growth-api:8080
@@ -629,6 +632,8 @@ services:
       # reutilizará; solo para que HttpPlanRateLimitReader lea el catálogo de Subscription.
       ServiceAuth__Clients__20__ClientId: ${NOTES_SERVICE_CLIENT_ID:-notes-worker}
       ServiceAuth__Clients__20__Secret: ${NOTES_SERVICE_CLIENT_SECRET:-}
+      # NTS-1: Notes consulta el estado del escaneo de sus adjuntos en CloudStorage; sin esto, 403.
+      ServiceAuth__Clients__20__Permissions__0: cloudstorage.file.view
       # Billing quedó fuera de la tanda 15-19 porque es el único servicio cuya config M2M es un
       # diccionario multi-cliente (Billing:ServiceClients:Clients:<Nombre>) en vez de un
       # ServiceAuthClient único, así que el barrido por nombre de clave no lo tocó. Sin este
@@ -1451,7 +1456,7 @@ services:
       WalletService__BaseUrl: http://wallet-api:8080
       # Proveedor SMS global (MVP). El adapter concreto y sus secretos se configuran por env
       # Sms__Providers__<code>__... ; por defecto arranca con el proveedor "fake" para dev/E2E.
-      Sms__DefaultProvider: ${SMS_DEFAULT_PROVIDER:-fake}
+      Sms__DefaultProvider: ${SMS_DEFAULT_PROVIDER}
       # Failover de plataforma (opcional): orden priorizado de proveedores. Vacío = solo DefaultProvider.
       # Ej: SMS_PROVIDER_ORDER_0=infobip SMS_PROVIDER_ORDER_1=textmaxx → Infobip y si rechaza/cae, Textmaxx.
       Sms__ProviderOrder__0: ${SMS_PROVIDER_ORDER_0:-}
@@ -2214,6 +2219,8 @@ services:
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${GROWTH_SERVICE_CLIENT_ID:-growth-worker}
       ServiceAuthClient__ClientSecret: ${GROWTH_SERVICE_CLIENT_SECRET:-}
+      # GRW-6: el verificador del canje tardío consulta a PaymentApp por la red interna.
+      Growth__PaymentOutcomeVerifier__PaymentAppBaseUrl: http://payment-app-api:8080
       SubscriptionClient__BaseUrl: http://subscription-api:8080
     volumes:
       - taxvision-logs:/app/Logs

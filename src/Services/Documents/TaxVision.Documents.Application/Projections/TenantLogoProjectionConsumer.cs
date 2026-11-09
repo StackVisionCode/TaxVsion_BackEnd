@@ -71,7 +71,9 @@ public static class TenantLogoProjectionConsumer
                 return;
 
             var existing = await repository.GetAsync(evt.TenantId, surface, ct);
-            if (existing is null || !existing.ClearLogo(evt.RemovedAtUtc))
+            if (existing is null)
+                await repository.AddAsync(TenantLogoRef.Tombstone(evt.TenantId, surface, evt.RemovedAtUtc), ct);
+            else if (!existing.ClearLogo(evt.RemovedAtUtc))
                 return;
 
             await unitOfWork.SaveChangesAsync(ct);

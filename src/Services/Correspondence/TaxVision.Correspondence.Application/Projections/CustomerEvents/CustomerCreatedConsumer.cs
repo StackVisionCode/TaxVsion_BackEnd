@@ -3,8 +3,10 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Ingest;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
 
@@ -15,10 +17,11 @@ namespace TaxVision.Correspondence.Application.Projections.CustomerEvents;
 /// </summary>
 public static class CustomerCreatedConsumer
 {
-    public static async Task Handle(
+    public static async Task<LinkUnlinkedMailCommand?> Handle(
         CustomerCreatedIntegrationEvent evt,
         ICustomerEmailAddressRepository repository,
         ITenantCustomerBackfillService backfill,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerEmailAddress> logger,
@@ -29,7 +32,7 @@ public static class CustomerCreatedConsumer
         {
             // Único punto donde Correspondence "descubre" un tenant (no hay enumeración de
             // tenants M2M en el resto del monorepo) — no-op si ya corrió para este tenant.
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            await backfill.EnsureBackfilledAsync(evt.TenantId, bus, ct);
 
             var emailResult = EmailAddress.Create(evt.PrimaryEmail);
             if (emailResult.IsFailure)
@@ -40,15 +43,20 @@ public static class CustomerCreatedConsumer
                     evt.CustomerId,
                     emailResult.Error.Code
                 );
-                return;
+                return null;
             }
 
-            await UpsertProjection(evt, emailResult.Value, repository, logger, ct);
+            var applied = await UpsertProjection(evt, emailResult.Value, repository, logger, ct);
             await unitOfWork.SaveChangesAsync(ct);
+
+            // COR-05: lo que esta dirección escribió antes de ser cliente pasa a su ficha.
+            return applied
+                ? new LinkUnlinkedMailCommand(evt.TenantId, evt.CustomerId, emailResult.Value.NormalizedValue)
+                : null;
         }
     }
 
-    private static async Task UpsertProjection(
+    private static async Task<bool> UpsertProjection(
         CustomerCreatedIntegrationEvent evt,
         EmailAddress email,
         ICustomerEmailAddressRepository repository,
@@ -59,15 +67,28 @@ public static class CustomerCreatedConsumer
         var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
         if (existing is not null)
         {
-            existing.UpdateEmail(email);
+            // Igual que COR-06: un email activo de otro cliente se omite en vez de violar el índice (DLQ).
+            var owner = await repository.FindActiveByAddressAsync(evt.TenantId, email.NormalizedValue, ct);
+            if (owner is not null && owner.CustomerId != evt.CustomerId)
+            {
+                logger.LogWarning(
+                    "CustomerCreated event {EventId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping reconcile.",
+                    evt.EventId,
+                    evt.CustomerId,
+                    owner.CustomerId
+                );
+                return false;
+            }
+
+            existing.UpdateEmail(email, evt.OccurredOn);
             if (!existing.IsActive)
-                existing.Reactivate();
+                existing.Reactivate(evt.OccurredOn);
 
             logger.LogInformation(
                 "CustomerEmailAddress already exists for {CustomerId}; reconciled from Created event.",
                 evt.CustomerId
             );
-            return;
+            return true;
         }
 
         // IX_CustomerEmailAddresses_TenantId_EmailAddress_Active es única por email activo dentro
@@ -79,17 +100,17 @@ public static class CustomerCreatedConsumer
         if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
         {
             logger.LogWarning(
-                "CustomerCreated event {EventId}: email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping projection.",
+                "CustomerCreated event {EventId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping projection.",
                 evt.EventId,
-                email.NormalizedValue,
                 evt.CustomerId,
                 emailOwner.CustomerId
             );
-            return;
+            return false;
         }
 
-        var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email);
+        var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email, evt.OccurredOn);
         await repository.AddAsync(projection, ct);
         logger.LogInformation("CustomerEmailAddress created for {CustomerId}.", evt.CustomerId);
+        return true;
     }
 }

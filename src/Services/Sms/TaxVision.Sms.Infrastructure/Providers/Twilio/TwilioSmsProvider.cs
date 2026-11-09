@@ -91,12 +91,12 @@ public sealed class TwilioSmsProvider(
 
         try
         {
-            var breaker = resilience.GetOrCreate(nameof(TwilioSmsProvider));
+            var breaker = resilience.GetOrCreateWithoutRetry(nameof(TwilioSmsProvider));
             using var response = await breaker.ExecuteAsync(
                 async token =>
                 {
                     using var httpRequest = BuildHttpRequest();
-                    return await http.SendAsync(httpRequest, token);
+                    return await SmsSendHttp.SendAsync(http, httpRequest, token);
                 },
                 ct
             );
@@ -112,7 +112,12 @@ public sealed class TwilioSmsProvider(
                     code
                 );
                 return Result.Success(
-                    new SmsSendResult(false, null, code ?? CanonicalError(response.StatusCode), message ?? payload)
+                    new SmsSendResult(
+                        false,
+                        null,
+                        MapSendError(code) ?? CanonicalError(response.StatusCode),
+                        message ?? payload
+                    )
                 );
             }
 
@@ -122,9 +127,24 @@ public sealed class TwilioSmsProvider(
                 || string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(status, "undelivered", StringComparison.OrdinalIgnoreCase);
             if (rejected)
-                return Result.Success(new SmsSendResult(false, sid, errorCode ?? "providerRejected", status));
+                return Result.Success(
+                    new SmsSendResult(false, sid, MapSendError(errorCode) ?? "providerRejected", status)
+                );
 
             return Result.Success(new SmsSendResult(true, sid ?? Guid.NewGuid().ToString("N"), null, null));
+        }
+        catch (Exception ex) when (SmsSendHttp.IsOutcomeUnknown(ex))
+        {
+            // La petición pudo llegar al proveedor: resultado desconocido, sin failover.
+            logger.LogWarning(ex, "Twilio timed out or lost the connection for {To}; outcome unknown.", request.To);
+            return Result.Success(
+                new SmsSendResult(
+                    false,
+                    null,
+                    SmsSendFailure.OutcomeUnknown,
+                    "Provider timeout or connection lost; outcome unknown."
+                )
+            );
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
         {
@@ -272,13 +292,7 @@ public sealed class TwilioSmsProvider(
                 new Error("sms.webhook.malformed", "Malformed Twilio inbound payload.")
             );
 
-        var keyword = text.Trim().ToUpperInvariant() switch
-        {
-            "STOP" => SmsInboundKeyword.Stop,
-            "START" => SmsInboundKeyword.Start,
-            "HELP" => SmsInboundKeyword.Help,
-            _ => SmsInboundKeyword.Unknown,
-        };
+        var keyword = SmsInboundKeywords.Parse(text);
         var messageSid =
             form.GetValueOrDefault("MessageSid") ?? form.GetValueOrDefault("SmsSid") ?? Guid.NewGuid().ToString("N");
         return Result.Success(new SmsInboundMessage(from!, keyword, text.Trim(), "inbound", messageSid, null, null));
@@ -324,6 +338,9 @@ public sealed class TwilioSmsProvider(
         var idx = value.IndexOf(':');
         return idx < 0 ? (value, string.Empty) : (value[..idx], value[(idx + 1)..]);
     }
+
+    // 21610 = destinatario dado de baja (STOP en el carrier).
+    private static string? MapSendError(string? code) => code == "21610" ? SmsSendFailure.RecipientOptedOut : code;
 
     private static (string? sid, string? status, string? errorCode) ParseSendResponse(string payload)
     {

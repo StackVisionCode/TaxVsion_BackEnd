@@ -37,6 +37,9 @@ public sealed class GmailApiClient(
     /// <summary>Cuántos mensajes recientes del INBOX se traen al resincronizar desde cero.</summary>
     private const int ResyncRecentMessages = 50;
 
+    /// <summary>Ids por página de la re-sincronización por fecha (CON-07).</summary>
+    private const int ResyncPageSize = 100;
+
     private static readonly JsonSerializerOptions SendRequestJsonOptions = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -122,6 +125,39 @@ public sealed class GmailApiClient(
 
         return new HistoryPage(ids, profile.HistoryId, HasMore: false);
     }
+
+    /// <summary>Filtro de fecha de Gmail (segundos Unix): no depende del history, que se guarda ~7 días.</summary>
+    public async Task<InboxMessageIdPage> ListInboxMessageIdsAsync(
+        Guid accountId,
+        Guid tenantId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string? pageToken,
+        CancellationToken ct = default
+    )
+    {
+        var query = $"after:{ToUnixSeconds(fromUtc)} before:{ToUnixSeconds(toUtc)}";
+        var url =
+            $"{BaseUrl}/messages?labelIds=INBOX&maxResults={ResyncPageSize}&q={Uri.EscapeDataString(query)}"
+            + (pageToken is not null ? $"&pageToken={Uri.EscapeDataString(pageToken)}" : string.Empty);
+        var payload = await SendAsync<GmailMessageListResponse>(accountId, tenantId, url, ct);
+
+        var ids = (payload.Messages ?? []).Select(m => m.Id).ToList();
+        // Gmail lista de más nuevo a más viejo; se publica en orden de llegada.
+        ids.Reverse();
+        return new InboxMessageIdPage(ids, string.IsNullOrEmpty(payload.NextPageToken) ? null : payload.NextPageToken);
+    }
+
+    private static long ToUnixSeconds(DateTime utc) =>
+        new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeSeconds();
+
+    // Sin lote nativo: uno por uno.
+    public Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
+        Guid accountId,
+        Guid tenantId,
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) => this.GetMessagesOneByOneAsync(accountId, tenantId, providerMessageIds, ct);
 
     public async Task<RawMessage> GetMessageAsync(
         Guid accountId,
@@ -507,7 +543,11 @@ public sealed class GmailApiClient(
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("Gmail API request to {Url} returned HTTP {Status}.", url, (int)response.StatusCode);
-            throw new EmailProviderException($"Gmail API returned HTTP {(int)response.StatusCode}.");
+            // 404: el mensaje ya no existe (borrado entre history y fetch); lo demás es transitorio.
+            throw new EmailProviderException(
+                $"Gmail API returned HTTP {(int)response.StatusCode}.",
+                isNotFound: response.StatusCode == HttpStatusCode.NotFound
+            );
         }
 
         var parsed = await response.Content.ReadFromJsonAsync<T>(cancellationToken: ct);
@@ -693,6 +733,9 @@ public sealed class GmailApiClient(
     {
         [JsonPropertyName("messages")]
         public List<GmailHistoryMessageRef>? Messages { get; init; }
+
+        [JsonPropertyName("nextPageToken")]
+        public string? NextPageToken { get; init; }
     }
 
     private sealed record GmailHeader

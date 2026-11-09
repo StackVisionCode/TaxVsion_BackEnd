@@ -29,7 +29,15 @@ public static class FormSignatureCompletedConsumer
             var request = await FormActionResultSupport.LoadAsync(evt.TenantId, requestId, requests, logger, ct);
             if (request is null)
                 return;
-            if (request.MarkSignatureCompleted(revision).IsFailure)
+            if (
+                FormSignatureResultSupport.Failed(
+                    request.Summary.MarkSignatureCompleted(revision),
+                    "Completed",
+                    requestId,
+                    revision,
+                    logger
+                )
+            )
                 return;
             var outgoing = new DeferredMessages();
             await planner.PlanAfterSignatureAsync(request, revision, true, outgoing, evt.OccurredOn, ct);

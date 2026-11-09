@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Notes.Application.Backfill;
 using TaxVision.Notes.Application.Backfill.Abstractions;
 using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Projections;
@@ -10,10 +11,10 @@ namespace TaxVision.Notes.Application.Projections.CustomerEvents;
 
 public static class CustomerArchivedConsumer
 {
-    public static async Task Handle(
+    public static async Task<RunTenantCustomerBackfillCommand?> Handle(
         CustomerArchivedIntegrationEvent evt,
         ICustomerDirectoryRepository repository,
-        ITenantCustomerBackfillService backfill,
+        ITenantBackfillStateRepository backfillStates,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<CustomerDirectoryEntry> logger,
@@ -26,7 +27,7 @@ public static class CustomerArchivedConsumer
             )
         )
         {
-            await backfill.EnsureBackfilledAsync(evt.TenantId, ct);
+            var backfill = await RunTenantCustomerBackfillCommand.IfMissingAsync(evt.TenantId, backfillStates, ct);
 
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (existing is null)
@@ -36,7 +37,7 @@ public static class CustomerArchivedConsumer
                     evt.TenantId,
                     evt.CustomerId
                 );
-                return;
+                return backfill;
             }
 
             // CustomerArchivedIntegrationEvent no trae un ArchivedAtUtc propio (a diferencia de sus
@@ -48,6 +49,7 @@ public static class CustomerArchivedConsumer
                 evt.TenantId,
                 evt.CustomerId
             );
+            return backfill;
         }
     }
 }

@@ -30,7 +30,6 @@ public sealed class TenantDomainRepositoryTests
     private static AuthDbContext CreateContext(string databaseName, FakeTenantContext tenantContext) =>
         new(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,
-            new FakeMessageBus(),
             tenantContext
         );
 

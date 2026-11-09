@@ -208,6 +208,7 @@ public sealed class StripeHostedCheckoutSessionCreatorTests
             string providerChargeReference,
             Money amount,
             string reason,
+            string idempotencyKey,
             CancellationToken ct
         ) => throw new NotSupportedException();
 
@@ -219,6 +220,12 @@ public sealed class StripeHostedCheckoutSessionCreatorTests
         public Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(
             string rawPayload,
             string eventType,
+            CancellationToken ct
+        ) => throw new NotSupportedException();
+
+        public Task<Result<ChargeLookup>> FindChargeAsync(
+            Guid saaSPaymentId,
+            DateTime createdAfterUtc,
             CancellationToken ct
         ) => throw new NotSupportedException();
 

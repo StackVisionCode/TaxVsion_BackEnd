@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using StackExchange.Redis;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
+using TaxVision.PaymentApp.Application.Admin.Queries;
 using TaxVision.PaymentApp.Application.RateLimiting.Abstractions;
 using TaxVision.PaymentApp.Infrastructure.Observability;
 using TaxVision.PaymentApp.Infrastructure.Persistence;
@@ -40,6 +41,11 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<PaymentAppDbContext>());
         services.AddScoped<ISaaSPaymentRepository, SaaSPaymentRepository>();
+        services.AddScoped<ISaaSPaymentReviewReader, SaaSPaymentReviewReader>();
+        services.AddScoped<
+            TaxVision.PaymentApp.Application.SaaSPayments.Queries.ICodeReservationPaymentReader,
+            CodeReservationPaymentReader
+        >();
         services.AddScoped<ITenantRegistry, TenantRegistry>();
         services.AddScoped<IPaymentAuditLogWriter, PaymentAuditLogWriter>();
         // RBAC Fase 6 — ISessionDenylistReader se registra en Program.cs (AddSessionDenylist vive en
@@ -48,6 +54,25 @@ public static class DependencyInjection
         services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
         services.AddScoped<ITenantProviderCustomerRepository, TenantProviderCustomerRepository>();
         services.AddScoped<IOnboardingPaymentMethodOverrideRepository, OnboardingPaymentMethodOverrideRepository>();
+
+        services
+            .AddOptions<TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentChargeOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentChargeOptions.SectionName
+                )
+            )
+            .Validate(o => o.IsValid(), "PaymentApp:ChargeExecution windows must be positive.")
+            .ValidateOnStart();
+        services
+            .AddOptions<TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentRefundOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.PaymentApp.Application.SaaSPayments.Common.SaaSPaymentRefundOptions.SectionName
+                )
+            )
+            .Validate(o => o.IsValid(), "PaymentApp:Refunds:DuplicateRequestWindow must be positive.")
+            .ValidateOnStart();
 
         services.Configure<StripeOptions>(configuration.GetSection(StripeOptions.SectionName));
         services.Configure<IntellipayOptions>(configuration.GetSection(IntellipayOptions.SectionName));

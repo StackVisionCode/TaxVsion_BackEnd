@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// (PayFlow_Implementation_Plan.md §Fase 5). TenantId queda en Guid.Empty — el proceso es
 /// pre-tenant, igual que SaaSPaymentType.OnboardingInitial (plan §3.3).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.OnboardingOtpRequestedIntegrationEvent")]
 public sealed record OnboardingOtpRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid ChallengeId { get; init; }

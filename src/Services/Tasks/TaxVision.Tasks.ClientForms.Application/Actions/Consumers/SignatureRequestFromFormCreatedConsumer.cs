@@ -25,7 +25,15 @@ public static class SignatureRequestFromFormCreatedConsumer
             var request = await FormActionResultSupport.LoadAsync(evt.TenantId, requestId, requests, logger, ct);
             if (request is null)
                 return;
-            if (request.LinkSignatureRequest(revision, evt.SignatureRequestId).IsFailure)
+            if (
+                FormSignatureResultSupport.Failed(
+                    request.Summary.LinkSignatureRequest(revision, evt.SignatureRequestId),
+                    "Linked",
+                    requestId,
+                    revision,
+                    logger
+                )
+            )
                 return;
             await unitOfWork.SaveChangesAsync(ct);
         }

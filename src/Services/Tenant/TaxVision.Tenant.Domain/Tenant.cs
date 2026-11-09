@@ -4,10 +4,11 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.TimeZones;
 using TaxVision.Tenant.Domain.Enums;
+using TaxVision.Tenant.Domain.Events;
 
 namespace TaxVision.Tenant.Domain;
 
-public partial class Tenant : BaseEntity
+public partial class Tenant : TenantlessAggregateRoot
 {
     /// <summary>Tope del nombre; lo comparte la columna (TenantConfiguration).</summary>
     public const int NameMaxLength = 200;
@@ -29,12 +30,17 @@ public partial class Tenant : BaseEntity
     /// contra reintentos del mismo comando M2M.</summary>
     public Guid? OnboardingId { get; private set; }
 
-    public Tenant() { }
+    /// <summary>Sube en cada cambio real de estado, nombre, zona o subdominio. Viaja en los avisos para que cada
+    /// proyección descarte uno más viejo, y es el token de concurrencia de la fila.</summary>
+    public long Version { get; private set; }
+
+    private Tenant() { }
 
     public static Result<Tenant> Create(
         string name,
         string subdomain,
         string defaultTimeZoneId,
+        DateTime nowUtc,
         Guid? onboardingId = null
     )
     {
@@ -56,7 +62,6 @@ public partial class Tenant : BaseEntity
         if (timeZoneResult.IsFailure)
             return Result.Failure<Tenant>(timeZoneResult.Error);
 
-        var nowUtc = DateTime.UtcNow;
         var tenant = new Tenant
         {
             Name = nameResult.Value,
@@ -87,6 +92,8 @@ public partial class Tenant : BaseEntity
                 )
             );
 
+        if (SubDomain != sub)
+            Version++;
         SubDomain = sub;
         return Result.Success();
     }
@@ -103,12 +110,10 @@ public partial class Tenant : BaseEntity
         if (nameResult.IsFailure)
             return Result.Failure<bool>(nameResult.Error);
 
-        if (string.Equals(Name, nameResult.Value, StringComparison.Ordinal))
-            return Result.Success(false);
-
-        Name = nameResult.Value;
-        Touch(nowUtc);
-        return Result.Success(true);
+        var changed = ApplyName(nameResult.Value, nowUtc);
+        if (changed)
+            RaiseUpdated();
+        return Result.Success(changed);
     }
 
     /// <summary>Cambia la zona horaria por defecto (IANA). Devuelve <c>true</c> si cambió.</summary>
@@ -122,12 +127,10 @@ public partial class Tenant : BaseEntity
         if (timeZoneResult.IsFailure)
             return Result.Failure<bool>(timeZoneResult.Error);
 
-        if (string.Equals(DefaultTimeZoneId, timeZoneResult.Value, StringComparison.Ordinal))
-            return Result.Success(false);
-
-        DefaultTimeZoneId = timeZoneResult.Value;
-        Touch(nowUtc);
-        return Result.Success(true);
+        var changed = ApplyTimeZone(timeZoneResult.Value, nowUtc);
+        if (changed)
+            RaiseUpdated();
+        return Result.Success(changed);
     }
 
     /// <summary>
@@ -148,8 +151,10 @@ public partial class Tenant : BaseEntity
         if (timeZoneResult.IsFailure)
             return Result.Failure<bool>(timeZoneResult.Error);
 
-        var renamed = Rename(nameResult.Value, nowUtc).Value;
-        var rezoned = ChangeTimeZone(timeZoneResult.Value, nowUtc).Value;
+        var renamed = ApplyName(nameResult.Value, nowUtc);
+        var rezoned = ApplyTimeZone(timeZoneResult.Value, nowUtc);
+        if (renamed || rezoned)
+            RaiseUpdated();
         return Result.Success(renamed || rezoned);
     }
 
@@ -158,7 +163,8 @@ public partial class Tenant : BaseEntity
         if (Status != EnumTenantStatus.TenantStatus.Active)
             return Result.Failure(new Error("Tenant.Status", "Only active tenants can be suspended."));
 
-        Status = EnumTenantStatus.TenantStatus.Suspended;
+        ApplyStatus(EnumTenantStatus.TenantStatus.Suspended);
+        RaiseStatusChanged();
         return Result.Success();
     }
 
@@ -176,7 +182,9 @@ public partial class Tenant : BaseEntity
             );
         }
 
-        Status = EnumTenantStatus.TenantStatus.Closed;
+        ApplyStatus(EnumTenantStatus.TenantStatus.Closed);
+        // También en un replay: los consumidores fijan Closed, que es terminal.
+        RaiseStatusChanged();
         return Result.Success();
     }
 
@@ -194,9 +202,49 @@ public partial class Tenant : BaseEntity
             return Result.Failure(new Error("Tenant.Status", "A closed tenant cannot be reactivated."));
         }
 
-        Status = status;
+        ApplyStatus(status);
+        RaiseStatusChanged();
         return Result.Success();
     }
+
+    private bool ApplyName(string name, DateTime nowUtc)
+    {
+        if (string.Equals(Name, name, StringComparison.Ordinal))
+            return false;
+
+        Name = name;
+        Touch(nowUtc);
+        return true;
+    }
+
+    private bool ApplyTimeZone(string ianaTimeZoneId, DateTime nowUtc)
+    {
+        if (string.Equals(DefaultTimeZoneId, ianaTimeZoneId, StringComparison.Ordinal))
+            return false;
+
+        DefaultTimeZoneId = ianaTimeZoneId;
+        Touch(nowUtc);
+        return true;
+    }
+
+    private void ApplyStatus(EnumTenantStatus.TenantStatus status)
+    {
+        if (Status != status)
+            Version++;
+        Status = status;
+    }
+
+    // Una sola subida por edición, aunque cambien nombre y zona.
+    private void RaiseUpdated()
+    {
+        Version++;
+        AddDomainEvent(new TenantUpdatedDomainEvent(Id, Name, DefaultTimeZoneId, UpdatedAtUtc, Version));
+    }
+
+    private void RaiseStatusChanged() =>
+        AddDomainEvent(
+            new TenantStatusChangedDomainEvent(Id, Status, Status == EnumTenantStatus.TenantStatus.Active, Version)
+        );
 
     // El tenant de plataforma es reservado: su nombre lo fija el seed.
     private Result GuardEditable() =>

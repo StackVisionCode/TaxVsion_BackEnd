@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -8,6 +10,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// no toca el plan porque nunca lo había cambiado. Sin TenantSubscriptionId a propósito, igual
 /// que <see cref="SubscriptionPlanChangePaymentSucceededIntegrationEvent"/>.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SubscriptionPlanChangePaymentFailedIntegrationEvent")]
 public sealed record SubscriptionPlanChangePaymentFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid PlanChangeRequestId { get; init; }

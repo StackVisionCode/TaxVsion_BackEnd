@@ -34,8 +34,11 @@ public enum SubscriptionRenewalIntentStatus
 /// </summary>
 public sealed class SubscriptionRenewalIntent : TenantEntity
 {
-    public long AmountCents { get; private set; }
-    public string Currency { get; private set; } = default!;
+    private long AmountCents { get; set; }
+    private string Currency { get; set; } = default!;
+
+    /// <summary>Monto a cobrar. Vive en las columnas AmountCents y Currency.</summary>
+    public Money Amount => Money.FromCents(AmountCents, Currency);
     public BillingCycle BillingCycle { get; private set; }
     public SubscriptionRenewalIntentStatus Status { get; private set; }
     public Guid? SaaSPaymentId { get; private set; }
@@ -61,12 +64,14 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
     public string? CancelReason { get; private set; }
     public string? FailureReason { get; private set; }
 
+    /// <summary>Token de concurrencia: el consumidor del pago y el job de reconciliación no aprovisionan dos veces.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     private SubscriptionRenewalIntent() { }
 
     public static Result<SubscriptionRenewalIntent> Create(
         Guid tenantId,
-        long amountCents,
-        string currency,
+        Money amount,
         BillingCycle billingCycle,
         Guid requestedByUserId,
         DateTime nowUtc
@@ -78,20 +83,20 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
             );
 
         // El hosted-checkout es para cobrar: un total 0 no debe llegar acá.
-        if (amountCents <= 0)
+        if (amount.Cents <= 0)
             return Result.Failure<SubscriptionRenewalIntent>(
                 new Error("SubscriptionRenewalIntent.NothingToCharge", "Checkout requires a positive amount.")
             );
 
-        if (string.IsNullOrWhiteSpace(currency))
+        if (string.IsNullOrWhiteSpace(amount.Currency))
             return Result.Failure<SubscriptionRenewalIntent>(
                 new Error("SubscriptionRenewalIntent.InvalidCurrency", "Currency is required.")
             );
 
         var intent = new SubscriptionRenewalIntent
         {
-            AmountCents = amountCents,
-            Currency = currency,
+            AmountCents = amount.Cents,
+            Currency = amount.Currency,
             BillingCycle = billingCycle,
             Status = SubscriptionRenewalIntentStatus.Pending,
             RequestedByUserId = requestedByUserId,

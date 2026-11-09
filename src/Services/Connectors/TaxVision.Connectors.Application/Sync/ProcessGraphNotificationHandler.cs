@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Abstractions;
@@ -8,7 +7,7 @@ using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Watch;
-using Wolverine;
+using Wolverine.Attributes;
 
 namespace TaxVision.Connectors.Application.Sync;
 
@@ -17,6 +16,7 @@ public static class ProcessGraphNotificationHandler
     /// <summary>Fase 4 (hardening): mismo TTL y mismo razonamiento que ProcessGmailPushNotificationHandler.</summary>
     private static readonly TimeSpan WebhookSyncLockTtl = TimeSpan.FromMinutes(2);
 
+    [NonTransactional]
     public static async Task<Result> Handle(
         ProcessGraphNotificationCommand cmd,
         IProviderWatchSubscriptionRepository subscriptionRepository,
@@ -25,10 +25,10 @@ public static class ProcessGraphNotificationHandler
         IEmailProviderClientFactory emailClientFactory,
         IDistributedLock distributedLock,
         ISyncPendingFlag pendingFlag,
-        IUnitOfWork unitOfWork,
-        IMessageBus bus,
+        IOutboxUnit unit,
         ICorrelationContext correlation,
         ILogger logger,
+        MessageFetchFailureTracker fetchFailures,
         CancellationToken ct
     )
     {
@@ -112,10 +112,10 @@ public static class ProcessGraphNotificationHandler
                     account,
                     clientResult.Value,
                     cursor,
-                    unitOfWork,
-                    bus,
+                    unit,
                     correlation,
                     logger,
+                    fetchFailures,
                     ct
                 ),
             ct

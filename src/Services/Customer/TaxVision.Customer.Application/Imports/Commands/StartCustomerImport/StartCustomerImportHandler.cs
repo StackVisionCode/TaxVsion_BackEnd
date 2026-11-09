@@ -6,6 +6,7 @@ using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Configuration;
 using TaxVision.Customer.Application.Imports.Dtos;
 using TaxVision.Customer.Domain.Imports;
+using Wolverine;
 
 namespace TaxVision.Customer.Application.Imports.Commands.StartCustomerImport;
 
@@ -16,6 +17,7 @@ public static class StartCustomerImportHandler
         ICustomerImportRepository repository,
         ICustomerImportCloudStorageClient cloudStorage,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         IOptionsMonitor<CustomerImportOptions> importOptions,
         ILogger<StartCustomerImportCommand> logger,
         CancellationToken ct
@@ -52,7 +54,7 @@ public static class StartCustomerImportHandler
             // Sube directo a MinIO y publica SaveFileRequestedIntegrationEvent (Fase D) — el
             // worker de import NO se encola aca: ImportFileScanResultConsumer lo hace cuando
             // CloudStorage confirma que el archivo paso el escaneo (FileAvailableIntegrationEvent).
-            var uploadResult = await UploadFileAsync(cloudStorage, cmd, finalAttempt.Id, ct);
+            var uploadResult = await UploadFileAsync(cloudStorage, cmd, finalAttempt.Id, bus, ct);
             if (uploadResult.IsFailure)
             {
                 finalAttempt.Fail(uploadResult.Error.Message);
@@ -189,6 +191,7 @@ public static class StartCustomerImportHandler
         ICustomerImportCloudStorageClient cloudStorage,
         StartCustomerImportCommand cmd,
         Guid attemptId,
+        IMessageBus bus,
         CancellationToken ct
     ) =>
         cloudStorage.UploadAsync(
@@ -198,6 +201,7 @@ public static class StartCustomerImportHandler
             cmd.SourceFileName,
             ContentTypeFor(cmd.SourceKind),
             cmd.CreatedByUserId,
+            bus,
             ct
         );
 

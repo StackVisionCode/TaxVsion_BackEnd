@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 /// queda en <c>Guid.Empty</c> (el tenant todavía no existe) — <see cref="OnboardingId"/> es la
 /// clave de correlación real de este evento.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.PaymentAppIntegrationEvents.OnboardingPaymentSucceededIntegrationEvent")]
 public sealed record OnboardingPaymentSucceededIntegrationEvent : IntegrationEvent
 {
     public required Guid OnboardingId { get; init; }

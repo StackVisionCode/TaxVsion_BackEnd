@@ -17,6 +17,7 @@ public sealed class TenantBrandConfiguration : IEntityTypeConfiguration<TenantBr
         b.Property(x => x.Surface).HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(x => x.CreatedAtUtc).IsRequired();
         b.Property(x => x.UpdatedAtUtc).IsRequired();
+        b.Property(x => x.RowVersion).IsRowVersion();
 
         // Una marca por tenant por superficie.
         b.HasIndex(x => new { x.TenantId, x.Surface }).IsUnique();

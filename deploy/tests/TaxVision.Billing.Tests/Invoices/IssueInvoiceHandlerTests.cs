@@ -34,15 +34,52 @@ public sealed class IssueInvoiceHandlerTests
         Assert.Equal(Now.AddDays(30), invoice.DueDateUtc);
     }
 
-    private static async Task<Invoice> IssueAsync(InvoiceTermsSnapshot? terms)
+    // BIL-16: Wolverine guarda aunque se devuelva Failure, así que el número reservado se perdería.
+    [Fact]
+    public async Task An_invoice_that_is_not_a_draft_does_not_take_a_number()
     {
-        var draft = Invoice
+        var invoice = await IssueAsync(null);
+        var sequences = new NewSequence();
+
+        var result = await HandleAsync(invoice, sequences);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Billing.Invoice.NotDraft", result.Error.Code);
+        Assert.Equal(0, sequences.Requests);
+    }
+
+    [Fact]
+    public async Task An_invoice_that_is_not_a_draft_does_not_ask_for_stock()
+    {
+        var invoice = await IssueAsync(null, new DraftInvoiceLine("Ink", 1, 2_000, 0, Guid.NewGuid()));
+        var stock = new NoStock();
+
+        await HandleAsync(invoice, new NewSequence(), stock);
+
+        Assert.Equal(0, stock.Checks);
+    }
+
+    [Fact]
+    public async Task A_draft_keeps_the_number_format_and_advances_the_sequence()
+    {
+        var draft = Draft(null);
+        var sequences = new NewSequence();
+
+        var result = await HandleAsync(draft, sequences);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal($"INV-{Now.Year}-00001", result.Value.InvoiceNumber);
+        Assert.Equal(2, sequences.Last!.Next);
+    }
+
+    private static Invoice Draft(InvoiceTermsSnapshot? terms, DraftInvoiceLine? line = null) =>
+        Invoice
             .CreateDraft(
                 Tenant,
                 Guid.NewGuid(),
                 new CustomerSnapshot(Guid.NewGuid(), "Client", null, null, null, null),
                 "USD",
-                [new DraftInvoiceLine("Tax prep", 1, 10_000, 0)],
+                [line ?? new DraftInvoiceLine("Tax prep", 1, 10_000, 0)],
                 null,
                 Now,
                 null,
@@ -50,21 +87,30 @@ public sealed class IssueInvoiceHandlerTests
             )
             .Value;
 
-        var result = await IssueInvoiceHandler.Handle(
-            new IssueInvoiceCommand(Tenant, draft.Id, Guid.NewGuid(), CanViewAll: true),
-            new SingleInvoice(draft),
-            Options.Create(new BillingVisibilityOptions()),
-            new NewSequence(),
-            new NoStock(),
-            new CountingUnitOfWork(),
-            new FakeMessageBus(),
-            new NoopCorrelationContext(),
-            new FixedClock(Now),
-            CancellationToken.None
-        );
+    private static async Task<Invoice> IssueAsync(InvoiceTermsSnapshot? terms, DraftInvoiceLine? line = null)
+    {
+        var draft = Draft(terms, line);
+        var result = await HandleAsync(draft, new NewSequence());
         Assert.True(result.IsSuccess);
         return draft;
     }
+
+    private static Task<Result<IssueInvoiceResult>> HandleAsync(
+        Invoice invoice,
+        NewSequence sequences,
+        NoStock? stock = null
+    ) =>
+        IssueInvoiceHandler.Handle(
+            new IssueInvoiceCommand(Tenant, invoice.Id, Guid.NewGuid(), CanViewAll: true),
+            new SingleInvoice(invoice),
+            Options.Create(new BillingVisibilityOptions()),
+            sequences,
+            stock ?? new NoStock(),
+            new CountingUnitOfWork(),
+            new FakeMessageBus(),
+            new FixedClock(Now),
+            CancellationToken.None
+        );
 
     private sealed class SingleInvoice(Invoice invoice) : IInvoiceRepository
     {
@@ -77,6 +123,9 @@ public sealed class IssueInvoiceHandlerTests
 
         public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
+            Task.FromResult<Invoice?>(null);
 
         public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
             Guid tenantId,
@@ -91,20 +140,41 @@ public sealed class IssueInvoiceHandlerTests
 
     private sealed class NewSequence : IInvoiceNumberSequenceRepository
     {
+        public int Requests { get; private set; }
+        public InvoiceNumberSequence? Last { get; private set; }
+
         public Task<InvoiceNumberSequence> GetOrCreateAsync(
             Guid tenantId,
             string periodKey,
             CancellationToken ct = default
-        ) => Task.FromResult(InvoiceNumberSequence.Start(tenantId, periodKey));
+        )
+        {
+            Requests++;
+            Last = InvoiceNumberSequence.Start(tenantId, periodKey);
+            return Task.FromResult(Last);
+        }
     }
 
     private sealed class NoStock : IInventoryStockClient
     {
+        public int Checks { get; private set; }
+
         public Task<Result> CommitInvoiceSaleAsync(
             Guid tenantId,
             Guid invoiceId,
             IReadOnlyList<InvoiceSaleLine> lines,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success());
+
+        public Task<Result> CheckInvoiceSaleAsync(
+            Guid tenantId,
+            Guid invoiceId,
+            IReadOnlyList<InvoiceSaleLine> lines,
+            CancellationToken ct = default
+        )
+        {
+            Checks++;
+            return Task.FromResult(Result.Success());
+        }
     }
 }

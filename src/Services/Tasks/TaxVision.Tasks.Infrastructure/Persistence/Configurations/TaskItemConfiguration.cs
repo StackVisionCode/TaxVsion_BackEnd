@@ -32,6 +32,7 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(t => t.Depth).IsRequired();
         builder.Property(t => t.OpenSubtaskCount).IsRequired();
         builder.Property(t => t.OpenBlockerCount).IsRequired();
+        builder.Property(t => t.ReopenCount).IsRequired();
         builder.Property(t => t.SeriesId);
         builder.Property(t => t.TemplateId);
         builder.Property(t => t.OverdueNotifiedAtUtc);
@@ -41,6 +42,7 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
 
         // Derivada de OpenBlockerCount: si EF la mapeara habría dos fuentes de verdad.
         builder.Ignore(t => t.IsBlocked);
+        builder.Ignore(t => t.DomainEvents);
 
         builder.HasMany(t => t.Timers).WithOne().HasForeignKey(t => t.TaskId).OnDelete(DeleteBehavior.Cascade);
 

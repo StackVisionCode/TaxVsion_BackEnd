@@ -51,7 +51,7 @@ public sealed class CustomerProfilePictureTests
         var second = Guid.NewGuid();
         customer.BeginProfilePictureChange(second, Actor, Now);
 
-        var result = customer.ConfirmProfilePicture(second);
+        var result = customer.ConfirmProfilePicture(second, Guid.Empty);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(first, result.Value);
@@ -67,7 +67,7 @@ public sealed class CustomerProfilePictureTests
         var pending = Guid.NewGuid();
         customer.BeginProfilePictureChange(pending, Actor, Now);
 
-        var result = customer.ConfirmProfilePicture(Guid.NewGuid());
+        var result = customer.ConfirmProfilePicture(Guid.NewGuid(), Guid.Empty);
 
         Assert.Equal("Customer.ProfilePicture.Stale", result.Error.Code);
         Assert.Equal(current, customer.ProfilePictureFileId);
@@ -83,8 +83,8 @@ public sealed class CustomerProfilePictureTests
         customer.BeginProfilePictureChange(older, Actor, Now);
         customer.BeginProfilePictureChange(newer, Actor, Now.AddSeconds(5));
 
-        Assert.True(customer.ConfirmProfilePicture(older).IsFailure);
-        Assert.True(customer.ConfirmProfilePicture(newer).IsSuccess);
+        Assert.True(customer.ConfirmProfilePicture(older, Guid.Empty).IsFailure);
+        Assert.True(customer.ConfirmProfilePicture(newer, Guid.Empty).IsSuccess);
         Assert.Equal(newer, customer.ProfilePictureFileId);
     }
 
@@ -140,7 +140,7 @@ public sealed class CustomerProfilePictureTests
 
         Assert.Null(customer.ProfilePictureFileId);
         Assert.Null(customer.PendingProfilePictureFileId);
-        Assert.True(customer.ConfirmProfilePicture(pending).IsFailure);
+        Assert.True(customer.ConfirmProfilePicture(pending, Guid.Empty).IsFailure);
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public sealed class CustomerProfilePictureTests
         var customer = NewCustomer();
         fileId = Guid.NewGuid();
         customer.BeginProfilePictureChange(fileId, Actor, Now);
-        customer.ConfirmProfilePicture(fileId);
+        customer.ConfirmProfilePicture(fileId, Guid.Empty);
         return customer;
     }
 

@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.CustomerIntegrationEvents;
 
 /// <summary>
@@ -10,6 +12,7 @@ namespace BuildingBlocks.Messaging.CustomerIntegrationEvents;
 /// NO incluye PII: Reason es el mismo string ya vetted por CustomerImportAttempt.Fail (sin PII,
 /// truncado a 500 chars).
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerImportFailedIntegrationEvent")]
 public sealed record CustomerImportFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid ImportJobId { get; init; }

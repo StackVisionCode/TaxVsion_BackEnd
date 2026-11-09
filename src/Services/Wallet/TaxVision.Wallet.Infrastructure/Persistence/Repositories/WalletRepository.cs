@@ -15,8 +15,11 @@ public sealed class WalletRepository(WalletDbContext db) : IWalletRepository
     // IgnoreQueryFilters(): el tenantId viene explícito y validado desde Application (mismo criterio que
     // Notes/Campaigns). El filtro global fail-closed es red de seguridad para queries fuera del repo; en
     // un handler de Wolverine el TenantContext puede no estar poblado y excluiría filas legítimas.
-    public Task<Domain.Wallet.Wallet?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        db.Wallets.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.TenantId == tenantId, ct);
+    public Task<Domain.Wallet.Wallet?> GetByTenantAsync(
+        Guid tenantId,
+        string currency,
+        CancellationToken ct = default
+    ) => db.Wallets.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.TenantId == tenantId && w.Currency == currency, ct);
 
     public async Task AddAsync(Domain.Wallet.Wallet wallet, CancellationToken ct = default) =>
         await db.Wallets.AddAsync(wallet, ct);
@@ -40,6 +43,47 @@ public sealed class WalletRepository(WalletDbContext db) : IWalletRepository
         return new PagedResult<LedgerEntry>(items, page, size, total);
     }
 
+    // Q-W8 agregada en SQL: el ledger crece sin límite y no se trae a memoria.
+    public async Task<IReadOnlyList<WalletBalanceMismatch>> ListBalanceMismatchesAsync(CancellationToken ct = default)
+    {
+        var wallets = db
+            .Wallets.IgnoreQueryFilters()
+            .GroupBy(w => w.TenantId)
+            .Select(g => new
+            {
+                TenantId = g.Key,
+                Count = g.Count(),
+                Posted = g.Sum(w => w.PostedMicros),
+                Held = g.Sum(w => w.HeldMicros),
+            });
+        var ledger = db
+            .LedgerEntries.IgnoreQueryFilters()
+            .GroupBy(e => e.TenantId)
+            .Select(g => new
+            {
+                TenantId = g.Key,
+                Posted = g.Sum(e => e.DeltaPostedMicros),
+                Held = g.Sum(e => e.DeltaHeldMicros),
+            });
+
+        var query =
+            from wallet in wallets
+            join entry in ledger on wallet.TenantId equals entry.TenantId into entries
+            from entry in entries.DefaultIfEmpty()
+            let ledgerPosted = (long?)entry.Posted ?? 0
+            let ledgerHeld = (long?)entry.Held ?? 0
+            where wallet.Count > 1 || wallet.Posted != ledgerPosted || wallet.Held != ledgerHeld
+            select new WalletBalanceMismatch(
+                wallet.TenantId,
+                wallet.Count,
+                wallet.Posted,
+                wallet.Held,
+                ledgerPosted,
+                ledgerHeld
+            );
+        return await query.ToListAsync(ct);
+    }
+
     // ---------- F2: recargas ----------
 
     public async Task AddTopUpAsync(WalletTopUp topUp, CancellationToken ct = default) =>
@@ -47,6 +91,12 @@ public sealed class WalletRepository(WalletDbContext db) : IWalletRepository
 
     public Task<WalletTopUp?> GetTopUpAsync(Guid tenantId, Guid topUpId, CancellationToken ct = default) =>
         db.WalletTopUps.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == topUpId, ct);
+
+    public Task<WalletTopUp?> GetTopUpReadOnlyAsync(Guid tenantId, Guid topUpId, CancellationToken ct = default) =>
+        db
+            .WalletTopUps.AsNoTracking()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == topUpId, ct);
 
     public Task<bool> FundingCreditExistsAsync(
         string sourceService,

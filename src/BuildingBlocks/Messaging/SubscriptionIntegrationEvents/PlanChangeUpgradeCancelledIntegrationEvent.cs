@@ -1,6 +1,9 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 
 /// <summary>Publicado por Subscription cuando el usuario cancela un upgrade AwaitingPayment antes de pagar.</summary>
+[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.PlanChangeUpgradeCancelledIntegrationEvent")]
 public sealed record PlanChangeUpgradeCancelledIntegrationEvent : IntegrationEvent
 {
     public required Guid PlanChangeRequestId { get; init; }

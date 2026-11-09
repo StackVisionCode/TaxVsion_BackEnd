@@ -1,7 +1,10 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Wolverine;
 
 namespace TaxVision.Tenant.Tests.Integration;
 
@@ -23,6 +26,8 @@ public sealed class TenantApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        // BB-10: base temporal; con la local compartiría los sobres de la flota.
+        builder.UseSetting("ConnectionStrings:Default", TenantIntegrationDatabase.ConnectionString);
         builder.ConfigureAppConfiguration(
             (_, config) =>
                 config.AddInMemoryCollection(
@@ -36,5 +41,21 @@ public sealed class TenantApiFactory : WebApplicationFactory<Program>
                     }
                 )
         );
+        // Sin transportes externos el host de prueba no le roba mensajes a la cola del Tenant local;
+        // los jobs propios tampoco corren contra la base de desarrollo.
+        builder.ConfigureTestServices(services =>
+        {
+            services.DisableAllExternalWolverineTransports();
+            foreach (
+                var job in services
+                    .Where(descriptor =>
+                        descriptor.ServiceType == typeof(IHostedService)
+                        && descriptor.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal)
+                            == true
+                    )
+                    .ToList()
+            )
+                services.Remove(job);
+        });
     }
 }

@@ -505,6 +505,12 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<Guid?>("ScheduleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ScheduledSlotUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -520,6 +526,11 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ScheduleId", "ScheduledSlotUtc")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CampaignRuns_ScheduleId_ScheduledSlotUtc_Unique")
+                        .HasFilter("[ScheduleId] IS NOT NULL");
 
                     b.HasIndex("TenantId", "CampaignId")
                         .HasDatabaseName("IX_CampaignRuns_TenantId_CampaignId");
@@ -597,6 +608,16 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(0);
+
+                    b.Property<string>("PauseReason")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<Guid?>("RunAsUserId")
                         .HasColumnType("uniqueidentifier");
@@ -785,50 +806,6 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_CampaignTemplateContents_TemplateId_Channel");
 
                     b.ToTable("CampaignTemplateContents", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Campaigns.Infrastructure.Customers.Directory.CustomerDirectoryEntry", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("CustomerId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<string>("PhoneE164")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("Version")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "CustomerId")
-                        .IsUnique();
-
-                    b.HasIndex("TenantId", "Email");
-
-                    b.ToTable("CustomerDirectoryEntries", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.CampaignContent", b =>

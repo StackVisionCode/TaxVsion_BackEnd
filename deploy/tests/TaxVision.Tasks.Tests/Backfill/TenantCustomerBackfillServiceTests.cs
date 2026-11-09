@@ -20,7 +20,7 @@ public sealed class TenantCustomerBackfillServiceTests
         var directory = new InMemoryCustomerDirectoryRepository();
         var state = new InMemoryTenantBackfillStateRepository();
 
-        await NewService(client, directory, state).EnsureBackfilledAsync(TenantId);
+        await NewService(client, directory, state).BackfillAsync(TenantId);
 
         Assert.Equal(2, directory.Entries.Count);
         Assert.Contains(directory.Entries, e => e.Status == CustomerDirectoryStatus.Inactive);
@@ -34,7 +34,7 @@ public sealed class TenantCustomerBackfillServiceTests
         var client = new StubCustomerClient([]);
         var state = new InMemoryTenantBackfillStateRepository(TenantId);
 
-        await NewService(client, new InMemoryCustomerDirectoryRepository(), state).EnsureBackfilledAsync(TenantId);
+        await NewService(client, new InMemoryCustomerDirectoryRepository(), state).BackfillAsync(TenantId);
 
         Assert.Equal(0, client.CallCount);
     }
@@ -52,7 +52,7 @@ public sealed class TenantCustomerBackfillServiceTests
         ]);
         var state = new InMemoryTenantBackfillStateRepository();
 
-        await NewService(client, new InMemoryCustomerDirectoryRepository(), state).EnsureBackfilledAsync(TenantId);
+        await NewService(client, new InMemoryCustomerDirectoryRepository(), state).BackfillAsync(TenantId);
 
         Assert.Empty(state.CompletedTenantIds);
     }

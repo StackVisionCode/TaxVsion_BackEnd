@@ -5,5 +5,6 @@ public sealed record PurchaseSeatsCommand(
     string SeatType,
     int Quantity,
     bool AutoRenew,
-    Guid RequestedByUserId
+    Guid RequestedByUserId,
+    string? ClientRequestKey = null
 );

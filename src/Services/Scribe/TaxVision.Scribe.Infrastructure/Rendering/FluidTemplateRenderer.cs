@@ -37,6 +37,7 @@ public sealed partial class FluidTemplateRenderer(
     EventTemplateResolver eventTemplateResolver,
     IEmailTemplateRepository templateRepository,
     IEmailLayoutRepository layoutRepository,
+    IPublishedTemplateReader publishedTemplates,
     ICloudStorageClient cloudStorageClient,
     ILogoResolver logoResolver,
     ITenantProfileRefRepository tenantProfiles,
@@ -81,19 +82,19 @@ public sealed partial class FluidTemplateRenderer(
                 new Error("EmailRenderer.NoMapping", $"No template is mapped for event '{request.EventKey.Value}'.")
             );
 
-        var templateResult = await templateRepository.GetByKeyAsync(templateKey, request.TenantId, ct);
+        var templateResult = await publishedTemplates.GetByKeyAsync(templateKey, request.TenantId, ct);
         // Un override del tenant de otro canal no reemplaza a la plantilla del sistema de este canal.
         if (
             templateResult.IsSuccess
             && templateResult.Value.TenantId is not null
             && templateResult.Value.Channel != request.Channel
         )
-            templateResult = await templateRepository.GetByKeyAsync(templateKey, null, ct);
+            templateResult = await publishedTemplates.GetByKeyAsync(templateKey, null, ct);
         if (templateResult.IsFailure)
             return Result.Failure<RenderedContent>(templateResult.Error);
 
-        var version = templateResult.Value.Versions.FirstOrDefault(v => v.Status == EmailVersionStatus.Published);
-        if (version is null)
+        var template = templateResult.Value;
+        if (template.Version is not { } version)
             return Result.Failure<RenderedContent>(
                 new Error(
                     "EmailRenderer.NoPublishedVersion",
@@ -101,27 +102,29 @@ public sealed partial class FluidTemplateRenderer(
                 )
             );
 
-        if (templateResult.Value.Channel != request.Channel)
+        if (template.Channel != request.Channel)
             return Result.Failure<RenderedContent>(
                 new Error("EmailRenderer.Channel", "The requested channel does not match the template channel.")
             );
 
         var variables = NormalizeVariables(request.Variables);
         if (request.Channel == TemplateChannel.Push)
-            return await RenderPushAsync(templateKey.Value, templateResult.Value.TenantId, version, variables, ct);
+            return await RenderPushAsync(templateKey.Value, template.TenantId, version, variables, ct);
 
-        var layoutResult = await layoutRepository.GetByIdAsync(version.LayoutId!.Value, ct);
+        var layoutResult = await publishedTemplates.GetPinnedLayoutAsync(
+            version.LayoutId!.Value,
+            version.LayoutVersionNumber!.Value,
+            ct
+        );
         if (layoutResult.IsFailure)
             return Result.Failure<RenderedContent>(layoutResult.Error);
 
-        var layoutVersion = layoutResult.Value.Versions.FirstOrDefault(v =>
-            v.VersionNumber == version.LayoutVersionNumber!.Value
-        );
-        if (layoutVersion is null)
+        var layoutKey = layoutResult.Value.LayoutKey;
+        if (layoutResult.Value.Version is not { } layoutVersion)
             return Result.Failure<RenderedContent>(
                 new Error(
                     "EmailRenderer.LayoutVersionNotFound",
-                    $"Layout version {version.LayoutVersionNumber} was not found for layout '{layoutResult.Value.LayoutKey.Value}'."
+                    $"Layout version {version.LayoutVersionNumber} was not found for layout '{layoutKey}'."
                 )
             );
 
@@ -132,25 +135,20 @@ public sealed partial class FluidTemplateRenderer(
             version.VersionNumber
         );
 
-        var logoOwner = ResolveLogoOwner(
-            layoutResult.Value.LayoutKey.Value,
-            request.LogoScope,
-            request.TenantId,
-            templateResult.Value.TenantId
-        );
+        var logoOwner = ResolveLogoOwner(layoutKey, request.LogoScope, request.TenantId, template.TenantId);
 
         return await RenderVersionAsync(
             templateKey.Value,
-            templateResult.Value.Scope.ToString(),
+            template.Scope.ToString(),
             version,
-            layoutResult.Value.LayoutKey.Value,
+            layoutKey,
             layoutVersion,
-            templateResult.Value.TenantId,
+            template.TenantId,
             request.Locale?.Value,
             logoOwner.Scope,
             logoOwner.TenantId,
             request.Audience,
-            ResolveDispatchScope(layoutResult.Value.LayoutKey.Value, templateResult.Value.DispatchScopeOverride),
+            ResolveDispatchScope(layoutKey, template.DispatchScopeOverride),
             variables,
             ct
         );
@@ -300,7 +298,17 @@ public sealed partial class FluidTemplateRenderer(
             return Result.Failure<RenderedContent>(
                 new Error("EmailRenderer.PushLength", "Rendered push title or body exceeds its limit.")
             );
-        return Result.Success(new RenderedContent(subject.Value, string.Empty, text.Value, [], DispatchScopes.System));
+        return Result.Success(
+            new RenderedContent(
+                subject.Value,
+                string.Empty,
+                text.Value,
+                [],
+                DispatchScopes.System,
+                templateKey,
+                version.VersionNumber
+            )
+        );
     }
 
     private async Task<Result<RenderedContent>> RenderVersionAsync(
@@ -465,7 +473,10 @@ public sealed partial class FluidTemplateRenderer(
                 finalHtmlResult.Value,
                 textResult.Value,
                 inlineAssets,
-                dispatchScope
+                dispatchScope,
+                templateKeyValue,
+                version.VersionNumber,
+                layoutVersion.VersionNumber
             )
         );
     }

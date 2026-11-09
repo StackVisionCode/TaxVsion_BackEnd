@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
@@ -10,6 +12,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// tenant resuelto): TenantId (heredado de IntegrationEvent) viaja como
 /// BuildingBlocks.Tenancy.PlatformTenant.Id.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.TenantResolutionFailedIntegrationEvent")]
 public sealed record TenantResolutionFailedIntegrationEvent : IntegrationEvent
 {
     public required string Host { get; init; }

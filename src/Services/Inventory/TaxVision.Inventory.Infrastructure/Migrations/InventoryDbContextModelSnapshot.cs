@@ -139,6 +139,9 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
                     b.Property<Guid>("CatalogItemId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("CatalogStateAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -215,6 +218,10 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Reference")
+                        .HasDatabaseName("IX_StockMovements_Tenant_Reference")
+                        .HasFilter("[Reference] IS NOT NULL");
 
                     b.HasIndex("TenantId", "CatalogItemId", "MovedAtUtc");
 

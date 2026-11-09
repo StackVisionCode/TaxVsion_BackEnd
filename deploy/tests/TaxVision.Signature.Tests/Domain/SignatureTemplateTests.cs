@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using TaxVision.Signature.Domain.Templates;
@@ -165,14 +166,97 @@ public sealed class SignatureTemplateTests
     {
         var template = NewPublishedTemplate();
 
-        Assert.Throws<InvalidOperationException>(() =>
-            template.AddSlot(
-                TestSignatureLimits.Default,
-                TestSignatureLimits.MaxRolesPerTemplate,
-                TemplateSlotRole.Create("New Slot").Value,
-                "En"
-            )
+        var result = template.AddSlot(
+            TestSignatureLimits.Default,
+            TestSignatureLimits.MaxRolesPerTemplate,
+            TemplateSlotRole.Create("New Slot").Value,
+            "En"
         );
+
+        Assert.Equal("Signature.Template.NotDraft", result.Error.Code);
+    }
+
+    /// <summary>Todo lo que edita una plantilla solo vale en Draft.</summary>
+    public static TheoryData<string, Func<SignatureTemplate, Result>> DraftOnlyEdits =>
+        new()
+        {
+            { "UpdateMetadata", t => t.UpdateMetadata("New title", null, "Fiscal") },
+            {
+                "UpdateDefaults",
+                t =>
+                    t.UpdateDefaults(
+                        TestSignatureLimits.Default,
+                        72,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        24,
+                        false,
+                        PartialCopyAudienceKind.All,
+                        null,
+                        true
+                    )
+            },
+            { "SetPractitionerPin", t => t.SetPractitionerPin("hash") },
+            { "ClearPractitionerPin", t => t.ClearPractitionerPin() },
+            { "SetBaseDocument", t => t.SetBaseDocument(Guid.NewGuid()) },
+            { "AddDocument", t => t.AddDocument(TestSignatureLimits.Default, Guid.NewGuid(), "Doc") },
+            { "RemoveDocument", t => t.RemoveDocument(Guid.NewGuid()) },
+            { "ReorderDocuments", t => t.ReorderDocuments([]) },
+            {
+                "AddSlot",
+                t =>
+                    t.AddSlot(
+                        TestSignatureLimits.Default,
+                        TestSignatureLimits.MaxRolesPerTemplate,
+                        TemplateSlotRole.Create("New Slot").Value,
+                        "En"
+                    )
+            },
+            { "RemoveSlot", t => t.RemoveSlot(1) },
+            { "UpdateSlot", t => t.UpdateSlot(1, TemplateSlotRole.Create("Solo").Value, "En", null) },
+            { "ReorderSlots", t => t.ReorderSlots([1]) },
+            {
+                "PlaceField",
+                t =>
+                    t.PlaceField(
+                        Guid.NewGuid(),
+                        1,
+                        SignatureFieldKind.Signature,
+                        FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value,
+                        null,
+                        false
+                    )
+            },
+            { "RemoveField", t => t.RemoveField(Guid.NewGuid()) },
+            {
+                "PlacePreparerField",
+                t =>
+                    t.PlacePreparerField(
+                        Guid.NewGuid(),
+                        SignatureFieldKind.Signature,
+                        FieldPosition.Create(1, 0.1, 0.8, 0.2, 0.05).Value,
+                        null
+                    )
+            },
+            { "RemovePreparerField", t => t.RemovePreparerField(Guid.NewGuid()) },
+        };
+
+    [Theory]
+    [MemberData(nameof(DraftOnlyEdits))]
+    public void UpdateMetadata_OnPublished_ReturnsNotDraftFailure(string method, Func<SignatureTemplate, Result> edit)
+    {
+        var template = NewPublishedTemplate();
+        var before = template.UpdatedAtUtc;
+
+        var result = edit(template);
+
+        Assert.True(result.IsFailure, method);
+        Assert.Equal("Signature.Template.NotDraft", result.Error.Code);
+        Assert.Equal(before, template.UpdatedAtUtc);
     }
 
     [Fact]
@@ -278,13 +362,18 @@ public sealed class SignatureTemplateTests
     }
 
     [Fact]
-    public void UpdateSlot_throws_when_not_draft()
+    public void UpdateSlot_fails_when_not_draft()
     {
         var template = NewPublishedTemplate();
 
-        Assert.Throws<InvalidOperationException>(() =>
-            template.UpdateSlot(1, TemplateSlotRole.Create("Solo").Value, "En", SignerVerificationMethod.EmailOtp)
+        var result = template.UpdateSlot(
+            1,
+            TemplateSlotRole.Create("Solo").Value,
+            "En",
+            SignerVerificationMethod.EmailOtp
         );
+
+        Assert.Equal("Signature.Template.NotDraft", result.Error.Code);
     }
 
     [Fact]
@@ -368,14 +457,14 @@ public sealed class SignatureTemplateTests
     }
 
     [Fact]
-    public void PlacePreparerField_throws_when_not_draft()
+    public void PlacePreparerField_fails_when_not_draft()
     {
         var template = NewPublishedTemplate();
         var pos = FieldPosition.Create(1, 0.1, 0.8, 0.2, 0.05).Value;
 
-        Assert.Throws<InvalidOperationException>(() =>
-            template.PlacePreparerField(SignatureFieldKind.Signature, pos, null)
-        );
+        var result = template.PlacePreparerField(Guid.NewGuid(), SignatureFieldKind.Signature, pos, null);
+
+        Assert.Equal("Signature.Template.NotDraft", result.Error.Code);
     }
 
     private static BuildingBlocks.Results.Result<SignatureTemplate> NewDraft() =>

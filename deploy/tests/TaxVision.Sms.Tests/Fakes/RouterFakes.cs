@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using TaxVision.Sms.Application.Providers;
 
 namespace TaxVision.Sms.Tests.Fakes;
@@ -15,4 +16,7 @@ internal sealed class MapSmsAdapterFactory(IReadOnlyDictionary<string, ISmsProvi
         byCode.TryGetValue(code, out var provider)
             ? provider
             : throw new InvalidOperationException($"No ISmsProvider is registered for provider code '{code}'.");
+
+    public bool TryResolve(string code, [NotNullWhen(true)] out ISmsProvider? provider) =>
+        byCode.TryGetValue(code, out provider);
 }

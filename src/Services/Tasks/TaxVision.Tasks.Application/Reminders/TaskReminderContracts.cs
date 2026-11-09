@@ -13,13 +13,20 @@ public static class TaskReminderContracts
     /// <summary>Lo que Reminder usa para deduplicar reintentos del bus.</summary>
     public const string Category = "Task";
 
-    public static string RequestKey(Guid taskId, Guid userId) => $"task-created:{taskId:N}:{userId:N}";
+    /// <summary>
+    /// Reminder ignora una clave existente en cualquier estado (REM-1), así que cada reapertura usa
+    /// la suya. El ciclo 0 conserva el formato original para no cambiar las claves vivas.
+    /// </summary>
+    public static string RequestKey(Guid taskId, Guid userId, int lifecycle) =>
+        lifecycle == 0 ? $"task-created:{taskId:N}:{userId:N}" : $"task-created:{taskId:N}:{userId:N}:r{lifecycle}";
 
+    /// <param name="lifecycle">Ciclo de vida de la clave. Sin valor, el vigente de la tarea.</param>
     public static ReminderRequestedIntegrationEvent Requested(
         TaskItem task,
         Guid userId,
         int leadMinutes,
-        string correlationId
+        string correlationId,
+        int? lifecycle = null
     ) =>
         new()
         {
@@ -33,7 +40,7 @@ public static class TaskReminderContracts
             TimeZoneId = task.Due!.TimeZoneId,
             AnchorAtUtc = task.Due.DueAtUtc,
             LeadMinutes = leadMinutes,
-            RequestKey = RequestKey(task.Id, userId),
+            RequestKey = RequestKey(task.Id, userId, lifecycle ?? task.ReopenCount),
         };
 
     public static ReminderTargetMovedIntegrationEvent Moved(TaskItem task, string correlationId) =>
@@ -58,12 +65,20 @@ public static class TaskReminderContracts
     }
 
     public static ReminderTargetClosedIntegrationEvent Closed(TaskItem task, string reason, string correlationId) =>
+        Closed(task.TenantId, task.Id, reason, correlationId);
+
+    public static ReminderTargetClosedIntegrationEvent Closed(
+        Guid tenantId,
+        Guid taskId,
+        string reason,
+        string correlationId
+    ) =>
         new()
         {
-            TenantId = task.TenantId,
+            TenantId = tenantId,
             CorrelationId = correlationId,
             Category = Category,
-            TargetId = task.Id,
+            TargetId = taskId,
             Reason = reason,
         };
 

@@ -3,6 +3,7 @@ import type {
   UserPermissionsProjectionRepository,
   UserPermissionsProjectionSnapshot,
 } from '../../application/ports/user-permissions-projection-repository.js';
+import { newerStatus, stamp } from './status-order.js';
 
 export class PrismaUserPermissionsProjectionRepository implements UserPermissionsProjectionRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -100,16 +101,18 @@ export class PrismaUserPermissionsProjectionRepository implements UserPermission
       .filter((row) => row.actorType === 'PlatformAdmin' || row.permissions.includes(supportPermissionCode));
   }
 
-  async markInactive(userId: string, _now: Date): Promise<void> {
-    await this.prisma.userPermissionsProjection
-      .update({ where: { UserId: userId }, data: { IsActive: false } })
-      .catch(() => undefined);
+  async markInactive(userId: string, _now: Date, statusChangedAtUtc?: Date): Promise<void> {
+    await this.prisma.userPermissionsProjection.updateMany({
+      where: { UserId: userId, ...newerStatus(statusChangedAtUtc) },
+      data: { IsActive: false, ...stamp(statusChangedAtUtc) },
+    });
   }
 
-  async markActive(userId: string, _now: Date): Promise<void> {
-    await this.prisma.userPermissionsProjection
-      .update({ where: { UserId: userId }, data: { IsActive: true } })
-      .catch(() => undefined);
+  async markActive(userId: string, _now: Date, statusChangedAtUtc?: Date): Promise<void> {
+    await this.prisma.userPermissionsProjection.updateMany({
+      where: { UserId: userId, ...newerStatus(statusChangedAtUtc) },
+      data: { IsActive: true, ...stamp(statusChangedAtUtc) },
+    });
   }
 
   async findActiveByTenantAndRoleId(

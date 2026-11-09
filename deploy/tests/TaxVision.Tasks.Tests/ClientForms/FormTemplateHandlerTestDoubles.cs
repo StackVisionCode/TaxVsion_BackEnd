@@ -225,6 +225,15 @@ internal sealed class RecordingFormAuditLog : IFormAuditLog
         Actions.Add($"answers.viewed:{revisionNumber}");
         return Task.CompletedTask;
     }
+
+    public void RecordSystemOutcome(
+        Guid tenantId,
+        Guid? templateId,
+        Guid? requestId,
+        string action,
+        string outcome,
+        string? detailsJson = null
+    ) => Record(tenantId, templateId, requestId, action, null, detailsJson);
 }
 
 internal sealed class RecordingUnitOfWork : IUnitOfWork

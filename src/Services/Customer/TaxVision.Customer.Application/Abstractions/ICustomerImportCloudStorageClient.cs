@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using Wolverine;
 
 namespace TaxVision.Customer.Application.Abstractions;
 
@@ -19,6 +20,7 @@ namespace TaxVision.Customer.Application.Abstractions;
 /// </summary>
 public interface ICustomerImportCloudStorageClient
 {
+    /// <param name="bus">El del handler: SaveFileRequested sale con su outbox (BB-17).</param>
     Task<Result> UploadAsync(
         Guid tenantId,
         Guid fileId,
@@ -26,6 +28,7 @@ public interface ICustomerImportCloudStorageClient
         string fileName,
         string contentType,
         Guid actorId,
+        IMessageBus bus,
         CancellationToken ct = default
     );
 

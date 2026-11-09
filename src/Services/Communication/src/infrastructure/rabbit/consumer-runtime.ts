@@ -5,10 +5,7 @@ import { logger } from '../logger/logger.js';
 import { consumerProjectionFailuresTotal } from '../telemetry/metrics.js';
 import type { ProcessedEventStore } from '../../application/ports/processed-event-store.js';
 import type { ConsumerHandler, IncomingEnvelope } from '../../application/ports/event-consumer.js';
-import {
-  OFFBOARDING_INCOMPLETE_CLR_TYPE,
-  OFFBOARDING_STEP_COMPLETED_TYPE,
-} from '../../contracts/events/offboarding-events.js';
+import { INTENTIONALLY_IGNORED_EVENT_TYPES } from './ignored-event-types.js';
 
 /**
  * Registry sencillo de consumers por `eventType`. Cada handler valida el shape
@@ -77,6 +74,9 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'calendar.appointment_scheduled.v1',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentRescheduledIntegrationEvent':
     'calendar.appointment_rescheduled.v1',
+  // Cancelarla cancela la sala (salvo una ocurrencia suelta de la serie).
+  'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentCancelledIntegrationEvent':
+    'calendar.appointment_cancelled.v1',
   // Reparacion: la cita virtual se quedo sin sala. Va por su propio tipo porque el evento de la cita
   // agendada lleva los destinatarios y republicarlo reenviaria la invitacion.
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentMeetingRoomRequestedIntegrationEvent':
@@ -114,6 +114,11 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // seguia con IsActive=true y aparecia en el autocomplete de invitaciones.
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerArchivedIntegrationEvent':
     'customer.archived.v1',
+  // Restaurado (Archived→Active) o activado (Inactive→Active): vuelve a estar activo en el directorio.
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerReactivatedIntegrationEvent':
+    'customer.reactivated.v1',
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerActivatedIntegrationEvent':
+    'customer.activated.v1',
   // Fase B2 (chat tipado) — alimentan CustomerPreparerAssignment (ver customer-consumers.ts).
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerPreparerAssignedIntegrationEvent':
     'customer.preparer_assigned.v1',
@@ -224,32 +229,6 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'connectors.watch.expired.v1',
 };
 
-const INTENTIONALLY_IGNORED_EVENT_TYPES = new Set([
-  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.DmcaCounterNoticeSubmittedIntegrationEvent',
-  'cloudstorage.file.restored.v1',
-  'cloudstorage.sharelink.accessed.v1',
-  'cloudstorage.sharelink.expired.v1',
-  // signature.signer.invited.v1 — Notification lo procesa (T7.4.C): email/SMS + in-app al cliente
-  // del portal si MappedCustomerId esta seteado. Lo dejamos fuera del ignore set para que si en el
-  // futuro Communication quisiera hacer algo propio (p.ej. presencia), no quede silenciado.
-  'signature.request.reminder_due.v1',
-  'signature.signer.verification.challenge_issued.v1',
-  'signature.document.sealed.v1',
-  'signature.request.sealing_completed.v1',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestAssignedIntegrationEvent',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestSubmittedIntegrationEvent',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestReturnedIntegrationEvent',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestCompletedIntegrationEvent',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestCancelledIntegrationEvent',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormAttachmentRejectedIntegrationEvent',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestReminderDueIntegrationEvent',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormActionFailedIntegrationEvent',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormCompletedIntegrationEvent',
-  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormRejectedIntegrationEvent',
-  // Retiro con acuse: los acuses de los servicios .NET y el aviso de retiro incompleto son para Auth/Notification.
-  OFFBOARDING_STEP_COMPLETED_TYPE,
-  OFFBOARDING_INCOMPLETE_CLR_TYPE,
-]);
 const UNKNOWN_EVENT_LOG_INTERVAL_MS = 60_000;
 
 export type { ConsumerHandler, IncomingEnvelope };
@@ -484,12 +463,11 @@ export class ConsumerRuntime {
       (amqpTypeHeader ? (CLR_TYPE_TO_EVENT_TYPE[amqpTypeHeader] ?? amqpTypeHeader) : undefined)) as string;
     const tenantId =
       typeof raw['tenantId'] === 'string' ? (raw['tenantId'] as string) : (raw['TenantId'] as string);
+    // Outbox propio: occurredOnUtc; Wolverine: occurredOn (camelCase) u OccurredOn.
     const occurredOnUtc =
-      typeof raw['occurredOnUtc'] === 'string'
-        ? (raw['occurredOnUtc'] as string)
-        : typeof raw['OccurredOn'] === 'string'
-          ? (raw['OccurredOn'] as string)
-          : new Date().toISOString();
+      [raw['occurredOnUtc'], raw['occurredOn'], raw['OccurredOn']].find(
+        (v): v is string => typeof v === 'string',
+      ) ?? new Date().toISOString();
     const correlationId =
       typeof raw['correlationId'] === 'string'
         ? (raw['correlationId'] as string)

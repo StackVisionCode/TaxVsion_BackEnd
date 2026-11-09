@@ -1,43 +1,31 @@
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using TaxVision.Subscription.Domain.Subscriptions;
-using Wolverine;
 
 namespace TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 
 /// <summary>
-/// Punto único de publicación de <see cref="TenantSubscriptionStatusChangedIntegrationEvent"/> (plan de
-/// Expiración/Dunning, Fase 0). Se llama en cada sitio que transiciona el estado del agregado
-/// <c>TenantSubscription</c>, JUNTO al recálculo de entitlements existente (aditivo). El caller captura el
-/// <paramref name="previousStatus"/> ANTES de la transición y pasa el motivo; el resto sale del agregado.
-/// Publish-before-save vía outbox (igual que el recalc): sale sólo si el commit del handler prospera.
+/// Re-anuncio del estado ACTUAL por el canal de <see cref="TenantSubscriptionStatusChangedIntegrationEvent"/>, sin
+/// transición: la anti-entropía (<see cref="SubscriptionChangeReason.Reconciliation"/>) y el recordatorio de fin de
+/// acceso (<see cref="SubscriptionChangeReason.AccessEnding"/>). Las transiciones reales las anuncia el evento de
+/// dominio <c>SubscriptionStatusChangedDomainEvent</c>; no se publican a mano.
 /// </summary>
 public static class SubscriptionStatusChangedPublishing
 {
-    public static Task PublishStatusChangedAsync(
-        this IMessageBus bus,
+    public static TenantSubscriptionStatusChangedIntegrationEvent Reannouncement(
         TenantSubscription subscription,
-        SubscriptionStatus previousStatus,
         SubscriptionChangeReason reason,
-        Guid? actorUserId = null,
-        string? failureCode = null,
-        string? correlationId = null,
-        bool notifiedByChargeFailedEmail = false
+        string? correlationId = null
     ) =>
-        bus.PublishAsync(
-                new TenantSubscriptionStatusChangedIntegrationEvent
-                {
-                    TenantId = subscription.TenantId,
-                    TenantSubscriptionId = subscription.Id,
-                    Status = subscription.Status.ToString(),
-                    PreviousStatus = previousStatus.ToString(),
-                    Reason = reason.ToString(),
-                    // La cancelación programada necesita decir hasta cuándo llega el acceso ya pagado.
-                    AccessEndsAtUtc = subscription.CancelAtPeriodEnd ? subscription.CurrentPeriodEndUtc : null,
-                    FailureCode = failureCode,
-                    ActorUserId = actorUserId,
-                    CorrelationId = correlationId ?? string.Empty,
-                    NotifiedByChargeFailedEmail = notifiedByChargeFailedEmail,
-                }
-            )
-            .AsTask();
+        new()
+        {
+            TenantId = subscription.TenantId,
+            TenantSubscriptionId = subscription.Id,
+            Status = subscription.Status.ToString(),
+            // Sin transición: el anterior es el actual. Los consumidores miran Status.
+            PreviousStatus = subscription.Status.ToString(),
+            Reason = reason.ToString(),
+            // La cancelación programada necesita decir hasta cuándo llega el acceso ya pagado.
+            AccessEndsAtUtc = subscription.CancelAtPeriodEnd ? subscription.CurrentPeriodEndUtc : null,
+            CorrelationId = correlationId ?? string.Empty,
+        };
 }

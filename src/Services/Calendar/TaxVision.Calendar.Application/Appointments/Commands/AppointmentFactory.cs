@@ -57,6 +57,10 @@ internal static class AppointmentFactory
         if (appointment.IsFailure)
             return Result.Failure<(Appointment, AppointmentType)>(appointment.Error);
 
+        var reminder = appointment.Value.RequestReminder(command.ReminderLeadMinutes);
+        if (reminder.IsFailure)
+            return Result.Failure<(Appointment, AppointmentType)>(reminder.Error);
+
         return string.IsNullOrWhiteSpace(command.RecurrenceRule)
             ? Result.Success((appointment.Value, type.Value))
             : MakeRecurring(appointment.Value, timing.Value, command, type.Value);

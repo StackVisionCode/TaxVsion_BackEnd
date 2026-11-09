@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using StackExchange.Redis;
 using TaxVision.Calendar.Application;
+using TaxVision.Calendar.Application.Backfill;
 using TaxVision.Calendar.Infrastructure;
 using TaxVision.Calendar.Infrastructure.Observability;
 using TaxVision.Calendar.Infrastructure.Persistence;
@@ -121,7 +122,19 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CalendarDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();
+
+    // BB-1: los eventos de la cita salen con su transacción y sus handlers devuelven los avisos. En serie, para
+    // que los avisos de una misma cita salgan en el orden del commit.
+    options.UseTaxVisionDomainEvents();
+    options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
+
+    // BB-2: lo que entra a una cola local sobrevive a un reinicio.
+    options.UseTaxVisionDurableLocalQueues();
+
+    // CAL-5: en serie. El primero siembra y los repetidos de una ráfaga encuentran el estado hecho.
+    options.LocalQueueFor<BackfillTenantCustomersCommand>().Sequential();
 
     // Restaura el TenantContext dentro del scope que Wolverine crea para cada handler.
     options

@@ -32,7 +32,6 @@ public sealed class StaffUserReconciliationTests
         tenantContext.SetTenant(TenantA);
         return new AuthDbContext(
             new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,
-            new FakeMessageBus(),
             tenantContext
         );
     }
@@ -46,9 +45,9 @@ public sealed class StaffUserReconciliationTests
         var databaseName = Guid.NewGuid().ToString();
         var owner = Staff(TenantA, "owner@a.test", UserActorType.TenantAdmin);
         var deactivated = Staff(TenantA, "off@a.test", UserActorType.TenantEmployee);
-        deactivated.Deactivate(DateTime.UtcNow);
+        deactivated.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
         var offboarded = Staff(TenantB, "gone@b.test", UserActorType.TenantEmployee);
-        Assert.True(offboarded.Offboard(DateTime.UtcNow).IsSuccess);
+        Assert.True(offboarded.Offboard(Guid.NewGuid(), DateTime.UtcNow).IsSuccess);
         await using (var seed = CreateContext(databaseName))
         {
             seed.Users.AddRange(

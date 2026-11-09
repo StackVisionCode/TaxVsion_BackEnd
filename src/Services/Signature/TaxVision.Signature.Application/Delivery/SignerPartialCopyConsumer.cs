@@ -105,6 +105,7 @@ public static class SignerPartialCopyConsumer
                 fileRefRepository,
                 renderer,
                 stampStyles,
+                bus,
                 logger,
                 ct
             );
@@ -176,7 +177,7 @@ public static class SignerPartialCopyConsumer
 
             await unitOfWork.SaveChangesAsync(ct);
             if (delivery.IsSuccess)
-                await issuer.PublishAsync(delivery.Value, request, ct);
+                await issuer.PublishAsync(delivery.Value, request, bus, ct);
         }
     }
 
@@ -195,6 +196,7 @@ public static class SignerPartialCopyConsumer
         IFileMetadataRefRepository fileRefRepository,
         IPartialCopyRenderer renderer,
         IStampStyleResolver stampStyles,
+        IMessageBus bus,
         ILogger logger,
         CancellationToken ct
     )
@@ -240,7 +242,7 @@ public static class SignerPartialCopyConsumer
             var fileName =
                 $"{DocumentFileName.Base(document.Title)}_{DocumentFileName.Base(signer.FullName.Value)}_InProgress.pdf";
             var (ownerType, ownerId) = SealedDocumentOwner.Resolve(new[] { signer.MappedCustomerId }, request.Id);
-            var upload = await storage.UploadAsync(
+            var staged = await storage.StageAsync(
                 request.TenantId,
                 new SignatureFileUpload(
                     rendered.PdfBytes,
@@ -254,15 +256,13 @@ public static class SignerPartialCopyConsumer
                 ),
                 ct
             );
-            if (upload.IsFailure)
-                return Result.Failure<IReadOnlyList<PartialCopyOutcome>>(upload.Error);
+            if (staged.IsFailure)
+                return Result.Failure<IReadOnlyList<PartialCopyOutcome>>(staged.Error);
 
-            var uploadedProjection = await WaitForScanOutcomeAsync(
-                request.TenantId,
-                upload.Value,
-                fileRefRepository,
-                ct
-            );
+            await bus.InvokeAsync(new RequestPartialCopyScanCommand(request.TenantId, staged.Value), ct);
+            var fileId = staged.Value.FileId;
+
+            var uploadedProjection = await WaitForScanOutcomeAsync(request.TenantId, fileId, fileRefRepository, ct);
             // El enlace de entrega se resuelve al abrirlo, pero se espera el scan para no avisar de una
             // copia que todavía no se puede descargar. Una copia que CloudStorage no aceptó nunca se entrega.
             var decision = PartialCopyScanGate.ForUploadedCopy(
@@ -280,14 +280,14 @@ public static class SignerPartialCopyConsumer
             if (decision == PartialCopyScanDecision.Wait)
             {
                 throw new InvalidOperationException(
-                    $"Partial copy file {upload.Value} not Available yet ({uploadedProjection?.Status.ToString() ?? "null"}); redeliver scheduled."
+                    $"Partial copy file {fileId} not Available yet ({uploadedProjection?.Status.ToString() ?? "null"}); redeliver scheduled."
                 );
             }
             if (decision == PartialCopyScanDecision.DeliverUnscanned)
             {
                 logger.LogWarning(
                     "Partial copy file {FileId} for signer {SignerId}, document {DocumentId} is still {Status}; it is delivered anyway.",
-                    upload.Value,
+                    fileId,
                     signer.Id,
                     document.Id,
                     uploadedProjection?.Status
@@ -297,7 +297,7 @@ public static class SignerPartialCopyConsumer
             var idempotencyKey = $"signature.partial_copy:{request.Id:N}:{signer.Id:N}:{document.Id:N}:v1";
             outcomes.Add(
                 new PartialCopyOutcome(
-                    new PartialCopyFileDescriptor(document.Id, upload.Value, document.Title, null),
+                    new PartialCopyFileDescriptor(document.Id, fileId, document.Title, null),
                     rendered.ChecksumSha256,
                     idempotencyKey,
                     rendered.PdfBytes.LongLength

@@ -13,6 +13,9 @@ public sealed class NoOpDistributedLock : IDistributedLock
         public bool IsAcquired => true;
         public string Key { get; } = key;
 
+        // Sin Redis el lock siempre es nuestro.
+        public Task<bool> ExtendAsync(TimeSpan ttl, CancellationToken ct = default) => Task.FromResult(true);
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

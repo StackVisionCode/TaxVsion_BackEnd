@@ -34,9 +34,12 @@ internal sealed class FakeNoteRepository : INoteRepository
     public Task<Note?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         Task.FromResult(_byId.TryGetValue(id, out var note) && note.TenantId == tenantId ? note : null);
 
-    public Task<Note?> GetByAttachmentFileIdAsync(Guid cloudStorageFileId, CancellationToken ct = default) =>
-        Task.FromResult(
-            _byId.Values.FirstOrDefault(n => n.Attachments.Any(a => a.CloudStorageFileId == cloudStorageFileId))
+    public Task<IReadOnlyList<Note>> ListByAttachmentFileIdAsync(
+        Guid cloudStorageFileId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<Note>>(
+            _byId.Values.Where(n => n.Attachments.Any(a => a.CloudStorageFileId == cloudStorageFileId)).ToList()
         );
 
     public Task<PagedResult<Note>> ListByReferenceAsync(
@@ -211,10 +214,16 @@ internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
 
+    // Opciones de cada publicación (p. ej. ScheduleDelay de ScheduleAsync).
+    public List<(object Message, DeliveryOptions? Options)> PublishedWithOptions { get; } = [];
+
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
         if (message is not null)
+        {
             Published.Add(message);
+            PublishedWithOptions.Add((message, options));
+        }
         return ValueTask.CompletedTask;
     }
 
@@ -252,8 +261,11 @@ internal sealed class FakeMessageBus : IMessageBus
         set { }
     }
 
+    /// <summary>Si se asigna, atiende <c>InvokeAsync</c>; si no, lanza como el resto.</summary>
+    public Func<object, Task>? OnInvoke { get; set; }
+
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+        OnInvoke?.Invoke(message) ?? throw new NotImplementedException();
 
     public Task InvokeAsync(
         object message,

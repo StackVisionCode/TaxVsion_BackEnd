@@ -50,6 +50,7 @@ public sealed class RateLimitFitnessFunctionsTests
         "Signature", // endpoints públicos de token — 15 req/min por IP+ruta
         "PaymentClient", // /webhooks/* y /checkout/* — 1000 req/min por IP (§28.4/§K.1)
         "Tasks", // Client Forms público — token/sesión + IP y ruta (P-14.4)
+        "Sms", // webhooks del proveedor (SMS-07) — 1000 req/min por IP, configurable
     ];
 
     [Fact]

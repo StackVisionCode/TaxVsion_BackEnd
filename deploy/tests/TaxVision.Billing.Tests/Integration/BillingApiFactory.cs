@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Wolverine;
 
 namespace TaxVision.Billing.Tests.Integration;
 
@@ -14,7 +16,7 @@ namespace TaxVision.Billing.Tests.Integration;
 /// secreto HS256 generado en memoria SOLO para este proceso de test, nunca leído de ningún
 /// user-secret real ni escrito a disco.
 /// </summary>
-public sealed class BillingApiFactory : WebApplicationFactory<Program>
+public sealed class BillingApiFactory(BillingTestDatabase database) : WebApplicationFactory<Program>
 {
     public string JwtSecret { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
     public string JwtIssuer => "TaxVision.Auth";
@@ -23,6 +25,8 @@ public sealed class BillingApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        // BIL-14: con la base local, este host compartiría los sobres de "integration" con el Billing en marcha.
+        builder.UseSetting("ConnectionStrings:Default", database.ConnectionString);
         builder.ConfigureAppConfiguration(
             (_, config) =>
                 config.AddInMemoryCollection(
@@ -31,8 +35,12 @@ public sealed class BillingApiFactory : WebApplicationFactory<Program>
                         ["Jwt:PublicKeyPath"] = string.Empty,
                         ["Jwt:PublicKeyPem"] = string.Empty,
                         ["Jwt:Secret"] = JwtSecret,
+                        // El job de reconciliación (BIL-3b) no corre contra la base real en las pruebas de host.
+                        ["Billing:SyncReconciliation:Enabled"] = "false",
                     }
                 )
         );
+        // Sin Rabbit: el host de pruebas no le quita mensajes de billing-events al Billing que está corriendo.
+        builder.ConfigureTestServices(services => services.DisableAllExternalWolverineTransports());
     }
 }

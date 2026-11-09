@@ -29,10 +29,12 @@ public sealed class CampaignScheduleConfiguration : IEntityTypeConfiguration<Cam
         builder.Property(s => s.LeaseToken);
         builder.Property(s => s.LeasedUntilUtc);
         builder.Property(s => s.RunAsUserId);
+        builder.Property(s => s.PauseReason).HasConversion<string>().HasMaxLength(30);
         builder.Ignore(s => s.EffectiveRunAsUserId);
         builder.Ignore(s => s.IsOpen);
         builder.Property(s => s.CreatedAtUtc).IsRequired();
         builder.Property(s => s.UpdatedAtUtc).IsRequired();
+        builder.Property(s => s.RowVersion).IsRowVersion();
 
         // Scan del claim: schedules Active vencidos por NextFireAtUtc.
         builder

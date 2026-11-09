@@ -1,5 +1,4 @@
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
-using BuildingBlocks.Results;
 using TaxVision.Tenant.Application.Compliance.Abstractions;
 using TaxVision.Tenant.Application.Compliance.Reminders;
 using TaxVision.Tenant.Domain.Compliance;
@@ -7,7 +6,7 @@ using TaxVision.Tenant.Tests.TestSupport;
 
 namespace TaxVision.Tenant.Tests.Application;
 
-/// <summary>Paso del job del WISP por oficina: el agregado decide, se guarda y recién después se publica.</summary>
+/// <summary>Paso del job del WISP por oficina: el agregado decide y anota, y se devuelve el aviso a publicar.</summary>
 public sealed class WispReviewRemindersTests
 {
     private static readonly DateTime SavedAt = new(2026, 11, 3, 15, 0, 0, DateTimeKind.Utc);
@@ -15,80 +14,52 @@ public sealed class WispReviewRemindersTests
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _coordinatorId = Guid.NewGuid();
     private readonly InMemoryOfficeComplianceRepository _compliances = new();
-    private readonly RecordingMessageBus _bus = new();
-    private readonly PublishOrderUnitOfWork _unitOfWork;
-
-    public WispReviewRemindersTests() => _unitOfWork = new PublishOrderUnitOfWork(_bus);
 
     [Fact]
-    public async Task A_due_reminder_is_saved_first_and_then_published_with_the_coordinator()
+    public async Task Due_ReturnsEvent()
     {
         Seed("2025-12-01");
 
-        var reminder = await SendAsync(new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc));
+        var evt = await RegisterAsync(new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc));
 
-        Assert.Equal(WispReviewReminderStage.DueSoon, reminder!.Stage);
-        Assert.Equal([0], _unitOfWork.PublishedAtSave);
-        var evt = Assert.Single(_bus.Published.OfType<OfficeWispReviewDueIntegrationEvent>());
+        Assert.NotNull(evt);
         Assert.Equal(_tenantId, evt.OfficeTenantId);
         Assert.Equal(_tenantId, evt.TenantId);
         Assert.Equal(new DateOnly(2026, 12, 1), evt.DueOn);
         Assert.Equal(OfficeWispReviewStages.DueSoon, evt.Stage);
         Assert.Equal(_coordinatorId, evt.SecurityCoordinatorUserId);
         Assert.Equal("sweep-correlation", evt.CorrelationId);
+        Assert.Equal(new DateOnly(2026, 11, 10), _compliances.Compliances[0].WispReminderSentOn);
     }
 
     [Fact]
-    public async Task Running_twice_the_same_day_publishes_once()
+    public async Task Running_twice_the_same_day_returns_the_event_once()
     {
         Seed("2025-12-01");
         var now = new DateTime(2026, 12, 2, 12, 0, 0, DateTimeKind.Utc);
 
-        await SendAsync(now);
-        var second = await SendAsync(now.AddHours(6));
+        var first = await RegisterAsync(now);
+        var second = await RegisterAsync(now.AddHours(6));
 
+        Assert.Equal(OfficeWispReviewStages.Overdue, first!.Stage);
         Assert.Null(second);
-        Assert.Equal(
-            OfficeWispReviewStages.Overdue,
-            Assert.Single(_bus.Published.OfType<OfficeWispReviewDueIntegrationEvent>()).Stage
-        );
-        Assert.Single(_unitOfWork.PublishedAtSave);
     }
 
     [Fact]
-    public async Task Nothing_due_saves_and_publishes_nothing()
+    public async Task NotDue_ReturnsNull()
     {
         Seed("2026-06-01");
 
-        Assert.Null(await SendAsync(new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc)));
+        Assert.Null(await RegisterAsync(new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc)));
         Assert.Null(
-            await WispReviewReminders.SendIfDueAsync(
+            await WispReviewReminders.RegisterIfDueAsync(
                 new WispReminderCandidate(Guid.NewGuid(), "Etc/UTC"),
                 SavedAt,
                 "sweep-correlation",
                 _compliances,
-                _unitOfWork,
-                _bus,
                 CancellationToken.None
             )
         );
-
-        Assert.Empty(_unitOfWork.PublishedAtSave);
-        Assert.Empty(_bus.Published);
-    }
-
-    [Fact]
-    public async Task A_conflicting_save_publishes_nothing()
-    {
-        Seed("2025-12-01");
-        _unitOfWork.ConflictOnSave.Add(1);
-
-        var conflict = await Assert.ThrowsAsync<ConflictException>(() =>
-            SendAsync(new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc))
-        );
-
-        Assert.Equal("Persistence.ConcurrencyConflict", conflict.Code);
-        Assert.Empty(_bus.Published);
     }
 
     [Fact]
@@ -97,9 +68,9 @@ public sealed class WispReviewRemindersTests
         Seed("2025-12-01");
         var now = new DateTime(2026, 12, 1, 3, 0, 0, DateTimeKind.Utc);
 
-        var reminder = await SendAsync(now, "America/Los_Angeles");
+        var evt = await RegisterAsync(now, "America/Los_Angeles");
 
-        Assert.Equal(WispReviewReminderStage.DueSoon, reminder!.Stage);
+        Assert.Equal(OfficeWispReviewStages.DueSoon, evt!.Stage);
     }
 
     [Fact]
@@ -129,14 +100,12 @@ public sealed class WispReviewRemindersTests
         _compliances.Compliances.Add(compliance);
     }
 
-    private Task<WispReviewReminder?> SendAsync(DateTime nowUtc, string timeZoneId = "Etc/UTC") =>
-        WispReviewReminders.SendIfDueAsync(
+    private Task<OfficeWispReviewDueIntegrationEvent?> RegisterAsync(DateTime nowUtc, string timeZoneId = "Etc/UTC") =>
+        WispReviewReminders.RegisterIfDueAsync(
             new WispReminderCandidate(_tenantId, timeZoneId),
             nowUtc,
             "sweep-correlation",
             _compliances,
-            _unitOfWork,
-            _bus,
             CancellationToken.None
         );
 }

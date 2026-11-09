@@ -1,4 +1,3 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -7,7 +6,6 @@ using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.ReconcileHostedCheckout;
 
@@ -48,11 +46,9 @@ public static class ReconcileHostedCheckoutHandler
         ISaaSPaymentRepository payments,
         IPaymentAdapterFactory providerFactory,
         IUnitOfWork unitOfWork,
-        ICorrelationContext correlation,
-        IMessageBus bus,
         ILogger<SaaSPayment> logger,
         CancellationToken ct,
-        ITenantRegistry? tenants = null
+        IPaymentAppMetrics? metrics = null
     )
     {
         var payment = await payments.GetByIdAsync(command.PaymentId, command.TenantId, ct);
@@ -75,6 +71,10 @@ public static class ReconcileHostedCheckoutHandler
                     "This payment type does not support hosted-checkout reconcile."
                 )
             );
+
+        // Cerrado sin cobro: solo se consulta si el proveedor cobró igual (éxito tardío → revisión).
+        if (payment.Status is PaymentStatus.Failed or PaymentStatus.Cancelled)
+            return await CheckLateSuccessAsync(payment, providerFactory, unitOfWork, metrics, logger, ct);
 
         // Idempotente: si ya es terminal (webhook llegó antes) devolvemos el estado actual.
         if (IsTerminal(payment.Status))
@@ -110,44 +110,76 @@ public static class ReconcileHostedCheckoutHandler
         var outcome = statusResult.Value;
         ReconcileReferenceIfNeeded(payment, outcome.ProviderChargeReference, logger, nowUtc);
 
-        var changed = await ApplyOutcomeAsync(payment, outcome, bus, correlation.CorrelationId, nowUtc, tenants, ct);
+        // El resultado lo avisa SaaSPaymentDomainEventHandler con el commit (evento de dominio).
+        var changed = ApplyOutcome(payment, outcome, nowUtc);
         if (changed)
             await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(BuildResponse(payment));
     }
 
-    private static async Task<bool> ApplyOutcomeAsync(
+    // Lectura de estado, nunca Finalize: en PayPal Finalize captura una orden aprobada, y sobre un pago
+    // cerrado eso cobraría al cliente. Si el proveedor ya cobró, el pago queda marcado para revisión.
+    private static async Task<Result<ReconcileHostedCheckoutResponse>> CheckLateSuccessAsync(
         SaaSPayment payment,
-        ChargeAuthorizationResult outcome,
-        IMessageBus bus,
-        string correlationId,
-        DateTime nowUtc,
-        ITenantRegistry? tenants,
+        IPaymentAdapterFactory providerFactory,
+        IUnitOfWork unitOfWork,
+        IPaymentAppMetrics? metrics,
+        ILogger<SaaSPayment> logger,
         CancellationToken ct
     )
+    {
+        if (payment.ReviewRequiredAtUtc is not null || payment.ExternalChargeReference is null)
+            return Result.Success(BuildResponse(payment));
+
+        IPaymentProvider adapter;
+        try
+        {
+            adapter = providerFactory.Resolve(payment.ProviderCode);
+        }
+        catch (InvalidOperationException)
+        {
+            return Result.Success(BuildResponse(payment));
+        }
+
+        var statusResult = await adapter.GetChargeStatusAsync(payment.ExternalChargeReference.Value, ct);
+        if (statusResult.IsSuccess && statusResult.Value.Status == PaymentStatus.Succeeded)
+        {
+            var flagged = LateProviderSuccessPolicy.Flag(
+                payment,
+                SaaSPayment.ReviewReasonLateProviderSuccess,
+                statusResult.Value.ProviderChargeReference,
+                paidAmountCents: null,
+                paidCurrency: null,
+                metrics,
+                logger,
+                DateTime.UtcNow
+            );
+            if (flagged)
+                await unitOfWork.SaveChangesAsync(ct);
+        }
+
+        return Result.Success(BuildResponse(payment));
+    }
+
+    private static bool ApplyOutcome(SaaSPayment payment, ChargeAuthorizationResult outcome, DateTime nowUtc)
     {
         switch (outcome.Status)
         {
             case PaymentStatus.Succeeded:
-                var succeeded = payment.MarkSucceeded(nowUtc, Guid.Empty);
-                if (succeeded.IsSuccess)
-                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, tenants);
-                return succeeded.IsSuccess;
+                return payment.MarkSucceeded(nowUtc, Guid.Empty).IsSuccess;
 
             case PaymentStatus.Failed
             or PaymentStatus.Cancelled:
-                var failed = payment.MarkFailed(
-                    outcome.FailureCode ?? "Provider.Unknown",
-                    outcome.FailureMessage ?? "The provider reported the charge as failed.",
-                    willRetry: false,
-                    nextRetryAtUtc: null,
-                    Guid.Empty,
-                    nowUtc
-                );
-                if (failed.IsSuccess)
-                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, tenants);
-                return failed.IsSuccess;
+                return payment
+                    .MarkFailed(
+                        outcome.FailureCode ?? "Provider.Unknown",
+                        outcome.FailureMessage ?? "The provider reported the charge as failed.",
+                        DunningDecision.NoRetry,
+                        Guid.Empty,
+                        nowUtc
+                    )
+                    .IsSuccess;
 
             default:
                 return false;

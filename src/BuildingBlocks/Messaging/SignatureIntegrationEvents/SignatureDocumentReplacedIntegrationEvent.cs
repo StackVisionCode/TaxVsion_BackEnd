@@ -1,3 +1,5 @@
+using Wolverine.Attributes;
+
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// deja constancia de los fileId viejo/nuevo, el page count antes/después y cuántos campos
 /// quedaron invalidados por el cambio de páginas.
 /// </summary>
+[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureDocumentReplacedIntegrationEvent")]
 public sealed record SignatureDocumentReplacedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

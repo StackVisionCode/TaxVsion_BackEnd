@@ -35,4 +35,8 @@ public static class WalletErrors
         "Wallet.CurrencyMismatch",
         "La moneda de la operación no coincide con la del monedero."
     );
+    public static readonly Error TopUpNotPending = new(
+        "Wallet.TopUpNotPending",
+        "This top-up order can no longer start a checkout."
+    );
 }
