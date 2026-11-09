@@ -27,15 +27,17 @@ public sealed class WolverineConflictPolicyTests
     {
         var probe = new AttemptProbe();
         using var host = await StartAsync(probe);
+        // Calienta el handler: su compilación no cuenta en el reloj (en el CI cargado tardó más de 20 s).
+        await host.MessageBus().InvokeAsync(new ConcurrencyConflictProbe(FailuresBeforeSuccess: 0));
 
         var clock = Stopwatch.StartNew();
         var conflict = await Assert.ThrowsAsync<ConflictException>(() =>
-            host.MessageBus().InvokeAsync(new ConcurrencyConflictProbe(FailuresBeforeSuccess: 1))
+            host.MessageBus().InvokeAsync(new ConcurrencyConflictProbe(FailuresBeforeSuccess: 2))
         );
 
         Assert.Equal(WolverineConflictPolicy.ConcurrencyConflictCode, conflict.Code);
-        Assert.Single(probe.AttemptsOf<ConcurrencyConflictProbe>());
-        // El reintento en línea tardaría 21 s; el margen absorbe la compilación del handler bajo carga.
+        // El calentamiento y un solo intento: sin reintento en línea.
+        Assert.Equal(2, probe.AttemptsOf<ConcurrencyConflictProbe>().Count);
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"Tardó {clock.Elapsed.TotalMilliseconds:F0} ms.");
     }
 
