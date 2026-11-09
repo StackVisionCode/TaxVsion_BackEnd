@@ -38,8 +38,7 @@ public sealed class ScanQueueDurabilityIntegrationTests : IAsyncLifetime
     private readonly FakeObjectStorage _storage = new() { DownloadContent = [0x25, 0x50, 0x44, 0x46] };
     private string _objectKey = default!;
 
-    private readonly string _connectionString =
-        CloudStorageIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = CloudStorageIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -112,7 +111,10 @@ public sealed class ScanQueueDurabilityIntegrationTests : IAsyncLifetime
             await first.StopAsync(TimeSpan.FromSeconds(10));
         }
 
-        Assert.True(await CountIncomingEnvelopesAsync() > 0, "ScanFileCommand was not persisted while the host was down.");
+        Assert.True(
+            await CountIncomingEnvelopesAsync() > 0,
+            "ScanFileCommand was not persisted while the host was down."
+        );
         // El reclamo ya confirmó Scanning (fila L); el veredicto no.
         Assert.Equal(FileStatus.Scanning, await ReadStatusAsync());
 

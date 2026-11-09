@@ -34,7 +34,10 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
         var busA = new CapturingMessageBus();
         var busB = new CapturingMessageBus();
 
-        var outcomes = await Task.WhenAll(PurchaseAddOnAsync(definition, gate, busA), PurchaseAddOnAsync(definition, gate, busB));
+        var outcomes = await Task.WhenAll(
+            PurchaseAddOnAsync(definition, gate, busA),
+            PurchaseAddOnAsync(definition, gate, busB)
+        );
 
         Assert.Single(outcomes, o => o.Error is null && o.Result!.IsSuccess);
         var loser = Assert.Single(outcomes, o => o.Error is not null);
@@ -108,8 +111,22 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
         try
         {
             var result = await PurchaseAddOnHandler.Handle(
-                new PurchaseAddOnCommand(_db.TenantId, definition.Code.Value, 1, AutoRenew: true, Guid.NewGuid(), clientKey),
-                new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(new TenantSubscriptionRepository(db), new FakePlanRepo(null), new FakeModuleRepo(), new FakeAddOnDefinitionRepository(definition), new SubscriptionTenantSettingsRepository(db), new GatedTenantAddOnRepo(new TenantAddOnRepository(db), gate)),
+                new PurchaseAddOnCommand(
+                    _db.TenantId,
+                    definition.Code.Value,
+                    1,
+                    AutoRenew: true,
+                    Guid.NewGuid(),
+                    clientKey
+                ),
+                new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(
+                    new TenantSubscriptionRepository(db),
+                    new FakePlanRepo(null),
+                    new FakeModuleRepo(),
+                    new FakeAddOnDefinitionRepository(definition),
+                    new SubscriptionTenantSettingsRepository(db),
+                    new GatedTenantAddOnRepo(new TenantAddOnRepository(db), gate)
+                ),
                 new GatedTenantAddOnRepo(new TenantAddOnRepository(db), gate),
                 db,
                 bus,
@@ -160,7 +177,9 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
         await using var db = _db.NewContext();
         var nowUtc = DateTime.UtcNow;
         var settings = SubscriptionTenantSettings.Default(_db.TenantId, Guid.Empty, nowUtc).Value;
-        Assert.True(settings.ApplyPatch(new SubscriptionSettingsPatch(MaxSeatsAllowed: maxSeats), Guid.Empty, nowUtc).IsSuccess);
+        Assert.True(
+            settings.ApplyPatch(new SubscriptionSettingsPatch(MaxSeatsAllowed: maxSeats), Guid.Empty, nowUtc).IsSuccess
+        );
         db.TenantSettings.Add(settings);
         var subscription = await db.Subscriptions.IgnoreQueryFilters().SingleAsync(s => s.TenantId == _db.TenantId);
         for (var i = 0; i < activeSeats; i++)
@@ -188,7 +207,9 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
     {
         var pricing = SeatPricing.Seed(Guid.NewGuid(), DateTime.UtcNow);
         pricing.AddPriceTier(
-            SeatPriceTier.Create(pricing.Id, SeatType.Standard, BillingCycle.Monthly, Money.Create(15m, "USD").Value).Value
+            SeatPriceTier
+                .Create(pricing.Id, SeatType.Standard, BillingCycle.Monthly, Money.Create(15m, "USD").Value)
+                .Value
         );
         return pricing;
     }
@@ -228,11 +249,17 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
             await inner.AddAsync(addOn, ct);
         }
 
-        public Task<IReadOnlyList<TenantAddOn>> GetDueForRenewalAsync(DateTime n, int b, CancellationToken ct = default) =>
-            inner.GetDueForRenewalAsync(n, b, ct);
+        public Task<IReadOnlyList<TenantAddOn>> GetDueForRenewalAsync(
+            DateTime n,
+            int b,
+            CancellationToken ct = default
+        ) => inner.GetDueForRenewalAsync(n, b, ct);
 
-        public Task<IReadOnlyList<TenantAddOn>> GetSuspendedBeforeAsync(DateTime c, int b, CancellationToken ct = default) =>
-            inner.GetSuspendedBeforeAsync(c, b, ct);
+        public Task<IReadOnlyList<TenantAddOn>> GetSuspendedBeforeAsync(
+            DateTime c,
+            int b,
+            CancellationToken ct = default
+        ) => inner.GetSuspendedBeforeAsync(c, b, ct);
 
         public Task<IReadOnlyList<TenantAddOn>> GetCancelledPastPeriodEndAsync(
             DateTime n,
@@ -248,8 +275,10 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
         public Task<SubscriptionSeat?> GetByIdAsync(Guid seatId, Guid tenantId, CancellationToken ct = default) =>
             inner.GetByIdAsync(seatId, tenantId, ct);
 
-        public Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
-            inner.GetByTenantIdAsync(tenantId, ct);
+        public Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => inner.GetByTenantIdAsync(tenantId, ct);
 
         public async Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default)
         {
@@ -261,8 +290,11 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
             await inner.AddAsync(seat, ct);
         }
 
-        public Task<IReadOnlyList<SubscriptionSeat>> GetDueForRenewalAsync(DateTime n, int b, CancellationToken ct = default) =>
-            inner.GetDueForRenewalAsync(n, b, ct);
+        public Task<IReadOnlyList<SubscriptionSeat>> GetDueForRenewalAsync(
+            DateTime n,
+            int b,
+            CancellationToken ct = default
+        ) => inner.GetDueForRenewalAsync(n, b, ct);
 
         public Task<IReadOnlyList<SubscriptionSeat>> GetSuspendedBeforeAsync(
             DateTime c,

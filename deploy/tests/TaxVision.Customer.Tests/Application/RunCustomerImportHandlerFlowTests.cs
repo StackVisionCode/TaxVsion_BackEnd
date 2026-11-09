@@ -125,14 +125,18 @@ public sealed class RunCustomerImportHandlerFlowTests
     {
         var world = new ImportWorld();
         world.Catalogs.Unknown = true;
-        world.Rows.AddRange(
-            [
-                new ImportCustomerRow { RowNumber = 2, Kind = "Alien", FirstName = "Bad", LastName = "Kind" },
-                ImportWorld.Person(3, occupation: "Astronaut"),
-                ImportWorld.Business(4, naics: "999999"),
-                ImportWorld.Person(5),
-            ]
-        );
+        world.Rows.AddRange([
+            new ImportCustomerRow
+            {
+                RowNumber = 2,
+                Kind = "Alien",
+                FirstName = "Bad",
+                LastName = "Kind",
+            },
+            ImportWorld.Person(3, occupation: "Astronaut"),
+            ImportWorld.Business(4, naics: "999999"),
+            ImportWorld.Person(5),
+        ]);
 
         await world.RunAsync();
 
@@ -166,13 +170,11 @@ public sealed class RunCustomerImportHandlerFlowTests
     public async Task Emails_are_locked_once_in_order_before_looking_for_duplicates()
     {
         var world = new ImportWorld();
-        world.Rows.AddRange(
-            [
-                ImportWorld.Person(2, email: "zed@example.com"),
-                ImportWorld.Person(3, email: "amy@example.com"),
-                ImportWorld.Person(4, email: "ZED@example.com"),
-            ]
-        );
+        world.Rows.AddRange([
+            ImportWorld.Person(2, email: "zed@example.com"),
+            ImportWorld.Person(3, email: "amy@example.com"),
+            ImportWorld.Person(4, email: "ZED@example.com"),
+        ]);
 
         await world.RunAsync();
 
@@ -545,9 +547,7 @@ public sealed class RunCustomerImportHandlerFlowTests
         {
             Downloads++;
             return Task.FromResult(
-                FailDownload
-                    ? Result.Failure<byte[]>(new Error("Storage.Down", "boom"))
-                    : Result.Success<byte[]>([])
+                FailDownload ? Result.Failure<byte[]>(new Error("Storage.Down", "boom")) : Result.Success<byte[]>([])
             );
         }
 

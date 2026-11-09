@@ -29,6 +29,9 @@
     <ProjectReference Include="..\..\..\src\Services\Campaigns\TaxVision.Campaigns.Api\TaxVision.Campaigns.Api.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
-    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" Aliases="BbTesting" />
+    <ProjectReference
+      Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj"
+      Aliases="BbTesting"
+    />
   </ItemGroup>
 </Project>

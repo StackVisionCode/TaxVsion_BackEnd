@@ -32,7 +32,8 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 name: "IX_TenantPayments_ProviderChargeReferenceOnConnect",
                 table: "TenantPayments",
                 column: "ProviderChargeReferenceOnConnect",
-                filter: "[ProviderChargeReferenceOnConnect] IS NOT NULL");
+                filter: "[ProviderChargeReferenceOnConnect] IS NOT NULL"
+            );
         }
 
         /// <inheritdoc />
@@ -42,7 +43,8 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
 
             migrationBuilder.DropIndex(
                 name: "IX_TenantPayments_ProviderChargeReferenceOnConnect",
-                table: "TenantPayments");
+                table: "TenantPayments"
+            );
         }
     }
 }

@@ -27,7 +27,10 @@ public sealed class TenantCommandEventCountTests
     [Theory]
     [InlineData(EnumTenantStatus.TenantStatus.Suspended, false)]
     [InlineData(EnumTenantStatus.TenantStatus.Closed, false)]
-    public async Task ChangeStatus_EmitsExactlyOneTenantStatusChanged(EnumTenantStatus.TenantStatus status, bool isActive)
+    public async Task ChangeStatus_EmitsExactlyOneTenantStatusChanged(
+        EnumTenantStatus.TenantStatus status,
+        bool isActive
+    )
     {
         var tenant = NewTenant();
         var fixture = new Fixture(tenant);
@@ -205,7 +208,10 @@ public sealed class TenantCommandEventCountTests
         private readonly RecordingMessageBus _bus = new();
 
         public IReadOnlyList<object> Emitted =>
-            [.. _bus.Published.Where(m => m is not IDomainEvent), .. TenantDomainEventReplay.Dispatch(tenant.DomainEvents)];
+            [
+                .. _bus.Published.Where(m => m is not IDomainEvent),
+                .. TenantDomainEventReplay.Dispatch(tenant.DomainEvents),
+            ];
 
         public async Task RunAsync(Type handlerType, object message)
         {
@@ -230,7 +236,8 @@ public sealed class TenantCommandEventCountTests
                 _ when type == typeof(IUnitOfWork) => new CountingUnitOfWork(),
                 _ when type == typeof(ICorrelationContext) => new NoopCorrelationContext(),
                 _ when type == typeof(ICacheService) => new NoOpCache(),
-                _ when type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Microsoft.Extensions.Logging.ILogger<>) =>
+                _ when type.IsGenericType
+                        && type.GetGenericTypeDefinition() == typeof(Microsoft.Extensions.Logging.ILogger<>) =>
                     Activator.CreateInstance(typeof(NullLogger<>).MakeGenericType(type.GetGenericArguments()[0])),
                 _ => throw new InvalidOperationException($"La prueba no sabe resolver {type.Name}."),
             };

@@ -190,7 +190,11 @@ public sealed class SealingMultiDocumentTests
         await SignatureRequestCompletedConsumer.Handle(
             readyEvent,
             repository,
-            new SignatureImageScanGate(new EmptyFileMetadataRepository(), storage, NullLogger<SignatureRequest>.Instance),
+            new SignatureImageScanGate(
+                new EmptyFileMetadataRepository(),
+                storage,
+                NullLogger<SignatureRequest>.Instance
+            ),
             new SealingDocumentProcessor(
                 storage,
                 new DeterministicSealer(),
@@ -278,7 +282,11 @@ public sealed class SealingMultiDocumentTests
         await SignatureRequestCompletedConsumer.Handle(
             readyEvent,
             repository,
-            new SignatureImageScanGate(new EmptyFileMetadataRepository(), storage, NullLogger<SignatureRequest>.Instance),
+            new SignatureImageScanGate(
+                new EmptyFileMetadataRepository(),
+                storage,
+                NullLogger<SignatureRequest>.Instance
+            ),
             new SealingDocumentProcessor(
                 storage,
                 new DeterministicSealer(),

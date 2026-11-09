@@ -2,9 +2,9 @@ using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Onboarding.Application.Sessions;
-using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Onboarding.Domain.EmailVerification;
 using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 

@@ -391,7 +391,8 @@ public sealed class CustomerUserOffboardedConsumerTests
                     .ToList()
             );
 
-        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) => throw new NotImplementedException();
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
+            throw new NotImplementedException();
 
         public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
             Task.FromResult(All.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));

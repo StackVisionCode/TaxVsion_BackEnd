@@ -15,15 +15,14 @@ namespace TaxVision.Reminder.Infrastructure.Persistence.Migrations
                 name: "AnchorAsOfUtc",
                 table: "Reminders",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "AnchorAsOfUtc",
-                table: "Reminders");
+            migrationBuilder.DropColumn(name: "AnchorAsOfUtc", table: "Reminders");
         }
     }
 }

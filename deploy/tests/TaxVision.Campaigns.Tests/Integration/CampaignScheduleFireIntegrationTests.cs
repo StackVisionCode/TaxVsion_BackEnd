@@ -13,8 +13,8 @@ using Microsoft.Extensions.Hosting;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Runs;
-using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
+using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
 using TaxVision.Campaigns.Application.Scheduling.Commands;
 using TaxVision.Campaigns.Application.Senders.Abstractions;
@@ -235,7 +235,10 @@ public sealed class CampaignScheduleFireIntegrationTests : IAsyncLifetime
                     .PublishMessage<CampaignDispatchRequestedIntegrationEvent>()
                     .ToLocalQueue("cmp01-sink")
                     .UseDurableInbox();
-                options.PublishMessage<CampaignRunStartedIntegrationEvent>().ToLocalQueue("cmp01-sink").UseDurableInbox();
+                options
+                    .PublishMessage<CampaignRunStartedIntegrationEvent>()
+                    .ToLocalQueue("cmp01-sink")
+                    .UseDurableInbox();
                 options
                     .PublishMessage<CampaignRunCompletedIntegrationEvent>()
                     .ToLocalQueue("cmp01-sink")
@@ -275,7 +278,9 @@ public sealed class CampaignScheduleFireIntegrationTests : IAsyncLifetime
         {
             if (
                 Enabled
-                && eventData.Context!.ChangeTracker.Entries<CampaignSchedule>().Any(e => e.State == EntityState.Modified)
+                && eventData
+                    .Context!.ChangeTracker.Entries<CampaignSchedule>()
+                    .Any(e => e.State == EntityState.Modified)
             )
             {
                 Triggered = true;
@@ -290,8 +295,7 @@ public sealed class CampaignScheduleFireIntegrationTests : IAsyncLifetime
     {
         private static readonly ConcurrentDictionary<Guid, ConcurrentBag<object>> Received = new();
 
-        public static void Add(Guid tenantId, object message) =>
-            Received.GetOrAdd(tenantId, _ => []).Add(message);
+        public static void Add(Guid tenantId, object message) => Received.GetOrAdd(tenantId, _ => []).Add(message);
 
         public static IReadOnlyList<object> ForTenant(Guid tenantId) =>
             Received.TryGetValue(tenantId, out var bag) ? bag.ToList() : [];
@@ -299,7 +303,8 @@ public sealed class CampaignScheduleFireIntegrationTests : IAsyncLifetime
 
     public static class SinkHandler
     {
-        public static void Handle(CampaignDispatchRequestedIntegrationEvent message) => Sink.Add(message.TenantId, message);
+        public static void Handle(CampaignDispatchRequestedIntegrationEvent message) =>
+            Sink.Add(message.TenantId, message);
 
         public static void Handle(CampaignRunStartedIntegrationEvent message) => Sink.Add(message.TenantId, message);
 

@@ -18,8 +18,7 @@ public sealed class QuotaRecalculationIntegrationTests : IAsyncLifetime
     private const string Sha256 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
     private readonly Guid _tenantId = Guid.NewGuid();
 
-    private readonly string _connectionString =
-        CloudStorageIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = CloudStorageIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

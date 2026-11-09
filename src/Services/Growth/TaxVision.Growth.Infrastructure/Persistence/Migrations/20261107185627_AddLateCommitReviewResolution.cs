@@ -17,28 +17,24 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 table: "LateCommitReviews",
                 type: "nvarchar(500)",
                 maxLength: 500,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "ResolvedByUserId",
                 schema: "codes",
                 table: "LateCommitReviews",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ResolutionNote",
-                schema: "codes",
-                table: "LateCommitReviews");
+            migrationBuilder.DropColumn(name: "ResolutionNote", schema: "codes", table: "LateCommitReviews");
 
-            migrationBuilder.DropColumn(
-                name: "ResolvedByUserId",
-                schema: "codes",
-                table: "LateCommitReviews");
+            migrationBuilder.DropColumn(name: "ResolvedByUserId", schema: "codes", table: "LateCommitReviews");
         }
     }
 }

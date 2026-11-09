@@ -234,8 +234,7 @@ public sealed class BillingAccessTests
             return Task.CompletedTask;
         }
 
-        public Task<Tenant?> GetByIdAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult(Current);
+        public Task<Tenant?> GetByIdAsync(Guid tenantId, CancellationToken ct = default) => Task.FromResult(Current);
 
         public Task UpsertCreatedAsync(
             Guid tenantId,

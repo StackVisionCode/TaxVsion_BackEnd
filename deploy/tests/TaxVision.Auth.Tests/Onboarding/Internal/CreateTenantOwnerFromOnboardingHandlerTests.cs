@@ -1,19 +1,19 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
-using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Onboarding.Application.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
-using TaxVision.Auth.Onboarding.Application.Internal.Commands;
-using TaxVision.Auth.Onboarding.Application.Sagas.Commands;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Audit;
-using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
-using TaxVision.Auth.Domain.Terms;
-using TaxVision.Auth.Onboarding.Domain.ValueObjects;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Terms;
+using TaxVision.Auth.Domain.Terms;
 using TaxVision.Auth.Domain.Users;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.Internal.Commands;
+using TaxVision.Auth.Onboarding.Application.Sagas.Commands;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
+using TaxVision.Auth.Onboarding.Domain.ValueObjects;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding.Internal;

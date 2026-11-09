@@ -157,7 +157,7 @@ public sealed class WalletCommandEventCountTests
         }
 
         public IReadOnlyList<object> Emitted() =>
-        [.. _emitted, .. _bus.Published.OfType<Envelope>().Select(e => e.Message!)];
+            [.. _emitted, .. _bus.Published.OfType<Envelope>().Select(e => e.Message!)];
 
         public WalletBalanceChangedIntegrationEvent SingleBalanceChanged()
         {
@@ -186,7 +186,9 @@ public sealed class WalletCommandEventCountTests
                     p.ParameterType == command.GetType() ? command
                     : p.ParameterType == typeof(CancellationToken) ? CancellationToken.None
                     : IsLogger(p.ParameterType)
-                        ? Activator.CreateInstance(typeof(NullLogger<>).MakeGenericType(p.ParameterType.GetGenericArguments()))
+                        ? Activator.CreateInstance(
+                            typeof(NullLogger<>).MakeGenericType(p.ParameterType.GetGenericArguments())
+                        )
                     : services.First(s => p.ParameterType.IsInstanceOfType(s))
                 )
                 .ToArray();

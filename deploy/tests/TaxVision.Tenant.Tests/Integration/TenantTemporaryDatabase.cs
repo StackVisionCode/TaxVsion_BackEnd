@@ -68,7 +68,10 @@ internal sealed class TenantTemporaryDatabase
     // Solo las de más de una hora: las recientes pueden ser de otra clase de pruebas corriendo ahora.
     private static async Task DropLeftoversAsync()
     {
-        var master = new SqlConnectionStringBuilder(BaseConnection.Value) { InitialCatalog = "master" }.ConnectionString;
+        var master = new SqlConnectionStringBuilder(BaseConnection.Value)
+        {
+            InitialCatalog = "master",
+        }.ConnectionString;
         await using var connection = new SqlConnection(master);
         await connection.OpenAsync();
 

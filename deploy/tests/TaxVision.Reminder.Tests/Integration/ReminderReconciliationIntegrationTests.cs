@@ -75,6 +75,5 @@ public sealed class ReminderReconciliationIntegrationTests : IAsyncLifetime
 /// <summary>Cadena de la base local para las T-INT: variable de entorno o user-secrets del Api de Reminder.</summary>
 internal static class ReminderTestDatabase
 {
-    public static string ConnectionString =>
-        ReminderIntegrationDatabase.ConnectionString;
+    public static string ConnectionString => ReminderIntegrationDatabase.ConnectionString;
 }

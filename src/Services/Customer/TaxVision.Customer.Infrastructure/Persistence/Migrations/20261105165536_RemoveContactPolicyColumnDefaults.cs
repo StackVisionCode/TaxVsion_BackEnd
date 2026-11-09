@@ -17,7 +17,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 nullable: false,
                 oldClrType: typeof(bool),
                 oldType: "bit",
-                oldDefaultValue: true);
+                oldDefaultValue: true
+            );
 
             migrationBuilder.AlterColumn<bool>(
                 name: "ContactPolicy_EmailEnabled",
@@ -26,7 +27,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 nullable: false,
                 oldClrType: typeof(bool),
                 oldType: "bit",
-                oldDefaultValue: true);
+                oldDefaultValue: true
+            );
         }
 
         /// <inheritdoc />
@@ -39,7 +41,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 nullable: false,
                 defaultValue: true,
                 oldClrType: typeof(bool),
-                oldType: "bit");
+                oldType: "bit"
+            );
 
             migrationBuilder.AlterColumn<bool>(
                 name: "ContactPolicy_EmailEnabled",
@@ -48,7 +51,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 nullable: false,
                 defaultValue: true,
                 oldClrType: typeof(bool),
-                oldType: "bit");
+                oldType: "bit"
+            );
         }
     }
 }

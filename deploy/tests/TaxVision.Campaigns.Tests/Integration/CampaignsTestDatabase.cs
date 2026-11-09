@@ -1,4 +1,5 @@
 extern alias BbTesting;
+using BbTesting::TaxVision.BuildingBlocks.Testing.Integration;
 
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
@@ -6,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using TaxVision.Campaigns.Infrastructure.Persistence;
-using BbTesting::TaxVision.BuildingBlocks.Testing.Integration;
 using Xunit;
 
 [assembly: TestFramework(TemporaryDatabaseTestFramework.TypeName, TemporaryDatabaseTestFramework.AssemblyName)]

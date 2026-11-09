@@ -15,15 +15,14 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 name: "AmountUpdatedAtUtc",
                 table: "PayableReferences",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "AmountUpdatedAtUtc",
-                table: "PayableReferences");
+            migrationBuilder.DropColumn(name: "AmountUpdatedAtUtc", table: "PayableReferences");
         }
     }
 }

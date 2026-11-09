@@ -1,5 +1,5 @@
-using JasperFx;
 using System.Security.Cryptography;
+using JasperFx;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;

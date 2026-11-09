@@ -335,10 +335,26 @@ public sealed class UserManagementCommandsTests
             new OffboardUserCommand(tenantId, client.Id, Guid.NewGuid(), SuccessorUserId: null),
             new SingleUserRepository(client),
             new NoopTenantAdminLock(),
-            new OffboardingHygiene(new InMemoryMfaRepository(), new InMemoryInvitationRepository(), new AuthAuditTrail(new ThrowingAuthAuditWriter(), new ThrowingRequestContext(), new ThrowingCorrelationContext())),
+            new OffboardingHygiene(
+                new InMemoryMfaRepository(),
+                new InMemoryInvitationRepository(),
+                new AuthAuditTrail(
+                    new ThrowingAuthAuditWriter(),
+                    new ThrowingRequestContext(),
+                    new ThrowingCorrelationContext()
+                )
+            ),
             new InMemoryOffboardingRunRepository(),
-            new SessionAccessCutoff(new ThrowingSessionRepository(), new ThrowingDenylist(), new ThrowingSessionRevocationPublisher()),
-            new AuthAuditTrail(new ThrowingAuthAuditWriter(), new ThrowingRequestContext(), new ThrowingCorrelationContext()),
+            new SessionAccessCutoff(
+                new ThrowingSessionRepository(),
+                new ThrowingDenylist(),
+                new ThrowingSessionRevocationPublisher()
+            ),
+            new AuthAuditTrail(
+                new ThrowingAuthAuditWriter(),
+                new ThrowingRequestContext(),
+                new ThrowingCorrelationContext()
+            ),
             new ThrowingUnitOfWork(),
             new FakeMessageBus(),
             CancellationToken.None
@@ -399,7 +415,11 @@ public sealed class UserManagementCommandsTests
             new DeactivateUserCommand(tenantId, target.Id, Guid.NewGuid(), callerActorType),
             users,
             new NoopTenantAdminLock(),
-            new SessionAccessCutoff(new ThrowingSessionRepository(), new ThrowingDenylist(), new ThrowingSessionRevocationPublisher()),
+            new SessionAccessCutoff(
+                new ThrowingSessionRepository(),
+                new ThrowingDenylist(),
+                new ThrowingSessionRevocationPublisher()
+            ),
             new ThrowingAuthAuditWriter(),
             new ThrowingRequestContext(),
             new ThrowingCorrelationContext(),
@@ -460,7 +480,11 @@ public sealed class UserManagementCommandsTests
             new DeactivateUserCommand(tenantId, target.Id, Guid.NewGuid(), UserActorType.TenantEmployee),
             new SingleUserRepository(target),
             new NoopTenantAdminLock(),
-            new SessionAccessCutoff(new QuietSessionRepository(), new QuietDenylist(), new RecordingSessionRevocationPublisher()),
+            new SessionAccessCutoff(
+                new QuietSessionRepository(),
+                new QuietDenylist(),
+                new RecordingSessionRevocationPublisher()
+            ),
             new QuietAuthAuditWriter(),
             new QuietRequestContext(),
             new QuietCorrelationContext(),
@@ -620,9 +644,17 @@ public sealed class UserManagementCommandsTests
             new OffboardUserCommand(tenantId, target.Id, Guid.NewGuid(), SuccessorUserId: null),
             new SingleUserRepository(target),
             new NoopTenantAdminLock(),
-            new OffboardingHygiene(new InMemoryMfaRepository(), new InMemoryInvitationRepository(), new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext())),
+            new OffboardingHygiene(
+                new InMemoryMfaRepository(),
+                new InMemoryInvitationRepository(),
+                new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext())
+            ),
             runs,
-            new SessionAccessCutoff(new QuietSessionRepository(), new QuietDenylist(), new RecordingSessionRevocationPublisher()),
+            new SessionAccessCutoff(
+                new QuietSessionRepository(),
+                new QuietDenylist(),
+                new RecordingSessionRevocationPublisher()
+            ),
             new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext()),
             unitOfWork,
             bus,
@@ -660,9 +692,17 @@ public sealed class UserManagementCommandsTests
             new OffboardUserCommand(tenantId, target.Id, Guid.NewGuid(), SuccessorUserId: null),
             new SingleUserRepository(target),
             new NoopTenantAdminLock(),
-            new OffboardingHygiene(new InMemoryMfaRepository(), new InMemoryInvitationRepository(), new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext())),
+            new OffboardingHygiene(
+                new InMemoryMfaRepository(),
+                new InMemoryInvitationRepository(),
+                new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext())
+            ),
             new InMemoryOffboardingRunRepository(),
-            new SessionAccessCutoff(new QuietSessionRepository(), new QuietDenylist(), new RecordingSessionRevocationPublisher()),
+            new SessionAccessCutoff(
+                new QuietSessionRepository(),
+                new QuietDenylist(),
+                new RecordingSessionRevocationPublisher()
+            ),
             new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext()),
             new QuietUnitOfWork(),
             bus,
@@ -736,7 +776,11 @@ public sealed class UserManagementCommandsTests
             new DeactivateUserCommand(tenantId, owner.Id, Guid.NewGuid(), UserActorType.TenantAdmin),
             new SingleUserWithAdminCountRepository(owner, activeAdmins: 2),
             new NoopTenantAdminLock(),
-            new SessionAccessCutoff(new ThrowingSessionRepository(), new ThrowingDenylist(), new ThrowingSessionRevocationPublisher()),
+            new SessionAccessCutoff(
+                new ThrowingSessionRepository(),
+                new ThrowingDenylist(),
+                new ThrowingSessionRevocationPublisher()
+            ),
             new ThrowingAuthAuditWriter(),
             new ThrowingRequestContext(),
             new ThrowingCorrelationContext(),
@@ -835,9 +879,17 @@ public sealed class UserManagementCommandsTests
             new OffboardUserCommand(tenantId, target.Id, actor, successor.Id, OffboardingReason.Resigned, " New job "),
             new UsersByIdRepository(target, successor),
             new NoopTenantAdminLock(),
-            new OffboardingHygiene(new InMemoryMfaRepository(), new InMemoryInvitationRepository(), new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext())),
+            new OffboardingHygiene(
+                new InMemoryMfaRepository(),
+                new InMemoryInvitationRepository(),
+                new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext())
+            ),
             runs,
-            new SessionAccessCutoff(new QuietSessionRepository(), new QuietDenylist(), new RecordingSessionRevocationPublisher()),
+            new SessionAccessCutoff(
+                new QuietSessionRepository(),
+                new QuietDenylist(),
+                new RecordingSessionRevocationPublisher()
+            ),
             new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext()),
             new QuietUnitOfWork(),
             new FakeMessageBus(),
@@ -869,9 +921,17 @@ public sealed class UserManagementCommandsTests
             ),
             new UsersByIdRepository(target),
             new NoopTenantAdminLock(),
-            new OffboardingHygiene(new InMemoryMfaRepository(), new InMemoryInvitationRepository(), new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext())),
+            new OffboardingHygiene(
+                new InMemoryMfaRepository(),
+                new InMemoryInvitationRepository(),
+                new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext())
+            ),
             new InMemoryOffboardingRunRepository(),
-            new SessionAccessCutoff(new QuietSessionRepository(), new QuietDenylist(), new RecordingSessionRevocationPublisher()),
+            new SessionAccessCutoff(
+                new QuietSessionRepository(),
+                new QuietDenylist(),
+                new RecordingSessionRevocationPublisher()
+            ),
             new AuthAuditTrail(new QuietAuthAuditWriter(), new QuietRequestContext(), new QuietCorrelationContext()),
             new QuietUnitOfWork(),
             new FakeMessageBus(),
@@ -895,9 +955,17 @@ public sealed class UserManagementCommandsTests
             new OffboardUserCommand(tenantId, target.Id, actorId ?? Guid.NewGuid(), SuccessorUserId: null),
             users,
             new NoopTenantAdminLock(),
-            new OffboardingHygiene(mfa, invitations, new AuthAuditTrail(audit, new QuietRequestContext(), new QuietCorrelationContext())),
+            new OffboardingHygiene(
+                mfa,
+                invitations,
+                new AuthAuditTrail(audit, new QuietRequestContext(), new QuietCorrelationContext())
+            ),
             new InMemoryOffboardingRunRepository(),
-            new SessionAccessCutoff(new QuietSessionRepository(), new QuietDenylist(), new RecordingSessionRevocationPublisher()),
+            new SessionAccessCutoff(
+                new QuietSessionRepository(),
+                new QuietDenylist(),
+                new RecordingSessionRevocationPublisher()
+            ),
             new AuthAuditTrail(audit, new QuietRequestContext(), new QuietCorrelationContext()),
             new QuietUnitOfWork(),
             new FakeMessageBus(),

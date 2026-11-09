@@ -49,10 +49,21 @@ public sealed class LoginDiscovery(
         return (new LoginAttempt(tenant, user, command.DeviceName), null);
     }
 
-    private async Task<LoginDecision> RefuseAnonymousAsync(LoginCommand command, string detailsJson, CancellationToken ct)
+    private async Task<LoginDecision> RefuseAnonymousAsync(
+        LoginCommand command,
+        string detailsJson,
+        CancellationToken ct
+    )
     {
         await throttler.RegisterFailureAsync(audit.IpAddress, ct);
-        await audit.RecordAsync(command.TenantId, null, AuthAuditAction.LoginFailed, false, ct, detailsJson: detailsJson);
+        await audit.RecordAsync(
+            command.TenantId,
+            null,
+            AuthAuditAction.LoginFailed,
+            false,
+            ct,
+            detailsJson: detailsJson
+        );
         return LoginDecision.Refused(LoginPasswordCheck.InvalidCredentials);
     }
 }

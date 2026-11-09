@@ -34,7 +34,8 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "IX_IncomingEmails_TenantId_AccountId_ProviderMessageId_NoInternetId",
-                table: "IncomingEmails");
+                table: "IncomingEmails"
+            );
         }
     }
 }

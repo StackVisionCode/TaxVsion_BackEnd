@@ -5,9 +5,9 @@ using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.ValueObjects;
-using TaxVision.Subscription.Tests.TestDoubles;
 using TaxVision.Subscription.Infrastructure.Catalog;
 using TaxVision.Subscription.Infrastructure.Persistence;
+using TaxVision.Subscription.Tests.TestDoubles;
 using Xunit;
 
 namespace TaxVision.Subscription.Tests.Infrastructure;

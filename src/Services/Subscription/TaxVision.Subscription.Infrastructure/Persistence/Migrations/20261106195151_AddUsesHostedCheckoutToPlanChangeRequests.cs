@@ -15,15 +15,14 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 table: "PlanChangeRequests",
                 type: "bit",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: false
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "UsesHostedCheckout",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "UsesHostedCheckout", table: "PlanChangeRequests");
         }
     }
 }

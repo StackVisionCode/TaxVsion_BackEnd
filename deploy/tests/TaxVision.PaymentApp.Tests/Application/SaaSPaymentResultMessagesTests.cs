@@ -34,7 +34,13 @@ public sealed class SaaSPaymentResultMessagesTests
     {
         var payment = ProcessingPayment(SaaSPaymentType.SeatRenewal);
         var nextRetryAtUtc = DateTime.UtcNow.AddHours(1);
-        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(nextRetryAtUtc), Guid.Empty, DateTime.UtcNow);
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            DunningDecision.RetryAt(nextRetryAtUtc),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
         var bus = new CapturingMessageBus();
 
         bus.Published.AddRange(await SaaSPaymentEventReplay.DispatchAsync(payment));
@@ -153,7 +159,10 @@ public sealed class SaaSPaymentResultMessagesTests
     public async Task Failed_renewal_carries_the_attempt_amount_and_the_saved_card()
     {
         var payment = ProcessingPayment(SaaSPaymentType.SubscriptionRenewal);
-        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
             Guid.Empty,
             DateTime.UtcNow
         );
@@ -237,7 +246,10 @@ public sealed class SaaSPaymentResultMessagesTests
     public async Task The_failure_is_published_even_if_the_saved_card_cannot_be_read()
     {
         var payment = ProcessingPayment(SaaSPaymentType.SubscriptionRenewal);
-        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
             Guid.Empty,
             DateTime.UtcNow
         );

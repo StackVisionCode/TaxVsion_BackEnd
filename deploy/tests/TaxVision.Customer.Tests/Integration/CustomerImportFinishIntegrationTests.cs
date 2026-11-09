@@ -32,8 +32,7 @@ namespace TaxVision.Customer.Tests.Integration;
 /// </summary>
 public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
 {
-    private static readonly string ConnectionString =
-        CustomerIntegrationDatabase.ConnectionString;
+    private static readonly string ConnectionString = CustomerIntegrationDatabase.ConnectionString;
 
     private readonly string _schema = $"cusbb3_{Guid.NewGuid():N}"[..15];
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -117,7 +116,14 @@ public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
     private async Task<Guid> SeedApplyingAttemptAsync()
     {
         var attempt = CustomerImportAttempt
-            .Create(_tenantId, _userId, $"cusbb3-{Guid.NewGuid():N}", DuplicateStrategy.Skip, ImportSourceKind.Csv, "three.csv")
+            .Create(
+                _tenantId,
+                _userId,
+                $"cusbb3-{Guid.NewGuid():N}",
+                DuplicateStrategy.Skip,
+                ImportSourceKind.Csv,
+                "three.csv"
+            )
             .Value;
         attempt.Start();
         attempt.SetTotalRows(3);
@@ -131,7 +137,11 @@ public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
     private async Task<ImportStatus> StatusOfAsync(Guid attemptId)
     {
         await using var db = NewContext();
-        return await db.CustomerImportAttempts.IgnoreQueryFilters().Where(a => a.Id == attemptId).Select(a => a.Status).SingleAsync();
+        return await db
+            .CustomerImportAttempts.IgnoreQueryFilters()
+            .Where(a => a.Id == attemptId)
+            .Select(a => a.Status)
+            .SingleAsync();
     }
 
     private async Task<IHost> StartHostAsync()
@@ -208,7 +218,10 @@ public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
         );
 
     private static CustomerDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<CustomerDbContext>().UseSqlServer(ConnectionString).Options, new NoTenantContext());
+        new(
+            new DbContextOptionsBuilder<CustomerDbContext>().UseSqlServer(ConnectionString).Options,
+            new NoTenantContext()
+        );
 
     private static int FreeTcpPort()
     {
@@ -252,8 +265,7 @@ public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
             Guid a,
             Wolverine.IMessageBus bus,
             CancellationToken token = default
-        ) =>
-            Task.FromResult(Result.Success());
+        ) => Task.FromResult(Result.Success());
 
         public Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
             Task.FromResult(Result.Success(Array.Empty<byte>()));
@@ -275,7 +287,9 @@ public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
         {
             var hit =
                 FailWhenSaving is { } status
-                && eventData.Context!.ChangeTracker.Entries<CustomerImportAttempt>().Any(e => e.Entity.Status == status);
+                && eventData
+                    .Context!.ChangeTracker.Entries<CustomerImportAttempt>()
+                    .Any(e => e.Entity.Status == status);
             return hit
                 ? ValueTask.FromException<int>(new InvalidOperationException("Fallo forzado después de guardar."))
                 : ValueTask.FromResult(result);

@@ -205,7 +205,9 @@ public sealed class ImapClient(
             async (inbox, token) =>
             {
                 var afterUid = ParseResyncToken(pageToken, inbox.UidValidity);
-                var query = SearchQuery.DeliveredAfter(fromUtc.Date).And(SearchQuery.DeliveredBefore(toUtc.Date.AddDays(1)));
+                var query = SearchQuery
+                    .DeliveredAfter(fromUtc.Date)
+                    .And(SearchQuery.DeliveredBefore(toUtc.Date.AddDays(1)));
                 var uids = (await inbox.SearchAsync(query, token))
                     .Where(u => u.Id > afterUid)
                     .OrderBy(u => u.Id)
@@ -285,7 +287,10 @@ public sealed class ImapClient(
                             // El UID no volvió en el FETCH: mensaje expurgado.
                             : ProviderMessageFetch.Failed(
                                 id,
-                                new EmailProviderException($"IMAP message with UID {id} was not found.", isNotFound: true)
+                                new EmailProviderException(
+                                    $"IMAP message with UID {id} was not found.",
+                                    isNotFound: true
+                                )
                             )
                     );
                 }

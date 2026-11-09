@@ -35,7 +35,10 @@ public sealed class InternalMailboxResyncControllerTests
     public async Task Resync_is_forbidden_when_the_body_tenant_is_not_the_token_tenant()
     {
         var bus = new FakeMessageBus();
-        var controller = new InternalMailboxResyncController(bus) { ControllerContext = ServiceTokenFor(Guid.NewGuid()) };
+        var controller = new InternalMailboxResyncController(bus)
+        {
+            ControllerContext = ServiceTokenFor(Guid.NewGuid()),
+        };
 
         var result = await controller.Resync(
             Guid.NewGuid(),

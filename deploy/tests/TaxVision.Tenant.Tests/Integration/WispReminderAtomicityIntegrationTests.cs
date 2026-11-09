@@ -32,10 +32,7 @@ public sealed class WispReminderAtomicityIntegrationTests : IAsyncLifetime
             _host = await TenantWolverineHost.StartAsync(
                 _database.ConnectionString,
                 (options, closedPort) =>
-                    options
-                        .PublishMessage<OfficeWispReviewDueIntegrationEvent>()
-                        .ToPort(closedPort)
-                        .UseDurableOutbox(),
+                    options.PublishMessage<OfficeWispReviewDueIntegrationEvent>().ToPort(closedPort).UseDurableOutbox(),
                 _failAfterSave
             );
         }

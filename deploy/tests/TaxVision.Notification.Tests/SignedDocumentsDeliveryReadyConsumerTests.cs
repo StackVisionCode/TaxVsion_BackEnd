@@ -364,7 +364,8 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         }
     }
 
-    private sealed class Policies(Guid customerId, bool emailEnabled, bool smsEnabled) : ICustomerContactPolicyRepository
+    private sealed class Policies(Guid customerId, bool emailEnabled, bool smsEnabled)
+        : ICustomerContactPolicyRepository
     {
         public Task<CustomerContactPolicyProjection?> GetByCustomerIdAsync(
             Guid tenantId,
@@ -372,9 +373,7 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
             CancellationToken ct = default
         ) =>
             Task.FromResult<CustomerContactPolicyProjection?>(
-                id == customerId
-                    ? CustomerContactPolicyProjection.Create(tenantId, id, emailEnabled, smsEnabled)
-                    : null
+                id == customerId ? CustomerContactPolicyProjection.Create(tenantId, id, emailEnabled, smsEnabled) : null
             );
 
         public Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
@@ -383,8 +382,7 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyCollection<Guid>>([]);
 
-        public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) =>
-            Task.CompletedTask;
+        public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class PortalResolver : IRecipientResolver

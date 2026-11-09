@@ -127,7 +127,14 @@ public static class NotificationsEmailSendRequestedConsumer
             switch (reservation.Outcome)
             {
                 case IdempotencyReservationOutcome.AlreadyCompleted:
-                    await PublishReplayAsync(bus, evt, reservation.ExistingSentMessageId!.Value, sentMessages, logger, ct);
+                    await PublishReplayAsync(
+                        bus,
+                        evt,
+                        reservation.ExistingSentMessageId!.Value,
+                        sentMessages,
+                        logger,
+                        ct
+                    );
                     return;
                 case IdempotencyReservationOutcome.InProgress:
                     // No crear un segundo SentMessage: otro intento concurrente (Notification
@@ -226,7 +233,9 @@ public static class NotificationsEmailSendRequestedConsumer
                 );
                 return;
             case SentMessageStatus.Sent:
-                var providerMessageId = message.Recipients.Select(r => r.ProviderMessageId).FirstOrDefault(id => id is not null);
+                var providerMessageId = message
+                    .Recipients.Select(r => r.ProviderMessageId)
+                    .FirstOrDefault(id => id is not null);
                 await PublishSucceededAsync(bus, evt, sentMessageId, providerMessageId, ct);
                 return;
             default:

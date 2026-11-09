@@ -24,10 +24,7 @@ public sealed class TenantIsolationTests
     }
 
     private static AuthDbContext CreateContext(string databaseName, FakeTenantContext tenantContext) =>
-        new(
-            new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,
-            tenantContext
-        );
+        new(new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options, tenantContext);
 
     [Fact]
     public async Task Global_query_filter_isolates_tenant_A_from_tenant_B_data()

@@ -82,7 +82,10 @@ public sealed class UnappliedPayment : TenantEntity
 
         if (!Enum.IsDefined(resolution))
             return Result.Failure(
-                new Error("Billing.UnappliedPayment.InvalidResolution", "Resolution must be Refunded or AppliedAsCredit.")
+                new Error(
+                    "Billing.UnappliedPayment.InvalidResolution",
+                    "Resolution must be Refunded or AppliedAsCredit."
+                )
             );
 
         var text = note?.Trim();

@@ -40,7 +40,9 @@ public sealed class FolderAndShareHandlerSurfaceTests
         var actual = typeof(CreateFolderHandler)
             .Assembly.GetTypes()
             .Where(type =>
-                type.Namespace is "TaxVision.CloudStorage.Application.Folders" or "TaxVision.CloudStorage.Application.Sharing"
+                type.Namespace
+                    is "TaxVision.CloudStorage.Application.Folders"
+                        or "TaxVision.CloudStorage.Application.Sharing"
             )
             .Where(type => Surface.Contains(type.Name))
             .Select(Signature)

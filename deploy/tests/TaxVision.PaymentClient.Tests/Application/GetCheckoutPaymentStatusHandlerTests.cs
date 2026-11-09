@@ -89,7 +89,8 @@ public sealed class GetCheckoutPaymentStatusHandlerTests
     public async Task Status_WhenProviderLookupFails_ReturnsCurrentStatus()
     {
         var (link, payment) = await SeedRequiresActionAsync();
-        _stripe.ChargeStatus = _ => Result.Failure<WebhookEventPayload>(new Error("Stripe.ChargeStatus.Failed", "boom"));
+        _stripe.ChargeStatus = _ =>
+            Result.Failure<WebhookEventPayload>(new Error("Stripe.ChargeStatus.Failed", "boom"));
 
         var result = await StatusAsync(link.Token.Value, payment.Id);
 

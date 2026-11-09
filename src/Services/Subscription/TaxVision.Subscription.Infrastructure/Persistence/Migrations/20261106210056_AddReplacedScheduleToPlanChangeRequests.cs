@@ -15,36 +15,33 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 name: "ReplacedCancellationAtUtc",
                 table: "PlanChangeRequests",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "ReplacedCancellationReason",
                 table: "PlanChangeRequests",
                 type: "nvarchar(500)",
                 maxLength: 500,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "ReplacedDowngradeId",
                 table: "PlanChangeRequests",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ReplacedCancellationAtUtc",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "ReplacedCancellationAtUtc", table: "PlanChangeRequests");
 
-            migrationBuilder.DropColumn(
-                name: "ReplacedCancellationReason",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "ReplacedCancellationReason", table: "PlanChangeRequests");
 
-            migrationBuilder.DropColumn(
-                name: "ReplacedDowngradeId",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "ReplacedDowngradeId", table: "PlanChangeRequests");
         }
     }
 }

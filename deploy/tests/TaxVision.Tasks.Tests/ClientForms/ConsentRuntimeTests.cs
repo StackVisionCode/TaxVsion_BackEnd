@@ -675,11 +675,17 @@ public sealed class ConsentRuntimeTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<FormRequest>>([]);
 
-        public Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
-            Task.FromResult(0);
+        public Task<int> CountIntakeSubmissionsAsync(
+            Guid tenantId,
+            DateTime sinceUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
 
-        public Task<int> CountOpenByEffectiveResponsibleAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
-            Task.FromResult(0);
+        public Task<int> CountOpenByEffectiveResponsibleAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
 
         public Task<Guid?> FindOpenRequestIdAsync(
             Guid tenantId,

@@ -16,7 +16,9 @@ public sealed class StripeChargeLookupIntegrationTests
 {
     private readonly string? _secretKey =
         Environment.GetEnvironmentVariable("STRIPE_TEST_SECRET_KEY")
-        ?? new ConfigurationBuilder().AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-paymentapp001").Build()["Stripe:SecretKey"];
+        ?? new ConfigurationBuilder().AddUserSecrets("e4b1c9d2-7f3a-4a86-9b2d-paymentapp001").Build()[
+            "Stripe:SecretKey"
+        ];
 
     private bool SandboxAvailable => _secretKey?.StartsWith("sk_test_", StringComparison.Ordinal) == true;
 

@@ -107,8 +107,15 @@ public sealed class CustomerPortalAccessIntegrationTests : IClassFixture<AuthApi
         using (var scope = _factory.Services.CreateScope())
             hash = scope.ServiceProvider.GetRequiredService<IPasswordHasher>().Hash(Password);
 
-        var user = User.Register(tenant.Id, "Paula", "Client", _email, hash, UserActorType.CustomerPortal, _customerId)
-            .Value;
+        var user = User.Register(
+            tenant.Id,
+            "Paula",
+            "Client",
+            _email,
+            hash,
+            UserActorType.CustomerPortal,
+            _customerId
+        ).Value;
         if (deactivatedByOffice)
             user.Deactivate(Guid.NewGuid(), DateTime.UtcNow);
 

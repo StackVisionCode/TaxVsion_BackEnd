@@ -608,7 +608,10 @@ public sealed class SentMessageTests
     {
         var message = QueueWithRecipients("a@example.com", "b@example.com");
 
-        var applied = message.ApplySuppression(new HashSet<string> { "a@example.com", "b@example.com" }, DateTime.UtcNow);
+        var applied = message.ApplySuppression(
+            new HashSet<string> { "a@example.com", "b@example.com" },
+            DateTime.UtcNow
+        );
 
         Assert.True(applied.Value);
         Assert.Equal(SentMessageStatus.Suppressed, message.Status);

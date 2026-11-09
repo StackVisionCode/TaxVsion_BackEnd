@@ -151,7 +151,10 @@ public static class SubscriptionRenewalDueConsumer
         CancellationToken ct
     )
     {
-        var result = await bus.InvokeAsync<Result<Guid>>(SubscriptionRenewalCharge.BuildLegacyCommand(evt, provider), ct);
+        var result = await bus.InvokeAsync<Result<Guid>>(
+            SubscriptionRenewalCharge.BuildLegacyCommand(evt, provider),
+            ct
+        );
         if (result.IsFailure)
         {
             logger.LogError(

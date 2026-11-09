@@ -30,7 +30,9 @@ public sealed class RecordManualPaymentHandlerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
 
         Assert.True((await RecordAsync(invoice, 5_000)).IsSuccess);
         Assert.True((await RecordAsync(invoice, 5_000)).IsSuccess);
@@ -57,7 +59,9 @@ public sealed class RecordManualPaymentHandlerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
         Assert.True((await RecordAsync(invoice, null)).IsSuccess);
 
         var result = await RecordAsync(invoice, null);
@@ -82,7 +86,9 @@ public sealed class RecordManualPaymentHandlerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
 
         Assert.True((await RecordAsync(invoice, 5_000, "click-1")).IsSuccess);
         Assert.True((await RecordAsync(invoice, 5_000, "click-1")).IsSuccess);
@@ -133,7 +139,9 @@ public sealed class RecordManualPaymentHandlerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00004").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00004").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
         return invoice;
     }
 

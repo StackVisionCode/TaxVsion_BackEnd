@@ -70,7 +70,10 @@ public sealed class CustomerPortalAccessConsumerTests
         var session = OpenSession();
 
         await CustomerArchivedConsumer.Handle(
-            Archived(T0) with { TenantId = Guid.NewGuid() },
+            Archived(T0) with
+            {
+                TenantId = Guid.NewGuid(),
+            },
             _users,
             Cutoff(),
             new FakeAuthAuditWriter(),

@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Onboarding.Application;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
@@ -10,7 +11,6 @@ using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
 using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Onboarding.Domain.ValueObjects;
 using TaxVision.Auth.Onboarding.Infrastructure.Concurrency;
-using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;
@@ -313,9 +313,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             ReconcileResult = Result.Success(result),
         };
 
-    private static OnboardingSuccessCompleter BuildCompleter(
-        FakeTokenReferenceStore tokenReferences
-    ) =>
+    private static OnboardingSuccessCompleter BuildCompleter(FakeTokenReferenceStore tokenReferences) =>
         new(
             new SecureTokenService(),
             tokenReferences,

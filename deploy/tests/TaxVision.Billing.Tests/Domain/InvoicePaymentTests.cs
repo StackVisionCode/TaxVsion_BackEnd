@@ -53,7 +53,9 @@ public sealed class InvoicePaymentTests
     {
         var invoice = DraftInvoice(15_000);
         Assert.True(invoice.LinkAsReplacementFor(Guid.NewGuid(), 10_000, Now).IsSuccess);
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00002").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00002").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
         Assert.True(invoice.ApplyCarriedCredit(Now).IsSuccess);
         Assert.Equal(5_000, invoice.AmountDue.AmountCents);
 
@@ -82,7 +84,9 @@ public sealed class InvoicePaymentTests
     private static Invoice IssuedInvoice(long totalCents)
     {
         var invoice = DraftInvoice(totalCents);
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
         return invoice;
     }
 

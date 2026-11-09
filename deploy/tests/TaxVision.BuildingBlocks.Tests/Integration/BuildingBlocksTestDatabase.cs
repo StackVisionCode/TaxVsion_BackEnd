@@ -52,7 +52,9 @@ internal static class BuildingBlocksTestDatabase
 
     /// <summary>Cuenta filas si la tabla existe; 0 si todavía no se creó.</summary>
     public static Task<int> CountRowsAsync(string schema, string table, string where = "1 = 1") =>
-        CountAsync($"IF OBJECT_ID('[{schema}].[{table}]') IS NULL SELECT 0 ELSE SELECT COUNT(*) FROM [{schema}].[{table}] WHERE {where}");
+        CountAsync(
+            $"IF OBJECT_ID('[{schema}].[{table}]') IS NULL SELECT 0 ELSE SELECT COUNT(*) FROM [{schema}].[{table}] WHERE {where}"
+        );
 
     /// <summary>Borra el esquema de prueba con todo lo que tenga (FK, tablas, vistas, procedimientos y tipos).</summary>
     public static Task DropSchemaAsync(string schema) =>

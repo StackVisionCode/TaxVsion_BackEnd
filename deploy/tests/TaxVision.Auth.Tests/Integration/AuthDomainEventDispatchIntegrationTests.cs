@@ -30,8 +30,7 @@ namespace TaxVision.Auth.Tests.Integration;
 /// </summary>
 public sealed class AuthDomainEventDispatchIntegrationTests : IAsyncLifetime
 {
-    private static readonly string ConnectionString =
-        AuthIntegrationDatabase.ConnectionString;
+    private static readonly string ConnectionString = AuthIntegrationDatabase.ConnectionString;
 
     private readonly string _schema = $"authbb1_{Guid.NewGuid():N}"[..16];
     private readonly Guid _tenantId = Guid.NewGuid();

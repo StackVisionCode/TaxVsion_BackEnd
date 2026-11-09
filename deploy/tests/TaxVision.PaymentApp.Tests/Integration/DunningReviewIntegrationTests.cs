@@ -10,8 +10,7 @@ namespace TaxVision.PaymentApp.Tests.Integration;
 /// <summary>Un pago en revisión no se reintenta: un éxito tardío ya marcado se cobraría dos veces.</summary>
 public sealed class DunningReviewIntegrationTests : IAsyncLifetime
 {
-    private readonly string _connectionString =
-        PaymentAppWolverineHost.Connection;
+    private readonly string _connectionString = PaymentAppWolverineHost.Connection;
 
     private readonly Guid _tenantId = Guid.NewGuid();
 
@@ -80,7 +79,13 @@ public sealed class DunningReviewIntegrationTests : IAsyncLifetime
                 nowUtc
             )
             .Value;
-        payment.MarkFailed("card_declined", "Declined", DunningDecision.RetryAt(nowUtc.AddMinutes(-5)), Guid.Empty, nowUtc);
+        payment.MarkFailed(
+            "card_declined",
+            "Declined",
+            DunningDecision.RetryAt(nowUtc.AddMinutes(-5)),
+            Guid.Empty,
+            nowUtc
+        );
         return payment;
     }
 

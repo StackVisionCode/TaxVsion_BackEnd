@@ -173,7 +173,6 @@ public sealed class NotificationDispatcherPushTests
                 TenantId,
                 NotificationChannel.Push,
                 NotificationRecipient.ForPushTarget(UserId),
-
                 "Title",
                 "task.form_request_assigned.push.v1",
                 eventId,

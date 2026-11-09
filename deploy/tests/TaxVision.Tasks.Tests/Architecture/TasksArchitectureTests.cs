@@ -199,10 +199,7 @@ public sealed class TasksArchitectureTests
             .ToArray();
 
         Assert.NotEmpty(roots);
-        Assert.True(
-            offenders.Length == 0,
-            $"Raíces de agregado sobre su tope: {string.Join(" | ", offenders)}"
-        );
+        Assert.True(offenders.Length == 0, $"Raíces de agregado sobre su tope: {string.Join(" | ", offenders)}");
     }
 
     // Una parte del agregado recibe la raíz en su constructor y guarda su estado en ella.
@@ -470,7 +467,9 @@ public sealed class TasksArchitectureTests
             );
             if (inClientForms)
             {
-                if (!text.Contains("TenantId", StringComparison.Ordinal) && !SanctionedCrossTenantReaders.Contains(name))
+                if (
+                    !text.Contains("TenantId", StringComparison.Ordinal) && !SanctionedCrossTenantReaders.Contains(name)
+                )
                     violations.Add(name);
                 continue;
             }
@@ -487,7 +486,11 @@ public sealed class TasksArchitectureTests
     private static IEnumerable<string> UnscopedIgnoreQueryFilters(string fileName, string text)
     {
         const string Call = ".IgnoreQueryFilters()";
-        for (var at = text.IndexOf(Call, StringComparison.Ordinal); at >= 0; at = text.IndexOf(Call, at + 1, StringComparison.Ordinal))
+        for (
+            var at = text.IndexOf(Call, StringComparison.Ordinal);
+            at >= 0;
+            at = text.IndexOf(Call, at + 1, StringComparison.Ordinal)
+        )
         {
             var start = Math.Max(text.LastIndexOf(';', at), text.LastIndexOf('{', at)) + 1;
             var end = text.IndexOf(';', at);
@@ -505,7 +508,11 @@ public sealed class TasksArchitectureTests
 
     private static IEnumerable<string> InfrastructureSourceFiles() =>
         Directory
-            .EnumerateFiles(Path.Combine(ServiceRoot, "TaxVision.Tasks.Infrastructure"), "*.cs", SearchOption.AllDirectories)
+            .EnumerateFiles(
+                Path.Combine(ServiceRoot, "TaxVision.Tasks.Infrastructure"),
+                "*.cs",
+                SearchOption.AllDirectories
+            )
             .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
             .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}"));

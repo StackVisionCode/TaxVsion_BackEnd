@@ -11,8 +11,7 @@ namespace TaxVision.PaymentApp.Tests.Integration;
 /// <summary>PAY-4 contra el SQL Server local: la referencia del proveedor no se repite y las nulas no chocan.</summary>
 public sealed class SaaSPaymentIndexIntegrationTests : IAsyncLifetime
 {
-    private readonly string _connectionString =
-        PaymentAppWolverineHost.Connection;
+    private readonly string _connectionString = PaymentAppWolverineHost.Connection;
 
     private readonly Guid _tenantId = Guid.NewGuid();
 

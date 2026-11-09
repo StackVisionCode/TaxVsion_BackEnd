@@ -228,7 +228,11 @@ public sealed class AuthCommandEventCountTests
                 new EmptyUserSessionRepository(),
                 new RecordingAccessTokenDenylist(),
                 new QuietRevocations(),
-                new SessionAccessCutoff(new EmptyUserSessionRepository(), new RecordingAccessTokenDenylist(), new QuietRevocations()),
+                new SessionAccessCutoff(
+                    new EmptyUserSessionRepository(),
+                    new RecordingAccessTokenDenylist(),
+                    new QuietRevocations()
+                ),
                 new InMemoryInvitationRepository(),
                 new NoPlanLimits(),
             ];

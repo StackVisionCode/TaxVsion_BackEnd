@@ -45,9 +45,11 @@ public sealed class ProviderCallTransactionTests
     [Fact]
     public void Detection_SeesAProviderPortBehindAHelperClass()
     {
-        var offenders = FindOffenders(
-            [typeof(SampleViaHelperHandler), typeof(SampleNonTransactionalHandler), typeof(SampleInstanceHandler)]
-        );
+        var offenders = FindOffenders([
+            typeof(SampleViaHelperHandler),
+            typeof(SampleNonTransactionalHandler),
+            typeof(SampleInstanceHandler),
+        ]);
 
         Assert.Equal([nameof(SampleInstanceHandler), nameof(SampleViaHelperHandler)], offenders.Order());
     }
@@ -85,7 +87,9 @@ public sealed class ProviderCallTransactionTests
     }
 
     private static bool ConstructorReachesAProvider(Type type, HashSet<Type> visited) =>
-        type.GetConstructors().SelectMany(ctor => ctor.GetParameters()).Any(p => ReachesAProvider(p.ParameterType, visited));
+        type.GetConstructors()
+            .SelectMany(ctor => ctor.GetParameters())
+            .Any(p => ReachesAProvider(p.ParameterType, visited));
 
     public sealed record SampleCommand;
 

@@ -16,8 +16,8 @@ using Microsoft.Extensions.Hosting;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Runs;
-using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
+using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Application.Runs.Consumers;
 using TaxVision.Campaigns.Application.Runs.DomainEvents;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
@@ -47,7 +47,9 @@ public sealed class CampaignRunDomainEventIntegrationTests : IAsyncLifetime
     private const string Prefix = "cmpbb1_";
     private const string EnvelopeSchema = "cmpbb1";
 
-    private readonly string _connectionString = new SqlConnectionStringBuilder(CampaignsTestDatabase.ServerConnectionString)
+    private readonly string _connectionString = new SqlConnectionStringBuilder(
+        CampaignsTestDatabase.ServerConnectionString
+    )
     {
         InitialCatalog = $"{Prefix}{Guid.NewGuid():N}"[..(Prefix.Length + 12)],
     }.ConnectionString;

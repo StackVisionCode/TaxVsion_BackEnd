@@ -14,25 +14,23 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                 name: "RenderedLayoutVersion",
                 table: "NotificationLogs",
                 type: "int",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<int>(
                 name: "RenderedTemplateVersion",
                 table: "NotificationLogs",
                 type: "int",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "RenderedLayoutVersion",
-                table: "NotificationLogs");
+            migrationBuilder.DropColumn(name: "RenderedLayoutVersion", table: "NotificationLogs");
 
-            migrationBuilder.DropColumn(
-                name: "RenderedTemplateVersion",
-                table: "NotificationLogs");
+            migrationBuilder.DropColumn(name: "RenderedTemplateVersion", table: "NotificationLogs");
         }
     }
 }

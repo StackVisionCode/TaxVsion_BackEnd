@@ -86,13 +86,16 @@ public static class ClientFormSummaryRenderModelBuilder
         };
     }
 
+    // Lista fija y no Path.GetInvalidFileNameChars(): en Linux esa solo trae '/' y el archivo se baja en Windows.
+    private const string UnsafeFileNameChars = "<>:\"/\\|?*";
+
     // "{Title} - Submission summary (rev {N}).pdf", saneado para nombre de archivo.
     public static string FileName(SubmissionSummarySnapshot snapshot)
     {
         var title = string.IsNullOrWhiteSpace(snapshot.Title) ? "Form" : snapshot.Title.Trim();
         var sb = new StringBuilder(title.Length);
         foreach (var c in title)
-            sb.Append(Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c);
+            sb.Append(char.IsControl(c) || UnsafeFileNameChars.Contains(c) ? '_' : c);
         var safe = sb.ToString().Trim();
         if (safe.Length > 120)
             safe = safe[..120].Trim();

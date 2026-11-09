@@ -33,14 +33,15 @@ internal static class SeatPurchaseReplay
             && first.Type == seatType
             && await seats.GetByIdAsync(RequestedSeatId(command, command.Quantity - 1)!.Value, command.TenantId, ct)
                 is not null
-            && await seats.GetByIdAsync(RequestedSeatId(command, command.Quantity)!.Value, command.TenantId, ct) is null;
+            && await seats.GetByIdAsync(RequestedSeatId(command, command.Quantity)!.Value, command.TenantId, ct)
+                is null;
         if (!sameRequest)
             return Result.Failure<IReadOnlyList<Guid>>(
                 new Error("Seat.IdempotencyKeyReused", "This Idempotency-Key was already used for another purchase.")
             );
 
-        return Result.Success<IReadOnlyList<Guid>>(
-            [.. Enumerable.Range(0, command.Quantity).Select(index => RequestedSeatId(command, index)!.Value)]
-        );
+        return Result.Success<IReadOnlyList<Guid>>([
+            .. Enumerable.Range(0, command.Quantity).Select(index => RequestedSeatId(command, index)!.Value),
+        ]);
     }
 }

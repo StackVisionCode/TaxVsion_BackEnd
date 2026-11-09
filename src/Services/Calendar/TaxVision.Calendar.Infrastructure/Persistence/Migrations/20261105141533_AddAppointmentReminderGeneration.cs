@@ -15,15 +15,14 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                 table: "Appointments",
                 type: "int",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ReminderGeneration",
-                table: "Appointments");
+            migrationBuilder.DropColumn(name: "ReminderGeneration", table: "Appointments");
         }
     }
 }

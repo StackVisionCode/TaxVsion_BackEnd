@@ -40,7 +40,9 @@ public static class RunCustomerImportHandler
                 ct
             );
             var maxRows = ImportAttemptLifecycle.ResolveMaxRows(scopeFactory);
-            if (!await ImportAttemptLifecycle.ValidateRowCountAsync(scopeFactory, attemptId, allRows.Count, maxRows, ct))
+            if (
+                !await ImportAttemptLifecycle.ValidateRowCountAsync(scopeFactory, attemptId, allRows.Count, maxRows, ct)
+            )
                 return;
 
             if (!await ImportAttemptLifecycle.MoveToApplyingAsync(scopeFactory, attemptId, allRows.Count, logger, ct))

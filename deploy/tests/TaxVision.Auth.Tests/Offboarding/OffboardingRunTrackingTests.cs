@@ -413,10 +413,7 @@ public sealed class OffboardingRunTrackingTests
         );
 
     private static AuthDbContext Context(string database) =>
-        new(
-            new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(database).Options,
-            new NoTenant()
-        );
+        new(new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(database).Options, new NoTenant());
 
     private sealed class NoTenant : ITenantContext
     {

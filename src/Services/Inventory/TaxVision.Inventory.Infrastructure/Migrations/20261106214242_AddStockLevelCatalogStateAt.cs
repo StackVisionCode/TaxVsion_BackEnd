@@ -15,15 +15,14 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
                 name: "CatalogStateAtUtc",
                 table: "StockLevels",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "CatalogStateAtUtc",
-                table: "StockLevels");
+            migrationBuilder.DropColumn(name: "CatalogStateAtUtc", table: "StockLevels");
         }
     }
 }

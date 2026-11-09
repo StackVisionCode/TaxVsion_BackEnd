@@ -19,7 +19,8 @@ public static class InvoicePaidEventFactory
             OccurredOn = paidAtUtc,
             AggregateId = paid.InvoiceId,
             InvoiceId = paid.InvoiceId,
-            InvoiceNumber = paid.InvoiceNumber ?? throw new InvalidOperationException("Paid invoice must have a number."),
+            InvoiceNumber =
+                paid.InvoiceNumber ?? throw new InvalidOperationException("Paid invoice must have a number."),
             CustomerId = paid.CustomerId,
             AmountPaidCents = paid.AmountPaidCents,
             Currency = paid.Currency,

@@ -36,7 +36,11 @@ public class RecordingPaymentClientOutbox : DispatchProxy
         );
 
     /// <summary>Scopes de unidad sobre esa base: DbContext, repositorios y este outbox.</summary>
-    internal static IServiceScopeFactory InMemoryUnits(string databaseName, InMemoryDatabaseRoot root, OutboxRecording recording)
+    internal static IServiceScopeFactory InMemoryUnits(
+        string databaseName,
+        InMemoryDatabaseRoot root,
+        OutboxRecording recording
+    )
     {
         var services = new ServiceCollection();
         services.AddSingleton<ITenantContext, NoTenantContext>();
@@ -56,7 +60,11 @@ public class RecordingPaymentClientOutbox : DispatchProxy
         return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
     }
 
-    private static DbContextOptionsBuilder Options(DbContextOptionsBuilder options, string databaseName, InMemoryDatabaseRoot root) =>
+    private static DbContextOptionsBuilder Options(
+        DbContextOptionsBuilder options,
+        string databaseName,
+        InMemoryDatabaseRoot root
+    ) =>
         options
             .UseInMemoryDatabase(databaseName, root)
             .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning));

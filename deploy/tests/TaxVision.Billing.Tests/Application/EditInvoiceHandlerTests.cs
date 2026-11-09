@@ -206,7 +206,8 @@ public sealed class EditInvoiceHandlerTests
     }
 
     // Lo publicado a mano más lo que el commit despacharía por la cola domain-events.
-    private IReadOnlyList<object> Emitted(Invoice invoice) => [.. _bus.Published, .. DomainEventReplay.Dispatch([invoice])];
+    private IReadOnlyList<object> Emitted(Invoice invoice) =>
+        [.. _bus.Published, .. DomainEventReplay.Dispatch([invoice])];
 
     private Task<Result<EditInvoiceResult>> EditAsync(Invoice invoice, int quantity) =>
         EditInvoiceHandler.Handle(
@@ -242,7 +243,9 @@ public sealed class EditInvoiceHandlerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
         return invoice;
     }
 }

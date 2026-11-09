@@ -20,7 +20,16 @@ public sealed class SubmitSignatureHandlerTests
 
         var result = await SubmitSignatureHandler.Handle(
             new SubmitSignatureCommand("token", SignatureCaptureMethod.Typed, "Signer One", null, "127.0.0.1", "tests"),
-            new FixedToken(new SigningTokenPayload(request.TenantId, request.Id, first.Id, request.RevocationEpoch, request.ExpiresAtUtc, "jti")),
+            new FixedToken(
+                new SigningTokenPayload(
+                    request.TenantId,
+                    request.Id,
+                    first.Id,
+                    request.RevocationEpoch,
+                    request.ExpiresAtUtc,
+                    "jti"
+                )
+            ),
             new SingleRequestRepository(request),
             new NoDenylist(),
             new NoopUnitOfWork(),
@@ -93,7 +102,14 @@ public sealed class SubmitSignatureHandlerTests
             request,
             first,
             new CapturingBus(),
-            new SubmitSignatureCommand("token", SignatureCaptureMethod.Typed, "  sIGNER oNE ", null, "127.0.0.1", "tests")
+            new SubmitSignatureCommand(
+                "token",
+                SignatureCaptureMethod.Typed,
+                "  sIGNER oNE ",
+                null,
+                "127.0.0.1",
+                "tests"
+            )
         );
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
@@ -141,7 +157,14 @@ public sealed class SubmitSignatureHandlerTests
         SubmitSignatureHandler.Handle(
             command,
             new FixedToken(
-                new SigningTokenPayload(request.TenantId, request.Id, signer.Id, request.RevocationEpoch, request.ExpiresAtUtc, "jti")
+                new SigningTokenPayload(
+                    request.TenantId,
+                    request.Id,
+                    signer.Id,
+                    request.RevocationEpoch,
+                    request.ExpiresAtUtc,
+                    "jti"
+                )
             ),
             new SingleRequestRepository(request),
             new NoDenylist(),
@@ -192,7 +215,12 @@ public sealed class SubmitSignatureHandlerTests
     private static Signer AddSignerWithField(SignatureRequest request, Guid documentId, string email, string name)
     {
         var signer = request
-            .AddSigner(TestSignatureLimits.Default, SignerEmail.Create(email).Value, SignerFullName.Create(name).Value, null)
+            .AddSigner(
+                TestSignatureLimits.Default,
+                SignerEmail.Create(email).Value,
+                SignerFullName.Create(name).Value,
+                null
+            )
             .Value;
         Assert.True(
             request

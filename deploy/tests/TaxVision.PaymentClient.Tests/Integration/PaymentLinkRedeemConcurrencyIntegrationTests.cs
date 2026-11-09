@@ -22,8 +22,7 @@ public sealed class PaymentLinkRedeemConcurrencyIntegrationTests : IAsyncLifetim
 {
     private static readonly DateTime NowUtc = DateTime.UtcNow;
     private readonly Guid _tenantId = Guid.NewGuid();
-    private readonly string _connectionString =
-        PaymentClientIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = PaymentClientIntegrationDatabase.ConnectionString;
 
     private PaymentLink _link = null!;
 

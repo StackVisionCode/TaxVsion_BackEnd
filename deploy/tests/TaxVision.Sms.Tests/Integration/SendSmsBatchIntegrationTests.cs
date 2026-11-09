@@ -25,8 +25,7 @@ public sealed class SendSmsBatchIntegrationTests : IAsyncLifetime
     private int _sent;
     private readonly FakeSmsProvider _provider;
 
-    private readonly string _connectionString =
-        SmsIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = SmsIntegrationDatabase.ConnectionString;
 
     public SendSmsBatchIntegrationTests()
     {

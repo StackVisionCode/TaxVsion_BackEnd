@@ -20,12 +20,7 @@ public sealed class UpdateCurrentTenantHandlerTests
         var tenant = TenantEntity.Create("Acme Tax", "acme-tax", "Etc/UTC", DateTime.UtcNow).Value;
         var (repo, unitOfWork, cache) = Arrange(tenant);
 
-        var result = await HandleAsync(
-            new(tenant.Id, "Acme Tax Group", "America/Chicago"),
-            repo,
-            unitOfWork,
-            cache
-        );
+        var result = await HandleAsync(new(tenant.Id, "Acme Tax Group", "America/Chicago"), repo, unitOfWork, cache);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Acme Tax Group", result.Value.Name);
@@ -33,7 +28,9 @@ public sealed class UpdateCurrentTenantHandlerTests
         Assert.Equal("acme-tax", result.Value.Subdomain);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
 
-        var evt = Assert.Single(TenantDomainEventReplay.Dispatch(tenant.DomainEvents).OfType<TenantUpdatedIntegrationEvent>());
+        var evt = Assert.Single(
+            TenantDomainEventReplay.Dispatch(tenant.DomainEvents).OfType<TenantUpdatedIntegrationEvent>()
+        );
         Assert.Equal(tenant.Id, evt.UpdatedTenantId);
         Assert.Equal(tenant.Id, evt.TenantId);
         Assert.Equal("Acme Tax Group", evt.Name);
@@ -89,9 +86,8 @@ public sealed class UpdateCurrentTenantHandlerTests
         Assert.Equal("Tenant.NotFound", result.Error.Code);
     }
 
-    private static (FakeTenantRepository, CountingUnitOfWork, RecordingCache) Arrange(
-        TenantEntity? tenant
-    ) => (new FakeTenantRepository { Existing = tenant }, new(), new());
+    private static (FakeTenantRepository, CountingUnitOfWork, RecordingCache) Arrange(TenantEntity? tenant) =>
+        (new FakeTenantRepository { Existing = tenant }, new(), new());
 
     private static Task<BuildingBlocks.Results.Result<TenantResponse>> HandleAsync(
         UpdateCurrentTenantCommand command,

@@ -122,7 +122,11 @@ public sealed class ReadyReconciliationScheduler(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "ReadyReconciliationScheduler could not prepare request {RequestId}.", draft.SignatureRequestId);
+                logger.LogError(
+                    ex,
+                    "ReadyReconciliationScheduler could not prepare request {RequestId}.",
+                    draft.SignatureRequestId
+                );
                 continue;
             }
 
@@ -206,9 +210,7 @@ public sealed class ReadyReconciliationScheduler(
     }
 
     private static List<RequestDocument> PendingDocuments(SignatureRequest request) =>
-        request
-            .Documents.Where(document => document.VerificationStatus == DocumentVerificationStatus.Pending)
-            .ToList();
+        request.Documents.Where(document => document.VerificationStatus == DocumentVerificationStatus.Pending).ToList();
 
     private static SignatureRequestReadyForSendingIntegrationEvent BuildReadyEvent(SignatureRequest request) =>
         new()

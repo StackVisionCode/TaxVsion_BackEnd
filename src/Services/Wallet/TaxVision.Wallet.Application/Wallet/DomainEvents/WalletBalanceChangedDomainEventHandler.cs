@@ -11,7 +11,10 @@ namespace TaxVision.Wallet.Application.Wallet.DomainEvents;
 /// </summary>
 public static class WalletBalanceChangedDomainEventHandler
 {
-    public static WalletBalanceChangedIntegrationEvent Handle(WalletBalanceChangedDomainEvent changed, Envelope envelope) =>
+    public static WalletBalanceChangedIntegrationEvent Handle(
+        WalletBalanceChangedDomainEvent changed,
+        Envelope envelope
+    ) =>
         new()
         {
             TenantId = changed.TenantId,

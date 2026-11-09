@@ -71,7 +71,13 @@ public sealed class CreateCustomerHandlerDraftTests
     {
         var world = new World();
 
-        var result = await world.CreateAsync(Person("ok@example.com") with { LegalName = "Ignored", BusinessStructure = null });
+        var result = await world.CreateAsync(
+            Person("ok@example.com") with
+            {
+                LegalName = "Ignored",
+                BusinessStructure = null,
+            }
+        );
 
         Assert.True(result.IsSuccess);
         var customer = Assert.Single(world.Customers.All);

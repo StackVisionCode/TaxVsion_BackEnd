@@ -105,7 +105,9 @@ public static class DependencyInjection
         services.AddHostedService<CampaignSchedulerService>();
 
         // Barrido de runs que no cierran (apagado por defecto, ver CampaignRunSweepOptions.Enabled).
-        services.AddOptions<CampaignRunSweepOptions>().Bind(configuration.GetSection(CampaignRunSweepOptions.SectionName));
+        services
+            .AddOptions<CampaignRunSweepOptions>()
+            .Bind(configuration.GetSection(CampaignRunSweepOptions.SectionName));
         services.AddHostedService<CampaignRunSweepJob>();
 
         AddRbacProjection(services, configuration);

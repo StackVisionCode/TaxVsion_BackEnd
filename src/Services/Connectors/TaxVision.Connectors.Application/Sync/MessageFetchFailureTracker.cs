@@ -61,7 +61,12 @@ public sealed class MessageFetchFailureTracker(
 
         if (failure is null)
         {
-            var created = ProviderMessageFetchFailure.Create(account.Id, item.ProviderMessageId, item.Error?.Message, nowUtc);
+            var created = ProviderMessageFetchFailure.Create(
+                account.Id,
+                item.ProviderMessageId,
+                item.Error?.Message,
+                nowUtc
+            );
             if (created.IsFailure)
             {
                 // Id inválido para registrar: no se puede llevar la cuenta, así que tampoco frena.

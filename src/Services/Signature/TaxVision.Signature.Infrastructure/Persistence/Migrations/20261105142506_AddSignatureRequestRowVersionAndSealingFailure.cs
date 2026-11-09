@@ -17,25 +17,23 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "SealingFailedAtUtc",
                 table: "SignatureRequests",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "SignatureRequests");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "SignatureRequests");
 
-            migrationBuilder.DropColumn(
-                name: "SealingFailedAtUtc",
-                table: "SignatureRequests");
+            migrationBuilder.DropColumn(name: "SealingFailedAtUtc", table: "SignatureRequests");
         }
     }
 }

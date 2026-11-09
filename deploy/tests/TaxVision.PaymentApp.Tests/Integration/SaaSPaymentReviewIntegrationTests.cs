@@ -12,8 +12,7 @@ namespace TaxVision.PaymentApp.Tests.Integration;
 /// <summary>PAY-1 contra el SQL Server local: la marca de revisión se guarda, se relee y sale en la bandeja admin.</summary>
 public sealed class SaaSPaymentReviewIntegrationTests : IAsyncLifetime
 {
-    private readonly string _connectionString =
-        PaymentAppWolverineHost.Connection;
+    private readonly string _connectionString = PaymentAppWolverineHost.Connection;
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private Guid _paymentId;

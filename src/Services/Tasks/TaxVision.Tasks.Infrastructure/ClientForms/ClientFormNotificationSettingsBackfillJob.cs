@@ -27,8 +27,13 @@ internal sealed class ClientFormNotificationSettingsBackfillJob(
                 scopeFactory,
                 async (unit, ct) =>
                 {
-                    var settings = await unit.Services.GetRequiredService<IFormModuleSettingsRepository>().ListAsync(ct);
-                    var commands = ClientFormNotificationSettingsBackfill.Commands(settings, Guid.NewGuid().ToString("N"));
+                    var settings = await unit
+                        .Services.GetRequiredService<IFormModuleSettingsRepository>()
+                        .ListAsync(ct);
+                    var commands = ClientFormNotificationSettingsBackfill.Commands(
+                        settings,
+                        Guid.NewGuid().ToString("N")
+                    );
                     foreach (var command in commands)
                         await unit.PublishAsync(command);
                     sent = commands.Count;

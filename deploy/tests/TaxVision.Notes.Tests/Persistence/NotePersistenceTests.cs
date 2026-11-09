@@ -57,7 +57,9 @@ public sealed class NotePersistenceTests
         {
             var note = NewNote(tenantId, authorUserId, customerId);
             noteId = note.Id;
-            Assert.True(note.AttachFile(Guid.NewGuid(), "contrato.pdf", "application/pdf", 4096, DateTime.UtcNow).IsSuccess);
+            Assert.True(
+                note.AttachFile(Guid.NewGuid(), "contrato.pdf", "application/pdf", 4096, DateTime.UtcNow).IsSuccess
+            );
 
             db.Notes.Add(note);
             await db.SaveChangesAsync();

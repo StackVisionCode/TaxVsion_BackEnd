@@ -109,7 +109,11 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
                 var request = await unit
                     .Services.GetRequiredService<ISignatureRequestRepository>()
                     .GetByIdAsync(candidate.TenantId, candidate.SignatureRequestId, token);
-                if (request is null || request.Status != SignatureRequestStatus.InProgress || request.ExpiresAtUtc > now)
+                if (
+                    request is null
+                    || request.Status != SignatureRequestStatus.InProgress
+                    || request.ExpiresAtUtc > now
+                )
                     return false;
 
                 var pending = request

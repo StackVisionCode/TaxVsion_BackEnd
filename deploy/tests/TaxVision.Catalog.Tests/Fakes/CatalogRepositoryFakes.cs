@@ -81,7 +81,10 @@ internal sealed class FakeCategoryRepository : ICategoryRepository
         while (ancestors.Count < maxDepth)
         {
             var id = current;
-            var parent = Store.Concat(Added).FirstOrDefault(c => c.TenantId == tenantId && c.Id == id)?.ParentCategoryId;
+            var parent = Store
+                .Concat(Added)
+                .FirstOrDefault(c => c.TenantId == tenantId && c.Id == id)
+                ?.ParentCategoryId;
             if (parent is not { } parentId)
                 break;
 

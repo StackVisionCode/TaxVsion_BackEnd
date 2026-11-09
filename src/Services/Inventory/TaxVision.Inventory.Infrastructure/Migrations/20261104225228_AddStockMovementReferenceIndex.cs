@@ -14,15 +14,14 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
                 name: "IX_StockMovements_Tenant_Reference",
                 table: "StockMovements",
                 columns: new[] { "TenantId", "Reference" },
-                filter: "[Reference] IS NOT NULL");
+                filter: "[Reference] IS NOT NULL"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_StockMovements_Tenant_Reference",
-                table: "StockMovements");
+            migrationBuilder.DropIndex(name: "IX_StockMovements_Tenant_Reference", table: "StockMovements");
         }
     }
 }

@@ -43,7 +43,20 @@ public sealed class TaskCommandEventCountTests
 
         await fixture.RunAsync(
             typeof(CreateTaskHandler),
-            new CreateTaskCommand(TenantId, Manager, "Prepare return", null, TaskPriority.Normal, Preparer, null, null, DueAtUtc, "America/New_York", false, null)
+            new CreateTaskCommand(
+                TenantId,
+                Manager,
+                "Prepare return",
+                null,
+                TaskPriority.Normal,
+                Preparer,
+                null,
+                null,
+                DueAtUtc,
+                "America/New_York",
+                false,
+                null
+            )
         );
 
         var emitted = await fixture.EmittedAsync();
@@ -60,19 +73,38 @@ public sealed class TaskCommandEventCountTests
 
         await fixture.RunAsync(
             typeof(ApplyTaskTemplateHandler),
-            new ApplyTaskTemplateCommand(TenantId, Manager, template.Id, Preparer, null, 2025, DueAtUtc, "America/New_York", false),
+            new ApplyTaskTemplateCommand(
+                TenantId,
+                Manager,
+                template.Id,
+                Preparer,
+                null,
+                2025,
+                DueAtUtc,
+                "America/New_York",
+                false
+            ),
             new InMemoryTaskTemplateRepository(template)
         );
 
         var emitted = await fixture.EmittedAsync();
         var created = fixture.Tasks.Stored;
         Assert.NotEmpty(created);
-        Assert.All(created, task => Assert.Single(emitted.OfType<TaskCreatedIntegrationEvent>(), e => e.TaskId == task.Id));
-        Assert.All(created, task => Assert.Single(emitted.OfType<ReminderRequestedIntegrationEvent>(), e => e.TargetId == task.Id));
+        Assert.All(
+            created,
+            task => Assert.Single(emitted.OfType<TaskCreatedIntegrationEvent>(), e => e.TaskId == task.Id)
+        );
+        Assert.All(
+            created,
+            task => Assert.Single(emitted.OfType<ReminderRequestedIntegrationEvent>(), e => e.TargetId == task.Id)
+        );
         Assert.Equal(created.Count, emitted.OfType<TaskCreatedIntegrationEvent>().Count());
         // D-TSK-1: cada tarea raíz de la plantilla avisa una vez a su asignado.
         var roots = created.Where(task => task.ParentTaskId is null).ToList();
-        Assert.All(roots, task => Assert.Single(emitted.OfType<TaskAssignedIntegrationEvent>(), e => e.TaskId == task.Id));
+        Assert.All(
+            roots,
+            task => Assert.Single(emitted.OfType<TaskAssignedIntegrationEvent>(), e => e.TaskId == task.Id)
+        );
         Assert.Equal(roots.Count, emitted.OfType<TaskAssignedIntegrationEvent>().Count());
     }
 
@@ -83,7 +115,24 @@ public sealed class TaskCommandEventCountTests
 
         await fixture.RunAsync(
             typeof(CreateTaskSeriesHandler),
-            new CreateTaskSeriesCommand(TenantId, Manager, "Monthly bookkeeping", null, TaskPriority.Normal, null, null, null, Preparer, false, "FREQ=MONTHLY;INTERVAL=1", "America/New_York", RecurrenceMode.FixedSchedule, DateTime.UtcNow.AddDays(2), null, null)
+            new CreateTaskSeriesCommand(
+                TenantId,
+                Manager,
+                "Monthly bookkeeping",
+                null,
+                TaskPriority.Normal,
+                null,
+                null,
+                null,
+                Preparer,
+                false,
+                "FREQ=MONTHLY;INTERVAL=1",
+                "America/New_York",
+                RecurrenceMode.FixedSchedule,
+                DateTime.UtcNow.AddDays(2),
+                null,
+                null
+            )
         );
 
         var emitted = await fixture.EmittedAsync();
@@ -101,14 +150,36 @@ public sealed class TaskCommandEventCountTests
         var materializer = new TaskSeriesMaterializer(fixture.Tasks, series);
         await fixture.RunAsync(
             typeof(CreateTaskSeriesHandler),
-            new CreateTaskSeriesCommand(TenantId, Manager, "Monthly bookkeeping", null, TaskPriority.Normal, null, null, null, Preparer, false, "FREQ=MONTHLY;INTERVAL=1", "America/New_York", RecurrenceMode.FixedSchedule, DateTime.UtcNow.AddDays(2), null, null),
+            new CreateTaskSeriesCommand(
+                TenantId,
+                Manager,
+                "Monthly bookkeeping",
+                null,
+                TaskPriority.Normal,
+                null,
+                null,
+                null,
+                Preparer,
+                false,
+                "FREQ=MONTHLY;INTERVAL=1",
+                "America/New_York",
+                RecurrenceMode.FixedSchedule,
+                DateTime.UtcNow.AddDays(2),
+                null,
+                null
+            ),
             series,
             materializer
         );
         await fixture.EmittedAsync();
         var first = Assert.Single(fixture.Tasks.Stored);
 
-        await fixture.RunAsync(typeof(CompleteTaskHandler), new CompleteTaskCommand(TenantId, first.Id, Manager, true), series, materializer);
+        await fixture.RunAsync(
+            typeof(CompleteTaskHandler),
+            new CompleteTaskCommand(TenantId, first.Id, Manager, true),
+            series,
+            materializer
+        );
 
         // D-TSK-1: la materialización automática pide recordatorio, pero no vuelve a avisar la asignación.
         var emitted = await fixture.EmittedAsync();
@@ -138,7 +209,10 @@ public sealed class TaskCommandEventCountTests
         var task = NewTask(Manager);
         var fixture = new Fixture(task);
 
-        await fixture.RunAsync(typeof(AssignTaskHandler), new AssignTaskCommand(TenantId, task.Id, Preparer, Manager, false));
+        await fixture.RunAsync(
+            typeof(AssignTaskHandler),
+            new AssignTaskCommand(TenantId, task.Id, Preparer, Manager, false)
+        );
 
         var emitted = await fixture.EmittedAsync();
         Assert.Equal(Preparer, Assert.Single(emitted.OfType<TaskAssignedIntegrationEvent>()).AssigneeUserId);
@@ -165,7 +239,10 @@ public sealed class TaskCommandEventCountTests
         var task = NewTask(Preparer);
         var fixture = new Fixture(task);
 
-        await fixture.RunAsync(typeof(CancelTaskHandler), new CancelTaskCommand(TenantId, task.Id, Manager, true, "Client left"));
+        await fixture.RunAsync(
+            typeof(CancelTaskHandler),
+            new CancelTaskCommand(TenantId, task.Id, Manager, true, "Client left")
+        );
 
         var emitted = await fixture.EmittedAsync();
         Assert.Single(emitted.OfType<TaskCancelledIntegrationEvent>());
@@ -191,7 +268,9 @@ public sealed class TaskCommandEventCountTests
     private static TaskTemplate Template()
     {
         var standard = StandardTaxTemplates.All.First(t => t.RecurrenceRule is null);
-        var template = TaskTemplate.Create(TenantId, Manager, standard.Name, standard.Description, DateTime.UtcNow).Value;
+        var template = TaskTemplate
+            .Create(TenantId, Manager, standard.Name, standard.Description, DateTime.UtcNow)
+            .Value;
         Assert.True(TaskTemplateStepFactory.ApplyTo(template, standard.Steps).IsSuccess);
         return template;
     }
@@ -242,8 +321,11 @@ public sealed class TaskCommandEventCountTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<TaskUnblockedIntegrationEvent>>([]);
 
-        public Task ApplyPredecessorReopenedAsync(Guid tenantId, Guid predecessorTaskId, CancellationToken ct = default) =>
-            Task.CompletedTask;
+        public Task ApplyPredecessorReopenedAsync(
+            Guid tenantId,
+            Guid predecessorTaskId,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
 
         public Task ApplyChildClosedAsync(Guid tenantId, Guid? parentTaskId, CancellationToken ct = default) =>
             Task.CompletedTask;
@@ -251,8 +333,12 @@ public sealed class TaskCommandEventCountTests
         public Task ApplyChildReopenedAsync(Guid tenantId, Guid? parentTaskId, CancellationToken ct = default) =>
             Task.CompletedTask;
 
-        public Task DeleteWithDescendantsAsync(Guid tenantId, Guid taskId, Guid byUserId, CancellationToken ct = default) =>
-            Task.CompletedTask;
+        public Task DeleteWithDescendantsAsync(
+            Guid tenantId,
+            Guid taskId,
+            Guid byUserId,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
     }
 
     private sealed class NoUsers : IUserPermissionsProjectionRepository
@@ -260,7 +346,8 @@ public sealed class TaskCommandEventCountTests
         public Task<UserPermissionsProjection?> GetAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             Task.FromResult<UserPermissionsProjection?>(null);
 
-        public Task AddAsync(UserPermissionsProjection projection, CancellationToken ct = default) => Task.CompletedTask;
+        public Task AddAsync(UserPermissionsProjection projection, CancellationToken ct = default) =>
+            Task.CompletedTask;
 
         public Task<IReadOnlyList<UserPermissionsProjection>> FindActiveByTenantAndRoleIdAsync(
             Guid tenantId,

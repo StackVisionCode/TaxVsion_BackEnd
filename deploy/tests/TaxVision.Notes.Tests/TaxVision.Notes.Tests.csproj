@@ -27,6 +27,9 @@
     <ProjectReference Include="..\..\..\src\Services\Notes\TaxVision.Notes.Infrastructure\TaxVision.Notes.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Notes\TaxVision.Notes.Api\TaxVision.Notes.Api.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
-    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" Aliases="BbTesting" />
+    <ProjectReference
+      Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj"
+      Aliases="BbTesting"
+    />
   </ItemGroup>
 </Project>

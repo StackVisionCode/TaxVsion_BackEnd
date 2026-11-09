@@ -16,15 +16,14 @@ namespace TaxVision.Notes.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "Notes");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "Notes");
         }
     }
 }

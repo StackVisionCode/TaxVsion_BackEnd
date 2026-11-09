@@ -15,8 +15,7 @@ public sealed class CustomerContactPolicyRepositoryIntegrationTests : IAsyncLife
 {
     private readonly Guid _tenant = Guid.NewGuid();
     private readonly Guid _otherTenant = Guid.NewGuid();
-    private readonly string _connectionString =
-        SmsIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = SmsIntegrationDatabase.ConnectionString;
 
     private sealed class NoTenant : ITenantContext
     {

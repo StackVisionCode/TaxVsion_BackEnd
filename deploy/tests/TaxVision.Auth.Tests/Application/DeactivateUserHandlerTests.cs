@@ -14,14 +14,25 @@ public sealed class DeactivateUserHandlerTests
     public async Task TargetAdmin_AcquiresTenantLockBeforeCounting()
     {
         var tenantId = Guid.NewGuid();
-        var target = User.Register(tenantId, "Tania", "Ruiz", "tania@example.com", "hash", UserActorType.TenantAdmin).Value;
+        var target = User.Register(
+            tenantId,
+            "Tania",
+            "Ruiz",
+            "tania@example.com",
+            "hash",
+            UserActorType.TenantAdmin
+        ).Value;
         var calls = new List<string>();
 
         var result = await DeactivateUserHandler.Handle(
             new DeactivateUserCommand(tenantId, target.Id, Guid.NewGuid(), UserActorType.TenantAdmin),
             new OrderRecordingUserRepository(target, calls, activeAdmins: 1),
             new RecordingTenantAdminLock(calls),
-            new SessionAccessCutoff(new EmptyUserSessionRepository(), new RecordingAccessTokenDenylist(), new QuietRevocations()),
+            new SessionAccessCutoff(
+                new EmptyUserSessionRepository(),
+                new RecordingAccessTokenDenylist(),
+                new QuietRevocations()
+            ),
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),
@@ -39,14 +50,25 @@ public sealed class DeactivateUserHandlerTests
     public async Task LastAdminDeactivatingSelf_StillGetsSelfAction_WithoutTakingTheLock()
     {
         var tenantId = Guid.NewGuid();
-        var self = User.Register(tenantId, "Tania", "Ruiz", "tania@example.com", "hash", UserActorType.TenantAdmin).Value;
+        var self = User.Register(
+            tenantId,
+            "Tania",
+            "Ruiz",
+            "tania@example.com",
+            "hash",
+            UserActorType.TenantAdmin
+        ).Value;
         var calls = new List<string>();
 
         var result = await DeactivateUserHandler.Handle(
             new DeactivateUserCommand(tenantId, self.Id, self.Id, UserActorType.TenantAdmin),
             new OrderRecordingUserRepository(self, calls, activeAdmins: 1),
             new RecordingTenantAdminLock(calls),
-            new SessionAccessCutoff(new EmptyUserSessionRepository(), new RecordingAccessTokenDenylist(), new QuietRevocations()),
+            new SessionAccessCutoff(
+                new EmptyUserSessionRepository(),
+                new RecordingAccessTokenDenylist(),
+                new QuietRevocations()
+            ),
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),

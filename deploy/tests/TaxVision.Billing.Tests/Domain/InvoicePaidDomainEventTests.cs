@@ -97,7 +97,14 @@ public sealed class InvoicePaidDomainEventTests
     private static void Pay(Invoice invoice, string reference, long cents, InvoicePaymentSource source) =>
         Assert.True(
             invoice
-                .ApplyPayment(source, reference, Money.Create(cents, "USD").Value, PaymentMethod.Online, Now, Guid.Empty)
+                .ApplyPayment(
+                    source,
+                    reference,
+                    Money.Create(cents, "USD").Value,
+                    PaymentMethod.Online,
+                    Now,
+                    Guid.Empty
+                )
                 .IsSuccess
         );
 
@@ -114,7 +121,9 @@ public sealed class InvoicePaidDomainEventTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess
+        );
         return invoice;
     }
 }

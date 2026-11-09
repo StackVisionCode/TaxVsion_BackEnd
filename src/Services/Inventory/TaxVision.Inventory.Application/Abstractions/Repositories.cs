@@ -21,11 +21,7 @@ public interface IStockRepository
     /// <summary>Nivel con candado de actualización hasta el fin de la transacción (UPDLOCK + HOLDLOCK): un
     /// segundo escritor espera y lee el valor confirmado; si el nivel no existe, también se bloquea el rango.
     /// Exige la transacción de Wolverine abierta. Un interbloqueo (1205) no se traga: se reintenta afuera.</summary>
-    Task<StockLevel?> GetByCatalogItemForUpdateAsync(
-        Guid tenantId,
-        Guid catalogItemId,
-        CancellationToken ct = default
-    );
+    Task<StockLevel?> GetByCatalogItemForUpdateAsync(Guid tenantId, Guid catalogItemId, CancellationToken ct = default);
 
     /// <summary>Igual que <see cref="GetByCatalogItemForUpdateAsync"/> para un lote (venta de una factura).</summary>
     Task<IReadOnlyList<StockLevel>> GetByCatalogItemsForUpdateAsync(

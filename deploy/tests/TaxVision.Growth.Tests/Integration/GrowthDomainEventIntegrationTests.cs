@@ -185,7 +185,10 @@ public sealed class GrowthDomainEventIntegrationTests : IAsyncLifetime
     }
 
     private Task<int> CommittedNoticesAsync() =>
-        _database.CountEnvelopesAsync(OutgoingTable, typeof(CodeReservationCommittedIntegrationEvent).ToMessageTypeName());
+        _database.CountEnvelopesAsync(
+            OutgoingTable,
+            typeof(CodeReservationCommittedIntegrationEvent).ToMessageTypeName()
+        );
 
     private Task<int> IncomingAsync<T>() => _database.CountEnvelopesAsync(IncomingTable, typeof(T).ToMessageTypeName());
 
@@ -253,7 +256,11 @@ public sealed class GrowthDomainEventIntegrationTests : IAsyncLifetime
     private async Task<CodeReservationStatus> StatusAsync(Guid reservationId)
     {
         await using var db = _database.NewContext(_tenantId);
-        return await db.CodeReservations.AsNoTracking().Where(r => r.Id == reservationId).Select(r => r.Status).SingleAsync();
+        return await db
+            .CodeReservations.AsNoTracking()
+            .Where(r => r.Id == reservationId)
+            .Select(r => r.Status)
+            .SingleAsync();
     }
 
     private async Task<IHost> StartHostAsync()
@@ -264,7 +271,9 @@ public sealed class GrowthDomainEventIntegrationTests : IAsyncLifetime
                 new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:Default"] = _database.ConnectionString,
-                    [$"{CodeTokenHashingOptions.SectionName}:Pepper"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)),
+                    [$"{CodeTokenHashingOptions.SectionName}:Pepper"] = Convert.ToBase64String(
+                        RandomNumberGenerator.GetBytes(48)
+                    ),
                     [$"{ReferralCodeTokenHashingOptions.SectionName}:Pepper"] = Convert.ToBase64String(
                         RandomNumberGenerator.GetBytes(48)
                     ),
@@ -305,7 +314,10 @@ public sealed class GrowthDomainEventIntegrationTests : IAsyncLifetime
 
                 options.UseTaxVisionDomainEvents();
                 options.LocalQueue(DomainEventDispatchExtensions.DomainEventsQueue).Sequential();
-                options.PublishMessage<CodeReservationCommittedIntegrationEvent>().ToPort(closedPort).UseDurableOutbox();
+                options
+                    .PublishMessage<CodeReservationCommittedIntegrationEvent>()
+                    .ToPort(closedPort)
+                    .UseDurableOutbox();
             })
             .StartAsync();
     }

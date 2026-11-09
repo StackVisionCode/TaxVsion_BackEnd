@@ -434,7 +434,10 @@ public sealed class User : AggregateRoot
         return Reactivate(utcNow);
     }
 
-    private static readonly Error NotPortal = new("User.NotPortal", "Only customer portal accounts follow the customer.");
+    private static readonly Error NotPortal = new(
+        "User.NotPortal",
+        "Only customer portal accounts follow the customer."
+    );
 
     private bool IsStaleCustomerStatus(DateTime occurredAtUtc) =>
         CustomerStatusChangedAtUtc is { } last && occurredAtUtc <= last;

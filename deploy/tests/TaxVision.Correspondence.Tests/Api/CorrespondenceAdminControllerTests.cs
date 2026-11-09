@@ -25,7 +25,9 @@ public sealed class CorrespondenceAdminControllerTests
             {
                 _invoked.Add(message);
                 var command = (RepairCrossCustomerThreadsCommand)message;
-                return Task.FromResult<object?>(new RepairCrossCustomerThreadsReport(command.DryRun, 1, 1, 0, 0, 0, []));
+                return Task.FromResult<object?>(
+                    new RepairCrossCustomerThreadsReport(command.DryRun, 1, 1, 0, 0, 0, [])
+                );
             },
         };
         var user = new ClaimsPrincipal(

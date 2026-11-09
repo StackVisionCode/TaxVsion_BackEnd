@@ -130,7 +130,8 @@ public sealed class NoteConcurrencyIntegrationTests : IAsyncLifetime
 
     private static Result Attach(Note note) => Attach(note, Guid.NewGuid());
 
-    private static Result Attach(Note note, Guid fileId) => note.AttachFile(fileId, "file.pdf", "application/pdf", 100, DateTime.UtcNow);
+    private static Result Attach(Note note, Guid fileId) =>
+        note.AttachFile(fileId, "file.pdf", "application/pdf", 100, DateTime.UtcNow);
 
     private async Task<Guid> SeedNoteAsync(int attachments, Guid? pendingFileId = null)
     {

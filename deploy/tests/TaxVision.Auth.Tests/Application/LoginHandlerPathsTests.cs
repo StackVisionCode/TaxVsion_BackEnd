@@ -38,7 +38,12 @@ public sealed class LoginHandlerPathsTests
         var result = await world.LoginAsync(tenantId: Guid.NewGuid());
 
         Assert.Equal("Auth.Invalid", result.Error.Code);
-        world.AssertAudit(AuthAuditAction.LoginFailed, false, """{"reason":"tenant_inactive_or_missing"}""", userId: null);
+        world.AssertAudit(
+            AuthAuditAction.LoginFailed,
+            false,
+            """{"reason":"tenant_inactive_or_missing"}""",
+            userId: null
+        );
         Assert.Equal(1, world.Throttler.Failures);
         Assert.Equal(1, world.UnitOfWork.Saves);
     }
@@ -52,7 +57,12 @@ public sealed class LoginHandlerPathsTests
         var result = await world.LoginAsync();
 
         Assert.Equal("Auth.Invalid", result.Error.Code);
-        world.AssertAudit(AuthAuditAction.LoginFailed, false, """{"reason":"tenant_inactive_or_missing"}""", userId: null);
+        world.AssertAudit(
+            AuthAuditAction.LoginFailed,
+            false,
+            """{"reason":"tenant_inactive_or_missing"}""",
+            userId: null
+        );
     }
 
     [Fact]
@@ -114,7 +124,11 @@ public sealed class LoginHandlerPathsTests
     {
         var world = new LoginWorld();
         for (var attempt = 1; attempt < LockoutPolicy.MaxFailedAttempts; attempt++)
-            world.User.RegisterFailedLogin(DateTime.UtcNow, LockoutPolicy.MaxFailedAttempts, LockoutPolicy.LockoutDuration);
+            world.User.RegisterFailedLogin(
+                DateTime.UtcNow,
+                LockoutPolicy.MaxFailedAttempts,
+                LockoutPolicy.LockoutDuration
+            );
 
         var result = await world.LoginAsync(password: "wrong");
 
@@ -237,7 +251,10 @@ public sealed class LoginHandlerPathsTests
         Assert.Null(result.Value.Tokens);
         Assert.False(result.Value.MfaSetupRequired);
         Assert.Equal(world.Tickets.Issued.ToString(), result.Value.TakeoverTicket);
-        Assert.Equal((int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds, result.Value.TakeoverTicketExpiresInSeconds);
+        Assert.Equal(
+            (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
+            result.Value.TakeoverTicketExpiresInSeconds
+        );
         Assert.Equal(UserActorType.TenantEmployee.ToString(), result.Value.ActorType);
         Assert.False(world.Tickets.LastPayload!.MustEnrollMfa);
         world.AssertAudit(AuthAuditAction.LoginSucceeded, true, """{"takeoverRequired":true}""", world.User.Id);
@@ -552,8 +569,11 @@ public sealed class LoginHandlerPathsTests
             CancellationToken ct = default
         ) => _inner.GetPasswordResetRetryAfterAsync(email, ipAddress, ct);
 
-        public Task RegisterPasswordResetRequestAsync(string email, string? ipAddress, CancellationToken ct = default) =>
-            _inner.RegisterPasswordResetRequestAsync(email, ipAddress, ct);
+        public Task RegisterPasswordResetRequestAsync(
+            string email,
+            string? ipAddress,
+            CancellationToken ct = default
+        ) => _inner.RegisterPasswordResetRequestAsync(email, ipAddress, ct);
 
         public Task<TimeSpan?> GetInvitationAcceptRetryAfterAsync(string? ipAddress, CancellationToken ct = default) =>
             _inner.GetInvitationAcceptRetryAfterAsync(ipAddress, ct);

@@ -111,9 +111,7 @@ public sealed class CustomerUpdatedConsumerTests
         var customerId = Guid.NewGuid();
         var repository = new FakeCustomerEmailAddressRepository();
         var t1 = DateTime.UtcNow.AddMinutes(-30);
-        repository.Seed(
-            CustomerEmailAddress.Create(tenantId, customerId, EmailAddress.Create("x@example.com").Value)
-        );
+        repository.Seed(CustomerEmailAddress.Create(tenantId, customerId, EmailAddress.Create("x@example.com").Value));
 
         await HandleUpdatedAsync(tenantId, customerId, "z@example.com", t1.AddMinutes(20), repository);
         await HandleUpdatedAsync(tenantId, customerId, "y@example.com", t1.AddMinutes(10), repository);

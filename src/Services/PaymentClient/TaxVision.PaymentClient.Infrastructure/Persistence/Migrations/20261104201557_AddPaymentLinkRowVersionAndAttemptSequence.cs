@@ -15,7 +15,8 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 table: "PaymentLinks",
                 type: "int",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",
@@ -23,19 +24,16 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "AttemptSequence",
-                table: "PaymentLinks");
+            migrationBuilder.DropColumn(name: "AttemptSequence", table: "PaymentLinks");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "PaymentLinks");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "PaymentLinks");
         }
     }
 }

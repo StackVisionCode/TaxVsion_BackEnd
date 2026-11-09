@@ -146,7 +146,14 @@ public sealed class RecalculateEntitlementsHandlerTests
         var bus = new CapturingMessageBus();
 
         await Assert.ThrowsAsync<ConflictException>(() =>
-            RecalculateAsync(subscription, plan, [], new FakeSnapshotRepo(), bus, unitOfWork: new ConflictingUnitOfWork())
+            RecalculateAsync(
+                subscription,
+                plan,
+                [],
+                new FakeSnapshotRepo(),
+                bus,
+                unitOfWork: new ConflictingUnitOfWork()
+            )
         );
 
         Assert.Empty(bus.Published.OfType<TenantEntitlementsChangedIntegrationEvent>());

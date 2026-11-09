@@ -19,25 +19,26 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                     CustomerId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     SmsEnabled = table.Column<bool>(type: "bit", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CustomerContactPolicyProjections", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CustomerContactPolicyProjections_TenantId_CustomerId",
                 table: "CustomerContactPolicyProjections",
                 columns: new[] { "TenantId", "CustomerId" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CustomerContactPolicyProjections");
+            migrationBuilder.DropTable(name: "CustomerContactPolicyProjections");
         }
     }
 }

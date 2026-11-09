@@ -77,9 +77,7 @@ public static class ApplyTaskTemplateHandler
 
         return instantiated.IsFailure
             ? Result.Failure<Applied>(instantiated.Error)
-            : Result.Success(
-                new Applied(ToResponse(command.TemplateId, instantiated.Value), instantiated.Value.Tasks)
-            );
+            : Result.Success(new Applied(ToResponse(command.TemplateId, instantiated.Value), instantiated.Value.Tasks));
     }
 
     /// <summary>

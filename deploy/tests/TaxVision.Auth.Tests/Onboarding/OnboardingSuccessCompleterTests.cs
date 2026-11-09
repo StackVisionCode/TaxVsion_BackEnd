@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Onboarding.Application;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Onboarding.Application.Consumers;
@@ -12,7 +13,6 @@ using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
 using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
 using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Onboarding.Infrastructure.Concurrency;
-using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;
@@ -215,7 +215,9 @@ public sealed class OnboardingSuccessCompleterTests
                 new OnboardingCodeReserver(null!, null!),
                 Completer(),
                 new FakePlanCatalogClient("Enterprise"),
-                new FakePaymentAppOnboardingClient(Result.Failure<PaymentAppCheckoutResult>(new Error("Unused", "Unused."))),
+                new FakePaymentAppOnboardingClient(
+                    Result.Failure<PaymentAppCheckoutResult>(new Error("Unused", "Unused."))
+                ),
                 new FakeOnboardingReturnReferenceStore(),
                 Options.Create(RegistrationOptions),
                 UnitOfWork,

@@ -1,10 +1,10 @@
 using BuildingBlocks.Messaging;
 using JasperFx;
 using JasperFx.CodeGeneration;
-using Wolverine.ErrorHandling;
 using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
 using TaxVision.Billing.Application.Invoices.SyncInvoiceStock;
 using Wolverine.Configuration;
+using Wolverine.ErrorHandling;
 using Wolverine.Runtime.Handlers;
 
 namespace TaxVision.Billing.Infrastructure.Messaging;

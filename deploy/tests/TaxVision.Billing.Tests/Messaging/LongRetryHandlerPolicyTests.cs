@@ -99,7 +99,9 @@ public sealed class LongRetryHandlerPolicyTests : IAsyncLifetime
     {
         const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         var chainRules = _graph.ChainFor(messageType).Failures;
-        var combined = typeof(FailureRuleCollection).GetMethod("CombineRules", Any)!.Invoke(chainRules, [_graph.Failures])!;
+        var combined = typeof(FailureRuleCollection)
+            .GetMethod("CombineRules", Any)!
+            .Invoke(chainRules, [_graph.Failures])!;
         return typeof(FailureRuleCollection)
             .GetMethod("DetermineExecutionContinuation", Any)!
             .Invoke(combined, [exception, new Envelope { Attempts = attempt }])!;

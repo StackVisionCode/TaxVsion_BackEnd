@@ -24,7 +24,7 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     Method = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     PaidAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     RecordedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ExceedsDueCents = table.Column<long>(type: "bigint", nullable: false)
+                    ExceedsDueCents = table.Column<long>(type: "bigint", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -35,23 +35,24 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         principalSchema: "billing",
                         principalTable: "Invoices",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_InvoicePayments_InvoiceId_Source_SourceReference",
                 schema: "billing",
                 table: "InvoicePayments",
                 columns: new[] { "InvoiceId", "Source", "SourceReference" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "InvoicePayments",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "InvoicePayments", schema: "billing");
         }
     }
 }

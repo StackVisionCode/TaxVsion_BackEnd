@@ -1,6 +1,6 @@
 using TaxVision.PaymentApp.Application.Abstractions;
-using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
+using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Common;
 

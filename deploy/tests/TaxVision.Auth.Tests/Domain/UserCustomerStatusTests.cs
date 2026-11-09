@@ -100,8 +100,14 @@ public sealed class UserCustomerStatusTests
     [Fact]
     public void StaffAccount_IsRefused()
     {
-        var user = User.Register(Guid.NewGuid(), "Erin", "Staff", "erin@example.test", "hash", UserActorType.TenantEmployee)
-            .Value;
+        var user = User.Register(
+            Guid.NewGuid(),
+            "Erin",
+            "Staff",
+            "erin@example.test",
+            "hash",
+            UserActorType.TenantEmployee
+        ).Value;
 
         var result = user.ApplyCustomerArchived(T0, T0);
 

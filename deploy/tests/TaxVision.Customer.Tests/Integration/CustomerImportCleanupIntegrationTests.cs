@@ -23,8 +23,7 @@ public sealed class CustomerImportCleanupIntegrationTests : IAsyncLifetime
 
     private readonly Guid _tenant = Guid.NewGuid();
     private readonly FakeCloudStorage _cloudStorage = new();
-    private readonly string _connectionString =
-        CustomerIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = CustomerIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

@@ -16,22 +16,22 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                 table: "Tenants",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 0L
+            );
 
             migrationBuilder.UpdateData(
                 table: "Tenants",
                 keyColumn: "Id",
                 keyValue: new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"),
                 column: "Version",
-                value: 0L);
+                value: 0L
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "Version",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "Version", table: "Tenants");
         }
     }
 }

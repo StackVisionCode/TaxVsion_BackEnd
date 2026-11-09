@@ -58,7 +58,9 @@ public sealed class DomainEventDispatchIntegrationTests : IAsyncLifetime
 
         // Falla después de guardar: ni la fila ni el sobre.
         var failed = Guid.NewGuid();
-        await Assert.ThrowsAsync<ForcedFailureException>(() => bus.InvokeAsync(new CreateProbe(failed, FailAfterSave: true)));
+        await Assert.ThrowsAsync<ForcedFailureException>(() =>
+            bus.InvokeAsync(new CreateProbe(failed, FailAfterSave: true))
+        );
         Assert.Equal(0, await CountProbesAsync(failed));
         Assert.Equal(0, await CountIncomingAsync(nameof(ProbeCreatedDomainEvent)));
 
@@ -73,7 +75,9 @@ public sealed class DomainEventDispatchIntegrationTests : IAsyncLifetime
     public async Task HandlerReturnsIntegrationEvent_IsInOutbox()
     {
         _gate.Open();
-        await _host.Services.GetRequiredService<IMessageBus>().InvokeAsync(new CreateProbe(Guid.NewGuid(), FailAfterSave: false));
+        await _host
+            .Services.GetRequiredService<IMessageBus>()
+            .InvokeAsync(new CreateProbe(Guid.NewGuid(), FailAfterSave: false));
 
         Assert.True(
             await WaitUntilAsync(async () => await CountOutgoingAsync(nameof(ProbeCreatedIntegrationEvent)) == 1),
@@ -89,7 +93,9 @@ public sealed class DomainEventDispatchIntegrationTests : IAsyncLifetime
 
         _gate.Open();
         Assert.True(
-            await WaitUntilAsync(async () => await CountOutgoingAsync(nameof(TenantlessProbeCreatedIntegrationEvent)) == 1),
+            await WaitUntilAsync(async () =>
+                await CountOutgoingAsync(nameof(TenantlessProbeCreatedIntegrationEvent)) == 1
+            ),
             "El evento de la raíz sin TenantId no se despachó."
         );
     }
@@ -146,13 +152,22 @@ public sealed class DomainEventDispatchIntegrationTests : IAsyncLifetime
             .StartAsync();
     }
 
-    private Task<int> CountProbesAsync(Guid id) => BuildingBlocksTestDatabase.CountRowsAsync(_schema, "Probes", $"Id = '{id}'");
+    private Task<int> CountProbesAsync(Guid id) =>
+        BuildingBlocksTestDatabase.CountRowsAsync(_schema, "Probes", $"Id = '{id}'");
 
     private Task<int> CountIncomingAsync(string messageType) =>
-        BuildingBlocksTestDatabase.CountRowsAsync(_schema, "wolverine_incoming_envelopes", $"message_type LIKE '%{messageType}%'");
+        BuildingBlocksTestDatabase.CountRowsAsync(
+            _schema,
+            "wolverine_incoming_envelopes",
+            $"message_type LIKE '%{messageType}%'"
+        );
 
     private Task<int> CountOutgoingAsync(string messageType) =>
-        BuildingBlocksTestDatabase.CountRowsAsync(_schema, "wolverine_outgoing_envelopes", $"message_type LIKE '%{messageType}%'");
+        BuildingBlocksTestDatabase.CountRowsAsync(
+            _schema,
+            "wolverine_outgoing_envelopes",
+            $"message_type LIKE '%{messageType}%'"
+        );
 
     private static async Task<bool> WaitUntilAsync(Func<Task<bool>> condition)
     {
@@ -222,7 +237,9 @@ public sealed class ProbeGate
 {
     private readonly TaskCompletionSource _opened = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private readonly TaskCompletionSource<string> _seenCorrelationId = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<string> _seenCorrelationId = new(
+        TaskCreationOptions.RunContinuationsAsynchronously
+    );
 
     public Task<string> SeenCorrelationId => _seenCorrelationId.Task;
 

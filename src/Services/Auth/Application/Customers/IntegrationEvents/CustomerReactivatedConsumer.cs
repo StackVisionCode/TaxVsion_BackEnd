@@ -21,7 +21,9 @@ public static class CustomerReactivatedConsumer
         CancellationToken ct
     )
     {
-        using var _ = correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId);
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+        );
 
         var user = await users.GetPortalUserByCustomerAsync(evt.TenantId, evt.CustomerId, ct);
         if (user is null)

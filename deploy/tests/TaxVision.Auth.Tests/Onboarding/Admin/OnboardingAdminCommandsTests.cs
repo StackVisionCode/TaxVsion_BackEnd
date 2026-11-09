@@ -1,9 +1,9 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Onboarding.Application.Admin.Commands;
 using TaxVision.Auth.Onboarding.Application.Sagas.Commands;
-using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Tests.Application;
 using TaxVision.Auth.Tests.Onboarding;

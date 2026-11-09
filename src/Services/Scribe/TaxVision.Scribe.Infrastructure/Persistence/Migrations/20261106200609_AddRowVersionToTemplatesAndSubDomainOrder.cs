@@ -15,7 +15,8 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                 name: "SubDomainChangedAtUtc",
                 table: "TenantProfileRefs",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",
@@ -23,7 +24,8 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",
@@ -31,23 +33,18 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "SubDomainChangedAtUtc",
-                table: "TenantProfileRefs");
+            migrationBuilder.DropColumn(name: "SubDomainChangedAtUtc", table: "TenantProfileRefs");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "EmailTemplates");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "EmailTemplates");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "EmailLayouts");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "EmailLayouts");
         }
     }
 }

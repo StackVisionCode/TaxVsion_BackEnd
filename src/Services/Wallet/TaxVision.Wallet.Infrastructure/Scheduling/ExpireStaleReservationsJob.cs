@@ -90,7 +90,13 @@ public sealed class ExpireStaleReservationsJob(
         var candidates = new List<WalletReservation>();
         foreach (var (referenceType, ttl) in settings.OpenTtl)
             candidates.AddRange(
-                await reservations.ListOpenOlderThanAsync(nowUtc - ttl, settings.ExpiryBatchSize, referenceType, null, ct)
+                await reservations.ListOpenOlderThanAsync(
+                    nowUtc - ttl,
+                    settings.ExpiryBatchSize,
+                    referenceType,
+                    null,
+                    ct
+                )
             );
         candidates.AddRange(
             await reservations.ListOpenOlderThanAsync(

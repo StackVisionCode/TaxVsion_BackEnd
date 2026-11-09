@@ -17,7 +17,8 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormIntakeDailyCounters",
@@ -25,23 +26,21 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                 {
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     DayUtc = table.Column<DateTime>(type: "date", nullable: false),
-                    Count = table.Column<int>(type: "int", nullable: false)
+                    Count = table.Column<int>(type: "int", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormIntakeDailyCounters", x => new { x.TenantId, x.DayUtc });
-                });
+                }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "FormIntakeDailyCounters");
+            migrationBuilder.DropTable(name: "FormIntakeDailyCounters");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "FormAccessGrants");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "FormAccessGrants");
         }
     }
 }

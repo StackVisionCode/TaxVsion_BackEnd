@@ -40,7 +40,14 @@ public sealed class StartAddOnCheckoutHandlerTests
             {
                 ReserveAddOnCheckoutCommand reserve => await ReserveAddOnCheckoutHandler.Handle(
                     reserve,
-                    new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(subscriptions, plans, modules, definitions, settings, tenantAddOns),
+                    new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(
+                        subscriptions,
+                        plans,
+                        modules,
+                        definitions,
+                        settings,
+                        tenantAddOns
+                    ),
                     intents,
                     unitOfWork,
                     token

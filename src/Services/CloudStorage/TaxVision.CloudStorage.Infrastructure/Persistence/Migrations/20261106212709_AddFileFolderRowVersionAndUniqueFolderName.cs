@@ -29,7 +29,8 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",
@@ -37,30 +38,26 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_Folders_Owner_Parent_Name",
                 table: "Folders",
                 columns: new[] { "TenantId", "OwnerType", "OwnerId", "ParentFolderId", "Name" },
                 unique: true,
-                filter: "[SoftDeletedAtUtc] IS NULL AND [Category] IS NULL");
+                filter: "[SoftDeletedAtUtc] IS NULL AND [Category] IS NULL"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "UX_Folders_Owner_Parent_Name",
-                table: "Folders");
+            migrationBuilder.DropIndex(name: "UX_Folders_Owner_Parent_Name", table: "Folders");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "Folders");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "Folders");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "Files");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "Files");
         }
     }
 }

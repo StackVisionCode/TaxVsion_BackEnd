@@ -1458,8 +1458,10 @@ public sealed class ClientFormsConsumerTests
 
         public List<EmailDispatchRequest> Queued => _inner.Queued;
 
-        public Task<EmailDispatchResult> QueueEmailAsync(EmailDispatchRequest request, CancellationToken ct = default) =>
-            _inner.QueueEmailAsync(request, ct);
+        public Task<EmailDispatchResult> QueueEmailAsync(
+            EmailDispatchRequest request,
+            CancellationToken ct = default
+        ) => _inner.QueueEmailAsync(request, ct);
     }
 
     private sealed class HostResolver : ITenantHostResolver

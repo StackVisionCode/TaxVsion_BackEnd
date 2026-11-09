@@ -122,7 +122,9 @@ internal sealed class WispReviewReminderJob(
             scopeFactory,
             async (unit, token) =>
             {
-                using var correlationScope = unit.Services.GetRequiredService<ICorrelationContext>().Push(correlationId);
+                using var correlationScope = unit
+                    .Services.GetRequiredService<ICorrelationContext>()
+                    .Push(correlationId);
                 var reminder = await WispReviewReminders.RegisterIfDueAsync(
                     candidate,
                     nowUtc,
@@ -142,7 +144,11 @@ internal sealed class WispReviewReminderJob(
 
         // Un conflicto es normal (otra réplica o un guardado del admin ganó): la próxima pasada lo reevalúa.
         if (result.Outcome == JobUnitOutcome.Failed)
-            logger.LogError(result.Exception, "WispReviewReminderJob failed for tenant {TenantId}.", candidate.TenantId);
+            logger.LogError(
+                result.Exception,
+                "WispReviewReminderJob failed for tenant {TenantId}.",
+                candidate.TenantId
+            );
 
         return result.Outcome == JobUnitOutcome.Committed;
     }

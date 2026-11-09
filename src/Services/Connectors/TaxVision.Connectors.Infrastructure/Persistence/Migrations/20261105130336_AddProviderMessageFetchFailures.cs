@@ -22,25 +22,26 @@ namespace TaxVision.Connectors.Infrastructure.Persistence.Migrations
                     FirstFailedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     LastFailedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     LastError = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    Status = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false)
+                    Status = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ProviderMessageFetchFailures", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ProviderMessageFetchFailures_AccountId_ProviderMessageId",
                 table: "ProviderMessageFetchFailures",
                 columns: new[] { "AccountId", "ProviderMessageId" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "ProviderMessageFetchFailures");
+            migrationBuilder.DropTable(name: "ProviderMessageFetchFailures");
         }
     }
 }

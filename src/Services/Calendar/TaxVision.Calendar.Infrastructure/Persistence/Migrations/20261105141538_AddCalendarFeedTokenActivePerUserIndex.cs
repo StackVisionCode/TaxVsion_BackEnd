@@ -18,15 +18,14 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                 table: "CalendarFeedTokens",
                 columns: new[] { "TenantId", "UserId" },
                 unique: true,
-                filter: "[RevokedAtUtc] IS NULL");
+                filter: "[RevokedAtUtc] IS NULL"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "UX_CalendarFeedTokens_ActivePerUser",
-                table: "CalendarFeedTokens");
+            migrationBuilder.DropIndex(name: "UX_CalendarFeedTokens_ActivePerUser", table: "CalendarFeedTokens");
         }
     }
 }

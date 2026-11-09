@@ -12,8 +12,7 @@ public sealed class PendingDeliveryReceiptRepositoryIntegrationTests : IAsyncLif
 {
     private readonly string _provider = "it-" + Guid.NewGuid().ToString("N")[..12];
 
-    private readonly string _connectionString =
-        SmsIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = SmsIntegrationDatabase.ConnectionString;
 
     private sealed class NoTenant : ITenantContext
     {

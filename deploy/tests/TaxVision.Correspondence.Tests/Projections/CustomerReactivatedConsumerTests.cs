@@ -105,7 +105,11 @@ public sealed class CustomerReactivatedConsumerTests
         repository.Seed(
             CustomerEmailAddress.Create(tenantId, Guid.NewGuid(), EmailAddress.Create("shared@example.com").Value)
         );
-        var existing = CustomerEmailAddress.Create(tenantId, customerId, EmailAddress.Create("shared@example.com").Value);
+        var existing = CustomerEmailAddress.Create(
+            tenantId,
+            customerId,
+            EmailAddress.Create("shared@example.com").Value
+        );
         existing.SoftDelete(DateTime.UtcNow.AddDays(-1));
         repository.Seed(existing);
         var unitOfWork = new FakeUnitOfWork();

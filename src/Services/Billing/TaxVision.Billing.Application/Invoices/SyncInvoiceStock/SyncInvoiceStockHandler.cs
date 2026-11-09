@@ -27,7 +27,11 @@ public static class SyncInvoiceStockHandler
         var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct);
         var holdsStock =
             invoice is { DeletedAtUtc: null }
-            && invoice.Status is InvoiceStatus.Issued or InvoiceStatus.Sent or InvoiceStatus.PartiallyPaid or InvoiceStatus.Paid;
+            && invoice.Status
+                is InvoiceStatus.Issued
+                    or InvoiceStatus.Sent
+                    or InvoiceStatus.PartiallyPaid
+                    or InvoiceStatus.Paid;
 
         IReadOnlyList<InvoiceSaleLine> lines = holdsStock
             ? invoice!

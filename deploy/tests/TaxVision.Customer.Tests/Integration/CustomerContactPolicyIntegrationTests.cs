@@ -15,8 +15,7 @@ namespace TaxVision.Customer.Tests.Integration;
 public sealed class CustomerContactPolicyIntegrationTests : IAsyncLifetime
 {
     private readonly Guid _tenant = Guid.NewGuid();
-    private readonly string _connectionString =
-        CustomerIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = CustomerIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

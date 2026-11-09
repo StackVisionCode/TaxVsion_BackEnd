@@ -42,7 +42,10 @@ public sealed class FilesControllerMoveToFolderTests
                 {
                     User = new ClaimsPrincipal(
                         new ClaimsIdentity(
-                            [new Claim("tenant_id", Guid.NewGuid().ToString()), new Claim("sub", Guid.NewGuid().ToString())],
+                            [
+                                new Claim("tenant_id", Guid.NewGuid().ToString()),
+                                new Claim("sub", Guid.NewGuid().ToString()),
+                            ],
                             "test"
                         )
                     ),

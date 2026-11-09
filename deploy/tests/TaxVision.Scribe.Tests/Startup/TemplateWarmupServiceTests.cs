@@ -87,7 +87,10 @@ public sealed class TemplateWarmupServiceTests
         services.AddSingleton<IEmailTemplateRepository>(new FakeEmailTemplateRepository(template));
         services.AddSingleton<IEmailLayoutRepository>(new FakeEmailLayoutRepository(layout));
         services.AddSingleton<IPublishedTemplateReader>(
-            new FakePublishedTemplateReader(new FakeEmailTemplateRepository(template), new FakeEmailLayoutRepository(layout))
+            new FakePublishedTemplateReader(
+                new FakeEmailTemplateRepository(template),
+                new FakeEmailLayoutRepository(layout)
+            )
         );
         services.AddSingleton<TaxVision.Scribe.Application.Abstractions.ICloudStorageClient>(cloudStorage);
         services.AddSingleton<ILogoResolver>(

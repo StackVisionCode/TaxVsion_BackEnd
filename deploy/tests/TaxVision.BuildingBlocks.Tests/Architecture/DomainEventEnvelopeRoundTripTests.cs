@@ -24,7 +24,9 @@ public sealed class DomainEventEnvelopeRoundTripTests
     [Fact]
     public void ValueObjectWithPrivateConstructor_IsReported()
     {
-        var broken = Assert.Single(DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([typeof(PrivateConstructorEvent)]));
+        var broken = Assert.Single(
+            DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([typeof(PrivateConstructorEvent)])
+        );
 
         Assert.Contains(nameof(PrivateConstructorEvent), broken);
     }
@@ -33,7 +35,9 @@ public sealed class DomainEventEnvelopeRoundTripTests
     [Fact]
     public void ValueObjectWithPrivateSetter_IsReported()
     {
-        var broken = Assert.Single(DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([typeof(PrivateSetterEvent)]));
+        var broken = Assert.Single(
+            DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([typeof(PrivateSetterEvent)])
+        );
 
         Assert.Contains("AmountCents", broken);
     }
@@ -42,7 +46,9 @@ public sealed class DomainEventEnvelopeRoundTripTests
     [Fact]
     public void GetOnlyPropertyOutsideTheConstructor_IsReported()
     {
-        var broken = Assert.Single(DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([typeof(GetOnlyPropertyEvent)]));
+        var broken = Assert.Single(
+            DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([typeof(GetOnlyPropertyEvent)])
+        );
 
         Assert.Contains("OccurredAtUtc", broken);
     }
@@ -50,7 +56,9 @@ public sealed class DomainEventEnvelopeRoundTripTests
     [Fact]
     public void InterfaceProperty_IsReported()
     {
-        var broken = Assert.Single(DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([typeof(InterfacePropertyEvent)]));
+        var broken = Assert.Single(
+            DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([typeof(InterfacePropertyEvent)])
+        );
 
         Assert.Contains("no se pudo armar", broken);
     }
@@ -59,7 +67,10 @@ public sealed class DomainEventEnvelopeRoundTripTests
     public void AbstractEventsAndOtherTypes_AreIgnored()
     {
         Assert.Empty(
-            DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([typeof(AbstractEvent), typeof(PrivateConstructorAmount)])
+            DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive([
+                typeof(AbstractEvent),
+                typeof(PrivateConstructorAmount),
+            ])
         );
     }
 

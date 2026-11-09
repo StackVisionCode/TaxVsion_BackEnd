@@ -38,8 +38,7 @@ public sealed class ScanAtomicityIntegrationTests : IAsyncLifetime
     private readonly FakeObjectStorage _storage = new() { DownloadContent = [0x25, 0x50, 0x44, 0x46] };
     private string _objectKey = default!;
 
-    private readonly string _connectionString =
-        CloudStorageIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = CloudStorageIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

@@ -14,15 +14,14 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                 name: "LastEntitlementsRevision",
                 table: "TenantStorageLimits",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "LastEntitlementsRevision",
-                table: "TenantStorageLimits");
+            migrationBuilder.DropColumn(name: "LastEntitlementsRevision", table: "TenantStorageLimits");
         }
     }
 }

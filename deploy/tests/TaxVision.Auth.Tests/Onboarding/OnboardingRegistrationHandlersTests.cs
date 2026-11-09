@@ -1,16 +1,16 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Domain.TenantDomains;
+using TaxVision.Auth.Domain.Terms;
+using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Onboarding.Application;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Onboarding.Application.Registration.Commands;
 using TaxVision.Auth.Onboarding.Application.Registration.Queries;
 using TaxVision.Auth.Onboarding.Domain.SubdomainReservations;
 using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
-using TaxVision.Auth.Domain.Terms;
 using TaxVision.Auth.Onboarding.Domain.ValueObjects;
-using TaxVision.Auth.Domain.TenantDomains;
-using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;

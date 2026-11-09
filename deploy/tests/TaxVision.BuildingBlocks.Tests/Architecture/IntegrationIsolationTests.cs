@@ -18,9 +18,24 @@ public sealed class IntegrationIsolationTests
         StringComparer.Ordinal
     )
     {
-            [nameof(IntegrationIsolationKind.HostKeepsExternalTransports) + " " + Tests + "TaxVision.ContentScanner.Tests/ScanEndpointTests.cs"] = NoWolverine,
-            [nameof(IntegrationIsolationKind.HostKeepsJobs) + " " + Tests + "TaxVision.ContentScanner.Tests/ScanEndpointTests.cs"] = NoWolverine,
-            [nameof(IntegrationIsolationKind.HostUsesFleetEnvelopes) + " " + Tests + "TaxVision.ContentScanner.Tests/ScanEndpointTests.cs"] = NoWolverine,
+        [
+            nameof(IntegrationIsolationKind.HostKeepsExternalTransports)
+                + " "
+                + Tests
+                + "TaxVision.ContentScanner.Tests/ScanEndpointTests.cs"
+        ] = NoWolverine,
+        [
+            nameof(IntegrationIsolationKind.HostKeepsJobs)
+                + " "
+                + Tests
+                + "TaxVision.ContentScanner.Tests/ScanEndpointTests.cs"
+        ] = NoWolverine,
+        [
+            nameof(IntegrationIsolationKind.HostUsesFleetEnvelopes)
+                + " "
+                + Tests
+                + "TaxVision.ContentScanner.Tests/ScanEndpointTests.cs"
+        ] = NoWolverine,
     };
 
     [Fact]
@@ -175,7 +190,12 @@ public sealed class IntegrationIsolationRulesTests
         var temporary = new HashSet<string> { "OfficeTemporaryDatabase" };
 
         Assert.Single(
-            IntegrationIsolationRules.Classify("OfficeTestDatabase.NewContext(); db.SaveChanges();", "", temporary, fleet)
+            IntegrationIsolationRules.Classify(
+                "OfficeTestDatabase.NewContext(); db.SaveChanges();",
+                "",
+                temporary,
+                fleet
+            )
         );
         Assert.Empty(
             IntegrationIsolationRules.Classify(

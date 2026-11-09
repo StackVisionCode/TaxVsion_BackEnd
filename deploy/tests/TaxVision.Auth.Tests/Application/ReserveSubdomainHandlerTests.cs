@@ -1,13 +1,13 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.TenantDomains.Commands;
-using TaxVision.Auth.Onboarding.Domain.SubdomainReservations;
-using TaxVision.Auth.Onboarding.Infrastructure.Persistence.Repositories;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Domain.Users;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Domain.SubdomainReservations;
+using TaxVision.Auth.Onboarding.Infrastructure.Persistence.Repositories;
 
 namespace TaxVision.Auth.Tests.Application;
 

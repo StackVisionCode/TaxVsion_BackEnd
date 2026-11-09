@@ -366,7 +366,9 @@ public sealed class CreateSignatureRequestFromTemplateHandlerTests
     {
         var scenario = new Scenario(Published(Draft()));
 
-        var result = await scenario.RunAsync(Command([new SlotBinding(1, "one@example.test", "Signer One", "+13055550142")]));
+        var result = await scenario.RunAsync(
+            Command([new SlotBinding(1, "one@example.test", "Signer One", "+13055550142")])
+        );
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(Assert.Single(scenario.Requests.Added!.Signers).PhoneNumber);

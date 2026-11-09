@@ -104,7 +104,10 @@ public sealed class RetrySaaSPaymentHandlerTests
                 DateTime.UtcNow
             )
             .Value;
-        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow.AddMinutes(-1)),
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            DunningDecision.RetryAt(DateTime.UtcNow.AddMinutes(-1)),
             Guid.Empty,
             DateTime.UtcNow
         );

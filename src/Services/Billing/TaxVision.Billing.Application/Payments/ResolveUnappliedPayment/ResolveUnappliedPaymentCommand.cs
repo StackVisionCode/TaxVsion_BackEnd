@@ -24,10 +24,15 @@ public static class ResolveUnappliedPaymentHandler
         CancellationToken ct
     )
     {
-        if (!Enum.TryParse<UnappliedPaymentResolution>(command.Resolution, ignoreCase: true, out var resolution)
-            || !Enum.IsDefined(resolution))
+        if (
+            !Enum.TryParse<UnappliedPaymentResolution>(command.Resolution, ignoreCase: true, out var resolution)
+            || !Enum.IsDefined(resolution)
+        )
             return Result.Failure(
-                new Error("Billing.UnappliedPayment.InvalidResolution", "Resolution must be Refunded or AppliedAsCredit.")
+                new Error(
+                    "Billing.UnappliedPayment.InvalidResolution",
+                    "Resolution must be Refunded or AppliedAsCredit."
+                )
             );
 
         var payment = await unappliedPayments.GetByIdAsync(command.TenantId, command.UnappliedPaymentId, ct);

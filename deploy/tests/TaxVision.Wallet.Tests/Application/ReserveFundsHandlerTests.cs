@@ -1,5 +1,5 @@
-using TaxVision.Wallet.Application.Reservations;
 using TaxVision.Wallet.Application.Pricing;
+using TaxVision.Wallet.Application.Reservations;
 using TaxVision.Wallet.Application.Reservations.Commands;
 using TaxVision.Wallet.Domain.Pricing;
 using TaxVision.Wallet.Domain.Reservations;

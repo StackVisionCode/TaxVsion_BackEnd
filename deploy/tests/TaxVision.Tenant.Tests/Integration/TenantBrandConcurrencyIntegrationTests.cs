@@ -18,8 +18,7 @@ public sealed class TenantBrandConcurrencyIntegrationTests : IAsyncLifetime
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _oldFileId = Guid.NewGuid();
     private readonly Guid _newFileId = Guid.NewGuid();
-    private readonly string _connectionString =
-        TenantIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = TenantIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -39,7 +38,9 @@ public sealed class TenantBrandConcurrencyIntegrationTests : IAsyncLifetime
     {
         await using var db = NewContext();
         var brand = TenantBrand.Create(_tenantId, BrandSurface.Crm, DateTime.UtcNow);
-        Assert.True(brand.SetAssetPending(BrandAssetKey.Logo, _oldFileId, "image/png", 100, 10, 10, DateTime.UtcNow).IsSuccess);
+        Assert.True(
+            brand.SetAssetPending(BrandAssetKey.Logo, _oldFileId, "image/png", 100, 10, 10, DateTime.UtcNow).IsSuccess
+        );
         db.TenantBrands.Add(brand);
         await db.SaveChangesAsync();
     }
@@ -62,21 +63,22 @@ public sealed class TenantBrandConcurrencyIntegrationTests : IAsyncLifetime
         await using (var upload = NewContext())
         {
             var fresh = await new TenantBrandRepository(upload).GetAsync(_tenantId, BrandSurface.Crm);
-            Assert.True(fresh!.SetAssetPending(BrandAssetKey.Logo, _newFileId, "image/png", 200, 20, 20, DateTime.UtcNow).IsSuccess);
+            Assert.True(
+                fresh!
+                    .SetAssetPending(BrandAssetKey.Logo, _newFileId, "image/png", 200, 20, 20, DateTime.UtcNow)
+                    .IsSuccess
+            );
             await upload.SaveChangesAsync();
         }
 
         // El consumer confirma A sobre su copia vieja.
         Assert.True(
-            stale!
-                .ConfirmAsset(BrandAssetKey.Logo, _oldFileId, "image/png", 100, 10, 10, DateTime.UtcNow)
-                .IsSuccess
+            stale!.ConfirmAsset(BrandAssetKey.Logo, _oldFileId, "image/png", 100, 10, 10, DateTime.UtcNow).IsSuccess
         );
         await Assert.ThrowsAsync<ConflictException>(() => consumer.SaveChangesAsync());
 
         await using var read = NewContext();
-        var asset = await read
-            .Set<TenantBrandAsset>()
+        var asset = await read.Set<TenantBrandAsset>()
             .IgnoreQueryFilters()
             .AsNoTracking()
             .SingleAsync(a => a.TenantId == _tenantId);

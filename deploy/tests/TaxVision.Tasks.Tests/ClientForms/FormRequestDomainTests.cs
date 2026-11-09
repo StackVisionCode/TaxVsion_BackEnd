@@ -195,7 +195,10 @@ public sealed class FormRequestDomainTests
     {
         var request = Create(FormParticipantRef.External(ParticipantId)).Value;
         var conflictId = Guid.NewGuid();
-        Assert.Equal(CustomerLinkResult.Blocked, request.CustomerLinking.TryAttach(CustomerId, true, conflictId, Now).Value);
+        Assert.Equal(
+            CustomerLinkResult.Blocked,
+            request.CustomerLinking.TryAttach(CustomerId, true, conflictId, Now).Value
+        );
 
         var result = request.CustomerLinking.Retry(false, null, Now.AddMinutes(1));
 

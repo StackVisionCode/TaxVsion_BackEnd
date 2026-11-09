@@ -1,12 +1,12 @@
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Onboarding.Application;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
 using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
 using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
-using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;

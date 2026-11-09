@@ -127,7 +127,8 @@ public static class DomainEventEnvelopeRoundTrip
             return $"{path} cambió de tamaño: {left.Count} → {right.Count}";
         }
 
-        return left.Select((item, i) => FindDifference($"{path}[{i}]", item, right[i])).FirstOrDefault(d => d is not null);
+        return left.Select((item, i) => FindDifference($"{path}[{i}]", item, right[i]))
+            .FirstOrDefault(d => d is not null);
     }
 
     private static string Show(object? value) => value?.ToString() ?? "null";

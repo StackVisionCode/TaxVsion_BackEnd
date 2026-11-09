@@ -20,8 +20,11 @@ internal sealed class InMemoryTaskTemplateRepository(params TaskTemplate[] seed)
         );
     }
 
-    public Task<IReadOnlyList<TaskTemplate>> ListAsync(Guid tenantId, bool onlyActive, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<TaskTemplate>>(_templates.Where(t => t.TenantId == tenantId).ToList());
+    public Task<IReadOnlyList<TaskTemplate>> ListAsync(
+        Guid tenantId,
+        bool onlyActive,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<TaskTemplate>>(_templates.Where(t => t.TenantId == tenantId).ToList());
 
     public Task<bool> WasAppliedAsync(
         Guid tenantId,

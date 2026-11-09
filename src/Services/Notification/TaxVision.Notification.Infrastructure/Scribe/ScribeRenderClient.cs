@@ -60,7 +60,9 @@ public sealed class ScribeRenderClient(
 
         using var response = await httpClient.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
-            return Result.Failure<ScribeRenderedEmail>(await ToErrorAsync(response, "Email.ScribeRender", eventKey, ct));
+            return Result.Failure<ScribeRenderedEmail>(
+                await ToErrorAsync(response, "Email.ScribeRender", eventKey, ct)
+            );
 
         var payload = await response.Content.ReadFromJsonAsync<RenderResponseDto>(Json, ct);
         if (payload is null)
@@ -138,7 +140,10 @@ public sealed class ScribeRenderClient(
                 is HttpStatusCode.BadRequest
                     or HttpStatusCode.NotFound
                     or HttpStatusCode.UnprocessableEntity
-            ? new Error(ScribeRenderRejectedException.ErrorCode, $"Scribe rejected the request ({status}, {scribeCode}).")
+            ? new Error(
+                ScribeRenderRejectedException.ErrorCode,
+                $"Scribe rejected the request ({status}, {scribeCode})."
+            )
             : new Error(failureCode, $"Scribe render request failed ({status}).");
     }
 

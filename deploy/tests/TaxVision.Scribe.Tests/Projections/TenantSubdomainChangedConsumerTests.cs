@@ -54,7 +54,9 @@ public sealed class TenantSubdomainChangedConsumerTests
         await Assert.ThrowsAsync<DependencyNotReadyException>(() => HandleAsync(change, repository, unitOfWork));
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
 
-        var created = repository.Seed(TenantProfileRef.Create(tenantId, "Acme Tax Office", "acme-tax", DateTime.UtcNow));
+        var created = repository.Seed(
+            TenantProfileRef.Create(tenantId, "Acme Tax Office", "acme-tax", DateTime.UtcNow)
+        );
         await HandleAsync(change, repository, unitOfWork);
 
         Assert.Equal("acme-new", created.SubDomain);

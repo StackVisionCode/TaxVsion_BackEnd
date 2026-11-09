@@ -16,7 +16,9 @@ public sealed class ResyncInvoiceArtifactsHandlerTests
     public async Task IssuedInvoice_RepublishesEnsurePaymentLink()
     {
         var invoice = Draft();
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess
+        );
         var bus = new FakeMessageBus();
 
         var result = await Handle(invoice, bus);

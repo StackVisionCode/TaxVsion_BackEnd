@@ -17,7 +17,8 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.CreateTable(
                 name: "smsPendingDeliveryReceipts",
@@ -30,34 +31,34 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                     CanonicalStatus = table.Column<string>(type: "nvarchar(24)", maxLength: 24, nullable: false),
                     FailureCode = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
                     FailureReason = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
-                    ReceivedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    ReceivedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_smsPendingDeliveryReceipts", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SmsPendingDeliveryReceipts_ReceivedAt",
                 table: "smsPendingDeliveryReceipts",
-                column: "ReceivedAtUtc");
+                column: "ReceivedAtUtc"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_SmsPendingDeliveryReceipts_Provider_MessageId_EventType",
                 table: "smsPendingDeliveryReceipts",
                 columns: new[] { "ProviderCode", "ProviderMessageId", "EventType" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "smsPendingDeliveryReceipts");
+            migrationBuilder.DropTable(name: "smsPendingDeliveryReceipts");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "smsMessages");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "smsMessages");
         }
     }
 }

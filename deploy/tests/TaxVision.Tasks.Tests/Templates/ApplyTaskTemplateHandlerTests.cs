@@ -68,10 +68,17 @@ public sealed class ApplyTaskTemplateHandlerTests
     private static TaskTemplate Template(bool recurring)
     {
         var standard = StandardTaxTemplates.All.First(t => (t.RecurrenceRule is not null) == recurring);
-        var template = TaskTemplate.Create(TenantId, Manager, standard.Name, standard.Description, DateTime.UtcNow).Value;
+        var template = TaskTemplate
+            .Create(TenantId, Manager, standard.Name, standard.Description, DateTime.UtcNow)
+            .Value;
         Assert.True(
             TaskTemplateStepFactory
-                .ApplyRecurrence(template, standard.RecurrenceRule, StandardTaxTemplates.TimeZoneId, standard.RecurrenceMode)
+                .ApplyRecurrence(
+                    template,
+                    standard.RecurrenceRule,
+                    StandardTaxTemplates.TimeZoneId,
+                    standard.RecurrenceMode
+                )
                 .IsSuccess
         );
         Assert.True(TaskTemplateStepFactory.ApplyTo(template, standard.Steps).IsSuccess);

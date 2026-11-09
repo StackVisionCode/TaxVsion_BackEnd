@@ -291,9 +291,6 @@ public sealed partial class ProcessConnectWebhookHandlerTests
             string signatureHeader,
             string webhookSecret,
             CancellationToken ct
-        ) =>
-            Task.FromResult(
-                Rejection is null ? Result.Success(Next) : Result.Failure<ConnectWebhookEvent>(Rejection)
-            );
+        ) => Task.FromResult(Rejection is null ? Result.Success(Next) : Result.Failure<ConnectWebhookEvent>(Rejection));
     }
 }

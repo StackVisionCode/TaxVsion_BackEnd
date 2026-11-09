@@ -376,8 +376,11 @@ public sealed class ResolvePayableHandlerTests
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
-        public Task<bool> AnyForProviderAsync(Guid tenantId, PaymentProviderCode code, CancellationToken ct = default) =>
-            throw new NotImplementedException();
+        public Task<bool> AnyForProviderAsync(
+            Guid tenantId,
+            PaymentProviderCode code,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
 
         public Task<IReadOnlySet<PaymentProviderCode>> GetConfiguredProvidersWithPaymentsAsync(
             Guid tenantId,

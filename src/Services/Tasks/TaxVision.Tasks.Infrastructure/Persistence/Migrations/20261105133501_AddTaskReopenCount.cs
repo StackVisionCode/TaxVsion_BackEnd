@@ -15,15 +15,14 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                 table: "Tasks",
                 type: "int",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ReopenCount",
-                table: "Tasks");
+            migrationBuilder.DropColumn(name: "ReopenCount", table: "Tasks");
         }
     }
 }

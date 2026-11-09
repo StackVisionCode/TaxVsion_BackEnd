@@ -17,9 +17,7 @@ public sealed class RepositoryInterfaceTests
     /// Pendientes de su ítem de adopción. Al arreglar uno, se borra de aquí (la prueba falla si
     /// queda una entrada que ya no existe).
     /// </summary>
-    private static readonly Dictionary<string, string> PendingAdoption = new(StringComparer.Ordinal)
-    {
-    };
+    private static readonly Dictionary<string, string> PendingAdoption = new(StringComparer.Ordinal) { };
 
     [Fact]
     public void NoDefaultInterfaceImplementations()
@@ -60,7 +58,10 @@ public sealed class RepositoryInterfaceTests
                         if (member.Modifiers.Any(SyntaxKind.StaticKeyword) || !HasBody(member))
                             continue;
 
-                        yield return ($"{iface.Identifier.Text}.{MemberName(member)}", Path.GetRelativePath(services, file));
+                        yield return (
+                            $"{iface.Identifier.Text}.{MemberName(member)}",
+                            Path.GetRelativePath(services, file)
+                        );
                     }
                 }
             }

@@ -27,8 +27,7 @@ public sealed class OfficeProfilePersistenceTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString =
-            TenantIntegrationDatabase.ConnectionString;
+        var connectionString = TenantIntegrationDatabase.ConnectionString;
         _connection = new SqlConnection(connectionString);
         await _connection.OpenAsync();
         _transaction = await _connection.BeginTransactionAsync();
@@ -158,8 +157,12 @@ public sealed class OfficeProfilePersistenceTests : IAsyncLifetime
     [Fact]
     public async Task Missing_profiles_are_only_existing_customer_offices_without_one()
     {
-        var withoutProfile = DomainTenant.Create("No Profile Tax", $"np-{Guid.NewGuid():N}"[..20], "Etc/UTC", DateTime.UtcNow).Value;
-        var withProfile = DomainTenant.Create("Profile Tax", $"wp-{Guid.NewGuid():N}"[..20], "Etc/UTC", DateTime.UtcNow).Value;
+        var withoutProfile = DomainTenant
+            .Create("No Profile Tax", $"np-{Guid.NewGuid():N}"[..20], "Etc/UTC", DateTime.UtcNow)
+            .Value;
+        var withProfile = DomainTenant
+            .Create("Profile Tax", $"wp-{Guid.NewGuid():N}"[..20], "Etc/UTC", DateTime.UtcNow)
+            .Value;
         await using (var db = NewContext())
         {
             db.Tenants.AddRange(withoutProfile, withProfile);

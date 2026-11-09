@@ -39,7 +39,12 @@ public static class TaskAssignedDomainEventHandler
                 AssignedByUserId = assigned.AssignedByUserId,
             }
         );
-        var reminder = TaskDueReminder.RequestFor(task, assigned.AssigneeUserId, assigned.ReopenCount, correlation.CorrelationId);
+        var reminder = TaskDueReminder.RequestFor(
+            task,
+            assigned.AssigneeUserId,
+            assigned.ReopenCount,
+            correlation.CorrelationId
+        );
         if (reminder is not null)
             messages.Add(reminder);
         return messages;

@@ -47,7 +47,10 @@ public sealed class CustomerCommandEventCountTests
         var created = Assert.Single(emitted.OfType<CustomerCreatedIntegrationEvent>());
         Assert.Equal(Staff, created.CreatedByUserId);
         Assert.Single(emitted.OfType<CustomerPreparerAssignedIntegrationEvent>());
-        Assert.Equal([Staff], Assert.Single(emitted.OfType<CustomerAssignmentsChangedIntegrationEvent>()).AssigneeUserIds);
+        Assert.Equal(
+            [Staff],
+            Assert.Single(emitted.OfType<CustomerAssignmentsChangedIntegrationEvent>()).AssigneeUserIds
+        );
         Assert.Empty(emitted.OfType<CustomerUpdatedIntegrationEvent>());
     }
 
@@ -57,10 +60,19 @@ public sealed class CustomerCommandEventCountTests
         var existing = NewCustomer();
         var fixture = new Fixture(existing) { Duplicate = existing };
 
-        await fixture.RunAsync(typeof(CreateCustomerHandler), CreateCommand("other@example.com") with { Overwrite = true });
+        await fixture.RunAsync(
+            typeof(CreateCustomerHandler),
+            CreateCommand("other@example.com") with
+            {
+                Overwrite = true,
+            }
+        );
 
         var emitted = await fixture.EmittedAsync();
-        Assert.Equal("other@example.com", Assert.Single(emitted.OfType<CustomerUpdatedIntegrationEvent>()).PrimaryEmail);
+        Assert.Equal(
+            "other@example.com",
+            Assert.Single(emitted.OfType<CustomerUpdatedIntegrationEvent>()).PrimaryEmail
+        );
         Assert.Empty(emitted.OfType<CustomerCreatedIntegrationEvent>());
     }
 
@@ -108,9 +120,15 @@ public sealed class CustomerCommandEventCountTests
         var customer = NewCustomer();
         var fixture = new Fixture(customer);
 
-        await fixture.RunAsync(typeof(ArchiveCustomerHandler), new ArchiveCustomerCommand(TenantId, customer.Id, Staff));
+        await fixture.RunAsync(
+            typeof(ArchiveCustomerHandler),
+            new ArchiveCustomerCommand(TenantId, customer.Id, Staff)
+        );
 
-        Assert.Equal(Staff, Assert.Single((await fixture.EmittedAsync()).OfType<CustomerArchivedIntegrationEvent>()).ArchivedByUserId);
+        Assert.Equal(
+            Staff,
+            Assert.Single((await fixture.EmittedAsync()).OfType<CustomerArchivedIntegrationEvent>()).ArchivedByUserId
+        );
     }
 
     [Fact]
@@ -120,7 +138,10 @@ public sealed class CustomerCommandEventCountTests
         customer.Archive(Staff);
         var fixture = new Fixture(customer);
 
-        await fixture.RunAsync(typeof(ReactivateCustomerHandler), new ReactivateCustomerCommand(TenantId, customer.Id, Staff));
+        await fixture.RunAsync(
+            typeof(ReactivateCustomerHandler),
+            new ReactivateCustomerCommand(TenantId, customer.Id, Staff)
+        );
 
         Assert.Single((await fixture.EmittedAsync()).OfType<CustomerReactivatedIntegrationEvent>());
     }
@@ -131,7 +152,10 @@ public sealed class CustomerCommandEventCountTests
         var customer = NewCustomer();
         var fixture = new Fixture(customer);
 
-        await fixture.RunAsync(typeof(DeactivateCustomerHandler), new DeactivateCustomerCommand(TenantId, customer.Id, Staff));
+        await fixture.RunAsync(
+            typeof(DeactivateCustomerHandler),
+            new DeactivateCustomerCommand(TenantId, customer.Id, Staff)
+        );
 
         Assert.Single((await fixture.EmittedAsync()).OfType<CustomerDeactivatedIntegrationEvent>());
     }
@@ -143,7 +167,10 @@ public sealed class CustomerCommandEventCountTests
         customer.Deactivate(Staff);
         var fixture = new Fixture(customer);
 
-        await fixture.RunAsync(typeof(ActivateCustomerHandler), new ActivateCustomerCommand(TenantId, customer.Id, Staff));
+        await fixture.RunAsync(
+            typeof(ActivateCustomerHandler),
+            new ActivateCustomerCommand(TenantId, customer.Id, Staff)
+        );
 
         Assert.Single((await fixture.EmittedAsync()).OfType<CustomerActivatedIntegrationEvent>());
     }
@@ -154,7 +181,10 @@ public sealed class CustomerCommandEventCountTests
         var customer = NewCustomer();
         var fixture = new Fixture(customer);
 
-        await fixture.RunAsync(typeof(AssignPreparerHandler), new AssignPreparerCommand(TenantId, customer.Id, Preparer, Staff));
+        await fixture.RunAsync(
+            typeof(AssignPreparerHandler),
+            new AssignPreparerCommand(TenantId, customer.Id, Preparer, Staff)
+        );
 
         var emitted = await fixture.EmittedAsync();
         Assert.Single(emitted.OfType<CustomerPreparerAssignedIntegrationEvent>());
@@ -170,7 +200,10 @@ public sealed class CustomerCommandEventCountTests
         customer.AssignPreparer(Preparer, Staff);
         var fixture = new Fixture(customer);
 
-        await fixture.RunAsync(typeof(UnassignPreparerHandler), new UnassignPreparerCommand(TenantId, customer.Id, Staff));
+        await fixture.RunAsync(
+            typeof(UnassignPreparerHandler),
+            new UnassignPreparerCommand(TenantId, customer.Id, Staff)
+        );
 
         var emitted = await fixture.EmittedAsync();
         Assert.Single(emitted.OfType<CustomerPreparerUnassignedIntegrationEvent>());
@@ -183,7 +216,10 @@ public sealed class CustomerCommandEventCountTests
         var customer = NewCustomer();
         var fixture = new Fixture(customer);
 
-        await fixture.RunAsync(typeof(GrantCustomerAccessHandler), new GrantCustomerAccessCommand(TenantId, customer.Id, Preparer, Staff));
+        await fixture.RunAsync(
+            typeof(GrantCustomerAccessHandler),
+            new GrantCustomerAccessCommand(TenantId, customer.Id, Preparer, Staff)
+        );
 
         Assert.Single((await fixture.EmittedAsync()).OfType<CustomerAssignmentsChangedIntegrationEvent>());
     }
@@ -195,7 +231,10 @@ public sealed class CustomerCommandEventCountTests
         customer.GrantAccess(Preparer, Staff);
         var fixture = new Fixture(customer);
 
-        await fixture.RunAsync(typeof(RevokeCustomerAccessHandler), new RevokeCustomerAccessCommand(TenantId, customer.Id, Preparer, Staff));
+        await fixture.RunAsync(
+            typeof(RevokeCustomerAccessHandler),
+            new RevokeCustomerAccessCommand(TenantId, customer.Id, Preparer, Staff)
+        );
 
         Assert.Single((await fixture.EmittedAsync()).OfType<CustomerAssignmentsChangedIntegrationEvent>());
     }
@@ -208,7 +247,10 @@ public sealed class CustomerCommandEventCountTests
         second.AssignPreparer(Staff, Staff);
         var fixture = new Fixture(first, second);
 
-        await fixture.RunAsync(typeof(BulkAssignCustomersHandler), new BulkAssignCustomersCommand(TenantId, Preparer, [first.Id, second.Id], Staff));
+        await fixture.RunAsync(
+            typeof(BulkAssignCustomersHandler),
+            new BulkAssignCustomersCommand(TenantId, Preparer, [first.Id, second.Id], Staff)
+        );
 
         var emitted = await fixture.EmittedAsync();
         Assert.Single(emitted.OfType<CustomerAssignmentsChangedIntegrationEvent>(), e => e.CustomerId == first.Id);
@@ -223,7 +265,10 @@ public sealed class CustomerCommandEventCountTests
         var second = NewCustomer();
         var fixture = new Fixture(first, second);
 
-        await fixture.RunAsync(typeof(BulkChangeStatusHandler), new BulkChangeStatusCommand(TenantId, Staff, BulkStatusAction.Archive, [first.Id, second.Id], null));
+        await fixture.RunAsync(
+            typeof(BulkChangeStatusHandler),
+            new BulkChangeStatusCommand(TenantId, Staff, BulkStatusAction.Archive, [first.Id, second.Id], null)
+        );
 
         var emitted = await fixture.EmittedAsync();
         Assert.Single(emitted.OfType<CustomerArchivedIntegrationEvent>(), e => e.CustomerId == first.Id);
@@ -236,9 +281,15 @@ public sealed class CustomerCommandEventCountTests
         var customer = NewCustomer();
         var fixture = new Fixture(customer);
 
-        await fixture.RunAsync(typeof(UpdateMyCustomerPhoneHandler), new UpdateMyCustomerPhoneCommand(TenantId, customer.Id, Staff, "+13055550111"));
+        await fixture.RunAsync(
+            typeof(UpdateMyCustomerPhoneHandler),
+            new UpdateMyCustomerPhoneCommand(TenantId, customer.Id, Staff, "+13055550111")
+        );
 
-        Assert.Equal("+13055550111", Assert.Single((await fixture.EmittedAsync()).OfType<CustomerUpdatedIntegrationEvent>()).PrimaryPhone);
+        Assert.Equal(
+            "+13055550111",
+            Assert.Single((await fixture.EmittedAsync()).OfType<CustomerUpdatedIntegrationEvent>()).PrimaryPhone
+        );
     }
 
     [Fact]
@@ -249,10 +300,18 @@ public sealed class CustomerCommandEventCountTests
 
         await fixture.RunAsync(
             typeof(RemoveCustomerAvatarHandler),
-            new RemoveCustomerAvatarCommand(TenantId, customer.Id, Staff, CustomerAvatarCaller.Staff, CallerCanViewAllCustomers: true)
+            new RemoveCustomerAvatarCommand(
+                TenantId,
+                customer.Id,
+                Staff,
+                CustomerAvatarCaller.Staff,
+                CallerCanViewAllCustomers: true
+            )
         );
 
-        Assert.Null(Assert.Single((await fixture.EmittedAsync()).OfType<CustomerUpdatedIntegrationEvent>()).AvatarFileId);
+        Assert.Null(
+            Assert.Single((await fixture.EmittedAsync()).OfType<CustomerUpdatedIntegrationEvent>()).AvatarFileId
+        );
     }
 
     [Fact]
@@ -346,7 +405,9 @@ public sealed class CustomerCommandEventCountTests
                     p.ParameterType == command.GetType() ? command
                     : p.ParameterType == typeof(CancellationToken) ? CancellationToken.None
                     : IsLogger(p.ParameterType)
-                        ? Activator.CreateInstance(typeof(NullLogger<>).MakeGenericType(p.ParameterType.GetGenericArguments()))
+                        ? Activator.CreateInstance(
+                            typeof(NullLogger<>).MakeGenericType(p.ParameterType.GetGenericArguments())
+                        )
                     : services.First(s => p.ParameterType.IsInstanceOfType(s))
                 )
                 .ToArray();
@@ -388,8 +449,13 @@ public sealed class CustomerCommandEventCountTests
                 TenantEmployeeDirectoryEntry.Create(userId, TenantId, "TenantEmployee", true)
             );
 
-        public Task UpsertAsync(Guid userId, Guid tenantId, string actorType, bool isActive, CancellationToken ct = default) =>
-            Task.CompletedTask;
+        public Task UpsertAsync(
+            Guid userId,
+            Guid tenantId,
+            string actorType,
+            bool isActive,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
 
         public Task MarkActiveAsync(Guid userId, CancellationToken ct = default) => Task.CompletedTask;
 
@@ -409,10 +475,20 @@ public sealed class CustomerCommandEventCountTests
         public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
             Task.FromResult(All.Find(c => c.TenantId == tenantId && c.Id == customerId));
 
-        public Task<IReadOnlyList<DomainCustomer>> GetByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<DomainCustomer>>(All.FindAll(c => c.TenantId == tenantId && ids.Contains(c.Id)));
+        public Task<IReadOnlyList<DomainCustomer>> GetByIdsAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken ct
+        ) =>
+            Task.FromResult<IReadOnlyList<DomainCustomer>>(
+                All.FindAll(c => c.TenantId == tenantId && ids.Contains(c.Id))
+            );
 
-        public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(
+            Guid tenantId,
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken ct
+        ) =>
             Task.FromResult<IReadOnlyList<DomainCustomer>>(
                 All.FindAll(c => c.TenantId == tenantId && ids.Contains(c.Id) && c.Status != CustomerStatus.Archived)
             );
@@ -429,26 +505,50 @@ public sealed class CustomerCommandEventCountTests
         public Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(Guid t, string b, Guid? e, CancellationToken ct) =>
             Task.FromResult<Guid?>(null);
 
-        public Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(Guid t, IReadOnlyCollection<string> b, Guid? e, CancellationToken ct) =>
-            Task.FromResult<Guid?>(null);
+        public Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+            Guid t,
+            IReadOnlyCollection<string> b,
+            Guid? e,
+            CancellationToken ct
+        ) => Task.FromResult<Guid?>(null);
 
-        public Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(Guid t, IReadOnlyCollection<string> b, Guid? e, CancellationToken ct) =>
-            Task.FromResult<Guid?>(null);
+        public Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+            Guid t,
+            IReadOnlyCollection<string> b,
+            Guid? e,
+            CancellationToken ct
+        ) => Task.FromResult<Guid?>(null);
 
-        public Task<IReadOnlyList<DomainCustomer>> ListByAssignedPreparerAsync(Guid t, Guid p, int b, Guid a, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+        public Task<IReadOnlyList<DomainCustomer>> ListByAssignedPreparerAsync(
+            Guid t,
+            Guid p,
+            int b,
+            Guid a,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
 
-        public Task<IReadOnlyList<DomainCustomer>> ListNonPrimaryAssignedAsync(Guid t, Guid u, int b, Guid a, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+        public Task<IReadOnlyList<DomainCustomer>> ListNonPrimaryAssignedAsync(
+            Guid t,
+            Guid u,
+            int b,
+            Guid a,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
 
         public Task<int> CountActiveByAssignedPreparerAsync(Guid t, Guid p, CancellationToken ct) => Task.FromResult(0);
 
-        public Task<IReadOnlyList<DomainCustomer>> ListArchivedAssignedAsync(Guid t, Guid u, int b, Guid a, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
+        public Task<IReadOnlyList<DomainCustomer>> ListArchivedAssignedAsync(
+            Guid t,
+            Guid u,
+            int b,
+            Guid a,
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
 
         public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid t, Guid u, CancellationToken ct) =>
             Task.FromResult(OffboardingClientCounts.None);
 
-        public Task<Guid?> FindIdByOriginAsync(Guid t, string s, Guid r, CancellationToken ct) => Task.FromResult<Guid?>(null);
+        public Task<Guid?> FindIdByOriginAsync(Guid t, string s, Guid r, CancellationToken ct) =>
+            Task.FromResult<Guid?>(null);
     }
 }

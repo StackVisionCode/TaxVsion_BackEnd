@@ -49,7 +49,9 @@ public sealed class WalletDomainEventsIntegrationTests : IAsyncLifetime
         {
             var wallet = WalletAggregate.Create(_tenantId).Value;
             db.LedgerEntries.Add(wallet.Credit(Usd(10_000_000), $"topup:{Guid.NewGuid():N}").Value);
-            db.LedgerEntries.Add(wallet.Reserve(Usd(500_000), $"wallet-reserve:{ReferenceType}:{_referenceId:N}").Value);
+            db.LedgerEntries.Add(
+                wallet.Reserve(Usd(500_000), $"wallet-reserve:{ReferenceType}:{_referenceId:N}").Value
+            );
             db.Wallets.Add(wallet);
             db.Reservations.Add(ReservationBuilder.Open(_tenantId, ReferenceType, _referenceId, 500_000, 5));
             await db.SaveChangesAsync();
@@ -101,13 +103,18 @@ public sealed class WalletDomainEventsIntegrationTests : IAsyncLifetime
         Assert.Equal(ReservationStatus.Open, await StatusAsync());
         Assert.Equal(0, await CountReleasesAsync());
         Assert.Equal(0, await CountRowsAsync("wolverine_incoming_envelopes", "WalletBalanceChangedDomainEvent"));
-        Assert.Equal(0, await CountRowsAsync("wolverine_outgoing_envelopes", nameof(WalletBalanceChangedIntegrationEvent)));
+        Assert.Equal(
+            0,
+            await CountRowsAsync("wolverine_outgoing_envelopes", nameof(WalletBalanceChangedIntegrationEvent))
+        );
     }
 
     private Task<Result<ReservationExpiry>> ExpireAsync() =>
         _host
             .Services.GetRequiredService<IMessageBus>()
-            .InvokeAsync<Result<ReservationExpiry>>(new ExpireReservationCommand(_tenantId, ReferenceType, _referenceId));
+            .InvokeAsync<Result<ReservationExpiry>>(
+                new ExpireReservationCommand(_tenantId, ReferenceType, _referenceId)
+            );
 
     private async Task<ReservationStatus> StatusAsync()
     {

@@ -84,7 +84,8 @@ public sealed class OffboardingImpactHandlerTests
                     : OffboardingClientCounts.None
             );
 
-        public Task<CustomerEntity?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<CustomerEntity?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
+            throw new NotSupportedException();
 
         public Task<CustomerEntity?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
             throw new NotSupportedException();

@@ -97,9 +97,12 @@ public sealed class LongRetryPersistenceIntegrationTests(BillingTestDatabase dat
             })
             .StartAsync();
 
-    private async Task<(string Status, int Attempts, DateTimeOffset ExecutionTime, DateTimeOffset SeenAt)> WaitForScheduledAsync(
-        int attempts
-    )
+    private async Task<(
+        string Status,
+        int Attempts,
+        DateTimeOffset ExecutionTime,
+        DateTimeOffset SeenAt
+    )> WaitForScheduledAsync(int attempts)
     {
         var deadline = DateTime.UtcNow.AddSeconds(45);
         while (DateTime.UtcNow < deadline)
@@ -185,7 +188,9 @@ public sealed class LongRetryPersistenceIntegrationTests(BillingTestDatabase dat
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess
+        );
         return invoice;
     }
 }

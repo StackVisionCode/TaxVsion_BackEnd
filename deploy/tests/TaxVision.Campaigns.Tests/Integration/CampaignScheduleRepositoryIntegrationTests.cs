@@ -23,7 +23,13 @@ public sealed class CampaignScheduleRepositoryIntegrationTests : IAsyncLifetime
     {
         var completedA = ClosedRun();
         var dispatching = CampaignRun
-            .Start(_tenantId, Guid.NewGuid(), Guid.NewGuid(), "Scheduled", [new RunRecipientDraft("c", CampaignChannel.Email, "a@x.com", null)])
+            .Start(
+                _tenantId,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Scheduled",
+                [new RunRecipientDraft("c", CampaignChannel.Email, "a@x.com", null)]
+            )
             .Value;
         var completedC = ClosedRun();
 
@@ -75,7 +81,13 @@ public sealed class CampaignScheduleRepositoryIntegrationTests : IAsyncLifetime
     // Run cerrado en Start (unidad sin destino → Skipped → Completed).
     private CampaignRun ClosedRun() =>
         CampaignRun
-            .Start(_tenantId, Guid.NewGuid(), Guid.NewGuid(), "Scheduled", [new RunRecipientDraft("c", CampaignChannel.Email, null, null)])
+            .Start(
+                _tenantId,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Scheduled",
+                [new RunRecipientDraft("c", CampaignChannel.Email, null, null)]
+            )
             .Value;
 
     private CampaignSchedule Fired(RecurrenceFrequency frequency, Guid runId)

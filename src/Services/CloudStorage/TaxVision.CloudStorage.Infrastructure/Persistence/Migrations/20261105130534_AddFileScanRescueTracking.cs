@@ -16,25 +16,23 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                 table: "Files",
                 type: "int",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "ScanQueuedAtUtc",
                 table: "Files",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ScanAttemptCount",
-                table: "Files");
+            migrationBuilder.DropColumn(name: "ScanAttemptCount", table: "Files");
 
-            migrationBuilder.DropColumn(
-                name: "ScanQueuedAtUtc",
-                table: "Files");
+            migrationBuilder.DropColumn(name: "ScanQueuedAtUtc", table: "Files");
         }
     }
 }

@@ -46,7 +46,10 @@ public sealed class EntitlementSnapshotConcurrencyIntegrationTests : IAsyncLifet
         }
 
         await using var retry = _db.NewContext();
-        await new TenantEntitlementSnapshotRepository(retry).UpsertAsync(Snapshot(BaseRevision + 1, 3), BaseRevision + 1);
+        await new TenantEntitlementSnapshotRepository(retry).UpsertAsync(
+            Snapshot(BaseRevision + 1, 3),
+            BaseRevision + 1
+        );
         await retry.SaveChangesAsync();
 
         var stored = await ReadAsync();

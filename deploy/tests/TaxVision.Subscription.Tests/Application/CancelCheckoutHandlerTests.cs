@@ -16,7 +16,6 @@ namespace TaxVision.Subscription.Tests.Application;
 
 public sealed class CancelCheckoutHandlerTests
 {
-
     private static SeatPurchaseIntent PendingSeat(Guid tenantId, bool withPayment = true)
     {
         var intent = SeatPurchaseIntent

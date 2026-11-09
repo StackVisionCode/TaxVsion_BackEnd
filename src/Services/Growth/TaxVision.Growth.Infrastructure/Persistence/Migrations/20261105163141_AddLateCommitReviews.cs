@@ -25,33 +25,34 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: false),
                     ResolvedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: true),
                     Resolution = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_LateCommitReviews", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_LateCommitReviews_Pending",
                 schema: "codes",
                 table: "LateCommitReviews",
-                columns: new[] { "ResolvedAtUtc", "CreatedAtUtc" });
+                columns: new[] { "ResolvedAtUtc", "CreatedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_LateCommitReviews_Reservation_Event",
                 schema: "codes",
                 table: "LateCommitReviews",
                 columns: new[] { "CodeReservationId", "SourceEventId" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "LateCommitReviews",
-                schema: "codes");
+            migrationBuilder.DropTable(name: "LateCommitReviews", schema: "codes");
         }
     }
 }

@@ -406,7 +406,10 @@ public sealed partial class ProcessProviderWebhookHandlerTests
     public async Task Failure_event_for_an_already_failed_payment_is_stale_and_not_republished()
     {
         var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.AddOnRenewal);
-        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
             Guid.Empty,
             DateTime.UtcNow
         );

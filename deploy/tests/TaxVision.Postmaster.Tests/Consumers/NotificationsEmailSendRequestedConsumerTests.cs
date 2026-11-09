@@ -123,7 +123,10 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var bus = new FakeMessageBus();
         await EmailSendPipeline.RunAsync(
             evt,
-            new FakeIdempotencyGuard { ReserveReturnValue = IdempotencyReservationResult.AlreadyCompleted(finished.Id) },
+            new FakeIdempotencyGuard
+            {
+                ReserveReturnValue = IdempotencyReservationResult.AlreadyCompleted(finished.Id),
+            },
             new FakeProviderResolver(),
             new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
@@ -165,9 +168,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
 
         var bus = await ReplayAsync(evt, finished);
 
-        var suppressed = Assert.IsType<PostmasterEmailDeliverySuppressedIntegrationEvent>(
-            Assert.Single(bus.Published)
-        );
+        var suppressed = Assert.IsType<PostmasterEmailDeliverySuppressedIntegrationEvent>(Assert.Single(bus.Published));
         Assert.Equal(finished.Id, suppressed.SentMessageId);
         Assert.Equal("recipient.suppressed", suppressed.SuppressionReason);
     }

@@ -24,7 +24,12 @@ public sealed class LoginPasswordCheck(
     );
 
     /// <summary>Devuelve el rechazo, o null si la contraseña vale y el login sigue.</summary>
-    public async Task<LoginDecision?> VerifyAsync(LoginAttempt attempt, string password, DateTime now, CancellationToken ct)
+    public async Task<LoginDecision?> VerifyAsync(
+        LoginAttempt attempt,
+        string password,
+        DateTime now,
+        CancellationToken ct
+    )
     {
         var user = attempt.User;
 
@@ -96,7 +101,14 @@ public sealed class LoginPasswordCheck(
 
     private async Task<LoginDecision> RefuseAsync(User user, string detailsJson, Error error, CancellationToken ct)
     {
-        await audit.RecordAsync(user.TenantId, user.Id, AuthAuditAction.LoginFailed, false, ct, detailsJson: detailsJson);
+        await audit.RecordAsync(
+            user.TenantId,
+            user.Id,
+            AuthAuditAction.LoginFailed,
+            false,
+            ct,
+            detailsJson: detailsJson
+        );
         return LoginDecision.Refused(error);
     }
 
