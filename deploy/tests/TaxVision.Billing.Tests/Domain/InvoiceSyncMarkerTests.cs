@@ -46,7 +46,9 @@ public sealed class InvoiceSyncMarkerTests
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess
+        );
         return invoice;
     }
 }

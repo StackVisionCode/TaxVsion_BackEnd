@@ -37,8 +37,7 @@ public sealed class EmailConsumerTransactionIntegrationTests : IAsyncLifetime
     private readonly FlakyScribe _scribe = new();
     private IHost _host = null!;
 
-    private static readonly string ConnectionString =
-        NotificationIntegrationDatabase.ConnectionString;
+    private static readonly string ConnectionString = NotificationIntegrationDatabase.ConnectionString;
 
     public async Task InitializeAsync()
     {

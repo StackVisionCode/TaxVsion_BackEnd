@@ -36,8 +36,7 @@ public sealed class GenerationQueueDurabilityIntegrationTests : IAsyncLifetime
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _invoiceId = Guid.NewGuid();
 
-    private readonly string _connectionString =
-        DocumentsIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = DocumentsIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -58,10 +57,7 @@ public sealed class GenerationQueueDurabilityIntegrationTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await using (var db = NewContext())
-            await db
-                .DocumentGenerations.IgnoreQueryFilters()
-                .Where(g => g.TenantId == _tenantId)
-                .ExecuteDeleteAsync();
+            await db.DocumentGenerations.IgnoreQueryFilters().Where(g => g.TenantId == _tenantId).ExecuteDeleteAsync();
         await DropWolverineSchemaAsync();
     }
 
@@ -71,16 +67,17 @@ public sealed class GenerationQueueDurabilityIntegrationTests : IAsyncLifetime
         var blocking = new GateRenderer();
         using (var first = await StartHostAsync(blocking))
         {
-            var accepted = await first
-                .MessageBus()
-                .InvokeAsync<Result<GenerateInvoiceDocumentResult>>(NewCommand());
+            var accepted = await first.MessageBus().InvokeAsync<Result<GenerateInvoiceDocumentResult>>(NewCommand());
             Assert.True(accepted.IsSuccess);
             // El handler ya tomó el comando y espera al render: se apaga el host a mitad.
             await blocking.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
             await first.StopAsync(TimeSpan.FromSeconds(10));
         }
 
-        Assert.True(await CountIncomingEnvelopesAsync() > 0, "The process command was not persisted while the host was down.");
+        Assert.True(
+            await CountIncomingEnvelopesAsync() > 0,
+            "The process command was not persisted while the host was down."
+        );
         Assert.Equal(DocumentGenerationStatus.Requested, await ReadStatusAsync());
 
         var released = new GateRenderer();
@@ -149,7 +146,9 @@ public sealed class GenerationQueueDurabilityIntegrationTests : IAsyncLifetime
                 options.Durability.Mode = DurabilityMode.Solo;
                 options.PersistMessagesWithSqlServer(_connectionString, Schema);
                 options.Policies.UseDurableOutboxOnAllSendingEndpoints();
-                options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, DocumentsDbContext>();
+                options
+                    .UseEntityFrameworkCoreTransactions()
+                    .WithDbContextAbstraction<IUnitOfWork, DocumentsDbContext>();
                 options.Policies.AutoApplyTransactions();
                 options.ConfigureGenerationQueue();
                 options.ApplyStandardFailurePolicies();

@@ -56,7 +56,9 @@ public sealed class InvoiceStockSyncIntegrationTests(BillingTestDatabase databas
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess
+        );
         _invoiceId = invoice.Id;
 
         await using var db = NewContext();

@@ -15,26 +15,24 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 name: "CustomerStatusChangedAtUtc",
                 table: "Users",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "DeactivationReason",
                 table: "Users",
                 type: "nvarchar(32)",
                 maxLength: 32,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "CustomerStatusChangedAtUtc",
-                table: "Users");
+            migrationBuilder.DropColumn(name: "CustomerStatusChangedAtUtc", table: "Users");
 
-            migrationBuilder.DropColumn(
-                name: "DeactivationReason",
-                table: "Users");
+            migrationBuilder.DropColumn(name: "DeactivationReason", table: "Users");
         }
     }
 }

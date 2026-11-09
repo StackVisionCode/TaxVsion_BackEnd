@@ -1,4 +1,5 @@
 extern alias BbTesting;
+using BbTesting::TaxVision.BuildingBlocks.Testing.Integration;
 
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
@@ -16,7 +17,6 @@ using TaxVision.PaymentApp.Infrastructure.Persistence.Repositories;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.SqlServer;
-using BbTesting::TaxVision.BuildingBlocks.Testing.Integration;
 using Xunit;
 
 [assembly: TestFramework(TemporaryDatabaseTestFramework.TypeName, TemporaryDatabaseTestFramework.AssemblyName)]

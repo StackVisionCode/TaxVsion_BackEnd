@@ -15,7 +15,10 @@ public sealed record SaveBeforePublishFinding(string Path, int PublishLine, int 
 /// </summary>
 public static partial class SaveBeforePublishRules
 {
-    [GeneratedRegex(@"^[ \t]*(?:\[[^\]\r\n]*\][ \t]*)*(?:public|private|internal|protected)\b[^=;\r\n]*\(", RegexOptions.Multiline)]
+    [GeneratedRegex(
+        @"^[ \t]*(?:\[[^\]\r\n]*\][ \t]*)*(?:public|private|internal|protected)\b[^=;\r\n]*\(",
+        RegexOptions.Multiline
+    )]
     private static partial Regex MethodStart();
 
     [GeneratedRegex(

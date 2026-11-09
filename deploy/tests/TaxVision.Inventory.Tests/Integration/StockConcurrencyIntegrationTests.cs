@@ -23,8 +23,7 @@ public sealed class StockConcurrencyIntegrationTests : IAsyncLifetime
 {
     private static readonly TimeSpan BarrierTimeout = TimeSpan.FromSeconds(2);
     private readonly Guid _tenantId = Guid.NewGuid();
-    private readonly string _connectionString =
-        InventoryIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = InventoryIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

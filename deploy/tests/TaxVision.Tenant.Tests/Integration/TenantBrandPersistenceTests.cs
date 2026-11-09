@@ -41,7 +41,15 @@ public sealed class TenantBrandPersistenceTests : IClassFixture<TenantApiFactory
             {
                 var brand = await repo.GetAsync(tenantId, BrandSurface.Crm);
                 Assert.NotNull(brand);
-                var setAsset = brand!.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow);
+                var setAsset = brand!.SetAssetPending(
+                    BrandAssetKey.Logo,
+                    Guid.NewGuid(),
+                    "image/png",
+                    100,
+                    null,
+                    null,
+                    DateTime.UtcNow
+                );
                 Assert.True(setAsset.IsSuccess);
                 var setColor = brand.SetColor(BrandColorToken.Primary, "#1E466B", DateTime.UtcNow);
                 Assert.True(setColor.IsSuccess);

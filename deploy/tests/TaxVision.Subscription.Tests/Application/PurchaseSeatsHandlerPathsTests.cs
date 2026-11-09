@@ -181,7 +181,9 @@ public sealed class PurchaseSeatsHandlerPathsTests
             Subscriptions = new FakeSubscriptionRepo(Subscription);
             var pricing = SeatPricing.Seed(Guid.NewGuid(), now);
             pricing.AddPriceTier(
-                SeatPriceTier.Create(pricing.Id, SeatType.Standard, BillingCycle.Monthly, Money.Create(15m, "USD").Value).Value
+                SeatPriceTier
+                    .Create(pricing.Id, SeatType.Standard, BillingCycle.Monthly, Money.Create(15m, "USD").Value)
+                    .Value
             );
             Pricing = new FakeSeatPricingRepository(pricing);
         }
@@ -201,7 +203,9 @@ public sealed class PurchaseSeatsHandlerPathsTests
         {
             Settings = SubscriptionTenantSettings.Default(Subscription.TenantId, Guid.Empty, DateTime.UtcNow).Value;
             Assert.True(
-                Settings.ApplyPatch(new SubscriptionSettingsPatch(MaxSeatsAllowed: max), Guid.Empty, DateTime.UtcNow).IsSuccess
+                Settings
+                    .ApplyPatch(new SubscriptionSettingsPatch(MaxSeatsAllowed: max), Guid.Empty, DateTime.UtcNow)
+                    .IsSuccess
             );
         }
 

@@ -57,13 +57,21 @@ public static class SmsFailoverSender
                     provider.Code,
                     request.To
                 );
-                return new SmsSendAttempt(SmsSendOutcome.OutcomeUnknown, provider, null, SmsErrors.ProviderOutcomeUnknown);
+                return new SmsSendAttempt(
+                    SmsSendOutcome.OutcomeUnknown,
+                    provider,
+                    null,
+                    SmsErrors.ProviderOutcomeUnknown
+                );
             }
 
             if (result.Accepted)
                 return new SmsSendAttempt(SmsSendOutcome.Accepted, provider, result.ProviderMessageId, null);
 
-            lastError = new Error(result.ErrorCode ?? SmsErrors.ProviderRejected.Code, result.ErrorMessage ?? string.Empty);
+            lastError = new Error(
+                result.ErrorCode ?? SmsErrors.ProviderRejected.Code,
+                result.ErrorMessage ?? string.Empty
+            );
             if (!SmsFailoverPolicy.ShouldTryNext(result))
                 return lastError.Code == SmsSendFailure.OutcomeUnknown
                     ? new SmsSendAttempt(SmsSendOutcome.OutcomeUnknown, provider, result.ProviderMessageId, lastError)

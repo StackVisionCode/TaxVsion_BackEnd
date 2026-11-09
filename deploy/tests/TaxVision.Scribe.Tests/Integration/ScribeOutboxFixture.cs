@@ -186,7 +186,9 @@ public sealed class ScribeOutboxFixture : IAsyncLifetime
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             if (request.Method == HttpMethod.Get)
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("ok") });
+                return Task.FromResult(
+                    new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("ok") }
+                );
 
             var fileId = Guid.Parse(request.RequestUri!.Segments[^2].TrimEnd('/'));
             if (!probe.Received(fileId))
@@ -213,6 +215,8 @@ public sealed class ScribeOutboxFixture : IAsyncLifetime
         public static IMinioClient Create() => Create<IMinioClient, MinioStub>();
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
-            targetMethod?.Name == nameof(IMinioClient.PutObjectAsync) ? Task.FromResult<PutObjectResponse>(null!) : null;
+            targetMethod?.Name == nameof(IMinioClient.PutObjectAsync)
+                ? Task.FromResult<PutObjectResponse>(null!)
+                : null;
     }
 }

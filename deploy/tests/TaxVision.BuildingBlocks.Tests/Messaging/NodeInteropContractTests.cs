@@ -228,7 +228,11 @@ public sealed class NodeInteropContractTests(ITestOutputHelper output)
         var separator = Path.DirectorySeparatorChar;
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (
-            var file in Directory.EnumerateFiles(Path.Combine(root, "src", "Services"), "*.cs", SearchOption.AllDirectories)
+            var file in Directory.EnumerateFiles(
+                Path.Combine(root, "src", "Services"),
+                "*.cs",
+                SearchOption.AllDirectories
+            )
         )
         {
             if (file.Contains($"{separator}obj{separator}") || file.Contains($"{separator}bin{separator}"))
@@ -311,7 +315,9 @@ public sealed class NodeInteropContractTests(ITestOutputHelper output)
             foreach (Match m in Regex.Matches(text, @"\bregister(?:Projection)?\(\s*'([^']+)'"))
                 registered.Add(m.Groups[1].Value);
 
-            foreach (Match m in Regex.Matches(text, @"\bregister(?:Projection)?\(\s*([A-Z][A-Za-z0-9_]*)\.([A-Za-z0-9_]+)\b"))
+            foreach (
+                Match m in Regex.Matches(text, @"\bregister(?:Projection)?\(\s*([A-Z][A-Za-z0-9_]*)\.([A-Za-z0-9_]+)\b")
+            )
             {
                 var obj = Regex.Match(allText, $@"\b{m.Groups[1].Value}\s*=\s*\{{(.*?)\}}", RegexOptions.Singleline);
                 if (!obj.Success)

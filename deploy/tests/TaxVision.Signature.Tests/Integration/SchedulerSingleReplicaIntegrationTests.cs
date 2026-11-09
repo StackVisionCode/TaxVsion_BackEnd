@@ -85,8 +85,7 @@ public sealed class SchedulerSingleReplicaIntegrationTests(SchedulerHostFixture 
         Assert.Equal(1, host.Gate.Listed);
     }
 
-    private ReminderScheduler NewReminderJob() =>
-        new(host.Factory.Services, NullLogger<ReminderScheduler>.Instance);
+    private ReminderScheduler NewReminderJob() => new(host.Factory.Services, NullLogger<ReminderScheduler>.Instance);
 
     private ExpirationScheduler NewExpirationJob() =>
         new(host.Factory.Services, NullLogger<ExpirationScheduler>.Instance);

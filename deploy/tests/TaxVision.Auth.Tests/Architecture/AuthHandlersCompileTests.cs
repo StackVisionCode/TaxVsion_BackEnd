@@ -2,9 +2,9 @@ using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.Extensions.DependencyInjection;
-using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
 using TaxVision.Auth.Application.Permissions.Admin.Commands;
 using TaxVision.Auth.Application.Users.Commands;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
 using Wolverine.Runtime;
 
 namespace TaxVision.Auth.Tests.Architecture;

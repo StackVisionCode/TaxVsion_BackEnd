@@ -72,10 +72,7 @@ public sealed class SignatureSchedulersIntegrationTests(SignatureSchedulersApiFa
         Assert.Equal(SignatureRequestStatus.Expired, await StatusOfAsync(first.Id));
         Assert.Equal(SignatureRequestStatus.InProgress, await StatusOfAsync(conflicted.Id));
         Assert.Equal(SignatureRequestStatus.Expired, await StatusOfAsync(third.Id));
-        Assert.Equal(
-            new[] { first.Id, third.Id }.Order(),
-            sent.Select(evt => evt.SignatureRequestId).Order()
-        );
+        Assert.Equal(new[] { first.Id, third.Id }.Order(), sent.Select(evt => evt.SignatureRequestId).Order());
     }
 
     [Fact]
@@ -120,7 +117,18 @@ public sealed class SignatureSchedulersIntegrationTests(SignatureSchedulersApiFa
         var fileId = Guid.NewGuid();
         factory.Storage.Put(fileId, pdf);
         var request = SignatureRequest
-            .CreateDraft(TestSignatureLimits.Default, _tenantId, Guid.NewGuid(), "Stranded", null, "Fiscal", 72, false, false, false)
+            .CreateDraft(
+                TestSignatureLimits.Default,
+                _tenantId,
+                Guid.NewGuid(),
+                "Stranded",
+                null,
+                "Fiscal",
+                72,
+                false,
+                false,
+                false
+            )
             .Value;
         request.AddDocument(TestSignatureLimits.Default, fileId, "Return");
 
@@ -154,16 +162,16 @@ public sealed class SignatureSchedulersIntegrationTests(SignatureSchedulersApiFa
     )
     {
         var job = new ExpirationScheduler(factory.Services, NullLogger<ExpirationScheduler>.Instance);
-        var candidates = requests
-            .Select(r => new ExpirationScheduler.ExpirationCandidate(r.TenantId, r.Id))
-            .ToList();
+        var candidates = requests.Select(r => new ExpirationScheduler.ExpirationCandidate(r.TenantId, r.Id)).ToList();
 
         var session = await factory
             .Services.GetRequiredService<IHost>()
             .TrackActivity()
             .Timeout(TimeSpan.FromSeconds(60))
             .DoNotAssertOnExceptionsDetected()
-            .ExecuteAndWaitAsync(_ => Record.ExceptionAsync(() => job.ExpireAsync(candidates, DateTime.UtcNow, CancellationToken.None)));
+            .ExecuteAndWaitAsync(_ =>
+                Record.ExceptionAsync(() => job.ExpireAsync(candidates, DateTime.UtcNow, CancellationToken.None))
+            );
 
         return session
             .Sent.MessagesOf<SignatureRequestExpiredIntegrationEvent>()
@@ -265,11 +273,10 @@ public sealed class SignatureSchedulersApiFactory : SignatureApiFactory
 /// <summary>CloudStorage en memoria: sirve los PDF sembrados y cuenta las descargas.</summary>
 public sealed class CountingStorage : ISignatureCloudStorageClient
 {
-    public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
-        Guid tenantId,
-        SignatureFileUpload upload,
-        CancellationToken ct = default
-    ) => throw new NotSupportedException();
+    public Task<
+        Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>
+    > StageAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default) =>
+        throw new NotSupportedException();
 
     private readonly ConcurrentDictionary<Guid, byte[]> _files = new();
     private readonly ConcurrentDictionary<Guid, int> _downloads = new();

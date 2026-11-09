@@ -30,7 +30,13 @@ public static class FormSignatureExpiredConsumer
             if (request is null)
                 return;
             if (
-                FormSignatureResultSupport.Failed(request.Summary.MarkSignatureExpired(revision), "Expired", requestId, revision, logger)
+                FormSignatureResultSupport.Failed(
+                    request.Summary.MarkSignatureExpired(revision),
+                    "Expired",
+                    requestId,
+                    revision,
+                    logger
+                )
             )
                 return;
             var outgoing = new DeferredMessages();

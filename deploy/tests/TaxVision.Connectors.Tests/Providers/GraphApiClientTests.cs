@@ -635,7 +635,13 @@ public class GraphApiClientTests
         var client = CreateClient(handler);
 
         var first = await client.ListInboxMessageIdsAsync(Guid.NewGuid(), Guid.NewGuid(), from, to, null);
-        var second = await client.ListInboxMessageIdsAsync(Guid.NewGuid(), Guid.NewGuid(), from, to, first.NextPageToken);
+        var second = await client.ListInboxMessageIdsAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            from,
+            to,
+            first.NextPageToken
+        );
 
         Assert.Equal(["m1", "m2"], first.MessageIds);
         Assert.Equal(["m3"], second.MessageIds);
@@ -654,7 +660,13 @@ public class GraphApiClientTests
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             CreateClient(handler)
-                .ListInboxMessageIdsAsync(Guid.NewGuid(), Guid.NewGuid(), DateTime.UtcNow.AddDays(-1), DateTime.UtcNow, "https://evil.example/steal")
+                .ListInboxMessageIdsAsync(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    DateTime.UtcNow.AddDays(-1),
+                    DateTime.UtcNow,
+                    "https://evil.example/steal"
+                )
         );
         Assert.Empty(handler.Requests);
     }

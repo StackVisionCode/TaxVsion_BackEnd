@@ -15,15 +15,14 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                 name: "ChargeAttemptedAtUtc",
                 table: "SaaSPayments",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ChargeAttemptedAtUtc",
-                table: "SaaSPayments");
+            migrationBuilder.DropColumn(name: "ChargeAttemptedAtUtc", table: "SaaSPayments");
         }
     }
 }

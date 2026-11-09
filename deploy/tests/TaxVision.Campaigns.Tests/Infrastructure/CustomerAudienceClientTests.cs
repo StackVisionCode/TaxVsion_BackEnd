@@ -35,7 +35,15 @@ public sealed class CustomerAudienceClientTests
             return Task.FromResult(
                 new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = JsonContent.Create(new { Items = items, Page = page, Size = 200, TotalCount = 1000 }),
+                    Content = JsonContent.Create(
+                        new
+                        {
+                            Items = items,
+                            Page = page,
+                            Size = 200,
+                            TotalCount = 1000,
+                        }
+                    ),
                 }
             );
         }

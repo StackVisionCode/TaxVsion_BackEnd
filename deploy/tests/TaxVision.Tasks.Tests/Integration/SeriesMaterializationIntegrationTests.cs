@@ -23,8 +23,7 @@ namespace TaxVision.Tasks.Tests.Integration;
 /// </summary>
 public sealed class SeriesMaterializationIntegrationTests : IAsyncLifetime
 {
-    private static readonly string ConnectionString =
-        TasksIntegrationDatabase.ConnectionString;
+    private static readonly string ConnectionString = TasksIntegrationDatabase.ConnectionString;
 
     private readonly Guid _tenantId = Guid.NewGuid();
 

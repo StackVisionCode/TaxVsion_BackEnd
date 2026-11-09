@@ -151,7 +151,12 @@ public sealed class IntakeDailyCapIntegrationTests(IntakeHostFixture host) : ICl
         await db.SaveChangesAsync();
 
         return seeded
-            .Select(item => new SubmitPortalFormRequestCommand(item.Context, item.Request.Id, item.Request.RowVersion, Now))
+            .Select(item => new SubmitPortalFormRequestCommand(
+                item.Context,
+                item.Request.Id,
+                item.Request.RowVersion,
+                Now
+            ))
             .ToList();
     }
 

@@ -76,7 +76,10 @@ public sealed class TenantDomainEventDispatchIntegrationTests : IAsyncLifetime
 
         Assert.True(result.IsSuccess);
         Assert.Equal(EnumTenantStatus.TenantStatus.Suspended, await StatusAsync(tenant.Id));
-        await AssertSingleNoticeAsync(nameof(TenantStatusChangedDomainEvent), nameof(TenantStatusChangedIntegrationEvent));
+        await AssertSingleNoticeAsync(
+            nameof(TenantStatusChangedDomainEvent),
+            nameof(TenantStatusChangedIntegrationEvent)
+        );
     }
 
     [Fact(Timeout = 120_000)]
@@ -126,7 +129,10 @@ public sealed class TenantDomainEventDispatchIntegrationTests : IAsyncLifetime
         );
 
         Assert.Equal(EnumTenantStatus.TenantStatus.Closed, await StatusAsync(tenant.Id));
-        await AssertSingleNoticeAsync(nameof(TenantStatusChangedDomainEvent), nameof(TenantStatusChangedIntegrationEvent));
+        await AssertSingleNoticeAsync(
+            nameof(TenantStatusChangedDomainEvent),
+            nameof(TenantStatusChangedIntegrationEvent)
+        );
     }
 
     private async Task AssertSingleNoticeAsync(string domainEvent, string integrationEvent)
@@ -156,7 +162,9 @@ public sealed class TenantDomainEventDispatchIntegrationTests : IAsyncLifetime
 
     private async Task<DomainTenant> SeedAsync(Guid? onboardingId = null)
     {
-        var tenant = DomainTenant.Create("Dispatch Tax", $"dt-{Guid.NewGuid():N}"[..20], "Etc/UTC", DateTime.UtcNow, onboardingId).Value;
+        var tenant = DomainTenant
+            .Create("Dispatch Tax", $"dt-{Guid.NewGuid():N}"[..20], "Etc/UTC", DateTime.UtcNow, onboardingId)
+            .Value;
         await using var db = _database.NewContext();
         db.Tenants.Add(tenant);
         await db.SaveChangesAsync();

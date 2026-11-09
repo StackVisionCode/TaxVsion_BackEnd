@@ -195,7 +195,10 @@ public sealed class FileObjectConcurrencyIntegrationTests(CloudStorageConcurrenc
     private async Task ScanAsync(Guid fileId, FakeObjectStorage storage, IVirusScanner scanner)
     {
         await using var db = fixture.NewContext(_tenantId);
-        var bus = new FakeMessageBus { OnInvoke = message => RecordVerdictAsync((RecordScanVerdictCommand)message, storage) };
+        var bus = new FakeMessageBus
+        {
+            OnInvoke = message => RecordVerdictAsync((RecordScanVerdictCommand)message, storage),
+        };
         await ScanFileHandler.Handle(
             new ScanFileCommand(_tenantId, fileId, "it-duplicate-scan"),
             new SqlScanClaims(db),

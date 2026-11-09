@@ -14,7 +14,14 @@ public sealed class CampaignScheduleConcurrencyIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var schedule = CampaignSchedule
-            .CreateRecurring(_tenantId, Guid.NewGuid(), DateTime.UtcNow.AddMinutes(-1), RecurrenceFrequency.Hourly, null, [])
+            .CreateRecurring(
+                _tenantId,
+                Guid.NewGuid(),
+                DateTime.UtcNow.AddMinutes(-1),
+                RecurrenceFrequency.Hourly,
+                null,
+                []
+            )
             .Value;
         schedule.MarkFired(_runId, DateTime.UtcNow);
         _scheduleId = schedule.Id;

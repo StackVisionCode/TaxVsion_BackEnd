@@ -687,9 +687,7 @@ public sealed class SentMessage : AggregateRoot
     private static Result<EmailAddress> ParseAddress(string address, string errorCode)
     {
         var parsed = EmailAddress.Create(address);
-        return parsed.IsSuccess
-            ? parsed
-            : Result.Failure<EmailAddress>(new Error(errorCode, parsed.Error.Message));
+        return parsed.IsSuccess ? parsed : Result.Failure<EmailAddress>(new Error(errorCode, parsed.Error.Message));
     }
 
     private Error InvalidTransition(SentMessageStatus target) =>

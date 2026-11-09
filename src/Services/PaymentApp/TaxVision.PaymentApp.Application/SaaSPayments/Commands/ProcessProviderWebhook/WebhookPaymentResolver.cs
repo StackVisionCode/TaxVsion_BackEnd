@@ -81,7 +81,10 @@ internal static class WebhookPaymentResolver
             await unitOfWork.SaveChangesAsync(ct);
             return Finish(
                 Result.Failure(
-                    new Error(ProcessProviderWebhookHandler.WebhookThrottledCode, "Too many webhook events. Retry later.")
+                    new Error(
+                        ProcessProviderWebhookHandler.WebhookThrottledCode,
+                        "Too many webhook events. Retry later."
+                    )
                 )
             );
         }

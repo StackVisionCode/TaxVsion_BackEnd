@@ -19,7 +19,11 @@ internal static class DomainEventReplay
         .Assembly.GetTypes()
         .Where(t => t.IsClass && t.IsAbstract && t.IsSealed && t.Name.EndsWith("Handler", StringComparison.Ordinal))
         .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
-        .Where(m => m.Name == "Handle" && m.GetParameters().FirstOrDefault()?.ParameterType is { } p && typeof(IDomainEvent).IsAssignableFrom(p))
+        .Where(m =>
+            m.Name == "Handle"
+            && m.GetParameters().FirstOrDefault()?.ParameterType is { } p
+            && typeof(IDomainEvent).IsAssignableFrom(p)
+        )
         .ToArray();
 
     /// <summary>Publicado a mano por el comando más lo devuelto por los handlers de dominio.</summary>
@@ -33,7 +37,10 @@ internal static class DomainEventReplay
             await bus.PublishAsync(message);
     }
 
-    public static async Task<IReadOnlyList<object>> DispatchAsync(IEnumerable<AggregateRoot> roots, ITaskRepository tasks)
+    public static async Task<IReadOnlyList<object>> DispatchAsync(
+        IEnumerable<AggregateRoot> roots,
+        ITaskRepository tasks
+    )
     {
         var emitted = new List<object>();
         foreach (var root in roots.ToList())
@@ -47,7 +54,10 @@ internal static class DomainEventReplay
     }
 
     /// <summary>Corre los handlers de dominio sobre eventos ya sacados (p. ej. por el outbox de prueba).</summary>
-    public static async Task<IReadOnlyList<object>> DispatchEventsAsync(IEnumerable<IDomainEvent> events, ITaskRepository tasks)
+    public static async Task<IReadOnlyList<object>> DispatchEventsAsync(
+        IEnumerable<IDomainEvent> events,
+        ITaskRepository tasks
+    )
     {
         var emitted = new List<object>();
         foreach (var domainEvent in events)

@@ -46,7 +46,9 @@ public sealed class ExpireReservationHandlerTests
         Assert.Equal(ReservationStatus.Expired, reservation.Status);
         Assert.Equal(1, unitOfWork.SaveCount);
         // El aviso sale del evento de dominio del monedero (BB-1).
-        var published = Assert.Single(DomainEventReplay.Dispatch([wallet]).OfType<WalletBalanceChangedIntegrationEvent>());
+        var published = Assert.Single(
+            DomainEventReplay.Dispatch([wallet]).OfType<WalletBalanceChangedIntegrationEvent>()
+        );
         Assert.Equal("release", published.Reason);
     }
 }

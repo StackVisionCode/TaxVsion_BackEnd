@@ -20,30 +20,32 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     AccountId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     OwnerUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    LastChangeAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    LastChangeAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_MailboxOwnerships", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_MailboxOwnerships_TenantId_AccountId",
                 table: "MailboxOwnerships",
                 columns: new[] { "TenantId", "AccountId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_MailboxOwnerships_TenantId_OwnerUserId",
                 table: "MailboxOwnerships",
-                columns: new[] { "TenantId", "OwnerUserId" });
+                columns: new[] { "TenantId", "OwnerUserId" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "MailboxOwnerships");
+            migrationBuilder.DropTable(name: "MailboxOwnerships");
         }
     }
 }

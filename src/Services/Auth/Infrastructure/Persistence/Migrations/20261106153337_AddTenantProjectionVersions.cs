@@ -15,32 +15,31 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 name: "LastProfileVersion",
                 table: "Tenants",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "LastStatusVersion",
                 table: "Tenants",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.UpdateData(
                 table: "Tenants",
                 keyColumn: "Id",
                 keyValue: new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"),
                 columns: new[] { "LastProfileVersion", "LastStatusVersion" },
-                values: new object[] { null, null });
+                values: new object[] { null, null }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "LastProfileVersion",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "LastProfileVersion", table: "Tenants");
 
-            migrationBuilder.DropColumn(
-                name: "LastStatusVersion",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "LastStatusVersion", table: "Tenants");
         }
     }
 }

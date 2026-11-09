@@ -63,7 +63,9 @@ public sealed class CreateTenantFromOnboardingIntegrationTests : IAsyncLifetime
     public async Task LosingTheUniqueIndexRace_SucceedsWithoutPublishingTheRevertedId()
     {
         var command = NewCommand();
-        var winner = DomainTenant.Create("Winner", "winner-tax", "Etc/UTC", DateTime.UtcNow, command.OnboardingId).Value;
+        var winner = DomainTenant
+            .Create("Winner", "winner-tax", "Etc/UTC", DateTime.UtcNow, command.OnboardingId)
+            .Value;
         _rival.BeforeInsert = async () =>
         {
             await using var db = _database.NewContext();

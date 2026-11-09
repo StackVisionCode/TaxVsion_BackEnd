@@ -172,7 +172,6 @@ public sealed class PushFanOutIntegrationTests : IAsyncLifetime
                         _tenant,
                         NotificationChannel.Push,
                         NotificationRecipient.ForPushTarget(_first),
-
                         "Title",
                         "not07.tpl",
                         eventId,

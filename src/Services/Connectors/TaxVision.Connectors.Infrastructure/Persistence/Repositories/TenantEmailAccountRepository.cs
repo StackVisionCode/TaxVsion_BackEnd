@@ -39,7 +39,9 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
         var stored = StoredForm(emailAddress);
         var account = stored is null
             ? null
-            : await dbContext.TenantEmailAccounts.IgnoreQueryFilters().FirstOrDefaultAsync(a => a.EmailAddress == stored, ct);
+            : await dbContext
+                .TenantEmailAccounts.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(a => a.EmailAddress == stored, ct);
         return account is null
             ? Result.Failure<TenantEmailAccount>(
                 new Error("TenantEmailAccount.NotFound", $"TenantEmailAccount with email '{emailAddress}' not found.")

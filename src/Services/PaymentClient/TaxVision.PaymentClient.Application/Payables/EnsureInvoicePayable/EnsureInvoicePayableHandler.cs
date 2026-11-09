@@ -65,7 +65,11 @@ public static class EnsureInvoicePayableHandler
                 );
                 if (
                     activeLink is not null
-                    && !await payments.AnyInProgressForReferenceAsync(existing.TenantId, existing.ExternalReferenceId, ct)
+                    && !await payments.AnyInProgressForReferenceAsync(
+                        existing.TenantId,
+                        existing.ExternalReferenceId,
+                        ct
+                    )
                 )
                     activeLink.Expire(DateTime.UtcNow);
             }

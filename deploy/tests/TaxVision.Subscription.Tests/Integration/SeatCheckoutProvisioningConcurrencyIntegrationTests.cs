@@ -88,9 +88,7 @@ public sealed class SeatCheckoutProvisioningConcurrencyIntegrationTests : IAsync
         Assert.Equal(
             1,
             await check.AuditLogs.CountAsync(a =>
-                a.TenantId == _db.TenantId
-                && a.AggregateType == "SeatPurchaseIntent"
-                && a.Action == "Seats.Purchased"
+                a.TenantId == _db.TenantId && a.AggregateType == "SeatPurchaseIntent" && a.Action == "Seats.Purchased"
             )
         );
     }

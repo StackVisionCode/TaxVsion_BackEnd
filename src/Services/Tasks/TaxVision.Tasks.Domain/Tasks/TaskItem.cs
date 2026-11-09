@@ -127,7 +127,15 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         task.SetTenant(tenantId);
 
         task.AddDomainEvent(
-            new TaskCreatedDomainEvent(task.Id, tenantId, createdByUserId, assigneeUserId, null, nowUtc, recurringOccurrence)
+            new TaskCreatedDomainEvent(
+                task.Id,
+                tenantId,
+                createdByUserId,
+                assigneeUserId,
+                null,
+                nowUtc,
+                recurringOccurrence
+            )
         );
         return Result.Success(task);
     }
@@ -242,9 +250,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         CompletedAtUtc = null;
         ReopenCount++;
 
-        AddDomainEvent(
-            new TaskReopenedDomainEvent(Id, TenantId, ParentTaskId, Status, byUserId, nowUtc, ReopenCount)
-        );
+        AddDomainEvent(new TaskReopenedDomainEvent(Id, TenantId, ParentTaskId, Status, byUserId, nowUtc, ReopenCount));
         return Result.Success();
     }
 

@@ -3,8 +3,8 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Application.Offboarding;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Application.Offboarding;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Offboarding;
@@ -296,7 +296,11 @@ public sealed class OffboardUserHandlerPathsTests
                 ),
                 Account.Users,
                 new NoTenantAdminLock(),
-                new OffboardingHygiene(Mfa, Invitations, new AuthAuditTrail(Account.Audit, Account.Request, Account.Correlation)),
+                new OffboardingHygiene(
+                    Mfa,
+                    Invitations,
+                    new AuthAuditTrail(Account.Audit, Account.Request, Account.Correlation)
+                ),
                 Runs,
                 new SessionAccessCutoff(Account.Sessions, Account.Denylist, Revocations),
                 new AuthAuditTrail(Account.Audit, Account.Request, Account.Correlation),

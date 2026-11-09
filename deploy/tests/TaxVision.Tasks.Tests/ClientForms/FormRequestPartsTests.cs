@@ -60,7 +60,10 @@ public sealed class FormRequestPartsTests
         request.Actions.Reject(first.CommandId!.Value, "Rejected", null, null, Now);
 
         Assert.Equal(FormActionRunErrors.Invalid, request.Actions.Retry(first.Id, null, null, Later).Error);
-        Assert.Equal(FormActionRunErrors.Invalid, request.Actions.Retry(first.Id, Guid.NewGuid(), "Failed", Later).Error);
+        Assert.Equal(
+            FormActionRunErrors.Invalid,
+            request.Actions.Retry(first.Id, Guid.NewGuid(), "Failed", Later).Error
+        );
         Assert.Equal(FormActionRunErrors.Invalid, request.Actions.Retry(first.Id, Guid.Empty, null, Later).Error);
     }
 
@@ -119,10 +122,22 @@ public sealed class FormRequestPartsTests
 
         Assert.Null(request.Actions.FindByCommand(Guid.Empty));
         Assert.Same(run, request.Actions.FindByCommand(commandId));
-        Assert.Equal(FormActionRunErrors.NotFound, request.Actions.Complete(Guid.NewGuid(), "Customer", Guid.NewGuid(), null, Now).Error);
-        Assert.Equal(FormActionRunErrors.Invalid, request.Actions.Complete(commandId, " ", Guid.NewGuid(), null, Now).Error);
-        Assert.Equal(FormActionRunErrors.Invalid, request.Actions.Complete(commandId, "Customer", Guid.Empty, null, Now).Error);
-        Assert.Equal(FormActionRunErrors.NotFound, request.Actions.Reject(Guid.NewGuid(), "Code", null, null, Now).Error);
+        Assert.Equal(
+            FormActionRunErrors.NotFound,
+            request.Actions.Complete(Guid.NewGuid(), "Customer", Guid.NewGuid(), null, Now).Error
+        );
+        Assert.Equal(
+            FormActionRunErrors.Invalid,
+            request.Actions.Complete(commandId, " ", Guid.NewGuid(), null, Now).Error
+        );
+        Assert.Equal(
+            FormActionRunErrors.Invalid,
+            request.Actions.Complete(commandId, "Customer", Guid.Empty, null, Now).Error
+        );
+        Assert.Equal(
+            FormActionRunErrors.NotFound,
+            request.Actions.Reject(Guid.NewGuid(), "Code", null, null, Now).Error
+        );
         Assert.Equal(FormActionRunErrors.Invalid, request.Actions.Reject(commandId, " ", null, null, Now).Error);
 
         var completed = request.Actions.Complete(commandId, "Customer", Guid.NewGuid(), null, Now);
@@ -196,15 +211,27 @@ public sealed class FormRequestPartsTests
         var pending = FormRequestPartsFixture.Pending(Now);
         var completed = FormRequestPartsFixture.Completed(Now);
 
-        Assert.Equal(FormRequestErrors.ProfileUpdateNotAllowed, pending.ProfileUpdate.Request(Guid.NewGuid(), ["a"], Now).Error);
-        Assert.Equal(FormRequestErrors.ProfileUpdateNoTargets, completed.ProfileUpdate.Request(Guid.NewGuid(), [], Now).Error);
-        Assert.Equal(FormRequestErrors.ProfileUpdateNoTargets, completed.ProfileUpdate.Request(Guid.Empty, ["a"], Now).Error);
+        Assert.Equal(
+            FormRequestErrors.ProfileUpdateNotAllowed,
+            pending.ProfileUpdate.Request(Guid.NewGuid(), ["a"], Now).Error
+        );
+        Assert.Equal(
+            FormRequestErrors.ProfileUpdateNoTargets,
+            completed.ProfileUpdate.Request(Guid.NewGuid(), [], Now).Error
+        );
+        Assert.Equal(
+            FormRequestErrors.ProfileUpdateNoTargets,
+            completed.ProfileUpdate.Request(Guid.Empty, ["a"], Now).Error
+        );
 
         Assert.True(completed.ProfileUpdate.Request(Guid.NewGuid(), ["a", "b"], Now).IsSuccess);
 
         Assert.Equal(FormProfileUpdateStatus.Processing, completed.ProfileUpdateStatus);
         Assert.Equal(2, completed.ProfileUpdateOutcomes.Count);
-        Assert.Equal(FormRequestErrors.ProfileUpdateInProgress, completed.ProfileUpdate.Request(Guid.NewGuid(), ["a"], Now).Error);
+        Assert.Equal(
+            FormRequestErrors.ProfileUpdateInProgress,
+            completed.ProfileUpdate.Request(Guid.NewGuid(), ["a"], Now).Error
+        );
     }
 
     [Fact]

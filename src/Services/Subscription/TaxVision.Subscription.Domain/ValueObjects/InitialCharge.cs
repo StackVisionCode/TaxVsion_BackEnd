@@ -4,9 +4,5 @@ namespace TaxVision.Subscription.Domain.ValueObjects;
 public sealed record InitialCharge(string IdempotencyKey, long AmountCents, string Currency)
 {
     public static InitialCharge From(string idempotencyKey, Money prorated) =>
-        new(
-            idempotencyKey,
-            (long)Math.Round(prorated.Amount * 100m, MidpointRounding.AwayFromZero),
-            prorated.Currency
-        );
+        new(idempotencyKey, (long)Math.Round(prorated.Amount * 100m, MidpointRounding.AwayFromZero), prorated.Currency);
 }

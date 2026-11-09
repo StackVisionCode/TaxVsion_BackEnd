@@ -15,8 +15,7 @@ public sealed class StuckScanQueryIntegrationTests : IAsyncLifetime
     private Guid _recentQueued;
     private Guid _oldButRequeued;
 
-    private readonly string _connectionString =
-        CloudStorageIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = CloudStorageIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {
@@ -58,7 +57,11 @@ public sealed class StuckScanQueryIntegrationTests : IAsyncLifetime
     public async Task ListStuckScans_UsesQueuedTimeAndSkipsRecentOnes()
     {
         await using var db = NewContext();
-        var stuck = await new FileObjectRepository(db).ListStuckScansAsync(_now.AddHours(-2), 1000, CancellationToken.None);
+        var stuck = await new FileObjectRepository(db).ListStuckScansAsync(
+            _now.AddHours(-2),
+            1000,
+            CancellationToken.None
+        );
 
         var mine = stuck.Where(f => f.TenantId == _tenantId).Select(f => f.Id).ToList();
         Assert.Contains(_oldQueued, mine);

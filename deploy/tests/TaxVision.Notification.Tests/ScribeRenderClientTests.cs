@@ -66,7 +66,10 @@ public sealed class ScribeRenderClientTests
             }
             """;
         var client = new ScribeRenderClient(
-            new HttpClient(new StubHandler(HttpStatusCode.OK, json)) { BaseAddress = new Uri("http://localhost:5205/") },
+            new HttpClient(new StubHandler(HttpStatusCode.OK, json))
+            {
+                BaseAddress = new Uri("http://localhost:5205/"),
+            },
             new FakeTokenAcquirer(),
             NullLogger<ScribeRenderClient>.Instance
         );
@@ -85,7 +88,10 @@ public sealed class ScribeRenderClientTests
     {
         const string json = """{ "subject": "Welcome", "html": "<p>Hi</p>", "text": "Hi" }""";
         var client = new ScribeRenderClient(
-            new HttpClient(new StubHandler(HttpStatusCode.OK, json)) { BaseAddress = new Uri("http://localhost:5205/") },
+            new HttpClient(new StubHandler(HttpStatusCode.OK, json))
+            {
+                BaseAddress = new Uri("http://localhost:5205/"),
+            },
             new FakeTokenAcquirer(),
             NullLogger<ScribeRenderClient>.Instance
         );

@@ -35,8 +35,7 @@ public sealed class ReconcileStuckSaaSPaymentIntegrationTests : IAsyncLifetime
 {
     private const string Schema = "pay2_reconcile_test";
 
-    private readonly string _connectionString =
-        PaymentAppWolverineHost.Connection;
+    private readonly string _connectionString = PaymentAppWolverineHost.Connection;
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly string _providerReference = $"pi_pay2_{Guid.NewGuid():N}";

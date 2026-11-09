@@ -287,7 +287,10 @@ public sealed class FileSaveRejectedConsumerTests
 
     // Fuera de la ventana de "todavía no": nadie va a referenciarlo.
     private static FileSaveRejectedIntegrationEvent OldRejected(Guid fileId) =>
-        Rejected(fileId) with { OccurredOn = DateTime.UtcNow.AddHours(-1) };
+        Rejected(fileId) with
+        {
+            OccurredOn = DateTime.UtcNow.AddHours(-1),
+        };
 
     private async Task SeedHeaderLogoAsync(Guid fileId)
     {

@@ -63,10 +63,7 @@ public sealed class LateCommitReviewIntegrationTests : IAsyncLifetime
 
         Assert.Single(results, recorded => recorded);
         await using var verify = NewContext();
-        Assert.Equal(
-            1,
-            await verify.LateCommitReviews.IgnoreQueryFilters().CountAsync(r => r.TenantId == _tenantId)
-        );
+        Assert.Equal(1, await verify.LateCommitReviews.IgnoreQueryFilters().CountAsync(r => r.TenantId == _tenantId));
 
         // Una entrega posterior del mismo evento tampoco duplica.
         await using var third = NewContext();

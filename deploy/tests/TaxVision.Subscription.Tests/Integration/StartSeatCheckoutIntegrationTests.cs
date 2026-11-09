@@ -188,8 +188,7 @@ public sealed class StartSeatCheckoutIntegrationTests : IAsyncLifetime
 
     private sealed class RecordingCancellationClient : IHostedCheckoutCancellationClient
     {
-        public TaskCompletionSource<Guid> Cancelled { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<Guid> Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<Result> CancelAsync(Guid tenantId, Guid saaSPaymentId, CancellationToken ct = default)
         {

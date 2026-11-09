@@ -13,9 +13,7 @@ namespace TaxVision.Subscription.Tests.Integration;
 /// </summary>
 internal sealed class SubscriptionIntegrationDb
 {
-    private static readonly Lazy<string> ConnectionString = new(() =>
-        SubscriptionIntegrationDatabase.ConnectionString
-    );
+    private static readonly Lazy<string> ConnectionString = new(() => SubscriptionIntegrationDatabase.ConnectionString);
 
     public Guid TenantId { get; } = Guid.NewGuid();
 

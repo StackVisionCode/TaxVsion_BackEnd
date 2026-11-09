@@ -36,7 +36,9 @@ public sealed class FormSignatureConcurrencyIntegrationTests : IAsyncLifetime
         var sealedRequest = await LoadAsync(sealing, requestId);
         var completedRequest = await LoadAsync(completing, requestId);
 
-        Assert.True(sealedRequest.Summary.MarkSignatureSealed(Revision, sealedFileId, new string('c', 64), null).IsSuccess);
+        Assert.True(
+            sealedRequest.Summary.MarkSignatureSealed(Revision, sealedFileId, new string('c', 64), null).IsSuccess
+        );
         Assert.True(completedRequest.Summary.MarkSignatureCompleted(Revision).IsSuccess);
         await sealing.SaveChangesAsync();
 

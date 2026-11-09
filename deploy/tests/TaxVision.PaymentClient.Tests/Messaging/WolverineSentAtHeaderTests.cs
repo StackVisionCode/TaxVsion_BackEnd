@@ -33,7 +33,12 @@ public sealed class WolverineSentAtHeaderTests
         var mapper = new RabbitMqEnvelopeMapper(endpoint, runtime);
 
         var sentAt = new DateTimeOffset(2026, 11, 4, 23, 17, 0, TimeSpan.Zero);
-        var outgoing = new Envelope { Id = Guid.NewGuid(), SentAt = sentAt, MessageType = "probe" };
+        var outgoing = new Envelope
+        {
+            Id = Guid.NewGuid(),
+            SentAt = sentAt,
+            MessageType = "probe",
+        };
         var properties = new BasicProperties { Headers = new Dictionary<string, object?>() };
         mapper.MapEnvelopeToOutgoing(outgoing, properties);
 

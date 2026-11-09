@@ -15,15 +15,14 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                 table: "EmailTemplateVersions",
                 type: "nvarchar(64)",
                 maxLength: 64,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "SeedContentHash",
-                table: "EmailTemplateVersions");
+            migrationBuilder.DropColumn(name: "SeedContentHash", table: "EmailTemplateVersions");
         }
     }
 }

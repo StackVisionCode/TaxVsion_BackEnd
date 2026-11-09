@@ -4,9 +4,9 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
-using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Application.Terms.Versions.Commands;
 using TaxVision.Auth.Domain.Terms;
+using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;

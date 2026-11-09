@@ -113,8 +113,8 @@ public class StartMailboxResyncHandlerTests
     {
         var bus = new FakeMessageBus();
 
-        await Assert.ThrowsAsync<TimeoutException>(
-            () => RunAsync(CreateActiveAccount(), bus, Now.AddDays(-1), Now, unitOfWork: new FailingUnitOfWork())
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            RunAsync(CreateActiveAccount(), bus, Now.AddDays(-1), Now, unitOfWork: new FailingUnitOfWork())
         );
 
         Assert.Empty(bus.Published);

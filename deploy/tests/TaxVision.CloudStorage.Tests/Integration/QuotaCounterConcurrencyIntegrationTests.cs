@@ -15,8 +15,7 @@ public sealed class QuotaCounterConcurrencyIntegrationTests : IAsyncLifetime
 {
     private const long Gigabyte = 1024L * 1024 * 1024;
     private readonly Guid _tenantId = Guid.NewGuid();
-    private readonly string _connectionString =
-        CloudStorageIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = CloudStorageIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant(Guid tenantId) : ITenantContext
     {

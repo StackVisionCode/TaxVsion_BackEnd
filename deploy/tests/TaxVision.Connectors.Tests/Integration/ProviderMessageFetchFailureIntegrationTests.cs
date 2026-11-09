@@ -14,8 +14,7 @@ namespace TaxVision.Connectors.Tests.Integration;
 public sealed class ProviderMessageFetchFailureIntegrationTests : IAsyncLifetime
 {
     private readonly Guid _accountId = Guid.NewGuid();
-    private readonly string _connectionString =
-        ConnectorsIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = ConnectorsIntegrationDatabase.ConnectionString;
 
     private sealed class FixedTenant : ITenantContext
     {

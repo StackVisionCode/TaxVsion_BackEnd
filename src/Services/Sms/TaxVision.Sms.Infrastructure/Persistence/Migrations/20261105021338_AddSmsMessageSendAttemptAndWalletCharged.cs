@@ -15,26 +15,24 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                 name: "SendAttemptedAtUtc",
                 table: "smsMessages",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<bool>(
                 name: "WalletCharged",
                 table: "smsMessages",
                 type: "bit",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: false
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "SendAttemptedAtUtc",
-                table: "smsMessages");
+            migrationBuilder.DropColumn(name: "SendAttemptedAtUtc", table: "smsMessages");
 
-            migrationBuilder.DropColumn(
-                name: "WalletCharged",
-                table: "smsMessages");
+            migrationBuilder.DropColumn(name: "WalletCharged", table: "smsMessages");
         }
     }
 }

@@ -20,7 +20,10 @@ internal static class DomainEventReplay
 
     private static readonly MethodInfo[] HandleMethods = typeof(TenantPaymentSucceededSignal)
         .Assembly.GetTypes()
-        .Where(t => t is { IsClass: true, IsAbstract: true, IsSealed: true } && t.Name.EndsWith("Handler", StringComparison.Ordinal))
+        .Where(t =>
+            t is { IsClass: true, IsAbstract: true, IsSealed: true }
+            && t.Name.EndsWith("Handler", StringComparison.Ordinal)
+        )
         .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
         .Where(m =>
             m.Name == "Handle"
@@ -54,7 +57,10 @@ internal static class DomainEventReplay
         return emitted;
     }
 
-    private static async Task<IEnumerable<object>> HandleAsync(IDomainEvent domainEvent, ITenantPaymentRepository payments)
+    private static async Task<IEnumerable<object>> HandleAsync(
+        IDomainEvent domainEvent,
+        ITenantPaymentRepository payments
+    )
     {
         var method =
             HandleMethods.SingleOrDefault(m => m.GetParameters()[0].ParameterType == domainEvent.GetType())

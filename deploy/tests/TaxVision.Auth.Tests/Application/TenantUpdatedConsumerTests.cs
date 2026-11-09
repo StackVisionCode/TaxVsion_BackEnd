@@ -52,7 +52,10 @@ public sealed class TenantUpdatedConsumerTests
         var unitOfWork = new CountingUnitOfWork();
 
         await HandleAsync(
-            Event(tenant.Id, "Older", "America/Denver", T0.AddSeconds(1)) with { TenantVersion = 5 },
+            Event(tenant.Id, "Older", "America/Denver", T0.AddSeconds(1)) with
+            {
+                TenantVersion = 5,
+            },
             registry,
             unitOfWork
         );

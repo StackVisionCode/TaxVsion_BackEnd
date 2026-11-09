@@ -15,25 +15,23 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                 name: "LastEmailEventOnUtc",
                 table: "CustomerEmailAddresses",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "LastStatusEventOnUtc",
                 table: "CustomerEmailAddresses",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "LastEmailEventOnUtc",
-                table: "CustomerEmailAddresses");
+            migrationBuilder.DropColumn(name: "LastEmailEventOnUtc", table: "CustomerEmailAddresses");
 
-            migrationBuilder.DropColumn(
-                name: "LastStatusEventOnUtc",
-                table: "CustomerEmailAddresses");
+            migrationBuilder.DropColumn(name: "LastStatusEventOnUtc", table: "CustomerEmailAddresses");
         }
     }
 }

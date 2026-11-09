@@ -30,7 +30,13 @@ public static class FormSignatureRejectedConsumer
             if (request is null)
                 return;
             if (
-                FormSignatureResultSupport.Failed(request.Summary.MarkSignatureDeclined(revision), "Declined", requestId, revision, logger)
+                FormSignatureResultSupport.Failed(
+                    request.Summary.MarkSignatureDeclined(revision),
+                    "Declined",
+                    requestId,
+                    revision,
+                    logger
+                )
             )
                 return;
             var outgoing = new DeferredMessages();

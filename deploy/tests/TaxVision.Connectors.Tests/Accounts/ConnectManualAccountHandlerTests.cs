@@ -306,9 +306,7 @@ public class ConnectManualAccountHandlerTests
             OAuthConnection.Create(existing.Id, ProviderCode.Gmail, "client", "scope", Now).Value
         );
         await fixture.WatchSubscriptionRepository.AddAsync(
-            ProviderWatchSubscription
-                .Create(existing.Id, ProviderCode.Gmail, "ref", "topic", Now.AddDays(7), Now)
-                .Value
+            ProviderWatchSubscription.Create(existing.Id, ProviderCode.Gmail, "ref", "topic", Now.AddDays(7), Now).Value
         );
         await fixture.ProviderSyncCursorRepository.AddAsync(
             ProviderSyncCursor.Create(existing.Id, "history-1", Now).Value

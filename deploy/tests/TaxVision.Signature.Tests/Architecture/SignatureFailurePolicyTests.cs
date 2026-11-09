@@ -18,15 +18,17 @@ public sealed class SignatureFailurePolicyTests(SignatureRoutingHostFactory fact
 {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-    public static TheoryData<string> NotReadyExceptions => [nameof(SealingLockBusyException), nameof(SignatureImageNotReadyException)];
+    public static TheoryData<string> NotReadyExceptions =>
+        [nameof(SealingLockBusyException), nameof(SignatureImageNotReadyException)];
 
     [Theory]
     [MemberData(nameof(NotReadyExceptions))]
     public void NotReadyException_UsesTheDependencyNotReadyPolicy(string name)
     {
-        Exception exception = name == nameof(SealingLockBusyException)
-            ? new SealingLockBusyException("busy")
-            : new SignatureImageNotReadyException("scanning");
+        Exception exception =
+            name == nameof(SealingLockBusyException)
+                ? new SealingLockBusyException("busy")
+                : new SignatureImageNotReadyException("scanning");
 
         for (var attempt = 1; attempt <= 6; attempt++)
             Assert.Equal(

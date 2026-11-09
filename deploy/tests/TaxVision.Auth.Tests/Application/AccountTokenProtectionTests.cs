@@ -1,11 +1,11 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
-using TaxVision.Auth.Domain.Credentials;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Credentials.Commands;
 using TaxVision.Auth.Application.Customers.Commands;
 using TaxVision.Auth.Application.Invitations.Commands;
+using TaxVision.Auth.Domain.Credentials;
 
 namespace TaxVision.Auth.Tests.Application;
 
@@ -86,7 +86,12 @@ public sealed class AccountTokenProtectionTests
         var bus = new FakeMessageBus();
 
         var result = await IssueCustomerPortalInvitationHandler.Handle(
-            new IssueCustomerPortalInvitationCommand(world.Tenant.Id, Guid.NewGuid(), "ana@example.com", world.Admin.Id),
+            new IssueCustomerPortalInvitationCommand(
+                world.Tenant.Id,
+                Guid.NewGuid(),
+                "ana@example.com",
+                world.Admin.Id
+            ),
             world.Users,
             world.Tenants,
             new InMemoryInvitationRepository(),
@@ -180,8 +185,10 @@ public sealed class AccountTokenProtectionTests
         public Task AddPasswordResetAsync(PasswordResetToken token, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<PasswordResetToken?> GetPasswordResetByHashAsync(string tokenHash, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<PasswordResetToken?> GetPasswordResetByHashAsync(
+            string tokenHash,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<IReadOnlyList<PasswordResetToken>> GetPendingPasswordResetsAsync(
             Guid userId,

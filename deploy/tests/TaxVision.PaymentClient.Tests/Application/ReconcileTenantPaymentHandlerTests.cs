@@ -286,7 +286,15 @@ public sealed class ReconcileTenantPaymentHandlerTests
         _stripe.ChargeStatus = lookup =>
             Ok(new WebhookEventPayload(lookup.ProviderChargeReference, PaymentStatus.RequiresAction, null, null, null));
         _stripe.CancelCharge = lookup =>
-            Ok(new WebhookEventPayload(lookup.ProviderChargeReference, PaymentStatus.Cancelled, "abandoned", null, null));
+            Ok(
+                new WebhookEventPayload(
+                    lookup.ProviderChargeReference,
+                    PaymentStatus.Cancelled,
+                    "abandoned",
+                    null,
+                    null
+                )
+            );
 
         var result = await ReconcileAsync(payment.Id, Ttl);
 

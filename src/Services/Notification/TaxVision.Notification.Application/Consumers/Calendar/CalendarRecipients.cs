@@ -55,11 +55,11 @@ internal static class CalendarRecipients
                         relatedEventId: relatedEventId,
                         correlationId: correlationId
                     ) with
-                    {
-                        RecipientUserId = recipient.UserId,
-                        Category = NotificationCategory.Calendar,
-                        NotificationKind = kind,
-                    },
+                {
+                    RecipientUserId = recipient.UserId,
+                    Category = NotificationCategory.Calendar,
+                    NotificationKind = kind,
+                },
                 ct
             );
         }

@@ -149,7 +149,13 @@ public sealed class InvoicePaymentConfiguration : IEntityTypeConfiguration<Invoi
         b.Property(p => p.PaidAtUtc).IsRequired();
         b.Property(p => p.RecordedByUserId);
         b.Property(p => p.ExceedsDueCents).IsRequired();
-        b.HasIndex(p => new { p.InvoiceId, p.Source, p.SourceReference }).IsUnique();
+        b.HasIndex(p => new
+            {
+                p.InvoiceId,
+                p.Source,
+                p.SourceReference,
+            })
+            .IsUnique();
     }
 }
 

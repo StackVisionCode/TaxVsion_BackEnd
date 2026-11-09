@@ -35,7 +35,9 @@ public sealed partial class PaymentClientHandlerSizeFitnessTests
     {
         var sizes = HandlerFileSizes().ToDictionary(file => file.Path, file => file.Lines);
 
-        var stale = TemporaryExceptions.Where(path => !sizes.TryGetValue(path, out var lines) || lines <= MaxHandlerFileLines);
+        var stale = TemporaryExceptions.Where(path =>
+            !sizes.TryGetValue(path, out var lines) || lines <= MaxHandlerFileLines
+        );
 
         Assert.Empty(stale);
     }
@@ -46,7 +48,10 @@ public sealed partial class PaymentClientHandlerSizeFitnessTests
         foreach (var file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-            if (relative.StartsWith("bin/", StringComparison.Ordinal) || relative.StartsWith("obj/", StringComparison.Ordinal))
+            if (
+                relative.StartsWith("bin/", StringComparison.Ordinal)
+                || relative.StartsWith("obj/", StringComparison.Ordinal)
+            )
                 continue;
 
             if (HandlerClass().IsMatch(File.ReadAllText(file)))

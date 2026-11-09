@@ -35,8 +35,7 @@ namespace TaxVision.Tasks.Tests.Integration;
 /// </summary>
 public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
 {
-    private static readonly string ConnectionString =
-        TasksIntegrationDatabase.ConnectionString;
+    private static readonly string ConnectionString = TasksIntegrationDatabase.ConnectionString;
 
     private readonly string _schema = $"tskbb1_{Guid.NewGuid():N}"[..15];
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -68,14 +67,22 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
     public async Task CreateTask_EnvelopeStoredInSameTransaction()
     {
         var assignee = Guid.NewGuid();
-        var created = await _host.Services.GetRequiredService<IMessageBus>().InvokeAsync<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>>(Command(assignee));
+        var created = await _host
+            .Services.GetRequiredService<IMessageBus>()
+            .InvokeAsync<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>>(
+                Command(assignee)
+            );
 
         Assert.True(created.IsSuccess);
         Assert.Equal(1, await CountTasksAsync());
         Assert.Equal(1, await CountRowsAsync("wolverine_incoming_envelopes", "TaskCreatedDomainEvent"));
 
         // El handler del evento de dominio devuelve un aviso de cada uno, ni más ni menos.
-        Assert.True(await WaitUntilAsync(async () => await CountRowsAsync("wolverine_outgoing_envelopes", "TaskAssignedIntegrationEvent") == 1));
+        Assert.True(
+            await WaitUntilAsync(async () =>
+                await CountRowsAsync("wolverine_outgoing_envelopes", "TaskAssignedIntegrationEvent") == 1
+            )
+        );
         Assert.Equal(1, await CountRowsAsync("wolverine_outgoing_envelopes", "TaskCreatedIntegrationEvent"));
         Assert.Equal(1, await CountRowsAsync("wolverine_outgoing_envelopes", "ReminderRequestedIntegrationEvent"));
     }
@@ -86,7 +93,11 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
         _metrics.Fail = true;
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _host.Services.GetRequiredService<IMessageBus>().InvokeAsync<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>>(Command(Guid.NewGuid()))
+            _host
+                .Services.GetRequiredService<IMessageBus>()
+                .InvokeAsync<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>>(
+                    Command(Guid.NewGuid())
+                )
         );
 
         Assert.Equal(0, await CountTasksAsync());
@@ -107,13 +118,30 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
 
         Assert.Equal(1, await CountTasksAsync());
         Assert.Equal(1, await CountRowsAsync("wolverine_incoming_envelopes", "TaskCreatedDomainEvent"));
-        Assert.True(await WaitUntilAsync(async () => await CountRowsAsync("wolverine_outgoing_envelopes", "ReminderRequestedIntegrationEvent") == 1));
+        Assert.True(
+            await WaitUntilAsync(async () =>
+                await CountRowsAsync("wolverine_outgoing_envelopes", "ReminderRequestedIntegrationEvent") == 1
+            )
+        );
         Assert.Equal(1, await CountRowsAsync("wolverine_outgoing_envelopes", "TaskCreatedIntegrationEvent"));
         Assert.Equal(0, await CountRowsAsync("wolverine_outgoing_envelopes", "TaskAssignedIntegrationEvent"));
     }
 
     private CreateTaskCommand Command(Guid assignee) =>
-        new(_tenantId, Guid.NewGuid(), "Prepare return", null, TaskPriority.Normal, assignee, null, null, DateTime.UtcNow.AddDays(3), "America/New_York", false, null);
+        new(
+            _tenantId,
+            Guid.NewGuid(),
+            "Prepare return",
+            null,
+            TaskPriority.Normal,
+            assignee,
+            null,
+            null,
+            DateTime.UtcNow.AddDays(3),
+            "America/New_York",
+            false,
+            null
+        );
 
     private async Task<IHost> StartHostAsync()
     {
@@ -139,7 +167,12 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
                 options.Services.AddSingleton<ICorrelationContext>(new NoOpCorrelationContext());
                 options.Services.AddSingleton<ITaskMetrics>(_metrics);
                 options.Services.AddScoped<ITaskRepository, TaskRepository>();
-                options.Services.AddScoped<ITaskSeriesRepository>(sp => new SeriesMaterializationIntegrationTests.OwnTenantSeries(sp.GetRequiredService<TasksDbContext>(), tenantId));
+                options.Services.AddScoped<ITaskSeriesRepository>(
+                    sp => new SeriesMaterializationIntegrationTests.OwnTenantSeries(
+                        sp.GetRequiredService<TasksDbContext>(),
+                        tenantId
+                    )
+                );
                 options.Services.AddScoped<ITaskSeriesMaterializer, TaskSeriesMaterializer>();
                 options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, TasksDbContext>();
                 options.Policies.AutoApplyTransactions();
@@ -158,7 +191,9 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
         CountAsync($"SELECT COUNT(*) FROM [dbo].[Tasks] WHERE TenantId = '{_tenantId}'");
 
     private Task<int> CountRowsAsync(string table, string messageType) =>
-        CountAsync($"IF OBJECT_ID('[{_schema}].[{table}]') IS NULL SELECT 0 ELSE SELECT COUNT(*) FROM [{_schema}].[{table}] WHERE message_type LIKE '%{messageType}%'");
+        CountAsync(
+            $"IF OBJECT_ID('[{_schema}].[{table}]') IS NULL SELECT 0 ELSE SELECT COUNT(*) FROM [{_schema}].[{table}] WHERE message_type LIKE '%{messageType}%'"
+        );
 
     private static async Task<int> CountAsync(string sql)
     {
@@ -200,7 +235,10 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
         );
 
     private static TasksDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<TasksDbContext>().UseSqlServer(ConnectionString).Options, new NoTenantContext());
+        new(
+            new DbContextOptionsBuilder<TasksDbContext>().UseSqlServer(ConnectionString).Options,
+            new NoTenantContext()
+        );
 
     private static async Task<bool> WaitUntilAsync(Func<Task<bool>> condition)
     {

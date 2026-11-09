@@ -48,12 +48,16 @@ public abstract class LocalQueueDurabilityRules
     /// Rutas locales no durables de los mensajes que el runtime sabe manejar, salvo los de Wolverine y los
     /// <paramref name="exempt"/>. Cada entrada: <c>Tipo -&gt; local://cola (Modo)</c>.
     /// </summary>
-    public static IReadOnlyList<string> FindNonDurableLocalRoutes(IWolverineRuntime runtime, IEnumerable<Type>? exempt = null)
+    public static IReadOnlyList<string> FindNonDurableLocalRoutes(
+        IWolverineRuntime runtime,
+        IEnumerable<Type>? exempt = null
+    )
     {
         var skip = (exempt ?? []).ToHashSet();
         List<string> offenders = [];
 
-        var handlers = (runtime as WolverineRuntime)?.Handlers
+        var handlers =
+            (runtime as WolverineRuntime)?.Handlers
             ?? throw new InvalidOperationException("Se esperaba el WolverineRuntime del host.");
         var messageTypes = handlers
             .Chains.Select(chain => chain.MessageType)
@@ -79,5 +83,7 @@ public abstract class LocalQueueDurabilityRules
 
     private static bool IsFrameworkType(Type type) =>
         type.Namespace is { } ns
-        && (ns.StartsWith("Wolverine", StringComparison.Ordinal) || ns.StartsWith("JasperFx", StringComparison.Ordinal));
+        && (
+            ns.StartsWith("Wolverine", StringComparison.Ordinal) || ns.StartsWith("JasperFx", StringComparison.Ordinal)
+        );
 }

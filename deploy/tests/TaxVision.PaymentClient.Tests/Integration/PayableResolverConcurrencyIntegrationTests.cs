@@ -16,8 +16,7 @@ namespace TaxVision.PaymentClient.Tests.Integration;
 public sealed class PayableResolverConcurrencyIntegrationTests : IAsyncLifetime
 {
     private readonly Guid _tenantId = Guid.NewGuid();
-    private readonly string _connectionString =
-        PaymentClientIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = PaymentClientIntegrationDatabase.ConnectionString;
 
     private PayableReference _payable = null!;
 

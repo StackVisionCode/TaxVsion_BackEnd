@@ -91,12 +91,10 @@ public sealed class HttpContentClassifierTests
     [Fact]
     public async Task Classify_ModelUnavailable503_DoesNotRetry()
     {
-        var handler = new StubHandler(_ =>
-            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
-            {
-                Content = new StringContent("""{"reason":"model_unavailable"}""", Encoding.UTF8, "application/json"),
-            }
-        );
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+        {
+            Content = new StringContent("""{"reason":"model_unavailable"}""", Encoding.UTF8, "application/json"),
+        });
 
         await Assert.ThrowsAsync<ContentClassifierUnavailableException>(() =>
             Create(handler).ClassifyAsync(new MemoryStream([1]), "image/png", Sampling, CancellationToken.None)

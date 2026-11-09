@@ -17,28 +17,24 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 table: "Invoices",
                 type: "nvarchar(32)",
                 maxLength: 32,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "StockSyncedAtUtc",
                 schema: "billing",
                 table: "Invoices",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "PaymentLinkSyncedDue",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "PaymentLinkSyncedDue", schema: "billing", table: "Invoices");
 
-            migrationBuilder.DropColumn(
-                name: "StockSyncedAtUtc",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "StockSyncedAtUtc", schema: "billing", table: "Invoices");
         }
     }
 }

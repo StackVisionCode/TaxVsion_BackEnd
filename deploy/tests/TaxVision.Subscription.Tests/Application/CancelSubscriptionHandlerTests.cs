@@ -159,18 +159,17 @@ public sealed class CancelSubscriptionHandlerTests
         var subscription = WithPendingCheckout(tenantId);
         var bus = new CapturingMessageBus();
 
-        await Assert.ThrowsAsync<TimeoutException>(
-            () =>
-                CancelSubscriptionHandler.Handle(
-                    new CancelSubscriptionCommand(tenantId, "too expensive", Guid.NewGuid()),
-                    new FakeSubscriptionRepo(subscription),
-                    new FailingUnitOfWork(),
-                    bus,
-                    new FakeCorrelationContext(),
-                    new FakeSubscriptionAuditLogWriter(),
-                    NullLogger<TenantSubscription>.Instance,
-                    CancellationToken.None
-                )
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            CancelSubscriptionHandler.Handle(
+                new CancelSubscriptionCommand(tenantId, "too expensive", Guid.NewGuid()),
+                new FakeSubscriptionRepo(subscription),
+                new FailingUnitOfWork(),
+                bus,
+                new FakeCorrelationContext(),
+                new FakeSubscriptionAuditLogWriter(),
+                NullLogger<TenantSubscription>.Instance,
+                CancellationToken.None
+            )
         );
 
         Assert.Empty(bus.Published);

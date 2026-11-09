@@ -170,7 +170,9 @@ public sealed class FormRequestVisibilityTests
         Assert.True(archived.Archive("Spam", Responsible, Now.AddMinutes(1)).IsSuccess);
         var linkedDuplicate = SubmittedExternal(db, version, duplicateRun: true);
         Assert.True(linkedDuplicate.ReturnForChanges("Fix it", [], Responsible, Now.AddMinutes(1)).IsSuccess);
-        Assert.True(linkedDuplicate.CustomerLinking.TryAttach(ExistingCustomer, false, null, Now.AddMinutes(2)).IsSuccess);
+        Assert.True(
+            linkedDuplicate.CustomerLinking.TryAttach(ExistingCustomer, false, null, Now.AddMinutes(2)).IsSuccess
+        );
         var unlinkedDuplicate = SubmittedExternal(db, version, duplicateRun: true);
         Assert.True(unlinkedDuplicate.ReturnForChanges("Fix it", [], Responsible, Now.AddMinutes(1)).IsSuccess);
         await db.SaveChangesAsync();
@@ -300,7 +302,13 @@ public sealed class FormRequestVisibilityTests
         );
         var duplicateCommand = Guid.NewGuid();
         external.Actions.Request("match_client", "CreateCustomer", duplicateCommand, Now);
-        external.Actions.Reject(duplicateCommand, FormActionRunErrors.DuplicateFoundCode, ExistingCustomer, "Email", Now);
+        external.Actions.Reject(
+            duplicateCommand,
+            FormActionRunErrors.DuplicateFoundCode,
+            ExistingCustomer,
+            "Email",
+            Now
+        );
         db.FormTemplateVersions.Add(version);
         db.FormParticipants.Add(participant);
         db.FormRequests.Add(CustomerRequest(version, requestedBy: Requester));

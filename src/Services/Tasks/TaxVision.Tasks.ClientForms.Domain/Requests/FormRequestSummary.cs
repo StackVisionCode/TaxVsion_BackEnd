@@ -107,7 +107,8 @@ public sealed class FormRequestSummary
     public Result<bool> MarkSignatureExpired(int revisionNumber) =>
         ApplySignatureTransition(revisionNumber, revision => revision.MarkSignatureExpired());
 
-    private FormSubmissionRevision? Revision(int revisionNumber) => _request.Submission?.CurrentRevision(revisionNumber);
+    private FormSubmissionRevision? Revision(int revisionNumber) =>
+        _request.Submission?.CurrentRevision(revisionNumber);
 
     // Devuelve false si el estado actual no admite la transición.
     private Result<bool> ApplySignatureTransition(int revisionNumber, Func<FormSubmissionRevision, bool> transition)

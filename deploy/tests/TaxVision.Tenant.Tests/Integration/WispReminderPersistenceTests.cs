@@ -25,8 +25,7 @@ public sealed class WispReminderPersistenceTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString =
-            TenantIntegrationDatabase.ConnectionString;
+        var connectionString = TenantIntegrationDatabase.ConnectionString;
         _connection = new SqlConnection(connectionString);
         await _connection.OpenAsync();
         _transaction = await _connection.BeginTransactionAsync();

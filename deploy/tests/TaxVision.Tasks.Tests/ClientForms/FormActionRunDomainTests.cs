@@ -123,7 +123,9 @@ public sealed class FormActionRunDomainTests
         );
         Assert.Equal(
             FormActionRunTransition.Ignored,
-            completedFirst.Actions.Reject(second, FormActionRunErrors.DuplicateFoundCode, customerId, "Email", Now).Value
+            completedFirst
+                .Actions.Reject(second, FormActionRunErrors.DuplicateFoundCode, customerId, "Email", Now)
+                .Value
         );
         Assert.All(
             [rejectedFirst.Actions.FindByCommand(first)!, completedFirst.Actions.FindByCommand(second)!],

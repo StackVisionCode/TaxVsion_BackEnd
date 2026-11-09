@@ -260,7 +260,11 @@ public sealed class ReissueInvoiceHandlerTests
         await ReissueAsync(invoices, original, null);
         var replacement = Assert.Single(invoices.Rows, i => i.Id != original.Id);
 
-        Assert.True(replacement.Issue(InvoiceNumber.Create("INV-2026-00002").Value, Later, Later.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            replacement
+                .Issue(InvoiceNumber.Create("INV-2026-00002").Value, Later, Later.AddDays(30), ActorUserId)
+                .IsSuccess
+        );
         Assert.True(replacement.ApplyCarriedCredit(Later).IsSuccess);
 
         var payment = Assert.Single(replacement.Payments);
@@ -318,7 +322,9 @@ public sealed class ReissueInvoiceHandlerTests
     private static Invoice IssuedInvoice()
     {
         var invoice = DraftInvoice();
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
         return invoice;
     }
 
@@ -329,10 +335,20 @@ public sealed class ReissueInvoiceHandlerTests
                 ActorUserId,
                 new CustomerSnapshot(Guid.NewGuid(), "Client", "client@example.com", null, null, null),
                 "USD",
-                [new DraftInvoiceLine("Ink cartridge", 2, 4_000, 1_000, CatalogItemId), new DraftInvoiceLine("Fee", 1, 1_200, 0)],
+                [
+                    new DraftInvoiceLine("Ink cartridge", 2, 4_000, 1_000, CatalogItemId),
+                    new DraftInvoiceLine("Fee", 1, 1_200, 0),
+                ],
                 "Thanks",
                 Now,
-                new IssuerSnapshot("Office", new Address("1 Main", null, "Miami", "FL", "33101", "US"), null, null, null, null),
+                new IssuerSnapshot(
+                    "Office",
+                    new Address("1 Main", null, "Miami", "FL", "33101", "US"),
+                    null,
+                    null,
+                    null,
+                    null
+                ),
                 new InvoiceTermsSnapshot(PaymentTerms.Net15, "Wire", "Footer")
             )
             .Value;

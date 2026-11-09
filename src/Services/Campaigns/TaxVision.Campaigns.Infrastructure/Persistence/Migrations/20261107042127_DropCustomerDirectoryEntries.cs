@@ -11,8 +11,7 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CustomerDirectoryEntries");
+            migrationBuilder.DropTable(name: "CustomerDirectoryEntries");
         }
 
         /// <inheritdoc />
@@ -29,23 +28,26 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     PhoneE164 = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     Status = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Version = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    Version = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CustomerDirectoryEntries", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CustomerDirectoryEntries_TenantId_CustomerId",
                 table: "CustomerDirectoryEntries",
                 columns: new[] { "TenantId", "CustomerId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CustomerDirectoryEntries_TenantId_Email",
                 table: "CustomerDirectoryEntries",
-                columns: new[] { "TenantId", "Email" });
+                columns: new[] { "TenantId", "Email" }
+            );
         }
     }
 }

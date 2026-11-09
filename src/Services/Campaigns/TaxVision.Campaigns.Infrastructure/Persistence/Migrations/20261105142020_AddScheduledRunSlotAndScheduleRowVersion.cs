@@ -17,26 +17,30 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "ScheduleId",
                 table: "CampaignRuns",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "ScheduledSlotUtc",
                 table: "CampaignRuns",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignRuns_ScheduleId_ScheduledSlotUtc_Unique",
                 table: "CampaignRuns",
                 columns: new[] { "ScheduleId", "ScheduledSlotUtc" },
                 unique: true,
-                filter: "[ScheduleId] IS NOT NULL");
+                filter: "[ScheduleId] IS NOT NULL"
+            );
         }
 
         /// <inheritdoc />
@@ -44,19 +48,14 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "IX_CampaignRuns_ScheduleId_ScheduledSlotUtc_Unique",
-                table: "CampaignRuns");
+                table: "CampaignRuns"
+            );
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "CampaignSchedules");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "CampaignSchedules");
 
-            migrationBuilder.DropColumn(
-                name: "ScheduleId",
-                table: "CampaignRuns");
+            migrationBuilder.DropColumn(name: "ScheduleId", table: "CampaignRuns");
 
-            migrationBuilder.DropColumn(
-                name: "ScheduledSlotUtc",
-                table: "CampaignRuns");
+            migrationBuilder.DropColumn(name: "ScheduledSlotUtc", table: "CampaignRuns");
         }
     }
 }

@@ -13,7 +13,15 @@ public class NoteTests
     private static NoteReference NoReference() => NoteReference.Create(NoteTargetType.None, null).Value;
 
     private static Note CreateValidNote() =>
-        Note.Create(TenantId, AuthorId, ValidContent(), NoReference(), NoteVisibility.Private, null, DateTime.UtcNow).Value;
+        Note.Create(
+            TenantId,
+            AuthorId,
+            ValidContent(),
+            NoReference(),
+            NoteVisibility.Private,
+            null,
+            DateTime.UtcNow
+        ).Value;
 
     [Fact]
     public void AttachFile_UsesProvidedTimestamp()
@@ -33,7 +41,15 @@ public class NoteTests
     {
         var nowUtc = new DateTime(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc);
 
-        var note = Note.Create(TenantId, AuthorId, ValidContent(), NoReference(), NoteVisibility.Private, null, nowUtc).Value;
+        var note = Note.Create(
+            TenantId,
+            AuthorId,
+            ValidContent(),
+            NoReference(),
+            NoteVisibility.Private,
+            null,
+            nowUtc
+        ).Value;
 
         Assert.Equal(nowUtc, note.CreatedAtUtc);
         Assert.Equal(nowUtc, note.UpdatedAtUtc);
@@ -42,7 +58,15 @@ public class NoteTests
     [Fact]
     public void Create_WithValidInputs_Succeeds()
     {
-        var result = Note.Create(TenantId, AuthorId, ValidContent(), NoReference(), NoteVisibility.Private, null, DateTime.UtcNow);
+        var result = Note.Create(
+            TenantId,
+            AuthorId,
+            ValidContent(),
+            NoReference(),
+            NoteVisibility.Private,
+            null,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         var note = result.Value;
@@ -56,7 +80,15 @@ public class NoteTests
     [Fact]
     public void Create_WithEmptyTenantId_Fails()
     {
-        var result = Note.Create(Guid.Empty, AuthorId, ValidContent(), NoReference(), NoteVisibility.Private, null, DateTime.UtcNow);
+        var result = Note.Create(
+            Guid.Empty,
+            AuthorId,
+            ValidContent(),
+            NoReference(),
+            NoteVisibility.Private,
+            null,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
     }
@@ -64,7 +96,15 @@ public class NoteTests
     [Fact]
     public void Create_WithEmptyAuthorId_Fails()
     {
-        var result = Note.Create(TenantId, Guid.Empty, ValidContent(), NoReference(), NoteVisibility.Private, null, DateTime.UtcNow);
+        var result = Note.Create(
+            TenantId,
+            Guid.Empty,
+            ValidContent(),
+            NoReference(),
+            NoteVisibility.Private,
+            null,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
     }

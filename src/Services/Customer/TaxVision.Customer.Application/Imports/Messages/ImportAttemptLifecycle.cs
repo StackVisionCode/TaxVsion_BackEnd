@@ -232,7 +232,11 @@ internal static class ImportAttemptLifecycle
         );
     }
 
-    internal static async Task<bool> IsCancelRequestedAsync(IServiceScopeFactory sf, Guid attemptId, CancellationToken ct)
+    internal static async Task<bool> IsCancelRequestedAsync(
+        IServiceScopeFactory sf,
+        Guid attemptId,
+        CancellationToken ct
+    )
     {
         await using var scope = sf.CreateAsyncScope();
         var repo = scope.ServiceProvider.GetRequiredService<ICustomerImportRepository>();
@@ -240,12 +244,7 @@ internal static class ImportAttemptLifecycle
         return attempt is null || attempt.IsCancelRequested;
     }
 
-    internal static async Task FailAsync(
-        IServiceScopeFactory sf,
-        Guid attemptId,
-        string reason,
-        CancellationToken ct
-    )
+    internal static async Task FailAsync(IServiceScopeFactory sf, Guid attemptId, string reason, CancellationToken ct)
     {
         await using var scope = sf.CreateAsyncScope();
         var runner = scope.ServiceProvider.GetRequiredService<ITransactionalUnitRunner>();

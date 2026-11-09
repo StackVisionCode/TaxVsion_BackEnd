@@ -134,7 +134,10 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    public sealed record RepublishTenantPaymentSucceededRequest(IReadOnlyList<Guid> TenantPaymentIds, bool DryRun = true);
+    public sealed record RepublishTenantPaymentSucceededRequest(
+        IReadOnlyList<Guid> TenantPaymentIds,
+        bool DryRun = true
+    );
 
     /// <summary>Reposición de la señal "pagado" (PCL-2). Simula por defecto; con <c>dryRun=false</c>
     /// publica y deja auditado quién la ejecutó. Solo con aprobación del dueño.</summary>

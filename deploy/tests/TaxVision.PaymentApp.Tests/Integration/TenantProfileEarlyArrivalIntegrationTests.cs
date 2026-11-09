@@ -28,7 +28,9 @@ public sealed class TenantProfileEarlyArrivalIntegrationTests : IAsyncLifetime
     [Fact(Timeout = 180_000)]
     public async Task EarlyProfile_SurvivesRestart_AndAppliesWhenTheTenantArrives()
     {
-        var tenant = Tenant.Register(Guid.NewGuid(), "Acme Tax Office", "acme-tax", TenantKind.Customer, "Etc/UTC", T0).Value;
+        var tenant = Tenant
+            .Register(Guid.NewGuid(), "Acme Tax Office", "acme-tax", TenantKind.Customer, "Etc/UTC", T0)
+            .Value;
         var registry = new LateTenantRegistry();
 
         using (var host = await StartHostAsync(registry))
@@ -74,10 +76,7 @@ public sealed class TenantProfileEarlyArrivalIntegrationTests : IAsyncLifetime
                     .ToLocalQueue("payment-app-events-test")
                     .UseDurableInbox();
                 options.ApplyStandardFailurePolicies(
-                    new DependencyNotReadyRetryOptions
-                    {
-                        Delays = [.. Enumerable.Repeat(TimeSpan.FromSeconds(3), 4)],
-                    }
+                    new DependencyNotReadyRetryOptions { Delays = [.. Enumerable.Repeat(TimeSpan.FromSeconds(3), 4)] }
                 );
             }
         );

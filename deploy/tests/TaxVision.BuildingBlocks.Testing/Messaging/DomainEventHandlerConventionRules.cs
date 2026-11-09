@@ -57,7 +57,9 @@ public abstract class DomainEventHandlerConventionRules
     [Fact]
     public void EveryDomainEvent_SurvivesTheEnvelopeSerializer()
     {
-        var broken = DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive(DomainAssemblies.SelectMany(LoadableTypes));
+        var broken = DomainEventEnvelopeRoundTrip.FindEventsThatDoNotSurvive(
+            DomainAssemblies.SelectMany(LoadableTypes)
+        );
 
         Assert.True(
             broken.Count == 0,
@@ -72,7 +74,10 @@ public abstract class DomainEventHandlerConventionRules
     /// (en singular) con un método público <c>Handle</c>/<c>Consume</c> (o sus variantes) cuyo primer parámetro
     /// es el evento. Un handler genérico de <see cref="IDomainEvent"/> u <c>object</c> no cuenta.
     /// </summary>
-    public static IReadOnlyList<Type> FindEventsWithoutHandler(IEnumerable<Type> candidates, IEnumerable<Type> handlerTypes)
+    public static IReadOnlyList<Type> FindEventsWithoutHandler(
+        IEnumerable<Type> candidates,
+        IEnumerable<Type> handlerTypes
+    )
     {
         var handled = handlerTypes
             .Where(IsDiscoverableHandler)
@@ -95,7 +100,10 @@ public abstract class DomainEventHandlerConventionRules
         type.IsClass
         && (type.IsPublic || type.IsNestedPublic)
         && !type.IsGenericTypeDefinition
-        && (type.Name.EndsWith("Handler", StringComparison.Ordinal) || type.Name.EndsWith("Consumer", StringComparison.Ordinal));
+        && (
+            type.Name.EndsWith("Handler", StringComparison.Ordinal)
+            || type.Name.EndsWith("Consumer", StringComparison.Ordinal)
+        );
 
     private static IEnumerable<Type> LoadableTypes(Assembly assembly)
     {

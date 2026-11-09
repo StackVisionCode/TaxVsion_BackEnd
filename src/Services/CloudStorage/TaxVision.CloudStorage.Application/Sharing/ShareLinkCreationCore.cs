@@ -149,7 +149,6 @@ internal static class ShareLinkCreationCore
                 );
         }
 
-
         return Result.Success(
             new CreatedShareLinkResponse(ShareLinkResponseMapper.Map(link, clock.UtcNow), plainToken)
         );

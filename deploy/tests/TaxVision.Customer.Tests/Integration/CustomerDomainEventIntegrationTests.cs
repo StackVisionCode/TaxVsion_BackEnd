@@ -35,8 +35,7 @@ namespace TaxVision.Customer.Tests.Integration;
 /// </summary>
 public sealed class CustomerDomainEventIntegrationTests : IAsyncLifetime
 {
-    private static readonly string ConnectionString =
-        CustomerIntegrationDatabase.ConnectionString;
+    private static readonly string ConnectionString = CustomerIntegrationDatabase.ConnectionString;
 
     private readonly string _schema = $"cusbb1_{Guid.NewGuid():N}"[..15];
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -124,7 +123,11 @@ public sealed class CustomerDomainEventIntegrationTests : IAsyncLifetime
     private async Task<CustomerStatus> StatusOfAsync(Guid customerId)
     {
         await using var db = NewContext();
-        return await db.Customers.IgnoreQueryFilters().Where(c => c.Id == customerId).Select(c => c.Status).SingleAsync();
+        return await db
+            .Customers.IgnoreQueryFilters()
+            .Where(c => c.Id == customerId)
+            .Select(c => c.Status)
+            .SingleAsync();
     }
 
     private async Task<IHost> StartHostAsync()
@@ -206,7 +209,10 @@ public sealed class CustomerDomainEventIntegrationTests : IAsyncLifetime
         );
 
     private static CustomerDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<CustomerDbContext>().UseSqlServer(ConnectionString).Options, new NoTenantContext());
+        new(
+            new DbContextOptionsBuilder<CustomerDbContext>().UseSqlServer(ConnectionString).Options,
+            new NoTenantContext()
+        );
 
     private static async Task<bool> WaitUntilAsync(Func<Task<bool>> condition)
     {
@@ -264,7 +270,9 @@ public sealed class CustomerDomainEventIntegrationTests : IAsyncLifetime
         {
             var hit =
                 Fail
-                && eventData.Context!.ChangeTracker.Entries<DomainCustomer>().Any(e => e.Entity.Status == CustomerStatus.Archived);
+                && eventData
+                    .Context!.ChangeTracker.Entries<DomainCustomer>()
+                    .Any(e => e.Entity.Status == CustomerStatus.Archived);
             return hit
                 ? ValueTask.FromException<int>(new InvalidOperationException("Fallo forzado después de guardar."))
                 : ValueTask.FromResult(result);

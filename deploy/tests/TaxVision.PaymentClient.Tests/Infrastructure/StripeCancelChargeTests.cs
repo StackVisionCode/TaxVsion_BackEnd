@@ -116,7 +116,10 @@ public sealed class StripeCancelChargeTests
             var (status, body) = _routes.TryGetValue(route, out var r)
                 ? r
                 : (HttpStatusCode.NotFound, """{ "error": { "type": "invalid_request_error" } }""");
-            return new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+            return new HttpResponseMessage(status)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
         }
     }
 }

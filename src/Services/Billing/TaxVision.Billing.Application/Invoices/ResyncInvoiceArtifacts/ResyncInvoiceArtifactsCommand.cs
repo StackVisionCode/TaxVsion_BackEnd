@@ -24,7 +24,9 @@ public static class ResyncInvoiceArtifactsHandler
         if (invoice is null)
             return Result.Failure(new Error("Billing.Invoice.NotFound", "Invoice does not exist."));
         if (invoice.InvoiceNumber is null)
-            return Result.Failure(new Error("Billing.Invoice.NotIssued", "Only an issued invoice has payment link and PDF."));
+            return Result.Failure(
+                new Error("Billing.Invoice.NotIssued", "Only an issued invoice has payment link and PDF.")
+            );
 
         // Cola local durable: sale con el commit del handler.
         bus.TenantId = command.TenantId.ToString();

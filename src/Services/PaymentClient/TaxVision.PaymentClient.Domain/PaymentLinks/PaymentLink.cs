@@ -86,10 +86,7 @@ public sealed class PaymentLink : TenantEntity
         "Too many failed redemption attempts; this link has been blocked."
     );
 
-    public static readonly Error NotRedeemableError = new(
-        "PaymentLink.NotRedeemable",
-        "This link cannot be redeemed."
-    );
+    public static readonly Error NotRedeemableError = new("PaymentLink.NotRedeemable", "This link cannot be redeemed.");
 
     /// <summary>El token es la única prueba de posesión (§32.2): un link bloqueado por intentos fallidos lo dice, para
     /// que no se sigan probando tarjetas (§41.4/K.1).</summary>

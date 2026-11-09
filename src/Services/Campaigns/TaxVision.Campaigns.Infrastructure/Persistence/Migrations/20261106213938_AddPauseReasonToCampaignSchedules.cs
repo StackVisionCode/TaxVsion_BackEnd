@@ -15,15 +15,14 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                 table: "CampaignSchedules",
                 type: "nvarchar(30)",
                 maxLength: 30,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "PauseReason",
-                table: "CampaignSchedules");
+            migrationBuilder.DropColumn(name: "PauseReason", table: "CampaignSchedules");
         }
     }
 }

@@ -18,7 +18,8 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.CreateTable(
                 name: "OnboardingTenantMaps",
@@ -27,25 +28,21 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 {
                     OnboardingId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_OnboardingTenantMaps", x => x.OnboardingId);
-                });
+                }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "OnboardingTenantMaps",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "OnboardingTenantMaps", schema: "billing");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                schema: "billing",
-                table: "IssuerProfiles");
+            migrationBuilder.DropColumn(name: "RowVersion", schema: "billing", table: "IssuerProfiles");
         }
     }
 }

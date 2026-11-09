@@ -8,11 +8,11 @@ using Microsoft.Extensions.Options;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers.Consumers;
 using TaxVision.Customer.Application.Customers.FromForms;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using TaxVision.Customer.Application.Imports.Dtos;
 using TaxVision.Customer.Domain.Employees;
 using TaxVision.Customer.Domain.Permissions;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
-using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -228,8 +228,11 @@ internal sealed class CustomerFormCreationHarness
             CancellationToken ct
         ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
 
-        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
-            Task.FromResult(OffboardingClientCounts.None);
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct
+        ) => Task.FromResult(OffboardingClientCounts.None);
 
         public Task<IReadOnlyList<DomainCustomer>> ListForAssignmentAsync(
             Guid tenantId,

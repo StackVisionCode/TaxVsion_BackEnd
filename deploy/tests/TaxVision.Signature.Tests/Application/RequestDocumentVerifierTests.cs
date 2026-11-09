@@ -258,11 +258,10 @@ public sealed class RequestDocumentVerifierTests
 
     private sealed class CountingStorage : ISignatureCloudStorageClient
     {
-        public Task<Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>> StageAsync(
-            Guid tenantId,
-            SignatureFileUpload upload,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
+        public Task<
+            Result<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.SaveFileRequestedIntegrationEvent>
+        > StageAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default) =>
+            throw new NotSupportedException();
 
         public int Downloads { get; private set; }
         public bool FailDownload { get; set; }

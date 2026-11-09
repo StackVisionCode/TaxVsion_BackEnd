@@ -254,13 +254,7 @@ public sealed class SaaSPaymentOffSessionOutcomeTests
     }
 
     private void Apply(SaaSPayment payment, OffSessionChargeOutcome outcome) =>
-        SaaSPaymentOffSessionOutcome.Apply(
-            payment,
-            outcome,
-            PaymentProviderCode.Stripe,
-            _metrics,
-            NullLogger.Instance
-        );
+        SaaSPaymentOffSessionOutcome.Apply(payment, outcome, PaymentProviderCode.Stripe, _metrics, NullLogger.Instance);
 
     private static void AssertRetriesIn(SaaSPayment payment, DateTime before, int hours) =>
         Assert.InRange(payment.NextRetryAtUtc!.Value, before.AddHours(hours), DateTime.UtcNow.AddHours(hours));

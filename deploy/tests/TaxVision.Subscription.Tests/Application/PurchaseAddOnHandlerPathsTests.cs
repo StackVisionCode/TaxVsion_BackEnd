@@ -57,7 +57,11 @@ public sealed class PurchaseAddOnHandlerPathsTests
     public async Task A_tenant_that_disallows_add_ons_cannot_buy()
     {
         var settings = SubscriptionTenantSettings.Default(TenantId, Guid.Empty, DateTime.UtcNow).Value;
-        Assert.True(settings.ApplyPatch(new SubscriptionSettingsPatch(AllowAddons: false), Guid.Empty, DateTime.UtcNow).IsSuccess);
+        Assert.True(
+            settings
+                .ApplyPatch(new SubscriptionSettingsPatch(AllowAddons: false), Guid.Empty, DateTime.UtcNow)
+                .IsSuccess
+        );
         var world = new World { Settings = settings };
 
         var result = await world.PurchaseAsync();
@@ -163,7 +167,14 @@ public sealed class PurchaseAddOnHandlerPathsTests
         public Task<Result<Guid>> PurchaseAsync(string? code = null, int quantity = 1) =>
             PurchaseAddOnHandler.Handle(
                 new PurchaseAddOnCommand(TenantId, code ?? Definition.Code.Value, quantity, true, Guid.NewGuid()),
-                new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(Subscriptions, Plans, new FakeModuleRepo(), new FakeAddOnDefinitionRepository(Definition), new FixedSettings(Settings), AddOns),
+                new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(
+                    Subscriptions,
+                    Plans,
+                    new FakeModuleRepo(),
+                    new FakeAddOnDefinitionRepository(Definition),
+                    new FixedSettings(Settings),
+                    AddOns
+                ),
                 AddOns,
                 UnitOfWork,
                 Bus,

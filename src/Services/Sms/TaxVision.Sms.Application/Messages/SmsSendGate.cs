@@ -42,7 +42,9 @@ public sealed class SmsSendGate
     {
         var assignedTo = visibility.Enabled && !command.CanViewAll ? command.ActorUserId : (Guid?)null;
         if (assignedTo is { } sender)
-            _allowedCustomers = (await assignments.GetAssignedCustomerIdsAsync(command.TenantId, sender, ct)).ToHashSet();
+            _allowedCustomers = (
+                await assignments.GetAssignedCustomerIdsAsync(command.TenantId, sender, ct)
+            ).ToHashSet();
     }
 
     public bool BlockedByContactPolicy(Guid customerId) => _smsDisabled.Contains(customerId);

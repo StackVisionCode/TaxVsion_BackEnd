@@ -8,7 +8,13 @@ public sealed class CustomerHandlerSizeTests
     [Fact]
     public void HandlersUnder300Lines()
     {
-        var application = Path.Combine(RepositoryRoot(), "src", "Services", "Customer", "TaxVision.Customer.Application");
+        var application = Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "Services",
+            "Customer",
+            "TaxVision.Customer.Application"
+        );
 
         var offenders = Directory
             .EnumerateFiles(application, "*Handler.cs", SearchOption.AllDirectories)

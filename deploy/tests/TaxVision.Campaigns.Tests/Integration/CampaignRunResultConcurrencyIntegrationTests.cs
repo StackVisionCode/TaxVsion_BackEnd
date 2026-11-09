@@ -26,7 +26,9 @@ public sealed class CampaignRunResultConcurrencyIntegrationTests(ITestOutputHelp
     // Las esperas de BB-11, a escala 1:100 para que la prueba no tarde minutos.
     private static readonly int[] RetryDelaysMs = [50, 300, 1200, 6000];
 
-    private readonly string _connectionString = new SqlConnectionStringBuilder(CampaignsTestDatabase.ServerConnectionString)
+    private readonly string _connectionString = new SqlConnectionStringBuilder(
+        CampaignsTestDatabase.ServerConnectionString
+    )
     {
         InitialCatalog = $"{Prefix}{Guid.NewGuid():N}"[..(Prefix.Length + 12)],
     }.ConnectionString;

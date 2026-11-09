@@ -16,7 +16,8 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",
@@ -24,19 +25,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "TenantAddOns");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "TenantAddOns");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "SubscriptionSeats");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "SubscriptionSeats");
         }
     }
 }

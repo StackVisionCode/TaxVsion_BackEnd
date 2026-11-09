@@ -117,8 +117,18 @@ public sealed partial class ProcessProviderWebhookHandlerTests
         var metrics = new FakePaymentAppMetrics();
         var audit = new FakePaymentAuditLogWriter();
 
-        await HandleStripeAsync(payment, Payload(PaymentStatus.Refunded, refunded: 500), metrics: metrics, audit: audit);
-        await HandleStripeAsync(payment, Payload(PaymentStatus.Refunded, refunded: 800), metrics: metrics, audit: audit);
+        await HandleStripeAsync(
+            payment,
+            Payload(PaymentStatus.Refunded, refunded: 500),
+            metrics: metrics,
+            audit: audit
+        );
+        await HandleStripeAsync(
+            payment,
+            Payload(PaymentStatus.Refunded, refunded: 800),
+            metrics: metrics,
+            audit: audit
+        );
 
         Assert.Equal(PaymentStatus.PartiallyRefunded, payment.Status);
         Assert.Equal([500L, 300L], payment.Refunds.Select(r => r.Amount.AmountCents));
@@ -299,7 +309,14 @@ public sealed partial class ProcessProviderWebhookHandlerTests
 
         await HandleStripeAsync(
             payment,
-            new WebhookEventPayload("cs_ref_1", PaymentStatus.Succeeded, null, null, null, ReconciledChargeReference: "pi_ref_1")
+            new WebhookEventPayload(
+                "cs_ref_1",
+                PaymentStatus.Succeeded,
+                null,
+                null,
+                null,
+                ReconciledChargeReference: "pi_ref_1"
+            )
         );
 
         Assert.Equal(PaymentStatus.Succeeded, payment.Status);
@@ -517,7 +534,11 @@ public sealed partial class ProcessProviderWebhookHandlerTests
         var nowUtc = DateTime.UtcNow;
         for (var attempt = 1; attempt < attempts; attempt++)
         {
-            Assert.True(payment.MarkFailed("card_declined", "No.", DunningDecision.RetryAt(nowUtc), Guid.Empty, nowUtc).IsSuccess);
+            Assert.True(
+                payment
+                    .MarkFailed("card_declined", "No.", DunningDecision.RetryAt(nowUtc), Guid.Empty, nowUtc)
+                    .IsSuccess
+            );
             Assert.True(payment.PrepareForRetry(Guid.Empty, nowUtc).IsSuccess);
             Assert.True(
                 payment

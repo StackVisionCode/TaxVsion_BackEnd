@@ -1,8 +1,8 @@
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
-using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Infrastructure.Persistence;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Persistence;

@@ -15,7 +15,11 @@ public sealed class TenantBrandRemoveEventTests
     private static async Task<RecordingMessageBus> RemoveAsync(BrandSurface surface, BrandAssetKey key)
     {
         var repo = new InMemoryBrandRepository();
-        repo.Seed(TenantId, surface, b => b.SetAssetPending(key, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow));
+        repo.Seed(
+            TenantId,
+            surface,
+            b => b.SetAssetPending(key, Guid.NewGuid(), "image/png", 100, null, null, DateTime.UtcNow)
+        );
         var bus = new RecordingMessageBus();
 
         await RemoveTenantBrandAssetHandler.Handle(

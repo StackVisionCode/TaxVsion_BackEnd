@@ -14,7 +14,15 @@ public sealed class PostmasterDeliveryStatusConsumersTests
     private static (NotificationLog Log, Guid AttemptId) SentLog()
     {
         var log = NotificationLog
-            .Create(Guid.NewGuid(), NotificationChannel.Email, NotificationRecipient.ForEmail("to@test.com").Value, "Subject", "auth.welcome", null, null)
+            .Create(
+                Guid.NewGuid(),
+                NotificationChannel.Email,
+                NotificationRecipient.ForEmail("to@test.com").Value,
+                "Subject",
+                "auth.welcome",
+                null,
+                null
+            )
             .Value;
         var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
         log.UpdateAttemptStatus(attempt.Id, NotificationDispatchAttemptStatus.Sent);
@@ -75,7 +83,15 @@ public sealed class PostmasterDeliveryStatusConsumersTests
     public async Task Delivered_before_sent_throws_dependency_not_ready()
     {
         var log = NotificationLog
-            .Create(Guid.NewGuid(), NotificationChannel.Email, NotificationRecipient.ForEmail("to@test.com").Value, "Subject", "auth.welcome", null, null)
+            .Create(
+                Guid.NewGuid(),
+                NotificationChannel.Email,
+                NotificationRecipient.ForEmail("to@test.com").Value,
+                "Subject",
+                "auth.welcome",
+                null,
+                null
+            )
             .Value;
         var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
         var uow = new CountingUnitOfWork();
@@ -89,7 +105,15 @@ public sealed class PostmasterDeliveryStatusConsumersTests
     public async Task Bounced_before_sent_throws_dependency_not_ready()
     {
         var log = NotificationLog
-            .Create(Guid.NewGuid(), NotificationChannel.Email, NotificationRecipient.ForEmail("to@test.com").Value, "Subject", "auth.welcome", null, null)
+            .Create(
+                Guid.NewGuid(),
+                NotificationChannel.Email,
+                NotificationRecipient.ForEmail("to@test.com").Value,
+                "Subject",
+                "auth.welcome",
+                null,
+                null
+            )
             .Value;
         var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
 
@@ -152,7 +176,15 @@ public sealed class PostmasterDeliveryStatusConsumersTests
     public void MarkDelivered_does_not_revive_a_failed_log()
     {
         var log = NotificationLog
-            .Create(Guid.NewGuid(), NotificationChannel.Email, NotificationRecipient.ForEmail("to@test.com").Value, "Subject", "auth.welcome", null, null)
+            .Create(
+                Guid.NewGuid(),
+                NotificationChannel.Email,
+                NotificationRecipient.ForEmail("to@test.com").Value,
+                "Subject",
+                "auth.welcome",
+                null,
+                null
+            )
             .Value;
         log.MarkFailed("smtp down");
 

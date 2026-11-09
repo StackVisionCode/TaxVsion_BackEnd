@@ -31,6 +31,9 @@
     <ProjectReference Include="..\..\..\src\Services\Tasks\TaxVision.Tasks.Api\TaxVision.Tasks.Api.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
     <!-- Alias: su namespace TaxVision.BuildingBlocks taparía a BuildingBlocks dentro de TaxVision.Tasks.Tests. -->
-    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" Aliases="BbTesting" />
+    <ProjectReference
+      Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj"
+      Aliases="BbTesting"
+    />
   </ItemGroup>
 </Project>

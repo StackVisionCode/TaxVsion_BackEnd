@@ -10,7 +10,10 @@ using Wolverine;
 namespace TaxVision.Tasks.Application.ClientRequests.Commands;
 
 /// <param name="KnownStatus">Lo que CloudStorage dijo antes de abrir la transacción.</param>
-public sealed record RecordClientDocumentCommand(SubmitClientDocumentCommand Document, RemoteFileScanStatus KnownStatus);
+public sealed record RecordClientDocumentCommand(
+    SubmitClientDocumentCommand Document,
+    RemoteFileScanStatus KnownStatus
+);
 
 /// <summary>TSK-7: la escritura del documento, ya sin llamadas externas.</summary>
 public static class RecordClientDocumentHandler

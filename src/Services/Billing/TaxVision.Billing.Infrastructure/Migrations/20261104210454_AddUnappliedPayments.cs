@@ -29,33 +29,34 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     ResolutionNote = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     ResolvedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_UnappliedPayments", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_UnappliedPayments_TenantId_ResolvedAtUtc",
                 schema: "billing",
                 table: "UnappliedPayments",
-                columns: new[] { "TenantId", "ResolvedAtUtc" });
+                columns: new[] { "TenantId", "ResolvedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_UnappliedPayments_TenantId_TenantPaymentId",
                 schema: "billing",
                 table: "UnappliedPayments",
                 columns: new[] { "TenantId", "TenantPaymentId" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "UnappliedPayments",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "UnappliedPayments", schema: "billing");
         }
     }
 }

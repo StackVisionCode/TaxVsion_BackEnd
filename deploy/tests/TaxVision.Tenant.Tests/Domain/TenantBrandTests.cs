@@ -138,7 +138,15 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
 
-        var result = brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), contentType, 100_000, null, null, DateTime.UtcNow);
+        var result = brand.SetAssetPending(
+            BrandAssetKey.Logo,
+            Guid.NewGuid(),
+            contentType,
+            100_000,
+            null,
+            null,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Empty(brand.Assets);
@@ -168,8 +176,16 @@ public sealed class TenantBrandTests
     {
         var brand = NewBrand();
 
-        Assert.True(brand.SetAssetPending(BrandAssetKey.Logo, Guid.Empty, "image/png", 100, null, null, DateTime.UtcNow).IsFailure);
-        Assert.True(brand.SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 0, null, null, DateTime.UtcNow).IsFailure);
+        Assert.True(
+            brand
+                .SetAssetPending(BrandAssetKey.Logo, Guid.Empty, "image/png", 100, null, null, DateTime.UtcNow)
+                .IsFailure
+        );
+        Assert.True(
+            brand
+                .SetAssetPending(BrandAssetKey.Logo, Guid.NewGuid(), "image/png", 0, null, null, DateTime.UtcNow)
+                .IsFailure
+        );
         Assert.Empty(brand.Assets);
     }
 

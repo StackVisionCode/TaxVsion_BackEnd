@@ -51,8 +51,7 @@ namespace TaxVision.PaymentClient.Tests.Integration;
 /// </summary>
 public sealed class TenantPaymentDomainEventIntegrationTests : IAsyncLifetime
 {
-    private static readonly string ConnectionString =
-        PaymentClientIntegrationDatabase.ConnectionString;
+    private static readonly string ConnectionString = PaymentClientIntegrationDatabase.ConnectionString;
 
     private static readonly PaymentWebhookOptions WebhookSettings = new()
     {

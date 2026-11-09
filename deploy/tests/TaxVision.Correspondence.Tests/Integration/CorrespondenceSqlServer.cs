@@ -7,8 +7,7 @@ namespace TaxVision.Correspondence.Tests.Integration;
 // Contextos sobre la base temporal de las T-INT (BB-10).
 internal static class CorrespondenceSqlServer
 {
-    public static string ConnectionString =>
-        CorrespondenceIntegrationDatabase.ConnectionString;
+    public static string ConnectionString => CorrespondenceIntegrationDatabase.ConnectionString;
 
     public static CorrespondenceDbContext NewContext(Guid tenantId) =>
         new(

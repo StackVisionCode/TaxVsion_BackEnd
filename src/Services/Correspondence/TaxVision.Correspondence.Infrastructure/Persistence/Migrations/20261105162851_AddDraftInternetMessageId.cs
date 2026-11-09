@@ -15,25 +15,23 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                 table: "Drafts",
                 type: "nvarchar(500)",
                 maxLength: 500,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Drafts_TenantId_InternetMessageId",
                 table: "Drafts",
                 columns: new[] { "TenantId", "InternetMessageId" },
-                filter: "[InternetMessageId] IS NOT NULL");
+                filter: "[InternetMessageId] IS NOT NULL"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_Drafts_TenantId_InternetMessageId",
-                table: "Drafts");
+            migrationBuilder.DropIndex(name: "IX_Drafts_TenantId_InternetMessageId", table: "Drafts");
 
-            migrationBuilder.DropColumn(
-                name: "InternetMessageId",
-                table: "Drafts");
+            migrationBuilder.DropColumn(name: "InternetMessageId", table: "Drafts");
         }
     }
 }

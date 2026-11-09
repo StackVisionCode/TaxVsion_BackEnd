@@ -105,7 +105,14 @@ public sealed class PurchaseAddOnHandlerTests
         var plan = AddOnTestCatalog.PlanWith("starter", modules: ["documents"]);
         return PurchaseAddOnHandler.Handle(
             new PurchaseAddOnCommand(TenantId, definition.Code.Value, 1, AutoRenew: true, Guid.NewGuid(), clientKey),
-            new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(new FakeSubscriptionRepo(AddOnTestCatalog.ActiveSubscription(TenantId, plan)), new FakePlanRepo(plan), new FakeModuleRepo(), new FakeAddOnDefinitionRepository(definition), new NoSettingsRepo(), addOns),
+            new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(
+                new FakeSubscriptionRepo(AddOnTestCatalog.ActiveSubscription(TenantId, plan)),
+                new FakePlanRepo(plan),
+                new FakeModuleRepo(),
+                new FakeAddOnDefinitionRepository(definition),
+                new NoSettingsRepo(),
+                addOns
+            ),
             addOns,
             new FakeUnitOfWork(),
             bus,
@@ -124,7 +131,14 @@ public sealed class PurchaseAddOnHandlerTests
         var definition = AddOnTestCatalog.ModuleAddOn("module-addon-email", "email");
         return PurchaseAddOnHandler.Handle(
             new PurchaseAddOnCommand(TenantId, definition.Code.Value, Quantity: 1, AutoRenew: true, Guid.NewGuid()),
-            new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(new FakeSubscriptionRepo(AddOnTestCatalog.ActiveSubscription(TenantId, plan)), new FakePlanRepo(plan), new FakeModuleRepo(AddOnTestCatalog.SellableModule("email")), new FakeAddOnDefinitionRepository(definition), new NoSettingsRepo(), new FakeTenantAddOnRepo()),
+            new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(
+                new FakeSubscriptionRepo(AddOnTestCatalog.ActiveSubscription(TenantId, plan)),
+                new FakePlanRepo(plan),
+                new FakeModuleRepo(AddOnTestCatalog.SellableModule("email")),
+                new FakeAddOnDefinitionRepository(definition),
+                new NoSettingsRepo(),
+                new FakeTenantAddOnRepo()
+            ),
             new FakeTenantAddOnRepo(),
             unitOfWork,
             bus,

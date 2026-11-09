@@ -6,12 +6,12 @@ using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Application.Customers.Commands.Create;
 using TaxVision.Customer.Application.Customers.Commands.Update;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using TaxVision.Customer.Application.Imports.Dtos;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Domain.Employees;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
-using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -326,8 +326,11 @@ public sealed class CustomerDuplicateGuardTests
             CancellationToken ct
         ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
 
-        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
-            Task.FromResult(OffboardingClientCounts.None);
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct
+        ) => Task.FromResult(OffboardingClientCounts.None);
 
         public Task<Guid?> FindIdByOriginAsync(
             Guid tenantId,

@@ -46,7 +46,9 @@ public sealed class CampaignRunRetryIntegrationTests : IAsyncLifetime
     private const string Prefix = "cmprtry_";
     private const string EnvelopeSchema = "cmprtry";
 
-    private readonly string _connectionString = new SqlConnectionStringBuilder(CampaignsTestDatabase.ServerConnectionString)
+    private readonly string _connectionString = new SqlConnectionStringBuilder(
+        CampaignsTestDatabase.ServerConnectionString
+    )
     {
         InitialCatalog = $"{Prefix}{Guid.NewGuid():N}"[..(Prefix.Length + 12)],
     }.ConnectionString;

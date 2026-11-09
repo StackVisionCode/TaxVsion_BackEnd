@@ -31,7 +31,9 @@ public sealed class CorrespondenceArchitectureTests
     [Fact]
     public void RawMessageReceivedConsumer_has_at_most_six_dependencies()
     {
-        var handle = typeof(TaxVision.Correspondence.Application.Ingest.RawMessageReceivedConsumer).GetMethod("Handle")!;
+        var handle = typeof(TaxVision.Correspondence.Application.Ingest.RawMessageReceivedConsumer).GetMethod(
+            "Handle"
+        )!;
 
         var dependencies = handle.GetParameters().Skip(1).Count(p => p.ParameterType != typeof(CancellationToken));
 

@@ -1,9 +1,9 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers.Commands.BulkChangeStatus;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using static TaxVision.Customer.Tests.Application.CustomerAvatarTestDoubles;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
-using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -134,8 +134,11 @@ public sealed class BulkChangeStatusHandlerTests
             CancellationToken ct
         ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
 
-        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
-            Task.FromResult(OffboardingClientCounts.None);
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct
+        ) => Task.FromResult(OffboardingClientCounts.None);
 
         public Task<Guid?> FindIdByOriginAsync(
             Guid tenantId,

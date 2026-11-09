@@ -25,7 +25,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",
@@ -33,30 +34,26 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_SignatureProfiles_OneDefault",
                 table: "SignatureProfiles",
                 columns: new[] { "TenantId", "OwnerUserId" },
                 unique: true,
-                filter: "[IsDefault] = 1");
+                filter: "[IsDefault] = 1"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "UX_SignatureProfiles_OneDefault",
-                table: "SignatureProfiles");
+            migrationBuilder.DropIndex(name: "UX_SignatureProfiles_OneDefault", table: "SignatureProfiles");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "TenantSignatureSettings");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "TenantSignatureSettings");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "SignatureTemplates");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "SignatureTemplates");
         }
     }
 }

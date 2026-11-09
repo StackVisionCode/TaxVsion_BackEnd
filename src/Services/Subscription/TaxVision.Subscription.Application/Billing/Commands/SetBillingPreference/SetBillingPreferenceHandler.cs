@@ -111,9 +111,7 @@ public static class SetBillingPreferenceHandler
 
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
         if (plan is null)
-            return Result.Failure<MandateTerms>(
-                new Error("BillingPreference.PlanNotFound", "Plan does not exist.")
-            );
+            return Result.Failure<MandateTerms>(new Error("BillingPreference.PlanNotFound", "Plan does not exist."));
 
         var version = plan.GetPublishedVersion();
         if (version is null)

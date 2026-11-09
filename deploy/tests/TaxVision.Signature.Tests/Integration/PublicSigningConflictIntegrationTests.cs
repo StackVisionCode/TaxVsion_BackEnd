@@ -233,8 +233,25 @@ public sealed class PublicSigningConflictIntegrationTests(PublicSigningHostFixtu
     private static byte[] MinimalPng()
     {
         var png = new byte[33];
-        new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, (byte)'I', (byte)'H', (byte)'D', (byte)'R' }
-            .CopyTo(png, 0);
+        new byte[]
+        {
+            0x89,
+            0x50,
+            0x4E,
+            0x47,
+            0x0D,
+            0x0A,
+            0x1A,
+            0x0A,
+            0,
+            0,
+            0,
+            13,
+            (byte)'I',
+            (byte)'H',
+            (byte)'D',
+            (byte)'R',
+        }.CopyTo(png, 0);
         png[19] = 10;
         png[23] = 10;
         return png;
@@ -245,9 +262,7 @@ public sealed class PublicSigningConflictIntegrationTests(PublicSigningHostFixtu
         await using var db = host.Database.NewContext(_tenantId);
         var request = await LoadAsync(db, requestId);
         Assert.True(request.AcceptSignerConsent(signerId, DateTime.UtcNow, "127.0.0.1", "tests").IsSuccess);
-        var snapshot = host
-            .Factory.Services.GetRequiredService<IConsentTextProvider>()
-            .Resolve(request.Category, "En");
+        var snapshot = host.Factory.Services.GetRequiredService<IConsentTextProvider>().Resolve(request.Category, "En");
         db.ConsentEvents.Add(
             ConsentEvent
                 .RecordAcceptance(

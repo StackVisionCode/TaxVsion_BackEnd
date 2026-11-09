@@ -62,6 +62,14 @@ public static class RepairCrossCustomerThreadsHandler
             created,
             failed.Count
         );
-        return new RepairCrossCustomerThreadsReport(false, threadIds.Count, foreign.Count, repaired, moved, created, failed);
+        return new RepairCrossCustomerThreadsReport(
+            false,
+            threadIds.Count,
+            foreign.Count,
+            repaired,
+            moved,
+            created,
+            failed
+        );
     }
 }

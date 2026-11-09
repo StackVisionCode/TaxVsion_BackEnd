@@ -49,7 +49,10 @@ public sealed class LocalQueueDurabilityTests
         Assert.Empty(offenders);
     }
 
-    private static async Task<IReadOnlyList<string>> OffendersAsync(Action<WolverineOptions> configure, Type[]? exempt = null)
+    private static async Task<IReadOnlyList<string>> OffendersAsync(
+        Action<WolverineOptions> configure,
+        Type[]? exempt = null
+    )
     {
         using var host = await Host.CreateDefaultBuilder()
             .UseWolverine(options =>

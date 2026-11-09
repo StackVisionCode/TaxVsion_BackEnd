@@ -22,13 +22,7 @@ internal static class FormSignatureResultSupport
     }
 
     // TSK-4: true si no hay revisión. Una transición que el estado no admite sigue su curso, pero queda en el log.
-    internal static bool Failed(
-        Result<bool> transition,
-        string name,
-        Guid requestId,
-        int revision,
-        ILogger logger
-    )
+    internal static bool Failed(Result<bool> transition, string name, Guid requestId, int revision, ILogger logger)
     {
         if (transition.IsFailure)
             return true;

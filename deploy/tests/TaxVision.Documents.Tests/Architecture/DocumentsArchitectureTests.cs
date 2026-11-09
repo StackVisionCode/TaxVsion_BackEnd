@@ -36,11 +36,7 @@ public sealed class DocumentsArchitectureTests
     [Fact]
     public void Application_should_not_depend_on_Api()
     {
-        var result = Types
-            .InAssembly(Application)
-            .Should()
-            .NotHaveDependencyOn("TaxVision.Documents.Api")
-            .GetResult();
+        var result = Types.InAssembly(Application).Should().NotHaveDependencyOn("TaxVision.Documents.Api").GetResult();
 
         Assert.True(result.IsSuccessful, Fail(result));
     }
@@ -61,11 +57,7 @@ public sealed class DocumentsArchitectureTests
     [Fact]
     public void Infrastructure_DoesNotDependOnIMessageBus()
     {
-        var result = Types
-            .InAssembly(Infrastructure)
-            .Should()
-            .NotHaveDependencyOn("Wolverine.IMessageBus")
-            .GetResult();
+        var result = Types.InAssembly(Infrastructure).Should().NotHaveDependencyOn("Wolverine.IMessageBus").GetResult();
 
         Assert.True(result.IsSuccessful, Fail(result));
     }

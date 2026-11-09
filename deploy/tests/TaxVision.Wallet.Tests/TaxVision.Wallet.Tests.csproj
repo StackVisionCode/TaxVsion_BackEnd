@@ -26,6 +26,9 @@
     <!-- Infrastructure para las T-INT con WalletDbContext; Api para las fitness de controllers. -->
     <ProjectReference Include="..\..\..\src\Services\Wallet\TaxVision.Wallet.Infrastructure\TaxVision.Wallet.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Wallet\TaxVision.Wallet.Api\TaxVision.Wallet.Api.csproj" />
-    <ProjectReference Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj" Aliases="BbTesting" />
+    <ProjectReference
+      Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj"
+      Aliases="BbTesting"
+    />
   </ItemGroup>
 </Project>

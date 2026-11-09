@@ -17,13 +17,15 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "LastProviderEventAtUtc",
                 table: "TenantConnectAccounts",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",
@@ -31,23 +33,18 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "TenantPaymentConfigs");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "TenantPaymentConfigs");
 
-            migrationBuilder.DropColumn(
-                name: "LastProviderEventAtUtc",
-                table: "TenantConnectAccounts");
+            migrationBuilder.DropColumn(name: "LastProviderEventAtUtc", table: "TenantConnectAccounts");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "TenantConnectAccounts");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "TenantConnectAccounts");
         }
     }
 }

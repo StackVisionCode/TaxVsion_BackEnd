@@ -68,7 +68,10 @@ public sealed class RecycleBinPurgeIntegrationTests(CloudStorageConcurrencyFixtu
             services.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<RecycleBinPurgeService>.Instance
         );
-        var purge = typeof(RecycleBinPurgeService).GetMethod("PurgeAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var purge = typeof(RecycleBinPurgeService).GetMethod(
+            "PurgeAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        )!;
         await (Task)purge.Invoke(job, [CancellationToken.None])!;
     }
 
@@ -78,11 +81,27 @@ public sealed class RecycleBinPurgeIntegrationTests(CloudStorageConcurrencyFixtu
         var now = DateTime.UtcNow;
         var key = ObjectKey.Create($"tenants/{_tenantId:N}/tenant/documents/2026/{fileId:N}.pdf").Value;
         var file = FileObject
-            .Register(fileId, _tenantId, OwnerType.Tenant, null, FolderType.Documents, 2026, key, name, "application/pdf", FileSize, Guid.NewGuid(), now, now.AddHours(1))
+            .Register(
+                fileId,
+                _tenantId,
+                OwnerType.Tenant,
+                null,
+                FolderType.Documents,
+                2026,
+                key,
+                name,
+                "application/pdf",
+                FileSize,
+                Guid.NewGuid(),
+                now,
+                now.AddHours(1)
+            )
             .Value;
         Assert.True(file.MarkPendingScan(now).IsSuccess);
         Assert.True(file.MarkScanning().IsSuccess);
-        Assert.True(file.MarkAvailable(ChecksumSha256.Create(new string('d', 64)).Value, "application/pdf", now).IsSuccess);
+        Assert.True(
+            file.MarkAvailable(ChecksumSha256.Create(new string('d', 64)).Value, "application/pdf", now).IsSuccess
+        );
         Assert.True(file.SoftDelete(now.AddDays(-31), TimeSpan.FromDays(30)).IsSuccess);
 
         await using var db = fixture.NewContext(_tenantId);
@@ -112,8 +131,8 @@ public sealed class RecycleBinPurgeIntegrationTests(CloudStorageConcurrencyFixtu
             CancellationToken cancellationToken = default
         )
         {
-            var deletesTarget = eventData.Context!.ChangeTracker
-                .Entries<FileObject>()
+            var deletesTarget = eventData
+                .Context!.ChangeTracker.Entries<FileObject>()
                 .Any(entry => entry.State == EntityState.Deleted && entry.Entity.Id == fileId);
             if (deletesTarget && Interlocked.Exchange(ref _touched, 1) == 0)
             {

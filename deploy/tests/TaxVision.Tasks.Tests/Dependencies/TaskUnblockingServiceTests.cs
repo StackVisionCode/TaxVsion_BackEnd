@@ -65,11 +65,7 @@ public sealed class TaskUnblockingServiceTests
         Assert.Empty(second);
     }
 
-    private static TaskUnblockingService Build(
-        TaskItem predecessor,
-        TaskItem successor,
-        int blockersOnSuccessor
-    )
+    private static TaskUnblockingService Build(TaskItem predecessor, TaskItem successor, int blockersOnSuccessor)
     {
         for (var i = 0; i < blockersOnSuccessor; i++)
             successor.RegisterBlockerAdded();

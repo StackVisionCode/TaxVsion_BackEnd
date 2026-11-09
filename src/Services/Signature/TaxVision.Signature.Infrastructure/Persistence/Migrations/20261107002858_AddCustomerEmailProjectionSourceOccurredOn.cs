@@ -15,15 +15,14 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 name: "SourceOccurredOnUtc",
                 table: "CustomerEmailProjections",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "SourceOccurredOnUtc",
-                table: "CustomerEmailProjections");
+            migrationBuilder.DropColumn(name: "SourceOccurredOnUtc", table: "CustomerEmailProjections");
         }
     }
 }

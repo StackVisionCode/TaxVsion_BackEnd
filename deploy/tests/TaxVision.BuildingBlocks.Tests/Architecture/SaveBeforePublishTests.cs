@@ -14,18 +14,21 @@ public sealed class SaveBeforePublishTests
     private const string CloudStorageFiles = "src/Services/CloudStorage/TaxVision.CloudStorage.Application/";
     private const string MessageOnly = "BB-13: entra solo por mensaje, y por mensaje el intento revertido no sale";
 
-    private static readonly IReadOnlyDictionary<string, (int Methods, string Reason)> PendingAdoption =
-        new Dictionary<string, (int, string)>(StringComparer.Ordinal)
-        {
-        };
+    private static readonly IReadOnlyDictionary<string, (int Methods, string Reason)> PendingAdoption = new Dictionary<
+        string,
+        (int, string)
+    >(StringComparer.Ordinal)
+    { };
 
     /// <summary>Confirmados por lectura: la regla los marca, pero entran solo por mensaje (BB-13). No son deuda.</summary>
-    private static readonly IReadOnlyDictionary<string, (int Methods, string Reason)> FalsePositives =
-        new Dictionary<string, (int, string)>(StringComparer.Ordinal)
-        {
-            [CloudStorageFiles + "Files/Commands/FilesDeletionRequestedConsumer.cs"] = (1, MessageOnly),
-            [CloudStorageFiles + "Files/Commands/SaveFileFromSourceHandler.cs"] = (1, MessageOnly),
-        };
+    private static readonly IReadOnlyDictionary<string, (int Methods, string Reason)> FalsePositives = new Dictionary<
+        string,
+        (int, string)
+    >(StringComparer.Ordinal)
+    {
+        [CloudStorageFiles + "Files/Commands/FilesDeletionRequestedConsumer.cs"] = (1, MessageOnly),
+        [CloudStorageFiles + "Files/Commands/SaveFileFromSourceHandler.cs"] = (1, MessageOnly),
+    };
 
     private static readonly IReadOnlyDictionary<string, (int Methods, string Reason)> Known = PendingAdoption
         .Concat(FalsePositives)
@@ -53,7 +56,10 @@ public sealed class SaveBeforePublishTests
     [Fact]
     public void PendingAdoption_EntriesAreStillNeeded()
     {
-        var found = SaveBeforePublishRules.Scan(SourceDirectory).GroupBy(f => f.Path).ToDictionary(g => g.Key, g => g.Count());
+        var found = SaveBeforePublishRules
+            .Scan(SourceDirectory)
+            .GroupBy(f => f.Path)
+            .ToDictionary(g => g.Key, g => g.Count());
         var stale = Known
             .Where(entry => found.GetValueOrDefault(entry.Key) < entry.Value.Methods)
             .Select(entry => $"{entry.Key}: declara {entry.Value.Methods}, quedan {found.GetValueOrDefault(entry.Key)}")

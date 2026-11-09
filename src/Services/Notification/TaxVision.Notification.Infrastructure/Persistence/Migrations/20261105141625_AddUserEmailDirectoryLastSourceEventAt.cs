@@ -15,15 +15,14 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                 name: "LastSourceEventAtUtc",
                 table: "UserEmailDirectoryEntries",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "LastSourceEventAtUtc",
-                table: "UserEmailDirectoryEntries");
+            migrationBuilder.DropColumn(name: "LastSourceEventAtUtc", table: "UserEmailDirectoryEntries");
         }
     }
 }

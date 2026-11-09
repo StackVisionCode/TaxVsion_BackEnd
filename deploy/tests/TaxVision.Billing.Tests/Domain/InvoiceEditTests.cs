@@ -110,7 +110,14 @@ public sealed class InvoiceEditTests
                 null,
                 InvoiceNumber.Create("ONB-2026-00001").Value,
                 Customer("Client"),
-                new IssuerSnapshot("TaxVision", new Address("1 Main", null, "City", "ST", "00000", "US"), null, null, null, null),
+                new IssuerSnapshot(
+                    "TaxVision",
+                    new Address("1 Main", null, "City", "ST", "00000", "US"),
+                    null,
+                    null,
+                    null,
+                    null
+                ),
                 "Enterprise (Monthly)",
                 12_900,
                 12_900,
@@ -191,7 +198,8 @@ public sealed class InvoiceEditTests
                 .IsSuccess
         );
 
-    private static CustomerSnapshot Customer(string name) => new(Guid.NewGuid(), name, "client@example.com", null, null, null);
+    private static CustomerSnapshot Customer(string name) =>
+        new(Guid.NewGuid(), name, "client@example.com", null, null, null);
 
     private static Invoice IssuedInvoice(long totalCents)
     {
@@ -206,7 +214,11 @@ public sealed class InvoiceEditTests
                 Issued
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-00002").Value, Issued, Issued.AddDays(30), ActorUserId).IsSuccess);
+        Assert.True(
+            invoice
+                .Issue(InvoiceNumber.Create("INV-2026-00002").Value, Issued, Issued.AddDays(30), ActorUserId)
+                .IsSuccess
+        );
         return invoice;
     }
 }

@@ -17,13 +17,15 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "LastAttemptChangeAtUtc",
                 table: "NotificationLogs",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",
@@ -31,23 +33,18 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "OutboundEmailMessages");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "OutboundEmailMessages");
 
-            migrationBuilder.DropColumn(
-                name: "LastAttemptChangeAtUtc",
-                table: "NotificationLogs");
+            migrationBuilder.DropColumn(name: "LastAttemptChangeAtUtc", table: "NotificationLogs");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "NotificationLogs");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "NotificationLogs");
         }
     }
 }

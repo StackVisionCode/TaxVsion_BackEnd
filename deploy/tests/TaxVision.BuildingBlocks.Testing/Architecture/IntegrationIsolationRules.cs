@@ -42,7 +42,9 @@ public static partial class IntegrationIsolationRules
     [GeneratedRegex(@"AddUserSecrets|\w+_DB_CONNECTION|CORRESPONDENCE_SQLSERVER_TESTS")]
     private static partial Regex FleetConnectionSource();
 
-    [GeneratedRegex(@"InitialCatalog\s*=|CREATE DATABASE|new TemporaryTestDatabase\(|TemporaryTestDatabase \w+ = new\(|UseSetting\(\s*""ConnectionStrings:Default""|\[""ConnectionStrings:Default""\]\s*=")]
+    [GeneratedRegex(
+        @"InitialCatalog\s*=|CREATE DATABASE|new TemporaryTestDatabase\(|TemporaryTestDatabase \w+ = new\(|UseSetting\(\s*""ConnectionStrings:Default""|\[""ConnectionStrings:Default""\]\s*="
+    )]
     private static partial Regex TemporaryCatalog();
 
     [GeneratedRegex(@"\b(?:class|record)\s+(\w+)")]
@@ -71,11 +73,13 @@ public static partial class IntegrationIsolationRules
                 TypeDeclaration().Matches(file.Value).Select(type => (Name: type.Groups[1].Value, Source: file.Value))
             )
             .Where(type => !GenericNames.Contains(type.Name))
-            .Where(type => type.Name.EndsWith("Database", StringComparison.Ordinal)
+            .Where(type =>
+                type.Name.EndsWith("Database", StringComparison.Ordinal)
                 || type.Name.EndsWith("Db", StringComparison.Ordinal)
                 || type.Name.EndsWith("Host", StringComparison.Ordinal)
                 || type.Name.EndsWith("SqlServer", StringComparison.Ordinal)
-                || type.Name.EndsWith("Fixture", StringComparison.Ordinal))
+                || type.Name.EndsWith("Fixture", StringComparison.Ordinal)
+            )
             .ToArray();
         var temporaryHelpers = helpers.Where(t => TemporaryCatalog().IsMatch(t.Source)).Select(t => t.Name).ToHashSet();
         var fleetHelpers = helpers

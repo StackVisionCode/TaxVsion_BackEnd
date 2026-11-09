@@ -4,11 +4,11 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers.Commands.BulkAssign;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Domain.Employees;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
-using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 
 namespace TaxVision.Customer.Tests.Application;
 
@@ -149,7 +149,8 @@ public sealed class BulkAssignCustomersHandlerTests
                 _all.FindAll(c => c.TenantId == tenantId && ids.Contains(c.Id))
             );
 
-        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) => throw new NotImplementedException();
+        public Task<DomainCustomer?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
+            throw new NotImplementedException();
 
         public Task<DomainCustomer?> GetSnapshotAsync(Guid tenantId, Guid customerId, CancellationToken ct) =>
             Task.FromResult(_all.FirstOrDefault(c => c.TenantId == tenantId && c.Id == customerId));
@@ -229,8 +230,11 @@ public sealed class BulkAssignCustomersHandlerTests
             CancellationToken ct
         ) => Task.FromResult<IReadOnlyList<DomainCustomer>>([]);
 
-        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
-            Task.FromResult(OffboardingClientCounts.None);
+        public Task<OffboardingClientCounts> CountOffboardingImpactAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct
+        ) => Task.FromResult(OffboardingClientCounts.None);
 
         public Task<Guid?> FindIdByOriginAsync(
             Guid tenantId,

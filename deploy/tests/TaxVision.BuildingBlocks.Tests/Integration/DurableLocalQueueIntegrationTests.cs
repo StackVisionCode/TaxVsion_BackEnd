@@ -30,7 +30,10 @@ public sealed class DurableLocalQueueIntegrationTests : IAsyncLifetime
         using (var host = await StartHostAsync(typeof(PendingLocalProbeHandler), firstRun))
         {
             await host.Services.GetRequiredService<IMessageBus>().PublishAsync(new LocalProbeMessage(id));
-            Assert.True(await firstRun.Attempted.Task.WaitAsync(TimeSpan.FromSeconds(30)) == id, "El primer host no recibió el mensaje.");
+            Assert.True(
+                await firstRun.Attempted.Task.WaitAsync(TimeSpan.FromSeconds(30)) == id,
+                "El primer host no recibió el mensaje."
+            );
             using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await host.StopAsync(stopTimeout.Token);
         }
@@ -87,5 +90,6 @@ public static class PendingLocalProbeHandler
 
 public static class LocalProbeHandler
 {
-    public static void Handle(LocalProbeMessage message, LocalProbeRecorder recorder) => recorder.Processed.TrySetResult(message.Id);
+    public static void Handle(LocalProbeMessage message, LocalProbeRecorder recorder) =>
+        recorder.Processed.TrySetResult(message.Id);
 }

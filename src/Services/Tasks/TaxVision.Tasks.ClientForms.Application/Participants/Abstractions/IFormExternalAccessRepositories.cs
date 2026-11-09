@@ -40,11 +40,7 @@ public interface IFormIntakeLinkRepository
         CancellationToken ct = default
     );
 
-    Task<int> CountNotRevokedByResponsibleAsync(
-        Guid tenantId,
-        Guid responsibleUserId,
-        CancellationToken ct = default
-    );
+    Task<int> CountNotRevokedByResponsibleAsync(Guid tenantId, Guid responsibleUserId, CancellationToken ct = default);
     void Add(FormIntakeLink link);
 }
 

@@ -28,10 +28,22 @@ public sealed class NotificationTemplateSeedTests
     {
         var variants = new[]
         {
-            Seed with { Subject = "Other" },
-            Seed with { Html = "<p>Hello.</p>" },
-            Seed with { Text = "Hello." },
-            Seed with { Variables = [("first", VariableType.String, true, null, "First.")] },
+            Seed with
+            {
+                Subject = "Other",
+            },
+            Seed with
+            {
+                Html = "<p>Hello.</p>",
+            },
+            Seed with
+            {
+                Text = "Hello.",
+            },
+            Seed with
+            {
+                Variables = [("first", VariableType.String, true, null, "First.")],
+            },
             Seed with
             {
                 Variables =
@@ -40,8 +52,14 @@ public sealed class NotificationTemplateSeedTests
                     ("second", VariableType.Bool, false, "false", "Second."),
                 ],
             },
-            Seed with { LayoutKey = "tenant-base" },
-            Seed with { Channel = TemplateChannel.Push },
+            Seed with
+            {
+                LayoutKey = "tenant-base",
+            },
+            Seed with
+            {
+                Channel = TemplateChannel.Push,
+            },
         };
 
         Assert.All(variants, variant => Assert.NotEqual(Seed.ContentHash, variant.ContentHash));

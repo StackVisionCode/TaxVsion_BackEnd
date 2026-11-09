@@ -92,13 +92,20 @@ public sealed class RepairCrossCustomerThreadsIntegrationTests(CorrespondenceMed
         Assert.Equal(2, await ForeignEmailsAsync());
 
         var applied = await RunAsync(new RepairCrossCustomerThreadsCommand(_tenantId, DryRun: false));
-        Assert.Equal((2, 2, 2, 2), (applied.ThreadsRepaired, applied.EmailsMoved, applied.ThreadsCreated, applied.ThreadsFound));
+        Assert.Equal(
+            (2, 2, 2, 2),
+            (applied.ThreadsRepaired, applied.EmailsMoved, applied.ThreadsCreated, applied.ThreadsFound)
+        );
         Assert.Empty(applied.FailedThreadIds);
         Assert.Equal(0, await ForeignEmailsAsync());
 
         await using (var db = CorrespondenceSqlServer.NewContext(_tenantId))
         {
-            var threads = await db.EmailThreads.IgnoreQueryFilters().AsNoTracking().Where(t => t.TenantId == _tenantId).ToListAsync();
+            var threads = await db
+                .EmailThreads.IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(t => t.TenantId == _tenantId)
+                .ToListAsync();
             Assert.Equal(4, threads.Count);
             Assert.All(threads.Where(t => t.Id == first || t.Id == second), t => Assert.Equal(2, t.MessageCount));
             Assert.All(threads.Where(t => t.CustomerId == _customerB), t => Assert.Equal(1, t.MessageCount));

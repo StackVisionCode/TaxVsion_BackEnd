@@ -17,8 +17,7 @@ public sealed class SmsOptOutRepositoryIntegrationTests : IAsyncLifetime
     private readonly Guid _tenant1 = Guid.NewGuid();
     private readonly Guid _tenant2 = Guid.NewGuid();
     private readonly string _phone = "+1555010" + Random.Shared.Next(1000, 9999);
-    private readonly string _connectionString =
-        SmsIntegrationDatabase.ConnectionString;
+    private readonly string _connectionString = SmsIntegrationDatabase.ConnectionString;
 
     private sealed class NoTenant : ITenantContext
     {

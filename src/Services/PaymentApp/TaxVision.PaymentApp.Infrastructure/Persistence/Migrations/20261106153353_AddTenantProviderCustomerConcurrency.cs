@@ -25,14 +25,16 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_TenantSavedPaymentMethods_OneDefault",
                 table: "TenantSavedPaymentMethods",
                 column: "TenantProviderCustomerId",
                 unique: true,
-                filter: "[IsDefault] = 1 AND [IsDetached] = 0");
+                filter: "[IsDefault] = 1 AND [IsDetached] = 0"
+            );
         }
 
         /// <inheritdoc />
@@ -40,11 +42,10 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "UX_TenantSavedPaymentMethods_OneDefault",
-                table: "TenantSavedPaymentMethods");
+                table: "TenantSavedPaymentMethods"
+            );
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "TenantProviderCustomers");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "TenantProviderCustomers");
         }
     }
 }

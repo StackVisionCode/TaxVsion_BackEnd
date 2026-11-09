@@ -26,7 +26,8 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                 name: "UX_UnmatchedDeliveryFeedback_Source_SourceEventId",
                 table: "UnmatchedDeliveryFeedback",
                 columns: new[] { "Source", "SourceEventId" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
@@ -34,7 +35,8 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "UX_UnmatchedDeliveryFeedback_Source_SourceEventId",
-                table: "UnmatchedDeliveryFeedback");
+                table: "UnmatchedDeliveryFeedback"
+            );
         }
     }
 }

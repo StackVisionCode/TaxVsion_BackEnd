@@ -34,7 +34,12 @@ public static class TaskReopenedDomainEventHandler
 
         var found = await tasks.GetByIdAsync(reopened.TenantId, reopened.TaskId, ct);
         var reminder = found.IsSuccess
-            ? TaskDueReminder.RequestFor(found.Value, found.Value.AssigneeUserId, reopened.ReopenCount, correlation.CorrelationId)
+            ? TaskDueReminder.RequestFor(
+                found.Value,
+                found.Value.AssigneeUserId,
+                reopened.ReopenCount,
+                correlation.CorrelationId
+            )
             : null;
         if (reminder is not null)
             messages.Add(reminder);

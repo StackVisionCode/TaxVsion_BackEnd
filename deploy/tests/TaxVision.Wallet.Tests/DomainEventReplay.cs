@@ -46,10 +46,11 @@ internal static class DomainEventReplay
 
         var args = method
             .GetParameters()
-            .Select(object (p) =>
-                p.ParameterType == domainEvent.GetType() ? domainEvent
-                : p.ParameterType == typeof(Envelope) ? new Envelope { CorrelationId = CorrelationId }
-                : throw new InvalidOperationException($"El replay no sabe resolver {p.ParameterType.Name}.")
+            .Select(
+                object (p) =>
+                    p.ParameterType == domainEvent.GetType() ? domainEvent
+                    : p.ParameterType == typeof(Envelope) ? new Envelope { CorrelationId = CorrelationId }
+                    : throw new InvalidOperationException($"El replay no sabe resolver {p.ParameterType.Name}.")
             )
             .ToArray();
 

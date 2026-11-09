@@ -82,7 +82,9 @@ public sealed class ClientDocumentScanResultConsumerTests
 
     private static (ClientRequest Request, Guid FileId) RequestWithDocument()
     {
-        var request = ClientRequest.Create(TenantId, Guid.NewGuid(), Guid.NewGuid(), null, "W-2 2025", null, null, Now).Value;
+        var request = ClientRequest
+            .Create(TenantId, Guid.NewGuid(), Guid.NewGuid(), null, "W-2 2025", null, null, Now)
+            .Value;
         var fileId = Guid.NewGuid();
         Assert.True(request.SubmitDocument(fileId, "W-2.pdf", "application/pdf", 512, Now).IsSuccess);
         return (request, fileId);

@@ -32,7 +32,11 @@ public sealed class SetBillingPreferenceHandlerPathsTests
 
         var result = await world.SetAsync(provider: " ");
 
-        world.AssertRefused(result, "BillingPreference.InvalidProvider", "ProviderCode is required for Automatic mode.");
+        world.AssertRefused(
+            result,
+            "BillingPreference.InvalidProvider",
+            "ProviderCode is required for Automatic mode."
+        );
     }
 
     [Fact]
@@ -187,7 +191,16 @@ public sealed class SetBillingPreferenceHandlerPathsTests
             string? consentIp = "1.2.3.4"
         ) =>
             SetBillingPreferenceHandler.Handle(
-                new SetBillingPreferenceCommand(Tenant, Guid.NewGuid(), mode, provider, consentText, "v1", consentIp, "xunit"),
+                new SetBillingPreferenceCommand(
+                    Tenant,
+                    Guid.NewGuid(),
+                    mode,
+                    provider,
+                    consentText,
+                    "v1",
+                    consentIp,
+                    "xunit"
+                ),
                 Repository,
                 Subscriptions,
                 Plans,

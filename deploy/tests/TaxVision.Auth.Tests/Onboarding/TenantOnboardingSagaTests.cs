@@ -2,12 +2,12 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Onboarding.Application.Internal.Commands;
 using TaxVision.Auth.Onboarding.Application.Sagas;
 using TaxVision.Auth.Onboarding.Application.Sagas.Commands;
 using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 using TaxVision.Auth.Onboarding.Domain.ValueObjects;
-using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;

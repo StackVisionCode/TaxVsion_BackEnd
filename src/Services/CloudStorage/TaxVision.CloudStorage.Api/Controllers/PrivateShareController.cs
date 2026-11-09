@@ -21,10 +21,8 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 [Route("storage")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin, ActorType.CustomerPortal)]
-public sealed class PrivateShareController(
-    IMessageBus bus,
-    IOptions<PublicShareConflictRetryOptions> conflictRetry
-) : ControllerBase
+public sealed class PrivateShareController(IMessageBus bus, IOptions<PublicShareConflictRetryOptions> conflictRetry)
+    : ControllerBase
 {
     /// <summary>Fase C4 — fileId es obligatorio cuando el token es de un link de tipo Folder (ver FolderShareCoverage).</summary>
     [HttpGet("private/{token}")]

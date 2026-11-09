@@ -45,7 +45,9 @@ public sealed class CustomerProjectionReconciliationIntegrationTests : IAsyncLif
         var page3Customer = Guid.NewGuid();
         await using (var seed = CorrespondenceSqlServer.NewContext(_tenantId))
         {
-            seed.CustomerEmailAddresses.Add(CustomerEmailAddress.Create(_tenantId, owner, EmailAddress.Create(shared).Value));
+            seed.CustomerEmailAddresses.Add(
+                CustomerEmailAddress.Create(_tenantId, owner, EmailAddress.Create(shared).Value)
+            );
             var deleted = CustomerEmailAddress.Create(_tenantId, conflicting, EmailAddress.Create(shared).Value);
             deleted.SoftDelete(DateTime.UtcNow.AddDays(-1));
             seed.CustomerEmailAddresses.Add(deleted);
@@ -61,7 +63,9 @@ public sealed class CustomerProjectionReconciliationIntegrationTests : IAsyncLif
         await RunAsync(client);
 
         await using var read = CorrespondenceSqlServer.NewContext(_tenantId);
-        var rows = await read.CustomerEmailAddresses.IgnoreQueryFilters().AsNoTracking()
+        var rows = await read
+            .CustomerEmailAddresses.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(x => x.TenantId == _tenantId)
             .ToListAsync();
         Assert.Contains(rows, x => x.CustomerId == page2Customer && x.IsActive);

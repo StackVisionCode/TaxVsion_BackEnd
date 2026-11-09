@@ -27,7 +27,16 @@ public sealed class AttachFileToNoteHandlerTests
         var bus = new FakeMessageBus();
 
         var result = await AttachFileToNoteHandler.Handle(
-            new AttachFileToNoteCommand(tenantId, note.Id, authorId, fileId, "receipt.pdf", "application/pdf", 1024, false),
+            new AttachFileToNoteCommand(
+                tenantId,
+                note.Id,
+                authorId,
+                fileId,
+                "receipt.pdf",
+                "application/pdf",
+                1024,
+                false
+            ),
             repo,
             new FakeOffboardedStaffRepository(),
             uow,
@@ -63,7 +72,16 @@ public sealed class AttachFileToNoteHandlerTests
         var nowUtc = new DateTime(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc);
 
         var result = await AttachFileToNoteHandler.Handle(
-            new AttachFileToNoteCommand(tenantId, note.Id, authorId, Guid.NewGuid(), "receipt.pdf", "application/pdf", 1024, false),
+            new AttachFileToNoteCommand(
+                tenantId,
+                note.Id,
+                authorId,
+                Guid.NewGuid(),
+                "receipt.pdf",
+                "application/pdf",
+                1024,
+                false
+            ),
             repo,
             new FakeOffboardedStaffRepository(),
             new NoOpUnitOfWork(),

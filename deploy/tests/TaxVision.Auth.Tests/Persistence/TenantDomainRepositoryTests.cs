@@ -28,10 +28,7 @@ public sealed class TenantDomainRepositoryTests
     }
 
     private static AuthDbContext CreateContext(string databaseName, FakeTenantContext tenantContext) =>
-        new(
-            new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options,
-            tenantContext
-        );
+        new(new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(databaseName).Options, tenantContext);
 
     [Fact]
     public async Task GetByHostAsync_resolves_domain_when_no_tenant_is_set_yet()

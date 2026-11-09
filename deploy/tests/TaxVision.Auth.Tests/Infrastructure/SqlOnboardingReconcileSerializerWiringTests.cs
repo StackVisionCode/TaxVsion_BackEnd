@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Onboarding.Infrastructure.Concurrency;
-using TaxVision.Auth.Infrastructure.Persistence;
 
 namespace TaxVision.Auth.Tests.Infrastructure;
 

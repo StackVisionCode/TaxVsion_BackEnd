@@ -86,11 +86,16 @@ public sealed class OAuthTokenRefreshIntegrationTests : IAsyncLifetime
         };
 
         await using var scope = _host.Services.CreateAsyncScope();
-        var result = await scope.ServiceProvider.GetRequiredService<IOAuthTokenManager>().GetValidAccessTokenAsync(accountId);
+        var result = await scope
+            .ServiceProvider.GetRequiredService<IOAuthTokenManager>()
+            .GetValidAccessTokenAsync(accountId);
 
         Assert.Equal("late-access", result.Value);
         await using var read = _host.NewContext();
-        var stored = await read.OAuthConnections.AsNoTracking().Include(c => c.Token).SingleAsync(c => c.AccountId == accountId);
+        var stored = await read
+            .OAuthConnections.AsNoTracking()
+            .Include(c => c.Token)
+            .SingleAsync(c => c.AccountId == accountId);
         Assert.Equal("other-refresh", protector.Unprotect(stored.Token!.RefreshTokenCipher));
         Assert.Equal("other-access", protector.Unprotect(stored.Token.AccessTokenCipher));
     }

@@ -66,7 +66,9 @@ public sealed class BillingDurableLocalQueueIntegrationTests(BillingTestDatabase
                 Now
             )
             .Value;
-        Assert.True(invoice.Issue(InvoiceNumber.Create("INV-2026-90001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess);
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-90001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess
+        );
         _invoiceId = invoice.Id;
         await using (var db = NewContext())
         {
@@ -150,7 +152,11 @@ public sealed class BillingDurableLocalQueueIntegrationTests(BillingTestDatabase
     private async Task<InvoiceStatus> StatusAsync()
     {
         await using var db = NewContext();
-        return await db.Invoices.IgnoreQueryFilters().Where(i => i.Id == _invoiceId).Select(i => i.Status).SingleAsync();
+        return await db
+            .Invoices.IgnoreQueryFilters()
+            .Where(i => i.Id == _invoiceId)
+            .Select(i => i.Status)
+            .SingleAsync();
     }
 
     private async Task<IHost> StartHostAsync()
@@ -195,7 +201,10 @@ public sealed class BillingDurableLocalQueueIntegrationTests(BillingTestDatabase
     }
 
     private BillingDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<BillingDbContext>().UseSqlServer(_connectionString).Options, new FixedTenant(_tenantId));
+        new(
+            new DbContextOptionsBuilder<BillingDbContext>().UseSqlServer(_connectionString).Options,
+            new FixedTenant(_tenantId)
+        );
 
     private Task<int> CountRowsAsync(string table, string messageType, string? status = null) =>
         CountAsync(

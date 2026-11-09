@@ -8,7 +8,12 @@ public sealed class TenantDomainTests
     [Fact]
     public void Creation_normalizes_subdomain_and_timezone()
     {
-        var result = TaxVision.Tenant.Domain.Tenant.Create(" Demo Tax Office ", "Demo-Office", "America/New_York", DateTime.UtcNow);
+        var result = TaxVision.Tenant.Domain.Tenant.Create(
+            " Demo Tax Office ",
+            "Demo-Office",
+            "America/New_York",
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Demo Tax Office", result.Value.Name);
@@ -138,7 +143,9 @@ public sealed class TenantDomainTests
     [Fact]
     public void Only_active_tenant_can_be_suspended()
     {
-        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow).Value;
+        var tenant = TaxVision
+            .Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow)
+            .Value;
 
         Assert.True(tenant.Suspend().IsSuccess);
         Assert.True(tenant.Suspend().IsFailure);
@@ -147,7 +154,9 @@ public sealed class TenantDomainTests
     [Fact]
     public void Creation_stamps_updated_at_with_the_creation_time()
     {
-        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow).Value;
+        var tenant = TaxVision
+            .Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow)
+            .Value;
 
         Assert.Equal(tenant.CreatedAtUtc, tenant.UpdatedAtUtc);
     }
@@ -155,7 +164,9 @@ public sealed class TenantDomainTests
     [Fact]
     public void Rename_trims_the_name_and_moves_the_stamp_forward()
     {
-        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow).Value;
+        var tenant = TaxVision
+            .Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow)
+            .Value;
         var nowUtc = tenant.UpdatedAtUtc.AddMinutes(5);
 
         var result = tenant.Rename("  Acme Tax  ", nowUtc);
@@ -169,7 +180,9 @@ public sealed class TenantDomainTests
     [Fact]
     public void Rename_to_the_same_name_reports_no_change_and_keeps_the_stamp()
     {
-        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow).Value;
+        var tenant = TaxVision
+            .Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow)
+            .Value;
         var before = tenant.UpdatedAtUtc;
 
         var result = tenant.Rename("Demo", before.AddMinutes(5));
@@ -184,7 +197,9 @@ public sealed class TenantDomainTests
     [InlineData("   ")]
     public void Rename_rejects_a_blank_name(string name)
     {
-        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow).Value;
+        var tenant = TaxVision
+            .Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow)
+            .Value;
 
         var result = tenant.Rename(name, DateTime.UtcNow);
 
@@ -196,7 +211,9 @@ public sealed class TenantDomainTests
     [Fact]
     public void Rename_rejects_a_name_longer_than_the_column()
     {
-        var tenant = TaxVision.Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow).Value;
+        var tenant = TaxVision
+            .Tenant.Domain.Tenant.Create("Demo", "demo-office", "America/New_York", DateTime.UtcNow)
+            .Value;
 
         var result = tenant.Rename(new string('a', TaxVision.Tenant.Domain.Tenant.NameMaxLength + 1), DateTime.UtcNow);
 

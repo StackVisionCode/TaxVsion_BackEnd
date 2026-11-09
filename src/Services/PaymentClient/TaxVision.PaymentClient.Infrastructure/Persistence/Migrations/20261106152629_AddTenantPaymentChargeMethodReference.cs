@@ -15,15 +15,14 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 table: "TenantPayments",
                 type: "nvarchar(255)",
                 maxLength: 255,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ChargeMethodReference",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "ChargeMethodReference", table: "TenantPayments");
         }
     }
 }

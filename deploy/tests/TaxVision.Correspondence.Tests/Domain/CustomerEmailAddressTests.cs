@@ -133,7 +133,11 @@ public sealed class CustomerEmailAddressTests
     public void SoftDelete_OlderThanReactivation_IsIgnored()
     {
         var t1 = DateTime.UtcNow.AddMinutes(-30);
-        var entity = CustomerEmailAddress.Create(Guid.NewGuid(), Guid.NewGuid(), EmailAddress.Create("x@example.com").Value);
+        var entity = CustomerEmailAddress.Create(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            EmailAddress.Create("x@example.com").Value
+        );
         Assert.True(entity.Reactivate(t1.AddMinutes(20)));
 
         Assert.False(entity.SoftDelete(t1.AddMinutes(10)));
@@ -144,7 +148,11 @@ public sealed class CustomerEmailAddressTests
     public void Reactivate_OlderThanLastEmailChange_StillApplies()
     {
         var t1 = DateTime.UtcNow.AddMinutes(-30);
-        var entity = CustomerEmailAddress.Create(Guid.NewGuid(), Guid.NewGuid(), EmailAddress.Create("x@example.com").Value);
+        var entity = CustomerEmailAddress.Create(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            EmailAddress.Create("x@example.com").Value
+        );
         Assert.True(entity.SoftDelete(t1));
         Assert.True(entity.UpdateEmail(EmailAddress.Create("z@example.com").Value, t1.AddMinutes(20)));
 

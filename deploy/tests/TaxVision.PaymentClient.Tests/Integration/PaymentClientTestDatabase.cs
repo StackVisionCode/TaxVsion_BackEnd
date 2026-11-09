@@ -8,8 +8,7 @@ namespace TaxVision.PaymentClient.Tests.Integration;
 /// <summary>Contextos y utilidades sobre la base temporal de las T-INT de PaymentClient (BB-10).</summary>
 internal static class PaymentClientTestDatabase
 {
-    public static string ConnectionString { get; } =
-        PaymentClientIntegrationDatabase.ConnectionString;
+    public static string ConnectionString { get; } = PaymentClientIntegrationDatabase.ConnectionString;
 
     public static PaymentClientDbContext NewContext(Guid tenantId) =>
         new(

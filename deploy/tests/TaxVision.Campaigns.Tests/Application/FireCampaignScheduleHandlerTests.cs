@@ -105,11 +105,7 @@ public sealed class FireCampaignScheduleHandlerTests
                     )
                 ),
                 Microsoft.Extensions.Options.Options.Create(Options),
-                new CampaignRunStarter(
-                    Wallet,
-                    new FakeCorrelationContext(),
-                    NullLogger<CampaignRunStarter>.Instance
-                ),
+                new CampaignRunStarter(Wallet, new FakeCorrelationContext(), NullLogger<CampaignRunStarter>.Instance),
                 Bus,
                 NullLogger<CampaignSchedule>.Instance,
                 CancellationToken.None

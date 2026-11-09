@@ -11,7 +11,10 @@ public sealed class SaaSPaymentDunningTests
     {
         var payment = CreateRenewalPayment();
 
-        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            DunningDecision.RetryAt(DateTime.UtcNow.AddHours(1)),
             Guid.Empty,
             DateTime.UtcNow
         );
@@ -50,7 +53,13 @@ public sealed class SaaSPaymentDunningTests
         var payment = CreateRenewalPayment();
         var first = payment.ProviderIdempotencyKeyForNextAttempt();
 
-        payment.MarkFailed("card_declined", "Declined.", DunningDecision.RetryAt(DateTime.UtcNow), Guid.Empty, DateTime.UtcNow);
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            DunningDecision.RetryAt(DateTime.UtcNow),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
         var second = payment.ProviderIdempotencyKeyForNextAttempt();
 
         Assert.Equal(payment.IdempotencyKey, first);
