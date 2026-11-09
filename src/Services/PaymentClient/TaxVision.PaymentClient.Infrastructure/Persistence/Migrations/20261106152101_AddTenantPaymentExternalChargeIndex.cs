@@ -10,12 +10,15 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Con duplicados no se crea el índice: correr Q-PCL-6 y que el dueño resuelva cada caso.
+            // Q-PCL-6: no se borra ningún pago; la referencia repetida queda solo en el pago más viejo del tenant.
             migrationBuilder.Sql(
                 """
-                IF EXISTS (SELECT 1 FROM dbo.TenantPayments WHERE ExternalChargeReference IS NOT NULL
-                           GROUP BY TenantId, ExternalChargeProvider, ExternalChargeReference HAVING COUNT(*) > 1)
-                    THROW 50000, 'PCL-6: duplicate (TenantId, ExternalChargeProvider, ExternalChargeReference) in dbo.TenantPayments. Run Q-PCL-6 and resolve each case before applying this migration.', 1;
+                WITH ranked AS (
+                    SELECT ExternalChargeProvider, ExternalChargeReference, ROW_NUMBER() OVER (
+                        PARTITION BY TenantId, ExternalChargeProvider, ExternalChargeReference ORDER BY CreatedAtUtc, Id) AS rn
+                    FROM dbo.TenantPayments WHERE ExternalChargeReference IS NOT NULL
+                )
+                UPDATE ranked SET ExternalChargeProvider = NULL, ExternalChargeReference = NULL WHERE rn > 1;
                 """
             );
 

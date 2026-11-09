@@ -10,15 +10,14 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // No se borran datos: con duplicados se detiene y lo decide el dueño (ver Q-PMS-4 en el plan).
+            // Q-PMS-4: el mismo aviso repetido es técnico (se purga a los 30 días); queda el primero recibido.
             migrationBuilder.Sql(
                 """
-                IF EXISTS (
-                    SELECT 1 FROM UnmatchedDeliveryFeedback
-                    GROUP BY Source, SourceEventId
-                    HAVING COUNT(*) > 1
+                WITH ranked AS (
+                    SELECT ROW_NUMBER() OVER (PARTITION BY Source, SourceEventId ORDER BY ReceivedAtUtc, Id) AS rn
+                    FROM UnmatchedDeliveryFeedback
                 )
-                    THROW 50001, 'UnmatchedDeliveryFeedback has duplicate (Source, SourceEventId) rows: run Q-PMS-4 and resolve them before creating UX_UnmatchedDeliveryFeedback_Source_SourceEventId.', 1;
+                DELETE FROM ranked WHERE rn > 1;
                 """
             );
 

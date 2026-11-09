@@ -1,5 +1,4 @@
 using BuildingBlocks.Results;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -21,9 +20,9 @@ public sealed class UnmatchedDeliveryFeedbackIntegrationTests : IAsyncLifetime
     private static UnmatchedDeliveryFeedback Unmatched() =>
         UnmatchedDeliveryFeedback.Create("Smtp2Go", "evt-1", "c***@example.test", "hint", "{}", DateTime.UtcNow);
 
-    // Si en producción hubiera duplicados, la migración se detiene con un mensaje claro y no toca los datos.
+    // Con el mismo aviso repetido la migración deja el primero recibido y crea el índice (decisión del dueño, 2026-11-09).
     [Fact(Timeout = 120_000)]
-    public async Task Migration_stops_with_a_clear_message_when_duplicates_exist()
+    public async Task Migration_keeps_the_first_of_each_duplicate()
     {
         await using var database = new PostmasterTemporaryDatabase("pmsmigration");
         await database.DropOrphansAsync();
@@ -34,15 +33,18 @@ public sealed class UnmatchedDeliveryFeedbackIntegrationTests : IAsyncLifetime
         await migrator.MigrateAsync(before);
         await db.Database.ExecuteSqlRawAsync(
             """
-            INSERT INTO UnmatchedDeliveryFeedback (Id, Source, SourceEventId, ReceivedAtUtc)
-            VALUES (NEWID(), 'Smtp2Go', 'evt-1', SYSUTCDATETIME()), (NEWID(), 'Smtp2Go', 'evt-1', SYSUTCDATETIME())
+            INSERT INTO UnmatchedDeliveryFeedback (Id, Source, SourceEventId, ReceivedAtUtc, CorrelationHint)
+            VALUES (NEWID(), 'Smtp2Go', 'evt-1', '2026-11-01T10:00:00', 'first'),
+                   (NEWID(), 'Smtp2Go', 'evt-1', '2026-11-01T11:00:00', 'second'),
+                   (NEWID(), 'Smtp2Go', 'evt-1', '2026-11-01T12:00:00', 'third'),
+                   (NEWID(), 'Smtp2Go', 'evt-2', '2026-11-01T10:00:00', 'other')
             """
         );
 
-        var failure = await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync());
+        await migrator.MigrateAsync();
 
-        Assert.Contains("run Q-PMS-4", failure.Message);
-        Assert.Equal(2, await db.UnmatchedDeliveryFeedback.CountAsync());
+        var kept = await db.UnmatchedDeliveryFeedback.AsNoTracking().OrderBy(f => f.SourceEventId).ToListAsync();
+        Assert.Equal(["first", "other"], kept.Select(f => f.CorrelationHint));
     }
 
     [Fact(Timeout = 120_000)]

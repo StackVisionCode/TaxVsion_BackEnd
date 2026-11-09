@@ -10,12 +10,15 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Con dos defaults activos no se crea el índice: correr Q-PAY-6 y que el dueño elija cuál queda.
+            // Q-PAY-6: con dos defaults activos queda como default el método más reciente; ninguno se borra.
             migrationBuilder.Sql(
                 """
-                IF EXISTS (SELECT 1 FROM dbo.TenantSavedPaymentMethods WHERE IsDefault = 1 AND IsDetached = 0
-                           GROUP BY TenantProviderCustomerId HAVING COUNT(*) > 1)
-                    THROW 50000, 'PAY-6: more than one active default method for a TenantProviderCustomer. Run Q-PAY-6 and resolve each case before applying this migration.', 1;
+                WITH ranked AS (
+                    SELECT IsDefault, ROW_NUMBER() OVER (
+                        PARTITION BY TenantProviderCustomerId ORDER BY CreatedAtUtc DESC, Id DESC) AS rn
+                    FROM dbo.TenantSavedPaymentMethods WHERE IsDefault = 1 AND IsDetached = 0
+                )
+                UPDATE ranked SET IsDefault = 0 WHERE rn > 1;
                 """
             );
 

@@ -10,15 +10,22 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Con duplicados no se crea el índice: correr Q-PAY-4a/b y que el dueño resuelva cada caso.
+            // Q-PAY-4a/b: no se borra ningún pago; la referencia repetida queda solo en el pago más viejo.
             migrationBuilder.Sql(
                 """
-                IF EXISTS (SELECT 1 FROM dbo.SaaSPayments WHERE ExternalChargeReference IS NOT NULL
-                           GROUP BY ExternalChargeProvider, ExternalChargeReference HAVING COUNT(*) > 1)
-                    THROW 50000, 'PAY-4: duplicate (ExternalChargeProvider, ExternalChargeReference) in dbo.SaaSPayments. Run Q-PAY-4a and resolve each case before applying this migration.', 1;
-                IF EXISTS (SELECT 1 FROM dbo.SaaSPayments WHERE ProviderCheckoutSessionId IS NOT NULL
-                           GROUP BY ProviderCheckoutSessionId HAVING COUNT(*) > 1)
-                    THROW 50000, 'PAY-4: duplicate ProviderCheckoutSessionId in dbo.SaaSPayments. Run Q-PAY-4b and resolve each case before applying this migration.', 1;
+                WITH ranked AS (
+                    SELECT ExternalChargeProvider, ExternalChargeReference, ROW_NUMBER() OVER (
+                        PARTITION BY ExternalChargeProvider, ExternalChargeReference ORDER BY CreatedAtUtc, Id) AS rn
+                    FROM dbo.SaaSPayments WHERE ExternalChargeReference IS NOT NULL
+                )
+                UPDATE ranked SET ExternalChargeProvider = NULL, ExternalChargeReference = NULL WHERE rn > 1;
+
+                WITH ranked AS (
+                    SELECT ProviderCheckoutSessionId, ROW_NUMBER() OVER (
+                        PARTITION BY ProviderCheckoutSessionId ORDER BY CreatedAtUtc, Id) AS rn
+                    FROM dbo.SaaSPayments WHERE ProviderCheckoutSessionId IS NOT NULL
+                )
+                UPDATE ranked SET ProviderCheckoutSessionId = NULL WHERE rn > 1;
                 """
             );
 

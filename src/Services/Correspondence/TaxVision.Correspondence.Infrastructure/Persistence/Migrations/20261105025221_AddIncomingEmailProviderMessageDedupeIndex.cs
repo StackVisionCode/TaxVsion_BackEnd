@@ -10,14 +10,18 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Tabla de alto volumen: ventana de mantenimiento. Antes, Q-COR-7 vacía (no se borran duplicados acá).
+            // Tabla de alto volumen: ventana de mantenimiento.
+            // Q-COR-7: no se borra ningún correo; el duplicado recibe un InternetMessageId propio y sale del índice filtrado.
             // ONLINE solo donde la edición lo permite (Enterprise/Developer, Azure SQL); dinámico porque se valida al compilar.
             migrationBuilder.Sql(
                 """
-                IF EXISTS (
-                    SELECT 1 FROM [IncomingEmails] WHERE [InternetMessageId] IS NULL
-                    GROUP BY [TenantId], [AccountId], [ProviderMessageId] HAVING COUNT(*) > 1)
-                    THROW 50001, 'IncomingEmails has duplicates without InternetMessageId (Q-COR-7). Resolve them before creating IX_IncomingEmails_TenantId_AccountId_ProviderMessageId_NoInternetId.', 1;
+                WITH ranked AS (
+                    SELECT [Id], [InternetMessageId], ROW_NUMBER() OVER (
+                        PARTITION BY [TenantId], [AccountId], [ProviderMessageId] ORDER BY [ReceivedAtUtc], [Id]) AS rn
+                    FROM [IncomingEmails] WHERE [InternetMessageId] IS NULL
+                )
+                UPDATE ranked SET [InternetMessageId] = CONCAT(N'<duplicate-', LOWER(CONVERT(nvarchar(36), [Id])), N'@taxvision.invalid>')
+                WHERE rn > 1;
 
                 DECLARE @sql nvarchar(max) = N'CREATE UNIQUE INDEX [IX_IncomingEmails_TenantId_AccountId_ProviderMessageId_NoInternetId]
                     ON [IncomingEmails] ([TenantId], [AccountId], [ProviderMessageId])
