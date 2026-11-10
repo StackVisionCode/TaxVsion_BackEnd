@@ -28,9 +28,40 @@ internal static class BookingSlotFinder
         IReadOnlyList<Guid> Preparers
     );
 
+    public const string AssignedSource = "Assigned";
+    public const string OfficeSource = "Office";
+
+    /// <summary>Con quién puede reservar el cliente y de dónde salen (asignados u oficina).</summary>
+    public sealed record BookingPreparers(IReadOnlyList<Guid> UserIds, string Source);
+
     /// <summary>
-    /// Reserva activa, tipo ofrecido y activo, y preparador asignado al cliente. Sin preparador
-    /// ("Any available") solo cuando la oficina aprueba cada reserva: ella asigna al aprobar.
+    /// Los asignados al cliente. Sin asignados, la oficina (quienes ven todos los clientes) que tenga
+    /// horario semanal: sin horario no hay huecos que ofrecer (D-CAL-S).
+    /// </summary>
+    public static async Task<BookingPreparers> PreparersAsync(
+        Guid tenantId,
+        Guid customerId,
+        IPortalCalendarStore store,
+        IAvailabilityRepository availability,
+        CancellationToken ct
+    )
+    {
+        var assigned = await store.ListAssignedStaffAsync(tenantId, customerId, ct);
+        if (assigned.Count > 0)
+            return new BookingPreparers(assigned, AssignedSource);
+
+        var office = new List<Guid>();
+        foreach (var userId in await store.ListOfficeStaffAsync(tenantId, ct))
+        {
+            if ((await availability.ListRulesAsync(tenantId, userId, ct)).Count > 0)
+                office.Add(userId);
+        }
+        return new BookingPreparers(office, OfficeSource);
+    }
+
+    /// <summary>
+    /// Reserva activa, tipo ofrecido y activo, y un preparador de <see cref="PreparersAsync"/>. Sin
+    /// preparador ("Any available") solo cuando la oficina aprueba cada reserva: ella asigna al aprobar.
     /// </summary>
     public static async Task<Result<Bookable>> CheckAsync(
         Guid tenantId,
@@ -53,7 +84,7 @@ internal static class BookingSlotFinder
         if (type.IsFailure || !type.Value.IsActive)
             return Result.Failure<Bookable>(BookingErrors.NotAvailable);
 
-        var assigned = await store.ListAssignedStaffAsync(tenantId, customerId, ct);
+        var assigned = (await PreparersAsync(tenantId, customerId, store, availability, ct)).UserIds;
         IReadOnlyList<Guid> preparers;
         if (preparerUserId is { } chosen)
         {

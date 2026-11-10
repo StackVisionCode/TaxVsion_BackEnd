@@ -492,6 +492,9 @@ public sealed class PortalCalendarTests
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<Guid>>(customerId == customer ? assigned : []);
 
+        public Task<IReadOnlyList<Guid>> ListOfficeStaffAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
+
         public Task<Guid?> FindBookingAsync(
             Guid tenantId,
             Guid customerId,

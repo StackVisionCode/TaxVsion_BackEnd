@@ -40,7 +40,10 @@ public sealed record RespondAsCustomerCommand(
 
 public sealed record GetBookingOptionsQuery(Guid TenantId, Guid CustomerId);
 
-/// <summary><c>Reason</c>: NotEnabled o NoPreparer cuando <c>Enabled</c> es false.</summary>
+/// <summary>
+/// <c>Reason</c>: NotEnabled o NoPreparer cuando <c>Enabled</c> es false. <c>PreparerSource</c>: Assigned
+/// (sus asignados) u Office (sin asignados: quienes ven todos los clientes).
+/// </summary>
 public sealed record BookingOptionsResponse(
     bool Enabled,
     string? Reason,
@@ -48,7 +51,8 @@ public sealed record BookingOptionsResponse(
     IReadOnlyList<BookablePreparerResponse> Preparers,
     string? TimeZoneId,
     int CustomerChangeCutoffMinutes,
-    bool RequiresApproval = false
+    bool RequiresApproval = false,
+    string? PreparerSource = null
 );
 
 public sealed record BookableTypeResponse(Guid Id, string Name, int DurationMinutes, bool IsVirtual, string ColorHex);

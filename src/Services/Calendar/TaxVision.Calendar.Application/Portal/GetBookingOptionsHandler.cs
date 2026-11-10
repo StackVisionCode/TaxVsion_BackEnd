@@ -14,8 +14,8 @@ using TaxVision.Calendar.Domain.Scheduling;
 namespace TaxVision.Calendar.Application.Portal;
 
 /// <summary>
-/// Qué puede reservar el cliente: los tipos que ofrece la oficina y sus preparadores asignados (D-CAL-C).
-/// Si no se ofrece, dice por qué (NotEnabled o NoPreparer) para que el portal muestre el enlace externo.
+/// Qué puede reservar el cliente: los tipos que ofrece la oficina y con quién (asignados u oficina, D-CAL-S).
+/// Si no se ofrece, dice por qué (NotEnabled o NoPreparer) para que el portal lo explique.
 /// </summary>
 public static class GetBookingOptionsHandler
 {
@@ -53,8 +53,10 @@ public static class GetBookingOptionsHandler
         if (offered.Count == 0)
             return Result.Success(Off("NotEnabled"));
 
+        var pool = await BookingSlotFinder.PreparersAsync(query.TenantId, query.CustomerId, store, availability, ct);
+        var fallbackName = pool.Source == BookingSlotFinder.OfficeSource ? "Your office" : "Your preparer";
         var preparers = new List<BookablePreparerResponse>();
-        foreach (var userId in await store.ListAssignedStaffAsync(query.TenantId, query.CustomerId, ct))
+        foreach (var userId in pool.UserIds)
         {
             var contact = await contacts.FindAsync(query.TenantId, userId, ct);
             if (contact is { IsActive: false })
@@ -62,7 +64,7 @@ public static class GetBookingOptionsHandler
             preparers.Add(
                 new BookablePreparerResponse(
                     userId,
-                    string.IsNullOrWhiteSpace(contact?.DisplayName) ? "Your preparer" : contact.DisplayName
+                    string.IsNullOrWhiteSpace(contact?.DisplayName) ? fallbackName : contact.DisplayName
                 )
             );
         }
@@ -85,7 +87,8 @@ public static class GetBookingOptionsHandler
                 preparers,
                 zone,
                 policy.CustomerChangeCutoffMinutes,
-                policy.RequiresApproval
+                policy.RequiresApproval,
+                pool.Source
             )
         );
     }

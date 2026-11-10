@@ -20,6 +20,7 @@ public sealed class StaffContactClient(
 ) : IStaffContactClient
 {
     private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(10);
+    private static int _warnedNoToken;
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -43,7 +44,14 @@ public sealed class StaffContactClient(
     {
         var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
         if (string.IsNullOrEmpty(token))
+        {
+            // Sin credencial M2M (secreto vacío) todo falla igual: se avisa una vez, no en cada vista.
+            if (Interlocked.Exchange(ref _warnedNoToken, 1) == 0)
+                logger.LogWarning(
+                    "Calendar has no M2M token for Auth: staff names will show as a fallback. Check ServiceAuthClient secret."
+                );
             return null;
+        }
 
         try
         {

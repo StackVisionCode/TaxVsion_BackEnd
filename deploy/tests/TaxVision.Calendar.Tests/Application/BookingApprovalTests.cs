@@ -26,6 +26,7 @@ public sealed class BookingApprovalTests
     private readonly Guid _customer = Guid.NewGuid();
     private readonly Guid _olga = Guid.NewGuid();
     private readonly Guid _andres = Guid.NewGuid();
+    private readonly Guid _carlos = Guid.NewGuid();
     private readonly AppointmentType _type;
     private readonly InMemoryAppointments _appointments = new();
     private readonly InMemoryDirectory _directory = new();
@@ -84,7 +85,8 @@ public sealed class BookingApprovalTests
     private Task<BuildingBlocks.Results.Result<PortalAppointmentResponse>> Book(
         Guid? preparer,
         DateTime start,
-        string key = "k1"
+        string key = "k1",
+        Store? store = null
     ) =>
         BookAsCustomerHandler.Handle(
             new BookAsCustomerCommand(
@@ -98,7 +100,7 @@ public sealed class BookingApprovalTests
                 preparer,
                 start
             ),
-            _store,
+            store ?? _store,
             _directory,
             _appointments,
             new SingleTypeRepository(_type),
@@ -108,6 +110,18 @@ public sealed class BookingApprovalTests
             new Contacts(_olga, _andres),
             new NoScheduleLock(),
             new CountingUnitOfWork(),
+            default
+        );
+
+    private Task<BuildingBlocks.Results.Result<BookingOptionsResponse>> Options(Store store) =>
+        GetBookingOptionsHandler.Handle(
+            new GetBookingOptionsQuery(_tenant, _customer),
+            store,
+            new SingleTypeRepository(_type),
+            _policies,
+            _rules,
+            new NoOffice(),
+            new Contacts(_olga, _andres),
             default
         );
 
@@ -235,7 +249,46 @@ public sealed class BookingApprovalTests
         Assert.Equal(["minato@client.test"], outgoing.Recipients.Select(r => r.Email));
     }
 
-    private sealed class Store(InMemoryAppointments appointments, Guid[] assigned) : IPortalCalendarStore
+    [Fact]
+    public async Task A_client_with_nobody_assigned_books_with_the_office_staff_who_have_hours()
+    {
+        // Andres ve todos los clientes y tiene horario; Carlos también los ve pero no tiene horario.
+        var store = new Store(_appointments, [], office: [_andres, _carlos]);
+
+        var options = await Options(store);
+        var booked = await Book(null, Monday(14), store: store);
+
+        Assert.True(options.Value.Enabled);
+        Assert.Equal("Office", options.Value.PreparerSource);
+        Assert.Equal([_andres], options.Value.Preparers.Select(p => p.UserId));
+        Assert.True(booked.IsSuccess);
+        Assert.Equal(_andres, Assert.Single(_appointments.All).OrganizerUserId);
+    }
+
+    [Fact]
+    public async Task With_someone_assigned_the_office_is_not_offered()
+    {
+        var store = new Store(_appointments, [_olga], office: [_andres]);
+
+        var options = await Options(store);
+        var other = await Book(_andres, Monday(14), store: store);
+
+        Assert.Equal("Assigned", options.Value.PreparerSource);
+        Assert.Equal([_olga], options.Value.Preparers.Select(p => p.UserId));
+        Assert.Equal("Calendar.BookingNotAvailable", other.Error.Code);
+    }
+
+    [Fact]
+    public async Task Nobody_assigned_and_nobody_at_the_office_with_hours_is_no_preparer()
+    {
+        var options = await Options(new Store(_appointments, [], office: [_carlos]));
+
+        Assert.False(options.Value.Enabled);
+        Assert.Equal("NoPreparer", options.Value.Reason);
+    }
+
+    private sealed class Store(InMemoryAppointments appointments, Guid[] assigned, Guid[]? office = null)
+        : IPortalCalendarStore
     {
         private readonly Dictionary<string, Guid> _bookings = [];
 
@@ -265,6 +318,9 @@ public sealed class BookingApprovalTests
             Guid customerId,
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<Guid>>(assigned);
+
+        public Task<IReadOnlyList<Guid>> ListOfficeStaffAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>(office ?? []);
 
         public Task<Guid?> FindBookingAsync(
             Guid tenantId,

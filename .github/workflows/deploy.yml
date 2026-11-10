@@ -690,6 +690,9 @@ jobs:
           RECORDER_MINIO_SECRET=${{ secrets.RECORDER_MINIO_SECRET }}
           # T-20: clave compartida CloudStorage -> content-scanner (red interna). Requerida con :? por ambos.
           CONTENT_SCANNER_API_KEY=${{ secrets.CONTENT_SCANNER_API_KEY }}
+          # Calendar M2M (calendar-worker): lo leen Auth (registro del cliente) y Calendar. Sin él
+          # Calendar no obtiene token: el portal no ve nombres de preparadores ni el dominio de la oficina.
+          CALENDAR_SERVICE_CLIENT_SECRET=${{ secrets.CALENDAR_SERVICE_CLIENT_SECRET }}
           EOF
 
       # Clave RSA de los enlaces de firma (Signature__SignerJwt__PrivateKeyPem). Vive en
