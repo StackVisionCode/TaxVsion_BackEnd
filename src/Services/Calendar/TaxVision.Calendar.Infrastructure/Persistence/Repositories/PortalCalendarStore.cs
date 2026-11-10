@@ -1,3 +1,4 @@
+using BuildingBlocks.Authorization;
 using BuildingBlocks.CustomerVisibility;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Calendar.Application.Portal.Abstractions;
@@ -43,6 +44,18 @@ public sealed class PortalCalendarStore(CalendarDbContext context) : IPortalCale
             .Select(p => p.UserId)
             .Distinct()
             .ToListAsync(ct);
+
+    // Los códigos se guardan como arreglo JSON (["a","b"]): se busca el código entre comillas.
+    public async Task<IReadOnlyList<Guid>> ListOfficeStaffAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var code = $"\"{CustomersPermissions.ViewAll}\"";
+        return await context
+            .UserPermissionsProjections.IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId && p.IsActive && p.PermissionCodesJson.Contains(code))
+            .OrderBy(p => p.CreatedAtUtc)
+            .Select(p => p.UserId)
+            .ToListAsync(ct);
+    }
 
     public async Task<Guid?> FindBookingAsync(
         Guid tenantId,

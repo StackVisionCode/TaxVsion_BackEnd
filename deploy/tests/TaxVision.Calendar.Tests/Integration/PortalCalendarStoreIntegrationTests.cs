@@ -72,6 +72,34 @@ public sealed class PortalCalendarStoreIntegrationTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task The_office_is_the_active_staff_of_the_tenant_who_see_every_client()
+    {
+        var admin = Guid.NewGuid();
+        var employee = Guid.NewGuid();
+        var formerAdmin = Guid.NewGuid();
+        var otherTenantAdmin = Guid.NewGuid();
+        await using (var db = _database.NewContext())
+        {
+            db.UserPermissionsProjections.Add(Projection(_tenant, admin, ["calendar.read", "customers.view_all"]));
+            db.UserPermissionsProjections.Add(Projection(_tenant, employee, ["calendar.read", "customers.view"]));
+            var former = Projection(_tenant, formerAdmin, ["customers.view_all"]);
+            former.MarkInactive();
+            db.UserPermissionsProjections.Add(former);
+            db.UserPermissionsProjections.Add(Projection(_otherTenant, otherTenantAdmin, ["customers.view_all"]));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = _database.NewContext())
+            Assert.Equal([admin], await new PortalCalendarStore(db).ListOfficeStaffAsync(_tenant));
+    }
+
+    private static TaxVision.Calendar.Domain.Permissions.UserPermissionsProjection Projection(
+        Guid tenant,
+        Guid user,
+        string[] codes
+    ) => TaxVision.Calendar.Domain.Permissions.UserPermissionsProjection.Create(tenant, user, 1, codes, []);
+
     private async Task<Guid> SeedAsync(Guid tenant, Guid? customer, Guid? guest)
     {
         var appointment = Appointment

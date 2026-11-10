@@ -28,6 +28,9 @@ public interface IPortalCalendarStore
 
     Task<IReadOnlyList<Guid>> ListAssignedStaffAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
 
+    /// <summary>La oficina: empleados activos que ven todos los clientes (<c>customers.view_all</c>).</summary>
+    Task<IReadOnlyList<Guid>> ListOfficeStaffAsync(Guid tenantId, CancellationToken ct = default);
+
     Task<Guid?> FindBookingAsync(Guid tenantId, Guid customerId, string idempotencyKey, CancellationToken ct = default);
 
     void AddBooking(BookingRequest booking);
