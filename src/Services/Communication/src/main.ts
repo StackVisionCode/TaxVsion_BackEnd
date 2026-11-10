@@ -427,6 +427,7 @@ async function main(): Promise<void> {
   bindSmsConsumers(consumers.register.bind(consumers), { emitter });
   bindCalendarConsumers(consumers.register.bind(consumers), {
     meetings: container.meetings,
+    appointmentRoomLock: container.appointmentRoomLock,
     publisher: container.publisher,
     passcodes: container.passcodes,
     settings: container.settings,
@@ -437,6 +438,10 @@ async function main(): Promise<void> {
     meetingEvents: container.meetingEvents,
     userDirectory: container.userDirectory,
     tenantHostResolver: container.tenantHostResolver,
+    // Invitar a los asistentes de la cita a su sala (el cliente la ve en su portal).
+    customerDirectory: container.customerDirectory,
+    customerPortalAccounts: container.customerPortalAccounts,
+    maxInvitationsPerMeeting: config.meetingInvitations.maxPerMeeting,
   });
   bindSupportConsumers(consumers.register.bind(consumers), {
     supportTickets: container.supportTickets,

@@ -65,6 +65,58 @@ public sealed class AppointmentTypesController(IMessageBus bus) : ControllerBase
             : CreatedAtAction(nameof(List), new { }, result.Value);
     }
 
+    [HttpPut("{typeId:guid}")]
+    [HasPermission(CalendarPermissions.TypesManage)]
+    [RateLimit("calendar.g.update")]
+    public async Task<IActionResult> Update(
+        Guid typeId,
+        [FromBody] CreateAppointmentTypeRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result<AppointmentTypeResponse>>(
+            new UpdateAppointmentTypeCommand(
+                tenantId,
+                typeId,
+                request.Name,
+                request.DefaultDuration,
+                request.ColorHex,
+                request.IsVirtual,
+                request.BlocksOnConflict,
+                request.DailyCap
+            ),
+            ct
+        );
+
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+    }
+
+    [HttpPost("{typeId:guid}/deactivate")]
+    [HasPermission(CalendarPermissions.TypesManage)]
+    [RateLimit("calendar.g.update")]
+    public Task<IActionResult> Deactivate(Guid typeId, CancellationToken ct) => SetActive(typeId, false, ct);
+
+    [HttpPost("{typeId:guid}/reactivate")]
+    [HasPermission(CalendarPermissions.TypesManage)]
+    [RateLimit("calendar.g.update")]
+    public Task<IActionResult> Reactivate(Guid typeId, CancellationToken ct) => SetActive(typeId, true, ct);
+
+    private async Task<IActionResult> SetActive(Guid typeId, bool isActive, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result<AppointmentTypeResponse>>(
+            new SetAppointmentTypeActiveCommand(tenantId, typeId, isActive),
+            ct
+        );
+
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+    }
+
     /// <summary>Siembra los cuatro tipos de arranque. No hace nada si el tenant ya tiene alguno.</summary>
     [HttpPost("install-standard")]
     [HasPermission(CalendarPermissions.TypesManage)]

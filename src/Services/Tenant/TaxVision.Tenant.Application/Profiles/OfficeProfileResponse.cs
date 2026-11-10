@@ -17,5 +17,6 @@ public sealed record OfficeProfileResponse(
     string? BookingUrl,
     string? ReviewUrl,
     long Version,
-    DateTime? UpdatedAtUtc
+    DateTime? UpdatedAtUtc,
+    IReadOnlyList<OfficeClosureResponse>? Closures = null
 );

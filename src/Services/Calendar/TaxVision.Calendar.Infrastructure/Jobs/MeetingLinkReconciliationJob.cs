@@ -82,7 +82,11 @@ internal sealed class MeetingLinkReconciliationJob(
         var orphans = await context
             .Appointments.IgnoreQueryFilters()
             .Where(a =>
-                a.IsVirtual && a.MeetingId == null && a.Status != AppointmentStatus.Cancelled && a.CreatedAtUtc < cutoff
+                a.IsVirtual
+                && a.MeetingId == null
+                && a.Status != AppointmentStatus.Cancelled
+                && a.Status != AppointmentStatus.Requested
+                && a.CreatedAtUtc < cutoff
             )
             .Take(BatchSize)
             .ToListAsync(ct);

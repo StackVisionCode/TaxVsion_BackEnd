@@ -15,6 +15,7 @@ namespace TaxVision.Tenant.Domain.Profiles;
 public sealed class OfficeProfile : ITenantOwned
 {
     private readonly List<DailyOpeningHours> _businessHours = [];
+    private readonly List<OfficeClosure> _closures = [];
 
     private OfficeProfile() { }
 
@@ -34,6 +35,9 @@ public sealed class OfficeProfile : ITenantOwned
     public OfficeAddress? MailingAddress { get; private set; }
     public string DefaultLanguage { get; private set; } = OfficeLanguage.English;
     public IReadOnlyList<DailyOpeningHours> BusinessHours => _businessHours;
+
+    /// <summary>Feriados y días no laborables de la oficina, ordenados por fecha.</summary>
+    public IReadOnlyList<OfficeClosure> Closures => _closures;
     public string? BookingUrl { get; private set; }
     public string? ReviewUrl { get; private set; }
 
@@ -109,6 +113,11 @@ public sealed class OfficeProfile : ITenantOwned
         DefaultLanguage = details.DefaultLanguage;
         _businessHours.Clear();
         _businessHours.AddRange(details.BusinessHours.Days);
+        if (details.Closures is { } closures)
+        {
+            _closures.Clear();
+            _closures.AddRange(closures.Items);
+        }
         BookingUrl = details.BookingUrl;
         ReviewUrl = details.ReviewUrl;
 
@@ -131,6 +140,7 @@ public sealed class OfficeProfile : ITenantOwned
         && SameAddress(MailingAddress, details.MailingAddress)
         && DefaultLanguage == details.DefaultLanguage
         && details.BusinessHours.Matches(_businessHours)
+        && (details.Closures is null || details.Closures.Matches(_closures))
         && BookingUrl == details.BookingUrl
         && ReviewUrl == details.ReviewUrl;
 

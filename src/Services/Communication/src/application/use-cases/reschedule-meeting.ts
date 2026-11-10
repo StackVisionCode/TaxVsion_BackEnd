@@ -21,6 +21,8 @@ export interface RescheduleMeetingCommand {
   readonly hostUserId: string;
   /** ISO 8601 string; null = des-agendar (mantiene el meeting en Scheduled pero sin fecha). */
   readonly newScheduledForUtc: string | null;
+  /** La orden viene de la cita de Calendar (unica que puede mover su sala). */
+  readonly fromAppointment?: boolean;
 }
 
 export interface RescheduleMeetingDeps {
@@ -39,6 +41,12 @@ export async function rescheduleMeeting(
 ): Promise<Result<void>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
+  // La sala de una cita la manda la cita (Calendar): moverla o cancelarla aca la dejaria distinta.
+  if (meeting.toSnapshot().appointmentId && !cmd.fromAppointment) {
+    return Result.fail(
+      makeError('Meeting.ManagedByAppointment', 'This meeting belongs to a calendar appointment. Change the appointment instead.'),
+    );
+  }
 
   const previousScheduledForUtc = meeting.toSnapshot().scheduledForUtc;
   const newDate = cmd.newScheduledForUtc ? new Date(cmd.newScheduledForUtc) : null;

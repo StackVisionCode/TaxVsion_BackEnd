@@ -34,7 +34,8 @@ public static class OfficeProfileResponses
                 null,
                 null,
                 Version: 0,
-                UpdatedAtUtc: null
+                UpdatedAtUtc: null,
+                Closures: []
             )
             : new OfficeProfileResponse(
                 profile.LegalName,
@@ -52,13 +53,22 @@ public static class OfficeProfileResponses
                 profile.BookingUrl,
                 profile.ReviewUrl,
                 profile.Version,
-                profile.UpdatedAtUtc
+                profile.UpdatedAtUtc,
+                profile.Closures.Select(ToResponse).ToList()
             );
 
     internal static OfficeAddressResponse? ToResponse(OfficeAddress? address) =>
         address is null
             ? null
             : new(address.Line1, address.Line2, address.City, address.State, address.PostalCode, address.Country);
+
+    internal static OfficeClosureResponse ToResponse(OfficeClosure closure) =>
+        new(
+            closure.Date.ToString(OfficeClosure.DateFormat, CultureInfo.InvariantCulture),
+            closure.EndDate?.ToString(OfficeClosure.DateFormat, CultureInfo.InvariantCulture),
+            closure.Label,
+            closure.RepeatsYearly
+        );
 
     internal static BusinessHoursResponse ToResponse(DailyOpeningHours hours) =>
         new(

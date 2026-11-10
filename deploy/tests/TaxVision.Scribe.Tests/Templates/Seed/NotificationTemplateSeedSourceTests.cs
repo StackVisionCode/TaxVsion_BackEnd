@@ -187,6 +187,26 @@ public sealed class NotificationTemplateSeedSourceTests
     }
 
     [Fact]
+    public void Attendee_added_has_its_own_template_that_says_who_added_you()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            s => s.EventKey == "calendar.appointment_attendee_added.v1"
+        );
+        Assert.Equal("calendar.appointment_attendee_added.v1", seed.TemplateKey);
+        Assert.Contains("added you", seed.Html);
+
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+        Assert.Empty(used.Except(declared));
+        Assert.True(seed.ContentVersion >= 26, $"ContentVersion {seed.ContentVersion} < 26");
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+    }
+
+    [Fact]
     public void Meeting_invitation_template_is_seeded_with_its_keys_and_a_preheader()
     {
         var seed = Assert.Single(
@@ -305,10 +325,81 @@ public sealed class NotificationTemplateSeedSourceTests
             ("product_name", "TaxOffix"),
         ];
 
+    // ---------- Respuesta a la cita (RSVP): botones solo con enlace, versión subida para republicar ----------
+
+    [Theory]
+    [InlineData("calendar.appointment_scheduled.v1")]
+    [InlineData("calendar.appointment_attendee_added.v1")]
+    [InlineData("calendar.appointment_rescheduled.v1")]
+    [InlineData("communication.meeting.invitation_created.v1")]
+    public void Appointment_emails_show_the_rsvp_buttons_only_with_a_link(string eventKey)
+    {
+        var seed = Assert.Single(NotificationTemplateSeedSource.All, s => s.EventKey == eventKey);
+        Assert.True(seed.ContentVersion >= 27, $"{seed.TemplateKey}: ContentVersion {seed.ContentVersion} < 27");
+        Assert.Contains(seed.Variables, v => v.Name == "rsvp_accept_link" && !v.Required);
+
+        string RenderWith(string? link)
+        {
+            var context = new TemplateContext();
+            foreach (var variable in seed.Variables)
+                context.SetValue(variable.Name, variable.Type == VariableType.Bool ? false : "x");
+            context.SetValue("rsvp_accept_link", link ?? string.Empty);
+            context.SetValue("rsvp_maybe_link", link is null ? string.Empty : link + "-maybe");
+            context.SetValue("rsvp_decline_link", link is null ? string.Empty : link + "-decline");
+            return Parser.Parse(seed.Html).Render(context, NullEncoder.Default);
+        }
+
+        var withLink = RenderWith("https://manfer.taxoffix.io/rsvp#token=t&answer=accepted");
+        Assert.Contains("Will you attend?", withLink);
+        Assert.Contains("href=\"https://manfer.taxoffix.io/rsvp#token=t&answer=accepted\"", withLink);
+        Assert.Contains("Decline", withLink);
+        Assert.DoesNotContain("Will you attend?", RenderWith(null));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Appointment_updated_says_what_changed_and_keeps_the_old_title(bool titleChanged)
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            s => s.EventKey == "calendar.appointment_updated.v1"
+        );
+        Assert.True(seed.ContentVersion >= 28);
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+        Assert.Empty(used.Except(declared));
+
+        var context = new TemplateContext();
+        context.SetValue("appointment_title", "Revisión final");
+        context.SetValue("previous_title", titleChanged ? "Consulta inicial" : string.Empty);
+        context.SetValue("title_changed", titleChanged);
+        context.SetValue("location", "Office 2");
+        context.SetValue("location_changed", true);
+        context.SetValue("description", string.Empty);
+        context.SetValue("description_changed", false);
+        context.SetValue("start_local", "2026-11-20 10:00");
+        context.SetValue("time_zone", "America/New_York");
+        context.SetValue("portal_link", "https://manfer.taxoffix.io");
+        context.SetValue("product_name", "TaxOffix");
+        var html = Parser.Parse(seed.Html).Render(context, NullEncoder.Default);
+
+        Assert.Contains("Revisión final", html);
+        Assert.Contains("Office 2", html);
+        Assert.Contains("2026-11-20 10:00", html);
+        if (titleChanged)
+            Assert.Contains("Consulta inicial", html);
+        else
+            Assert.DoesNotContain("Before:", html);
+    }
+
     // ---------- Reuniones (F6): invitación v2, cancelación, reprogramación y recordatorio ----------
 
     [Theory]
-    [InlineData("communication.meeting.invitation_created.v1", "communication.meeting.invitation", 21)]
+    [InlineData("communication.meeting.invitation_created.v1", "communication.meeting.invitation", 27)]
     [InlineData("communication.meeting.cancelled.v1", "communication.meeting.cancelled.v1", 1)]
     [InlineData("communication.meeting.rescheduled.v1", "communication.meeting.rescheduled.v1", 1)]
     [InlineData("communication.meeting.reminder.v1", "communication.meeting.reminder.v1", 1)]

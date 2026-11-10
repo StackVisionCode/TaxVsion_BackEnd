@@ -45,6 +45,9 @@ class FakeMeetingRepository implements MeetingRepository {
   async findByShortCode(): Promise<null> {
     return null;
   }
+  async findByAppointmentId(): Promise<null> {
+    return null;
+  }
   async findByShortCodeAnyTenant(): Promise<null> {
     return null;
   }
@@ -260,5 +263,50 @@ describe('denyWaitingRoomParticipant use case', () => {
     const denied = harness.emitter.emitted.filter((e) => e.event === 'meeting.participant.denied');
     expect(denied.some((e) => e.kind === 'user')).toBe(true);
     expect(denied.some((e) => e.kind === 'meeting')).toBe(true);
+  });
+});
+
+// B2 (Calendar): la sala de una cita la manda la cita; desde Meetings no se mueve ni se cancela.
+describe('sala de una cita', () => {
+  function appointmentRoom() {
+    const host = { userId: u(), displayName: 'Host' };
+    const scheduled = Meeting.schedule({
+      tenantId: u(),
+      title: 'Return review',
+      host,
+      scheduledForUtc: new Date('2026-08-01T10:00:00Z'),
+      appointmentId: u(),
+    });
+    if (!scheduled.isSuccess) throw new Error();
+    return { meeting: scheduled.value, host };
+  }
+
+  it('cancelar desde Meetings se rechaza con Meeting.ManagedByAppointment', async () => {
+    const harness = buildHarness();
+    const { meeting, host } = appointmentRoom();
+    await harness.meetings.save(meeting);
+
+    const result = await cancelMeeting(
+      { tenantId: meeting.tenantId, correlationId: u(), meetingId: meeting.id, hostUserId: host.userId },
+      harness,
+    );
+
+    expect(result.isSuccess).toBe(false);
+    if (!result.isSuccess) expect(result.error.code).toBe('Meeting.ManagedByAppointment');
+    expect(meeting.toSnapshot().status).toBe('Scheduled');
+  });
+
+  it('reprogramar desde Meetings se rechaza; desde la cita sí se mueve', async () => {
+    const harness = buildHarness();
+    const { meeting, host } = appointmentRoom();
+    await harness.meetings.save(meeting);
+    const base = { tenantId: meeting.tenantId, meetingId: meeting.id, hostUserId: host.userId, newScheduledForUtc: '2026-08-05T15:00:00.000Z' };
+
+    const fromMeetings = await rescheduleMeeting({ ...base, correlationId: u() }, harness);
+    const fromAppointment = await rescheduleMeeting({ ...base, correlationId: u(), fromAppointment: true }, harness);
+
+    expect(fromMeetings.isSuccess).toBe(false);
+    if (!fromMeetings.isSuccess) expect(fromMeetings.error.code).toBe('Meeting.ManagedByAppointment');
+    expect(fromAppointment.isSuccess).toBe(true);
   });
 });

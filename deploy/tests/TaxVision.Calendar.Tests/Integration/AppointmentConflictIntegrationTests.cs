@@ -631,6 +631,9 @@ public sealed class AppointmentConflictIntegrationTests : IAsyncLifetime
             CancellationToken ct = default
         ) => inner.ListAllBlocksForUserAsync(tenantId, userId, ct);
 
+        public Task<BlockedTime?> FindBlockAsync(Guid tenantId, Guid blockId, CancellationToken ct = default) =>
+            inner.FindBlockAsync(tenantId, blockId, ct);
+
         public void AddRule(AvailabilityRule rule) => inner.AddRule(rule);
 
         public void AddBlock(BlockedTime block) => inner.AddBlock(block);

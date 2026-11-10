@@ -55,6 +55,8 @@ export interface MeetingSnapshot {
   /** F6 (T-64): recordatorio T-N enviado (una sola vez). */
   readonly reminderSentAtUtc: Date | null;
   readonly continuationOfMeetingId: string | null;
+  /** Cita de Calendar de la que nació la sala (una sala por cita). */
+  readonly appointmentId?: string | null;
   readonly startedAtUtc: Date | null;
   readonly endedAtUtc: Date | null;
   readonly durationSeconds: number | null;
@@ -109,6 +111,7 @@ export interface ScheduleMeetingInput {
   readonly mediaPolicy?: MeetingMediaPolicy;
   readonly durationPolicy?: MeetingDurationPolicy;
   readonly continuationOfMeetingId?: string | null;
+  readonly appointmentId?: string | null;
   readonly now?: Date;
 }
 
@@ -193,6 +196,7 @@ export class Meeting {
       lastDurationWarningSeconds: null,
       reminderSentAtUtc: null,
       continuationOfMeetingId: input.continuationOfMeetingId ?? null,
+      appointmentId: input.appointmentId ?? null,
       startedAtUtc: null,
       endedAtUtc: null,
       durationSeconds: null,
@@ -408,6 +412,21 @@ export class Meeting {
       scheduledForUtc: input.newScheduledForUtc,
       updatedAtUtc: now,
     };
+    return Result.okVoid();
+  }
+
+  /**
+   * La sala de una cita lleva el nombre de la cita: si en Calendar cambia ("Edit details"), cambia aquí.
+   * Solo mientras no terminó; el mismo nombre no toca nada.
+   */
+  retitle(input: { title: string; now?: Date }): Result<void> {
+    if (this.state.status !== MeetingStatus.Scheduled && this.state.status !== MeetingStatus.Live) {
+      return Result.fail(makeError('Meeting.InvalidTransition', `Cannot rename when ${this.state.status}.`));
+    }
+    const title = input.title.trim().slice(0, 200);
+    if (title.length === 0) return Result.fail(makeError('Meeting.MissingTitle', 'Title is required.'));
+    if (title === this.state.title) return Result.okVoid();
+    this.state = { ...this.state, title, updatedAtUtc: input.now ?? new Date() };
     return Result.okVoid();
   }
 

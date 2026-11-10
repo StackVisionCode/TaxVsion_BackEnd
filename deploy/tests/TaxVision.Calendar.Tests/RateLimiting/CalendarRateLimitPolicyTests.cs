@@ -12,11 +12,14 @@ public sealed class CalendarRateLimitPolicyTests
     private static readonly string[] ExpectedPolicies =
     [
         "calendar.f.read",
+        "calendar.f.portal_read",
         "calendar.g.create",
+        "calendar.g.portal_book",
         "calendar.g.update",
         "calendar.g.delete",
         "calendar.g.rsvp",
         "calendar.h.range",
+        "calendar.h.search",
         "calendar.h.ics",
         "calendar.i.availability",
     ];
@@ -45,11 +48,14 @@ public sealed class CalendarRateLimitPolicyTests
     /// </summary>
     [Theory]
     [InlineData("calendar.f.read")]
+    [InlineData("calendar.f.portal_read")]
     [InlineData("calendar.g.create")]
+    [InlineData("calendar.g.portal_book")]
     [InlineData("calendar.g.update")]
     [InlineData("calendar.g.delete")]
     [InlineData("calendar.g.rsvp")]
     [InlineData("calendar.h.range")]
+    [InlineData("calendar.h.search")]
     [InlineData("calendar.i.availability")]
     public void A_user_scoped_policy_partitions_by_tenant_and_user_with_a_tenant_overlay(string name)
     {

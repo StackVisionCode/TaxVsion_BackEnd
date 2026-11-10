@@ -28,6 +28,32 @@ public sealed record ScheduleAppointmentCommand(
     int? TaxYear,
     bool IsVirtual,
     int? ReminderLeadMinutes = null
+)
+{
+    /// <summary>Nombre y correo de quien agenda (del token); sin correo no se suma como asistente.</summary>
+    public OrganizerContact? Organizer { get; init; }
+
+    /// <summary>Quienes vienen con el alta: personal, cliente o externos.</summary>
+    public IReadOnlyList<ScheduleAttendeeInput> Attendees { get; init; } = [];
+
+    /// <summary>Nombre del cliente cuando la reserva viene del portal; null si la agenda el equipo.</summary>
+    public string? BookedByCustomerName { get; init; }
+
+    /// <summary>La pide un cliente y la oficina debe aprobarla: queda pedida, aparta el horario y no se anuncia.</summary>
+    public bool AwaitingApproval { get; init; }
+}
+
+public sealed record OrganizerContact(string? DisplayName, string? Email);
+
+/// <param name="Accepted">Ya dijo que va (el cliente que reserva su propia cita).</param>
+public sealed record ScheduleAttendeeInput(
+    AttendeeKind Kind,
+    Guid? UserId,
+    Guid? CustomerId,
+    string? DisplayName,
+    string? Email,
+    bool IsRequired,
+    bool Accepted = false
 );
 
 public static class ScheduleAppointmentHandler

@@ -33,6 +33,9 @@ public sealed record TenantProfileChangedIntegrationEvent : IntegrationEvent
     // "en" | "es"; null = inglés.
     public string? DefaultLanguage { get; init; }
     public IReadOnlyList<OfficeBusinessHoursData> BusinessHours { get; init; } = [];
+
+    // Feriados y días no laborables (aditivo): vacío en eventos anteriores.
+    public IReadOnlyList<OfficeClosureData> Closures { get; init; } = [];
     public string? BookingUrl { get; init; }
     public string? ReviewUrl { get; init; }
 
@@ -74,6 +77,12 @@ public sealed record OfficeAddressData(
         );
     }
 }
+
+/// <summary>
+/// Un cierre de la oficina: fecha <c>yyyy-MM-dd</c>, fin opcional (incluido) y si se repite cada año el
+/// mismo día. Fechas del calendario de la oficina, sin hora.
+/// </summary>
+public sealed record OfficeClosureData(string Date, string? EndDate, string Label, bool RepeatsYearly);
 
 /// <summary>Día ISO (Monday…Sunday) con apertura y cierre "HH:mm" en la zona horaria de la oficina.</summary>
 public sealed record OfficeBusinessHoursData(string Day, string Opens, string Closes);

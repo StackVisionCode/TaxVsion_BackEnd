@@ -26,6 +26,17 @@ public static class AvailabilityErrors
         $"The reason cannot exceed {BlockedTime.MaxReasonLength} characters."
     );
 
+    /// <summary>Tocar la agenda de otra persona sin <c>calendar.availability.manage</c>; la web responde 403.</summary>
+    public static readonly Error Forbidden = new(
+        "Calendar.Availability.Forbidden",
+        "You can only change your own availability."
+    );
+
+    public static readonly Error TooManyRules = new(
+        "Calendar.Availability.TooManyRules",
+        "A weekly schedule can have up to 21 windows."
+    );
+
     public static readonly Error BlockNotFound = new(
         "Calendar.Availability.BlockNotFound",
         "The blocked time was not found."

@@ -29,7 +29,8 @@ public static class AppointmentRescheduledDomainEventHandler
             moved.TimeZoneId,
             nameof(EditScope.EntireSeries),
             null,
-            envelope.CorrelationId ?? string.Empty
+            envelope.CorrelationId ?? string.Empty,
+            moved.RsvpTokens
         );
     }
 }

@@ -1,20 +1,30 @@
 using BuildingBlocks.Results;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Availability.Abstractions;
+using TaxVision.Calendar.Application.Office.Abstractions;
 using TaxVision.Calendar.Application.Types.Abstractions;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Availability;
+using TaxVision.Calendar.Domain.Office;
 using TaxVision.Calendar.Domain.Scheduling;
 using Wolverine;
 
 namespace TaxVision.Calendar.Application.Availability.Queries;
 
-public sealed record GetAvailabilityQuery(Guid TenantId, Guid UserId, DateTime FromUtc, DateTime ToUtc, Guid? TypeId);
+public sealed record GetAvailabilityQuery(Guid TenantId, Guid UserId, DateTime FromUtc, DateTime ToUtc, Guid? TypeId)
+{
+    /// <summary>Margen alrededor de cada cita ocupada (política de reserva).</summary>
+    public int BufferMinutes { get; init; }
+
+    /// <summary>La cita que se está moviendo: no se ocupa a sí misma.</summary>
+    public Guid? ExcludeAppointmentId { get; init; }
+}
 
 public sealed record FreeSlotResponse(DateTime StartUtc, DateTime EndUtc);
 
 /// <summary>
-/// Los huecos libres de una persona. Devuelve intervalos y <b>nunca</b> títulos: quien pregunta por la
+/// Los huecos libres de una persona: sus franjas dentro del horario de la oficina y sin sus cierres,
+/// menos citas y bloqueos. Devuelve intervalos y <b>nunca</b> títulos: quien pregunta por la
 /// agenda de un compañero no tiene por qué enterarse de con quién se reúne.
 /// </summary>
 public static class GetAvailabilityHandler
@@ -24,6 +34,7 @@ public static class GetAvailabilityHandler
         IAppointmentRepository appointments,
         IAvailabilityRepository availability,
         IAppointmentTypeRepository types,
+        IOfficeScheduleRepository offices,
         CancellationToken ct
     )
     {
@@ -38,7 +49,13 @@ public static class GetAvailabilityHandler
         var blocks = await availability.ListBlocksAsync(query.TenantId, query.UserId, query.FromUtc, query.ToUtc, ct);
         var busy = await BusyAsync(query, appointments, ct);
 
-        var windows = WorkingWindows.Build(rules, query.FromUtc, query.ToUtc);
+        var office = await offices.GetAsync(query.TenantId, ct);
+        var windows = OfficeCalendar.Restrict(
+            WorkingWindows.Build(rules, query.FromUtc, query.ToUtc),
+            query.FromUtc,
+            query.ToUtc,
+            office?.ToSchedule(rules.Count > 0 ? rules[0].TimeZone.Id : null)
+        );
         var free = ConflictDetector.FreeSlots(query.FromUtc, query.ToUtc, windows, busy, blocks, minimum.Value);
 
         var response = new List<FreeSlotResponse>();
@@ -72,12 +89,26 @@ public static class GetAvailabilityHandler
 
         foreach (var appointment in candidates)
         {
-            if (appointment.Status == AppointmentStatus.Cancelled || !Involves(appointment, query.UserId))
+            if (
+                appointment.Status == AppointmentStatus.Cancelled
+                || appointment.Id == query.ExcludeAppointmentId
+                || !Involves(appointment, query.UserId)
+            )
                 continue;
 
             var expanded = OccurrenceExpander.Expand(appointment, query.FromUtc, query.ToUtc);
-            if (expanded.IsSuccess)
-                busy.AddRange(expanded.Value);
+            if (expanded.IsFailure)
+                continue;
+
+            var buffer = TimeSpan.FromMinutes(query.BufferMinutes);
+            foreach (var occurrence in expanded.Value)
+                busy.Add(
+                    occurrence with
+                    {
+                        StartUtc = occurrence.StartUtc - buffer,
+                        EndUtc = occurrence.EndUtc + buffer,
+                    }
+                );
         }
 
         return busy;

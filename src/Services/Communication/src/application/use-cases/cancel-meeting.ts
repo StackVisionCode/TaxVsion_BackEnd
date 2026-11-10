@@ -21,6 +21,8 @@ export interface CancelMeetingCommand {
   readonly meetingId: string;
   readonly hostUserId: string;
   readonly reason?: string;
+  /** La orden viene de la cita de Calendar (unica que puede cancelar su sala). */
+  readonly fromAppointment?: boolean;
 }
 
 export interface CancelMeetingDeps extends MeetingEventLogDeps {
@@ -44,6 +46,12 @@ export async function cancelMeeting(
 ): Promise<Result<void>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
+  // La sala de una cita la manda la cita (Calendar): moverla o cancelarla aca la dejaria distinta.
+  if (meeting.toSnapshot().appointmentId && !cmd.fromAppointment) {
+    return Result.fail(
+      makeError('Meeting.ManagedByAppointment', 'This meeting belongs to a calendar appointment. Change the appointment instead.'),
+    );
+  }
 
   const result = meeting.cancel({ hostUserId: cmd.hostUserId });
   if (!result.isSuccess) return Result.fail(result.error);

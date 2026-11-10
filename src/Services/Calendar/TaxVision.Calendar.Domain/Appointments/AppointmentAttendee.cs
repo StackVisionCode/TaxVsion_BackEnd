@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using BuildingBlocks.Domain;
 using TaxVision.Calendar.Domain.ValueObjects;
 
@@ -30,6 +31,9 @@ public sealed class AppointmentAttendee : BaseEntity
 
     public DateTime? RespondedAtUtc { get; private set; }
 
+    /// <summary>SHA-256 del enlace de respuesta del correo. Null en los invitados anteriores al enlace.</summary>
+    public byte[]? RsvpTokenHash { get; private set; }
+
     private AppointmentAttendee() { }
 
     internal static AppointmentAttendee Invite(
@@ -52,6 +56,17 @@ public sealed class AppointmentAttendee : BaseEntity
             Response = AttendeeResponse.NeedsAction,
         };
 
+    /// <summary>Un enlace nuevo invalida el anterior: el de la hora vieja ya no responde por la nueva.</summary>
+    internal AttendeeRsvpToken IssueRsvpToken()
+    {
+        var token = RsvpToken.Create();
+        RsvpTokenHash = token.Hash;
+        return new AttendeeRsvpToken(Id, token.Value);
+    }
+
+    internal bool HasRsvpToken(byte[] hash) =>
+        RsvpTokenHash is not null && CryptographicOperations.FixedTimeEquals(RsvpTokenHash, hash);
+
     internal void Respond(AttendeeResponse response, DateTime nowUtc)
     {
         Response = response;
@@ -68,6 +83,10 @@ public sealed class AppointmentAttendee : BaseEntity
         RespondedAtUtc = null;
     }
 
+    /// <summary>
+    /// La misma persona: por su usuario o su cliente. El correo solo cuenta si uno de los dos es un
+    /// externo (sin usuario ni cliente): un empleado y un cliente que comparten correo son dos personas.
+    /// </summary>
     internal bool Matches(Guid? userId, Guid? customerId, string? email) =>
         (userId is not null && userId == UserId)
         || (customerId is not null && customerId == CustomerId)
@@ -75,5 +94,6 @@ public sealed class AppointmentAttendee : BaseEntity
             email is not null
             && Snapshot.Email is not null
             && string.Equals(email, Snapshot.Email, StringComparison.OrdinalIgnoreCase)
+            && ((userId is null && customerId is null) || (UserId is null && CustomerId is null))
         );
 }

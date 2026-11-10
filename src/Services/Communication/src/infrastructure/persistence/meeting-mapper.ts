@@ -77,6 +77,7 @@ export function toDomainMeeting(row: PrismaMeeting, participants: PrismaParticip
     lastDurationWarningSeconds: row.LastDurationWarningSeconds,
     reminderSentAtUtc: row.ReminderSentAtUtc,
     continuationOfMeetingId: row.ContinuationOfMeetingId,
+    appointmentId: row.AppointmentId,
     startedAtUtc: row.StartedAtUtc,
     endedAtUtc: row.EndedAtUtc,
     durationSeconds: row.DurationSeconds,

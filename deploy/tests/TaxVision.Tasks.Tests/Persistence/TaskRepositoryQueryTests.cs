@@ -239,7 +239,7 @@ public sealed class TaskRepositoryQueryTests
             tenantId,
             new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
             new DateTime(2026, 4, 30, 0, 0, 0, DateTimeKind.Utc),
-            null,
+            new TaskQueryFilter(),
             50
         );
 

@@ -3,6 +3,7 @@ using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using NetArchTest.Rules;
 using TaxVision.Calendar.Api.Controllers;
 using TaxVision.Calendar.Application.Meetings.Consumers;
@@ -120,7 +121,7 @@ public sealed class CalendarArchitectureTests
 
     /// <summary>
     /// Cada accion tiene cupo, y cada accion con sesion declara que tipo de actor la puede llamar. El
-    /// feed `.ics` es la unica anonima y por eso no lleva actores: su credencial es la URL.
+    /// feed `.ics` y la respuesta del correo son anonimas y por eso no llevan actores: su credencial es el token.
     /// </summary>
     [Fact]
     public void Every_action_declares_rate_limit_and_actor_types()
@@ -135,7 +136,11 @@ public sealed class CalendarArchitectureTests
                 )
             )
             {
-                if (action.GetCustomAttribute<RateLimitAttribute>() is null)
+                // La respuesta pública (RSVP) no tiene tenant ni token en la ruta: cupo nativo por IP.
+                if (
+                    action.GetCustomAttribute<RateLimitAttribute>() is null
+                    && action.GetCustomAttribute<EnableRateLimitingAttribute>() is null
+                )
                     missing.Add($"{controller.Name}.{action.Name} sin [RateLimit]");
 
                 var anonymous = action.GetCustomAttribute<AllowAnonymousAttribute>() is not null;

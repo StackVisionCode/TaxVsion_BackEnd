@@ -21,6 +21,10 @@ public sealed class AppointmentAttendeeConfiguration : IEntityTypeConfiguration<
         builder.Property(a => a.Response).HasConversion<int>().IsRequired();
         builder.Property(a => a.RespondedAtUtc);
 
+        // Solo el SHA-256 del enlace de respuesta; único para que el hash nunca apunte a dos invitados.
+        builder.Property(a => a.RsvpTokenHash).HasColumnType("varbinary(32)");
+        builder.HasIndex(a => a.RsvpTokenHash).IsUnique().HasFilter("[RsvpTokenHash] IS NOT NULL");
+
         // Nombre y correo son snapshot: dos valores, asi que OwnsOne y no HasConversion.
         builder.OwnsOne(
             a => a.Snapshot,

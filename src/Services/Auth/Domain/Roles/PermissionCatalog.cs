@@ -249,6 +249,8 @@ public static class PermissionCatalog
     public const string CalendarManageAll = CalendarPermissions.ManageAll;
     public const string CalendarTypesManage = CalendarPermissions.TypesManage;
     public const string CalendarAvailabilityManage = CalendarPermissions.AvailabilityManage;
+    public const string CalendarPortalRead = CalendarPermissions.PortalRead;
+    public const string CalendarPortalBook = CalendarPermissions.PortalBook;
 
     // Portal del cliente final
     public const string PortalCallsUse = PortalPermissions.CallsUse;
@@ -1980,6 +1982,30 @@ public static class PermissionCatalog
             "Define the firm's appointment types",
             false
         ),
+        // Restituido (Calendar B4): el horario y los bloqueos propios van con calendar.write; este es
+        // para los de otra persona y la política de reserva del portal. Mismo id que antes.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000178"),
+            CalendarAvailabilityManage,
+            "calendar",
+            "Manage the team's availability and the client booking policy",
+            false
+        ),
+        // Calendar en el portal (D-CAL-H): del cliente, nunca del equipo.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000218"),
+            CalendarPortalRead,
+            "calendar",
+            "The client sees their appointments in the portal",
+            true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000219"),
+            CalendarPortalBook,
+            "calendar",
+            "The client books, cancels and reschedules their own appointments",
+            true
+        ),
         // El unico de este modulo cuyo destinatario esta fuera de la firma: el cliente ve su lista
         // de pedidos, no la tarea interna de la que salieron.
         new(
@@ -2356,6 +2382,8 @@ public static class PermissionCatalog
             [
                 PortalFoldersView,
                 TasksPortalClientRequests,
+                CalendarPortalRead,
+                CalendarPortalBook,
                 PortalForms,
                 // El cliente lee las notas que su preparador marcó ClientVisible (PortalNotesController,
                 // GET /notes/portal). Faltaba en el bundle del rol → el Portal recibía 403 aunque no

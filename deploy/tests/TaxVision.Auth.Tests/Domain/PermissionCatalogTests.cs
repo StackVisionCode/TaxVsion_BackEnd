@@ -252,6 +252,25 @@ public sealed class PermissionCatalogTests
         Assert.DoesNotContain(PermissionCatalog.CommunicationSettingsManage, defaults);
     }
 
+    /// <summary>
+    /// Calendar en el portal (D-CAL-H): el cliente ve sus citas y reserva. Son del cliente, no del
+    /// equipo: nunca en el bundle del empleado ni del admin.
+    /// </summary>
+    [Fact]
+    public void Calendar_portal_permissions_are_for_the_client_only()
+    {
+        var portal = PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal);
+        var employee = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        foreach (var code in new[] { "calendar.portal.read", "calendar.portal.book" })
+        {
+            var definition = PermissionCatalog.All.Single(d => d.Code == code);
+            Assert.True(definition.IsCustomerPortal);
+            Assert.Equal("calendar", definition.Module);
+            Assert.Contains(code, portal);
+            Assert.DoesNotContain(code, employee);
+        }
+    }
+
     [Fact]
     public void Growth_cross_tenant_permission_is_platform_only_and_never_in_tenant_admin_defaults()
     {

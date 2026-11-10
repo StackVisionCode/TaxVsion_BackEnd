@@ -48,6 +48,11 @@ export interface CreateMeetingInvitationInput {
   readonly customerId?: string;
   readonly email?: string;
   readonly name?: string;
+  /**
+   * Sala de una cita de Calendar: el enlace de respuesta del invitado. Solo viaja en el evento hacia
+   * el correo; no se guarda (en Calendar queda su hash).
+   */
+  readonly rsvpToken?: string;
 }
 
 export interface CreateMeetingInvitationsCommand {
@@ -153,7 +158,7 @@ export async function createMeetingInvitations(
     scheduledForUtc: meeting.toSnapshot().scheduledForUtc,
     effective,
   });
-  const issued: Array<{ invitation: MeetingInvitation; plainToken: string }> = [];
+  const issued: Array<{ invitation: MeetingInvitation; plainToken: string; rsvpToken: string | null }> = [];
   for (const invitee of invitees) {
     // Empleado: el userId de Auth ya viene del picker. Cliente: se resuelve su userId de portal
     // activo a partir del customerId (el picker de customers no expone userId). External: sin userId.
@@ -173,7 +178,7 @@ export async function createMeetingInvitations(
       now,
     });
     if (!issueResult.isSuccess) return Result.fail(issueResult.error);
-    issued.push(issueResult.value);
+    issued.push({ ...issueResult.value, rsvpToken: invitee.rsvpToken ?? null });
   }
 
   // El link va al SUBDOMINIO del tenant (bug prod: salía app./client.taxoffix.io). Se resuelve el
@@ -190,7 +195,7 @@ export async function createMeetingInvitations(
   const durationMinutes = meetingSnapshot.scheduledDurationMinutes ?? meetingSnapshot.maxDurationMinutes ?? effective.meeting.defaultDurationMinutes;
 
   const summaries: CreateMeetingInvitationSummary[] = [];
-  for (const { invitation, plainToken } of issued) {
+  for (const { invitation, plainToken, rsvpToken } of issued) {
     await deps.meetings.saveInvitation(invitation);
     const snap = invitation.toSnapshot();
     const joinUrl = buildMeetingJoinUrl({
@@ -227,6 +232,7 @@ export async function createMeetingInvitations(
       timeZone,
       invitedByUserId: command.actorUserId,
       invitedByDisplayName,
+      rsvpToken,
     };
     await deps.publisher.enqueue(event);
     await recordMeetingEvent(deps, {
@@ -281,7 +287,8 @@ export async function createMeetingInvitations(
  * tiene su propia ficha y aqui solo se mira la de la reunion):
  *  - un "externo" con email de staff se invita como empleado (staff + portal con el mismo email: gana
  *    el staff); con email de UN cliente, como cliente (con varios clientes con ese email queda externo);
- *  - quien ya tiene una invitacion abierta en la reunion (o se repite en el lote) no se vuelve a invitar.
+ *  - quien ya tiene una invitacion abierta en la reunion (o se repite en el lote) no se vuelve a invitar:
+ *    la misma persona, por su usuario; el correo solo cuenta para externos (y clientes sin cuenta).
  */
 async function normalizeInvitees(
   tenantId: string,
@@ -290,27 +297,40 @@ async function normalizeInvitees(
   now: Date,
   deps: CreateMeetingInvitationsDeps,
 ): Promise<{ invitees: CreateMeetingInvitationInput[]; skipped: SkippedMeetingInvitee[] }> {
-  const taken = new Set<string>();
+  // Una invitación por persona, no por buzón (CAL-10): un empleado y un cliente que comparten correo
+  // son dos. El correo identifica solo a un externo (o a un cliente sin cuenta, entre clientes).
+  const takenUsers = new Set<string>();
+  const takenEmails = new Set<string>();
+  const takenCustomerEmails = new Set<string>();
   for (const invitation of existing) {
     const snap = invitation.toSnapshot();
     const open = !snap.revokedAtUtc && !snap.closedAtUtc && snap.expiresAtUtc.getTime() > now.getTime();
     if (!open) continue;
-    if (snap.inviteeEmail) taken.add(emailKey(snap.inviteeEmail));
-    if (snap.inviteeUserId) taken.add(`user:${snap.inviteeUserId}`);
+    if (snap.inviteeUserId) takenUsers.add(snap.inviteeUserId.toLowerCase());
+    if (snap.inviteeEmail) takenEmails.add(emailKey(snap.inviteeEmail));
+    if (snap.inviteeKind === 'Customer' && !snap.inviteeUserId && snap.inviteeEmail) {
+      takenCustomerEmails.add(emailKey(snap.inviteeEmail));
+    }
   }
 
   const invitees: CreateMeetingInvitationInput[] = [];
   const skipped: SkippedMeetingInvitee[] = [];
   for (const input of requested) {
     const invitee = await recognizeInvitee(tenantId, input, deps);
-    const keys = [invitee.email ? emailKey(invitee.email) : null, invitee.userId ? `user:${invitee.userId}` : null].filter(
-      (key): key is string => key !== null,
-    );
-    if (keys.some((key) => taken.has(key))) {
+    const userId = await identityOf(invitee, deps);
+    const email = invitee.email ? emailKey(invitee.email) : null;
+    const duplicate = userId
+      ? takenUsers.has(userId)
+      : invitee.kind === 'Customer'
+        ? !!email && takenCustomerEmails.has(email)
+        : !!email && takenEmails.has(email);
+    if (duplicate) {
       skipped.push({ email: invitee.email ?? null, name: invitee.name ?? null, reason: 'AlreadyInvited' });
       continue;
     }
-    keys.forEach((key) => taken.add(key));
+    if (userId) takenUsers.add(userId);
+    if (email) takenEmails.add(email);
+    if (invitee.kind === 'Customer' && !userId && email) takenCustomerEmails.add(email);
     invitees.push(invitee);
   }
   return { invitees, skipped };
@@ -323,13 +343,28 @@ async function recognizeInvitee(
 ): Promise<CreateMeetingInvitationInput> {
   if (invitee.kind !== 'External' || !invitee.email) return invitee;
   const staff = await deps.userDirectory?.findActiveStaffByEmail?.(tenantId, invitee.email).catch(() => null);
-  if (staff) return { kind: 'Employee', userId: staff.userId, email: staff.email, name: staff.displayName };
+  // Reconocerlo no le quita su enlace de respuesta.
+  const rsvp = invitee.rsvpToken ? { rsvpToken: invitee.rsvpToken } : {};
+  if (staff) return { kind: 'Employee', userId: staff.userId, email: staff.email, name: staff.displayName, ...rsvp };
   const customers = (await deps.customerDirectory?.findActiveByEmail?.(tenantId, invitee.email).catch(() => [])) ?? [];
   const [customer] = customers;
   if (customers.length === 1 && customer) {
-    return { kind: 'Customer', customerId: customer.customerId, email: customer.email, name: customer.displayName };
+    return { kind: 'Customer', customerId: customer.customerId, email: customer.email, name: customer.displayName, ...rsvp };
   }
   return invitee;
+}
+
+/** El usuario con que queda la invitación: el del empleado o el del portal del cliente. */
+async function identityOf(
+  invitee: CreateMeetingInvitationInput,
+  deps: CreateMeetingInvitationsDeps,
+): Promise<string | null> {
+  if (invitee.userId) return invitee.userId.toLowerCase();
+  if (invitee.kind === 'Customer' && invitee.customerId) {
+    const account = await deps.customerPortalAccounts.findActiveByCustomerId(invitee.customerId);
+    return account?.userId?.toLowerCase() ?? null;
+  }
+  return null;
 }
 
 function emailKey(email: string): string {

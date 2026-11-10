@@ -236,15 +236,28 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
         return Task.FromResult<IReadOnlyList<TaskItem>>([.. _tasks.Where(t => t.TenantId == tenantId)]);
     }
 
+    public TaskQueryFilter? LastCalendarFilter { get; private set; }
+
     public Task<IReadOnlyList<TaskItem>> ListForCalendarAsync(
         Guid tenantId,
         DateTime fromUtc,
         DateTime toUtc,
-        Guid? assigneeUserId,
+        TaskQueryFilter filter,
         int take,
         Guid? assignedToUserId = null,
         CancellationToken ct = default
-    ) => throw new NotImplementedException();
+    )
+    {
+        LastCalendarFilter = filter;
+        return Task.FromResult<IReadOnlyList<TaskItem>>([
+            .. _tasks
+                .Where(t =>
+                    t.TenantId == tenantId && t.Due is { } due && due.DueAtUtc >= fromUtc && due.DueAtUtc <= toUtc
+                )
+                .OrderBy(t => t.Due!.DueAtUtc)
+                .Take(take),
+        ]);
+    }
 
     public Task<IReadOnlyList<TaskItem>> ListByIdsAsync(
         Guid tenantId,

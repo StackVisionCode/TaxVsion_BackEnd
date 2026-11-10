@@ -19,6 +19,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 {
     public const int MaxAttendees = 100;
 
+    /// <summary>El límite de la columna: pasarlo era un 500 en vez de un 400.</summary>
+    public const int MaxDescriptionLength = 4000;
+
     public AppointmentTitle Title { get; private set; } = default!;
 
     public string? Description { get; private set; }
@@ -135,7 +138,10 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         Location? location = null,
         Guid? customerId = null,
         int? taxYear = null,
-        bool isVirtual = false
+        bool isVirtual = false,
+        IReadOnlyList<InitialAttendee>? attendees = null,
+        string? bookedByCustomerName = null,
+        bool awaitingApproval = false
     )
     {
         if (organizerUserId == Guid.Empty)
@@ -150,7 +156,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             Title = title,
             Description = description,
             Location = location,
-            Status = AppointmentStatus.Confirmed,
+            // Pedida en el portal con aprobación: espera a la oficina, pero ya aparta el horario.
+            Status = awaitingApproval ? AppointmentStatus.Requested : AppointmentStatus.Confirmed,
             AppointmentTypeId = appointmentTypeId,
             OrganizerUserId = organizerUserId,
             Timing = timing,
@@ -161,6 +168,43 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         };
         appointment.SetTenant(tenantId);
 
+        // Llegan con el alta: el aviso de "cita nueva" ya los incluye, así que no se anuncian aparte.
+        var rsvpTokens = new List<AttendeeRsvpToken>();
+        foreach (var initial in attendees ?? [])
+        {
+            if (appointment._attendees.Count >= MaxAttendees)
+                return Result.Failure<Appointment>(AppointmentErrors.TooManyAttendees);
+            if (appointment.Find(initial.UserId, initial.CustomerId, initial.Snapshot.Email) is not null)
+                continue;
+            var attendee = AppointmentAttendee.Invite(
+                appointment.Id,
+                initial.Kind,
+                initial.UserId,
+                initial.CustomerId,
+                initial.Snapshot,
+                initial.IsRequired
+            );
+            if (initial.Accepted)
+                attendee.Respond(AttendeeResponse.Accepted, nowUtc);
+            rsvpTokens.Add(attendee.IssueRsvpToken());
+            appointment._attendees.Add(attendee);
+        }
+
+        // Una solicitud no se anuncia como cita: sin sala, avisos ni recordatorios hasta que se apruebe.
+        if (awaitingApproval)
+        {
+            appointment.AddDomainEvent(
+                new AppointmentBookingRequestedDomainEvent(
+                    appointment.Id,
+                    tenantId,
+                    organizerUserId,
+                    string.IsNullOrWhiteSpace(bookedByCustomerName) ? null : bookedByCustomerName.Trim(),
+                    nowUtc
+                )
+            );
+            return Result.Success(appointment);
+        }
+
         appointment.AddDomainEvent(
             new AppointmentScheduledDomainEvent(
                 appointment.Id,
@@ -168,7 +212,12 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 organizerUserId,
                 appointmentTypeId,
                 isVirtual,
-                nowUtc
+                nowUtc,
+                [.. rsvpTokens],
+                // La reservó el cliente en el portal: el aviso al preparador lo dice.
+                string.IsNullOrWhiteSpace(bookedByCustomerName)
+                    ? null
+                    : bookedByCustomerName.Trim()
             )
         );
 
@@ -181,12 +230,153 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (allowed.IsFailure)
             return allowed;
 
+        ApplyReschedule(timing, actingUserId, nowUtc, keepGoingCustomerId: null);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// La oficina aprueba la solicitud del cliente: queda confirmada y recién ahí se anuncia como una cita
+    /// nueva (sala, avisos, recordatorios). Con <paramref name="assignee"/> se la da a otro empleado, que
+    /// pasa a organizarla y la acepta.
+    /// </summary>
+    public Result ApproveRequest(Guid actingUserId, bool canManageAll, AppointmentAssignee? assignee, DateTime nowUtc)
+    {
+        if (Status != AppointmentStatus.Requested)
+            return Result.Failure(AppointmentErrors.NotARequest);
+        if (!canManageAll && actingUserId != OrganizerUserId)
+            return Result.Failure(AppointmentErrors.NotTheOrganizer);
+
+        if (assignee is not null && assignee.UserId != OrganizerUserId)
+            HandTo(assignee, nowUtc);
+
+        Status = AppointmentStatus.Confirmed;
+        var rsvpTokens = new List<AttendeeRsvpToken>();
+        foreach (var attendee in _attendees)
+            rsvpTokens.Add(attendee.IssueRsvpToken());
+
+        AddDomainEvent(
+            new AppointmentScheduledDomainEvent(
+                Id,
+                TenantId,
+                OrganizerUserId,
+                AppointmentTypeId,
+                IsVirtual,
+                nowUtc,
+                [.. rsvpTokens],
+                ApprovedRequest: true
+            )
+        );
+        return Result.Success();
+    }
+
+    /// <summary>La oficina rechaza la solicitud: se libera el horario y el cliente se entera del motivo.</summary>
+    public Result DeclineRequest(Guid actingUserId, bool canManageAll, string? reason, DateTime nowUtc)
+    {
+        if (Status != AppointmentStatus.Requested)
+            return Result.Failure(AppointmentErrors.NotARequest);
+        if (!canManageAll && actingUserId != OrganizerUserId)
+            return Result.Failure(AppointmentErrors.NotTheOrganizer);
+
+        Status = AppointmentStatus.Cancelled;
+        CancellationReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        CancelledAtUtc = nowUtc;
+        AddDomainEvent(
+            new AppointmentBookingDeclinedDomainEvent(Id, TenantId, CancellationReason, actingUserId, nowUtc)
+        );
+        return Result.Success();
+    }
+
+    /// <summary>El empleado nuevo organiza y acepta; el anterior deja de figurar como asistente.</summary>
+    private void HandTo(AppointmentAssignee assignee, DateTime nowUtc)
+    {
+        var previous = OrganizerUserId;
+        _attendees.RemoveAll(a => a.UserId == previous);
+        OrganizerUserId = assignee.UserId;
+
+        var existing = Find(assignee.UserId, null, null);
+        if (existing is null)
+        {
+            existing = AppointmentAttendee.Invite(
+                Id,
+                AttendeeKind.InternalUser,
+                assignee.UserId,
+                null,
+                assignee.Snapshot,
+                true
+            );
+            _attendees.Add(existing);
+        }
+
+        existing.Respond(AttendeeResponse.Accepted, nowUtc);
+        ChildrenRevision++;
+    }
+
+    /// <summary>
+    /// El cliente de la cita la cancela desde el portal. Solo su propia cita y nunca una serie: una serie
+    /// se cambia con la oficina. El plazo lo pone la política de la oficina, que es otro agregado.
+    /// </summary>
+    public Result CancelByCustomer(Guid customerId, Guid portalUserId, string? reason, DateTime nowUtc)
+    {
+        var allowed = EnsureCustomerCanChange(customerId);
+        if (allowed.IsFailure)
+            return allowed;
+
+        ApplyCancel(portalUserId, reason, nowUtc, null, null);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// El cliente mueve su cita. Las respuestas de los demás vuelven a cero, pero él eligió la hora nueva:
+    /// sigue yendo, sin un "respondió" aparte. Un solo hecho: se movió.
+    /// </summary>
+    public Result RescheduleByCustomer(EventTiming timing, Guid customerId, Guid portalUserId, DateTime nowUtc)
+    {
+        var allowed = EnsureCustomerCanChange(customerId);
+        if (allowed.IsFailure)
+            return allowed;
+
+        ApplyReschedule(timing, portalUserId, nowUtc, keepGoingCustomerId: customerId);
+        return Result.Success();
+    }
+
+    /// <summary>Es del cliente: por su <see cref="CustomerId"/> o porque está invitado como cliente.</summary>
+    public bool BelongsToCustomer(Guid customerId)
+    {
+        if (CustomerId == customerId)
+            return true;
+        foreach (var attendee in _attendees)
+        {
+            if (attendee.CustomerId == customerId)
+                return true;
+        }
+
+        return false;
+    }
+
+    private Result EnsureCustomerCanChange(Guid customerId)
+    {
+        if (Status == AppointmentStatus.Cancelled)
+            return Result.Failure(AppointmentErrors.CancelledIsFinal);
+        if (!BelongsToCustomer(customerId))
+            return Result.Failure(AppointmentErrors.NotTheCustomer);
+        return IsRecurring ? Result.Failure(AppointmentErrors.SeriesChangedByOffice) : Result.Success();
+    }
+
+    private void ApplyReschedule(EventTiming timing, Guid actingUserId, DateTime nowUtc, Guid? keepGoingCustomerId)
+    {
         var previousStartUtc = Timing.StartUtc;
         Timing = timing;
 
         // Quien acepto el martes a las 9 no acepto el jueves a las 4.
-        foreach (var attendee in _attendees)
-            attendee.ResetResponse();
+        var rsvpTokens = ResetResponses();
+        if (keepGoingCustomerId is { } customerId)
+        {
+            foreach (var attendee in _attendees)
+            {
+                if (attendee.CustomerId == customerId)
+                    attendee.Respond(AttendeeResponse.Accepted, nowUtc);
+            }
+        }
 
         AddDomainEvent(
             new AppointmentRescheduledDomainEvent(
@@ -197,11 +387,10 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 timing.EndUtc,
                 timing.TimeZone.Id,
                 actingUserId,
-                nowUtc
+                nowUtc,
+                rsvpTokens
             )
         );
-
-        return Result.Success();
     }
 
     /// <param name="scope">Alcance que se anuncia; null es la cita entera.</param>
@@ -221,6 +410,18 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (!canManageAll && actingUserId != OrganizerUserId)
             return Result.Failure(AppointmentErrors.NotTheOrganizer);
 
+        ApplyCancel(actingUserId, reason, nowUtc, scope, originalStartUtc);
+        return Result.Success();
+    }
+
+    private void ApplyCancel(
+        Guid actingUserId,
+        string? reason,
+        DateTime nowUtc,
+        EditScope? scope,
+        DateTime? originalStartUtc
+    )
+    {
         Status = AppointmentStatus.Cancelled;
         CancellationReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         CancelledAtUtc = nowUtc;
@@ -236,8 +437,6 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 originalStartUtc
             )
         );
-
-        return Result.Success();
     }
 
     /// <summary>
@@ -324,6 +523,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             return Result.Failure<AppointmentAttendee>(AppointmentErrors.AttendeeAlreadyAdded);
 
         var attendee = AppointmentAttendee.Invite(Id, kind, userId, customerId, snapshot, isRequired);
+        var rsvp = attendee.IssueRsvpToken();
         _attendees.Add(attendee);
         ChildrenRevision++;
 
@@ -336,7 +536,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 nowUtc,
                 userId,
                 customerId,
-                snapshot.Email
+                snapshot.Email,
+                rsvp.Token
             )
         );
 
@@ -392,6 +593,86 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 nowUtc,
                 OrganizerUserId,
                 userId
+            )
+        );
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Título, descripción y lugar. La hora va por <see cref="Reschedule"/> y las respuestas no se tocan:
+    /// quien aceptó la cita de las 10 sigue yendo aunque cambie el nombre. Sin cambios no anuncia nada.
+    /// </summary>
+    public Result EditDetails(
+        AppointmentTitle title,
+        string? description,
+        Location? location,
+        Guid actingUserId,
+        bool canManageAll,
+        DateTime nowUtc
+    )
+    {
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
+        if (allowed.IsFailure)
+            return allowed;
+
+        var cleanDescription = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        if (cleanDescription is { Length: > MaxDescriptionLength })
+            return Result.Failure(AppointmentErrors.DescriptionTooLong);
+
+        var changed = new List<string>(3);
+        if (title.Value != Title.Value)
+            changed.Add("Title");
+        if (cleanDescription != Description)
+            changed.Add("Description");
+        if (location?.Value != Location?.Value)
+            changed.Add("Location");
+        if (changed.Count == 0)
+            return Result.Success();
+
+        var previousTitle = Title.Value;
+        Title = title;
+        Description = cleanDescription;
+        Location = location;
+
+        AddDomainEvent(
+            new AppointmentDetailsChangedDomainEvent(Id, TenantId, previousTitle, [.. changed], actingUserId, nowUtc)
+        );
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// La respuesta desde el enlace del correo: el token dice quién responde. Solo una respuesta real;
+    /// volver a "sin responder" no es algo que pida nadie.
+    /// </summary>
+    public Result RespondByRsvp(string token, AttendeeResponse response, DateTime nowUtc)
+    {
+        if (Status == AppointmentStatus.Cancelled)
+            return Result.Failure(AppointmentErrors.CancelledIsFinal);
+
+        if (response == AttendeeResponse.NeedsAction)
+            return Result.Failure(AppointmentErrors.InvalidResponse);
+
+        var attendee = FindByRsvpToken(token);
+        if (attendee is null)
+            return Result.Failure(AppointmentErrors.AttendeeNotFound);
+
+        // Pasada la cita el enlace ya no responde: un correo viejo no reescribe la historia.
+        if (Timing.EndUtc is { } endUtc && nowUtc > endUtc)
+            return Result.Failure(AppointmentErrors.RsvpClosed);
+
+        attendee.Respond(response, nowUtc);
+        ChildrenRevision++;
+
+        AddDomainEvent(
+            new AppointmentAttendeeRespondedDomainEvent(
+                Id,
+                TenantId,
+                attendee.Id,
+                response,
+                nowUtc,
+                OrganizerUserId,
+                attendee.UserId
             )
         );
 
@@ -545,8 +826,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         Recurrence = recurrence;
         ReanchorExceptions(positions);
 
-        foreach (var attendee in _attendees)
-            attendee.ResetResponse();
+        var rsvpTokens = ResetResponses();
 
         var newFirstUtc = OccurrenceExpander.FirstStart(this) ?? nowUtc;
         AddDomainEvent(
@@ -558,7 +838,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 newFirstUtc.Add(timing.Duration ?? TimeSpan.FromHours(1)),
                 timing.TimeZone.Id,
                 actingUserId,
-                nowUtc
+                nowUtc,
+                rsvpTokens
             )
         );
 
@@ -761,6 +1042,32 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         }
 
         return null;
+    }
+
+    /// <summary>El invitado dueño del enlace; null si el enlace no es de esta cita o ya se reemplazó.</summary>
+    public AppointmentAttendee? FindByRsvpToken(string token)
+    {
+        var hash = RsvpToken.HashOf(token);
+        foreach (var attendee in _attendees)
+        {
+            if (attendee.HasRsvpToken(hash))
+                return attendee;
+        }
+
+        return null;
+    }
+
+    /// <summary>Respuestas a cero y enlaces nuevos: los del aviso anterior dejan de responder.</summary>
+    private AttendeeRsvpToken[] ResetResponses()
+    {
+        var tokens = new AttendeeRsvpToken[_attendees.Count];
+        for (var i = 0; i < _attendees.Count; i++)
+        {
+            _attendees[i].ResetResponse();
+            tokens[i] = _attendees[i].IssueRsvpToken();
+        }
+
+        return tokens;
     }
 
     private AppointmentAttendee? FindById(Guid attendeeId)

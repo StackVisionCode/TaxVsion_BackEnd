@@ -510,6 +510,8 @@ export interface MeetingInvitationCreatedEvent extends IntegrationEvent {
   readonly timeZone: string | null;
   readonly invitedByUserId: string;
   readonly invitedByDisplayName: string;
+  /** Sala de una cita: enlace de respuesta del invitado (credencial; no va a logs). Null en reuniones sueltas. */
+  readonly rsvpToken?: string | null;
 }
 
 /** @since F6 — join-meeting.ts: un invitado con cuenta (reutilizable) o un guest (unico) uso su token. */

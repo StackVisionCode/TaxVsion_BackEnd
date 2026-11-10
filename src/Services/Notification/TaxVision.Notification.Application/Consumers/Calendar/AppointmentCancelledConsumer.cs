@@ -33,25 +33,44 @@ public static class AppointmentCancelledConsumer
         if (recipients.Count == 0)
             return;
 
+        // Un aviso por persona: con sala, los invitados reciben el de Communication.
+        var direct = CalendarRecipients.WithoutRoomInvitees(
+            evt.Recipients,
+            evt.MeetingId is not null,
+            evt.OrganizerUserId
+        );
+
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            await CalendarRecipients.PublishInAppAsync(
+            await CalendarRecipients.PushAsync(
                 dispatcher,
                 evt.Recipients,
+                evt.TenantId,
+                "Appointment cancelled",
+                "It was taken off your calendar.",
+                NotificationKinds.CalendarAppointmentCancelled,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
+
+            await CalendarRecipients.PublishInAppAsync(
+                dispatcher,
+                direct,
                 evt.TenantId,
                 evt.AppointmentId,
                 evt.EventId,
                 NotificationKinds.CalendarAppointmentCancelled,
                 "calendar.appointment_cancelled.v1",
                 evt.OccurredOn,
-                "Cita cancelada",
+                "Appointment cancelled",
                 correlation.CorrelationId,
                 customerId: null,
                 ct
             );
 
             await CalendarRecipients.QueueByAudienceAsync(
-                recipients,
+                direct,
                 evt.TenantId,
                 TemplateKey,
                 NotificationKinds.CalendarAppointmentCancelled,

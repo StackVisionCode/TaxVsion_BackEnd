@@ -22,6 +22,9 @@ public interface IAvailabilityRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Un bloqueo por id (tracked); null si no existe en el tenant.</summary>
+    Task<BlockedTime?> FindBlockAsync(Guid tenantId, Guid blockId, CancellationToken ct = default);
+
     void AddRule(AvailabilityRule rule);
 
     void AddBlock(BlockedTime block);

@@ -91,17 +91,38 @@ public sealed class MeetingInvitationCreatedConsumerTests
         var email = Assert.Single(harness.Gateway.Queued);
         var attachment = Assert.Single(email.InlineAttachments!);
         Assert.Equal("invite.ics", attachment.FileName);
-        Assert.StartsWith("text/calendar; method=REQUEST", attachment.ContentType);
+        Assert.StartsWith("text/calendar; method=PUBLISH", attachment.ContentType);
         var ics = InlineAttachmentReader.Text(attachment);
-        Assert.Contains("METHOD:REQUEST", ics);
+        Assert.Contains("METHOD:PUBLISH", ics);
         Assert.Contains($"UID:meeting:{MeetingId:D}@taxoffix.io", ics);
         Assert.Contains("SEQUENCE:0", ics);
         Assert.Contains("DTSTART:20261105T180000Z", ics);
         Assert.Contains("DTEND:20261105T184500Z", ics);
-        Assert.Contains(
-            "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=Cliente:mailto:cliente@example.com",
-            ics.Replace("\r\n ", string.Empty)
-        );
+        // La respuesta va por los botones del correo, no por el calendario del invitado.
+        Assert.DoesNotContain("RSVP=TRUE", ics);
+    }
+
+    /// <summary>La sala de una cita: el invitado responde con su enlace, en el host de la oficina.</summary>
+    [Fact]
+    public async Task An_appointment_room_invitation_carries_the_rsvp_buttons()
+    {
+        var harness = new Harness();
+
+        await Handle(harness, Invitation("cliente@example.com") with { RsvpToken = "tok-1" });
+
+        var variables = harness.Render.LastVariables;
+        Assert.Equal("https://manfer.taxproffice.com/rsvp#token=tok-1&answer=accepted", variables["rsvp_accept_link"]);
+        Assert.Equal("https://manfer.taxproffice.com/rsvp#token=tok-1&answer=declined", variables["rsvp_decline_link"]);
+    }
+
+    [Fact]
+    public async Task A_meeting_that_is_not_an_appointment_has_no_rsvp_buttons()
+    {
+        var harness = new Harness();
+
+        await Handle(harness, Invitation("cliente@example.com"));
+
+        Assert.False(harness.Render.LastVariables.ContainsKey("rsvp_accept_link"));
     }
 
     /// <summary>Una reunión en curso no tiene fecha: el correo dice "en curso" y no adjunta calendario.</summary>
