@@ -4,7 +4,8 @@ WORKDIR /src
 ENV PATH="${PATH}:/root/.dotnet/tools"
 
 COPY . .
-RUN dotnet tool install --global dotnet-ef --version 10.0.9
+# dotnet-ef sale del manifiesto del repo (dotnet-tools.json): con él presente, la global no se usa.
+RUN dotnet tool restore
 RUN dotnet restore TaxVision.slnx
 RUN dotnet build TaxVision.slnx -c Release --no-restore
 
