@@ -3270,6 +3270,51 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000178"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "calendar.availability.manage",
+                            Description = "Manage the team's availability and the client booking policy",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "calendar",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000218"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "calendar.portal.read",
+                            Description = "The client sees their appointments in the portal",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "calendar",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000219"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "calendar.portal.book",
+                            Description = "The client books, cancels and reschedules their own appointments",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "calendar",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000173"),
                             AllowedActorTypes = "CustomerPortal",
                             Code = "tasks.portal.client_requests",

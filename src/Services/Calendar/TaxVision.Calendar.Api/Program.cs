@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
@@ -17,8 +18,10 @@ using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Calendar.Api.Controllers;
 using TaxVision.Calendar.Application;
 using TaxVision.Calendar.Application.Backfill;
 using TaxVision.Calendar.Infrastructure;
@@ -91,6 +94,26 @@ if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
     >();
 }
 builder.Services.AddTieredRateLimiting();
+
+// La respuesta pública del correo (RSVP) no tiene tenant ni usuario: cupo nativo por IP y ruta.
+builder.Services.AddRateLimiter(options =>
+{
+    options.UseTaxVisionRejectionResponse();
+    options.AddPolicy(
+        CalendarRsvpController.RateLimitPolicy,
+        context =>
+            TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                $"{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}:{context.Request.Path.Value?.ToLowerInvariant()}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            )
+    );
+});
 
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
@@ -195,6 +218,7 @@ app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

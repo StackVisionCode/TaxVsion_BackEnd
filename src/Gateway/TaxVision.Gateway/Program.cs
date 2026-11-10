@@ -67,6 +67,7 @@ builder
                             "X-RateLimit-Policy",
                             "X-RateLimit-Layer",
                             "X-Seat-Slot-Gated",
+                            "X-Result-Truncated",
                             "ETag"
                         )
             )

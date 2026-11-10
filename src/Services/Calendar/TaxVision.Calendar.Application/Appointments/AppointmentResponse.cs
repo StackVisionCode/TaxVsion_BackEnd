@@ -1,5 +1,6 @@
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
+using TaxVision.Calendar.Domain.Types;
 
 namespace TaxVision.Calendar.Application.Appointments;
 
@@ -87,10 +88,21 @@ public sealed record OccurrenceResponse(
     DateTime EndUtc,
     bool IsException,
     string Title,
-    string? Location
+    string? Location,
+    // Lo que el calendario necesita para pintar y enlazar sin pedir el detalle de cada cita.
+    Guid AppointmentTypeId,
+    string? TypeName,
+    string? ColorHex,
+    string Status,
+    Guid OrganizerUserId,
+    Guid? CustomerId,
+    bool IsVirtual,
+    Guid? MeetingId,
+    string? MeetingShortCode,
+    bool IsRecurring
 )
 {
-    public static OccurrenceResponse From(Occurrence occurrence) =>
+    public static OccurrenceResponse From(Occurrence occurrence, Appointment appointment, AppointmentType? type) =>
         new(
             occurrence.AppointmentId,
             occurrence.OriginalStartUtc,
@@ -98,7 +110,17 @@ public sealed record OccurrenceResponse(
             occurrence.EndUtc,
             occurrence.IsException,
             occurrence.Title,
-            occurrence.Location
+            occurrence.Location,
+            appointment.AppointmentTypeId,
+            type?.Name,
+            type?.ColorHex,
+            appointment.Status.ToString(),
+            appointment.OrganizerUserId,
+            appointment.CustomerId,
+            appointment.IsVirtual,
+            appointment.MeetingId,
+            appointment.MeetingShortCode,
+            appointment.IsRecurring
         );
 }
 

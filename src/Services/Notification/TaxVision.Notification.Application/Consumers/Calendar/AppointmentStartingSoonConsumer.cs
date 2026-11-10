@@ -29,7 +29,7 @@ public static class AppointmentStartingSoonConsumer
 
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            const string title = "Tu cita empieza pronto";
+            const string title = "Your appointment starts soon";
             foreach (var userId in evt.AttendeeUserIds)
             {
                 await dispatcher.RecordInAppAsync(
@@ -48,7 +48,7 @@ public static class AppointmentStartingSoonConsumer
                         "calendar.appointment_starting_soon.v1",
                         evt.OccurredOn,
                         title,
-                        FallbackBody: "Empieza en unos minutos.",
+                        FallbackBody: "It starts in a few minutes.",
                         ResourceId: evt.AppointmentId.ToString()
                     ),
                     ct: ct
@@ -58,7 +58,7 @@ public static class AppointmentStartingSoonConsumer
                     evt.TenantId,
                     userId,
                     title,
-                    "Empieza en unos minutos.",
+                    "It starts in a few minutes.",
                     NotificationCategory.Calendar,
                     "calendar.appointment_starting_soon",
                     evt.EventId,

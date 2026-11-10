@@ -389,6 +389,23 @@ public sealed class AppointmentDomainEventIntegrationTests : IAsyncLifetime
             CancellationToken ct = default
         ) => inner.ListForRangeAsync(tenantId, rangeStartUtc, rangeEndUtc, ct);
 
+        public Task<IReadOnlyList<Appointment>> ListOrganizerTypeForRangeAsync(
+            Guid tenantId,
+            Guid organizerUserId,
+            Guid appointmentTypeId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            CancellationToken ct = default
+        ) =>
+            inner.ListOrganizerTypeForRangeAsync(
+                tenantId,
+                organizerUserId,
+                appointmentTypeId,
+                rangeStartUtc,
+                rangeEndUtc,
+                ct
+            );
+
         public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
             Guid tenantId,
             DateTime rangeStartUtc,

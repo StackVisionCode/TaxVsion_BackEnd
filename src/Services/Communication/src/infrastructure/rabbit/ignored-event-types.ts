@@ -48,8 +48,10 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'billing.invoice_sent.v1',
   // Calendar — Asistentes, avisos y ocurrencias: Notification y Reminder. Una ocurrencia suelta no toca la sala de
   // la serie; la sala la cancela appointment_cancelled y la mueve appointment_rescheduled.
-  'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentAttendeeAddedIntegrationEvent',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentAttendeeRespondedIntegrationEvent',
+  // Solicitudes de reserva del portal: las atiende Notification; la sala se crea recién al aprobar.
+  'calendar.booking_requested.v1',
+  'calendar.booking_declined.v1',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentStartingSoonIntegrationEvent',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.CalendarSeriesSplitIntegrationEvent',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.OccurrenceCancelledIntegrationEvent',

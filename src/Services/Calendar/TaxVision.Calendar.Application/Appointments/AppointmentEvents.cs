@@ -11,19 +11,51 @@ internal static class AppointmentEvents
     /// Los asistentes con correo, con su usuario al lado cuando lo tienen. Un asistente sin correo no
     /// sale: no hay a dónde escribirle.
     /// </summary>
-    public static IReadOnlyList<AppointmentRecipient> RecipientsOf(Appointment appointment)
+    public static IReadOnlyList<AppointmentRecipient> RecipientsOf(
+        Appointment appointment,
+        IReadOnlyList<AttendeeRsvpToken>? rsvpTokens = null
+    )
     {
         var recipients = new List<AppointmentRecipient>();
         foreach (var attendee in appointment.Attendees)
         {
             if (attendee.Snapshot.Email is { } email)
-                recipients.Add(new AppointmentRecipient(email, attendee.UserId));
+                recipients.Add(
+                    new AppointmentRecipient(
+                        email,
+                        attendee.UserId,
+                        attendee.CustomerId,
+                        attendee.Snapshot.DisplayName,
+                        // Quien ya respondió (el organizador, el cliente que reservó) no recibe botones.
+                        attendee.Response == AttendeeResponse.NeedsAction
+                            ? TokenOf(rsvpTokens, attendee.Id)
+                            : null
+                    )
+                );
         }
 
         return recipients;
     }
 
-    public static AppointmentScheduledIntegrationEvent Scheduled(Appointment appointment, string correlationId)
+    /// <summary>El enlace en claro solo lo trae el evento de la operación que lo emitió.</summary>
+    private static string? TokenOf(IReadOnlyList<AttendeeRsvpToken>? rsvpTokens, Guid attendeeId)
+    {
+        foreach (var token in rsvpTokens ?? [])
+        {
+            if (token.AttendeeId == attendeeId)
+                return token.Token;
+        }
+
+        return null;
+    }
+
+    public static AppointmentScheduledIntegrationEvent Scheduled(
+        Appointment appointment,
+        string correlationId,
+        IReadOnlyList<AttendeeRsvpToken>? rsvpTokens = null,
+        string? bookedByCustomerName = null,
+        bool approvedRequest = false
+    )
     {
         var userIds = new List<Guid>();
         foreach (var attendee in appointment.Attendees)
@@ -48,7 +80,9 @@ internal static class AppointmentEvents
             CustomerId = appointment.CustomerId,
             TaxYear = appointment.TaxYear,
             AttendeeUserIds = userIds,
-            Recipients = RecipientsOf(appointment),
+            Recipients = RecipientsOf(appointment, rsvpTokens),
+            BookedByCustomerName = bookedByCustomerName,
+            ApprovedRequest = approvedRequest,
         };
     }
 
@@ -90,7 +124,8 @@ internal static class AppointmentEvents
         string timeZoneId,
         string scope,
         DateTime? originalStartUtc,
-        string correlationId
+        string correlationId,
+        IReadOnlyList<AttendeeRsvpToken>? rsvpTokens = null
     ) =>
         new()
         {
@@ -104,7 +139,8 @@ internal static class AppointmentEvents
             NewEndUtc = newEndUtc,
             TimeZoneId = timeZoneId,
             MeetingId = appointment.MeetingId,
-            Recipients = RecipientsOf(appointment),
+            OrganizerUserId = appointment.OrganizerUserId,
+            Recipients = RecipientsOf(appointment, rsvpTokens),
         };
 
     public static AppointmentCancelledIntegrationEvent Cancelled(
@@ -123,6 +159,7 @@ internal static class AppointmentEvents
             OriginalStartUtc = originalStartUtc,
             Reason = reason,
             MeetingId = appointment.MeetingId,
+            OrganizerUserId = appointment.OrganizerUserId,
             Recipients = RecipientsOf(appointment),
         };
 }

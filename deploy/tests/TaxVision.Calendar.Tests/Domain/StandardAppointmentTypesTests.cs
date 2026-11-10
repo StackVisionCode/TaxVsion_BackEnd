@@ -26,7 +26,7 @@ public sealed class StandardAppointmentTypesTests
         var blocking = types.Where(type => type.BlocksOnConflict).ToArray();
 
         Assert.Single(blocking);
-        Assert.Equal("Firma", blocking[0].Name);
+        Assert.Equal("Signing", blocking[0].Name);
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public sealed class StandardAppointmentTypesTests
         var capped = types.Where(type => type.DailyCap is not null).ToArray();
 
         Assert.Single(capped);
-        Assert.Equal("Entrega de documentos", capped[0].Name);
+        Assert.Equal("Document drop-off", capped[0].Name);
         Assert.Equal(12, capped[0].DailyCap);
     }
 }

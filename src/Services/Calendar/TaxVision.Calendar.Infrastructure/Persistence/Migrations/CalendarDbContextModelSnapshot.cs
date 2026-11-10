@@ -161,12 +161,19 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                     b.Property<int>("Response")
                         .HasColumnType("int");
 
+                    b.Property<byte[]>("RsvpTokenHash")
+                        .HasColumnType("varbinary(32)");
+
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
                     b.HasIndex("AppointmentId");
+
+                    b.HasIndex("RsvpTokenHash")
+                        .IsUnique()
+                        .HasFilter("[RsvpTokenHash] IS NOT NULL");
 
                     b.HasIndex("UserId", "AppointmentId");
 
@@ -327,6 +334,89 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantBackfillStates", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Calendar.Domain.Booking.BookingPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BookableTypeIdsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("BufferMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CustomerChangeCutoffMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxDaysAhead")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinNoticeMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RequiresApproval")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SlotStepMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("BookingPolicies", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.Booking.BookingRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AppointmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("BookingRequests", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Calendar.Domain.Feeds.CalendarFeedToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -368,6 +458,44 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                         .HasFilter("[RevokedAtUtc] IS NULL");
 
                     b.ToTable("CalendarFeedTokens", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.Office.OfficeScheduleProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ClosuresJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("HoursJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("ProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("TimeZoneUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("OfficeSchedules", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Calendar.Domain.Permissions.RolePermissionsProjection", b =>

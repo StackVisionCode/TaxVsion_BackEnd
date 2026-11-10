@@ -56,4 +56,10 @@ public sealed record MeetingInvitationCreatedIntegrationEvent : IntegrationEvent
     public string? TimeZone { get; init; }
     public Guid? InvitedByUserId { get; init; }
     public string? InvitedByDisplayName { get; init; }
+
+    /// <summary>
+    /// Aditivo: el enlace de respuesta del invitado cuando la sala es de una cita de Calendar. Null en
+    /// una reunión suelta (no hay cita a la que responder). Credencial: no se registra en logs.
+    /// </summary>
+    public string? RsvpToken { get; init; }
 }

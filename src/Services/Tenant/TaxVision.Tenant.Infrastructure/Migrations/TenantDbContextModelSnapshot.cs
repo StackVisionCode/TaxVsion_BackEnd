@@ -649,7 +649,37 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                                 .HasForeignKey("OfficeProfileTenantId");
                         });
 
+                    b.OwnsMany("TaxVision.Tenant.Domain.ValueObjects.OfficeClosure", "Closures", b1 =>
+                        {
+                            b1.Property<Guid>("OfficeProfileTenantId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAddOrUpdate();
+
+                            b1.Property<DateOnly>("Date");
+
+                            b1.Property<DateOnly?>("EndDate");
+
+                            b1.Property<string>("Label")
+                                .IsRequired();
+
+                            b1.Property<bool>("RepeatsYearly");
+
+                            b1.HasKey("OfficeProfileTenantId", "__synthesizedOrdinal");
+
+                            b1.ToTable("OfficeProfiles");
+
+                            b1
+                                .ToJson("ClosuresJson")
+                                .HasColumnType("nvarchar(max)");
+
+                            b1.WithOwner()
+                                .HasForeignKey("OfficeProfileTenantId");
+                        });
+
                     b.Navigation("BusinessHours");
+
+                    b.Navigation("Closures");
 
                     b.Navigation("MailingAddress");
 

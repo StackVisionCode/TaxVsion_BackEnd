@@ -41,6 +41,22 @@ public sealed class RescheduleApplierTests
         Assert.Empty(bus.Published.OfType<ReminderTargetMovedIntegrationEvent>());
     }
 
+    [Fact]
+    public async Task A_one_off_cannot_be_moved_into_the_past()
+    {
+        var tenAm = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(3).AddHours(14), DateTimeKind.Utc);
+        var appointment = PointInTime(_tenant, _organizer, tenAm, leadMinutes: 30);
+
+        var result = await Reschedule(
+            appointment,
+            new FakeMessageBus(),
+            OneOff(appointment, DateTime.UtcNow.AddHours(-2))
+        );
+
+        Assert.Equal(TimingErrors.StartsInThePast, result.Error);
+        Assert.Equal(tenAm, appointment.Timing.StartUtc);
+    }
+
     /// <summary>Mismo inicio, otro fin: el aviso vivo sigue valiendo y no se pide otro.</summary>
     [Fact]
     public async Task OneOffEndChangedOnly_LeavesTheLiveReminderAlone()

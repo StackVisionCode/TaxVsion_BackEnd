@@ -171,18 +171,14 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         Guid tenantId,
         DateTime fromUtc,
         DateTime toUtc,
-        Guid? assigneeUserId,
+        TaskQueryFilter filter,
         int take,
         Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
-        var query = OfTenant(tenantId).Where(t => t.Due!.DueAtUtc >= fromUtc && t.Due!.DueAtUtc <= toUtc);
-
-        if (assigneeUserId is { } assignee)
-            query = query.Where(t => t.AssigneeUserId == assignee);
-
-        query = ApplyVisibility(query, tenantId, assignedToUserId);
+        var query = Filtered(tenantId, filter, assignedToUserId)
+            .Where(t => t.Due!.DueAtUtc >= fromUtc && t.Due!.DueAtUtc <= toUtc);
 
         return await query.OrderBy(t => t.Due!.DueAtUtc).ThenBy(t => t.Id).Take(take).ToListAsync(ct);
     }

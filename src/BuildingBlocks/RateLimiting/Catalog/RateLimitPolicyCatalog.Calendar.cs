@@ -48,6 +48,30 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 600
     );
 
+    // Portal: el cliente lee su agenda y los huecos para reservar.
+    public static readonly RateLimitPolicyDefinition CalendarPortalRead = Define(
+        "calendar.f.portal_read",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 120,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 1200
+    );
+
+    // Portal: reservar, cancelar o reprogramar. Pocas por persona; el tope corta el abuso, no el uso.
+    public static readonly RateLimitPolicyDefinition CalendarPortalBook = Define(
+        "calendar.g.portal_book",
+        RateLimitCategory.G,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 20,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 300
+    );
+
     // Un click por invitacion, y las invitaciones llegan de a muchas: cuota de escritura normal.
     public static readonly RateLimitPolicyDefinition CalendarRsvp = Define(
         "calendar.g.rsvp",
@@ -64,6 +88,18 @@ public static partial class RateLimitPolicyCatalog
     // RRULE por request, y el frontend la llama en cada cambio de vista.
     public static readonly RateLimitPolicyDefinition CalendarRange = Define(
         "calendar.h.range",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
+    );
+
+    // Búsqueda del calendario (equipo y portal): LIKE y expansión de series a un año; se llama al escribir.
+    public static readonly RateLimitPolicyDefinition CalendarSearch = Define(
+        "calendar.h.search",
         RateLimitCategory.H,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],

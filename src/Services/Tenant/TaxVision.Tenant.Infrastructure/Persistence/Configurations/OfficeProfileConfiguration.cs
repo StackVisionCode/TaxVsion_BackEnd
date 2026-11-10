@@ -39,5 +39,7 @@ public sealed class OfficeProfileConfiguration : IEntityTypeConfiguration<Office
             }
         );
         b.Navigation(p => p.BusinessHours).HasField("_businessHours");
+        b.OwnsMany(p => p.Closures, closures => closures.ToJson("ClosuresJson"));
+        b.Navigation(p => p.Closures).HasField("_closures");
     }
 }

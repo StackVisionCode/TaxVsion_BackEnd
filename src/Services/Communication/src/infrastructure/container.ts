@@ -6,6 +6,7 @@ import { PrismaOutboxPublisher } from './persistence/prisma-outbox-publisher.js'
 import { PrismaIdempotencyStore } from './persistence/prisma-idempotency-store.js';
 import { PrismaCallRepository } from './persistence/prisma-call-repository.js';
 import { PrismaMeetingRepository } from './persistence/prisma-meeting-repository.js';
+import { PrismaAppointmentRoomLock } from './persistence/prisma-appointment-room-lock.js';
 import { PrismaNotificationRepository } from './persistence/prisma-notification-repository.js';
 import { PrismaProcessedEventStore } from './persistence/prisma-processed-event-store.js';
 import { PrismaUserPermissionsProjectionRepository } from './persistence/prisma-user-permissions-projection.js';
@@ -75,6 +76,7 @@ import type { PresenceService } from '../application/ports/presence-service.js';
 import type { CallRepository } from '../application/ports/call-repository.js';
 import type { TurnCredentialFactory } from '../application/ports/turn-credential-factory.js';
 import type { MeetingRepository } from '../application/ports/meeting-repository.js';
+import type { AppointmentRoomLock } from '../application/ports/appointment-room-lock.js';
 import type { PasscodeHasher } from '../application/ports/passcode-hasher.js';
 import type { NotificationRepository } from '../application/ports/notification-repository.js';
 import type { InAppNotificationRepository } from '../application/ports/in-app-notification-repository.js';
@@ -152,6 +154,8 @@ export interface AppContainer {
   /** F4: agregado de calidad por reunion para `quality_summary.v1`. */
   readonly qualityAggregator: MeetingQualityAggregator;
   readonly meetings: MeetingRepository;
+  /** Una sala por cita de Calendar (candado por cita). */
+  readonly appointmentRoomLock: AppointmentRoomLock;
   /** F3: MeetingEventLog, todo lo que pasa dentro de una reunión (C.3). */
   readonly meetingEvents: MeetingEventLogRepository;
   readonly publisher: IntegrationEventPublisher;
@@ -306,6 +310,7 @@ export function buildContainer(): AppContainer {
     callUsage: new PrismaCallUsageRepository(prisma),
     qualityAggregator: new MeetingQualityAggregator(),
     meetings,
+    appointmentRoomLock: new PrismaAppointmentRoomLock(prisma),
     meetingEvents,
     publisher: new PrismaOutboxPublisher(prisma),
     idempotency: new PrismaIdempotencyStore(prisma, redis),

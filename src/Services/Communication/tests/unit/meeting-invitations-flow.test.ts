@@ -71,6 +71,9 @@ class FakeMeetingRepository implements MeetingRepository {
     }
     return null;
   }
+  async findByAppointmentId(): Promise<null> {
+    return null;
+  }
   async findByShortCodeAnyTenant(): Promise<Meeting | null> {
     return null;
   }
@@ -382,6 +385,38 @@ describe('createMeetingInvitations', () => {
     const invited = harness.emitter.toUser.filter((e) => e.event === 'meeting.invited');
     expect(invited).toHaveLength(1);
     expect(invited[0]?.userId).toBe(portalUserId);
+  });
+
+  it('an employee and a client sharing a mailbox each get their own invitation; an external with it does not', async () => {
+    const harness = buildHarness();
+    const { meeting, host } = liveMeeting();
+    await harness.meetings.save(meeting);
+    const andres = u();
+    const customerId = u();
+    const portalUserId = u();
+    harness.customerPortalAccounts.link(customerId, meeting.tenantId, portalUserId);
+    const shared = 'shared@example.com';
+
+    const result = await createMeetingInvitations(
+      {
+        tenantId: meeting.tenantId,
+        correlationId: u(),
+        meetingId: meeting.id,
+        actorUserId: host.userId,
+        invitees: [
+          { kind: 'Employee', userId: andres, email: shared, name: 'Andres' },
+          { kind: 'Customer', customerId, email: shared, name: 'Minato' },
+          { kind: 'External', email: 'SHARED@example.com', name: 'Same mailbox' },
+        ],
+      },
+      harness,
+    );
+
+    expect(result.isSuccess).toBe(true);
+    if (!result.isSuccess) return;
+    const invitations = (await harness.meetings.listInvitationsByMeeting(meeting.tenantId, meeting.id)).map((i) => i.toSnapshot());
+    expect(invitations.map((i) => i.inviteeUserId).sort()).toEqual([andres, portalUserId].sort());
+    expect(result.value.skipped.map((s) => s.reason)).toEqual(['AlreadyInvited']);
   });
 
   it('an external invitee (no account) is not pushed a realtime notice', async () => {

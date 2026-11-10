@@ -77,6 +77,9 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // Cancelarla cancela la sala (salvo una ocurrencia suelta de la serie).
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentCancelledIntegrationEvent':
     'calendar.appointment_cancelled.v1',
+  // Quien se suma a una cita virtual queda invitado a su sala.
+  'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentAttendeeAddedIntegrationEvent':
+    'calendar.attendee_added.v1',
   // Reparacion: la cita virtual se quedo sin sala. Va por su propio tipo porque el evento de la cita
   // agendada lleva los destinatarios y republicarlo reenviaria la invitacion.
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentMeetingRoomRequestedIntegrationEvent':

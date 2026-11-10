@@ -28,9 +28,9 @@ public static class AppointmentAttendeeRespondedConsumer
         {
             var title = evt.Response switch
             {
-                "Accepted" => "Un asistente acepto la cita",
-                "Declined" => "Un asistente no puede asistir",
-                _ => "Un asistente respondio a la cita",
+                "Accepted" => "An attendee accepted the appointment",
+                "Declined" => "An attendee can't make it",
+                _ => "An attendee replied to the appointment",
             };
 
             await dispatcher.RecordInAppAsync(

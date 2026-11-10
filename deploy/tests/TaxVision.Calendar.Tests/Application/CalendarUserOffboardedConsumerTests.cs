@@ -397,6 +397,9 @@ public sealed class CalendarUserOffboardedConsumerTests
                 Blocks.Where(b => b.TenantId == tenantId && b.UserId == userId).ToList()
             );
 
+        public Task<BlockedTime?> FindBlockAsync(Guid tenantId, Guid blockId, CancellationToken ct = default) =>
+            Task.FromResult(Blocks.FirstOrDefault(b => b.Id == blockId));
+
         public void AddRule(AvailabilityRule rule) => Rules.Add(rule);
 
         public void AddBlock(BlockedTime block) => Blocks.Add(block);
@@ -482,6 +485,15 @@ public sealed class CalendarUserOffboardedConsumerTests
 
         public Task<IReadOnlyList<Appointment>> ListForRangeAsync(
             Guid tenantId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<Appointment>> ListOrganizerTypeForRangeAsync(
+            Guid tenantId,
+            Guid organizerUserId,
+            Guid appointmentTypeId,
             DateTime rangeStartUtc,
             DateTime rangeEndUtc,
             CancellationToken ct = default

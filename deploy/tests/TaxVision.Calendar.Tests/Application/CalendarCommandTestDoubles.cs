@@ -39,12 +39,19 @@ internal sealed class InMemoryAppointments : IAppointmentRepository
                 : Result.Failure<Appointment>(AppointmentErrors.NotFound)
         );
 
+    // Como el real: las series siempre, las puntuales si tocan el rango.
     public Task<IReadOnlyList<Appointment>> ListForRangeAsync(
         Guid tenantId,
         DateTime rangeStartUtc,
         DateTime rangeEndUtc,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
+    ) =>
+        Task.FromResult<IReadOnlyList<Appointment>>([
+            .. All.Where(a =>
+                a.TenantId == tenantId
+                && (a.Recurrence != null || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc))
+            ),
+        ]);
 
     public Task<IReadOnlyList<Appointment>> ListForUserRangeAsync(
         Guid tenantId,
@@ -98,6 +105,18 @@ internal sealed class InMemoryAppointments : IAppointmentRepository
         CancellationToken ct = default
     ) => Task.FromResult(0);
 
+    public Task<IReadOnlyList<Appointment>> ListOrganizerTypeForRangeAsync(
+        Guid tenantId,
+        Guid organizerUserId,
+        Guid appointmentTypeId,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<Appointment>>(
+            All.Where(a => a.OrganizerUserId == organizerUserId && a.AppointmentTypeId == appointmentTypeId).ToList()
+        );
+
     public void Add(Appointment appointment) => All.Add(appointment);
 
     public void Remove(Appointment appointment) => All.Remove(appointment);
@@ -142,6 +161,9 @@ internal sealed class EmptyAvailability : IAvailabilityRepository
         Guid userId,
         CancellationToken ct = default
     ) => Task.FromResult<IReadOnlyList<BlockedTime>>([]);
+
+    public Task<BlockedTime?> FindBlockAsync(Guid tenantId, Guid blockId, CancellationToken ct = default) =>
+        Task.FromResult<BlockedTime?>(null);
 
     public void AddRule(AvailabilityRule rule) { }
 

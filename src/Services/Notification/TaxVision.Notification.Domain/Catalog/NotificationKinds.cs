@@ -58,6 +58,11 @@ public static class NotificationKinds
 
     public const string CalendarAppointmentScheduled = "calendar.appointment_scheduled";
     public const string CalendarAttendeeAdded = "calendar.attendee_added";
+    public const string CalendarAppointmentUpdated = "calendar.appointment_updated";
+    public const string CalendarAppointmentBookedOnline = "calendar.appointment_booked_online";
+    public const string CalendarBookingRequested = "calendar.booking_requested";
+    public const string CalendarBookingDeclined = "calendar.booking_declined";
+    public const string CalendarBookingConfirmed = "calendar.booking_confirmed";
     public const string CalendarAppointmentRescheduled = "calendar.appointment_rescheduled";
     public const string CalendarAppointmentCancelled = "calendar.appointment_cancelled";
     public const string CalendarAttendeeResponded = "calendar.attendee_responded";

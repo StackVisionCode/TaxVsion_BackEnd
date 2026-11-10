@@ -4,6 +4,7 @@ using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Appointments.Queries;
 using TaxVision.Calendar.Application.Observability;
 using TaxVision.Calendar.Domain.Appointments;
+using TaxVision.Calendar.Domain.Types;
 using Xunit;
 
 namespace TaxVision.Calendar.Tests.Application;
@@ -42,7 +43,16 @@ public sealed class AppointmentVisibilityFilterTests
             CanViewAll: canViewAll
         );
 
-        var result = await GetAppointmentRangeHandler.Handle(query, repo, new NoOpMetrics(), Options(enabled), default);
+        var result = await GetAppointmentRangeHandler.Handle(
+            query,
+            repo,
+            new SingleTypeRepository(
+                AppointmentType.Create(Tenant, "Review", TimeSpan.FromHours(1), "#3366FF", DateTime.UtcNow).Value
+            ),
+            new NoOpMetrics(),
+            Options(enabled),
+            default
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(shouldRestrict ? Actor : (Guid?)null, repo.LastRangeAssignee);
@@ -107,6 +117,15 @@ public sealed class AppointmentVisibilityFilterTests
 
         public Task<IReadOnlyList<Appointment>> ListForRangeAsync(
             Guid tenantId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
+
+        public Task<IReadOnlyList<Appointment>> ListOrganizerTypeForRangeAsync(
+            Guid tenantId,
+            Guid organizerUserId,
+            Guid appointmentTypeId,
             DateTime rangeStartUtc,
             DateTime rangeEndUtc,
             CancellationToken ct = default

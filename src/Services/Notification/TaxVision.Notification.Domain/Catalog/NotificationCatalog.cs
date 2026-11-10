@@ -552,6 +552,56 @@ public static class NotificationCatalog
             NotificationAction.Open
         ),
         Entry(
+            NotificationKinds.CalendarBookingRequested,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.Participants,
+            InAppEmail,
+            false,
+            "appointment",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CalendarBookingConfirmed,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.Participants,
+            InAppEmail,
+            false,
+            "appointment",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CalendarBookingDeclined,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.Participants,
+            InAppEmail,
+            false,
+            "appointment",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CalendarAppointmentBookedOnline,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.Participants,
+            InAppEmail,
+            false,
+            "appointment",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CalendarAppointmentUpdated,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.Participants,
+            InAppEmail,
+            false,
+            "appointment",
+            NotificationAction.Open
+        ),
+        Entry(
             NotificationKinds.CalendarAppointmentRescheduled,
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,

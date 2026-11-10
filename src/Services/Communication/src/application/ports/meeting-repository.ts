@@ -9,12 +9,16 @@ export interface MeetingsForUserQuery {
   readonly customerId?: string;
   /** Usuario de portal activo del cliente: cubre invitaciones sin usar y filas previas al backfill. */
   readonly counterpartUserId?: string;
+  /** Vista calendario: solo las que caen en el rango (programadas o, si no, iniciadas). */
+  readonly scheduledBetween?: { readonly fromUtc: Date; readonly toUtc: Date };
 }
 
 export interface MeetingRepository {
   save(meeting: Meeting): Promise<void>;
   findById(tenantId: string, meetingId: string): Promise<Meeting | null>;
   findByShortCode(tenantId: string, shortCode: string): Promise<Meeting | null>;
+  /** La sala que nació de una cita de Calendar, si ya existe. */
+  findByAppointmentId(tenantId: string, appointmentId: string): Promise<Meeting | null>;
   /**
    * Reuniones activas (Scheduled|Live) cuyo host es `hostUserId` — para el handover al retirar
    * a ese empleado (offboarding). Devuelve el aggregate completo porque se van a mutar y guardar.

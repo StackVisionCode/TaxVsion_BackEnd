@@ -25,6 +25,19 @@ public interface IAppointmentRepository
     /// memoria porque su <c>StartUtc</c> es NULL por diseno y ningun indice puede filtrarlas por fecha.
     /// Correcto mientras las series sean cientos: el umbral de revision escrito es 2.000 por tenant.
     /// </summary>
+    /// <summary>
+    /// Las citas de un organizador y un tipo que pueden caer en el rango (series incluidas), para el tope
+    /// diario.
+    /// </summary>
+    Task<IReadOnlyList<Appointment>> ListOrganizerTypeForRangeAsync(
+        Guid tenantId,
+        Guid organizerUserId,
+        Guid appointmentTypeId,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc,
+        CancellationToken ct = default
+    );
+
     Task<IReadOnlyList<Appointment>> ListForRangeAsync(
         Guid tenantId,
         DateTime rangeStartUtc,

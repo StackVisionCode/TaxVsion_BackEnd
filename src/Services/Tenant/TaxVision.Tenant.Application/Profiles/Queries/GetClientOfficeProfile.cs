@@ -28,7 +28,7 @@ public static class GetClientOfficeProfileHandler
 
     private static ClientOfficeProfileResponse From(string officeName, string timeZoneId, OfficeProfile? profile) =>
         profile is null
-            ? new ClientOfficeProfileResponse(officeName, null, null, null, null, timeZoneId, [], null, null)
+            ? new ClientOfficeProfileResponse(officeName, null, null, null, null, timeZoneId, [], null, null, [])
             : new ClientOfficeProfileResponse(
                 profile.DisplayName ?? officeName,
                 profile.Phone,
@@ -38,7 +38,8 @@ public static class GetClientOfficeProfileHandler
                 timeZoneId,
                 profile.BusinessHours.Select(OfficeProfileResponses.ToResponse).ToList(),
                 profile.BookingUrl,
-                profile.ReviewUrl
+                profile.ReviewUrl,
+                profile.Closures.Select(OfficeProfileResponses.ToResponse).ToList()
             );
 
     // Postal antes que física; una dirección sin calle o ciudad no sirve para escribir ni llegar.

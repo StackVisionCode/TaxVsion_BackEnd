@@ -39,6 +39,11 @@ public sealed class AvailabilityRepository(CalendarDbContext context) : IAvailab
             .Where(b => b.TenantId == tenantId && b.UserId == userId)
             .ToListAsync(ct);
 
+    public Task<BlockedTime?> FindBlockAsync(Guid tenantId, Guid blockId, CancellationToken ct = default) =>
+        context
+            .BlockedTimes.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(b => b.TenantId == tenantId && b.Id == blockId, ct);
+
     public void AddRule(AvailabilityRule rule) => context.AvailabilityRules.Add(rule);
 
     public void AddBlock(BlockedTime block) => context.BlockedTimes.Add(block);

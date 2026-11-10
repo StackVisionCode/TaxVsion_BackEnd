@@ -31,7 +31,7 @@ public static class IcsWriter
 
         foreach (var appointment in appointments)
         {
-            if (appointment.Status == AppointmentStatus.Cancelled)
+            if (appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.Requested)
                 continue;
 
             var zone = appointment.Timing.TimeZone;

@@ -80,6 +80,7 @@ public sealed class CalendarAppointmentConsumerTests
             harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
+            new FakeTenantHostResolver(),
             harness.Dispatcher,
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -108,6 +109,152 @@ public sealed class CalendarAppointmentConsumerTests
     }
 
     /// <summary>Sin destinatarios no se renderiza: pedirle a Scribe un correo que no se manda es trabajo tirado.</summary>
+    /// <summary>
+    /// Cada invitado responde con su propio enlace (el token va en el fragmento: no llega al servidor
+    /// ni a los logs). El organizador ya aceptó: sin botones.
+    /// </summary>
+    [Fact]
+    public async Task Each_invitee_gets_their_own_rsvp_buttons_and_the_organizer_none()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+        var evt = Invitation() with
+        {
+            Recipients =
+            [
+                new AppointmentRecipient("empleado@example.com", EmployeeId, RsvpToken: "tok-organizer"),
+                new AppointmentRecipient("cliente@example.com", null, RsvpToken: "tok-client"),
+            ],
+        };
+
+        await Scheduled(harness, evt);
+
+        var withButtons = harness.Render.AllVariables.Where(v => v.ContainsKey("rsvp_accept_link")).ToList();
+        var client = Assert.Single(withButtons);
+        Assert.Equal("https://manfer.taxoffix.io/rsvp#token=tok-client&answer=accepted", client["rsvp_accept_link"]);
+        Assert.Equal("https://manfer.taxoffix.io/rsvp#token=tok-client&answer=tentative", client["rsvp_maybe_link"]);
+        Assert.Equal("https://manfer.taxoffix.io/rsvp#token=tok-client&answer=declined", client["rsvp_decline_link"]);
+        Assert.Equal(2, harness.Gateway.Queued.Count);
+    }
+
+    /// <summary>Cambió el nombre o el lugar: avisa a todos menos a quien editó, con el nombre viejo al lado.</summary>
+    [Fact]
+    public async Task Edited_details_reach_every_attendee_but_the_editor()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+
+        await AppointmentDetailsChangedConsumer.Handle(
+            new AppointmentDetailsChangedIntegrationEvent
+            {
+                TenantId = TenantId,
+                CorrelationId = "test",
+                AppointmentId = Guid.NewGuid(),
+                Title = "Revisión final",
+                PreviousTitle = "Consulta inicial",
+                Location = "Office 2",
+                ChangedFields = ["Title", "Location"],
+                StartUtc = StartUtc,
+                TimeZoneId = "America/Santo_Domingo",
+                OrganizerUserId = EmployeeId,
+                ChangedByUserId = EmployeeId,
+                MeetingId = Guid.NewGuid(),
+                Recipients =
+                [
+                    new AppointmentRecipient("empleado@example.com", EmployeeId),
+                    new AppointmentRecipient("cliente@example.com", null),
+                ],
+            },
+            harness.Gateway,
+            harness.Render,
+            Options.Create(new PortalOptions()),
+            harness.Dispatcher,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(["cliente@example.com"], harness.Gateway.Queued.Select(e => e.To));
+        Assert.Equal("Consulta inicial", harness.Render.LastVariables["previous_title"]);
+        Assert.Equal("Office 2", harness.Render.LastVariables["location"]);
+        Assert.Equal(true, harness.Render.LastVariables["title_changed"]);
+        Assert.Equal(false, harness.Render.LastVariables["description_changed"]);
+    }
+
+    /// <summary>Si la reservó el cliente en el portal, el aviso al preparador lo dice, con su nombre.</summary>
+    [Fact]
+    public void A_booking_from_the_portal_is_announced_as_booked_online_by_the_client()
+    {
+        var booked = AppointmentScheduledConsumer.Announcement(
+            Invitation() with
+            {
+                BookedByCustomerName = "Ana Client",
+            }
+        );
+        var internalOne = AppointmentScheduledConsumer.Announcement(Invitation());
+
+        Assert.Equal(
+            ("calendar.appointment_booked_online", "Booked online by Ana Client: Revisión de la 1040"),
+            booked
+        );
+        Assert.Equal(("calendar.appointment_scheduled", "New appointment: Revisión de la 1040"), internalOne);
+    }
+
+    /// <summary>La solicitud del portal llega a la oficina con el nombre del cliente, para aprobarla o asignarla.</summary>
+    [Fact]
+    public void A_booking_request_is_announced_to_the_office_with_the_clients_name()
+    {
+        var heading = AppointmentBookingRequestedConsumer.Heading(
+            new AppointmentBookingRequestedIntegrationEvent
+            {
+                TenantId = TenantId,
+                CorrelationId = "test",
+                AppointmentId = Guid.NewGuid(),
+                Title = "Consulta inicial",
+                TimeZoneId = "America/Santo_Domingo",
+                OrganizerUserId = EmployeeId,
+                CustomerName = "Minato Kenyimura",
+            }
+        );
+
+        Assert.Equal("Booking request from Minato Kenyimura: Consulta inicial", heading);
+    }
+
+    /// <summary>Rechazada: el cliente recibe un correo con el motivo y la hora que pidió.</summary>
+    [Fact]
+    public async Task A_declined_request_emails_the_client_with_the_reason()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+
+        await AppointmentBookingDeclinedConsumer.Handle(
+            new AppointmentBookingDeclinedIntegrationEvent
+            {
+                TenantId = TenantId,
+                CorrelationId = "test",
+                AppointmentId = Guid.NewGuid(),
+                Title = "Consulta inicial",
+                StartUtc = StartUtc,
+                TimeZoneId = "America/Santo_Domingo",
+                Reason = "We're closed that day",
+                Recipients = [new AppointmentRecipient("minato@client.test", null, Guid.NewGuid(), "Minato")],
+            },
+            harness.Gateway,
+            harness.Render,
+            Options.Create(new PortalOptions()),
+            new FakeTenantHostResolver("manfer.taxoffix.io"),
+            harness.Dispatcher,
+            NoPortalRecipientResolver.Instance,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(["minato@client.test"], harness.Gateway.Queued.Select(e => e.To));
+        Assert.Equal("We're closed that day", harness.Render.LastVariables["reason"]);
+        // "Book another time" lleva a reservar en el portal de la oficina, no a una URL fija.
+        Assert.EndsWith(
+            "manfer.taxoffix.io/portal/client/calendar/book",
+            harness.Render.LastVariables["portal_link"]?.ToString()
+        );
+        Assert.Equal("2026-08-20 14:00", harness.Render.LastVariables["start_local"]?.ToString()?[..16]);
+    }
+
     [Fact]
     public async Task Sin_destinatarios_no_se_renderiza_nada()
     {
@@ -132,13 +279,102 @@ public sealed class CalendarAppointmentConsumerTests
         Assert.Equal("cliente@example.com", email.To);
     }
 
+    /// <summary>
+    /// Cita virtual: los invitados reciben la invitación de la sala (Communication, con su enlace). El
+    /// correo de la cita queda para el organizador, que es el host y no tiene invitación: uno por persona.
+    /// </summary>
+    [Fact]
+    public async Task Virtual_appointment_emails_only_the_organizer_the_room_invites_the_rest()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+        var evt = Invitation() with
+        {
+            IsVirtual = true,
+            Recipients =
+            [
+                new AppointmentRecipient("organizer@example.com", EmployeeId),
+                new AppointmentRecipient("staff@example.com", Guid.NewGuid()),
+                new AppointmentRecipient("cliente@example.com", null),
+            ],
+        };
+
+        await Scheduled(harness, evt);
+
+        Assert.Equal(["organizer@example.com"], harness.Gateway.Queued.Select(e => e.To));
+    }
+
+    [Fact]
+    public async Task Someone_added_to_a_virtual_appointment_is_left_to_the_room_invitation()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+
+        await AppointmentAttendeeAddedConsumer.Handle(
+            new AppointmentAttendeeAddedIntegrationEvent
+            {
+                TenantId = TenantId,
+                CorrelationId = "test",
+                AppointmentId = Guid.NewGuid(),
+                AttendeeKind = "InternalUser",
+                UserId = Guid.NewGuid(),
+                Email = "andres@example.com",
+                Title = "Consulta inicial",
+                StartUtc = StartUtc,
+                TimeZoneId = "America/Santo_Domingo",
+                IsRecurring = false,
+                IsVirtual = true,
+            },
+            harness.Gateway,
+            harness.Render,
+            Options.Create(new PortalOptions()),
+            new FakeTenantHostResolver(),
+            harness.Dispatcher,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Empty(harness.Gateway.Queued);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_virtual_appointment_with_a_room_emails_only_the_organizer()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+
+        await AppointmentCancelledConsumer.Handle(
+            new AppointmentCancelledIntegrationEvent
+            {
+                TenantId = TenantId,
+                CorrelationId = "test",
+                AppointmentId = Guid.NewGuid(),
+                Scope = "EntireSeries",
+                MeetingId = Guid.NewGuid(),
+                OrganizerUserId = EmployeeId,
+                Recipients =
+                [
+                    new AppointmentRecipient("organizer@example.com", EmployeeId),
+                    new AppointmentRecipient("cliente@example.com", null),
+                ],
+            },
+            harness.Gateway,
+            harness.Render,
+            Options.Create(new PortalOptions()),
+            harness.Dispatcher,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(["organizer@example.com"], harness.Gateway.Queued.Select(e => e.To));
+    }
+
     private static Task Scheduled(Harness harness, AppointmentScheduledIntegrationEvent evt) =>
         AppointmentScheduledConsumer.Handle(
             evt,
             harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
+            new FakeTenantHostResolver("manfer.taxoffix.io"),
             harness.Dispatcher,
+            NoPortalRecipientResolver.Instance,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -288,6 +524,8 @@ public sealed class CalendarAppointmentConsumerTests
         ) => RenderAsync(eventKey, tenantId, variables, ScribeRenderAudience.Staff, ct);
 
         // El asunto lleva la audiencia para saber qué render recibió cada destinatario.
+        public List<IReadOnlyDictionary<string, object?>> AllVariables { get; } = [];
+
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
             string eventKey,
             Guid tenantId,
@@ -298,6 +536,7 @@ public sealed class CalendarAppointmentConsumerTests
         {
             Calls++;
             LastVariables = variables;
+            AllVariables.Add(variables);
             Audiences.Add(audience);
             return Task.FromResult(
                 Result.Success(new ScribeRenderedEmail($"{eventKey}:{audience}", "<p>html</p>", "text"))

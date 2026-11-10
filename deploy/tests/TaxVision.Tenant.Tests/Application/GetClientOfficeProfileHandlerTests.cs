@@ -111,7 +111,18 @@ public sealed class GetClientOfficeProfileHandlerTests
         using var document = JsonDocument.Parse(json);
         var properties = document.RootElement.EnumerateObject().Select(p => p.Name).ToList();
         Assert.Equal(
-            ["name", "phone", "email", "website", "address", "timeZoneId", "businessHours", "bookingUrl", "reviewUrl"],
+            [
+                "name",
+                "phone",
+                "email",
+                "website",
+                "address",
+                "timeZoneId",
+                "businessHours",
+                "bookingUrl",
+                "reviewUrl",
+                "closures",
+            ],
             properties
         );
     }

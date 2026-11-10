@@ -11,6 +11,7 @@ using TaxVision.Calendar.Api.Requests;
 using TaxVision.Calendar.Application.Appointments;
 using TaxVision.Calendar.Application.Appointments.Commands;
 using TaxVision.Calendar.Application.Appointments.Queries;
+using TaxVision.Calendar.Application.Appointments.Search;
 using TaxVision.Calendar.Domain.Scheduling;
 using TaxVision.Calendar.Domain.ValueObjects;
 using Wolverine;
@@ -57,7 +58,24 @@ public sealed class AppointmentsController(
                 request.TaxYear,
                 request.IsVirtual,
                 request.ReminderLeadMinutes
-            ),
+            )
+            {
+                // Quien agenda también recibe los avisos de su cita (D-CAL-N); su contacto sale del token.
+                Organizer = new OrganizerContact(
+                    User.FindFirst("name")?.Value,
+                    User.TryGetEmail(out var email) ? email : null
+                ),
+                Attendees = (request.Attendees ?? [])
+                    .Select(a => new ScheduleAttendeeInput(
+                        a.Kind,
+                        a.UserId,
+                        a.CustomerId,
+                        a.DisplayName,
+                        a.Email,
+                        a.IsRequired
+                    ))
+                    .ToList(),
+            },
             ct
         );
 
@@ -110,6 +128,7 @@ public sealed class AppointmentsController(
         [FromQuery] DateTime from,
         [FromQuery] DateTime to,
         [FromQuery] Guid? organizerUserId,
+        [FromQuery] Guid? participantUserId,
         CancellationToken ct
     )
     {
@@ -118,7 +137,55 @@ public sealed class AppointmentsController(
 
         var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<OccurrenceResponse>>>(
-            new GetAppointmentRangeQuery(tenantId, AsUtc(from), AsUtc(to), organizerUserId, userId, canViewAll),
+            new GetAppointmentRangeQuery(
+                tenantId,
+                AsUtc(from),
+                AsUtc(to),
+                organizerUserId,
+                userId,
+                canViewAll,
+                participantUserId
+            ),
+            ct
+        );
+
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Busca en la agenda por texto (título, lugar, notas, asistentes) y filtros. Sin texto ni filtro
+    /// devuelve vacío. Respeta la visibilidad por asignación.
+    /// </summary>
+    [HttpGet("search")]
+    [HasPermission(CalendarPermissions.Read)]
+    [RateLimit("calendar.h.search")]
+    [ProducesResponseType<AppointmentSearchResult>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Search(
+        [FromQuery] string? q,
+        [FromQuery] AppointmentSearchStatus status,
+        [FromQuery] Guid? typeId,
+        [FromQuery] Guid? personUserId,
+        [FromQuery] Guid? customerId,
+        [FromQuery] int take,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<AppointmentSearchResult>>(
+            new SearchAppointmentsQuery(
+                tenantId,
+                userId,
+                canViewAll,
+                q,
+                status,
+                typeId,
+                personUserId,
+                customerId,
+                take
+            ),
             ct
         );
 
@@ -153,17 +220,17 @@ public sealed class AppointmentsController(
         if (bounds.IsFailure)
             return StatusCode(bounds.Error.ToHttpStatusCode(), bounds.Error);
 
-        // Es la agenda del propio usuario (OrganizerUserId=userId): la visibilidad por asignación no le quita
-        // nada (uno siempre ve lo que organiza), pero se pasa el actor por consistencia.
+        // Es la agenda del propio usuario: lo que organiza y a lo que asiste.
         var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<OccurrenceResponse>>>(
             new GetAppointmentRangeQuery(
                 tenantId,
                 bounds.Value.StartUtc,
                 bounds.Value.EndUtc,
+                OrganizerUserId: null,
                 userId,
-                userId,
-                canViewAll
+                canViewAll,
+                ParticipantUserId: userId
             ),
             ct
         );
@@ -253,6 +320,79 @@ public sealed class AppointmentsController(
         return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
     }
 
+    /// <summary>Aprueba la solicitud de un cliente, para quien aprueba o para otro empleado.</summary>
+    [HttpPost("{appointmentId:guid}/approve")]
+    [HasPermission(CalendarPermissions.Write)]
+    [RateLimit("calendar.g.update")]
+    public async Task<IActionResult> Approve(
+        Guid appointmentId,
+        [FromBody] ApproveBookingRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+
+        var canManageAll = await permissionsSource.HasPermissionAsync(User, CalendarPermissions.ManageAll, ct);
+        var result = await bus.InvokeAsync<Result<AppointmentWithWarnings>>(
+            new ApproveBookingRequestCommand(tenantId, appointmentId, userId, request.AssignToUserId, canManageAll),
+            ct
+        );
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+    }
+
+    /// <summary>Rechaza la solicitud de un cliente; el motivo le llega por correo.</summary>
+    [HttpPost("{appointmentId:guid}/decline")]
+    [HasPermission(CalendarPermissions.Write)]
+    [RateLimit("calendar.g.update")]
+    public async Task<IActionResult> Decline(
+        Guid appointmentId,
+        [FromBody] DeclineBookingRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+
+        var canManageAll = await permissionsSource.HasPermissionAsync(User, CalendarPermissions.ManageAll, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new DeclineBookingRequestCommand(tenantId, appointmentId, userId, request.Reason, canManageAll),
+            ct
+        );
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : NoContent();
+    }
+
+    /// <summary>Título, descripción y lugar. Organizador o calendar.manage_all, como mover y cancelar.</summary>
+    [HttpPut("{appointmentId:guid}/details")]
+    [HasPermission(CalendarPermissions.Write)]
+    [RateLimit("calendar.g.update")]
+    public async Task<IActionResult> EditDetails(
+        Guid appointmentId,
+        [FromBody] EditAppointmentDetailsRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+
+        var canManageAll = await permissionsSource.HasPermissionAsync(User, CalendarPermissions.ManageAll, ct);
+
+        var result = await bus.InvokeAsync<Result<AppointmentResponse>>(
+            new EditAppointmentDetailsCommand(
+                tenantId,
+                appointmentId,
+                userId,
+                request.Title,
+                request.Description,
+                request.Location,
+                canManageAll
+            ),
+            ct
+        );
+
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+    }
+
     [HttpPost("{appointmentId:guid}/cancel")]
     [HasPermission(CalendarPermissions.Write)]
     [RateLimit("calendar.g.delete")]
@@ -301,7 +441,7 @@ public sealed class AppointmentsController(
         // se enferma — nadie más puede moverla ni cancelarla.
         var canManageAll = await permissionsSource.HasPermissionAsync(User, CalendarPermissions.ManageAll, ct);
 
-        var result = await bus.InvokeAsync<Result<AppointmentResponse>>(
+        var result = await bus.InvokeAsync<Result<AppointmentWithWarnings>>(
             new AddAttendeeCommand(
                 tenantId,
                 appointmentId,

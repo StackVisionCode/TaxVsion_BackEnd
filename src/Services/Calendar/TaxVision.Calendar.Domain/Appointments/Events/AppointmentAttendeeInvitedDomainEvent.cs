@@ -11,5 +11,6 @@ public sealed record AppointmentAttendeeInvitedDomainEvent(
     DateTime InvitedAtUtc,
     Guid? UserId,
     Guid? CustomerId,
-    string? Email
+    string? Email,
+    string? RsvpToken = null
 ) : IDomainEvent;

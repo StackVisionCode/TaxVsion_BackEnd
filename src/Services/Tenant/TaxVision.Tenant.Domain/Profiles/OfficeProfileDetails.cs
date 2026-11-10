@@ -21,7 +21,9 @@ public sealed record OfficeProfileDetails(
     string DefaultLanguage,
     WeeklyBusinessHours BusinessHours,
     string? BookingUrl,
-    string? ReviewUrl
+    string? ReviewUrl,
+    // null = conservar los cierres guardados.
+    OfficeClosures? Closures = null
 )
 {
     // El sitio web llega a columnas de 256 en las proyecciones (Billing); los enlaces no.
@@ -66,7 +68,8 @@ public sealed record OfficeProfileDetails(
                 ?.Value,
             fields
                 .Take(WebUrl.CreateOptional(draft.ReviewUrl, LinkMaxLength, OfficeProfileErrors.ReviewUrl), null)
-                ?.Value
+                ?.Value,
+            draft.Closures is null ? null : fields.Take(OfficeClosures.Create(draft.Closures), OfficeClosures.None)
         );
     }
 

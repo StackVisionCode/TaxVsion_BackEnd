@@ -4,9 +4,8 @@ namespace BuildingBlocks.Authorization;
 /// Permisos del microservicio Calendar, usados como policy en <c>[HasPermission(...)]</c>.
 ///
 /// <para>
-/// Sin permiso de portal: en v1 el cliente no entra al calendario. Lo que ve es la invitación que le
-/// manda Notification y, si se suscribe, el feed <c>.ics</c> — que se autoriza por token firmado y no
-/// por permiso.
+/// Portal (D-CAL-H): el cliente ve sus citas con <see cref="PortalRead"/> y reserva, cancela o
+/// reprograma las suyas con <see cref="PortalBook"/>.
 /// </para>
 /// </summary>
 public static class CalendarPermissions
@@ -28,4 +27,10 @@ public static class CalendarPermissions
 
     /// <summary>Definir horarios de atención y bloqueos de agenda.</summary>
     public const string AvailabilityManage = "calendar.availability.manage";
+
+    /// <summary>Portal: el cliente ve sus citas.</summary>
+    public const string PortalRead = "calendar.portal.read";
+
+    /// <summary>Portal: el cliente reserva, cancela y reprograma las suyas, según la política de la oficina.</summary>
+    public const string PortalBook = "calendar.portal.book";
 }

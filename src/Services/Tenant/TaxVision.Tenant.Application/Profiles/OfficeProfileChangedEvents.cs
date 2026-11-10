@@ -28,6 +28,7 @@ public static class OfficeProfileChangedEvents
             MailingAddress = ToData(profile.MailingAddress),
             DefaultLanguage = profile.DefaultLanguage,
             BusinessHours = profile.BusinessHours.Select(ToData).ToList(),
+            Closures = profile.Closures.Select(ToData).ToList(),
             BookingUrl = profile.BookingUrl,
             ReviewUrl = profile.ReviewUrl,
             CorrelationId = correlationId,
@@ -37,6 +38,14 @@ public static class OfficeProfileChangedEvents
         address is null
             ? null
             : new(address.Line1, address.Line2, address.City, address.State, address.PostalCode, address.Country);
+
+    private static OfficeClosureData ToData(OfficeClosure closure) =>
+        new(
+            closure.Date.ToString(OfficeClosure.DateFormat, CultureInfo.InvariantCulture),
+            closure.EndDate?.ToString(OfficeClosure.DateFormat, CultureInfo.InvariantCulture),
+            closure.Label,
+            closure.RepeatsYearly
+        );
 
     private static OfficeBusinessHoursData ToData(DailyOpeningHours hours) =>
         new(

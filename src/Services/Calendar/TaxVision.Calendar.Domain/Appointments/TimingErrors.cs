@@ -5,6 +5,11 @@ namespace TaxVision.Calendar.Domain.Appointments;
 /// <summary>Errores de <see cref="ValueObjects.EventTiming"/>.</summary>
 public static class TimingErrors
 {
+    public static readonly Error StartsInThePast = new(
+        "Calendar.Timing.StartsInThePast",
+        "An appointment can't start in the past. Pick a later time."
+    );
+
     public static readonly Error EndBeforeStart = new(
         "Calendar.Timing.EndBeforeStart",
         "The end of the event must come after its start."

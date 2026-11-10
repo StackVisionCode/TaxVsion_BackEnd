@@ -11,12 +11,27 @@ namespace BuildingBlocks.Messaging.CalendarIntegrationEvents;
 /// paralelas— evita el error de creer que el tercer email es del tercer usuario.
 /// </para>
 /// </summary>
-public sealed record AppointmentRecipient(string Email, Guid? UserId);
+// CustomerId (aditivo): el cliente entra a la sala como cliente aunque comparta correo con alguien del equipo.
+// DisplayName (aditivo): el saludo de la invitación de la sala. RsvpToken (aditivo): el enlace de
+// respuesta de ese invitado; solo en el alta y al mover la cita, null en el resto.
+public sealed record AppointmentRecipient(
+    string Email,
+    Guid? UserId,
+    Guid? CustomerId = null,
+    string? DisplayName = null,
+    string? RsvpToken = null
+);
 
 /// <summary>Se agendó una cita. Si es serie, <c>StartUtc</c> es el de su primera ocurrencia.</summary>
 [MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentScheduledIntegrationEvent")]
 public sealed record AppointmentScheduledIntegrationEvent : IntegrationEvent
 {
+    /// <summary>Aditivo: la reservó el cliente en el portal (su nombre). Null si la agendó el equipo.</summary>
+    public string? BookedByCustomerName { get; init; }
+
+    /// <summary>Aditivo: viene de aprobar una solicitud del portal; el cliente se entera en vivo.</summary>
+    public bool ApprovedRequest { get; init; }
+
     public required Guid AppointmentId { get; init; }
     public required string Title { get; init; }
     public required Guid OrganizerUserId { get; init; }
@@ -53,6 +68,9 @@ public sealed record AppointmentRescheduledIntegrationEvent : IntegrationEvent
     /// <summary>La sala, si la cita es virtual: Communication la mueve sin buscarla por la cita.</summary>
     public Guid? MeetingId { get; init; }
 
+    /// <summary>Organizador (aditivo): con sala, es el único que recibe el aviso de la cita; el resto, el de la sala.</summary>
+    public Guid? OrganizerUserId { get; init; }
+
     public IReadOnlyList<AppointmentRecipient> Recipients { get; init; } = [];
 }
 
@@ -66,6 +84,67 @@ public sealed record AppointmentCancelledIntegrationEvent : IntegrationEvent
 
     /// <summary>La sala, si la cita es virtual: Communication la cancela sin buscarla por la cita.</summary>
     public Guid? MeetingId { get; init; }
+
+    /// <summary>Organizador (aditivo): con sala, es el único que recibe el aviso de la cita; el resto, el de la sala.</summary>
+    public Guid? OrganizerUserId { get; init; }
+
+    public IReadOnlyList<AppointmentRecipient> Recipients { get; init; } = [];
+}
+
+/// <summary>
+/// Cambiaron título, descripción o lugar de la cita. La hora no: eso es
+/// <see cref="AppointmentRescheduledIntegrationEvent"/>. Notification avisa a los asistentes y
+/// Communication renombra la sala.
+/// </summary>
+[MessageIdentity("calendar.appointment_details_changed.v1")]
+public sealed record AppointmentDetailsChangedIntegrationEvent : IntegrationEvent
+{
+    public required Guid AppointmentId { get; init; }
+    public required string Title { get; init; }
+    public required string PreviousTitle { get; init; }
+    public string? Description { get; init; }
+    public string? Location { get; init; }
+
+    /// <summary>Title, Description y/o Location.</summary>
+    public required IReadOnlyList<string> ChangedFields { get; init; }
+
+    public DateTime? StartUtc { get; init; }
+    public required string TimeZoneId { get; init; }
+    public bool IsRecurring { get; init; }
+    public Guid? MeetingId { get; init; }
+    public required Guid OrganizerUserId { get; init; }
+
+    /// <summary>Quien editó: no se le avisa de su propio cambio.</summary>
+    public required Guid ChangedByUserId { get; init; }
+
+    public IReadOnlyList<AppointmentRecipient> Recipients { get; init; } = [];
+}
+
+/// <summary>Un cliente pidió una cita en el portal; la oficina debe aprobarla, asignarla o rechazarla.</summary>
+[MessageIdentity("calendar.booking_requested.v1")]
+public sealed record AppointmentBookingRequestedIntegrationEvent : IntegrationEvent
+{
+    public required Guid AppointmentId { get; init; }
+    public required string Title { get; init; }
+    public DateTime? StartUtc { get; init; }
+    public required string TimeZoneId { get; init; }
+    public required Guid OrganizerUserId { get; init; }
+    public Guid? CustomerId { get; init; }
+    public string? CustomerName { get; init; }
+}
+
+/// <summary>La oficina rechazó la solicitud del cliente. <c>Recipients</c>: el cliente (y externos) con correo.</summary>
+[MessageIdentity("calendar.booking_declined.v1")]
+public sealed record AppointmentBookingDeclinedIntegrationEvent : IntegrationEvent
+{
+    public required Guid AppointmentId { get; init; }
+    public required string Title { get; init; }
+    public DateTime? StartUtc { get; init; }
+    public required string TimeZoneId { get; init; }
+    public string? Reason { get; init; }
+
+    /// <summary>El cliente de la cita: su portal recibe el aviso en vivo.</summary>
+    public Guid? CustomerId { get; init; }
 
     public IReadOnlyList<AppointmentRecipient> Recipients { get; init; } = [];
 }
@@ -107,6 +186,13 @@ public sealed record AppointmentAttendeeAddedIntegrationEvent : IntegrationEvent
     public Guid? UserId { get; init; }
     public Guid? CustomerId { get; init; }
     public string? Email { get; init; }
+
+    /// <summary>Nombre del asistente (aditivo): el saludo de la invitación de la sala.</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>Su enlace de respuesta (aditivo). Credencial: no se registra en logs.</summary>
+    public string? RsvpToken { get; init; }
+
     public required string Title { get; init; }
 
     /// <summary>Si es serie, el de su primera ocurrencia; null solo si la regla no da ninguna.</summary>

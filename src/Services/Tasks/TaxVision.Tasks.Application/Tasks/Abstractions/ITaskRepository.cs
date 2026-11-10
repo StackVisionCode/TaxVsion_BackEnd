@@ -85,13 +85,13 @@ public interface ITaskRepository
 
     /// <summary>
     /// Las que vencen dentro del rango. Misma tabla que el tablero: una tarea con vencimiento no es
-    /// otra entidad, es la misma vista por fecha.
+    /// otra entidad, es la misma vista por fecha. Aplica los mismos filtros que el tablero.
     /// </summary>
     Task<IReadOnlyList<TaskItem>> ListForCalendarAsync(
         Guid tenantId,
         DateTime fromUtc,
         DateTime toUtc,
-        Guid? assigneeUserId,
+        TaskQueryFilter filter,
         int take,
         Guid? assignedToUserId = null,
         CancellationToken ct = default
