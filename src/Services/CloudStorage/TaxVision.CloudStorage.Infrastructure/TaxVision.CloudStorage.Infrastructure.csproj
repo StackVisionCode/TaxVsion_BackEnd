@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UserSecretsId>taxvision-cloudstorage-development</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.CloudStorage.Application\TaxVision.CloudStorage.Application.csproj" />

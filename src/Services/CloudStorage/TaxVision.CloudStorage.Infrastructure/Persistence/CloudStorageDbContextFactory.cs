@@ -1,4 +1,5 @@
 using BuildingBlocks.Tenancy;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -8,9 +9,17 @@ public sealed class CloudStorageDbContextFactory : IDesignTimeDbContextFactory<C
 {
     public CloudStorageDbContext CreateDbContext(string[] args)
     {
+        var configuration = new ConfigurationBuilder()
+            .AddUserSecrets<CloudStorageDbContextFactory>(optional: true)
+            .AddEnvironmentVariables()
+            .Build();
         var connectionString =
             Environment.GetEnvironmentVariable("CLOUDSTORAGE_DB_CONNECTION")
-            ?? "Server=localhost;Database=TaxVision_CloudStorage;Trusted_Connection=True;TrustServerCertificate=True";
+            ?? configuration.GetConnectionString("Default")
+            ?? throw new InvalidOperationException(
+                "CloudStorage design-time connection is missing. Set ConnectionStrings:Default in User Secrets "
+                    + "or CLOUDSTORAGE_DB_CONNECTION in the environment."
+            );
         var options = new DbContextOptionsBuilder<CloudStorageDbContext>().UseSqlServer(connectionString).Options;
         // dotnet-ef solo inspecciona el modelo, nunca ejecuta una query real.
         return new CloudStorageDbContext(options, new DesignTimeOnlyTenantContext());
